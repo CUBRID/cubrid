@@ -6196,7 +6196,7 @@ ldr_is_ignore_class (const char *classname, size_t size)
     {
       for (i = 0, p = ignore_class_list; i < ignore_class_num; i++, p++)
 	{
-	  if (intl_identifier_ncasecmp (*p, classname, MAX (strlen (*p), size)) == 0)
+	  if (intl_identifier_ncasecmp (*p, classname, (int) MAX (strlen (*p), size)) == 0)
 	    {
 	      return true;
 	    }

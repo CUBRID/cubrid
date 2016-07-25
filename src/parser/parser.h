@@ -269,7 +269,7 @@ extern "C"
 
   extern PT_NODE *pt_has_using_index_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
-  extern PT_NODE *meth_translate (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern PT_NODE *meth_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node);
 
   extern const char *pt_show_partition_type (PT_PARTITION_TYPE t);
 

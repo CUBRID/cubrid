@@ -633,10 +633,6 @@ net_server_init (void)
   req_p->processing_function = sqmgr_end_query;
   req_p->name = "NET_SERVER_QM_QUERY_END";
 
-  req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_PLAN];
-  req_p->processing_function = sqmgr_drop_query_plan;
-  req_p->name = "NET_SERVER_QM_QUERY_DROP_PLAN";
-
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_ALL_PLANS];
   req_p->processing_function = sqmgr_drop_all_query_plans;
   req_p->name = "NET_SERVER_QM_QUERY_DROP_ALL_PLANS";

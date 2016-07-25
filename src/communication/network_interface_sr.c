@@ -4976,17 +4976,19 @@ empty_page:
 void
 sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  XASL_ID xasl_id, *p;
-  char *ptr;
+  XASL_ID xasl_id;
+  char *ptr = NULL;
   char *reply = NULL, *reply_buffer = NULL;
   int csserror, reply_buffer_size = 0, get_xasl_header = 0;
   int xasl_cache_pinned = 0, recompile_xasl_cache_pinned = 0;
-  OID user_oid;
+  int recompile_xasl = 0;
   XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
   COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false };
   XASL_STREAM stream = { NULL, NULL, NULL, 0 };
+  bool was_recompile_xasl = false;
+  bool force_recompile = false;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4999,8 +5001,6 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   /* unpack query string from the request data */
   ptr = or_unpack_string_nocopy (ptr, &context.sql_user_text);
 
-  /* unpack OID of the current user */
-  ptr = or_unpack_oid (ptr, &user_oid);
   /* unpack size of XASL stream */
   ptr = or_unpack_int (ptr, &stream.xasl_stream_size);
   /* unpack get XASL node header boolean */
@@ -5011,7 +5011,11 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   /* unpack recompile flag boolean */
   ptr = or_unpack_int (ptr, &recompile_xasl_cache_pinned);
   context.recompile_xasl_pinned = (bool) recompile_xasl_cache_pinned;
-
+  /* unpack recompile_xasl flag boolean */
+  ptr = or_unpack_int (ptr, &recompile_xasl);
+  context.recompile_xasl = (bool) recompile_xasl;
+  /* unpack sha1 */
+  ptr = or_unpack_sha1 (ptr, &context.sha1);
 
   if (get_xasl_header)
     {
@@ -5039,23 +5043,38 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   stream.xasl_id = &xasl_id;
   XASL_ID_SET_NULL (stream.xasl_id);
 
-  p = xqmgr_prepare_query (thread_p, &context, &stream, &user_oid);
+  /* Force recompile must be set to true if client did not intend to recompile, but must reconsider. This can happen
+   * if recompile threshold is checked and if one of the related classes suffered significant changes to justify the
+   * recompiling.
+   * If client already means to recompile, force_recompile is not required.
+   * xqmgr_prepare_query will change context.recompile_xasl if force recompile is required.
+   */
+  was_recompile_xasl = context.recompile_xasl;
 
-  if (stream.xasl_stream && !p)
-    {
-      return_error_to_client (thread_p, rid);
-    }
+  error = xqmgr_prepare_query (thread_p, &context, &stream);
   if (stream.xasl_stream)
     {
       free_and_init (stream.xasl_stream);
     }
-
-  if (p)
+  if (error != NO_ERROR)
     {
-      if (get_xasl_header && !XASL_ID_IS_NULL (p))
+      ASSERT_ERROR ();
+      return_error_to_client (thread_p, rid);
+
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
+    }
+  else
+    {
+      /* Check if we need to force client to recompile. */
+      force_recompile = !was_recompile_xasl && context.recompile_xasl;
+      if (stream.xasl_id != NULL && !XASL_ID_IS_NULL (stream.xasl_id) && (get_xasl_header || force_recompile))
 	{
 	  /* pack XASL node header */
-	  reply_buffer_size = XASL_NODE_HEADER_SIZE;
+	  reply_buffer_size = get_xasl_header ? XASL_NODE_HEADER_SIZE : 0;
+	  reply_buffer_size += force_recompile ? OR_INT_SIZE : 0;
+	  assert (reply_buffer_size > 0);
+
 	  reply_buffer = (char *) malloc (reply_buffer_size);
 	  if (reply_buffer == NULL)
 	    {
@@ -5066,26 +5085,22 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  else
 	    {
 	      ptr = reply_buffer;
-	      OR_PACK_XASL_NODE_HEADER (ptr, stream.xasl_header);
+	      if (get_xasl_header)
+		{
+		  OR_PACK_XASL_NODE_HEADER (ptr, stream.xasl_header);
+		}
+	      if (force_recompile)
+		{
+		  /* Doesn't really matter what we pack... */
+		  ptr = or_pack_int (ptr, 1);
+		}
 	    }
 	}
-    }
-  else
-    {
-      error = ER_FAILED;
-    }
 
-  if (error == NO_ERROR)
-    {
       ptr = or_pack_int (reply, reply_buffer_size);
       ptr = or_pack_int (ptr, NO_ERROR);
       /* pack XASL file id as a reply */
-      OR_PACK_XASL_ID (ptr, p);
-    }
-  else
-    {
-      ptr = or_pack_int (reply, 0);
-      ptr = or_pack_int (ptr, error);
+      OR_PACK_XASL_ID (ptr, stream.xasl_id);
     }
 
   /* send reply and data to the client */
@@ -5134,7 +5149,7 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
   int n_query_ids = 0, i = 0;
   QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX], *p_net_Deferred_end_queries = net_Deferred_end_queries;
   TRAN_STATE tran_state;
-
+  char data_buf[EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE + MAX_ALIGNMENT], *aligned_data_buf = NULL;
   int response_time = 0;
 
   TSC_TICKS start_tick, end_tick;
@@ -5203,7 +5218,14 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
     }
 
   /* if the request contains parameter values for the query, allocate space for them */
-  if (0 < dbval_cnt)
+  if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
+    {
+      assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
+      aligned_data_buf = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+      data = aligned_data_buf;
+      memcpy (data, ptr, data_size);
+    }  
+  else if (0 < dbval_cnt)
     {
       /* receive parameter values (DB_VALUE) from the client */
       csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &data_size);
@@ -5232,7 +5254,7 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
     xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time, &srv_cache_time,
 			 query_timeout, &xasl_cache_entry_p);
 
-  if (data)
+  if (data && data != aligned_data_buf)
     {
       free_and_init (data);
     }
@@ -5279,9 +5301,7 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
 	      /* Remove transaction id from xasl cache entry before return_error_to_client, where current transaction
 	       * may be aborted. Otherwise, another transaction may be resumed and xasl_cache_entry_p may be removed by 
 	       * that transaction, during class deletion. */
-	      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p, true,
-							    IS_XASL_CACHE_PINNED_REFERENCE (query_flag));
-
+	      xcache_unfix (thread_p, xasl_cache_entry_p);
 	      xasl_cache_entry_p = NULL;
 	    }
 	}
@@ -5380,8 +5400,8 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if (xasl_cache_entry_p)
     {
-      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p, true,
-						    IS_XASL_CACHE_PINNED_REFERENCE (query_flag));
+      xcache_unfix (thread_p, xasl_cache_entry_p);
+      xasl_cache_entry_p = NULL;
     }
 
   reset_on_commit = false;
@@ -5505,6 +5525,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   CACHE_TIME srv_cache_time;
   int query_timeout;
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
+  char data_buf[EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE + MAX_ALIGNMENT], *aligned_data_buf = NULL;
 
   int response_time = 0;
 
@@ -5542,7 +5563,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* unpack XASL file id (XASL_ID), number of parameter values, size of the reecieved data, and query execution mode
+  /* unpack XASL file id (XASL_ID), number of parameter values, size of the recieved data, and query execution mode
    * flag from the request data */
   ptr = request;
   OR_UNPACK_XASL_ID (ptr, &xasl_id);
@@ -5551,9 +5572,14 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
-
-  /* if the request contains parameter values for the query, allocate space for them */
-  if (0 < dbval_cnt)
+  if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
+    {
+      assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
+      aligned_data_buf = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+      data = aligned_data_buf;
+      memcpy (data, ptr, data_size);
+    }
+  else if (0 < dbval_cnt)
     {
       /* receive parameter values (DB_VALUE) from the client */
       csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &data_size);
@@ -5576,7 +5602,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time, &srv_cache_time,
 			 query_timeout, &xasl_cache_entry_p);
 
-  if (data)
+  if (data && data != aligned_data_buf)
     {
       free_and_init (data);
     }
@@ -5623,9 +5649,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      /* Remove transaction id from xasl cache entry before return_error_to_client, where current transaction
 	       * may be aborted. Otherwise, another transaction may be resumed and xasl_cache_entry_p may be removed by 
 	       * that transaction, during class deletion. */
-	      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p, true,
-							    IS_XASL_CACHE_PINNED_REFERENCE (query_flag));
-
+	      xcache_unfix (thread_p, xasl_cache_entry_p);
 	      xasl_cache_entry_p = NULL;
 	    }
 	}
@@ -5730,8 +5754,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (xasl_cache_entry_p)
     {
-      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p, true,
-						    IS_XASL_CACHE_PINNED_REFERENCE (query_flag));
+      xcache_unfix (thread_p, xasl_cache_entry_p);
+      xasl_cache_entry_p = NULL;
     }
 
   ptr = or_pack_int (ptr, queryinfo_string_length);
@@ -6191,53 +6215,6 @@ sqmgr_end_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 
   (void) or_pack_int (reply, all_error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
- * sqmgr_drop_query_plan - Process a SERVER_QM_DROP_PLAN request
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- * Delete the XASL cache specified by either the query string or the XASL file
- * id upon request of the client.
- * This function is a counter part to qmgr_drop_query_plan().
- */
-void
-sqmgr_drop_query_plan (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  XASL_ID xasl_id;
-  int status;
-  char *ptr, *qstmt, *reply;
-  OID user_oid;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  /* unpack query string from the request data */
-  ptr = or_unpack_string_nocopy (request, &qstmt);
-  /* unpack OID of the current user */
-  ptr = or_unpack_oid (ptr, &user_oid);
-  /* unpack XASL_ID */
-  OR_UNPACK_XASL_ID (ptr, &xasl_id);
-
-  /* call the server routine of query drop plan */
-  status = xqmgr_drop_query_plan (thread_p, qstmt, &user_oid, &xasl_id);
-  if (status != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  /* pack status (DB_IN32) as a reply */
-  (void) or_pack_int (reply, status);
-
-  /* send reply and data to the client */
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-
 }
 
 /*
@@ -9373,24 +9350,27 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
   char *data_request = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   int data_size = 0, err = 0, i = 0;
-  OID user;
   char *info = NULL;
+  SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* user */
-  ptr = or_unpack_oid (request, &user);
   /* name */
-  ptr = or_unpack_string_alloc (ptr, &name);
+  ptr = or_unpack_string_alloc (request, &name);
   /* alias_print */
   ptr = or_unpack_string_alloc (ptr, &alias_print);
   /* data_size */
-  ptr = or_unpack_int (request, &data_size);
+  ptr = or_unpack_int (ptr, &data_size);
   if (data_size <= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       goto error;
+    }
+  if (alias_print != NULL)
+    {
+      /* alias_sha1 */
+      ptr = or_unpack_sha1 (ptr, &alias_sha1);
     }
 
   err = css_receive_data_from_client (thread_p->conn_entry, rid, &data_request, &data_size);
@@ -9412,7 +9392,7 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
     }
   memcpy (info, data_request, data_size);
 
-  err = xsession_create_prepared_statement (thread_p, user, name, alias_print, info, data_size);
+  err = xsession_create_prepared_statement (thread_p, name, alias_print, &alias_sha1, info, data_size);
 
   if (err != NO_ERROR)
     {

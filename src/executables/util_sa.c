@@ -413,7 +413,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      db_volume_pages = db_volume_size / db_page_size;
+      db_volume_pages = (int) (db_volume_size / db_page_size);
     }
   db_volume_size = (UINT64) db_volume_pages *(UINT64) db_page_size;
 
@@ -460,7 +460,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      log_volume_pages = log_volume_size / log_page_size;
+      log_volume_pages = (int) (log_volume_size / log_page_size);
     }
 
   if (check_new_database_name (database_name))
@@ -577,7 +577,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES), "-1");
+  sysprm_set_force (prm_get_name (PRM_ID_XASL_CACHE_MAX_ENTRIES), "-1");
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
@@ -3579,7 +3579,7 @@ delete_all_slave_ha_apply_info (char *database_name, char *master_host_name)
 #define APPLY_INFO_VALUES	2
 #define QUERY_BUF_SIZE		2048
 
-  int i, res, au_save;
+  int res, au_save;
   int in_value_idx;
   char *copy_log_base;
   char copy_log_base_buf[PATH_MAX];
@@ -3819,7 +3819,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 
       error_code =
 	insert_ha_apply_info (database_name, master_host_name, restart_arg.db_creation,
-			      restart_arg.restart_repl_lsa.pageid, restart_arg.restart_repl_lsa.offset);
+			      restart_arg.restart_repl_lsa.pageid, (int) restart_arg.restart_repl_lsa.offset);
       if (error_code < 0)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));

@@ -58,10 +58,8 @@ typedef int (*LF_ENTRY_KEY_COMPARE_FUNC) (void *key1, void *key2);
 typedef unsigned int (*LF_ENTRY_HASH_FUNC) (void *key, int htsize);
 typedef int (*LF_ENTRY_DUPLICATE_KEY_HANDLER) (void *key, void *existing);
 
-#define LF_EM_NOT_USING_MUTEX		      0x0
-#define LF_EM_FLAG_LOCK_ON_FIND		      0x1
-#define LF_EM_FLAG_LOCK_ON_DELETE	      0x2
-#define LF_EM_FLAG_UNLOCK_AFTER_DELETE	      0x4
+#define LF_EM_NOT_USING_MUTEX		      0
+#define LF_EM_USING_MUTEX		      1
 
 typedef struct lf_entry_descriptor LF_ENTRY_DESCRIPTOR;
 struct lf_entry_descriptor
@@ -81,8 +79,8 @@ struct lf_entry_descriptor
   /* offset of entry mutex */
   unsigned int of_mutex;
 
-  /* mutex action flags */
-  int mutex_flags;
+  /* does entry have mutex */
+  int using_mutex;
 
   /* allocation callback */
   LF_ENTRY_ALLOC_FUNC f_alloc;
@@ -141,9 +139,18 @@ struct lf_tran_entry
 
   /* entry in transaction system */
   int entry_idx;
+
+  /* Was transaction ID incremented? */
+  bool did_incr;
+
+#if defined (UNITTEST_LF)
+  /* Debug */
+  pthread_mutex_t *locked_mutex;
+  int locked_mutex_line;
+#endif				/* UNITTEST_LF */
 };
 
-#define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1 }
+#define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
 
 typedef enum lf_bitmap_style LF_BITMAP_STYLE;
 enum lf_bitmap_style
@@ -228,10 +235,15 @@ extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys);
 extern LF_TRAN_ENTRY *lf_tran_request_entry (LF_TRAN_SYSTEM * sys);
 extern int lf_tran_return_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_destroy_entry (LF_TRAN_ENTRY * entry);
-extern int lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
+extern void lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
 
-extern int lf_tran_start (LF_TRAN_ENTRY * entry, bool incr);
-extern int lf_tran_end (LF_TRAN_ENTRY * entry);
+extern void lf_tran_start (LF_TRAN_ENTRY * entry, bool incr);
+extern void lf_tran_end (LF_TRAN_ENTRY * entry);
+/* TODO: Investigate memory barriers. First of all, I need to check if it breaks the inlining of lf_tran_start and
+ *	 lf_tran_end functions. Second of all, full memory barriers might not be necessary.
+ */
+#define lf_tran_start_with_mb(entry, incr) lf_tran_start (entry, incr); MEMORY_BARRIER ()
+#define lf_tran_end_with_mb(entry) MEMORY_BARRIER (); lf_tran_end (entry)
 
 /*
  * Global lock free transaction system declarations
@@ -245,6 +257,8 @@ extern LF_TRAN_SYSTEM free_sort_list_Ts;
 extern LF_TRAN_SYSTEM global_unique_stats_Ts;
 extern LF_TRAN_SYSTEM partition_link_Ts;
 extern LF_TRAN_SYSTEM hfid_table_Ts;
+extern LF_TRAN_SYSTEM xcache_Ts;
+extern LF_TRAN_SYSTEM fpcache_Ts;
 
 extern int lf_initialize_transaction_systems (int max_threads);
 extern void lf_destroy_transaction_systems (void);
@@ -303,21 +317,25 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 #define LF_LIST_BF_NONE			  0x0
 
 /* flags that can be given to lf_list_* functions */
-#define LF_LIST_BF_RETURN_ON_RESTART	  0x1
-#define LF_LIST_BF_RETURN_ON_DUPLICATE	  0x2
+#define LF_LIST_BF_RETURN_ON_RESTART	  ((int) 0x01)
+#define LF_LIST_BF_RESTART_ON_DUPLICATE	  ((int) 0x02)	/* Not used for now. */
+#define LF_LIST_BF_INSERT_GIVEN		  ((int) 0x04)
+#define LF_LIST_BF_FIND_OR_INSERT	  ((int) 0x08)
+#define LF_LIST_BF_LOCK_ON_DELETE	  ((int) 0x10)
+#define LF_LIST_BF_IS_FLAG_SET(bf, flag) ((*(bf) & (flag)) != 0)
+#define LF_LIST_BF_SET_FLAG(bf, flag) (*(bf) = *(bf) | (flag))
 
 /* responses to flags from lf_list_* functions */
-#define LF_LIST_BR_RESTARTED		  0x10
-#define LF_LIST_BR_DUPLICATE		  0x20
+#define LF_LIST_BR_RESTARTED		  ((int) 0x100)
+#define LF_LIST_BR_DUPLICATE		  ((int) 0x200)	/* Not used for now. */
+#define LF_LIST_BR_IS_FLAG_SET(br, flag) ((*(br) & (flag)))
+#define LF_LIST_BR_SET_FLAG(br, flag) (*(br) = *(br) | (flag))
 
 extern int lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
 			 LF_ENTRY_DESCRIPTOR * edesc, void **entry);
-extern int lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
-				   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry);
-extern int lf_list_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
-			   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted_count);
-extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, void *locked_entry, int *behavior_flags,
 			   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, int *success);
+/* TODO: Add lf_list_insert functions. So far, they are only used for lf_hash_insert. */
 
 /*
  * Lock free hash table
@@ -352,10 +370,13 @@ extern int lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned
 extern void lf_hash_destroy (LF_HASH_TABLE * table);
 
 extern int lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
-extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
-extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
+extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
+extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
+extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
 extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
-extern int lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
+extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void *locked_entry,
+					  int *success);
+extern void lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
 
 /*
  * Lock free hash table iterator
@@ -422,5 +443,9 @@ extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entrie
 extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
 extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
 extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
+
+#if defined (UNITTEST_LF)
+extern void lf_reset_counters (void);
+#endif /* UNITTEST_LF */
 
 #endif /* _LOCK_FREE_H_ */

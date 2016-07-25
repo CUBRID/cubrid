@@ -154,7 +154,7 @@ db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT *
   ret = elo_read (elo, pos, buf, count);
   if (ret < 0)
     {
-      return ret;
+      return (int) ret;
     }
   if (read_bytes != NULL)
     {
@@ -186,7 +186,7 @@ db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * writ
   ret = elo_write (elo, pos, buf, count);
   if (ret < 0)
     {
-      return ret;
+      return (int) ret;
     }
   if (written_bytes != NULL)
     {

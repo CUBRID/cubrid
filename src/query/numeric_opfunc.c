@@ -3604,76 +3604,17 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
       }
 
     case DB_TYPE_CHAR:
-      {
-	char *return_string = NULL;
-	char *temp_str;
-	int size = 0;
-
-	temp_str = numeric_db_value_print (src);
-	size = strlen (temp_str);
-	return_string = (char *) db_private_alloc (NULL, size + 1);
-	if (return_string == NULL)
-	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
-
-	strcpy (return_string, temp_str);
-	DB_MAKE_CHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	dest->need_clear = true;
-	break;
-      }
-
     case DB_TYPE_VARCHAR:
-      {
-	char *return_string = NULL;
-	char *temp_str;
-	int size = 0;
-
-	temp_str = numeric_db_value_print (src);
-	size = strlen (temp_str);
-	return_string = (char *) db_private_alloc (NULL, size + 1);
-	if (return_string == NULL)
-	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
-
-	strcpy (return_string, temp_str);
-	DB_MAKE_VARCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	dest->need_clear = true;
-	break;
-      }
-
     case DB_TYPE_NCHAR:
-      {
-	char *return_string = NULL;
-	char *temp_str;
-	int size = 0;
-
-	temp_str = numeric_db_value_print (src);
-	size = strlen (temp_str);
-	return_string = (char *) db_private_alloc (NULL, size + 1);
-	if (return_string == NULL)
-	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
-
-	strcpy (return_string, temp_str);
-	DB_MAKE_NCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	dest->need_clear = true;
-	break;
-      }
-
     case DB_TYPE_VARNCHAR:
       {
 	char *return_string = NULL;
-	char *temp_str;
+	char str_buf[NUMERIC_MAX_STRING_SIZE];
 	int size = 0;
+	DB_TYPE type;
 
-	temp_str = numeric_db_value_print (src);
-	size = strlen (temp_str);
+	numeric_db_value_print (src, str_buf);
+	size = strlen (str_buf);
 	return_string = (char *) db_private_alloc (NULL, size + 1);
 	if (return_string == NULL)
 	  {
@@ -3681,8 +3622,24 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    return er_errid ();
 	  }
 
-	strcpy (return_string, temp_str);
-	DB_MAKE_VARNCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	strcpy (return_string, str_buf);
+	type = DB_VALUE_DOMAIN_TYPE (dest);
+	if (type == DB_TYPE_CHAR)
+	  {
+	    DB_MAKE_CHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  }
+	else if (type == DB_TYPE_VARCHAR)
+	  {
+	    DB_MAKE_VARCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  }
+	else if (type == DB_TYPE_NCHAR)
+	  {
+	    DB_MAKE_NCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  }
+	else if (type == DB_TYPE_VARNCHAR)
+	  {
+	    DB_MAKE_VARNCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  }
 	dest->need_clear = true;
 	break;
       }
@@ -3692,6 +3649,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	double adouble;
 	DB_TIME v_time;
 	int hour, minute, second;
+
 	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
 	v_time = (int) (adouble + 0.5) % SECONDS_IN_A_DAY;
 	db_time_decode (&v_time, &hour, &minute, &second);
@@ -3704,6 +3662,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	double adouble;
 	DB_DATE v_date;
 	int year, month, day;
+
 	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
 	v_date = (DB_DATE) (adouble);
 	db_date_decode (&v_date, &month, &day, &year);
@@ -3715,6 +3674,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
       {
 	double adouble;
 	DB_TIMESTAMP v_timestamp;
+
 	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
 	v_timestamp = (DB_TIMESTAMP) (adouble);
 	DB_MAKE_TIMESTAMP (dest, v_timestamp);
@@ -3881,7 +3841,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
  * Note: returns the null-terminated string form of val
  */
 char *
-numeric_db_value_print (DB_VALUE * val)
+numeric_db_value_print (DB_VALUE * val, char *buf)
 {
   char temp[80];
   int nbuf;
@@ -3890,23 +3850,7 @@ numeric_db_value_print (DB_VALUE * val)
   bool found_first_non_zero = false;
   int scale = db_value_scale (val);
 
-#if defined(SERVER_MODE)
-  THREAD_ENTRY *th_entry;
-  char *buf;
-#else /* SERVER_MODE */
-  static char buf[sizeof (temp) + 2];
-#endif /* SERVER_MODE */
-
-
-#if defined(SERVER_MODE)
-  th_entry = thread_get_thread_entry_info ();
-  buf = th_entry->qp_num_buf;
-  if (buf == NULL)
-    {
-      return NULL;
-    }
-
-#endif /* SERVER_MODE */
+  assert (val != NULL && buf != NULL);
 
   if (DB_IS_NULL (val))
     {
@@ -3919,7 +3863,7 @@ numeric_db_value_print (DB_VALUE * val)
 
   /* Remove the extra padded zeroes and add the decimal point */
   nbuf = 0;
-  temp_size = strnlen (temp, sizeof (temp));
+  temp_size = (int) strnlen (temp, sizeof (temp));
   for (i = 0; i < temp_size; i++)
     {
       /* Add the negative sign */

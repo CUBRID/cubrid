@@ -69,8 +69,6 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-#define MAX_NUMERIC_STRING_SIZE	80
-
 static PT_NODE *pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val);
 
 static PT_NODE *pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *data_type_added);
@@ -576,7 +574,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   int size;
   DB_OBJECT *mop;
   DB_TYPE db_type;
-  char temp[MAX_NUMERIC_STRING_SIZE];
   char buf[100];
 
   assert (parser != NULL && val != NULL);
@@ -628,8 +625,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
 
     case DB_TYPE_NUMERIC:
-      strcpy (temp, numeric_db_value_print ((DB_VALUE *) val));
-      result->info.value.data_value.str = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, (const char *) temp);
+      numeric_db_value_print ((DB_VALUE *) val, buf);
+      result->info.value.data_value.str = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, (const char *) buf);
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{

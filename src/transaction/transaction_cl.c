@@ -1274,7 +1274,7 @@ tran_get_query_timeout (void)
     }
 
   elapsed = tran_current_timemillis () - tm_Query_begin;
-  timeout = tm_Query_timeout - elapsed;
+  timeout = (int) (tm_Query_timeout - elapsed);
   if (timeout <= 0)
     {
       /* already expired */

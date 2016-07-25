@@ -4205,7 +4205,7 @@ or_packed_stream_length (size_t len)
 	{
 	  pad = 0;
 	}
-      total += len + pad;
+      total += (int) len + pad;
     }
   return total;
 }
@@ -8081,6 +8081,56 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
   return (((char *) ptr) + OR_MVCCID_SIZE);
 }
 
+/* SHA-1 */
+
+
+/*
+ * or_pack_sha1 () - Pack SHA-1 hash.
+ *
+ * return    : Pointer after packed.
+ * ptr (in)  : Pointer where to pack.
+ * sha1 (in) : Value to pack.
+ */
+char *
+or_pack_sha1 (char *ptr, SHA1Hash * sha1)
+{
+  assert (sha1 != NULL);
+
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  OR_PUT_SHA1 (ptr, sha1);
+  return ptr + OR_SHA1_SIZE;
+}
+
+/*
+ * or_unpack_sha1 () - Unpack SHA-1 hash.
+ *
+ * return     : Pointer after unpacked.
+ * ptr (in)   : Pointer where to unpack.
+ * sha1 (out) : Value to unpack.
+ */
+char *
+or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
+{
+  assert (sha1 != NULL);
+
+  if (ptr == NULL)
+    {
+      memset (sha1, 0, sizeof (*sha1));
+      return NULL;
+    }
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  OR_GET_SHA1 (ptr, sha1);
+  return ptr + OR_SHA1_SIZE;
+}
+
 /*
  * or_mvcc_set_prev_version_lsa () - Set MVCC prev version LSA
  *
@@ -8228,7 +8278,6 @@ ntohl (unsigned int from)
 #endif /* !OR_HAVE_NTOHL */
 
 #if !defined (OR_HAVE_NTOHF)
-
 float
 ntohf (UINT32 from)
 {
@@ -8247,7 +8296,6 @@ ntohf (UINT32 from)
 #endif /* !OR_HAVE_NTOHF */
 
 #if !defined (OR_HAVE_NTOHD)
-
 double
 ntohd (UINT64 from)
 {
@@ -8330,7 +8378,7 @@ htonf (float from)
 }
 #endif /* !OR_HAVE_HTONL */
 
-#if !defined (OR_HAVE_NTOHD)
+#if !defined (OR_HAVE_HTOND)
 UINT64
 htond (double from)
 {
@@ -8351,6 +8399,6 @@ htond (double from)
 
   return to;
 }
-#endif /* ! OR_HAVE_NTOHD */
+#endif /* ! OR_HAVE_HTOND */
 
 #endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */

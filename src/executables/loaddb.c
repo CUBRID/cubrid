@@ -491,7 +491,7 @@ ldr_compare_storage_order (FILE * schema_file)
 
   while (true)
     {
-      p = fgets (line, line_size - 1, schema_file);
+      p = fgets (line, (int) line_size - 1, schema_file);
       if (p == NULL)
 	{
 	  break;

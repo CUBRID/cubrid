@@ -22,6 +22,7 @@ rem CUBRID build script for MS Windows.
 rem
 rem Requirements
 rem - cmake, ant, zip, md5sum
+rem - wix for msi installer
 rem - Windows 2003 or later
 
 if NOT "%OS%"=="Windows_NT" echo "ERROR: Not supported OS" & GOTO :EOF
@@ -42,7 +43,6 @@ set BUILD_TYPE=RelWithDebInfo
 set CMAKE_PATH=C:\Program Files\CMake\bin\cmake.exe
 set CPACK_PATH=C:\Program Files\CMake\bin\cpack.exe
 set GIT_PATH=C:\Program Files\Git\bin\git.exe
-set IS_PATH=C:\IS_2010\System\IsCmdBld.exe
 rem default list is all
 set BUILD_LIST=ALL
 rem unset BUILD_ARGS
@@ -82,7 +82,7 @@ for /f "tokens=* delims= " %%a IN ("%BUILD_LIST%") DO set BUILD_LIST=%%a
 echo Build list is [%BUILD_LIST%].
 set BUILD_LIST=%BUILD_LIST:ALL=BUILD DIST%
 set BUILD_LIST=%BUILD_LIST:BUILD=CUBRID%
-set BUILD_LIST=%BUILD_LIST:DIST=EXE_PACKAGE ZIP_PACKAGE CCI_PACKAGE%
+set BUILD_LIST=%BUILD_LIST:DIST=MSI_PACKAGE ZIP_PACKAGE CCI_PACKAGE%
 
 call :BUILD_PREPARE
 if ERRORLEVEL 1 echo *** [%DATE% %TIME%] Preparing failed. & GOTO :EOF
@@ -117,9 +117,6 @@ GOTO :EOF
 echo Checking for root source path [%SOURCE_DIR%]...
 if NOT EXIST "%SOURCE_DIR%\src" echo Root path for source is not valid. & GOTO :EOF
 if NOT EXIST "%SOURCE_DIR%\VERSION" set VERSION_FILE=VERSION-DIST
-
-echo Checking for InstallShield [%IS_PATH%]...
-if NOT EXIST "%IS_PATH%" echo InstallShield not found. & GOTO :EOF
 
 echo Checking build number with [%SOURCE_DIR%\%VERSION_FILE%]...
 for /f %%i IN (%SOURCE_DIR%\%VERSION_FILE%) DO set VERSION=%%i
@@ -162,46 +159,18 @@ copy %SOURCE_DIR%\COPYING %BUILD_PREFIX%\
 GOTO :EOF
 
 
-:BUILD_EXE_PACKAGE
-echo Buiding exe packages in %BUILD_DIR% ...
-if NOT EXIST %BUILD_PREFIX% echo Cannot found built directory. & GOTO :EOF
-cd /d %BUILD_PREFIX%
-
-copy /y conf\cubrid.conf conf\cubrid.conf-dist
-copy /y conf\cubrid_broker.conf conf\cubrid_broker.conf-dist
-copy /y conf\cm.conf conf\cm.conf-dist
-copy /y conf\cmdb.pass conf\cmdb.pass-dist
-copy /y conf\cm.pass conf\cm.pass-dist
-copy /y conf\shard_connection.txt conf\shard_connection.txt-dist
-copy /y conf\shard_key.txt conf\shard_key.txt-dist
-copy /y conf\cubrid_locales.all.txt conf\cubrid_locales.all.txt-dist
-copy /y conf\cubrid_locales.txt conf\cubrid_locales.txt-dist
-
-cd /d %SOURCE_DIR%\win\install\Installshield
-if "%BUILD_TARGET%" == "Win32" (set CUBRID_ISM="CUBRID.ism") ELSE set CUBRID_ISM="CUBRID_x64.ism"
-
-rem run installshield
-"%IS_PATH%" -p %CUBRID_ISM% -r "CUBRID" -c COMP -x
-if NOT ERRORLEVEL 0 echo FAILD. & GOTO :EOF
-if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
+:BUILD_MSI_PACKAGE
+echo Buiding msi packages in %BUILD_DIR% ...
+if NOT EXIST %BUILD_DIR% echo Cannot found built directory. & GOTO :EOF
+cd /d %BUILD_DIR%
 
 if "%BUILD_TARGET%" == "Win32" (set CUBRID_PACKAGE_NAME=CUBRID-Windows-x86-%VERSION%) ELSE set CUBRID_PACKAGE_NAME=CUBRID-Windows-x64-%VERSION%
-echo drop %CUBRID_PACKAGE_NAME%.exe into %DIST_DIR%
-move /y packaging\product\Package\CUBRID.EXE %DIST_DIR%\%CUBRID_PACKAGE_NAME%.exe
+echo drop %CUBRID_PACKAGE_NAME%.msi into %DIST_DIR%
+"%CPACK_PATH%" -C %BUILD_TYPE% -G WIX -B "%DIST_DIR%"
 if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
-
-cd /d %BUILD_PREFIX%
-del conf\cubrid.conf-dist
-del conf\cubrid_broker.conf-dist
-del conf\cm.conf-dist
-del conf\cmdb.pass-dist
-del conf\cm.pass-dist
-del conf\shard_connection.txt-dist
-del conf\shard_key.txt-dist
-del conf\cubrid_locales.all.txt-dist
-del conf\cubrid_locales.txt-dist
-echo Package created. [%DIST_DIR%\%CUBRID_PACKAGE_NAME%.exe]
-set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.exe
+rmdir /s /q "%DIST_DIR%"\_CPack_Packages
+echo Package created. [%DIST_DIR%\%CUBRID_PACKAGE_NAME%.msi]
+set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.msi
 GOTO :EOF
 
 
@@ -263,7 +232,7 @@ GOTO :EOF
 @echo. TARGETS
 @echo.  ALL                BUILD and DIST (default)
 @echo.  BUILD              Build all applications
-@echo.  DIST               Create all packages (exe, zip, jar, CCI)
+@echo.  DIST               Create all packages (msi, zip, jar, CCI)
 @echo.
 @echo. Examples:
 @echo.  %0                 # Build and pack all packages (32/release)

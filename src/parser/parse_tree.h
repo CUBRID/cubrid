@@ -808,7 +808,9 @@ enum pt_custom_print
 
   PT_CHARSET_COLLATE_FULL = (0x1 << 18),
 
-  PT_CHARSET_COLLATE_USER_ONLY = (0x1 << 19)
+  PT_CHARSET_COLLATE_USER_ONLY = (0x1 << 19),
+
+  PT_PRINT_USER = (0x1 << 20)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -3506,6 +3508,8 @@ struct compile_context
   int sql_plan_alloc_size;	/* query_plan alloc size */
   bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
   bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
+  bool recompile_xasl;
+  SHA1Hash sha1;
 };
 
 struct parser_context

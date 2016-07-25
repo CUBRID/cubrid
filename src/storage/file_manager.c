@@ -3591,7 +3591,8 @@ file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	    {
 	      /* restore global statistics for debug purpose */
 	      stats = NULL;
-	      lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, &btid, (void **) &stats);
+	      lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, &btid, (void **) &stats,
+				      NULL);
 	      stats->unique_stats.num_oids = num_oids;
 	      stats->unique_stats.num_keys = num_keys;
 	      stats->unique_stats.num_nulls = num_nulls;
@@ -9178,6 +9179,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, 
   addr.offset = to_start_offset;
   log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr, CAST_BUFLEN (((char *) to_outptr - (char *) to_aid_ptr)),
 			to_aid_ptr);
+  pgbuf_set_dirty (thread_p, to_pgptr, DONT_FREE);	/* to make it sure */
   length = 0;
 
   while (!VPID_EQ (&from_vpid, &allocset->end_pages_vpid) || from_aid_ptr <= from_outptr)
@@ -9284,6 +9286,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, 
 	  addr.offset = to_start_offset;
 	  log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr, CAST_BUFLEN ((char *) to_outptr - (char *) to_aid_ptr),
 				to_aid_ptr);
+	  pgbuf_set_dirty (thread_p, to_pgptr, DONT_FREE);	/* to make it sure */
 	  length = 0;
 	}
 

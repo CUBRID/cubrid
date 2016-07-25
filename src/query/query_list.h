@@ -30,6 +30,7 @@
 #include "storage_common.h"
 #include "object_representation.h"
 #include "object_domain.h"
+#include "sha1.h"
 
 typedef enum
 {
@@ -65,6 +66,8 @@ struct cache_time
   int sec;
   int usec;
 };
+
+#define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
 
 #define CACHE_TIME_EQ(T1, T2) \
   (((T1)->sec != 0) && ((T1)->sec == (T2)->sec) && ((T1)->usec == (T2)->usec))
@@ -169,75 +172,62 @@ struct xasl_node_header
 typedef struct xasl_id XASL_ID;
 struct xasl_id
 {
-  VPID first_vpid;		/* first page real identifier */
-  VFID temp_vfid;		/* temp file volume and file identifier */
+  SHA1Hash sha1;		/* SHA-1 hash generated from query string. */
+  volatile INT32 cache_flag;	/* Multiple-purpose field used to handle XASL cache. */
   CACHE_TIME time_stored;	/* when this XASL plan stored */
 };				/* XASL plan file identifier */
 
 #define XASL_ID_SET_NULL(X) \
   do \
     { \
-      (X)->first_vpid.pageid = NULL_PAGEID; \
-      (X)->first_vpid.volid  = NULL_VOLID; \
-      (X)->temp_vfid.fileid = NULL_FILEID; \
-      (X)->temp_vfid.volid = NULL_VOLID; \
-      /*CACHE_TIME_RESET(&((X)->time_stored))*/ \
+      (X)->sha1.h[0] = 0; \
+      (X)->sha1.h[1] = 0; \
+      (X)->sha1.h[2] = 0; \
+      (X)->sha1.h[3] = 0; \
+      (X)->sha1.h[4] = 0; \
+      (X)->cache_flag = 0; \
       (X)->time_stored.sec = 0; \
       (X)->time_stored.usec = 0; \
     } \
   while (0)
 
-#define XASL_ID_IS_NULL(X) (((XASL_ID *) (X) != NULL) && (X)->first_vpid.pageid == NULL_PAGEID)
+#define XASL_ID_IS_NULL(X) (((XASL_ID *) (X) != NULL) && (X)->time_stored.sec == 0)
 
 #define XASL_ID_COPY(X1, X2) \
-  *(X1) = *(X2)
-
-#define MAKE_PSEUDO_XASL_ID_FROM_BTREE(X,B) \
   do \
     { \
-      (X)->first_vpid.pageid = (B)->root_pageid; \
-      (X)->first_vpid.volid  = 0x8000 | (B)->vfid.volid; \
-      (X)->temp_vfid.fileid = (B)->vfid.fileid; \
-      (X)->temp_vfid.volid = 0x8000 | (B)->vfid.volid; \
-      (X)->time_stored.sec = 0; \
-      (X)->time_stored.usec = 0; \
+      (X1)->sha1 = (X2)->sha1; \
+      (X1)->time_stored = (X2)->time_stored; \
+      /* Do not copy cache_flag. */ \
     } \
   while (0)
 
 /* do not compare with X.time_stored */
 #define XASL_ID_EQ(X1, X2) \
     ((X1) == (X2) \
-     || (((X1)->first_vpid.pageid == (X2)->first_vpid.pageid && (X1)->first_vpid.volid == (X2)->first_vpid.volid) \
-         && ((X1)->temp_vfid.fileid == (X2)->temp_vfid.fileid && (X1)->temp_vfid.volid == (X2)->temp_vfid.volid)))
+     || (SHA1Compare (&(X1)->sha1, &(X2)->sha1) == 0 \
+         && (X1)->time_stored.sec == (X2)->time_stored.sec \
+         && (X1)->time_stored.usec == (X2)->time_stored.usec))
 
-#define OR_XASL_ID_SIZE (OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
+#define OR_XASL_ID_SIZE (OR_SHA1_SIZE + OR_CACHE_TIME_SIZE)
 
-/* pack XASL file id (XASL_ID)
-     - borrow LOID structure only for transmission purpose
- */
+/* pack XASL_ID */
 #define OR_PACK_XASL_ID(PTR, X) \
   do \
     { \
-      CACHE_TIME _t; \
-      PTR = or_pack_loid (PTR, (LOID *) (X)); \
-      CACHE_TIME_RESET (&_t); \
-      if ((XASL_ID *) (X) != NULL) \
-        { \
-          _t = (X)->time_stored; \
-        } \
-      OR_PACK_CACHE_TIME (PTR, &_t); \
+      assert ((X) != NULL);				      \
+      PTR = or_pack_sha1 (PTR, &(X)->sha1);		      \
+      OR_PACK_CACHE_TIME (PTR, &(X)->time_stored);            \
     } \
   while (0)
 
-/* unpack XASL file id (XASL_ID)
-     - borrow LOID structure only for transmission purpose
-     - NULL XASL_ID will be returned when cache not found
- */
+/* unpack XASL_ID */
 #define OR_UNPACK_XASL_ID(PTR, X) \
   do \
     { \
-      PTR = or_unpack_loid (PTR, (LOID *) (X)); \
-      OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored)); \
+      assert ((X) != NULL);				      \
+      PTR = or_unpack_sha1 (PTR, &(X)->sha1);		      \
+      OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));	      \
     } \
   while (0)
 
@@ -401,16 +391,6 @@ struct xasl_id
       (ptr1)->volid  = (ptr2)->volid; \
     } \
   while (0)
-
-/* XASL TREE STORAGE CONSTANTS */
-
-#define QFILE_XASL_PAGE_SIZE_OFFSET     12
-
-#define QFILE_GET_XASL_PAGE_SIZE(ptr) \
-  (int) OR_GET_INT ((ptr) + QFILE_XASL_PAGE_SIZE_OFFSET)
-
-#define QFILE_PUT_XASL_PAGE_SIZE(ptr,val) \
-  OR_PUT_INT ((ptr) + QFILE_XASL_PAGE_SIZE_OFFSET, (val))
 
 /* OVERFLOW PAGE CONSTANTS */
 
@@ -759,7 +739,8 @@ enum
   XASL_TRACE_JSON = 0x0400,
   TRIGGER_IS_INVOLVED = 0x0800,
   RETURN_GENERATED_KEYS = 0x1000,
-  XASL_CACHE_PINNED_REFERENCE = 0x2000
+  XASL_CACHE_PINNED_REFERENCE = 0x2000,
+  EXECUTE_QUERY_WITHOUT_DATA_BUFFERS = 0x4000
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
@@ -770,6 +751,7 @@ enum
 #define IS_TRIGGER_INVOLVED(flag)   (((flag) & TRIGGER_IS_INVOLVED) != 0)
 
 #define IS_XASL_CACHE_PINNED_REFERENCE(flag)   (((flag) & XASL_CACHE_PINNED_REFERENCE) != 0)
+#define IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS(flag)   (((flag) & EXECUTE_QUERY_WITHOUT_DATA_BUFFERS) != 0)
 
 typedef int QUERY_FLAG;
 

@@ -808,12 +808,12 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec, int *
       /* Get desired rate from evaluating changes in last iteration. */
       gen_tokens = fileio_flush_control_get_desired_rate (tb);
       /* Check new rate is not below minimum required. */
-      gen_tokens = MAX (gen_tokens, (double) FILEIO_MIN_FLUSH_PAGES_PER_SEC * (double) diff_usec / 1000000.0);
+      gen_tokens = (int) MAX (gen_tokens, (double) FILEIO_MIN_FLUSH_PAGES_PER_SEC * (double) diff_usec / 1000000.0);
     }
   else
     {
       /* Always set maximum rate. */
-      gen_tokens = (double) prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND) * (double) diff_usec / 1000000.0;
+      gen_tokens = (int) (prm_get_integer_value (PRM_ID_MAX_FLUSH_PAGES_PER_SECOND) * (double) diff_usec / 1000000.0);
     }
 
   *token_gen = gen_tokens;
@@ -1519,6 +1519,20 @@ fileio_lock_la_dbname (int *lockf_vdes, char *db_name, char *log_path)
 
   if (access (lock_dir, F_OK) < 0)
     {
+      /* create parent directory if not exist */
+      if (mkdir (lock_dir, 0777) < 0 && errno == ENOENT)
+	{
+	  char pdir[PATH_MAX];
+
+	  if (cub_dirname_r (lock_dir, pdir, PATH_MAX) > 0 && access (pdir, F_OK) < 0)
+	    {
+	      mkdir (pdir, 0777);
+	    }
+	}
+    }
+
+  if (access (lock_dir, F_OK) < 0)
+    {
       if (mkdir (lock_dir, 0777) < 0)
 	{
 	  er_log_debug (ARG_FILE_LINE, "unable to create dir (%s)", lock_dir);
@@ -1867,7 +1881,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	  time_to_sleep = allowed_millis_for_a_sleep - previous_elapsed_millis;
 	  if (time_to_sleep > 0)
 	    {
-	      thread_sleep (time_to_sleep);
+	      thread_sleep ((int) time_to_sleep);
 	    }
 
 	  tsc_getticks (&start_tick);
@@ -3615,7 +3629,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 	}
 
       /* Read the desired page */
-      nbytes = read (vol_fd, io_page_p, page_size);
+      nbytes = read (vol_fd, io_page_p, (unsigned int) page_size);
       if (nbytes != page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
@@ -3641,7 +3655,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 	}
 
       /* Read the desired page */
-      nbytes = read (vol_fd, io_page_p, page_size);
+      nbytes = read (vol_fd, io_page_p, (unsigned int) page_size);
       if (pthread_mutex_unlock (io_mutex) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -3766,7 +3780,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 	}
 
       /* write the page */
-      if (write (vol_fd, io_page_p, page_size) != page_size)
+      if (write (vol_fd, io_page_p, (unsigned int) page_size) != page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)
@@ -3790,7 +3804,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 	}
 
       /* write the page */
-      nbytes = write (vol_fd, io_page_p, page_size);
+      nbytes = write (vol_fd, io_page_p, (unsigned int) page_size);
       pthread_mutex_unlock (io_mutex);
 
       if (nbytes != page_size)
@@ -3910,7 +3924,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
 	}
 
       /* Read the desired page */
-      nbytes = read (vol_fd, io_pages_p, read_bytes);
+      nbytes = read (vol_fd, io_pages_p, (unsigned int) read_bytes);
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)
@@ -3935,7 +3949,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
 	}
 
       /* Read the desired page */
-      nbytes = read (vol_fd, io_pages_p, read_bytes);
+      nbytes = read (vol_fd, io_pages_p, (unsigned int) read_bytes);
       if (pthread_mutex_unlock (io_mutex) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -4057,7 +4071,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 	}
 
       /* write the page */
-      nbytes = write (vol_fd, io_pages_p, write_bytes);
+      nbytes = write (vol_fd, io_pages_p, (unsigned int) write_bytes);
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)
@@ -4082,7 +4096,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 	}
 
       /* Write the desired page */
-      nbytes = write (vol_fd, io_pages_p, write_bytes);
+      nbytes = write (vol_fd, io_pages_p, (unsigned int) write_bytes);
       if (pthread_mutex_unlock (io_mutex) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -8304,7 +8318,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 	      else
 		{
 		  session_p->bkup.voltotalio += nbytes;
-		  count -= nbytes;
+		  count -= (int) nbytes;
 		  buffer_p += nbytes;
 		}
 	    }
@@ -9783,7 +9797,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	    save_area_p = session_p->dbfile.area;	/* save link */
 	    session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) node->zip_page->buf;
 
-	    rv = fileio_read_restore (thread_p, session_p, node->zip_page->buf_len);
+	    rv = fileio_read_restore (thread_p, session_p, (int) node->zip_page->buf_len);
 	    session_p->dbfile.area = save_area_p;	/* restore link */
 	    if (rv != NO_ERROR)
 	      {
@@ -9810,7 +9824,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	else
 	  {
 	    /* no compressed block */
-	    rv = fileio_read_restore (thread_p, session_p, node->zip_page->buf_len);
+	    rv = fileio_read_restore (thread_p, session_p, (int) node->zip_page->buf_len);
 	    if (rv != NO_ERROR)
 	      {
 		error = ER_IO_RESTORE_READ_ERROR;

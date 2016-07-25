@@ -95,6 +95,7 @@
 #include "event_log.h"
 #include "tz_support.h"
 #include "tsc_timer.h"
+#include "filter_pred_cache.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -159,14 +160,16 @@ extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 int thread_Recursion_depth = 0;
 
 LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &spage_saving_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_res_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_ent_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &catalog_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0}
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &spage_saving_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_res_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_ent_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &catalog_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &xcache_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &fpcache_Ts, 0, false}
 };
 
 extern void boot_client_all_finalize (bool is_er_final);
@@ -934,9 +937,10 @@ xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid, bool clear_cac
        * if some transactions are using the xasl, we don't remove xasl cache
        * and the volume will not be removed from database.
        */
-      (void) qexec_remove_xasl_cache_ent_by_volume (thread_p, volid, true);
+      /* If this code is ever reactivated, xasl_cache.c must provide the necessary functions. This no longer exist. */
+      /* (void) qexec_remove_xasl_cache_ent_by_volume (thread_p, volid, true); */
 
-      (void) file_destroy_cached_tmp (thread_p, volid);
+      /* (void) file_destroy_cached_tmp (thread_p, volid); */
     }
 
   r = disk_del_volume_extension (thread_p, volid);
@@ -3572,9 +3576,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = qexec_initialize_xasl_cache (thread_p);
+  error_code = xcache_initialize (thread_p);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -3590,7 +3595,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  (void) qexec_initialize_filter_pred_cache (thread_p);
+  error_code = fpcache_initialize (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   /* 
    * Since no logging is done on temporary volumes, we can not trust
@@ -3885,9 +3895,9 @@ error:
   logtb_finalize_global_unique_stats_table (thread_p);
 
   log_final (thread_p);
-  qexec_finalize_filter_pred_cache (thread_p);
+  fpcache_finalize (thread_p);
   qfile_finalize_list_cache (thread_p);
-  qexec_finalize_xasl_cache (thread_p);
+  xcache_finalize (thread_p);
 
 #if defined(SERVER_MODE)
   css_final_conn_list ();
@@ -4013,8 +4023,8 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       /* before removing temp vols */
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
       qfile_finalize_list_cache (thread_p);
-      (void) qexec_finalize_xasl_cache (thread_p);
-      (void) qexec_finalize_filter_pred_cache (thread_p);
+      xcache_finalize (thread_p);
+      fpcache_finalize (thread_p);
       session_states_finalize (thread_p);
 
       (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
@@ -4320,6 +4330,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
   CSS_CONN_ENTRY *conn;
   LOG_TDES *tdes;
   int client_id;
+  int r;
 
   if (thread_p == NULL)
     {
@@ -4332,9 +4343,8 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
   conn = thread_p->conn_entry;
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
+  r = rmutex_lock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   client_id = conn->client_id;
   tdes = LOG_FIND_TDES (tran_index);
@@ -4346,9 +4356,8 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (thread_p, &conn->csect);
+  r = rmutex_unlock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 #endif /* SERVER_MODE */
 

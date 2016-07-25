@@ -421,7 +421,7 @@ pp_push_name_scope (void)
 
   if (new_scope >= pp_name_scope_limit)
     {
-      int nframes = pp_name_scope_limit - pp_name_scope_base;
+      int nframes = (int) (pp_name_scope_limit - pp_name_scope_base);
       pp_name_scope_base = (SCOPE *) realloc (pp_name_scope_base, sizeof (SCOPE) * (nframes + NFRAMES));
       if (pp_name_scope_base == NULL)
 	{
@@ -575,7 +575,7 @@ pp_push_spec_scope (void)
 
   if (p >= pp_spec_scope_limit)
     {
-      int nframes = pp_spec_scope_limit - pp_spec_scope_base;
+      int nframes = (int) (pp_spec_scope_limit - pp_spec_scope_base);
       pp_spec_scope_base = (SPEC_STATE *) realloc (pp_spec_scope_base, sizeof (SPEC_STATE) * (nframes + NFRAMES));
       if (pp_spec_scope_base == NULL)
 	{

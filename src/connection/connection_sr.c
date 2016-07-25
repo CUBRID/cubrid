@@ -125,6 +125,9 @@ CSS_CONN_ENTRY *css_Conn_array = NULL;
 CSS_CONN_ENTRY *css_Active_conn_anchor = NULL;
 static int css_Num_active_conn = 0;
 
+SYNC_RWLOCK css_Rwlock_active_conn_anchor;
+SYNC_RWLOCK css_Rwlock_free_conn_anchor;
+
 static LAST_ACCESS_STATUS *css_Access_status_anchor = NULL;
 int css_Num_access_user = 0;
 
@@ -324,11 +327,10 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
 void
 css_shutdown_conn (CSS_CONN_ENTRY * conn)
 {
-  /* conn->csect.cs_index may equal to -1 and conn->csect.name may be NULL when initializing temp_conn in
-   * css_process_new_client */
-  assert (css_is_temporary_conn_csect (conn) || css_is_valid_conn_csect (conn));
+  int r;
 
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   if (!IS_INVALID_SOCKET (conn->fd))
     {
@@ -405,9 +407,8 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     }
 #endif
 
-  assert (css_is_temporary_conn_csect (conn) || css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (NULL, &conn->csect);
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 
 /*
@@ -429,6 +430,21 @@ css_init_conn_list (void)
       return NO_ERROR;
     }
 
+  err = rwlock_initialize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR, CSS_RWLOCK_ACTIVE_CONN_ANCHOR_NAME);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+
+  err = rwlock_initialize (CSS_RWLOCK_FREE_CONN_ANCHOR, CSS_RWLOCK_FREE_CONN_ANCHOR_NAME);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      (void) rwlock_finalize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR);
+      return err;
+    }
+
   /* 
    * allocate NUM_MASTER_CHANNEL + the total number of
    *  conn entries
@@ -436,7 +452,10 @@ css_init_conn_list (void)
   css_Conn_array = (CSS_CONN_ENTRY *) malloc (sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
   if (css_Conn_array == NULL)
     {
-      return ER_CSS_CONN_INIT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   /* initialize all CSS_CONN_ENTRY */
@@ -448,20 +467,16 @@ css_init_conn_list (void)
       if (err != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
-	  return ER_CSS_CONN_INIT;
+	  err = ER_CSS_CONN_INIT;
+	  goto error;
 	}
-      err = csect_initialize_critical_section (&conn->csect, csect_Name_conn);
-      if (err == NO_ERROR)
-	{
-#if defined(SERVER_MODE)
-	  assert (conn->csect.cs_index == -1);
-	  conn->csect.cs_index = CRITICAL_SECTION_COUNT + conn->idx;
-#endif
-	}
-      else
+
+      err = rmutex_initialize (&conn->rmutex, rmutex_Name_conn);
+      if (err != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
-	  return ER_CSS_CONN_INIT;
+	  err = ER_CSS_CONN_INIT;
+	  goto error;
 	}
 
       if (i < css_Num_max_conn - 1)
@@ -480,6 +495,17 @@ css_init_conn_list (void)
   css_Num_free_conn = css_Num_max_conn;
 
   return NO_ERROR;
+
+error:
+  (void) rwlock_finalize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR);
+  (void) rwlock_finalize (CSS_RWLOCK_FREE_CONN_ANCHOR);
+
+  if (css_Conn_array != NULL)
+    {
+      free_and_init (css_Conn_array);
+    }
+
+  return err;
 }
 
 /*
@@ -519,12 +545,13 @@ css_final_conn_list (void)
 #if defined(SERVER_MODE)
 	  assert (conn->idx == i);
 #endif
-	  assert (css_is_valid_conn_csect (conn));
-
-	  csect_finalize_critical_section (&conn->csect);
+	  (void) rmutex_finalize (&conn->rmutex);
 	}
 
       free_and_init (css_Conn_array);
+
+      (void) rwlock_finalize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR);
+      (void) rwlock_finalize (CSS_RWLOCK_FREE_CONN_ANCHOR);
     }
 }
 
@@ -538,8 +565,9 @@ CSS_CONN_ENTRY *
 css_make_conn (SOCKET fd)
 {
   CSS_CONN_ENTRY *conn = NULL;
+  int r;
 
-  csect_enter (NULL, CSECT_CONN_FREE, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
   if (css_Free_conn_anchor != NULL)
     {
@@ -551,7 +579,7 @@ css_make_conn (SOCKET fd)
       assert (css_Num_free_conn >= 0);
     }
 
-  csect_exit (NULL, CSECT_CONN_FREE);
+  END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
   if (conn != NULL)
     {
@@ -575,7 +603,9 @@ css_make_conn (SOCKET fd)
 void
 css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
 {
-  csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  int r;
+
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   conn->next = css_Active_conn_anchor;
   css_Active_conn_anchor = conn;
@@ -585,18 +615,18 @@ css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
   assert (css_Num_active_conn > 0);
   assert (css_Num_active_conn <= css_Num_max_conn);
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 }
 
 /*
- * css_dealloc_conn_csect() - free critical section of connection entry
+ * css_dealloc_conn_rmutex() - free rmutex of connection entry
  *   return: void
  *   conn(in): connection entry
  */
 void
-css_dealloc_conn_csect (CSS_CONN_ENTRY * conn)
+css_dealloc_conn_rmutex (CSS_CONN_ENTRY * conn)
 {
-  csect_finalize_critical_section (&conn->csect);
+  (void) rmutex_finalize (&conn->rmutex);
 }
 
 /*
@@ -607,7 +637,9 @@ css_dealloc_conn_csect (CSS_CONN_ENTRY * conn)
 static void
 css_dealloc_conn (CSS_CONN_ENTRY * conn)
 {
-  csect_enter (NULL, CSECT_CONN_FREE, INF_WAIT);
+  int r;
+
+  START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
   conn->next = css_Free_conn_anchor;
   css_Free_conn_anchor = conn;
@@ -617,7 +649,7 @@ css_dealloc_conn (CSS_CONN_ENTRY * conn)
   assert (css_Num_free_conn > 0);
   assert (css_Num_free_conn <= css_Num_max_conn);
 
-  csect_exit (NULL, CSECT_CONN_FREE);
+  END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 }
 
 /*
@@ -826,8 +858,9 @@ void
 css_free_conn (CSS_CONN_ENTRY * conn)
 {
   CSS_CONN_ENTRY *p, *prev = NULL, *next;
+  int r;
 
-  csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   /* find and remove from active conn list */
   for (p = css_Active_conn_anchor; p != NULL; p = next)
@@ -860,36 +893,46 @@ css_free_conn (CSS_CONN_ENTRY * conn)
   css_dealloc_conn (conn);
   css_decrement_num_conn (conn->client_type);
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 }
 
 void
 css_inc_prefetcher_thread_count (THREAD_ENTRY * thread_entry)
 {
+  int r;
   CSS_CONN_ENTRY *conn = thread_entry->conn_entry;
   assert (conn);
   assert (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER);
 
-  csect_enter_critical_section (thread_entry, &conn->csect, INF_WAIT);
+  r = rmutex_lock (thread_entry, &conn->rmutex);
+  assert (r == NO_ERROR);
+
   conn->prefetcher_thread_count++;
   assert (conn->prefetcher_thread_count <= conn->prefetchlogdb_max_thread_count);
-  csect_exit_critical_section (thread_entry, &conn->csect);
+
+  r = rmutex_unlock (thread_entry, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 
 void
 css_dec_prefetcher_thread_count (THREAD_ENTRY * thread_entry)
 {
   CSS_CONN_ENTRY *conn = thread_entry->conn_entry;
+  int r;
   assert (conn);
   assert (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER);
 
-  csect_enter_critical_section (thread_entry, &conn->csect, INF_WAIT);
+  r = rmutex_lock (thread_entry, &conn->rmutex);
+  assert (r == NO_ERROR);
+
   conn->prefetcher_thread_count--;
   if (conn->prefetcher_thread_count < 0)
     {
       conn->prefetcher_thread_count = 0;
     }
-  csect_exit_critical_section (thread_entry, &conn->csect);
+
+  r = rmutex_unlock (thread_entry, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 
 /*
@@ -912,11 +955,11 @@ void
 css_print_conn_list (void)
 {
   CSS_CONN_ENTRY *conn, *next;
-  int i;
+  int i, r;
 
   if (css_Active_conn_anchor != NULL)
     {
-      csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+      START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       fprintf (stderr, "active conn list (%d)\n", css_Num_active_conn);
 
@@ -928,7 +971,7 @@ css_print_conn_list (void)
 
       assert (i == css_Num_active_conn);
 
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
 }
 
@@ -940,11 +983,11 @@ void
 css_print_free_conn_list (void)
 {
   CSS_CONN_ENTRY *conn, *next;
-  int i;
+  int i, r;
 
   if (css_Free_conn_anchor != NULL)
     {
-      csect_enter_as_reader (NULL, CSECT_CONN_FREE, INF_WAIT);
+      START_SHARED_ACCESS_FREE_CONN_ANCHOR (r);
 
       fprintf (stderr, "free conn list (%d)\n", css_Num_free_conn);
 
@@ -956,7 +999,7 @@ css_print_free_conn_list (void)
 
       assert (i == css_Num_free_conn);
 
-      csect_exit (NULL, CSECT_CONN_FREE);
+      END_SHARED_ACCESS_FREE_CONN_ANCHOR (r);
     }
 }
 
@@ -1180,10 +1223,11 @@ CSS_CONN_ENTRY *
 css_find_conn_by_tran_index (int tran_index)
 {
   CSS_CONN_ENTRY *conn = NULL, *next;
+  int r;
 
   if (css_Active_conn_anchor != NULL)
     {
-      csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+      START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       for (conn = css_Active_conn_anchor; conn != NULL; conn = next)
 	{
@@ -1194,7 +1238,7 @@ css_find_conn_by_tran_index (int tran_index)
 	    }
 	}
 
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
 
   return conn;
@@ -1209,10 +1253,11 @@ CSS_CONN_ENTRY *
 css_find_conn_from_fd (SOCKET fd)
 {
   CSS_CONN_ENTRY *conn = NULL, *next;
+  int r;
 
   if (css_Active_conn_anchor != NULL)
     {
-      csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+      START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       for (conn = css_Active_conn_anchor; conn != NULL; conn = next)
 	{
@@ -1223,7 +1268,7 @@ css_find_conn_from_fd (SOCKET fd)
 	    }
 	}
 
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
   return conn;
 }
@@ -1239,7 +1284,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
 {
   CSS_CONN_ENTRY *conn = NULL, *next = NULL;
   SESSION_ID *sessions_p = NULL;
-  int error = NO_ERROR, i = 0;
+  int error = NO_ERROR, i = 0, r;
 
   assert (count != NULL);
   if (count == NULL)
@@ -1255,7 +1300,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
       return NO_ERROR;
     }
 
-  csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
   *count = css_Num_active_conn;
   sessions_p = (SESSION_ID *) malloc (css_Num_active_conn * sizeof (SESSION_ID));
 
@@ -1263,7 +1308,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, css_Num_active_conn * sizeof (SESSION_ID));
       error = ER_FAILED;
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
       goto error_return;
     }
 
@@ -1274,7 +1319,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
       i++;
     }
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
   *session_ids = sessions_p;
   return error;
 
@@ -1304,10 +1349,11 @@ void
 css_shutdown_conn_by_tran_index (int tran_index)
 {
   CSS_CONN_ENTRY *conn = NULL;
+  int r;
 
   if (css_Active_conn_anchor != NULL)
     {
-      csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+      START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
 	{
@@ -1321,7 +1367,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 	    }
 	}
 
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
 }
 
@@ -1335,10 +1381,10 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 {
   unsigned short old_rid;
   unsigned short request_id;
+  int r;
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   old_rid = conn->request_id++;
   if (conn->request_id == 0)
@@ -1352,9 +1398,9 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 	{
 	  request_id = conn->request_id;
 
-	  assert (css_is_valid_conn_csect (conn));
+	  r = rmutex_unlock (NULL, &conn->rmutex);
+	  assert (r == NO_ERROR);
 
-	  csect_exit_critical_section (NULL, &conn->csect);
 	  return (request_id);
 	}
       else
@@ -1367,9 +1413,8 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 	}
     }
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (NULL, &conn->csect);
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   /* Should never reach this point */
   er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_REQUEST_ID_FAILURE, 0);
@@ -1415,23 +1460,20 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
 int
 css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
-  int rc;
-
+  int rc, r;
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
     }
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   css_remove_unexpected_packets (conn, request_id);
   rc = css_abort_request (conn, request_id);
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (NULL, &conn->csect);
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
   return rc;
 }
 
@@ -1896,17 +1938,20 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
 {
   THREAD_ENTRY *wait_thrd = NULL, *p, *next;
   unsigned short flags = 0;
+  int r;
+  int transaction_id, db_error, invalidate_snapshot;
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
-
-  conn->transaction_id = ntohl (header->transaction_id);
-  conn->db_error = (int) ntohl (header->db_error);
-
+  transaction_id = ntohl (header->transaction_id);
+  db_error = (int) ntohl (header->db_error);
   flags = ntohs (header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
 
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  conn->transaction_id = transaction_id;
+  conn->db_error = db_error;
+  conn->invalidate_snapshot = invalidate_snapshot;
 
   switch (type)
     {
@@ -1952,9 +1997,8 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
       p = next;
     }
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (NULL, &conn->csect);
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 
 /*
@@ -2253,11 +2297,10 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 {
   CSS_QUEUE_ENTRY *p;
   NET_HEADER *buffer;
-  int rc;
+  int rc, r;
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   if (conn->status == CONN_OPEN)
     {
@@ -2288,9 +2331,8 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
       rc = CONN_CLOSED;
     }
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (NULL, &conn->csect);
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
   return rc;
 }
 
@@ -2308,8 +2350,10 @@ static void
 clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * conn, unsigned short rid, char **bufferp)
 {
   CSS_WAIT_QUEUE_ENTRY *data_wait;
+  int r;
 
-  csect_enter_critical_section (thrdp, &conn->csect, INF_WAIT);
+  r = rmutex_lock (thrdp, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   /* check the deadlock related problem */
   data_wait = css_find_and_remove_wait_queue_entry (&conn->data_wait_queue, rid);
@@ -2331,7 +2375,8 @@ clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * c
 	}
     }
 
-  csect_exit_critical_section (thrdp, &conn->csect);
+  r = rmutex_unlock (thrdp, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 
 /*
@@ -2351,10 +2396,11 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
   CSS_QUEUE_ENTRY *data_entry, *buffer_entry;
   CSS_WAIT_QUEUE_ENTRY *data_wait;
 
-  assert (css_is_valid_conn_csect (conn));
+  int r;
 
   /* enter the critical section of this connection */
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   *buffer = NULL;
   *bufsize = -1;
@@ -2400,9 +2446,8 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 
 	  css_free_queue_entry (conn, data_entry);
 
-	  assert (css_is_valid_conn_csect (conn));
-
-	  csect_exit_critical_section (NULL, &conn->csect);
+	  r = rmutex_unlock (NULL, &conn->rmutex);
+	  assert (r == NO_ERROR);
 
 	  return NO_ERRORS;
 	}
@@ -2421,10 +2466,9 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 	  data_wait = css_add_wait_queue_entry (conn, &conn->data_wait_queue, rid, buffer, bufsize, rc);
 	  if (data_wait)
 	    {
-	      assert (css_is_valid_conn_csect (conn));
-
 	      /* exit the critical section before to be suspended */
-	      csect_exit_critical_section (NULL, &conn->csect);
+	      r = rmutex_unlock (NULL, &conn->rmutex);
+	      assert (r == NO_ERROR);
 
 	      /* fall to the thread sleep until the socket listener 'css_server_thread()' receives and enqueues the
 	       * data */
@@ -2451,7 +2495,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 		  int r;
 		  struct timespec abstime;
 
-		  abstime.tv_sec = time (NULL) + waitsec;
+		  abstime.tv_sec = (int) time (NULL) + waitsec;
 		  abstime.tv_nsec = 0;
 
 		  r = thread_suspend_timeout_wakeup_and_unlock_entry (thrd, &abstime, THREAD_CSS_QUEUE_SUSPENDED);
@@ -2486,8 +2530,6 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 
 	      if (*rc == CONNECTION_CLOSED)
 		{
-		  assert (css_is_valid_conn_csect (conn));
-
 		  clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer);
 		}
 
@@ -2508,10 +2550,9 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
       *rc = CONNECTION_CLOSED;
     }
 
-  assert (css_is_valid_conn_csect (conn));
-
   /* exit the critical section */
-  csect_exit_critical_section (NULL, &conn->csect);
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
   return *rc;
 }
 
@@ -2543,11 +2584,11 @@ int
 css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size, int *rc)
 {
   CSS_QUEUE_ENTRY *p;
-  int r = 0;
+  int ret = 0, r;
 
-  assert (css_is_valid_conn_csect (conn));
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
   p = css_find_and_remove_queue_entry (&conn->error_queue, request_id);
   if (p != NULL)
     {
@@ -2556,13 +2597,13 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char 
       *rc = p->db_error;
       p->buffer = NULL;
       css_free_queue_entry (conn, p);
-      r = 1;
+      ret = 1;
     }
 
-  assert (css_is_valid_conn_csect (conn));
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
-  csect_exit_critical_section (NULL, &conn->csect);
-  return r;
+  return ret;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -2642,11 +2683,10 @@ css_remove_unexpected_packets (CSS_CONN_ENTRY * conn, unsigned short request_id)
 int
 css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer)
 {
-  int rc = NO_ERRORS;
+  int rc = NO_ERRORS, r;
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   if (buffer && (!css_is_request_aborted (conn, request_id)))
     {
@@ -2654,9 +2694,9 @@ css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, in
 				conn->invalidate_snapshot, conn->db_error);
     }
 
-  assert (css_is_valid_conn_csect (conn));
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
-  csect_exit_critical_section (NULL, &conn->csect);
   return rc;
 }
 
@@ -2694,11 +2734,10 @@ css_remove_and_free_wait_queue_entry (void *data, void *arg)
 void
 css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 {
-  /* conn->csect.cs_index may equal to -1 and conn->csect.name may be NULL when initializing temp_conn in
-   * css_process_new_client */
-  assert (css_is_temporary_conn_csect (conn) || css_is_valid_conn_csect (conn));
+  int r;
 
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   css_traverse_list (&conn->request_queue, css_remove_and_free_queue_entry, conn);
 
@@ -2710,9 +2749,8 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 
   css_traverse_list (&conn->error_queue, css_remove_and_free_queue_entry, conn);
 
-  assert (css_is_temporary_conn_csect (conn) || css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (NULL, &conn->csect);
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 
 /*
@@ -2817,32 +2855,4 @@ css_free_user_access_status (void)
   csect_exit (NULL, CSECT_ACCESS_STATUS);
 
   return;
-}
-
-/*
- * css_is_valid_conn_csect () - return true when csect for conn entry is valid
- *   return: bool
- *
- *   Note: debugging function
- */
-bool
-css_is_valid_conn_csect (CSS_CONN_ENTRY * conn)
-{
-  assert (conn != NULL);
-
-  return (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == csect_Name_conn);
-}
-
-/*
- * css_is_temporary_conn_csect () - return true when the conn entry is temporary
- *   return: void
- *
- *   Note: debugging function
- */
-bool
-css_is_temporary_conn_csect (CSS_CONN_ENTRY * conn)
-{
-  assert (conn != NULL);
-
-  return (conn->csect.cs_index == -1 && conn->csect.name == NULL);
 }

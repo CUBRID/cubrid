@@ -6874,7 +6874,7 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
       char string_name2[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
       PT_NODE *name1 = NULL;
       PT_NODE *name2 = NULL;
-      int position = p_dot - identifier_str;
+      int position = CAST_BUFLEN (p_dot - identifier_str);
       int remaining = strlen (identifier_str) - position - 1;
 
       assert ((remaining > 0) && (remaining < strlen (identifier_str) - 1));
@@ -9008,7 +9008,6 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   DB_OBJECT *class_op;
   CLASS_HELP *class_schema = NULL;
   PARSER_VARCHAR *buffer;
-  char **line_ptr;
   int is_class = 0;
 
   /* look up class in all schema's */
@@ -10431,7 +10430,7 @@ pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC
     {
       /* add reference for column in select list */
       as_attr = pt_name (parser, "rowoid_");
-      as_attr->info.name.original = pt_append_string (parser, as_attr->info.name.original, spec_name);
+      as_attr->info.name.original = (const char *) pt_append_string (parser, as_attr->info.name.original, spec_name);
       as_attr->info.name.spec_id = spec->info.spec.id;
       as_attr->info.name.meta_class = PT_OID_ATTR;
       as_attr->type_enum = col->type_enum;

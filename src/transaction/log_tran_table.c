@@ -180,8 +180,6 @@ static void *logtb_global_unique_stat_alloc (void);
 static int logtb_global_unique_stat_free (void *unique_stat);
 static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
-static unsigned int logtb_global_unique_stat_key_hash (void *key, int hash_table_size);
-static int logtb_global_unique_stat_key_compare (void *k1, void *k2);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot);
 
@@ -960,7 +958,6 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
   tdes->num_new_temp_files = 0;
-  tdes->num_pinned_xasl_cache_entries = 0;
   RB_INIT (&tdes->lob_locator_root);
 }
 
@@ -1945,7 +1942,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
-  assert (tdes->num_pinned_xasl_cache_entries == 0);
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -2025,7 +2021,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
   tdes->num_new_temp_files = 0;
-  tdes->num_pinned_xasl_cache_entries = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
@@ -2607,7 +2602,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 #if defined(SERVER_MODE)
   UINT64 current_msec = 0;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
-  XASL_CACHE_ENTRY *ent;
+  XASL_CACHE_ENTRY *ent = NULL;
 #endif
 
   /* Note, we'll be in a critical section while we gather the data but the section ends as soon as we return the data.
@@ -2668,7 +2663,12 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  if (!XASL_ID_IS_NULL (&tdes->xasl_id))
 	    {
 	      /* retrieve query statement in the xasl_cache entry */
-	      ent = qexec_check_xasl_cache_ent_by_xasl (thread_p, &tdes->xasl_id, -1, NULL, false);
+	      error_code = xcache_find_sha1 (thread_p, &tdes->xasl_id.sha1, &ent, NULL);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error;
+		}
 
 	      /* entry can be NULL, if xasl cache entry is deleted */
 	      if (ent != NULL)
@@ -2695,7 +2695,8 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 			  goto error;
 			}
 		    }
-		  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, true, false);
+		  xcache_unfix (thread_p, ent);
+		  ent = NULL;
 		}
 
 	      /* structure copy */
@@ -2791,6 +2792,11 @@ error:
 	    }
 	}
       free_and_init (query_exec_info);
+    }
+
+  if (ent != NULL)
+    {
+      xcache_unfix (thread_p, ent);
     }
 #endif
 
@@ -6422,56 +6428,6 @@ logtb_global_unique_stat_key_copy (void *src, void *dest)
 }
 
 /*
- * logtb_global_unique_stat_key_hash () - hashing function for the global
- *					  unique statistics hash
- *   return: int
- *   key(in): Session key
- *   hash_table_size(in): Memory Hash Table Size
- *
- * Note: Generate a hash number for the given key for the given hash table
- *	 size.
- */
-static unsigned int
-logtb_global_unique_stat_key_hash (void *key, int hash_table_size)
-{
-  return (((BTID *) key)->vfid.fileid % hash_table_size);
-}
-
-/*
- * logtb_global_unique_stat_key_compare () - Compare two global unique
- *					     statistics keys (BTIDs)
- *   return: int (true or false)
- *   k1  (in) : First BTID key
- *   k2 (in) : Second BTID key
- */
-static int
-logtb_global_unique_stat_key_compare (void *k1, void *k2)
-{
-  BTID *key1, *key2;
-
-  key1 = (BTID *) k1;
-  key2 = (BTID *) k2;
-
-  if (k1 == NULL || k2 == NULL)
-    {
-      /* should not happen */
-      assert (false);
-      return 0;
-    }
-
-  if (BTID_IS_EQUAL (key1, key2))
-    {
-      /* equal */
-      return 0;
-    }
-  else
-    {
-      /* not equal */
-      return 1;
-    }
-}
-
-/*
  * logtb_initialize_global_unique_stats_table () - Creates and initializes
  *						   global structure for global
  *						   unique statistics
@@ -6493,14 +6449,14 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
   edesc->of_del_tran_id = offsetof (GLOBAL_UNIQUE_STATS, del_id);
   edesc->of_key = offsetof (GLOBAL_UNIQUE_STATS, btid);
   edesc->of_mutex = offsetof (GLOBAL_UNIQUE_STATS, mutex);
-  edesc->mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  edesc->using_mutex = LF_EM_USING_MUTEX;
   edesc->f_alloc = logtb_global_unique_stat_alloc;
   edesc->f_free = logtb_global_unique_stat_free;
   edesc->f_init = logtb_global_unique_stat_init;
   edesc->f_uninit = NULL;
   edesc->f_key_copy = logtb_global_unique_stat_key_copy;
-  edesc->f_key_cmp = logtb_global_unique_stat_key_compare;
-  edesc->f_hash = logtb_global_unique_stat_key_hash;
+  edesc->f_key_cmp = btree_compare_btids;
+  edesc->f_hash = btree_hash_btid;
   edesc->f_duplicate = NULL;
 
   /* initialize freelist */
@@ -6598,7 +6554,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
 	    }
 	}
       error_code =
-	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats);
+	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats, NULL);
       if (error_code != NO_ERROR || stats == NULL)
 	{
 	  return NULL;
@@ -7370,9 +7326,8 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
       else
 	{
-	  vpid_to_string (vpid_buf, sizeof (vpid_buf), &xasl_val.first_vpid);
-	  vfid_to_string (vfid_buf, sizeof (vfid_buf), &xasl_val.temp_vfid);
-	  snprintf (buf, sizeof (buf), "vpid: %s, vfid: %s", vpid_buf, vfid_buf);
+	  snprintf (buf, sizeof (buf), "sha1 = %08x | %08x | %08x | %08x | %08x, time_stored = %d sec %d usec",
+		    SHA1_AS_ARGS (&xasl_val.sha1), CACHE_TIME_AS_ARGS (&xasl_val.time_stored));
 	  error = db_make_string_copy (&vals[idx], buf);
 	  if (error != NO_ERROR)
 	    {

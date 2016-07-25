@@ -217,7 +217,7 @@ static LF_ENTRY_DESCRIPTOR catalog_entry_Descriptor = {
   offsetof (CATALOG_ENTRY, key),
   0,
 
-  /* mutex flags */
+  /* using mutex? */
   LF_EM_NOT_USING_MUTEX,
 
   catalog_entry_alloc,
@@ -342,7 +342,7 @@ static int catalog_fixup_missing_class_info (THREAD_ENTRY * thread_p, OID * clas
 static DISK_ISVALID catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid);
 static void catalog_dump_disk_attribute (DISK_ATTR * atr);
 static void catalog_dump_representation (DISK_REPR * dr);
-static void catalog_clear_hash_table ();
+static void catalog_clear_hash_table (void);
 
 static void catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p);
 static void catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p);
@@ -2232,7 +2232,8 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
       repr_item_p->slot_id = catalog_value_p->key.r_slot_id;
 
       /* end transaction */
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
   else
     {
@@ -2268,14 +2269,15 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
       catalog_key.r_slot_id = repr_item_p->slot_id;
 
       /* insert value */
-      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p) !=
-	  NO_ERROR)
+      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p, NULL)
+	  != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
       else if (catalog_value_p != NULL)
 	{
-	  return lf_tran_end (t_entry);
+	  lf_tran_end_with_mb (t_entry);
+	  return NO_ERROR;
 	}
       else
 	{
@@ -5042,14 +5044,11 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 }
 
 static void
-catalog_clear_hash_table ()
+catalog_clear_hash_table (void)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
 
-  if (lf_hash_clear (t_entry, &catalog_Hash_table) != NO_ERROR)
-    {
-      assert (false);
-    }
+  lf_hash_clear (t_entry, &catalog_Hash_table);
 }
 
 
@@ -5666,7 +5665,8 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
       dir_oid_p->slotid = catalog_value_p->key.r_slot_id;
 
       /* end transaction */
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
 
   /* not found in cache, get it from class record */
@@ -5699,14 +5699,15 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
   catalog_key.r_slot_id = dir_oid_p->slotid;
 
   /* insert value */
-  if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p) !=
-      NO_ERROR)
+  if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p, NULL)
+      != NO_ERROR)
     {
       return ER_FAILED;
     }
   else if (catalog_value_p != NULL)
     {
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
   else
     {

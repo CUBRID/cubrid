@@ -383,7 +383,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const char *entity_name, *new_query;
   const char *attr_name, *mthd_name, *mthd_file, *attr_mthd_name;
   const char *new_name, *old_name, *domain;
-  const char *property_type;
   DB_CTMPL *ctemplate = NULL;
   DB_OBJECT *vclass, *sup_class;
   int error = NO_ERROR;
@@ -406,7 +405,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
   bool partition_savepoint = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
+#if defined (ENABLE_RENAME_CONSTRAINT)
   SM_CONSTRAINT_FAMILY constraint_family;
+#endif
   unsigned int save_custom;
   PT_NODE *super_node = NULL;
   MOP super_class;
@@ -7138,7 +7139,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
   const char *comment = NULL;
   size_t buf_size;
 
-  fk_info = (PT_FOREIGN_KEY_INFO *) & (cnstr->info.constraint.un.foreign_key);
+  fk_info = (PT_FOREIGN_KEY_INFO *) (&cnstr->info.constraint.un.foreign_key);
 
   n_atts = pt_length_of_list (fk_info->attrs);
   i = 0;

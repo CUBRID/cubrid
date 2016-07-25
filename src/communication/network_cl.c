@@ -591,7 +591,6 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_QM_QUERY_EXECUTE].name = "NET_SERVER_QM_QUERY_EXECUTE";
   net_Req_buffer[NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE].name = "NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE";
   net_Req_buffer[NET_SERVER_QM_QUERY_END].name = "NET_SERVER_QM_QUERY_END";
-  net_Req_buffer[NET_SERVER_QM_QUERY_DROP_PLAN].name = "NET_SERVER_QM_QUERY_DROP_PLAN";
   net_Req_buffer[NET_SERVER_QM_QUERY_DROP_ALL_PLANS].name = "NET_SERVER_QM_QUERY_DROP_ALL_PLANS";
   net_Req_buffer[NET_SERVER_QM_QUERY_DUMP_PLANS].name = "NET_SERVER_QM_QUERY_DUMP_PLANS";
   net_Req_buffer[NET_SERVER_QM_QUERY_DUMP_CACHE].name = "NET_SERVER_QM_QUERY_DUMP_CACHE";
@@ -3115,7 +3114,7 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
 {
   unsigned int rid;
   int size;
-  int p_size, error;
+  int error;
   char *reply = NULL;
   int content_size;
   char *content_ptr = NULL;

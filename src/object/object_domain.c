@@ -4858,7 +4858,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 	  end--;
 	}
 
-      size = end - p + 1;
+      size = CAST_BUFLEN (end - p) + 1;
 
       if (size > sizeof (str) - 1)
 	{
@@ -9654,20 +9654,23 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	case DB_TYPE_NUMERIC:
 	  {
-	    int max_size = 38 + 2 + 1;
-	    char *new_string, *ptr;
+	    char str_buf[NUMERIC_MAX_STRING_SIZE];
+	    char *new_string;
+	    int max_size;
 
+	    numeric_db_value_print ((DB_VALUE *) src, str_buf);
+
+	    max_size = strlen (str_buf) + 1;
 	    new_string = (char *) db_private_alloc (NULL, max_size);
-	    if (!new_string)
+	    if (new_string == NULL)
 	      {
 		return DOMAIN_ERROR;
 	      }
 
-	    ptr = numeric_db_value_print ((DB_VALUE *) src);
-	    strcpy (new_string, ptr);
+	    strcpy (new_string, str_buf);
 
 	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		&& db_value_precision (target) < (int) strlen (new_string))
+		&& db_value_precision (target) < max_size - 1)
 	      {
 		status = DOMAIN_OVERFLOW;
 		db_private_free_and_init (NULL, new_string);

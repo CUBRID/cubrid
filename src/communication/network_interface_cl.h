@@ -218,7 +218,8 @@ extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type,
 extern int btree_delete_with_unique_key (BTID * btid, OID * class_oid, DB_VALUE * key_value);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
-extern XASL_ID *qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID * user_oid);
+extern int qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
+
 extern QFILE_LIST_ID *qmgr_execute_query_with_commit (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 						      const DB_VALUE * dbvals, QUERY_FLAG flag,
 						      CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
@@ -231,7 +232,6 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream, int xas
 						      int dbval_cnt, DB_VALUE * dbval_ptr, QUERY_FLAG flag,
 						      int query_timeout);
 extern int qmgr_end_query (QUERY_ID query_id);
-extern int qmgr_drop_query_plan (const char *qstmt, const OID * user_oid, const XASL_ID * xasl_id);
 extern int qmgr_drop_all_query_plans (void);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
