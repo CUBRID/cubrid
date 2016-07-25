@@ -1519,6 +1519,20 @@ fileio_lock_la_dbname (int *lockf_vdes, char *db_name, char *log_path)
 
   if (access (lock_dir, F_OK) < 0)
     {
+      /* create parent directory if not exist */
+      if (mkdir (lock_dir, 0777) < 0 && errno == ENOENT)
+	{
+	  char pdir[PATH_MAX];
+
+	  if (cub_dirname_r (lock_dir, pdir, PATH_MAX) > 0 && access (pdir, F_OK) < 0)
+	    {
+	      mkdir (pdir, 0777);
+	    }
+	}
+    }
+
+  if (access (lock_dir, F_OK) < 0)
+    {
       if (mkdir (lock_dir, 0777) < 0)
 	{
 	  er_log_debug (ARG_FILE_LINE, "unable to create dir (%s)", lock_dir);
