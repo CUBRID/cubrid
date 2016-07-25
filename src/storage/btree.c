@@ -21129,7 +21129,7 @@ index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * rec
     clean_string:
       if (string != NULL && alloced_string == 1)
 	{
-	  db_private_free_and_init (thread_p, string);
+	  db_private_free_and_init (NULL, string);
 	}
 
       if (set_break == true)

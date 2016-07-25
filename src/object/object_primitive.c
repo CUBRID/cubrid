@@ -11482,6 +11482,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
+  /* String 1 */
   or_init (&buf1, str1, 0);
   if (str_length1 == 0xFF)
     {
@@ -11505,8 +11506,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      str_length1 = str1_decompressed_length;
       alloced_string1 = true;
+      str_length1 = str1_decompressed_length;
       string1[str_length1] = '\0';
     }
   else
@@ -11514,62 +11515,71 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
       string1 = buf1.ptr;
     }
 
-  if (rc == NO_ERROR)
+  if (rc != NO_ERROR)
     {
-      or_init (&buf2, str2, 0);
-
-      if (str_length2 == 0xFF)
-	{
-	  rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-
-	  string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
-	  if (string2 == NULL)
-	    {
-	      /* Error report */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
-	      goto cleanup;
-	    }
-
-	  rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-
-	  str_length2 = str2_decompressed_length;
-	  alloced_string2 = true;
-	  string2[str_length2] = '\0';
-	}
-      else
-	{
-	  string2 = buf2.ptr;
-	}
-
-      if (rc == NO_ERROR)
-	{
-	  c =
-	    QSTR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2,
-			  str_length2);
-	  c = MR_CMP_RETURN_CODE (c);
-
-	  /* Clean up the strings */
-	  if (string1 != NULL && alloced_string1 == true)
-	    {
-	      db_private_free_and_init (NULL, string1);
-	    }
-
-	  if (string2 != NULL && alloced_string2 == true)
-	    {
-	      db_private_free_and_init (NULL, string2);
-	    }
-
-	  return c;
-	}
+      ASSERT_ERROR ();
+      goto cleanup;
     }
+
+  /* String 2 */
+
+  or_init (&buf2, str2, 0);
+
+  if (str_length2 == 0xFF)
+    {
+      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+      if (string2 == NULL)
+	{
+	  /* Error report */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
+	  goto cleanup;
+	}
+
+      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      alloced_string2 = true;
+      str_length2 = str2_decompressed_length;
+      string2[str_length2] = '\0';
+    }
+  else
+    {
+      string2 = buf2.ptr;
+    }
+
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  /* Compare the strings */
+
+  c =
+    QSTR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
+  c = MR_CMP_RETURN_CODE (c);
+
+  /* Clean up the strings */
+  if (string1 != NULL && alloced_string1 == true)
+    {
+      db_private_free_and_init (NULL, string1);
+    }
+
+  if (string2 != NULL && alloced_string2 == true)
+    {
+      db_private_free_and_init (NULL, string2);
+    }
+
+  return c;
 
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
@@ -14265,6 +14275,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
+  /* String 1 */
   or_init (&buf1, str1, 0);
   if (str_length1 == 0xFF)
     {
@@ -14288,8 +14299,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      str_length1 = str1_decompressed_length;
       alloced_string1 = true;
+      str_length1 = str1_decompressed_length;
       string1[str_length1] = '\0';
     }
   else
@@ -14297,60 +14308,70 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       string1 = buf1.ptr;
     }
 
-  if (rc == NO_ERROR)
+  if (rc != NO_ERROR)
     {
-      or_init (&buf2, str2, 0);
-      if (str_length2 == 0xFF)
-	{
-	  rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-
-	  string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
-	  if (string2 == NULL)
-	    {
-	      /* Error report */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
-	      goto cleanup;
-	    }
-
-	  rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-
-	  str_length2 = str2_decompressed_length;
-	  alloced_string2 = true;
-	  string2[str_length2] = '\0';
-	}
-      else
-	{
-	  string2 = buf2.ptr;
-	}
-      if (rc == NO_ERROR)
-	{
-
-	  c =
-	    QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) buf1.ptr, str_length1,
-				(unsigned char *) buf2.ptr, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
-	  c = MR_CMP_RETURN_CODE (c);
-	  /* Clean up the strings */
-	  if (string1 != NULL && alloced_string1 == true)
-	    {
-	      db_private_free_and_init (NULL, string1);
-	    }
-
-	  if (string2 != NULL && alloced_string2 == true)
-	    {
-	      db_private_free_and_init (NULL, string2);
-	    }
-
-	  return c;
-	}
+      ASSERT_ERROR ();
+      goto cleanup;
     }
+
+  /* String 2 */
+  or_init (&buf2, str2, 0);
+  if (str_length2 == 0xFF)
+    {
+      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+      if (string2 == NULL)
+	{
+	  /* Error report */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
+	  goto cleanup;
+	}
+
+      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      alloced_string2 = true;
+      str_length2 = str2_decompressed_length;
+      string2[str_length2] = '\0';
+    }
+  else
+    {
+      string2 = buf2.ptr;
+    }
+
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  /* Compare the strings */
+  c =
+    QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) buf1.ptr, str_length1,
+			(unsigned char *) buf2.ptr, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+  c = MR_CMP_RETURN_CODE (c);
+  /* Clean up the strings */
+  if (string1 != NULL && alloced_string1 == true)
+    {
+      db_private_free_and_init (NULL, string1);
+    }
+
+  if (string2 != NULL && alloced_string2 == true)
+    {
+      db_private_free_and_init (NULL, string2);
+    }
+
+  return c;
+
+
 
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
