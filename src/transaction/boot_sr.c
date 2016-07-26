@@ -5593,6 +5593,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 
       er_clear ();
     }
+  perfmon_initialize(0);
 
   /* Find the prefix for the database */
   log_prefix = fileio_get_base_file_name (db_name);
