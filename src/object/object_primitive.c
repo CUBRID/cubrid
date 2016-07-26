@@ -11262,7 +11262,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  return rc;
 		}
 
-	      rc = mr_get_compressed_data_from_buffer (buf, &string, compressed_size, decompressed_size);
+	      rc = mr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
 	      if (rc != NO_ERROR)
 		{
 		  return rc;
@@ -11499,7 +11499,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf1, &string1, str1_compressed_length, str1_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -11540,7 +11540,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, &string2, str2_compressed_length, str2_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -14026,7 +14026,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		}
 
 	      /* Getting data from the buffer. */
-	      rc = mr_get_compressed_data_from_buffer (buf, &string, compressed_size, decompressed_size);
+	      rc = mr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
 
 	      if (rc != NO_ERROR)
 		{
@@ -14292,7 +14292,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf1, &string1, str1_compressed_length, str1_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -14331,7 +14331,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, &string2, str2_compressed_length, str2_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -16142,7 +16142,7 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  * decompressed_size(in)			  : The uncompressed data size.
  */
 int
-mr_get_compressed_data_from_buffer (OR_BUF * buf, char **data, int compressed_size, int decompressed_size)
+mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
 {
   int rc = NO_ERROR;
 
@@ -16153,7 +16153,7 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char **data, int compressed_si
       /* Handle decompression */
 
       /* decompressing the string */
-      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, *data, &decompression_size, NULL);
+      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &decompression_size, NULL);
       if (rc != LZO_E_OK)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
@@ -16164,15 +16164,15 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char **data, int compressed_si
 	  /* Decompression failed. It shouldn't. */
 	  assert (false);
 	}
-      (*data)[decompressed_size] = '\0';
+      data[decompressed_size] = '\0';
     }
   else
     {
       /* String is not compressed and buf->ptr is pointing towards an array of chars of length equal to
        * decompressed_size */
 
-      rc = or_get_data (buf, *data, decompressed_size);
-      (*data)[decompressed_size] = '\0';
+      rc = or_get_data (buf, data, decompressed_size);
+      data[decompressed_size] = '\0';
     }
 
   return rc;

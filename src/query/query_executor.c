@@ -17157,7 +17157,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   or_init (&buf2, str2, 0);
   if (str_length2 == 0xFF)
     {
-      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
+      rc = or_get_varchar_compression_lengths (&buf2, string1, &str2_compressed_length, &str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -17171,7 +17171,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, &string2, str2_compressed_length, str2_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -17186,7 +17186,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       string2 = str2;
     }
 
-  if (rc == NO_ERROR)
+  if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto cleanup;
