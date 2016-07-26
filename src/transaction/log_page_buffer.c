@@ -1313,12 +1313,11 @@ logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
-
-  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+  
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   is_dirty = (bool) bufptr->dirty;
 
-  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   return is_dirty;
 }
@@ -1339,7 +1338,6 @@ logpb_is_any_dirty (THREAD_ENTRY * thread_p)
   bool ret;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   ret = false;
   for (i = 0; i < log_Pb.num_buffers; i++)
@@ -1352,7 +1350,6 @@ logpb_is_any_dirty (THREAD_ENTRY * thread_p)
 	}
     }
 
-  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
   return ret;
 }
 #endif /* !NDEBUG || CUBRID_DEBUG */
@@ -1372,7 +1369,7 @@ logpb_is_any_fix (THREAD_ENTRY * thread_p)
   int i, rv;
   bool ret;
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+ 
 
   ret = false;
   for (i = 0; i < log_Pb.num_buffers; i++)
@@ -1385,7 +1382,7 @@ logpb_is_any_fix (THREAD_ENTRY * thread_p)
 	}
     }
 
-  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+
 
   return ret;
 }
