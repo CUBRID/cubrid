@@ -11206,7 +11206,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			    int copy_buf_len, int align)
 {
   int pad, precision;
-  char *new_ = NULL, *start = NULL;
+  char *new_, *start = NULL;
   int str_length;
   int rc = NO_ERROR;
   int compressed_size = 0, decompressed_size = 0;
@@ -11372,6 +11372,10 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      return ER_FAILED;
 		    }
 		  /* Handle decompression if there was any */
+		  if (compressed_size == 0)
+		    {
+		      assert (true);
+		    }
 		  if (compressed_size > 0)
 		    {
 		      /* String was compressed */
@@ -16146,7 +16150,6 @@ int
 mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
 {
   int rc = NO_ERROR;
-  lzo_bytep buffer = NULL;
 
   /* Check if the string needs decompression */
   if (compressed_size > 0)
@@ -16154,24 +16157,12 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
       lzo_uint decompression_size = 0;
       /* Handle decompression */
 
-      /* Alloc memory for buffer */
-      buffer = db_private_alloc (NULL, compressed_size);
-      if (buffer == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, compressed_size);
-	  return rc;
-	}
-
-      /* Copy to buffer */
-      memcpy (buffer, buf->ptr, compressed_size);
-
       /* decompressing the string */
-      rc = lzo1x_decompress (buffer, (lzo_uint) compressed_size, data, &decompression_size, NULL);
+      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &decompression_size, NULL);
       if (rc != LZO_E_OK)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
-	  rc = ER_IO_LZO_DECOMPRESS_FAIL;
-	  goto cleanup;
+	  return ER_IO_LZO_DECOMPRESS_FAIL;
 	}
       if (decompression_size != decompressed_size)
 	{
@@ -16186,18 +16177,7 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
        * decompressed_size */
 
       rc = or_get_data (buf, data, decompressed_size);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto cleanup;
-	}
       data[decompressed_size] = '\0';
-    }
-
-cleanup:
-  if (buffer != NULL)
-    {
-      db_private_free_and_init (NULL, buffer);
     }
 
   return rc;
