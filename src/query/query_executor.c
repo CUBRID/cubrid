@@ -17132,7 +17132,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf1, &string1, str1_compressed_length, str1_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -17171,7 +17171,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf2, &string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;

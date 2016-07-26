@@ -3791,7 +3791,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 	  *alloced_string = 1;
 
-	  rc = mr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
+	  rc = mr_get_compressed_data_from_buffer (&buffer, string, compressed_length, decompressed_length);
 	  if (rc != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

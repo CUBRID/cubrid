@@ -10877,11 +10877,9 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
     {
       charlen = decompressed_length;
     }
-  /* Add the additional 4 bytes consisting of the decompressed length stored in buffer */
-  charlen += PRIM_COMPRESSION_LENGTH_OFFSET;
-
   /* Temporary disk size in case the length of the current buffer is less than 255.
-   * Therefore the or_varchar_length will always add the 4 bytes consisting the compressed_length stored in buffer
+   * Therefore the or_varchar_length will always add the 8 bytes consisting the compressed_length
+   * and decompressed_length stored in buffer.
    */
 
   charlen += PRIM_TEMPORARY_DISK_SIZE;
@@ -11264,7 +11262,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  return rc;
 		}
 
-	      rc = mr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
+	      rc = mr_get_compressed_data_from_buffer (buf, &string, compressed_size, decompressed_size);
 	      if (rc != NO_ERROR)
 		{
 		  return rc;
@@ -11501,7 +11499,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf1, &string1, str1_compressed_length, str1_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -11542,7 +11540,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf2, &string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -14028,7 +14026,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		}
 
 	      /* Getting data from the buffer. */
-	      rc = mr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
+	      rc = mr_get_compressed_data_from_buffer (buf, &string, compressed_size, decompressed_size);
 
 	      if (rc != NO_ERROR)
 		{
@@ -14294,7 +14292,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf1, &string1, str1_compressed_length, str1_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -14333,7 +14331,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  goto cleanup;
 	}
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      rc = mr_get_compressed_data_from_buffer (&buf2, &string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -16144,7 +16142,7 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  * decompressed_size(in)			  : The uncompressed data size.
  */
 int
-mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
+mr_get_compressed_data_from_buffer (OR_BUF * buf, char **data, int compressed_size, int decompressed_size)
 {
   int rc = NO_ERROR;
 
@@ -16155,7 +16153,7 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
       /* Handle decompression */
 
       /* decompressing the string */
-      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &decompression_size, NULL);
+      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, *data, &decompression_size, NULL);
       if (rc != LZO_E_OK)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
@@ -16166,15 +16164,15 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
 	  /* Decompression failed. It shouldn't. */
 	  assert (false);
 	}
-      data[decompressed_size] = '\0';
+      (*data)[decompressed_size] = '\0';
     }
   else
     {
       /* String is not compressed and buf->ptr is pointing towards an array of chars of length equal to
        * decompressed_size */
 
-      rc = or_get_data (buf, data, decompressed_size);
-      data[decompressed_size] = '\0';
+      rc = or_get_data (buf, *data, decompressed_size);
+      (*data)[decompressed_size] = '\0';
     }
 
   return rc;
@@ -16195,6 +16193,9 @@ mr_get_compression_length (char *string, int charlen)
   char *compressed_string = NULL;
   lzo_uint compressed_length = 0;
   int rc = NO_ERROR;
+  int length = 0;
+
+  length = charlen;
 
   wrkmem = (lzo_voidp) db_private_alloc (NULL, LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
@@ -16203,18 +16204,20 @@ mr_get_compression_length (char *string, int charlen)
       goto cleanup;
     }
 
+  memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
+
   /* Alloc memory for the compressed string */
   /* Worst case LZO compression size from their FAQ */
-  compressed_string = db_private_alloc (NULL, charlen + (charlen / 16) + 64 + 3);
+  compressed_string = db_private_alloc (NULL, length + (length / 16) + 64 + 3);
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) (charlen + (charlen / 16) + 64 + 3));
+	      1, (size_t) (length + (length / 16) + 64 + 3));
       goto cleanup;
     }
 
   /* Compress the string */
-  rc = lzo1x_1_compress (string, charlen, compressed_string, &compressed_length, wrkmem);
+  rc = lzo1x_1_compress (string, length, compressed_string, &compressed_length, wrkmem);
   if (rc != LZO_E_OK)
     {
       /* We should not be having any kind of errors here. Because if this compression fails, there is not warranty
@@ -16227,15 +16230,15 @@ mr_get_compression_length (char *string, int charlen)
       goto cleanup;
     }
 
-  if (charlen >= compressed_length + 8)
+  if (length >= compressed_length + 8)
     {
       /* Compressed length + the uncompressed size of 4 bytes */
-      charlen = (int) compressed_length + 4;
+      length = (int) compressed_length;
     }
   else
     {
       /* Compression failed but we still add the 4 bytes of uncompressed_length  */
-      charlen = (int) charlen + 4;
+      length = (int) charlen;
     }
 
 cleanup:
@@ -16250,5 +16253,5 @@ cleanup:
       db_private_free_and_init (NULL, compressed_string);
     }
 
-  return charlen;
+  return length;
 }

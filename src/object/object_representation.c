@@ -1297,7 +1297,7 @@ or_varchar_length_internal (int charlen, int align)
     }
   else
     {
-      len = 1 + OR_INT_SIZE + charlen;
+      len = 1 + OR_INT_SIZE + OR_INT_SIZE + charlen;
     }
 
   if (align == INT_ALIGNMENT)
@@ -1372,6 +1372,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
 	  goto cleanup;
 	}
+      memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
 
       /* Alloc memory for the compressed string */
       /* Worst case LZO compression size from their FAQ */
