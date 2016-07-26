@@ -1366,7 +1366,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
     {
       /* Future optimization : use a preallocated object for wrkmem in thread_entry. */
       /* Alloc memory */
-      wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
+      wrkmem = (lzo_voidp) db_private_alloc (NULL, LZO1X_1_MEM_COMPRESS);
       if (wrkmem == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
@@ -1375,7 +1375,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Alloc memory for the compressed string */
       /* Worst case LZO compression size from their FAQ */
-      compressed_string = (char *) malloc ((charlen + (charlen / 16) + 64 + 3) * sizeof (char));
+      compressed_string = db_private_alloc (NULL, charlen + (charlen / 16) + 64 + 3);
       if (compressed_string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -1467,12 +1467,12 @@ cleanup:
 
   if (compressed_string != NULL)
     {
-      free_and_init (compressed_string);
+      db_private_free_and_init (NULL, compressed_string);
     }
 
   if (wrkmem != NULL)
     {
-      free_and_init (wrkmem);
+      db_private_free_and_init (NULL, wrkmem);
     }
 
   return rc;
