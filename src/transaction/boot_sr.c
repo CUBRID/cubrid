@@ -4330,6 +4330,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
   CSS_CONN_ENTRY *conn;
   LOG_TDES *tdes;
   int client_id;
+  int r;
 
   if (thread_p == NULL)
     {
@@ -4342,9 +4343,8 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
   conn = thread_p->conn_entry;
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
+  r = rmutex_lock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   client_id = conn->client_id;
   tdes = LOG_FIND_TDES (tran_index);
@@ -4356,9 +4356,8 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (thread_p, &conn->csect);
+  r = rmutex_unlock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 #endif /* SERVER_MODE */
 

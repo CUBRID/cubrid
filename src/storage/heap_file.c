@@ -20981,8 +20981,7 @@ heap_get_class_oid_from_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, OID * cl
 }
 
 /*
- * heap_mvcc_log_home_change_on_delete () - Log the change of record in home
- *					    page when MVCC delete does not
+ * heap_mvcc_log_home_change_on_delete () - Log the change of record in home page when MVCC delete does not
  *					    change a REC_HOME to REC_HOME.
  *
  * return	   : Void.
@@ -21007,15 +21006,13 @@ heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p, RECDES * old_recde
       /* Mark vacuum status change for recovery. */
       p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
     }
+
   log_append_undoredo_recdes (thread_p, RVHF_MVCC_DELETE_MODIFY_HOME, p_addr, old_recdes, new_recdes);
 }
 
 /*
- * heap_mvcc_log_home_no_change_on_delete () - Update page chain for vacuum
- *					       and notify vacuum even when
- *					       home page is not changed.
- *					       Used by delete of
- *					       REC_RELOCATION and REC_BIGONE.
+ * heap_mvcc_log_home_no_change_on_delete () - Update page chain for vacuum and notify vacuum even when home page
+ *                                             is not changed. Used by delete of REC_RELOCATION and REC_BIGONE.
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
@@ -21025,18 +21022,20 @@ static void
 heap_mvcc_log_home_no_change_on_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr)
 {
   HEAP_PAGE_VACUUM_STATUS vacuum_status = heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
+
+  /* Update heap chain for vacuum. */
   heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr, logtb_get_current_mvccid (thread_p));
   if (vacuum_status != heap_page_get_vacuum_status (thread_p, p_addr->pgptr))
     {
       /* Mark vacuum status change for recovery. */
       p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
     }
+
   log_append_undoredo_data (thread_p, RVHF_MVCC_DELETE_NO_MODIFY_HOME, p_addr, 0, 0, NULL, NULL);
 }
 
 /*
- * heap_rv_undoredo_update_and_update_chain () - Redo update record as part of
- *						 MVCC delete operation.
+ * heap_rv_undoredo_update_and_update_chain () - Redo update record as part of MVCC delete operation.
  *   return: int
  *   rcv(in): Recovery structure
  */
@@ -23148,8 +23147,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
 	  /* update home record */
-	  rc =
-	    heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &new_home_recdes);
+	  rc = heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+				     &new_home_recdes);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -24026,6 +24025,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
 	  /* home remains untouched, log no_change on home to notify vacuum */
 	  heap_mvcc_log_home_no_change_on_delete (thread_p, &p_addr);
+
+	  /* Even though home record is not modified, vacuum status of the page might be changed. */
+	  pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
 	}
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);

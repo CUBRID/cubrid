@@ -43,6 +43,7 @@
 #define STAT_SIZE_PACKED \
         (OR_INT64_SIZE * MNT_SIZE_OF_SERVER_EXEC_STATS)
 #define STAT_SIZE_MEMORY (STAT_SIZE_PACKED+sizeof(bool))
+#define EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE  512
 
 /* These define the requests that the server will respond to */
 enum net_server_request

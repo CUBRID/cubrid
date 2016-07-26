@@ -51,6 +51,80 @@ struct ip_info
 extern CSS_CONN_ENTRY *css_Conn_array;
 extern CSS_CONN_ENTRY *css_Active_conn_anchor;
 
+extern SYNC_RWLOCK css_Rwlock_active_conn_anchor;
+
+#define CSS_RWLOCK_ACTIVE_CONN_ANCHOR (&css_Rwlock_active_conn_anchor)
+#define CSS_RWLOCK_ACTIVE_CONN_ANCHOR_NAME "CSS_RWLOCK_ACTIVE_CONN_ANCHOR"
+
+#define START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_write_lock (CSS_RWLOCK_ACTIVE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_write_unlock (CSS_RWLOCK_ACTIVE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_read_lock (CSS_RWLOCK_ACTIVE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_read_unlock (CSS_RWLOCK_ACTIVE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+extern SYNC_RWLOCK css_Rwlock_free_conn_anchor;
+
+#define CSS_RWLOCK_FREE_CONN_ANCHOR (&css_Rwlock_free_conn_anchor)
+#define CSS_RWLOCK_FREE_CONN_ANCHOR_NAME "CSS_RWLOCK_FREE_CONN_ANCHOR"
+
+#define START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_write_lock (CSS_RWLOCK_FREE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_write_unlock (CSS_RWLOCK_FREE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define START_SHARED_ACCESS_FREE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_read_lock (CSS_RWLOCK_FREE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_SHARED_ACCESS_FREE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_read_unlock (CSS_RWLOCK_FREE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
 extern int css_Num_access_user;
 
 extern int (*css_Connect_handler) (CSS_CONN_ENTRY *);
@@ -64,7 +138,7 @@ extern void css_final_conn_list (void);
 
 extern CSS_CONN_ENTRY *css_make_conn (SOCKET fd);
 extern void css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn);
-extern void css_dealloc_conn_csect (CSS_CONN_ENTRY * conn);
+extern void css_dealloc_conn_rmutex (CSS_CONN_ENTRY * conn);
 
 extern int css_get_num_free_conn (void);
 
@@ -112,14 +186,4 @@ extern int css_check_ip (IP_INFO * ip_info, unsigned char *address);
 extern void css_set_user_access_status (const char *db_user, const char *host, const char *program_name);
 extern void css_get_user_access_status (int num_user, LAST_ACCESS_STATUS ** access_status_array);
 extern void css_free_user_access_status (void);
-
-#if defined (SERVER_MODE)
-extern bool css_is_valid_conn_csect (CSS_CONN_ENTRY * conn);
-extern bool css_is_temporary_conn_csect (CSS_CONN_ENTRY * conn);
-#else
-/* ignore the functions for non-SERVER_MODE */
-#define css_is_valid_conn_csect(c) (1)
-#define css_is_temporary_conn_csect(c) (1)
-#endif /* !SERVER_MODE */
-
 #endif /* _CONNECTION_SR_H_ */

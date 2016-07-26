@@ -142,6 +142,12 @@ struct lf_tran_entry
 
   /* Was transaction ID incremented? */
   bool did_incr;
+
+#if defined (UNITTEST_LF)
+  /* Debug */
+  pthread_mutex_t *locked_mutex;
+  int locked_mutex_line;
+#endif				/* UNITTEST_LF */
 };
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
@@ -327,7 +333,7 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 
 extern int lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
 			 LF_ENTRY_DESCRIPTOR * edesc, void **entry);
-extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, void *locked_entry, int *behavior_flags,
 			   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, int *success);
 /* TODO: Add lf_list_insert functions. So far, they are only used for lf_hash_insert. */
 
@@ -368,7 +374,8 @@ extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, 
 extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
 extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
 extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
-extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
+extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void *locked_entry,
+					  int *success);
 extern void lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
 
 /*
@@ -436,5 +443,9 @@ extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entrie
 extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
 extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
 extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
+
+#if defined (UNITTEST_LF)
+extern void lf_reset_counters (void);
+#endif /* UNITTEST_LF */
 
 #endif /* _LOCK_FREE_H_ */

@@ -387,7 +387,8 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
 	    {
 	      int success = 0;
 
-	      if (lf_hash_delete_already_locked (t_entry, &spage_saving_ht, (void *) &head->vpid, &success) != NO_ERROR)
+	      if (lf_hash_delete_already_locked (t_entry, &spage_saving_ht, (void *) &head->vpid, head, &success)
+		  != NO_ERROR)
 		{
 		  /* we don't have clear operations on this hash table, this shouldn't happen */
 		  pthread_mutex_unlock (&head->mutex);

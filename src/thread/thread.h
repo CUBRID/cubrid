@@ -307,9 +307,6 @@ struct thread_entry
   unsigned int rand_seed;	/* seed for rand_r() */
   struct drand48_data rand_buf;	/* seed for lrand48_r(), drand48_r() */
 
-  char qp_num_buf[81];		/* buffer which contains number as string form; used in the qp/numeric_db_value_print() 
-				 */
-
   int resume_status;		/* resume status */
   int request_latch_mode;	/* for page latch support */
   int request_fix_count;
