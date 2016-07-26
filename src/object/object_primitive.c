@@ -11371,11 +11371,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			}
 		      return ER_FAILED;
 		    }
+
 		  /* Handle decompression if there was any */
-		  if (compressed_size == 0)
-		    {
-		      assert (true);
-		    }
 		  if (compressed_size > 0)
 		    {
 		      /* String was compressed */
@@ -16173,7 +16170,7 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
     }
   else
     {
-      /* String is not compressed and buf->ptr is pointing towards an array of char's of length equal to
+      /* String is not compressed and buf->ptr is pointing towards an array of chars of length equal to
        * decompressed_size */
 
       rc = or_get_data (buf, data, decompressed_size);
