@@ -11372,6 +11372,10 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      return ER_FAILED;
 		    }
 		  /* Handle decompression if there was any */
+		  if (compressed_size == 0)
+		    {
+		      assert (true);
+		    }
 		  if (compressed_size > 0)
 		    {
 		      /* String was compressed */
@@ -16204,7 +16208,7 @@ mr_get_compression_length (char *string, int charlen)
 
   /* Alloc memory for the compressed string */
   /* Worse case LZO compression size from their FAQ */
-  compressed_string = (char *) malloc ((charlen + (charlen / 16) + 64 + 3) * sizeof (char));
+  compressed_string = db_private_alloc (NULL, charlen + (charlen / 16) + 64 + 3);
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -16246,7 +16250,7 @@ cleanup:
 
   if (compressed_string != NULL)
     {
-      free_and_init (compressed_string);
+      db_private_free_and_init (NULL, compressed_string);
     }
 
   return charlen;
