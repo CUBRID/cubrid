@@ -9179,6 +9179,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, 
   addr.offset = to_start_offset;
   log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr, CAST_BUFLEN (((char *) to_outptr - (char *) to_aid_ptr)),
 			to_aid_ptr);
+  pgbuf_set_dirty (thread_p, to_pgptr, DONT_FREE);	/* to make it sure */
   length = 0;
 
   while (!VPID_EQ (&from_vpid, &allocset->end_pages_vpid) || from_aid_ptr <= from_outptr)
@@ -9285,6 +9286,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, 
 	  addr.offset = to_start_offset;
 	  log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr, CAST_BUFLEN ((char *) to_outptr - (char *) to_aid_ptr),
 				to_aid_ptr);
+	  pgbuf_set_dirty (thread_p, to_pgptr, DONT_FREE);	/* to make it sure */
 	  length = 0;
 	}
 

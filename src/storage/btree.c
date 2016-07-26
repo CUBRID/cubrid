@@ -5752,7 +5752,7 @@ btree_generate_prefix_domain (BTID_INT * btid)
   dbtype = TP_DOMAIN_TYPE (domain);
 
   /* varying domains did not come into use until btree revision level 1 */
-  if (!pr_is_variable_type (dbtype) && pr_is_string_type (dbtype))
+  if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_BIT)
     {
       switch (dbtype)
 	{
@@ -5766,10 +5766,6 @@ btree_generate_prefix_domain (BTID_INT * btid)
 	  vartype = DB_TYPE_VARBIT;
 	  break;
 	default:
-	  assert (false);
-#if defined(CUBRID_DEBUG)
-	  printf ("Corrupt domain in btree_generate_prefix_domain\n");
-#endif /* CUBRID_DEBUG */
 	  return NULL;
 	}
 
@@ -19384,9 +19380,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      c =
-	pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
-			    &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
+      c = pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
+			      &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc)

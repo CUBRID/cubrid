@@ -580,7 +580,7 @@ static void mnt_server_calc_stats (UINT64 * stats);
 static void mnt_server_check_stats_threshold (int tran_index, UINT64 * stats);
 
 static const char *perf_stat_module_name (const int module);
-static int perf_get_module_type (THREAD_ENTRY * thread_p);
+static INLINE int perf_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 static const char *perf_stat_page_type_name (const int page_type);
 static const char *perf_stat_page_mode_name (const int page_mode);
 static const char *perf_stat_holder_latch_name (const int holder_latch);
@@ -2889,16 +2889,16 @@ perf_stat_module_name (const int module)
   return "ERROR";
 }
 
-
 /*
  * perf_get_module_type () -
  */
-static int
+STATIC_INLINE int
 perf_get_module_type (THREAD_ENTRY * thread_p)
 {
   int thread_index;
   int module_type;
-  int first_vacuum_worker_idx;
+  static int first_vacuum_worker_idx = 0;
+  static int num_worker_threads = 0;
 
 #if defined (SERVER_MODE)
   if (thread_p == NULL)
@@ -2907,13 +2907,21 @@ perf_get_module_type (THREAD_ENTRY * thread_p)
     }
 
   thread_index = thread_p->index;
-  first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
+
+  if (first_vacuum_worker_idx == 0)
+    {
+      first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
+    }
+  if (num_worker_threads == 0)
+    {
+      num_worker_threads = thread_num_worker_threads ();
+    }
 #else
   thread_index = 0;
   first_vacuum_worker_idx = 100;
 #endif
 
-  if (thread_index >= 1 && thread_index <= thread_num_worker_threads ())
+  if (thread_index >= 1 && thread_index <= num_worker_threads)
     {
       module_type = PERF_MODULE_USER;
     }
