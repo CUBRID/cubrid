@@ -11259,6 +11259,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  decompressed_size * sizeof (char));
+		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
 
@@ -11383,6 +11384,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 				  (size_t) decompressed_size * sizeof (char));
+			  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 			  goto cleanup;
 			}
 
@@ -11414,9 +11416,10 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  new_[str_length] = '\0';	/* append the kludge NULL terminator */
 		  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 		    {
-		      assert (false);
-		      return ER_FAILED;
+		      rc = ER_FAILED;
+		      goto cleanup;
 		    }
+
 		  db_make_varchar (value, precision, new_, str_length, TP_DOMAIN_CODESET (domain),
 				   TP_DOMAIN_COLLATION (domain));
 		  value->need_clear = (new_ != copy_buf) ? true : false;
@@ -14037,6 +14040,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  decompressed_size * sizeof (char));
+		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  return rc;
 		}
 
@@ -14195,9 +14199,10 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 
 		  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 		    {
-		      assert (false);
-		      return ER_FAILED;
+		      rc = ER_FAILED;
+		      goto cleanup;
 		    }
+
 		  new_[str_length] = '\0';
 		  db_make_varnchar (value, precision, new_, str_length, TP_DOMAIN_CODESET (domain),
 				    TP_DOMAIN_COLLATION (domain));
@@ -14238,8 +14243,8 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      db_value_clear (value);
 	      if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 		{
-		  assert (false);
-		  return ER_FAILED;
+		  rc = ER_FAILED;
+		  goto cleanup;
 		}
 	      db_make_varnchar (value, precision, new_, STR_SIZE (char_count, codeset), codeset,
 				TP_DOMAIN_COLLATION (domain));
