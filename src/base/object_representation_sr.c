@@ -3795,6 +3795,8 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	  if (rc != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
+	      db_private_free (NULL, *string);
+	      *alloced_string = 0;
 	      *string = NULL;
 	      return rc;
 	    }
