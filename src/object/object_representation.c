@@ -1378,6 +1378,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       if (wrkmem == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
+	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
       memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
@@ -1389,6 +1390,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, (size_t) (charlen + (charlen / 16) + 64 + 3));
+	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
 
@@ -1399,7 +1401,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
 		  fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
 		  fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
-	  rc = ER_IO_LZO_DECOMPRESS_FAIL;
+	  rc = ER_IO_LZO_COMPRESS_FAIL;
 	  goto cleanup;
 	}
 
