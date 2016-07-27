@@ -16232,13 +16232,13 @@ mr_get_compression_length (char *string, int charlen)
 
   if (length >= compressed_length + 8)
     {
-      /* Compressed length + the uncompressed size of 4 bytes */
+      /* Compression successful */
       length = (int) compressed_length;
     }
   else
     {
-      /* Compression failed but we still add the 4 bytes of uncompressed_length  */
-      length = (int) charlen;
+      /* Compression failed */
+      length = charlen;
     }
 
 cleanup:
