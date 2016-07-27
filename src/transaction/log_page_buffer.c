@@ -111,7 +111,7 @@ static int rv;
 
 #define LOGPB_RMUTEX_LOG_PB (&logpb_Rmutex_log_pb)
 #define LOGPB_RMUTEX_LOG_PB_NAME "LOGPB_RMUTEX_LOG_PB"
-#define PB_DATA_SIZE 666013
+#define PB_DATA_SIZE log_Pb.num_buffers
 
 #define LOGPB_FIND_BUFPTR(bufid) log_Pb.pool[(bufid)]
 #define LOGPB_FIND_NBUFFER_FROM_CONT_BUFFERS(setbufs, nbuf) \
@@ -247,6 +247,7 @@ struct log_pb_global_data
   volatile long long cursor;
 
   LOG_BUFFER *header_buffer;
+  LOG_PAGE *header_page;
   int fst;
   int num_buffers;		/* Number of log buffers */
   int clock_hand;		/* Clock hand */
@@ -285,7 +286,7 @@ int log_default_input_for_archive_log_location = 0;
 int log_default_input_for_archive_log_location = -1;
 #endif
 
-LOG_PB_GLOBAL_DATA log_Pb = { NULL, NULL, 0, NULL, 0, 0, 0 };
+LOG_PB_GLOBAL_DATA log_Pb = { NULL, NULL, 0, NULL, NULL, 0, 0, 0 };
 LOG_PAGE **global_pages;
 
 LOG_LOGGING_STAT log_Stat;
@@ -439,7 +440,7 @@ logpb_reset_clock_hand (int buffer_index)
 int
 MOD (int x)
 {
-  return x % PB_DATA_SIZE;
+  return x % log_Pb.num_buffers;
 }
 
 LOG_BUFFER *
@@ -447,7 +448,8 @@ log_get_log_buffer_ptr (LOG_PAGE * log_pg)
 {
 
   long long idx = ((long long) log_pg - (long long) global_pages[0]);
-
+  if (log_pg == log_Pb.header_page)
+    return log_Pb.header_buffer;
 
   idx /= ((long long) global_pages[1] - (long long) global_pages[0]);
   //  printf ("%p %p %d\n",  log_pg, global_pages, idx);
@@ -759,7 +761,10 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
     }
 
   log_Pb.data = (LOG_BUFFER **) malloc (PB_DATA_SIZE * sizeof (LOG_BUFFER *));
-  log_Pb.header_buffer = NULL;
+  log_Pb.header_buffer = (LOG_BUFFER *) malloc (SIZEOF_LOG_BUFFER);
+  log_Pb.header_page = (LOG_PAGE *) malloc (LOG_PAGESIZE);
+  MEM_REGION_INIT (log_Pb.header_page, LOG_PAGESIZE);
+  logpb_initialize_log_buffer (log_Pb.header_buffer, log_Pb.header_page);
   if (log_Pb.data == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -948,7 +953,6 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
       if ((log_bufptr->pageid == LOGPB_HEADER_PAGE_ID || log_bufptr->pageid > NULL_PAGEID) && log_bufptr->fcnt <= 0
 	  && log_bufptr->dirty == false)
 	{
-	  log_Pb.data[MOD ((int) log_bufptr->pageid)] = NULL;
 	  logpb_initialize_log_buffer (log_bufptr, log_bufptr->logpage);
 	  logpb_reset_clock_hand (log_bufptr->ipool);
 	}
@@ -1108,7 +1112,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 {
   LOG_BUFFER *log_bufptr = NULL;	/* A log buffer */
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;	/* The corresponding physical page */
-  int rv;
+  int rv, idx;
   bool retry;
   bool is_perf_tracking;
   TSC_TICKS start_tick;
@@ -1130,19 +1134,19 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       log_Pb.fst = 1;
     }
 
-  //printf ("%d %d %d\n", log_Pb.cursor, pageid, fetch_mode==NEW_PAGE);
   if (pageid == LOGPB_HEADER_PAGE_ID)
     {
       log_bufptr = log_Pb.header_buffer;
     }
 
-  else if (fetch_mode == OLD_PAGE)
+  else
+    log_bufptr = log_Pb.pool[MOD ((int) pageid)];
+
+  if (fetch_mode == OLD_PAGE)
     {
-      log_bufptr = log_Pb.data[MOD ((int) pageid)];
-      if (log_bufptr == NULL || (log_bufptr != NULL && log_bufptr->pageid != pageid)
+      if (log_bufptr->pageid == NULL_PAGEID || (log_bufptr->pageid != NULL_PAGEID && log_bufptr->pageid != pageid)
 	  || log_Pb.cursor - PB_DATA_SIZE >= pageid)
 	{
-	  log_bufptr = logpb_replace (thread_p, &retry);
 	  log_bufptr->fcnt++;
 	  logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage);
 	  mnt_log_fetch_ioreads (thread_p);
@@ -1150,48 +1154,15 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	  phy_pageid = logpb_to_physical_pageid (pageid);
 	  log_bufptr->phy_pageid = phy_pageid;
 	  ATOMIC_INC_64 (&log_Pb.cursor, 1);
-	  log_Pb.data[MOD ((int) log_bufptr->pageid)] = log_bufptr;
-	  return (log_bufptr->logpage);
-	}
-      else
-	{
-	  return (log_bufptr->logpage);
 	}
     }
-  else
-    {
-      if (fetch_mode == NEW_PAGE)
-	{
-	  log_bufptr = log_Pb.data[MOD ((int) pageid)];
-	}
-    }
-  if (log_bufptr == NULL)
+
+  if (log_bufptr->pageid == NULL_PAGEID)
     {
       /* 
        * Page is not resident. Find a replacement buffer for it
        */
       stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-
-      while (1)
-	{
-	  log_bufptr = logpb_replace (thread_p, &retry);
-	  if (log_bufptr == NULL)
-	    {
-	      if (retry)
-		{
-		  continue;
-		}
-	      else
-		{
-		  goto error;
-		}
-	    }
-	  else
-	    {
-	      break;
-	    }
-	}
-
       assert (log_bufptr != NULL);
       if (logpb_is_dirty (thread_p, (log_bufptr->logpage)))
 	logpb_flush_page (thread_p, (log_bufptr->logpage), FREE);
@@ -1199,12 +1170,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
        * Remove the current page from the hash table and get the desired
        * page from disk when the page is an old page
        */
-      if (log_bufptr->pageid == LOGPB_HEADER_PAGE_ID)
-	log_Pb.header_buffer = NULL;
-      else if (log_bufptr->pageid != NULL_PAGEID)
-	{
-	  log_Pb.data[MOD ((int) log_bufptr->pageid)] = NULL;
-	}
+
 
       /* Fix the page and mark its pageid invalid */
       log_bufptr->pageid = NULL_PAGEID;
@@ -1233,15 +1199,6 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	{
 	  ATOMIC_INC_64 (&log_Pb.cursor, 1);
 	}
-      if (log_bufptr->pageid == LOGPB_HEADER_PAGE_ID)
-	{
-	  log_Pb.header_buffer = log_bufptr;
-	}
-      else
-	{
-	  log_Pb.data[MOD ((int) log_bufptr->pageid)] = log_bufptr;
-	}
-
     }
   else
     {
@@ -1585,9 +1542,9 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
     fprintf (out_fp, "\n\n ** DUMP OF LOG BUFFER POOL INFORMATION **\n\n");
 
     fprintf (out_fp, "\nHash table dump\n");
-    for (i = 0; i < PB_DATA_SIZE; i++)
+    for (i = 0; i < log_Pb.num_buffers; i++)
       {
-	fprintf (out_fp, "Pageid = %5lld, Address = %p\n", (long long int) i + log_Pb.cursor, (void *) log_Pb.data[i]);
+	fprintf (out_fp, "Pageid = %5lld, Address = %p\n", (long long int) i, (void *) log_Pb.pool[i]);
       }
     fprintf (out_fp, "\n\n");
 
@@ -2138,11 +2095,11 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
       }
 
     if (pageid == LOGPB_HEADER_PAGE_ID)
-      log_bufptr = NULL;
+      log_bufptr = log_Pb.header_buffer;
     else if (log_Pb.cursor - PB_DATA_SIZE < pageid)
       {
-	log_bufptr = log_Pb.data[MOD ((int) pageid)];
-	if (log_bufptr != NULL)
+	log_bufptr = log_Pb.pool[MOD ((int) pageid)];
+	if (log_bufptr->pageid != NULL_PAGEID)
 	  {
 	    if (log_bufptr->pageid != pageid)
 	      {
@@ -2154,13 +2111,13 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
       {
 	ret_pgptr = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
       }
-    if (log_bufptr != NULL)
+    if (log_bufptr->pageid != NULL_PAGEID)
       {
 	memcpy (log_pgptr, log_bufptr->logpage, LOG_PAGESIZE);
 	ret_pgptr = log_pgptr;
       }
 
-    if (log_bufptr == NULL)
+    if (log_bufptr->pageid == NULL_PAGEID)
       {
 	ret_pgptr = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
 	mnt_log_fetch_ioreads (thread_p);
@@ -2949,7 +2906,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 	bufptr = log_get_log_buffer_ptr (flush_info->toflush[i]);
 	if (pageid > bufptr->pageid)
 	  {
-	    assert_release (pageid <= bufptr->pageid);
+	    //  assert_release (pageid <= bufptr->pageid);
 	    fileio_dismount (thread_p, bg_arv_info->vdes);
 	    bg_arv_info->vdes = NULL_VOLDES;
 	    return;
