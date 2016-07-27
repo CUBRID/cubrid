@@ -20922,14 +20922,6 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	}
     }
 
-  for (i = 0; i < rep->n_attributes; i++)
-    {
-      if (attr_names[i] != NULL)
-	{
-	  free_and_init (attr_names[i]);
-	}
-    }
-
   free_and_init (out_values);
   free_and_init (attr_ids);
   free_and_init (attr_names);
