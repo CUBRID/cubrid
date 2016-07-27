@@ -11443,12 +11443,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     }
 
 cleanup:
-  if (new_ != NULL && new_ != copy_buf)
+  if (new_ != NULL && new_ != copy_buf && rc != NO_ERROR)
     {
       db_private_free_and_init (NULL, new_);
     }
 
-  if (decompressed_string != NULL)
+  if (decompressed_string != NULL && rc != NO_ERROR)
     {
       db_private_free_and_init (NULL, decompressed_string);
     }
@@ -14162,6 +14162,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 				  (size_t) decompressed_size * sizeof (char));
+			  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 			  goto cleanup;
 			}
 
@@ -14249,12 +14250,12 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
     }
 
 cleanup:
-  if (decompressed_string != NULL)
+  if (decompressed_string != NULL && rc != NO_ERROR)
     {
       db_private_free_and_init (NULL, decompressed_string);
     }
 
-  if (new_ != NULL && new_ != copy_buf)
+  if (new_ != NULL && new_ != copy_buf && rc != NO_ERROR)
     {
       db_private_free_and_init (NULL, new_);
     }
