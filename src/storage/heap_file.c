@@ -12833,6 +12833,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
   REPR_ID reprid;		/* Representation of object */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
+  OUT_OF_ROW_CONTEXT oor_context = {out_of_row_recdes, HEAPATTR_READ_OOR_FROM_HEAP };
 
   ret = heap_attrinfo_check (inst_oid, attr_info);
   if (ret != NO_ERROR)
@@ -12872,7 +12873,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
-	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, out_of_row_recdes);
+	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, &oor_context);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -12886,7 +12887,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	  db_value_clear (&value->dbvalue);
 
 	  /* read and delete old value */
-	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, out_of_row_recdes);
+	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, &oor_context);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
