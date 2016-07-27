@@ -711,6 +711,7 @@ struct out_of_row_recdes
 {
   RECDES *oor_recdes;		/* array of RECDES of out of row values */
   int *home_recdes_oid_offsets;	/* array of offsets into home record for OIDs of out of row values */
+  int *att_ids;
   int recdes_capacity;		/* allowed RECDES elements in RECDES array */
   int recdes_cnt;		/* current count of elements in RECDES array */
 

@@ -687,7 +687,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
        * 9rd arg -> data or schema, 10th arg -> max repl. log or not
        */
       success =
-	locator_update_index (NULL, rec, &oldrec, NULL, 0, obj_oid, class_oid, SINGLE_ROW_UPDATE,
+	locator_update_index (NULL, rec, &oldrec, NULL, NULL, 0, obj_oid, class_oid, SINGLE_ROW_UPDATE,
 			      (HEAP_SCANCACHE *) NULL, NULL);
     }
   else

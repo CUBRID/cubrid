@@ -3944,7 +3944,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 	}
 
       /* give up setting updated attr info */
-      if (locator_update_index (thread_p, &record, &old_record, NULL, 0, oid_p, class_oid_p, SINGLE_ROW_UPDATE,
+      if (locator_update_index (thread_p, &record, &old_record, NULL, NULL, 0, oid_p, class_oid_p, SINGLE_ROW_UPDATE,
 				scan_p, NULL) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);

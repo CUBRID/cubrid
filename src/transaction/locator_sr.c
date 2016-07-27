@@ -203,7 +203,8 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 						 FUNC_PRED_UNPACK_INFO * func_preds,
 						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
-				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
+				      RECDES * recdes, RECDES * new_recdes, OUT_OF_ROW_RECDES * out_of_row_recdes,
+				      bool * is_cached, LC_COPYAREA ** copyarea);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4305,7 +4306,8 @@ error:
  */
 static int
 locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid, RECDES * recdes,
-			   RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea)
+			   RECDES * new_recdes, OUT_OF_ROW_RECDES * out_of_row_recdes, bool * is_cached,
+			   LC_COPYAREA ** copyarea)
 {
   int num_found, i;
   HEAP_CACHE_ATTRINFO index_attrinfo;
@@ -4330,6 +4332,12 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   DB_MAKE_NULL (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
+
+  if (out_of_row_recdes != NULL)
+    {
+      oor_context.oor_mode = HEAPATTR_READ_OOR_FROM_OOR_RECDES;
+      oor_context.oor_recdes = out_of_row_recdes;
+    }
 
   num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
   if (num_found <= 0)
@@ -5384,8 +5392,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       if (has_index && !locator_Dont_check_foreign_key)
 	{
 	  error_code =
-	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, &is_cached,
-				       &cache_attr_copyarea);
+	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, NULL,
+				       &is_cached, &cache_attr_copyarea);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error1;
@@ -6124,8 +6132,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  if (scan == S_SUCCESS)
 	    {
 	      error_code =
-		locator_update_index (thread_p, recdes, oldrecdes, att_id, n_att_id, oid, class_oid, op_type,
-				      local_scan_cache, &repl_info);
+		locator_update_index (thread_p, recdes, oldrecdes, out_of_row_recdes, att_id, n_att_id, oid, class_oid,
+				      op_type, local_scan_cache, &repl_info);
 	      if (error_code != NO_ERROR)
 		{
 		  /* 
@@ -6165,8 +6173,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  if (!not_check_fk && !locator_Dont_check_foreign_key)
 	    {
 	      error_code =
-		locator_check_foreign_key (thread_p, hfid, class_oid, oid, recdes, &new_record, &is_cached,
-					   &cache_attr_copyarea);
+		locator_check_foreign_key (thread_p, hfid, class_oid, oid, recdes, &new_record, out_of_row_recdes,
+					   &is_cached, &cache_attr_copyarea);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
@@ -8487,7 +8495,8 @@ end:
  * Note: Update the index entries of the given object.
  */
 int
-locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes, ATTR_ID * att_id, int n_att_id,
+locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes,
+		      OUT_OF_ROW_RECDES * out_of_row_recdes, ATTR_ID * att_id, int n_att_id,
 		      OID * oid, OID * class_oid, int op_type, HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info)
 {
   HEAP_CACHE_ATTRINFO space_attrinfo[2];
@@ -8537,12 +8546,19 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
   int tran_index;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
+  OUT_OF_ROW_CONTEXT oor_context_old = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
+  OUT_OF_ROW_CONTEXT oor_context_new = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
 
   mvccid = MVCCID_NULL;
+
+  if (out_of_row_recdes != NULL)
+    {
+      oor_context_new.oor_mode = HEAPATTR_READ_OOR_FROM_OOR_RECDES;
+      oor_context_new.oor_recdes = out_of_row_recdes;
+    }
 
 #if defined(SERVER_MODE)
   if (!heap_is_mvcc_disabled_for_class (class_oid))
@@ -8613,12 +8629,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   old_attrinfo = &space_attrinfo[1];
 
   /* TODO[arnia] : get oor_context to use oor_recdes */
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, NULL, new_attrinfo, &oor_context);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, NULL, new_attrinfo, &oor_context_new);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, old_recdes, NULL, old_attrinfo, &oor_context);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, old_recdes, NULL, old_attrinfo, &oor_context_old);
   if (error_code != NO_ERROR)
     {
       goto error;

@@ -93,9 +93,9 @@ extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
 					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds);
-extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes, ATTR_ID * att_id,
-				 int n_att_id, OID * oid, OID * class_oid, int op_type,
-				 HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info);
+extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes,
+				 OUT_OF_ROW_RECDES * out_of_row_recdes, ATTR_ID * att_id, int n_att_id, OID * oid,
+				 OID * class_oid, int op_type, HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info);
 extern int locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, RECDES * recdes);
 extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT * pcontext, const OID * class_oid,
 							    const HFID * hfid, int op_type, bool has_function_index);

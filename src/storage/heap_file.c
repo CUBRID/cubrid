@@ -11639,7 +11639,7 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 	      DB_VALUE oid_value;
 	      HEAP_SCANCACHE local_scan_cache; 
 	      OID out_of_row_oid;
-	      RECDES out_of_row_recdes;
+	      RECDES out_of_row_recdes, *out_of_row_recdes_p = NULL;
 	      SCAN_CODE scan_code;
 	      OR_BUF out_of_row_buf;
 	      char *oor_disk_data;
@@ -11655,33 +11655,59 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		{
 		  (*(pr_type_oid->data_readval)) (&buf, &value->dbvalue, NULL, disk_length, false, NULL, 0);
 		}
-	      else if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_HEAP)
+	      else
 		{
-		  (*(pr_type_oid->data_readval)) (&buf, &oid_value, NULL, disk_length, false, NULL, 0);
-
-		  out_of_row_oid = *DB_GET_OID (&oid_value);
-
-		  heap_scancache_quick_start (&local_scan_cache);
-
-		  out_of_row_recdes.data = NULL;
-
-		  if (out_of_row_oid.slotid == NULL_SLOTID)
+		  if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_HEAP)
 		    {
-		      scan_code = heap_get_bigone_content (thread_p, &local_scan_cache, PEEK, &out_of_row_oid, &out_of_row_recdes);
+		      (*(pr_type_oid->data_readval)) (&buf, &oid_value, NULL, disk_length, false, NULL, 0);
+
+		      out_of_row_oid = *DB_GET_OID (&oid_value);
+
+		      heap_scancache_quick_start (&local_scan_cache);
+
+		      out_of_row_recdes.data = NULL;
+
+		      if (out_of_row_oid.slotid == NULL_SLOTID)
+			{
+			  scan_code = heap_get_bigone_content (thread_p, &local_scan_cache, PEEK, &out_of_row_oid, &out_of_row_recdes);
+			}
+		      else
+			{
+			  scan_code = heap_get (thread_p, &out_of_row_oid, &out_of_row_recdes, &local_scan_cache, PEEK, NULL_CHN);
+			}
+
+		      /* TODO[arnia] : scan_code check */
+		      assert (scan_code == S_SUCCESS);
+
+		      out_of_row_recdes_p = &out_of_row_recdes;
 		    }
-		  else
+		  else /* if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_HEAP) */
 		    {
-		      scan_code = heap_get (thread_p, &out_of_row_oid, &out_of_row_recdes, &local_scan_cache, PEEK, NULL_CHN);
+		      int i, oor_pos = -1;
+
+		      assert (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_OOR_RECDES);
+		      assert (oor_context->oor_recdes != NULL);
+
+		      for (i = 0; i < oor_context->oor_recdes->recdes_capacity; i++)
+			{
+			  if (oor_context->oor_recdes->att_ids[i] == value->attrid)
+			    {
+			      oor_pos = i;
+			      break;
+			    }
+			}
+
+		      assert (oor_pos != -1);
+		      out_of_row_recdes_p = &(oor_context->oor_recdes->oor_recdes[oor_pos]);
+
 		    }
 
-		  assert (scan_code == S_SUCCESS);
+		  assert (out_of_row_recdes_p != NULL);
 
-		  /* TODO[arnia] : scan_code check */
-
-		  oor_disk_data = out_of_row_recdes.data + OR_HEADER_SIZE (out_of_row_recdes.data);
+		  oor_disk_data = out_of_row_recdes_p->data + OR_HEADER_SIZE (out_of_row_recdes_p->data);
 
 		  OR_BUF_INIT2 (out_of_row_buf, oor_disk_data,
-				out_of_row_recdes.length - OR_HEADER_SIZE (out_of_row_recdes.data));
+				out_of_row_recdes_p->length - OR_HEADER_SIZE (out_of_row_recdes_p->data));
 		  out_of_row_buf.error_abort = 1;
 		  disk_length = -1;
 
@@ -11691,16 +11717,13 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		      (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length, true, NULL, 0);
 		    }
 
-		  heap_scancache_end (thread_p, &local_scan_cache);
+		  if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_HEAP)
+		    {
+		      heap_scancache_end (thread_p, &local_scan_cache);
+		    }
 		}
-	      else
-		{
-		  assert (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_OOR_RECDES);
-		  /* TODO[arnia] : which position in oor_recdes array is the attribute ? */
-		}
-
 	    }
-	  else
+	  else /* if (is_out_of_row) */
 	    {
 	      pr_type = PR_TYPE_FROM_ID (attrepr->type);
 	      if (pr_type)
@@ -11708,6 +11731,7 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		  (*(pr_type->data_readval)) (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
 		}
 	    }
+
 	  if (is_out_of_row && oor_context->oor_mode == HEAPATTR_IGNORE_OOR)
 	    {
 	      value->state = HEAP_READ_ATTRVALUE_OOR_OID;
@@ -13204,6 +13228,17 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    }
 	  memset (out_of_row_recdes->home_recdes_oid_offsets, 0,
 		  out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->home_recdes_oid_offsets[0]));
+
+
+	  out_of_row_recdes->att_ids = (int *) db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity
+								 * sizeof (out_of_row_recdes->att_ids[0]));
+	  if (out_of_row_recdes->att_ids == NULL)
+	    {
+	      /* TODO[arnia] : */
+	      return S_ERROR;
+	    }
+	  memset (out_of_row_recdes->att_ids, 0,
+		  out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->att_ids[0]));
 	}
       else
 	{
@@ -13420,6 +13455,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			  out_of_row_recdes->oor_recdes[out_of_row_recdes->recdes_cnt].area_size = overflow_col_size;
 			  out_of_row_recdes->oor_recdes[out_of_row_recdes->recdes_cnt].length =
 			    overflow_col_buf.endptr - overflow_col_buf.buffer;
+
+			  out_of_row_recdes->att_ids[out_of_row_recdes->recdes_cnt] = value->attrid;
 			  out_of_row_recdes->recdes_cnt++;
 			}
 		    }
@@ -27115,6 +27152,9 @@ heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context)
 
       db_private_free (thread_p, oor_context->home_recdes_oid_offsets);
       oor_context->home_recdes_oid_offsets = NULL;
+
+      db_private_free (thread_p, oor_context->att_ids);
+      oor_context->att_ids = NULL;
     }
 
   oor_context->recdes_cnt = 0;
