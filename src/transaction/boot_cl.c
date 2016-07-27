@@ -557,6 +557,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     {
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
     }
+  
+  perfmon_initialize (MAX_NTRANS);
   /* Initialize the disk and the server part */
   tran_index =
     boot_initialize_server (client_credential, db_path_info, db_overwrite, file_addmore_vols, npages,
@@ -700,6 +702,7 @@ error_exit:
 
       lang_final ();
       tz_unload ();
+      perfmon_finalize ();
 
 #if defined(WINDOWS)
       pc_final ();

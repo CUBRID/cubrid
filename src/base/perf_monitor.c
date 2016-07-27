@@ -93,8 +93,8 @@ struct pstat_global
   UINT64 *global_stats;
 
   int n_trans;
-  UINT64 **tran_stats;	    /* TODO: I don't see why we need to keep this... Is it relevant or ever used? , 
-			    yes it is :) */
+  UINT64 **tran_stats;	    
+			    
   bool *is_watching;
 #if !defined (HAVE_ATOMIC_BUILTINS)
   pthread_mutex_t watch_lock;

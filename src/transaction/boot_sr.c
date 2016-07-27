@@ -2669,7 +2669,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 	}
       goto exit_on_error;
     }
-
+  
   /* open the system message catalog, before prm_ ? */
   if (msgcat_init () != NO_ERROR)
     {
@@ -3100,7 +3100,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     {
       (void) os_set_signal_handler (SIGINT, old_ctrl_c_handler);
     }
-
+  
   return tran_index;
 
 exit_on_error:
