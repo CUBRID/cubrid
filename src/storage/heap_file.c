@@ -12872,7 +12872,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
-	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, NULL);
+	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, out_of_row_recdes);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -12886,7 +12886,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	  db_value_clear (&value->dbvalue);
 
 	  /* read and delete old value */
-	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, NULL);
+	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, out_of_row_recdes);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
