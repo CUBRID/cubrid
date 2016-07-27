@@ -11265,6 +11265,11 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      rc = mr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
 	      if (rc != NO_ERROR)
 		{
+		  if (string != NULL)
+		    {
+		      db_private_free_and_init (NULL, string);
+		    }
+
 		  return rc;
 		}
 	      string[decompressed_size] = '\0';
@@ -11392,6 +11397,17 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      if (rc != LZO_E_OK)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
+
+			  if (new_ != NULL && new_ != copy_buf)
+			    {
+			      db_private_free_and_init (NULL, new_);
+			    }
+
+			  if (decompressed_string != NULL)
+			    {
+			      db_private_free_and_init (NULL, decompressed_string);
+			    }
+
 			  return ER_IO_LZO_DECOMPRESS_FAIL;
 			}
 		      if (decompression_size != decompressed_size)
@@ -14030,6 +14046,11 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 
 	      if (rc != NO_ERROR)
 		{
+		  if (string != NULL)
+		    {
+		      db_private_free_and_init (NULL, string);
+		    }
+
 		  return rc;
 		}
 	      string[decompressed_size] = '\0';
@@ -14155,6 +14176,17 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      if (rc != LZO_E_OK)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
+
+			  if (decompressed_string != NULL)
+			    {
+			      db_private_free_and_init (NULL, decompressed_string);
+			    }
+
+			  if (new_ != NULL && new_ != copy_buf)
+			    {
+			      db_private_free_and_init (NULL, new_);
+			    }
+
 			  return ER_IO_LZO_DECOMPRESS_FAIL;
 			}
 
