@@ -577,7 +577,6 @@ static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int off
 static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset);
 
 static void mnt_server_calc_stats (UINT64 * stats);
-static void mnt_server_check_stats_threshold (int tran_index, UINT64 * stats);
 
 static const char *perf_stat_module_name (const int module);
 static INLINE int perf_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
@@ -599,7 +598,6 @@ bool mnt_Iscollecting_stats = false;
 
 /* Client execution statistics */
 static MNT_CLIENT_STAT_INFO mnt_Stat_info;
-static void mnt_client_reset_stats (void);
 static int mnt_calc_global_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
 				       UINT64 * old_stats);
 
@@ -842,28 +840,6 @@ error:
 	free_and_init(diff_result);
       }
     return err;
-}
-
-/*
- *   mnt_get_global_diff_stats -
- *   diff_stats(out) :
- *   return: global statistics
- */
-int
-mnt_get_global_diff_stats (UINT64 * diff_stats)
-{
-  if (mnt_Iscollecting_stats != true || !diff_stats)
-    {
-      return ER_FAILED;
-    }
-
-  if (mnt_get_global_stats () == NO_ERROR)
-    {
-      return mnt_calc_global_diff_stats (diff_stats, mnt_Stat_info.current_global_stats,
-					 mnt_Stat_info.old_global_stats);
-    }
-
-  return ER_FAILED;
 }
 
 /*
@@ -1972,18 +1948,6 @@ set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype, c
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 
-#if defined(SERVER_MODE) && defined(HAVE_ATOMIC_BUILTINS) \
-    && (defined (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402))
-#define ATOMIC_TAS(A,VAL)   ATOMIC_TAS_64(&(A),(VAL))
-#define ATOMIC_INC(A,VAL)   ATOMIC_INC_64(&(A),(VAL))
-#else /* SERVER_MODE && HAVE_ATOMIC_BUILTINS */
-#define ATOMIC_TAS(A,VAL)          (A)=(VAL)
-#define ATOMIC_INC(A,VAL)          (A)+=(VAL)
-#if defined (SERVER_MODE)
-pthread_mutex_t mnt_Num_tran_stats_lock = PTHREAD_MUTEX_INITIALIZER;
-#endif
-#endif /* SERVER_MODE && HAVE_ATOMIC_BUILTINS && (WINDOWS) || (__WORDSIZE == 64) || (GCC_VERSION > 40402)) */
-
 /*
  * xmnt_server_is_stats_on - Is collecting server execution statistics
  *                           for the current transaction index
@@ -2026,35 +1990,6 @@ mnt_server_get_stats (THREAD_ENTRY * thread_p)
 }
 
 /*
- * mnt_server_check_stats_threshold -
- */
-static void
-mnt_server_check_stats_threshold (int tran_index, UINT64 * stats)
-{
-  int i, size;
-  UINT64 *stats_ptr;
-  int *prm_ptr;
-
-  if (prm_get_integer_list_value (PRM_ID_MNT_STATS_THRESHOLD))
-    {
-      size = (unsigned int) prm_get_integer_list_value (PRM_ID_MNT_STATS_THRESHOLD)[0];
-      size = MIN (size, pstat_Global.n_single_stats - pstat_Global.n_calc_stats);
-      stats_ptr = stats;
-      prm_ptr = (int *) &prm_get_integer_list_value (PRM_ID_MNT_STATS_THRESHOLD)[1];
-
-      for (i = 0; i < size; i++)
-	{
-	  if (*prm_ptr > 0 && (unsigned int) *prm_ptr < *stats_ptr)
-	    {
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_STATS_THRESHOLD, 2, tran_index,
-		      pstat_Metadata[i].stat_name);
-	    }
-	  stats_ptr++, prm_ptr++;
-	}
-    }
-}
-
-/*
  * xmnt_server_copy_stats - Copy recorded server statistics for the current
  *                          transaction index
  *   return: none
@@ -2094,31 +2029,6 @@ xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
       mnt_server_calc_stats (to_stats);
     }
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * enclosing_method - Print server statistics for current transaction index
- *   return: none
- *   stream(in): if NULL is given, stdout is used
- */
-void
-mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream)
-{
-  UINT64 *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  stats = mnt_server_get_stats (thread_p);
-  if (stats == NULL)
-    {
-      return;
-    }
-  rv = pthread_mutex_lock (&stats->lock);
-  mnt_server_dump_stats (stats, stream);
-  pthread_mutex_unlock (&stats->lock);
-}
-#endif
 
 UINT64
 mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)

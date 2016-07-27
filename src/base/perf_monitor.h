@@ -654,7 +654,6 @@ extern int mnt_print_stats (FILE * stream);
 extern int mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr);
 extern int mnt_get_stats (void);
 extern int mnt_get_global_stats (void);
-extern int mnt_get_global_diff_stats (UINT64 * diff_stats);
 #endif /* CS_MODE || SA_MODE */
 
 #if defined (DIAG_DEVEL)
@@ -901,9 +900,6 @@ struct perf_utime_tracker
 
           extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
-          #if defined(ENABLE_UNUSED_FUNCTION)
-          extern void mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream);
-          #endif
           extern void mnt_x_set_value_to_statistic (THREAD_ENTRY * thread_p, const int value, const int statistic_id);
           extern UINT64 mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
           extern void mnt_x_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id);
