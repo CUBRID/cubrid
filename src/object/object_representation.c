@@ -1297,6 +1297,14 @@ or_varchar_length_internal (int charlen, int align)
     }
   else
     {
+      /* 
+       * Regarding the new encoding for VARCHAR and VARNCHAR, the strings stored in buffers have this representation:
+       * 1               : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
+       *                 : Otherwise, the first byte states the length of the string.
+       * 1st OR_INT_SIZE : string's compressed length
+       * 2nd OR_INT_SIZE : string's decompressed length
+       * charlen         : string's disk length
+       */
       len = 1 + OR_INT_SIZE + OR_INT_SIZE + charlen;
     }
 
