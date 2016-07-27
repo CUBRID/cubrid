@@ -16197,7 +16197,7 @@ mr_get_compression_length (char *string, int charlen)
 
   length = charlen;
 
-  wrkmem = (lzo_voidp) db_private_alloc (NULL, LZO1X_1_MEM_COMPRESS);
+  wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
@@ -16208,7 +16208,7 @@ mr_get_compression_length (char *string, int charlen)
 
   /* Alloc memory for the compressed string */
   /* Worst case LZO compression size from their FAQ */
-  compressed_string = db_private_alloc (NULL, length + (length / 16) + 64 + 3);
+  compressed_string = malloc (length + (length / 16) + 64 + 3);
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -16245,12 +16245,12 @@ cleanup:
   /* Free the working memory needed for compression */
   if (wrkmem != NULL)
     {
-      db_private_free_and_init (NULL, wrkmem);
+      free_and_init (wrkmem);
     }
 
   if (compressed_string != NULL)
     {
-      db_private_free_and_init (NULL, compressed_string);
+      free_and_init (compressed_string);
     }
 
   return length;
