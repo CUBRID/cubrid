@@ -11515,6 +11515,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
 	  goto cleanup;
 	}
+
       alloced_string1 = true;
 
       rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
