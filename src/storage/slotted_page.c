@@ -60,7 +60,8 @@ static int rv;
 
 static PGLENGTH spage_User_page_size;
 
-#define SPAGE_DB_PAGESIZE (spage_User_page_size != 0 ? spage_User_page_size : db_page_size ())
+#define SPAGE_DB_PAGESIZE \
+  (spage_User_page_size != 0 ? assert (spage_User_page_size == db_page_size ()), spage_User_page_size : db_page_size ())
 
 #define SPAGE_VERIFY_HEADER(sphdr) 				\
   do {								\

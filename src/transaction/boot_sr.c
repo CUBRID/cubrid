@@ -3437,17 +3437,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = heap_manager_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
   /* 
    * How to restart the system ?
    */
@@ -3467,6 +3456,17 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	{
 	  goto error;
 	}
+    }
+
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = heap_manager_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
     }
 
   /* 
