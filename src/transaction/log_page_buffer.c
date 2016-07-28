@@ -1121,7 +1121,8 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   /* New page */
 
 
-  assert (log_bufptr->pageid < pageid);
+  if (pageid != LOGPB_HEADER_PAGE_ID)
+    assert (log_bufptr->pageid < pageid);
 
   if (logpb_is_dirty (thread_p, (log_bufptr->logpage)))
     logpb_flush_page (thread_p, (log_bufptr->logpage), FREE);
