@@ -2038,7 +2038,11 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 	/* copy header page into log_pgptr */
 	log_bufptr = log_Pb.header_buffer;
 	if (log_bufptr->pageid == NULL_PAGEID)
-	  ret_pgptr = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+	  {
+	    ret_pgptr = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+	    mnt_log_fetch_ioreads (thread_p);
+	    stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	  }
 	else
 	  {
 	    memcpy (log_pgptr, log_bufptr->logpage, LOG_PAGESIZE);
@@ -2064,12 +2068,14 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 
     /* Could not get from log page buffer cache */
     ret_pgptr = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+    mnt_log_fetch_ioreads (thread_p);
+    stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
     if (ret_pgptr == NULL)
       {
 	/* handle error */
 	return NULL;
       }
-    mnt_log_fetch_ioreads (thread_p);
+
     /* Copy from ret_pgptr to log_pgptr */
 
 
@@ -2102,13 +2108,14 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
        stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
        }
      */
+
+
+    /* Always exit through here */
+  exit:
     if (log_csect_entered)
       {
 	LOG_CS_EXIT (thread_p);
       }
-
-    /* Always exit through here */
-  exit:
     mnt_log_fetches (thread_p);
 
     if (is_perf_tracking)
