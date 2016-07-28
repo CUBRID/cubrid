@@ -164,6 +164,8 @@ struct pstat_metadata
 #define PSTAT_METADATA_INIT_COMPLEX(id, name, f_dump_in_file, f_dump_in_buffer, f_load) \
   { id, name, PSTAT_COMPLEX_VALUE, 0, 0, f_dump_in_file, f_dump_in_buffer, f_load }
 
+#define PERFMON_VALUES_MEMSIZE (pstat_Global.n_stat_values * sizeof (UINT64))
+
 static int f_load_Num_data_page_fix_ext (void);
 static int f_load_Num_data_page_promote_ext (void);
 static int f_load_Num_data_page_promote_time_ext (void);
@@ -609,9 +611,7 @@ int
 mnt_start_stats (bool for_all_trans)
 {
   int err = NO_ERROR;
-  int nr_statistic_values;
-
-  nr_statistic_values = get_number_of_statistic_values();
+  
   mnt_Stat_info.old_global_stats = NULL;
   mnt_Stat_info.current_global_stats = NULL;
   mnt_Stat_info.base_server_stats = NULL;
@@ -630,47 +630,43 @@ mnt_start_stats (bool for_all_trans)
 
 	  if (for_all_trans)
 	    {
-	      mnt_Stat_info.old_global_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+	      mnt_Stat_info.old_global_stats = perfmon_allocate_values();
 	      if(mnt_Stat_info.old_global_stats == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
 		  err = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto error;
 		}
-	      mnt_Stat_info.current_global_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+	      mnt_Stat_info.current_global_stats = perfmon_allocate_values();
 
 	      if(mnt_Stat_info.current_global_stats == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
 		  err = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto error;
 		}
 
 	      if(mnt_get_global_stats () == NO_ERROR)
 		{
-		  memcpy(mnt_Stat_info.old_global_stats, mnt_Stat_info.current_global_stats, nr_statistic_values * sizeof(UINT64));
+		  perfmon_copy_values(mnt_Stat_info.old_global_stats, mnt_Stat_info.current_global_stats);
 		}
 	    }
 	  else
 	    {
-	      mnt_Stat_info.base_server_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+	      mnt_Stat_info.base_server_stats = perfmon_allocate_values();
 	      if(mnt_Stat_info.base_server_stats == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
 		  err = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto error;
 		}
-	      mnt_Stat_info.current_server_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+	      mnt_Stat_info.current_server_stats = perfmon_allocate_values();
 	      if(mnt_Stat_info.current_server_stats == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
 		  err = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto error;
 		}
 
 	      if(mnt_get_stats () == NO_ERROR)
 		{
-		  memcpy(mnt_Stat_info.base_server_stats, mnt_Stat_info.current_server_stats, nr_statistic_values * sizeof(UINT64));
+		  perfmon_copy_values(mnt_Stat_info.base_server_stats, mnt_Stat_info.current_server_stats);
 		}
 	    }
 	}
@@ -722,10 +718,6 @@ mnt_stop_stats (void)
 void
 mnt_reset_stats (void)
 {
-  int nr_statistic_values;
-
-  nr_statistic_values = get_number_of_statistic_values();
-
   if (mnt_Iscollecting_stats != false)
     {
       mnt_get_current_times (&mnt_Stat_info.cpu_start_usr_time, &mnt_Stat_info.cpu_start_sys_time,
@@ -733,7 +725,7 @@ mnt_reset_stats (void)
 
       if(mnt_get_stats () == NO_ERROR)
 	{
-	  memcpy(mnt_Stat_info.base_server_stats, mnt_Stat_info.current_server_stats, nr_statistic_values * sizeof(UINT64));
+	  perfmon_copy_values(mnt_Stat_info.base_server_stats, mnt_Stat_info.current_server_stats);
 	}
     }
 }
@@ -792,7 +784,6 @@ mnt_print_stats (FILE * stream)
   time_t cpu_total_sys_time;
   time_t elapsed_total_time;
   UINT64* diff_result = NULL;
-  int nr_statistic_values;
   int err = NO_ERROR;
 
   if (mnt_Iscollecting_stats != true)
@@ -800,12 +791,10 @@ mnt_print_stats (FILE * stream)
       return err;
     }
   
-  nr_statistic_values = get_number_of_statistic_values();
-  diff_result = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  diff_result = perfmon_allocate_values();
 
   if(diff_result == NULL)
     {
-       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
        err = ER_OUT_OF_VIRTUAL_MEMORY;
        goto error;
     }
@@ -851,7 +840,6 @@ int
 mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 {
   UINT64 *diff_result;
-  int nr_statistic_values;
   int err = NO_ERROR;
 
   if (stream == NULL)
@@ -859,12 +847,10 @@ mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr)
       stream = stdout;
     }
 
-  nr_statistic_values = get_number_of_statistic_values();
-  diff_result = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  diff_result = perfmon_allocate_values();
 
   if(diff_result == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -1999,15 +1985,13 @@ void
 xmnt_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
 {
   UINT64 *from_stats;
-  int nr_statistic_values;
-
-  nr_statistic_values = get_number_of_statistic_values();
+  
   from_stats = mnt_server_get_stats (thread_p);
 
   if (from_stats != NULL)
     {
       mnt_server_calc_stats (from_stats);
-      memcpy(to_stats, from_stats, nr_statistic_values * sizeof(UINT64));
+      perfmon_copy_values (to_stats, from_stats);
     }
 }
 
@@ -2019,13 +2003,9 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
 void
 xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
 {
-  int nr_statistic_values;
-
-  nr_statistic_values = get_number_of_statistic_values();
-
   if (to_stats)
     {
-      memcpy(to_stats, pstat_Global.global_stats, nr_statistic_values * sizeof(UINT64));
+      perfmon_copy_values (to_stats, pstat_Global.global_stats);
       mnt_server_calc_stats (to_stats);
     }
 }
@@ -3971,18 +3951,16 @@ perfmon_initialize (int num_trans)
 #endif /* !HAVE_ATOMIC_BUILTINS */
 
   /* Allocate global stats. */
-  memsize = pstat_Global.n_stat_values * sizeof (UINT64);
-  pstat_Global.global_stats = (UINT64 *) malloc (memsize);
+  pstat_Global.global_stats = (UINT64 *) malloc (PERFMON_VALUES_MEMSIZE);
   if (pstat_Global.global_stats == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
       goto error;
     }
-  memset (pstat_Global.global_stats, 0, memsize);
+  memset (pstat_Global.global_stats, 0, PERFMON_VALUES_MEMSIZE);
 
   if (num_trans > 0)
     {
-      /* TODO: Do we still need this? */
       pstat_Global.n_trans = num_trans;
       memsize = pstat_Global.n_trans * sizeof (UINT64 *);
       pstat_Global.tran_stats = (UINT64 **) malloc (memsize);
@@ -3991,7 +3969,7 @@ perfmon_initialize (int num_trans)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
 	  goto error;
 	}
-      memsize = pstat_Global.n_trans * pstat_Global.n_stat_values * sizeof (INT64);
+      memsize = pstat_Global.n_trans * PERFMON_VALUES_MEMSIZE;
       pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
       if (pstat_Global.tran_stats[0] == NULL)
 	{
@@ -3999,7 +3977,7 @@ perfmon_initialize (int num_trans)
 	  goto error;
 	}
       memset (pstat_Global.tran_stats[0], 0, memsize);
-      memsize = pstat_Global.n_stat_values * sizeof (UINT64);
+      memsize = PERFMON_VALUES_MEMSIZE;
       for (idx = 1; idx < pstat_Global.n_trans; idx++)
 	{
 	  pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + memsize * idx;
@@ -4098,7 +4076,7 @@ xperfmon_start_watch (THREAD_ENTRY * thread_p)
   pthread_mutex_unlock (&pstat_Global.watch_lock);
 #endif /* !HAVE_ATOMIC_BUILTINS */
 
-  memset (pstat_Global.tran_stats[tran_index], 0, pstat_Global.n_stat_values * sizeof (UINT64));
+  memset (pstat_Global.tran_stats[tran_index], 0, PERFMON_VALUES_MEMSIZE);
   pstat_Global.is_watching[tran_index] = true;
 }
 
@@ -4640,4 +4618,35 @@ void f_dump_in_buffer_Count_get_oldest_mvcc_retry (char * s, const UINT64 * stat
 int get_number_of_statistic_values()
 {
   return pstat_Global.n_stat_values;
+}
+
+UINT64* perfmon_allocate_values(void)
+{
+  UINT64* vals;
+
+  vals = (UINT64 *) malloc (PERFMON_VALUES_MEMSIZE);
+  if(vals == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+    }
+
+  return vals;
+}
+
+char* perfmon_allocate_packed_values_buffer(void)
+{
+  char* buf;
+
+  buf = (char *) malloc(PERFMON_VALUES_MEMSIZE + MAX_ALIGNMENT);
+  if(buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE + MAX_ALIGNMENT);
+    }
+
+  return buf;
+}
+
+void perfmon_copy_values(UINT64* dest, UINT64* src)
+{
+  memcpy (dest, src, PERFMON_VALUES_MEMSIZE);
 }

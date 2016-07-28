@@ -5281,35 +5281,30 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   int error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
   bool tran_abort = false;
-  int nr_statistic_values;
   
   EXECUTION_INFO info = { NULL, NULL, NULL };
 
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
-  nr_statistic_values = get_number_of_statistic_values();
-
-  base_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  
+  base_stats = perfmon_allocate_values();
   if(base_stats == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
-  current_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  current_stats = perfmon_allocate_values();
   if(current_stats == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
       css_send_abort_to_client (thread_p->conn_entry, rid);
       free_and_init (base_stats);
       return;
     }
 
-  diff_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  diff_stats = perfmon_allocate_values();
   if(diff_stats == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
       css_send_abort_to_client (thread_p->conn_entry, rid);
       free_and_init (base_stats);
       free_and_init (current_stats);
@@ -6435,7 +6430,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   UINT64* stats = NULL;
 
   nr_statistic_values = get_number_of_statistic_values ();
-  stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  stats = perfmon_allocate_values();
   
   if(stats == NULL)
     {
@@ -6443,7 +6438,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  reply = (char *) malloc(nr_statistic_values * sizeof(UINT64) + MAX_ALIGNMENT);
+  reply = perfmon_allocate_packed_values_buffer();
   if(reply == NULL)
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -6478,16 +6473,14 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
   UINT64* stats = NULL;
 
   nr_statistic_values = get_number_of_statistic_values();
-  stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
-
+  stats = perfmon_allocate_values();
   if(stats == NULL)
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
 
-  reply = (char *) malloc(nr_statistic_values * sizeof(UINT64) + MAX_ALIGNMENT);
-
+  reply = perfmon_allocate_packed_values_buffer();
   if(reply == NULL)
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);

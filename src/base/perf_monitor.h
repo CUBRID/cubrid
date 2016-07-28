@@ -618,6 +618,9 @@ extern int mnt_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
 extern int get_number_of_statistic_values();
+extern UINT64* perfmon_allocate_values(void);
+extern char* perfmon_allocate_packed_values_buffer(void);
+extern void perfmon_copy_values(UINT64* src, UINT64* dest);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void xperfmon_start_watch (THREAD_ENTRY * thread_p);
