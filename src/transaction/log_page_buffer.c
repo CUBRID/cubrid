@@ -111,7 +111,7 @@ static int rv;
 
 #define LOGPB_RMUTEX_LOG_PB (&logpb_Rmutex_log_pb)
 #define LOGPB_RMUTEX_LOG_PB_NAME "LOGPB_RMUTEX_LOG_PB"
-#define PB_DATA_SIZE log_Pb.num_buffers
+#define PB_DATA_SIZE 65536
 
 #define LOGPB_FIND_BUFPTR(bufid) log_Pb.pool[(bufid)]
 #define LOGPB_FIND_NBUFFER_FROM_CONT_BUFFERS(setbufs, nbuf) \
@@ -440,7 +440,7 @@ logpb_reset_clock_hand (int buffer_index)
 int
 MOD (int x)
 {
-  return x % log_Pb.num_buffers;
+  return x % PB_DATA_SIZE;
 }
 
 LOG_BUFFER *
@@ -754,7 +754,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   /* 
    * Create an area to keep the number of desired buffers
    */
-  error_code = logpb_expand_pool (thread_p, -1);
+  error_code = logpb_expand_pool (thread_p, PB_DATA_SIZE);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1050,7 +1050,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
        */
 
       /* we are in critical section here, we don't need mutex */
-      error_code = logpb_expand_pool (thread_p, -1);
+      error_code = logpb_expand_pool (thread_p, PB_DATA_SIZE);
 
       if (error_code != NO_ERROR)
 	{
@@ -1144,8 +1144,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 
   if (fetch_mode == OLD_PAGE)
     {
-      if (log_bufptr->pageid == NULL_PAGEID || (log_bufptr->pageid != NULL_PAGEID && log_bufptr->pageid != pageid)
-	  || log_Pb.cursor - PB_DATA_SIZE >= pageid)
+      if (log_bufptr->pageid == NULL_PAGEID)
 	{
 	  log_bufptr->fcnt++;
 	  logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage);
@@ -1154,7 +1153,10 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	  phy_pageid = logpb_to_physical_pageid (pageid);
 	  log_bufptr->phy_pageid = phy_pageid;
 	  ATOMIC_INC_64 (&log_Pb.cursor, 1);
+	  return (log_bufptr->logpage);
 	}
+      else
+	return (log_bufptr->logpage);
     }
 
   if (log_bufptr->pageid == NULL_PAGEID)
@@ -2906,7 +2908,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 	bufptr = log_get_log_buffer_ptr (flush_info->toflush[i]);
 	if (pageid > bufptr->pageid)
 	  {
-	    //  assert_release (pageid <= bufptr->pageid);
+	    assert_release (pageid <= bufptr->pageid);
 	    fileio_dismount (thread_p, bg_arv_info->vdes);
 	    bg_arv_info->vdes = NULL_VOLDES;
 	    return;
