@@ -86,10 +86,7 @@ typedef struct pstat_global PSTAT_GLOBAL;
 struct pstat_global
 {
   int n_stat_values;
-  int n_single_stats;
-  int n_calc_stats;
-  int n_array_stats;
-
+  
   UINT64 *global_stats;
 
   int n_trans;
@@ -557,21 +554,21 @@ PSTAT_METADATA pstat_Metadata[] = {
 #define MNT_CALC_STATS(RES, NEW, OLD, DIFF_METHOD)							      \
   do {													      \
     int i = 0;												      \
-    for (i = 0; i < pstat_Global.n_single_stats; i++)							      \
+    for (i = 0; i < PSTAT_COUNT; i++)									      \
       {													      \
-	if ((pstat_Metadata[i].valtype != PSTAT_PEEK_SINGLE_VALUE) || (i == PSTAT_PB_AVOID_VICTIM_CNT))	      \
+	if ((pstat_Metadata[i].valtype != PSTAT_PEEK_SINGLE_VALUE && pstat_Metadata[i].valtype != PSTAT_COMPLEX_VALUE) || (i == PSTAT_PB_AVOID_VICTIM_CNT))	      \
 	  {												      \
 	    DIFF_METHOD (RES, NEW, OLD, i);								      \
 	  }												      \
-	else												      \
+	else if(pstat_Metadata[i].valtype != PSTAT_COMPLEX_VALUE)					      \
 	  {												      \
 	    PUT_STAT (RES, NEW, i);									      \
 	  }												      \
-      }													      \
-      for(i = pstat_Global.n_single_stats;i < pstat_Global.n_single_stats + pstat_Global.n_array_stats;i++)   \
+	else												      \
 	{												      \
 	  DIFF_METHOD##_ARRAY ( RES, NEW, OLD, i, pstat_Metadata[i].f_load());				      \
 	}												      \
+    }													      \
     } while (0)
 
 static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, int offset);
@@ -2018,7 +2015,8 @@ mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      return stats[statistic_id];
+      int offset = pstat_Metadata[statistic_id].start_offset;
+      return stats[offset];
     }
 
   return 0;
@@ -2093,12 +2091,28 @@ mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
   if (stats != NULL)
     {
       stats_ptr = (UINT64 *) stats;
-      for (i = 0; i < pstat_Global.n_single_stats - pstat_Global.n_calc_stats; i++)
+      for (i = 0; i < PSTAT_COUNT; i++)
 	{
 	  if (strcmp (pstat_Metadata[i].stat_name, stat_name) == 0)
 	    {
-	      copied = stats_ptr[i];
-	      stats_ptr[i] = 0;
+	      int offset = pstat_Metadata[i].start_offset;
+
+	      switch(pstat_Metadata[i].valtype)
+		{
+		  case PSTAT_ACCUMULATE_SINGLE_VALUE:
+		  case PSTAT_PEEK_SINGLE_VALUE:
+		  case PSTAT_COMPUTED_RATIO_VALUE:
+		    copied = stats_ptr[offset];
+		    break;
+		  case PSTAT_COUNTER_TIMER_VALUE:
+		    copied = stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)];
+		    break;
+		  case PSTAT_COMPLEX_VALUE:
+		  default:
+		    assert(false);
+		    break;
+		}
+	      stats_ptr[offset] = 0;
 	      return copied;
 	    }
 	}
@@ -2356,8 +2370,7 @@ mnt_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_siz
   int remained_size;
   const char *s;
   char *p;
-  bool computed_stats;
-
+  
   if (buffer == NULL || buf_size <= 0)
     {
       return;
@@ -2375,22 +2388,14 @@ mnt_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_siz
     }
 
   stats_ptr = (UINT64 *) stats;
-  for (i = 0; i < pstat_Global.n_single_stats; i++)
+  for (i = 0; i < PSTAT_COUNT; i++)
     {
-      if (i == pstat_Global.n_single_stats - pstat_Global.n_calc_stats)
+      if(pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
 	{
-	  ret = snprintf (p, remained_size, "\n *** OTHER STATISTICS *** \n");
-	  remained_size -= ret;
-
-	  if (remained_size <= 0)
-	    {
-	      return;
-	    }
+	  break;
 	}
 
-      computed_stats = (i < pstat_Global.n_single_stats -  pstat_Global.n_calc_stats) ? false : true;
-
-      if (substr != NULL && computed_stats == false)
+      if (substr != NULL && (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE))
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
 	}
@@ -2401,14 +2406,24 @@ mnt_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_siz
 
       if (s)
 	{
-	  if (computed_stats == false)
+	  int offset = pstat_Metadata[i].start_offset;
+
+	  if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
 	    {
-	      ret =
-		snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[i]);
+	      if(pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
+		{
+		  ret =
+		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[offset]);
+		}
+	      else
+		{
+		  ret = 
+		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)]);
+		}
 	    }
 	  else
 	    {
-	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name, (float) stats_ptr[i] / 100);
+	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name, (float) stats_ptr[offset] / 100);
 	    }
 	  remained_size -= ret;
 	  p += ret;
@@ -2419,7 +2434,7 @@ mnt_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_siz
 	}
     }
 
-  for (i = pstat_Global.n_single_stats; i < pstat_Global.n_single_stats + pstat_Global.n_array_stats  && remained_size > 0; i++)
+  while (i < PSTAT_COUNT  && remained_size > 0)
     {
       if (substr != NULL)
 	{
@@ -2441,6 +2456,7 @@ mnt_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_siz
 	  return;
 	}
        pstat_Metadata[i].f_dump_in_buffer (p, &(stats[pstat_Metadata[i].start_offset]), &remained_size);
+       i++;
     }
 
   buffer[buf_size - 1] = '\0';
@@ -2458,8 +2474,7 @@ mnt_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr)
   int i;
   UINT64 *stats_ptr;
   const char *s;
-  bool computed_stats;
-
+  
   if (stream == NULL)
     {
       stream = stdout;
@@ -2468,16 +2483,14 @@ mnt_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr)
   fprintf (stream, "\n *** SERVER EXECUTION STATISTICS *** \n");
 
   stats_ptr = (UINT64 *) stats;
-  for (i = 0; i < pstat_Global.n_single_stats; i++)
+  for (i = 0; i < PSTAT_COUNT; i++)
     {
-      if (i == pstat_Global.n_single_stats - pstat_Global.n_calc_stats)
+      if(pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
 	{
-	  fprintf (stream, "\n *** OTHER STATISTICS *** \n");
+	  break;
 	}
 
-      computed_stats = (i < pstat_Global.n_single_stats - pstat_Global.n_calc_stats) ? false : true;
-
-      if (substr != NULL && computed_stats == false)
+      if (substr != NULL && (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE))
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
 	}
@@ -2488,18 +2501,27 @@ mnt_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr)
 
       if (s)
 	{
-	  if (computed_stats == false)
+	  int offset = pstat_Metadata[i].start_offset;
+
+	  if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
 	    {
-	      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[i]);
+	      if(pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
+		{
+		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[offset]);
+		}
+	      else
+		{
+		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)]);
+		} 
 	    }
 	  else
 	    {
-	      fprintf (stream, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name, (float) stats_ptr[i] / 100);
+	      fprintf (stream, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name, (float) stats_ptr[offset] / 100);
 	    }
 	}
     }
 
-  for (i = pstat_Global.n_single_stats; i < pstat_Global.n_single_stats + pstat_Global.n_array_stats; i++)
+  while (i < PSTAT_COUNT)
     {
       if (substr != NULL)
 	{
@@ -2516,6 +2538,7 @@ mnt_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr)
 
       fprintf (stream, "%s:\n", pstat_Metadata[i].stat_name);
       pstat_Metadata[i].f_dump_in_file (stream, &(stats[pstat_Metadata[i].start_offset]));
+      i++;
     }
 }
 
@@ -3889,9 +3912,6 @@ perfmon_initialize (int num_trans)
   int memsize = 0;
 
   pstat_Global.n_stat_values = 0;
-  pstat_Global.n_single_stats = 0;
-  pstat_Global.n_array_stats = 0;
-  pstat_Global.n_calc_stats = 0;
   pstat_Global.global_stats = NULL;
   pstat_Global.n_trans = 0;
   pstat_Global.tran_stats = NULL;
@@ -3908,13 +3928,10 @@ perfmon_initialize (int num_trans)
 	case PSTAT_PEEK_SINGLE_VALUE:
 	  /* Only one value stored. */
 	  pstat_Metadata[idx].n_vals = 1;
-	  pstat_Global.n_single_stats++;
 	  break;
 	case PSTAT_COMPUTED_RATIO_VALUE:
 	  /* Only one value stored. */
 	  pstat_Metadata[idx].n_vals = 1;
-	  pstat_Global.n_single_stats++;
-	  pstat_Global.n_calc_stats++;
 	  break;
 	case PSTAT_COUNTER_TIMER_VALUE:
 	  /* We have:
@@ -3924,10 +3941,8 @@ perfmon_initialize (int num_trans)
 	   * 4. average time
 	   */
 	  pstat_Metadata[idx].n_vals = 4;
-	  pstat_Global.n_single_stats++;
 	  break;
 	case PSTAT_COMPLEX_VALUE:
-	  pstat_Global.n_array_stats++;
 	  /* We should have a load function. */
 	  assert (pstat_Metadata[idx].f_load != NULL);
 	  pstat_Metadata[idx].n_vals = pstat_Metadata[idx].f_load ();
