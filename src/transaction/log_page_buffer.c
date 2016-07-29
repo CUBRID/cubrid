@@ -113,7 +113,7 @@ static int rv;
 #define LOGPB_RMUTEX_LOG_PB_NAME "LOGPB_RMUTEX_LOG_PB"
 #define PB_DATA_SIZE 65536
 
-#define LOGPB_FIND_BUFPTR(bufid) log_Pb.pool[(bufid)]
+#define LOGPB_FIND_BUFPTR(bufid) log_Pb.buffers[(bufid)]
 #define LOGPB_FIND_NBUFFER_FROM_CONT_BUFFERS(setbufs, nbuf) \
   ((LOG_BUFFER *) ((SIZEOF_LOG_BUFFER * (nbuf)) + (char *)(setbufs)))
 
@@ -242,8 +242,8 @@ struct log_bufarea
 typedef struct log_pb_global_data LOG_PB_GLOBAL_DATA;
 struct log_pb_global_data
 {
-  LOG_BUFFER **pool;		/* Log buffer pool */
-  LOG_BUFFER **data;
+  LOG_BUFFER **buffers;		/* Log buffer pool */
+  LOG_PAGE **pages_area;
   volatile long long cursor;
 
   LOG_BUFFER *header_buffer;
@@ -287,7 +287,7 @@ int log_default_input_for_archive_log_location = -1;
 #endif
 
 LOG_PB_GLOBAL_DATA log_Pb = { NULL, NULL, 0, NULL, NULL, 0, 0, 0 };
-LOG_PAGE **global_pages;
+
 
 LOG_LOGGING_STAT log_Stat;
 static ARV_LOG_PAGE_INFO_TABLE logpb_Arv_page_info_table;
@@ -306,8 +306,6 @@ LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
  * Functions
  */
 
-static int logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers);
-static LOG_BUFFER *logpb_replace (THREAD_ENTRY * thread_p, bool * retry);
 static LOG_PAGE *logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetch_mode);
 static bool logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 #if !defined(NDEBUG)
@@ -447,15 +445,11 @@ LOG_BUFFER *
 log_get_log_buffer_ptr (LOG_PAGE * log_pg)
 {
 
-  long long idx = ((long long) log_pg - (long long) global_pages[0]);
+  long long idx = ((long long) log_pg - (long long) log_Pb.pages_area[0]);
   if (log_pg == log_Pb.header_page)
     return log_Pb.header_buffer;
-
-  idx /= ((long long) global_pages[1] - (long long) global_pages[0]);
-  //  printf ("%p %p %d\n",  log_pg, global_pages, idx);
-  // printf ("%d %d\n", idx, log_Pb.cursor);
-  // printf ("%p %p\n", log_Pb.pool[idx]->logpage, log_pg);
-  return log_Pb.pool[idx];
+  idx /= ((long long) log_Pb.pages_area[1] - (long long) log_Pb.pages_area[0]);
+  return log_Pb.buffers[idx];
 }
 
 /*
@@ -526,110 +520,10 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
    * not in debugging mode.
    */
   log_buffer_p->logpage = log_pg;
-//  MEM_REGION_INIT (log_buffer_p->logpage, LOG_PAGESIZE);
   log_buffer_p->logpage->hdr.logical_pageid = NULL_PAGEID;
   log_buffer_p->logpage->hdr.offset = NULL_OFFSET;
 }
 
-/*
- * logpb_expand_pool - Expand log buffer pool
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- *   num_new_buffers(in): Number of new buffers (expansion) or -1.
- *
- * NOTE:Expand the log buffer pool with the given number of buffers.
- *              If a zero or a negative value is given, the function expands
- *              the buffer pool with a default percentage of the current size.
- */
-static int
-logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
-{
-  LOG_BUFFER *log_bufptr;	/* Pointer to array of buffers */
-  LOG_BUFAREA *area;		/* Contiguous area for buffers */
-  LOG_PAGE *new_log_pages;
-  int bufid, i;			/* Buffer index */
-  int total_buffers;		/* Total num buffers */
-  int size;			/* Size of area to allocate */
-
-  LOG_BUFFER **buffer_pool;
-  int error_code = NO_ERROR;
-  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
-
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-
-
-
-  if (log_Pb.pool != NULL)
-    return NO_ERROR;
-  if (num_new_buffers > 0)
-    {
-      log_Pb.num_buffers = 0;
-      total_buffers = log_Pb.num_buffers + num_new_buffers;
-
-      /* 
-       * Allocate an area for the buffers, set the address of each buffer
-       * and keep the address of the buffer area for deallocation purposes at a
-       * later time.
-       */
-      size = ((num_new_buffers * SIZEOF_LOG_BUFFER) + sizeof (LOG_BUFAREA));
-
-      area = (LOG_BUFAREA *) malloc (size);
-      if (area == NULL)
-	{
-
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      /* allocate a pointer array to point to each buffer */
-
-
-      buffer_pool = (LOG_BUFFER **) realloc (log_Pb.pool, (size_t) ((size_t) total_buffers * sizeof (*log_Pb.pool)));
-      //printf("realloc\n");
-      new_log_pages = (LOG_PAGE *) malloc ((size_t) ((size_t) total_buffers * (LOG_PAGESIZE)));
-      for (i = 0; i < total_buffers; i++)
-	{
-	  if (i < log_Pb.num_buffers)
-	    memcpy ((char *) new_log_pages + i * (LOG_PAGESIZE), global_pages[i], (LOG_PAGESIZE));
-	  else
-	    MEM_REGION_INIT ((char *) new_log_pages + i * (LOG_PAGESIZE), (LOG_PAGESIZE));
-	}
-      global_pages = (LOG_PAGE **) malloc (total_buffers * sizeof (LOG_PAGE *));
-      for (i = 0; i < total_buffers; i++)
-	global_pages[i] = (LOG_PAGE *) ((char *) new_log_pages + i * (LOG_PAGESIZE));
-
-      if (buffer_pool == NULL)
-	{
-	  free_and_init (area);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_buffers * sizeof (*log_Pb.pool));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      memset (area, 1, size);
-      area->bufarea = ((LOG_BUFFER *) ((char *) area + sizeof (LOG_BUFAREA)));
-      /* Initialize every new buffer */
-      //printf("realloc\n");
-      for (i = 0, bufid = log_Pb.num_buffers; i < num_new_buffers; bufid++, i++)
-	{
-	  log_bufptr = LOGPB_FIND_NBUFFER_FROM_CONT_BUFFERS (area->bufarea, i);
-	  buffer_pool[bufid] = log_bufptr;
-	  MEM_REGION_INIT (global_pages[bufid], LOG_PAGESIZE);
-	  logpb_initialize_log_buffer (log_bufptr, global_pages[bufid]);
-	  //printf ("%p %d %d\n", global_pages[bufid], bufid, sizeof(global_pages[bufid]));
-	  log_bufptr->ipool = bufid;
-	}
-      log_Pb.pool = buffer_pool;
-      logpb_reset_clock_hand (log_Pb.num_buffers);
-      log_Pb.num_buffers = total_buffers;
-    }
-
-
-
-  log_Stat.log_buffer_expand_count++;
-
-  return NO_ERROR;
-}
 
 /*
  * logpb_initialize_pool - Initialize the log buffer pool
@@ -641,7 +535,11 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 int
 logpb_initialize_pool (THREAD_ENTRY * thread_p)
 {
-  int error_code = NO_ERROR, i;
+  int error_code = NO_ERROR;
+  int total_buffers, i, size;
+  LOG_BUFFER *log_bufptr;	/* Pointer to array of buffers */
+  LOG_BUFAREA *area;		/* Contiguous area for buffers */
+  LOG_PAGE *log_pages_area;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
@@ -700,41 +598,84 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  if (log_Pb.pool != NULL)
+  if (log_Pb.buffers != NULL)
     {
       logpb_finalize_pool (thread_p);
     }
 
-  assert (log_Pb.pool == NULL && log_Pb.data == NULL);
+  assert (log_Pb.buffers == NULL);
 
   log_Pb.num_buffers = 0;
-  log_Pb.pool = NULL;
+  log_Pb.buffers = NULL;
 
   /* 
    * Create an area to keep the number of desired buffers
    */
-  error_code = logpb_expand_pool (thread_p, PB_DATA_SIZE);
-  if (error_code != NO_ERROR)
+  total_buffers = PB_DATA_SIZE;
+
+  size = ((total_buffers * SIZEOF_LOG_BUFFER) + sizeof (LOG_BUFAREA));
+
+  area = (LOG_BUFAREA *) malloc (size);
+  if (area == NULL)
     {
-      goto error;
+      free_and_init (area);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (area, 1, size);
+  area->bufarea = ((LOG_BUFFER *) ((char *) area + sizeof (LOG_BUFAREA)));
+
+  log_pages_area = (LOG_PAGE *) malloc ((size_t) ((size_t) total_buffers * (LOG_PAGESIZE)));
+  if (log_pages_area == NULL)
+    {
+      free_and_init (log_pages_area);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_buffers * (LOG_PAGESIZE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  log_Pb.data = (LOG_BUFFER **) malloc (PB_DATA_SIZE * sizeof (LOG_BUFFER *));
+  /* allocate a pointer array to point to each buffer */
+  log_Pb.buffers = (LOG_BUFFER **) malloc ((size_t) ((size_t) total_buffers * sizeof (*log_Pb.buffers)));
+  if (log_Pb.buffers == NULL)
+    {
+      free_and_init (log_Pb.buffers);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_buffers * sizeof (*log_Pb.buffers));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  log_Pb.pages_area = (LOG_PAGE **) malloc (total_buffers * sizeof (LOG_PAGE *));
+  if (log_Pb.pages_area == NULL)
+    {
+      free_and_init (log_Pb.pages_area);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_buffers * sizeof (*log_Pb.buffers));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+
+
+  /* Initialize every new buffer */
+
+  for (i = 0; i < total_buffers; i++)
+    {
+      MEM_REGION_INIT (((char *) log_pages_area + i * (LOG_PAGESIZE)), (LOG_PAGESIZE));
+      log_Pb.pages_area[i] = (LOG_PAGE *) ((char *) log_pages_area + i * (LOG_PAGESIZE));
+      log_bufptr = LOGPB_FIND_NBUFFER_FROM_CONT_BUFFERS (area->bufarea, i);
+      log_Pb.buffers[i] = log_bufptr;
+      MEM_REGION_INIT (log_Pb.pages_area[i], LOG_PAGESIZE);
+      logpb_initialize_log_buffer (log_bufptr, log_Pb.pages_area[i]);
+      log_bufptr->ipool = i;
+    }
+
+  logpb_reset_clock_hand (log_Pb.num_buffers);
+  log_Pb.num_buffers = total_buffers;
+
   log_Pb.header_buffer = (LOG_BUFFER *) malloc (SIZEOF_LOG_BUFFER);
   log_Pb.header_page = (LOG_PAGE *) malloc (LOG_PAGESIZE);
   MEM_REGION_INIT (log_Pb.header_page, LOG_PAGESIZE);
   logpb_initialize_log_buffer (log_Pb.header_buffer, log_Pb.header_page);
-  if (log_Pb.data == NULL)
-    {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
-    }
-  for (i = 0; i < PB_DATA_SIZE; i++)
-    {
-      log_Pb.data[i] = NULL;
-    }
+
   log_Pb.cursor = 0;
   error_code = logpb_initialize_flush_info ();
+
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -778,11 +719,10 @@ error:
 void
 logpb_finalize_pool (THREAD_ENTRY * thread_p)
 {
-  int i;
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
 
-  if (log_Pb.pool == NULL)
+  if (log_Pb.buffers == NULL)
     {
       /* logpb already finalized */
       return;
@@ -811,16 +751,8 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
    * Remove hash table
    */
 
-  if (log_Pb.data != NULL)
-    {
-      for (i = 0; i < PB_DATA_SIZE; i++)
-	{
-	  log_Pb.data[i] = NULL;
-	}
-      free (log_Pb.data);
-      log_Pb.data = NULL;
-    }
-  free_and_init (log_Pb.pool);
+
+  free_and_init (log_Pb.buffers);
   log_Pb.num_buffers = 0;
 
 
@@ -869,7 +801,7 @@ bool
 logpb_is_pool_initialized (void)
 {
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
-  if (log_Pb.pool != NULL)
+  if (log_Pb.buffers != NULL)
     {
       return true;
     }
@@ -895,7 +827,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  if (log_Pb.pool == NULL)
+  if (log_Pb.buffers == NULL)
     {
       return;
     }
@@ -919,115 +851,6 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 
 }
 
-/*
- * logpb_replace - Find a page to replace
- *
- * return: LOG_BUFFER *
- *                       retry : true if need to retry, false if not
- *
- *   retry(in/out): true if need to retry, false if not
- *
- */
-static LOG_BUFFER *
-logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
-{
-  LOG_BUFFER *log_bufptr = NULL;	/* A log buffer */
-  int bufid;
-  int ixpool = -1;
-  int num_unfixed = 1;
-  int error_code = NO_ERROR;
-
-  assert (retry != NULL);
-
-  *retry = false;
-
-  num_unfixed = log_Pb.num_buffers;
-
-  while (ixpool == -1 && num_unfixed > 0)
-    {
-      /* Recalculate the num_unfixed to avoid infinite loops in case of error */
-      num_unfixed = 0;
-
-      for (bufid = 0; bufid < log_Pb.num_buffers; bufid++)
-	{
-	  log_bufptr = LOGPB_FIND_BUFPTR (log_Pb.clock_hand);
-	  //printf ("%p \n", log_Pb.pool[0]->logpage);
-	  //printf ("%p \n", log_Pb.pool[1]->logpage);
-	  //printf ("%p \n", log_Pb.pool[2]->logpage);
-	  logpb_move_next_clock_hand ();
-	  /* 
-	   * Can we replace the current buffer. That is, is it unfixed ?
-	   */
-	  if ((log_bufptr->fcnt <= 0) && (!log_bufptr->flush_running))
-	    {
-	      num_unfixed++;
-	      /* 
-	       * Has this buffer recently been freed ?
-	       */
-	      if (log_bufptr->recently_freed)
-		{
-		  /* Set it to false for new cycle */
-		  log_bufptr->recently_freed = false;
-		}
-	      else
-		{
-		  /* 
-		   * Replace current buffer.
-		   * Force the log if the current page is dirty.
-		   */
-		  ixpool = log_bufptr->ipool;
-		  if (log_bufptr->dirty == true)
-		    {
-
-
-		      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-		      log_Stat.log_buffer_flush_count_by_replacement++;
-		      logpb_flush_all_append_pages (thread_p);
-		      mnt_log_replacements (thread_p);
-		      *retry = true;
-		      return NULL;
-		    }
-		  break;
-		}
-	    }
-	}
-    }
-
-  assert (log_bufptr != NULL);
-
-  /* 
-   * The page is not resident or we are requesting a buffer for working
-   * purposes.
-   */
-
-  if (ixpool == -1)
-    {
-      /* 
-       * All log buffers are fixed. There are many concurrent transactions being
-       * aborted at the same time or it is likely that there is a bug in the
-       * system (e.g., buffer are not being freed).
-       */
-
-      /* we are in critical section here, we don't need mutex */
-      error_code = logpb_expand_pool (thread_p, PB_DATA_SIZE);
-
-      if (error_code != NO_ERROR)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_ALL_BUFFERS_FIXED, 0);
-	  error_code = ER_LOG_ALL_BUFFERS_FIXED;
-	  *retry = false;
-	}
-      else
-	{
-	  *retry = true;
-	}
-      log_bufptr = NULL;
-
-
-    }
-
-  return log_bufptr;
-}
 
 /*
  * logpb_create - Create a log page on a log buffer
@@ -1098,8 +921,9 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
     }
 
   else
-    log_bufptr = log_Pb.pool[MOD ((int) pageid)];
-
+    {
+      log_bufptr = log_Pb.buffers[MOD ((int) pageid)];
+    }
   if (fetch_mode == OLD_PAGE)
     {
       if (log_bufptr->pageid == NULL_PAGEID || (log_bufptr->pageid != NULL_PAGEID && log_bufptr->pageid != pageid)
@@ -1115,17 +939,20 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	  return (log_bufptr->logpage);
 	}
       else
-	return (log_bufptr->logpage);
+	{
+	  return (log_bufptr->logpage);
+	}
     }
 
   /* New page */
-
-
   if (pageid != LOGPB_HEADER_PAGE_ID)
-    assert (log_bufptr->pageid < pageid);
-
+    {
+      assert (log_bufptr->pageid < pageid);
+    }
   if (logpb_is_dirty (thread_p, (log_bufptr->logpage)))
-    logpb_flush_page (thread_p, (log_bufptr->logpage), FREE);
+    {
+      logpb_flush_page (thread_p, (log_bufptr->logpage), FREE);
+    }
   /* Invalidate existing buffer and its page. */
 
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
@@ -1157,15 +984,6 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   assert (((UINTPTR) (log_bufptr->logpage->area) % 8) == 0);
   return (log_bufptr->logpage);
 
-error:
-
-  if (log_bufptr != NULL)
-    {
-      logpb_initialize_log_buffer (log_bufptr, log_bufptr->logpage);
-      logpb_reset_clock_hand (log_bufptr->ipool);
-    }
-
-  return NULL;
 }
 
 /*
@@ -1378,7 +1196,6 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
   void logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   {
 
-
     assert (LOG_CS_OWN_WRITE_MODE (thread_p));
     logpb_free_without_mutex (log_pgptr);
 
@@ -1445,7 +1262,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
   {
 
 
-    if (log_Pb.pool == NULL)
+    if (log_Pb.buffers == NULL)
       {
 	return;
       }
@@ -1482,7 +1299,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
     fprintf (out_fp, "\nHash table dump\n");
     for (i = 0; i < log_Pb.num_buffers; i++)
       {
-	fprintf (out_fp, "Pageid = %5lld, Address = %p\n", (long long int) i, (void *) log_Pb.pool[i]);
+	fprintf (out_fp, "Pageid = %5lld, Address = %p\n", (long long int) i, (void *) log_Pb.buffers[i]);
       }
     fprintf (out_fp, "\n\n");
 
@@ -2052,7 +1869,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 	goto exit;
       }
 
-    log_bufptr = log_Pb.pool[MOD ((int) pageid)];
+    log_bufptr = log_Pb.buffers[MOD ((int) pageid)];
     if (log_bufptr->pageid == pageid)
       {
 	/* Copy page from log_bufptr into log_pgptr */
@@ -2077,37 +1894,6 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
       }
 
     /* Copy from ret_pgptr to log_pgptr */
-
-
-    /*
-       else if (log_Pb.cursor - PB_DATA_SIZE < pageid)
-       {
-       log_bufptr = log_Pb.pool[MOD ((int) pageid)];
-       if (log_bufptr->pageid != NULL_PAGEID)
-       {
-       if (log_bufptr->pageid != pageid)
-       {
-       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
-       }
-       }
-       }
-       else
-       {
-       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
-       }
-       if (log_bufptr->pageid != NULL_PAGEID)
-       {
-       memcpy (log_pgptr, log_bufptr->logpage, LOG_PAGESIZE);
-       ret_pgptr = log_pgptr;
-       }
-
-       if (log_bufptr->pageid == NULL_PAGEID)
-       {
-       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
-       mnt_log_fetch_ioreads (thread_p);
-       stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-       }
-     */
 
 
     /* Always exit through here */
@@ -4043,7 +3829,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 	    /* Notify vacuum of a new block */
 	    vacuum_produce_log_block_data (thread_p, &log_Gl.hdr.mvcc_op_log_lsa, log_Gl.hdr.last_block_oldest_mvccid,
 					   log_Gl.hdr.last_block_newest_mvccid);
-	    assert (log_Gl.hdr.last_block_oldest_mvccid <= vacuum_get_global_oldest_active_mvccid ());
+	    assert (log_Gl.hdr.last_block_oldest_mvccid <= (UINT64) vacuum_get_global_oldest_active_mvccid ());
 	    log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	    log_Gl.hdr.last_block_newest_mvccid = mvccid;
 	    assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
@@ -10922,7 +10708,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
      */
 
     /* If the system is not restarted, read the header directly from disk */
-    if (num_perm_vols < 0 || log_Gl.trantable.area == NULL || log_Pb.pool == NULL)
+    if (num_perm_vols < 0 || log_Gl.trantable.area == NULL || log_Pb.buffers == NULL)
       {
 	/* 
 	 * The system is not restarted. Read the log header from disk and remove
@@ -10960,7 +10746,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 	    log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
 	    /* Initialize the buffer pool, so we can read the header */
-	    if (log_Pb.pool == NULL)
+	    if (log_Pb.buffers == NULL)
 	      {
 		error_code = logpb_initialize_pool (thread_p);
 		if (error_code != NO_ERROR)
@@ -12265,7 +12051,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 	aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 	log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-	if (log_Pb.pool == NULL)
+	if (log_Pb.buffers == NULL)
 	  {
 	    error_code = logpb_initialize_pool (thread_p);
 	    if (error_code != NO_ERROR)
