@@ -245,7 +245,6 @@ struct log_pb_global_data
   LOG_BUFFER **buffers;		/* Log buffer pool */
   LOG_PAGE **pages_area;
   volatile long long cursor;
-
   LOG_BUFFER *header_buffer;
   LOG_PAGE *header_page;
   int fst;
