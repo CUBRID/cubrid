@@ -1002,13 +1002,6 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
   LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
   /* Get the address of the buffer from the page. */
   bufptr = log_get_log_buffer_ptr (log_pgptr);
-#if defined(CUBRID_DEBUG)
-  if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
-      && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE, 1, bufptr->pageid);
-    }
-#endif /* CUBRID_DEBUG */
 
   bufptr->dirty = true;
   if (free_page == FREE)
