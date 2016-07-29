@@ -221,7 +221,7 @@ struct log_buffer
   LOG_PAGEID pageid;		/* Logical page of the log. (Page identifier of the infinite log) */
   LOG_PHY_PAGEID phy_pageid;	/* Physical pageid for the active log portion */
   int fcnt;			/* Fix count */
-  bool dirty;			/* Is page dirty */
+  int dirty;			/* Is page dirty */
   LOG_PAGE *logpage;		/* The actual buffered log page */
 };
 
