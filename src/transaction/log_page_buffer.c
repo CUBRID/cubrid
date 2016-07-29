@@ -250,7 +250,6 @@ struct log_pb_global_data
   LOG_PAGE *header_page;
   int fst;
   int num_buffers;		/* Number of log buffers */
-  int clock_hand;		/* Clock hand */
 };
 
 typedef struct arv_page_info
@@ -286,7 +285,7 @@ int log_default_input_for_archive_log_location = 0;
 int log_default_input_for_archive_log_location = -1;
 #endif
 
-LOG_PB_GLOBAL_DATA log_Pb = { NULL, NULL, 0, NULL, NULL, 0, 0, 0 };
+LOG_PB_GLOBAL_DATA log_Pb = { NULL, NULL, 0, NULL, NULL, 0, 0 };
 
 
 LOG_LOGGING_STAT log_Stat;
@@ -352,8 +351,6 @@ static void logpb_finalize_writer_info (void);
 static void logpb_dump_log_header (FILE * outfp);
 static void logpb_dump_parameter (FILE * outfp);
 static void logpb_dump_runtime (FILE * outfp);
-static void logpb_reset_clock_hand (int buffer_index);
-static void logpb_move_next_clock_hand (void);
 static void logpb_unfix_page (LOG_BUFFER * bufptr);
 static void logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg);
 
@@ -414,27 +411,6 @@ int MOD (int x);
  *
  */
 
-/*
- * logpb_reset_clock_hand - reset clock hand of log page buffer
- *
- * return: nothing
- *
- * NOTE:
- *
- */
-static void
-logpb_reset_clock_hand (int buffer_index)
-{
-  if (buffer_index >= log_Pb.num_buffers || buffer_index < 0)
-    {
-      log_Pb.clock_hand = 0;
-    }
-  else
-    {
-      log_Pb.clock_hand = buffer_index;
-    }
-}
-
 int
 MOD (int x)
 {
@@ -450,24 +426,6 @@ log_get_log_buffer_ptr (LOG_PAGE * log_pg)
     return log_Pb.header_buffer;
   idx /= ((long long) log_Pb.pages_area[1] - (long long) log_Pb.pages_area[0]);
   return log_Pb.buffers[idx];
-}
-
-/*
- * logpb_move_next_clock_hand - move next clock hand of log page buffer
- *
- * return: nothing
- *
- * NOTE:
- *
- */
-static void
-logpb_move_next_clock_hand (void)
-{
-  log_Pb.clock_hand++;
-  if (log_Pb.clock_hand >= log_Pb.num_buffers)
-    {
-      log_Pb.clock_hand = 0;
-    }
 }
 
 /*
@@ -665,7 +623,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       log_bufptr->ipool = i;
     }
 
-  logpb_reset_clock_hand (log_Pb.num_buffers);
   log_Pb.num_buffers = total_buffers;
 
   log_Pb.header_buffer = (LOG_BUFFER *) malloc (SIZEOF_LOG_BUFFER);
@@ -845,7 +802,6 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 	  && log_bufptr->dirty == false)
 	{
 	  logpb_initialize_log_buffer (log_bufptr, log_bufptr->logpage);
-	  logpb_reset_clock_hand (log_bufptr->ipool);
 	}
     }
 
@@ -1222,16 +1178,6 @@ logpb_free_without_mutex (LOG_PAGE * log_pgptr)
 
   /* Get the address of the buffer from the page. */
   bufptr = log_get_log_buffer_ptr (log_pgptr);
-
-  if (bufptr->pageid == NULL_PAGEID)
-    {
-      /* 
-       * Freeing a buffer used as working area. This buffer can be used for
-       * replacement immediately.
-       */
-      logpb_reset_clock_hand (bufptr->ipool);
-    }
-
   logpb_unfix_page (bufptr);
 }
 
