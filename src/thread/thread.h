@@ -284,6 +284,7 @@ struct thread_entry
 				 * thread */
   int client_id;		/* client id whom this thread is responding */
   int tran_index;		/* tran index to which this thread belongs */
+  int private_lru_index;	/* private lru index when transaction quota is used */
   pthread_mutex_t tran_index_lock;
   unsigned int rid;		/* request id which this thread is processing */
   int status;			/* thread status */

@@ -3435,8 +3435,8 @@ file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool put_cach
 				   * Deallocate as much as we can.
 				   */
 
-				  pgbuf_invalidate_temporary_file (allocset->volid, batch_firstid, batch_ndealloc,
-								   true);
+				  pgbuf_invalidate_temporary_file (thread_p, allocset->volid, batch_firstid,
+								   batch_ndealloc, true);
 
 				  /* Start again */
 				  batch_firstid = *aid_ptr;
@@ -3454,7 +3454,7 @@ file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool put_cach
 		    {
 		      /* Deallocate any accumulated pages */
 
-		      pgbuf_invalidate_temporary_file (allocset->volid, batch_firstid, batch_ndealloc, true);
+		      pgbuf_invalidate_temporary_file (thread_p, allocset->volid, batch_firstid, batch_ndealloc, true);
 		    }
 
 		  /* Get next page in the allocation set */
@@ -3787,8 +3787,8 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool pb_invalid_temp_
 
 			      if (file_type == FILE_TEMP && !pb_invalid_temp_called)
 				{
-				  pgbuf_invalidate_temporary_file (allocset->volid, batch_firstid, batch_ndealloc,
-								   false);
+				  pgbuf_invalidate_temporary_file (thread_p, allocset->volid, batch_firstid,
+								   batch_ndealloc, false);
 				}
 
 			      (void) disk_dealloc_page (thread_p, allocset->volid, batch_firstid, batch_ndealloc,
@@ -3811,7 +3811,7 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool pb_invalid_temp_
 
 		  if (file_type == FILE_TEMP && !pb_invalid_temp_called)
 		    {
-		      pgbuf_invalidate_temporary_file (allocset->volid, batch_firstid, batch_ndealloc, false);
+		      pgbuf_invalidate_temporary_file (thread_p, allocset->volid, batch_firstid, batch_ndealloc, false);
 		    }
 
 		  (void) disk_dealloc_page (thread_p, allocset->volid, batch_firstid, batch_ndealloc, page_type);

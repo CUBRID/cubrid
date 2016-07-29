@@ -612,6 +612,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_UNIQUE_STATS "log_unique_stats"
 
+#define PRM_NAME_PB_TRAN_PAGES_QUOTA "tran_pages_quota"
+#define PRM_NAME_PB_NUM_PRIVATE_CHAINS "num_private_chains"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
 /*
@@ -1765,8 +1768,8 @@ static float prm_pb_ain_ratio_upper = 0.8f;
 static float prm_pb_ain_ratio_lower = 0.0f;
 static unsigned int prm_pb_ain_ratio_flag = 0;
 
-float PRM_PB_AOUT_RATIO = 0.5f;
-static float prm_pb_aout_ratio_default = 0.5f;
+float PRM_PB_AOUT_RATIO = 0.0f;
+static float prm_pb_aout_ratio_default = 0.0f;
 static float prm_pb_aout_ratio_upper = 3.0;
 static float prm_pb_aout_ratio_lower = 0;
 static unsigned int prm_pb_aout_ratio_flag = 0;
@@ -2002,13 +2005,25 @@ bool PRM_EXAMINE_CLIENT_CACHED_LOCKS = false;
 static bool prm_examine_client_cached_locks_default = false;
 static bool prm_examine_client_cached_locks_flag = 0;
 
-bool PRM_PB_SEQUENTIAL_VICTIM_FLUSH = false;
-static bool prm_pb_sequential_victim_flush_default = false;
+bool PRM_PB_SEQUENTIAL_VICTIM_FLUSH = true;
+static bool prm_pb_sequential_victim_flush_default = true;
 static unsigned int prm_pb_sequential_victim_flush_flag = 0;
 
 bool PRM_LOG_UNIQUE_STATS = false;
 static bool prm_log_unique_stats_default = false;
 static unsigned int prm_log_unique_stats_flag = 0;
+
+int PRM_PB_TRAN_PAGES_QUOTA = 5000;
+static int prm_pb_tran_pages_quota_default = 5000;
+static int prm_pb_tran_pages_quota_upper = 50000;
+static int prm_pb_tran_pages_quota_lower = -1;
+static unsigned int prm_pb_tran_pages_quota_flag = 0;
+
+int PRM_PB_NUM_PRIVATE_CHAINS = -1;
+static int prm_pb_num_private_chains_default = -1;
+static int prm_pb_num_private_chains_upper = 1000;
+static int prm_pb_num_private_chains_lower = -1;
+static unsigned int prm_pb_num_private_chains_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4874,6 +4889,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_PB_TRAN_PAGES_QUOTA,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_INTEGER,
+   (void *) &prm_pb_tran_pages_quota_flag,
+   (void *) &prm_pb_tran_pages_quota_default,
+   (void *) &PRM_PB_TRAN_PAGES_QUOTA,
+   (void *) &prm_pb_tran_pages_quota_upper,
+   (void *) &prm_pb_tran_pages_quota_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_PB_NUM_PRIVATE_CHAINS,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_INTEGER,
+   (void *) &prm_pb_num_private_chains_flag,
+   (void *) &prm_pb_num_private_chains_default,
+   (void *) &PRM_PB_NUM_PRIVATE_CHAINS,
+   (void *) &prm_pb_num_private_chains_upper,
+   (void *) &prm_pb_num_private_chains_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

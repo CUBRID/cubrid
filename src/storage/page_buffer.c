@@ -93,7 +93,19 @@ const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 static int rv;
 #endif /* !SERVER_MODE */
 
-#define PGBUF_LRU_1_ZONE_THRESHOLD  (pgbuf_Pool.num_LRU1_zone_threshold)
+/* activate to enable debug for transaction quota */
+#if 1
+#define PGBUF_TRAN_QUOTA_DEBUG
+#endif
+
+#if defined (PGBUF_TRAN_QUOTA_DEBUG)
+#undef er_log_debug
+#define er_log_debug _er_log_debug
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+/* threshold of accepted buffers in LRU1 zone for each chain */
+#define PGBUF_LRU_1_ZONE_THRESHOLD(lru_idx) \
+  (pgbuf_Pool.quota.lru1_threshold_per_lru[(lru_idx)])
 
 /* The victim candidate flusher (performed as a daemon) finds
    victim candidates(fcnt == 0) from the bottom of each LRU list.
@@ -170,6 +182,133 @@ static int rv;
 /* check whether the given volume is auxiliary volume */
 #define PGBUF_IS_AUXILIARY_VOLUME(volid)                                 \
   ((volid) < LOG_DBFIRST_VOLID ? true : false)
+
+/* Zone attibute of buffer contains both PGBUF_LRU_ZONE type and list id.
+ * The zone type is encoded on LSB 3 bits, the LRU id on the rest of MSB bits.
+ * The LRU index of a buffer is decided either based on thread (private LRU) or
+ * a round-robin rule for shared and garbage LRUs */
+#define PGBUF_MAKE_ZONE(list_id,zone) ((list_id) << 3 | (((int) zone) & 7))
+#define PGBUF_GET_ZONE(zone_lru) ((zone_lru) & 0x7)
+#define PGBUF_GET_LRU_INDEX(zone_lru) (((zone_lru) & ~0x7) >> 3)
+
+/* Minimum pages a private LRU should be imposed : 50 pages or 2% of
+ * corresponding equal share from all pages :
+ * - the number should be large enough to give pages of private LRU the chance
+ *   of becoming hot (or shared) and to allow accumulation of dirty pages
+ *   (to avoid frequent flushes of small bursts) 
+ * - small enough so that victims can be found in any private LRU in limit cases
+ *   (all buffers are distributed equally among private LRUs) */
+#define PGBUF_PRIVATE_MIN_QUOTA \
+  MAX(((pgbuf_Pool.num_buffers / NUM_NON_SYSTEM_TRANS) / 50), 50)
+
+/* Limits for private chains */
+#define PGBUF_MAX_PRIVATE_CHAINS 1000
+#define PGBUF_MIN_PRIVATE_CHAINS 4
+
+/* Lower limits for number of pages in private LRUs and shared LRUs: used when 
+ * computing number of private lists and number of shared lists */
+#define PGBUF_MIN_PAGES_IN_PRIVATE_CHAIN 300
+#define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
+
+/* Maximum (hard) number of pages which a private chain may hold
+ * (used for automatic values) */
+#define PGBUF_MAX_HARD_QUOTA (pgbuf_Pool.num_buffers / 2)
+/* Maximum (soft) number of pages which a private chain may hold 
+ * (used for automatic values)*/
+#define PGBUF_MAX_SOFT_QUOTA 1500
+/* Maximum (configurable) number of pages which a private chain may hold 
+ * When this is zero, page quota is disabled */
+#define PGBUF_MAX_QUOTA (pgbuf_Pool.quota.max_pages_private_quota)
+
+#define PGBUF_PAGE_QUOTA_IS_ENABLED (PGBUF_MAX_QUOTA > 0)
+
+/* macros for retrieving id of private chains of thread (to use actual LRU index
+ * use PGBUF_LRU_INDEX_FROM_PRIVATE on this result */
+#if defined (SERVER_MODE)
+#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) \
+  ((thread_p) != NULL) ? ((thread_p)->private_lru_index) : (0)
+#define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) \
+  ((thread_p) != NULL && (thread_p)->private_lru_index != -1) ? (1) : (0)
+#else
+#undef PGBUF_PRIVATE_LRU_FROM_THREAD
+#define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) 0
+#define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) 0
+#endif
+
+/* macros for retrieving info on shared, garbage and private LRUs */
+#define PGBUF_SHARED_LRU (pgbuf_Pool.num_LRU_list)
+
+#define PGBUF_GARBAGE_LRU (pgbuf_Pool.quota.num_garbage_LRU_list)
+
+#define PGBUF_PRIVATE_LRU (pgbuf_Pool.quota.num_private_LRU_list)
+
+#define PGBUF_TOTAL_LRU \
+  (PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU + PGBUF_PRIVATE_LRU)
+
+#define PGBUF_PRIVATE_LIST_FROM_LRU_INDEX(i) \
+  ((i) - PGBUF_SHARED_LRU - PGBUF_GARBAGE_LRU)
+
+#define PGBUF_LRU_INDEX_FROM_PRIVATE(private_id) \
+  (PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU + (private_id))
+
+
+#define PGBUF_IS_SHARED_LRU_INDEX(lru_idx) \
+  (((lru_idx) < PGBUF_SHARED_LRU) ? true : false)
+
+#define PGBUF_IS_GARBAGE_LRU_INDEX(lru_idx) \
+  (((lru_idx) >= PGBUF_SHARED_LRU \
+   && (lru_idx) < PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU) ? true : false)
+
+#define PGBUF_IS_PRIVATE_LRU_INDEX(lru_idx) \
+  (((lru_idx) >= PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU) ? true : false)
+
+/* How old is a BCB (bcb_age) related to age of list to which it belongs */
+#define PGBUF_AGE_DIFF(bcb_age,list_age) \
+  (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : \
+   (DB_INT32_MAX - ((bcb_age) - (list_age))))
+
+/* Threshold age, after a BCB in LRU2 will be relocated to LRU1 
+ * A reference to BCB still young is kept in LRU2 (and eventually discarded
+ * from page buffer) : a true hot page is referenced also when it gets older */
+#define PGBUF_LRU2_AGE_THRESHOLD(lru_idx) \
+  (pgbuf_Pool.quota.lru1_threshold_per_lru[(lru_idx)] / 4)
+
+#define PGBUF_AIN_AGE_THRESHOLD (pgbuf_Pool.buf_AIN_list.max_count / 2)
+
+/* Activity indicator of one LRU list:
+ * lru1_hit : references to pages in LRU1
+ * lru1_speed : number of new inserted buffers in LRU1
+ * lru2_speed : number of new inserted buffers in LRU2
+ * vict_pressure : pressure from victimization process on this LRU.
+ *		   It measures an internal pressure from LRU to grow.
+ *		   It accounts for not served victimization requests and level
+ *		   of search for victims (the maximum number of BCBs which have
+ *		   been scanned before founding a victim)
+ * cnt_active : active private LRUs (containing at least one BCB).
+ */
+#define PGBUF_LRU_ACTIVITY(lru1_hit,lru1_speed,lru2_speed,vict_pressure,cnt_active) \
+  ((lru1_hit) + (lru1_speed) + ((vict_pressure) + (lru2_speed) / (cnt_active)))
+
+/* Activity on each LRU is probed and cumulated, to avoid long history
+ * cumulation effect, the activity indicator is limited;
+ * Inactivity threshold is defined : private LRU dropping beneath this
+ * threshold are destroyed and its BCB relocated to a garbage LRU */
+#define PGBUF_TRAN_THRESHOLD_ACTIVITY (pgbuf_Pool.num_buffers / 4)
+#define PGBUF_TRAN_MAX_ACTIVITY (10 * PGBUF_TRAN_THRESHOLD_ACTIVITY)
+
+#define PGBUF_AOUT_NOT_FOUND  -2
+#define PGBUF_AOUT_WAS_IN_AIN -1
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+/* for debug print a new line character */
+#define PGBUF_QUOTA_MARKER_STRING(i) \
+   (((i) == PGBUF_SHARED_LRU - 1) ? "\n\n" : \
+   ((((i) == (PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU - 1)) ? "\n\n" : \
+   ((PGBUF_IS_SHARED_LRU_INDEX (i) && ((i) % 10) == 9) \
+     || (PGBUF_IS_GARBAGE_LRU_INDEX (i) && (((i) - PGBUF_SHARED_LRU) % 10) == 9) \
+     || (PGBUF_IS_PRIVATE_LRU_INDEX (i) && (((i) - PGBUF_SHARED_LRU - PGBUF_GARBAGE_LRU) % 10) == 9) \
+     ? "\n" : " "))))
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
 #define HASH_SIZE_BITS 20
 #define PGBUF_HASH_SIZE (1 << HASH_SIZE_BITS)
@@ -258,6 +397,45 @@ static int rv;
 	  } \
 	while (0)
 #endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
+
+#define PGBUG_GET_FLUSH_ORDER(lru_idx,pos,order) \
+  do \
+    { \
+      if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx)) \
+	{ \
+	  if ((pos) > PGBUG_FLUSH_PRIORITY_THRESHOLD_SHARED) \
+	    { \
+	      order = PGBUG_FLUSH_PRIORITY_SHARED_P2; \
+	    } \
+	  else \
+	    { \
+	      order = PGBUG_FLUSH_PRIORITY_SHARED; \
+	    } \
+	} \
+      else if (PGBUF_IS_GARBAGE_LRU_INDEX (lru_idx)) \
+	{ \
+	  if ((pos) > PGBUG_FLUSH_PRIORITY_THRESHOLD_GARBAGE) \
+	    { \
+	      order = PGBUG_FLUSH_PRIORITY_GARBAGE_P2; \
+	    } \
+	  else \
+	    { \
+	      order = PGBUG_FLUSH_PRIORITY_GARBAGE; \
+	    } \
+	} \
+      else \
+	{ \
+	  if ((pos) > PGBUG_FLUSH_PRIORITY_THRESHOLD_PRIVATE) \
+	    { \
+	      order = PGBUG_FLUSH_PRIORITY_PRIVATE_P2; \
+	    } \
+	  else \
+	    { \
+	      order = PGBUG_FLUSH_PRIORITY_PRIVATE; \
+	    } \
+	} \
+    } \
+while (0)
 
 /* BCB zone */
 typedef enum
@@ -385,13 +563,14 @@ struct pgbuf_bcb
   int ipool;			/* Buffer pool index */
   int fcnt;			/* Fix count */
   PGBUF_LATCH_MODE latch_mode;	/* page latch mode */
-  PGBUF_ZONE zone;		/* BCB zone */
+  int zone_lru;			/* BCB zone and LRU idx */
 #if defined(SERVER_MODE)
   THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
 #endif				/* SERVER_MODE */
   PGBUF_BCB *hash_next;		/* next hash chain */
   PGBUF_BCB *prev_BCB;		/* prev LRU chain */
   PGBUF_BCB *next_BCB;		/* next LRU or Invalid(Free) chain */
+  int list_tick;		/* age of list (AIN/LRU2) when this BCB was inserted into */
   int ain_tick;			/* age of AIN when this BCB was inserted into AIN list */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
@@ -399,6 +578,7 @@ struct pgbuf_bcb
   unsigned avoid_victim:1;
   unsigned async_flush_request:1;
   unsigned victim_candidate:1;
+  unsigned sticky_private_list:1;
   LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
   PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
 };
@@ -479,6 +659,7 @@ struct pgbuf_invalid_list
 struct pgbuf_aout_buf
 {
   VPID vpid;			/* page VPID */
+  int lru_idx;
   PGBUF_AOUT_BUF *next;		/* next element in list */
   PGBUF_AOUT_BUF *prev;		/* prev element in list */
 };
@@ -542,6 +723,83 @@ struct pgbuf_seq_flusher
   bool burst_mode;		/* config : flush in burst or flush one page and wait */
 };
 
+typedef struct pgbuf_page_monitor PGBUF_PAGE_MONITOR;
+struct pgbuf_page_monitor
+{
+  INT64 dirties_cnt;		/* Number of dirty buffers. */
+  int *bcbs_cnt_per_lru;	/* current number of BCBs in each LRU */
+
+  /* LRU victimization */
+  int *lru_victim_req_per_lru;	/* count of BCB victim requests */
+  int *lru_pending_victim_req_per_lru;	/* count of pending victim requests */
+  int *lru_victim_search_depth_per_lru;	/* depth of search (by workers) in this list */
+  int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
+  int *lru_victim_found_per_lru;	/* count of BCB victims found (by flush thread) */
+  int *lru_victim_pressure_per_lru;	/* current pressure on LRU to increase due to victimization */
+
+  /* LRU life cycle */
+  int *lru2_tick;		/* Current age of LRU2 section per LRU */
+  int *lru1_tick;		/* Current age of LRU1 section per LRU */
+  int *prev_lru2_tick;		/* Previous age of LRU2 section */
+  int *prev_lru1_tick;		/* Previous age of LRU1 section */
+  int *lru2_age_diff;		/* Age difference of LRU2 section of each LRU */
+  int *lru1_age_diff;		/* Age difference of LRU1 section of each LRU */
+  int *lru1_hit;		/* Current hits in LRU1 per LRU */
+  int *lru_activity;		/* Activity level per LRU */
+
+  /* Overall counters */
+  int lru_shared_pgs;		/* count of BCBs in all shared LRUs */
+  int lru_garbage_pgs;		/* count of pages in garbage LRUs (only when quota is enabled) */
+
+  int pg_lru_vict_req_failed;	/* Count of failed victimization from all LRUs */
+  int pg_ain_vict_req_failed;	/* Count of failed victimization from all AIN */
+  int pg_unfix;			/* Count of page unfixes; used for refreshing quota adjustement */
+  int pg_unfix_with_private_lru;	/* Count of page unfixes with valid private lru */
+
+  int lru_victim_req_cnt;	/* number of victim request from all LRUs */
+  int ain_victim_req_cnt;	/* number of victim request from AIN */
+  int ain_victim_searches_cnt;	/* number of victim seaches from AIN */
+  int ain_victim_dirty_skipped_cnt;	/* number of dirty buffers skipped during victim seaches from AIN */
+
+  int fix_req_cnt;		/* number of fix requests */
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  int *lru_relocated_destroyed_pages;	/* Count of BCBs relocated after file destroy of each LRU */
+  int pg_destroyed_pages;	/* count of all destroyed pages since last update */
+#endif				/* PGBUF_TRAN_QUOTA_DEBUG */
+};
+
+typedef struct pgbuf_page_quota PGBUF_PAGE_QUOTA;
+struct pgbuf_page_quota
+{
+  int max_pages_private_quota;	/* number of pages per private list, is 0 if page quota is disabled */
+
+  int num_garbage_LRU_list;	/* number of garbage LRU lists */
+  int num_private_LRU_list;	/* number of private LRU lists */
+
+  /* Real-time tunning: */
+  int *target_bcbs_per_lru;	/* target number of BCBs in each LRU;
+				 * used only when page quota is enabled, and only the last 'num_private_LRU_list'
+				 * are used */
+  int *lru1_threshold_per_lru;	/* threshold of pages in LRU1 per LRU */
+
+  float *lru_victim_flush_priority_per_lru;	/* priority to flush from this LRU */
+
+  int *private_lru_session_cnt;	/* Number of active session for each private LRU:  Contains only private lists ! */
+  float *private_lru_distr;	/* How quota is destributed among private lists */
+  float private_pages_ratio;	/* Ratio of all private BCBs among total BCBs */
+
+  unsigned int vict_shared_lru_idx;	/* circular index of shared LRU for victimization */
+  unsigned int vict_garbage_lru_idx;	/* circular index of garbage LRU for victimization */
+  unsigned int add_shared_lru_idx;	/* circular index of shared LRU for relocating to shared */
+  unsigned int add_shared_lru_idx_for_destroyed;	/* circular index of garbage LRU for relocating destroyed pages */
+  int avoid_shared_lru_idx;	/* index of shared LRU to avoid when relocating to shared */
+  int overflow_private_lru_idx;	/* index of private LRU having highest overflow */
+
+  int is_adjusting;
+};
+
+
 /* The buffer Pool */
 struct pgbuf_buffer_pool
 {
@@ -554,10 +812,13 @@ struct pgbuf_buffer_pool
   PGBUF_BUFFER_HASH *buf_hash_table;	/* buffer hash table */
   PGBUF_BUFFER_LOCK *buf_lock_table;	/* buffer lock table */
   PGBUF_IOPAGE_BUFFER *iopage_table;	/* IO page table */
-  int num_LRU_list;		/* number of LRU lists */
+  int num_LRU_list;		/* number of shared LRU lists */
   int num_LRU1_zone_threshold;	/* target number of pages in LRU1 zone */
   int last_flushed_LRU_list_idx;	/* index of the last flushed LRU list */
-  PGBUF_LRU_LIST *buf_LRU_list;	/* LRU lists */
+  PGBUF_LRU_LIST *buf_LRU_list;	/* LRU lists. When Page quota is enabled, first 'num_LRU_list' store shared pages;
+				 * the next 'num_garbage_LRU_list' lists store shared garbage pages;
+				 * the last 'num_private_LRU_list' are private lists.
+				 * When page quota is disabled only shared lists are used */
   PGBUF_AIN_LIST buf_AIN_list;	/* Ain list */
   PGBUF_AOUT_LIST buf_AOUT_list;	/* Aout list */
   PGBUF_INVALID_LIST buf_invalid_list;	/* buffer invalid BCB list */
@@ -565,6 +826,9 @@ struct pgbuf_buffer_pool
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
 
   PGBUF_SEQ_FLUSHER seq_chkpt_flusher;
+
+  PGBUF_PAGE_MONITOR monitor;
+  PGBUF_PAGE_QUOTA quota;
 
   /* 
    * the structures for maintaining information on BCB holders.
@@ -603,13 +867,31 @@ struct pgbuf_buffer_pool
   int num_permvols_tmparea;	/* # of perm. vols for temp */
   int size_permvols_tmparea_volids;	/* size of the array */
   VOLID *permvols_tmparea_volids;	/* the volids array */
+};
 
-  int lru_victim_req_cnt;	/* number of victim request from this queue */
-  int ain_victim_req_cnt;
+/* flush priority within a list : 
+ * before applying the VPID order, this flush order applies 
+ * garbage LRUs, shared LRUs and private LRUs have all two levels of priority */
+enum
+{
+  PGBUG_FLUSH_PRIORITY_GARBAGE = 0,
+  PGBUG_FLUSH_PRIORITY_SHARED = 1,
+  PGBUG_FLUSH_PRIORITY_PRIVATE = 2,
+  PGBUG_FLUSH_PRIORITY_PRIVATE_P2 = 3,
 
-  int fix_req_cnt;
+  PGBUG_FLUSH_PRIORITY_AIN = PGBUG_FLUSH_PRIORITY_GARBAGE,
+  PGBUG_FLUSH_PRIORITY_CHKPT = PGBUG_FLUSH_PRIORITY_GARBAGE,
+  PGBUG_FLUSH_PRIORITY_GARBAGE_P2 = PGBUG_FLUSH_PRIORITY_SHARED,
+  PGBUG_FLUSH_PRIORITY_SHARED_P2 = PGBUG_FLUSH_PRIORITY_PRIVATE
+};
 
-  INT64 dirties_cnt;		/* Number of dirty buffers. */
+/* flush priority thresholds : the distance from bottom LRU (in BCBs) where
+ * the first level of priority applies */
+enum
+{
+  PGBUG_FLUSH_PRIORITY_THRESHOLD_GARBAGE = 100,
+  PGBUG_FLUSH_PRIORITY_THRESHOLD_SHARED = 100,
+  PGBUG_FLUSH_PRIORITY_THRESHOLD_PRIVATE = 10
 };
 
 /* victim candidate list */
@@ -621,6 +903,7 @@ struct pgbuf_victim_candidate_list
 {
   PGBUF_BCB *bufptr;		/* selected BCB as victim candidate */
   VPID vpid;			/* page id of the page managed by the BCB */
+  short flush_order;		/* primary flush order (applies before VPID) */
   LOG_LSA recLSA;		/* oldest_unflush_lsa of the page */
 };
 
@@ -693,20 +976,20 @@ static PGBUF_PS_INFO ps_info;
 #define PGBUF_SET_DIRTY(bufptr) \
   do \
     { \
-      if (!(bufptr)->dirty) ATOMIC_INC_64 (&pgbuf_Pool.dirties_cnt, 1); \
+      if (!(bufptr)->dirty) ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1); \
       bufptr->dirty = true; \
-      assert (pgbuf_Pool.dirties_cnt > 0 \
-	      && pgbuf_Pool.dirties_cnt <= pgbuf_Pool.num_buffers); \
+      assert (pgbuf_Pool.monitor.dirties_cnt > 0 \
+	      && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers); \
     } \
   while (false)
 /* Reset buffer dirty flag & update dirties count. */
 #define PGBUF_RESET_DIRTY(bufptr) \
   do \
     { \
-      if ((bufptr)->dirty) ATOMIC_INC_64 (&pgbuf_Pool.dirties_cnt, -1); \
+      if ((bufptr)->dirty) ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, -1); \
       bufptr->dirty = false; \
-      assert (pgbuf_Pool.dirties_cnt >= 0 \
-	      && pgbuf_Pool.dirties_cnt < pgbuf_Pool.num_buffers); \
+      assert (pgbuf_Pool.monitor.dirties_cnt >= 0 \
+	      && pgbuf_Pool.monitor.dirties_cnt < pgbuf_Pool.num_buffers); \
     } \
   while (false)
 
@@ -720,6 +1003,9 @@ static int pgbuf_initialize_lru_list (void);
 static int pgbuf_initialize_ain_list (void);
 static int pgbuf_initialize_aout_list (void);
 static int pgbuf_initialize_invalid_list (void);
+static int pgbuf_initialize_page_quota_parameters (void);
+static int pgbuf_initialize_page_quota (void);
+static int pgbuf_initialize_page_monitor (void);
 static int pgbuf_initialize_thrd_holder (void);
 static PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p);
 static INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
@@ -764,23 +1050,32 @@ static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int syn
 static int pgbuf_invalidate_bcb (PGBUF_BCB * bufptr);
 static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (void);
 static int pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int pgbuf_get_lru_index (const VPID * vpid);
+#endif /* ENABLE_UNUSED_FUNCTION */
+
+static int pgbuf_get_shared_lru_index_for_add (void);
+static int pgbuf_get_shared_lru_index_for_destroyed_pages (void);
+static int pgbuf_get_garbage_lru_index_for_chain_add (void);
 static int pgbuf_get_victim_candidates_from_ain (int check_count);
-static int pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count);
-static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p, const VPID * vpid, int max_count);
+static int pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float lru_sum_flush_priority);
+static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count,
+				    bool * sleep_before_next_try);
 static PGBUF_BCB *pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count);
-static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid, int max_count);
-static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
-static bool pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
+static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int max_count,
+						  bool use_lru1_zone);
+static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx);
+static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
+static int pgbuf_remove_private_from_aout_list (const int lru_idx);
 static int pgbuf_invalidate_bcb_from_lru (PGBUF_BCB * bufptr);
 static int pgbuf_invalidate_bcb_from_ain (PGBUF_BCB * bufptr);
-static int pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone);
-
-static int pgbuf_relocate_bottom_lru (PGBUF_BCB * bufptr);
+static int pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone, const int lru_idx);
+static void pgbuf_move_from_lru_to_top_lru (PGBUF_BCB * bufptr, int dest_lru_idx, int dest_zone);
+static int pgbuf_relocate_bottom_lru (PGBUF_BCB * bufptr, const int lru_idx, const bool sticky_bit);
 static int pgbuf_relocate_top_ain (PGBUF_BCB * bufptr);
 static void pgbuf_remove_from_lru_list (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list);
 static void pgbuf_remove_from_ain_list (PGBUF_BCB * bufptr);
-static void pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr);
+static void pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr, const int lru_idx);
 
 static int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
@@ -849,6 +1144,9 @@ static void pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * buf
 static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
 static bool pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error);
+#if defined (SERVER_MODE)
+static bool pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool *has_fixed_pages);
+#endif /* SERVER_MODE */
 static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int *flushed_pages);
 static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
 static int pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid,
@@ -876,6 +1174,13 @@ static int pgbuf_initialize_seq_flusher (PGBUF_SEQ_FLUSHER * seq_flusher, PGBUF_
 static const char *pgbuf_latch_mode_str (PGBUF_LATCH_MODE latch_mode);
 static const char *pgbuf_zone_str (PGBUF_ZONE zone);
 static const char *pgbuf_consistent_str (int consistent);
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+static void pgbuf_print_lru_distribution (void);
+static void pgbuf_print_lru_destroyed_pg_distribution (void);
+static void pgbuf_print_lru_pending_vict_req (void);
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_victim_req_cnt);
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -965,6 +1270,12 @@ pgbuf_initialize (void)
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
 
+  /* keep page quota parameter initializer first */
+  if (pgbuf_initialize_page_quota_parameters () != NO_ERROR)
+    {
+      goto error;
+    }
+
   if (pgbuf_initialize_bcb_table () != NO_ERROR)
     {
       goto error;
@@ -1005,6 +1316,17 @@ pgbuf_initialize (void)
       goto error;
     }
 
+  /* keep page quota initializer first */
+  if (pgbuf_initialize_page_quota () != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (pgbuf_initialize_page_monitor () != NO_ERROR)
+    {
+      goto error;
+    }
+
   pgbuf_Pool.check_for_interrupts = false;
   pthread_mutex_init (&pgbuf_Pool.volinfo_mutex, NULL);
   pgbuf_Pool.last_perm_volid = LOG_MAX_DBVOLID;
@@ -1020,11 +1342,7 @@ pgbuf_initialize (void)
 	      (pgbuf_Pool.num_buffers * sizeof (PGBUF_VICTIM_CANDIDATE_LIST)));
       goto error;
     }
-
-  pgbuf_Pool.lru_victim_req_cnt = 0;
-  pgbuf_Pool.ain_victim_req_cnt = 0;
-  pgbuf_Pool.fix_req_cnt = 0;
-
+ 
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = false;
 #endif
@@ -1048,7 +1366,8 @@ pgbuf_initialize (void)
     }
 #endif /* PAGE_STATISTICS */
 
-  pgbuf_Pool.dirties_cnt = 0;
+  /* TODO[arnia] : not required, if done in monitor initialization */
+  pgbuf_Pool.monitor.dirties_cnt = 0;
 
   return NO_ERROR;
 
@@ -1122,7 +1441,7 @@ pgbuf_finalize (void)
   /* final task for LRU list */
   if (pgbuf_Pool.buf_LRU_list != NULL)
     {
-      for (i = 0; i < pgbuf_Pool.num_LRU_list; i++)
+      for (i = 0; i < PGBUF_TOTAL_LRU; i++)
 	{
 	  pthread_mutex_destroy (&pgbuf_Pool.buf_LRU_list[i].LRU_mutex);
 	}
@@ -1199,6 +1518,96 @@ pgbuf_finalize (void)
     {
       free_and_init (pgbuf_Pool.seq_chkpt_flusher.flush_list);
     }
+
+ /* Free quota structure data */
+  if (pgbuf_Pool.quota.target_bcbs_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.quota.target_bcbs_per_lru);
+    }
+  if (pgbuf_Pool.quota.lru1_threshold_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.quota.lru1_threshold_per_lru);
+    }
+  if (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru);
+    }
+  if (pgbuf_Pool.quota.private_lru_session_cnt != NULL)
+    {
+      free_and_init (pgbuf_Pool.quota.private_lru_session_cnt);
+    }
+  if (pgbuf_Pool.quota.private_lru_distr != NULL)
+    {
+      free_and_init (pgbuf_Pool.quota.private_lru_distr);
+    }
+
+  /* Free monitor structure data */
+  if (pgbuf_Pool.monitor.bcbs_cnt_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.bcbs_cnt_per_lru);
+    }
+  if (pgbuf_Pool.monitor.lru_victim_req_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru_victim_req_per_lru);
+    }
+  if (pgbuf_Pool.monitor.lru_pending_victim_req_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru_pending_victim_req_per_lru);
+    }
+  if (pgbuf_Pool.monitor.lru_victim_search_depth_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru_victim_search_depth_per_lru);
+    }
+  if (pgbuf_Pool.monitor.lru_victim_dirty_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru_victim_dirty_per_lru);
+    }
+  if (pgbuf_Pool.monitor.lru_victim_found_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru_victim_found_per_lru);
+    }
+  if (pgbuf_Pool.monitor.lru_victim_pressure_per_lru != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru_victim_pressure_per_lru);
+    }
+  if (pgbuf_Pool.monitor.lru2_tick != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru2_tick);
+    }
+  if (pgbuf_Pool.monitor.lru1_tick != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru1_tick);
+    }
+  if (pgbuf_Pool.monitor.prev_lru2_tick != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.prev_lru2_tick);
+    }
+  if (pgbuf_Pool.monitor.prev_lru1_tick != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.prev_lru1_tick);
+    }
+  if (pgbuf_Pool.monitor.lru2_age_diff != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru2_age_diff);
+    }
+  if (pgbuf_Pool.monitor.lru1_age_diff != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru1_age_diff);
+    }
+  if (pgbuf_Pool.monitor.lru1_hit != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru1_hit);
+    }
+  if (pgbuf_Pool.monitor.lru_activity != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru_activity);
+    }
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  if (pgbuf_Pool.monitor.lru_relocated_destroyed_pages != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.lru_relocated_destroyed_pages);
+    }
+#endif
 }
 
 /*
@@ -1353,7 +1762,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
       return NULL;
     }
 
-  ATOMIC_INC_32 (&pgbuf_Pool.fix_req_cnt, 1);
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.fix_req_cnt, 1);
 
   if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
     {
@@ -2308,7 +2717,7 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 	  assert (!VPID_ISNULL (&bufptr->vpid));
 
 	  latch_mode_str = pgbuf_latch_mode_str (bufptr->latch_mode);
-	  zone_str = pgbuf_latch_mode_str (bufptr->zone);
+	  zone_str = pgbuf_zone_str (PGBUF_GET_ZONE (bufptr->zone_lru));
 
 	  /* check if the content of current buffer page is consistent. */
 #if defined(CUBRID_DEBUG)
@@ -2479,7 +2888,8 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  *   need_invalidate(in):
  */
 void
-pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid, DKNPAGES npages, bool need_invalidate)
+pgbuf_invalidate_temporary_file (THREAD_ENTRY * thread_p, VOLID volid, PAGEID first_pageid, DKNPAGES npages,
+				 bool need_invalidate)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
@@ -2532,6 +2942,50 @@ pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid, DKNPAGES npag
        * reset these. */
       PGBUF_RESET_DIRTY (bufptr);
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
+	{
+	  int dest_lru_idx;
+	  int thread_lru_idx;
+	  int bcb_lru_idx;
+
+	  bcb_lru_idx = PGBUF_GET_LRU_INDEX (bufptr->zone_lru);
+
+	  /* do not relocate BCBs in garbage LRU if in a private LRU different
+	   * than current's thread LRU */
+	  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+	    {
+	      thread_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+	    }
+	  else
+	    {
+	      thread_lru_idx = -1;
+	    }
+
+	  dest_lru_idx = -1;
+	  if (PGBUF_IS_SHARED_LRU_INDEX (bcb_lru_idx))
+	    {
+	      dest_lru_idx = pgbuf_get_shared_lru_index_for_destroyed_pages ();
+	    }
+	  else if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
+	    {
+	      if (bcb_lru_idx == thread_lru_idx)
+		{
+		  dest_lru_idx = bcb_lru_idx;
+		}
+	    }
+
+	  if (dest_lru_idx != -1)
+	    {
+	      pgbuf_relocate_bottom_lru (bufptr, dest_lru_idx, PGBUF_IS_SHARED_LRU_INDEX (dest_lru_idx));
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_relocated_destroyed_pages[dest_lru_idx], 1);
+#endif
+	    }
+	}
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_destroyed_pages, 1);
+#endif
 
 #if 0				/* BTS CUBRIDSUS-3627 */
       if (need_invalidate == true)
@@ -2912,6 +3366,12 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
       return 0;
     }
 
+  diff = node1->flush_order - node2->flush_order;
+  if (diff != 0)
+    {
+      return diff;
+    }
+
   diff = node1->vpid.volid - node2->vpid.volid;
   if (diff != 0)
     {
@@ -2952,6 +3412,7 @@ pgbuf_get_victim_candidates_from_ain (int check_count)
 	{
 	  /* save victim candidate information temporarily. */
 	  victim_list[victim_count].bufptr = bufptr;
+	  victim_list[victim_count].flush_order = PGBUG_FLUSH_PRIORITY_AIN;
 	  VPID_COPY (&victim_list[victim_count].vpid, &bufptr->vpid);
 	  LSA_COPY (&victim_list[victim_count].recLSA, &bufptr->oldest_unflush_lsa);
 	  victim_count++;
@@ -2974,7 +3435,7 @@ pgbuf_get_victim_candidates_from_ain (int check_count)
  * flush_ratio (in)  : flush ratio
  */
 static int
-pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count)
+pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float lru_sum_flush_priority)
 {
 #if defined(SERVER_MODE)
   int rv;
@@ -2982,20 +3443,78 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count)
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list = NULL;
   int lru_idx, start_lru_idx, victim_cand_count, i;
   PGBUF_BCB *bufptr;
+  int zone_lru1;
+  int zone_lru2;
+  int cand_found_in_this_lru;
+  int check_count_this_lru;
+  float victim_flush_priority_this_lru;
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  static char msg[16384];
+  int pos = 0;
+  int cnt;
+
+  pos = 0;
+  msg[0] = '\0';
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
   /* init */
-  lru_idx = ((pgbuf_Pool.last_flushed_LRU_list_idx + 1) % pgbuf_Pool.num_LRU_list);
+  lru_idx = ((pgbuf_Pool.last_flushed_LRU_list_idx + 1) % PGBUF_TOTAL_LRU);
   start_lru_idx = lru_idx;
   victim_cand_count = victim_count;
   victim_cand_list = pgbuf_Pool.victim_cand_list;
 
   do
     {
-      i = check_count;
+      victim_flush_priority_this_lru = pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx];
+
+      /* do not flush from this LRU when there are no victim requests,
+       * or no pages in list or all victim requests were quickly served from
+       * bottom LRU (vict_searches_this_lru == 0) */
+      if (victim_flush_priority_this_lru <= 0)
+	{
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+	  if (pos < sizeof (msg) - 100)
+	    {
+	      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1,
+			      "%4d/%4d/%3d,%s", 0, 0, 0, PGBUF_QUOTA_MARKER_STRING (lru_idx));
+	      pos += cnt;
+	    }
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+	  pgbuf_Pool.last_flushed_LRU_list_idx = lru_idx;
+	  lru_idx = (lru_idx + 1) % PGBUF_TOTAL_LRU;
+
+	  continue;
+	}
+
+      check_count_this_lru = (int) (victim_flush_priority_this_lru * (float) check_count / lru_sum_flush_priority);
+
+      if (PGBUF_IS_GARBAGE_LRU_INDEX (lru_idx))
+	{
+	  check_count_this_lru = pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx];
+	}
+      else
+	{
+	  check_count_this_lru = MAX (check_count_this_lru, 1);
+	}
+
+      cand_found_in_this_lru = 0;
+      i = check_count_this_lru;
+      zone_lru2 = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
+      if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx))
+	{
+	  zone_lru1 = -1;
+	}
+      else
+	{
+	  zone_lru1 = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_1_ZONE);
+	}
+
       rv = pthread_mutex_lock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
       bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom;
 
-      while ((bufptr != NULL) && (bufptr->zone != PGBUF_LRU_1_ZONE) && (i > 0))
+      while ((bufptr != NULL) && (bufptr->zone_lru == zone_lru2 || bufptr->zone_lru == zone_lru1) && (i > 0))
 	{
 	  if ((bufptr->fcnt == 0) && (bufptr->dirty == true) && (bufptr->latch_mode != PGBUF_LATCH_FLUSH))
 	    {
@@ -3003,7 +3522,9 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count)
 	      victim_cand_list[victim_cand_count].bufptr = bufptr;
 	      victim_cand_list[victim_cand_count].vpid = bufptr->vpid;
 	      LSA_COPY (&victim_cand_list[victim_cand_count].recLSA, &bufptr->oldest_unflush_lsa);
+	      PGBUG_GET_FLUSH_ORDER (lru_idx, check_count_this_lru - i, victim_cand_list[victim_count].flush_order);
 	      victim_cand_count++;
+	      cand_found_in_this_lru++;
 	    }
 
 	  bufptr = bufptr->prev_BCB;
@@ -3011,13 +3532,31 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count)
 	}
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 
-      /* Note that we don't hold the mutex, however it will not be an issue. Also note that we are updating the
-       * last_flushed_LRU_list_idx whether the list has flushed or not. */
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+      if (pos < sizeof (msg) - 100)
+	{
+	  cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%4d/%4d/%3d,%s",
+			  check_count_this_lru, check_count_this_lru - i, cand_found_in_this_lru,
+			  PGBUF_QUOTA_MARKER_STRING (lru_idx));
+	  pos += cnt;
+	}
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+      /* Note that we don't hold the mutex, however it will not be an issue.
+       * Also note that we are updating the last_flushed_LRU_list_idx
+       * whether the list has flushed or not.
+       */
       pgbuf_Pool.last_flushed_LRU_list_idx = lru_idx;
 
-      lru_idx = (lru_idx + 1) % pgbuf_Pool.num_LRU_list;
+      lru_idx = (lru_idx + 1) % PGBUF_TOTAL_LRU;
     }
   while (lru_idx != start_lru_idx);	/* check if we've visited all of the lists */
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  msg[pos] = '\0';
+  er_log_debug (ARG_FILE_LINE, "pgbuf_get_victim_candidates_from_lru:\n"
+		"check_count_this_lru/actually_checked_this_lru/" "cand_found_this_lru\n" "%s", msg);
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
   return victim_cand_count - victim_count;
 }
@@ -3041,7 +3580,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
   int i, victim_count, victim_count_ain, victim_count_lru;
-  int check_count_one_lru, check_count_ain, check_count_lru;
+  int check_count_ain, check_count_lru;
   int cfg_check_cnt, lru_min_check_cnt, ain_min_check_cnt;
   int total_flushed_count;
   int cnt_in_ain;
@@ -3052,6 +3591,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   float lru_dynamic_flush_adj = 1.0f, ain_dynamic_flush_adj = 1.0f;
   float lru_to_ain_req_ratio;
   int lru_victim_req_cnt, ain_victim_req_cnt, fix_req_cnt;
+  float lru_sum_flush_priority;
+  int lru_with_victim_req_cnt;
 #if defined(SERVER_MODE)
   int rv;
   static THREAD_ENTRY *page_flush_thread = NULL;
@@ -3075,9 +3616,17 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
     }
 #endif
 
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  pgbuf_print_lru_distribution ();
+  pgbuf_print_lru_destroyed_pg_distribution ();
+  pgbuf_print_lru_pending_vict_req ();
+#endif
+
+  pgbuf_compute_lru_vict_target (&lru_sum_flush_priority, &lru_with_victim_req_cnt);
+
   victim_cand_list = pgbuf_Pool.victim_cand_list;
 
-  lru_idx = ((pgbuf_Pool.last_flushed_LRU_list_idx + 1) % pgbuf_Pool.num_LRU_list);
+  lru_idx = ((pgbuf_Pool.last_flushed_LRU_list_idx + 1) % PGBUF_TOTAL_LRU);
   start_lru_idx = lru_idx;
 
   victim_count = 0;
@@ -3086,14 +3635,14 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   total_flushed_count = 0;
   check_count_ain = 0;
   check_count_lru = 0;
-  check_count_one_lru = 0;
 
-  lru_victim_req_cnt = pgbuf_Pool.lru_victim_req_cnt;
-  ain_victim_req_cnt = pgbuf_Pool.ain_victim_req_cnt;
-  fix_req_cnt = pgbuf_Pool.fix_req_cnt;
-  ATOMIC_TAS_32 (&pgbuf_Pool.lru_victim_req_cnt, 0);
-  ATOMIC_TAS_32 (&pgbuf_Pool.ain_victim_req_cnt, 0);
-  ATOMIC_TAS_32 (&pgbuf_Pool.fix_req_cnt, 0);
+  lru_victim_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 0);
+  ain_victim_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.ain_victim_req_cnt, 0);
+  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.ain_victim_searches_cnt, 0);
+  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.ain_victim_dirty_skipped_cnt, 0);
+  fix_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.fix_req_cnt, 0);
+  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 0);
+  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.pg_ain_vict_req_failed, 0);
 
   if (fix_req_cnt > lru_victim_req_cnt && fix_req_cnt > ain_victim_req_cnt)
     {
@@ -3119,8 +3668,16 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       /* This may happen when a previous run of flush thread occurred between moment of incrementing LRU or AIN victim
        * request counters and the call to wakeup the flush thread; We don't know which list invoked the flush thread,
        * so we flush according to current AIN count. */
-      lru_to_ain_req_ratio =
-	(float) (cfg_check_cnt - (cnt_in_ain - pgbuf_Pool.buf_AIN_list.max_count)) / (2 * cfg_check_cnt);
+      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
+	{
+	  /* when tran quota is enabled AIN only acts as Level 3 buffer */
+	  lru_to_ain_req_ratio = (float) (cfg_check_cnt - cnt_in_ain) / cfg_check_cnt;
+	}
+      else
+	{
+	  lru_to_ain_req_ratio =
+	    (float) (cfg_check_cnt - (cnt_in_ain - pgbuf_Pool.buf_AIN_list.max_count)) / (2 * cfg_check_cnt);
+	}
 
       lru_to_ain_req_ratio = MIN (lru_to_ain_req_ratio, 1.0f);
       lru_to_ain_req_ratio = MAX (lru_to_ain_req_ratio, 0);
@@ -3144,6 +3701,10 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       ain_min_check_cnt = cfg_check_cnt - lru_min_check_cnt;
 
       check_count_ain = (int) (ain_min_check_cnt * ain_dynamic_flush_adj);
+      check_count_ain = MIN (check_count_ain, ain_victim_req_cnt);
+
+      /* limit amount to check in AIN only if tran quota is not enabled,
+       * otherwise all pages in AIN should be victim candidates */
       check_count_ain = MIN (check_count_ain, pgbuf_Pool.buf_AIN_list.max_count / 2);
 
       check_count_lru = (int) (lru_min_check_cnt * lru_dynamic_flush_adj);
@@ -3154,20 +3715,17 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       ain_min_check_cnt = 0;
     }
 
-  if (check_count_lru > 0)
-    {
-      check_count_one_lru = (check_count_lru + pgbuf_Pool.num_LRU_list) / pgbuf_Pool.num_LRU_list;
-    }
-
   if (check_count_ain > 0)
     {
       victim_count_ain = pgbuf_get_victim_candidates_from_ain (check_count_ain);
     }
 
-  if (check_count_one_lru > 0)
+  if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
-      victim_count_lru = pgbuf_get_victim_candidates_from_lru (check_count_one_lru, victim_count_ain);
+      victim_count_lru =
+	pgbuf_get_victim_candidates_from_lru (check_count_lru, victim_count_ain, lru_sum_flush_priority);
     }
+
   victim_count = victim_count_lru + victim_count_ain;
   if (victim_count == 0)
     {
@@ -3195,8 +3753,10 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
 	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 	  /* flush condition check */
-	  if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid) || bufptr->dirty == false
-	      || (bufptr->zone != PGBUF_LRU_2_ZONE && bufptr->zone != PGBUF_AIN_ZONE)
+	  if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid)
+	      || bufptr->dirty == false
+	      || (PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_LRU_2_ZONE
+		  && PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_AIN_ZONE)
 	      || bufptr->latch_mode != PGBUF_NO_LATCH
 	      || !(LSA_EQ (&bufptr->oldest_unflush_lsa, &victim_cand_list[i].recLSA)) || bufptr->avoid_victim == true)
 	    {
@@ -3237,8 +3797,9 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	  total_flushed_count += flushed_pages;
 
 	  if (total_flushed_count > cfg_check_cnt
-	      && ((pgbuf_Pool.lru_victim_req_cnt > pgbuf_Pool.ain_victim_req_cnt && check_count_lru < check_count_ain)
-		  || (pgbuf_Pool.lru_victim_req_cnt < pgbuf_Pool.ain_victim_req_cnt
+	      && ((pgbuf_Pool.monitor.lru_victim_req_cnt > pgbuf_Pool.monitor.ain_victim_req_cnt
+		   && check_count_lru < check_count_ain)
+		  || (pgbuf_Pool.monitor.lru_victim_req_cnt < pgbuf_Pool.monitor.ain_victim_req_cnt
 		      && check_count_lru > check_count_ain)))
 	    {
 	      /* the victimization pattern has changed and we flushed enough pages; after we abort this, the flush
@@ -3375,6 +3936,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
       /* add to flush list */
       f_list[collected_bcbs].bufptr = bufptr;
       VPID_COPY (&f_list[collected_bcbs].vpid, &bufptr->vpid);
+      f_list[collected_bcbs].flush_order = PGBUG_FLUSH_PRIORITY_CHKPT;
       pthread_mutex_unlock (&bufptr->BCB_mutex);
 
       collected_bcbs++;
@@ -4878,7 +5440,8 @@ pgbuf_initialize_bcb_table (void)
       bufptr->avoid_victim = false;
       bufptr->async_flush_request = false;
       bufptr->victim_candidate = false;
-      bufptr->zone = PGBUF_INVALID_ZONE;
+      bufptr->sticky_private_list = false;
+      bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_INVALID_ZONE);
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
       /* link BCB and iopage buffer */
@@ -4993,22 +5556,35 @@ pgbuf_initialize_lru_list (void)
   pgbuf_Pool.num_LRU_list = prm_get_integer_value (PRM_ID_PB_NUM_LRU_CHAINS);
   if (pgbuf_Pool.num_LRU_list == 0)
     {
-      /* system define it as an optimal value internally. */
-      /* estimates: 1000 buffer frames per one LRU list will be good. */
-      pgbuf_Pool.num_LRU_list = ((pgbuf_Pool.num_buffers - 1) / 1000) + 1;
+      /* Default value of shared lists : # of transactions */
+      pgbuf_Pool.num_LRU_list = (int) MAX_NTRANS;
+      assert (pgbuf_Pool.num_LRU_list > 0);
+
+      if (pgbuf_Pool.num_buffers / pgbuf_Pool.num_LRU_list < PGBUF_MIN_PAGES_IN_SHARED_LIST)
+	{
+	  pgbuf_Pool.num_LRU_list = pgbuf_Pool.num_buffers / PGBUF_MIN_PAGES_IN_SHARED_LIST;
+	}
+
+      /* should have at least 4 shared LRUs */
+      pgbuf_Pool.num_LRU_list = MAX (pgbuf_Pool.num_LRU_list, 4);
+    }
+
+  if (PGBUF_PAGE_QUOTA_IS_ENABLED)
+    {
+      pgbuf_Pool.quota.num_garbage_LRU_list = pgbuf_Pool.num_LRU_list / 2;
+      pgbuf_Pool.quota.num_garbage_LRU_list = MAX (pgbuf_Pool.quota.num_garbage_LRU_list, 4);
     }
 
   /* allocate memory space for the page buffer LRU lists */
-  pgbuf_Pool.buf_LRU_list = (PGBUF_LRU_LIST *) malloc (pgbuf_Pool.num_LRU_list * PGBUF_LRU_LIST_SIZE);
+  pgbuf_Pool.buf_LRU_list = (PGBUF_LRU_LIST *) malloc (PGBUF_TOTAL_LRU * PGBUF_LRU_LIST_SIZE);
   if (pgbuf_Pool.buf_LRU_list == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (pgbuf_Pool.num_LRU_list * PGBUF_LRU_LIST_SIZE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (PGBUF_TOTAL_LRU * PGBUF_LRU_LIST_SIZE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* initialize the page buffer LRU lists */
-  for (i = 0; i < pgbuf_Pool.num_LRU_list; i++)
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
       pthread_mutex_init (&pgbuf_Pool.buf_LRU_list[i].LRU_mutex, NULL);
       pgbuf_Pool.buf_LRU_list[i].LRU_top = NULL;
@@ -5038,9 +5614,13 @@ pgbuf_initialize_ain_list (void)
 
   pthread_mutex_init (&pgbuf_Pool.buf_AIN_list.Ain_mutex, NULL);
 
-  if (ain_ratio <= 0)
+  if (PGBUF_PAGE_QUOTA_IS_ENABLED || ain_ratio <= 0)
     {
-      /* 2Q is disabled, just use LRU */
+      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
+	{
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_initialize_ain_list: WARNING "
+			"Page transaction quota is enabled. " "Ain list is automatically disabled.");
+	}
       pgbuf_Pool.buf_AIN_list.max_count = 0;
       ain_ratio = 0;
     }
@@ -5100,6 +5680,7 @@ pgbuf_initialize_aout_list (void)
   for (i = 0; i < list->max_count; i++)
     {
       VPID_SET_NULL (&list->bufarray[i].vpid);
+      list->bufarray[i].lru_idx = PGBUF_AOUT_NOT_FOUND;
       if (i != list->max_count - 1)
 	{
 	  list->bufarray[i].next = &list->bufarray[i + 1];
@@ -6022,7 +6603,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 #endif				/* NDEBUG */
 {
   PAGE_PTR pgptr;
-  int ain_age;
+  int age_in_list;
+  int bcb_lru_idx, shared_lru_idx, th_lru_idx;
+  int aout_list_id;
 
   assert (holder_status == NO_ERROR);
 
@@ -6077,48 +6660,145 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
 	{
-	  switch (bufptr->zone)
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_unfix, 1);
+
+	  if (PGBUF_PAGE_QUOTA_IS_ENABLED && PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+	    {
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_unfix_with_private_lru, 1);
+	      th_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+	    }
+	  else
+	    {
+	      th_lru_idx = -1;
+	    }
+
+	  switch (PGBUF_GET_ZONE (bufptr->zone_lru))
 	    {
 	    case PGBUF_LRU_1_ZONE:
-	      /* do nothing in this case */
+	      bcb_lru_idx = PGBUF_GET_LRU_INDEX (bufptr->zone_lru);
+	      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
+		{
+		  if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
+		    {
+		      /* check if this buffer is owned by this transaction and
+		       * relocate to a shared LRU */
+		      if (bcb_lru_idx != th_lru_idx && th_lru_idx != -1)
+			{
+			  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
+			  pgbuf_move_from_lru_to_top_lru (bufptr, shared_lru_idx, PGBUF_LRU_2_ZONE);
+			  break;
+			}
+		    }
+		  else if (bufptr->sticky_private_list == true && th_lru_idx != -1)
+		    {
+		      /* page is in shared or garbage list, but it was recently
+		       * relocated from a dead private list or from a destroyed
+		       * page, relocate to this thread's private list */
+		      pgbuf_move_from_lru_to_top_lru (bufptr, th_lru_idx, PGBUF_LRU_2_ZONE);
+		      bufptr->sticky_private_list = false;
+		      break;
+		    }
+		}
+
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru1_hit[bcb_lru_idx], 1);
+
 	      break;
 
 	    case PGBUF_AIN_ZONE:
-	      ain_age = pgbuf_Pool.buf_AIN_list.tick - bufptr->ain_tick;
-	      ain_age = (ain_age > 0) ? (ain_age) : (DB_INT32_MAX);
+	      assert (!PGBUF_PAGE_QUOTA_IS_ENABLED);
 
-	      if (ain_age > pgbuf_Pool.buf_AIN_list.max_count / 2)
+	      age_in_list = PGBUF_AGE_DIFF (bufptr->list_tick, pgbuf_Pool.buf_AIN_list.tick);
+	      if (age_in_list > PGBUF_AIN_AGE_THRESHOLD)
 		{
 		  /* Correlated references are contrainted to half of the AIN list. If a page in AIN is referenced
 		   * again and is older than half the AIN size, we consider it hot and relocate it to LRU. This aims to 
 		   * avoid discarding soon-to-become hot pages: in classic 2Q, a page is discarded from AIN only when
 		   * removed from page buffer, it becomes hot page (put in LRU) only after is loaded a second time and
 		   * still resides in AOUT list. */
-		  pgbuf_move_from_ain_to_lru (bufptr);
+		  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
+		  pgbuf_move_from_ain_to_lru (bufptr, shared_lru_idx);
 		}
 	      break;
 
 	    case PGBUF_VOID_ZONE:
-	      if (!PGBUF_IS_2Q_ENABLED || pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid))
+	      if (PGBUF_PAGE_QUOTA_IS_ENABLED || PGBUF_IS_2Q_ENABLED)
 		{
-		  /* Put BCB in "middle" of LRU if VPID is in Aout list or is the first reference and 2Q is disabled.
-		   * The page is not yet hot. */
-		  pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE);
+		  aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid);
 		}
 	      else
 		{
-		  /* 2Q enabled and is first time the page is referenced: we put it in AIN to filter out correlated
-		   * references */
+		  aout_list_id = PGBUF_AOUT_NOT_FOUND;
+		}
+
+	      if (PGBUF_PAGE_QUOTA_IS_ENABLED && th_lru_idx != -1)
+		{
+		  if (th_lru_idx == aout_list_id)
+		    {
+		      /* this page was removed recently from this private LRU;
+		       * since it is reference again, we consider it a hot page
+		       * belonging to this private LRU */
+		      pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_1_ZONE, th_lru_idx);
+		      break;
+		    }
+		  else if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
+		    {
+		      pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE, th_lru_idx);
+		      break;
+		    }
+		}
+
+	      if (PGBUF_IS_2Q_ENABLED && aout_list_id != PGBUF_AOUT_WAS_IN_AIN)
+		{
+		  /* 2Q enabled and is first time the page is referenced:
+		   * we put it in AIN to filter out correlated references */
 		  pgbuf_relocate_top_ain (bufptr);
+		}
+	      else
+		{
+		  /* Put BCB in "middle" of LRU if VPID is in Aout list or is
+		   * the first reference and 2Q is disabled.
+		   * The page is not yet hot.
+		   */
+		  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
+		  pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE, shared_lru_idx);
 		}
 	      break;
 
 	    case PGBUF_LRU_2_ZONE:
-	      (void) pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_1_ZONE);
-	      break;
+	      bcb_lru_idx = PGBUF_GET_LRU_INDEX (bufptr->zone_lru);
 
-	    default:
-	      assert (false);
+	      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
+		{
+		  if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
+		    {
+		      /* check if this buffer is owned by other private list and
+		       * relocate it to a shared LRU */
+		      if (th_lru_idx != bcb_lru_idx && th_lru_idx != -1)
+			{
+			  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
+			  pgbuf_move_from_lru_to_top_lru (bufptr, shared_lru_idx, PGBUF_LRU_2_ZONE);
+			  break;
+			}
+		    }
+		  else if (th_lru_idx != -1 && bufptr->sticky_private_list == true)
+		    {
+		      /* page is in shared or garbage list, but it was recently
+		       * relocated from a dead private list or from a destroyed
+		       * page, relocate to this thread's private list */
+		      pgbuf_move_from_lru_to_top_lru (bufptr, th_lru_idx, PGBUF_LRU_2_ZONE);
+		      bufptr->sticky_private_list = false;
+		      break;
+		    }
+		}
+
+	      /* page is keeping LRU list, check if needs to be upgraded
+	       * to LRU1 part */
+	      age_in_list = PGBUF_AGE_DIFF (bufptr->list_tick, pgbuf_Pool.monitor.lru2_tick[bcb_lru_idx]);
+	      if (age_in_list > PGBUF_LRU2_AGE_THRESHOLD (bcb_lru_idx))
+		{
+		  (void) pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_1_ZONE, bcb_lru_idx);
+		}
+
 	      break;
 	    }
 	}
@@ -7293,9 +7973,13 @@ static PGBUF_BCB *
 pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 #endif				/* NDEBUG */
 {
-  VPID vpid;
+#define PGBUF_LOOP_CNT_FORCE_VICTIM 100
+
   PGBUF_BCB *bufptr;
-  int i, sleep_count, loop_count, check_count;
+  int sleep_count, loop_count, check_count;
+  bool sleep_before_next_try = false;
+  bool has_waiters_on_fixed = false;
+  bool has_fixed_pages = true;
 
   loop_count = 0;
 
@@ -7304,47 +7988,59 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   while (loop_count++ < INT_MAX)
     {
-      vpid = *src_vpid;
-      for (i = 0; i < pgbuf_Pool.num_LRU_list; i++, vpid.pageid++)
+      for (sleep_count = 0; sleep_count < PGBUF_SLEEP_MAX; sleep_count++)
 	{
-	  for (sleep_count = 0; sleep_count < PGBUF_SLEEP_MAX; sleep_count++)
+	  /* allocate a BCB from invalid BCB list */
+	  bufptr = pgbuf_get_bcb_from_invalid_list ();
+	  if (bufptr != NULL)
 	    {
-	      /* allocate a BCB from invalid BCB list */
-	      bufptr = pgbuf_get_bcb_from_invalid_list ();
-	      if (bufptr != NULL)
-		{
-		  return bufptr;
-		}
+	      return bufptr;
+	    }
 
-	      /* If the caller allocates a BCB successfully, the caller is holding bufptr->BCB_mutex. */
+	  /* If the caller allocates a BCB successfully,
+	   * the caller is holding bufptr->BCB_mutex.
+	   */
 
-	      /* If the allocation of BCB from invalid BCB list fails, that is, invalid BCB list is empty, allocate a
-	       * BCB from the bottom of LRU list */
-	      bufptr = pgbuf_get_victim (thread_p, &vpid, check_count);
-	      if (bufptr != NULL)
-		{
-		  /* the caller is holding bufptr->BCB_mutex. */
+	  /* If the allocation of BCB from invalid BCB list fails,
+	   * that is, invalid BCB list is empty,
+	   * allocate a BCB from the bottom of LRU list
+	   */
+	  bufptr = pgbuf_get_victim (thread_p, check_count,
+				     has_waiters_on_fixed ? PGBUF_LOOP_CNT_FORCE_VICTIM : loop_count,
+				     &sleep_before_next_try);
+	  if (bufptr != NULL)
+	    {
+	      /* the caller is holding bufptr->BCB_mutex. */
 
 #if !defined(NDEBUG)
-		  if (pgbuf_victimize_bcb (thread_p, bufptr, caller_file, caller_line) != NO_ERROR)
+	      if (pgbuf_victimize_bcb (thread_p, bufptr, caller_file, caller_line) != NO_ERROR)
 #else /* NDEBUG */
-		  if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
+	      if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
 #endif /* NDEBUG */
-		    {
-		      assert (false);
-		      continue;
-		    }
-
-		  /* Above function holds bufptr->BCB_mutex at first operation. If the above function returns failure,
-		   * the caller does not hold bufptr->BCB_mutex. Otherwise, the caller is still holding
-		   * bufptr->BCB_mutex. */
-		  return bufptr;
+		{
+		  assert (false);
+		  continue;
 		}
 
-#if defined(SERVER_MODE)
-	      thread_sleep (0.001);	/* 1 microsecond */
-#endif /* SERVER_MODE */
+	      /* Above function holds bufptr->BCB_mutex at first operation.
+	       * If the above function returns failure,
+	       * the caller does not hold bufptr->BCB_mutex.
+	       * Otherwise, the caller is still holding bufptr->BCB_mutex.
+	       */
+	      return bufptr;
 	    }
+
+#if defined(SERVER_MODE)
+	  if (has_fixed_pages == true && has_waiters_on_fixed == false)
+	    {
+	      has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
+	    }
+
+	  if (loop_count >= 2 || sleep_before_next_try == true)
+	    {
+	      thread_sleep (0.001);	/* 1 microsecond */
+	    }
+#endif /* SERVER_MODE */
 	}
 
       /* interrupt check */
@@ -7359,13 +8055,15 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PB_ALL_BUFFERS_DIRTY, 1, check_count);
 
-      check_count = PGBUF_LRU_SIZE - PGBUF_LRU_1_ZONE_THRESHOLD;
+      check_count = PGBUF_LRU_SIZE - pgbuf_Pool.num_LRU1_zone_threshold;
     }
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_ALL_BUFFERS_FIXED, 1, -1);
   assert (false);
 
   return NULL;
+
+#undef PGBUF_LOOP_CNT_FORCE_VICTIM
 }
 
 /*
@@ -7405,7 +8103,10 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   /* the caller is holding bufptr->BCB_mutex */
 
   /* before-flush, check victim condition again */
-  if (bufptr->zone != PGBUF_VOID_ZONE || bufptr->fcnt != 0 || bufptr->dirty == true || bufptr->avoid_victim == true
+  if (PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_VOID_ZONE
+      || bufptr->fcnt != 0
+      || bufptr->dirty == true
+      || bufptr->avoid_victim == true
       || bufptr->latch_mode != PGBUF_NO_LATCH || pgbuf_is_exist_blocked_reader_writer_victim (bufptr) == true)
     {
       assert (false);
@@ -7421,6 +8122,8 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       return ER_FAILED;
     }
+
+   bufptr->sticky_private_list = false;
 
   /* 
    * If above function returns success,
@@ -7462,7 +8165,7 @@ pgbuf_invalidate_bcb (PGBUF_BCB * bufptr)
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   /* bufptr->BCB_mutex is still held by the caller. */
-  switch (bufptr->zone)
+  switch (PGBUF_GET_ZONE (bufptr->zone_lru))
     {
     case PGBUF_VOID_ZONE:
       break;
@@ -7729,7 +8432,7 @@ pgbuf_get_bcb_from_invalid_list (void)
 
       rv = pthread_mutex_lock (&bufptr->BCB_mutex);
       bufptr->next_BCB = NULL;
-      bufptr->zone = PGBUF_VOID_ZONE;
+      bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
       return bufptr;
     }
 }
@@ -7753,7 +8456,8 @@ pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr)
   /* the caller is holding bufptr->BCB_mutex */
   VPID_SET_NULL (&bufptr->vpid);
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
-  bufptr->zone = PGBUF_INVALID_ZONE;
+  bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_INVALID_ZONE);
+  bufptr->sticky_private_list = false;
   bufptr->avoid_dealloc_cnt = 0;
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
@@ -7766,6 +8470,7 @@ pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr)
   return NO_ERROR;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pgbuf_get_lru_index () - Get the index of the LRU list for the given VPID
  *   return: the index of the LRU index
@@ -7780,6 +8485,157 @@ pgbuf_get_lru_index (const VPID * vpid)
 
   return lru_idx;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * pgbuf_get_shared_lru_index_for_add () -
+ *   return: the index of the LRU index
+ *   vpid(in): VPID
+ */
+static int
+pgbuf_get_shared_lru_index_for_add ()
+{
+#define PAGE_ADD_REFRESH_STAT \
+  MAX (2 * pgbuf_Pool.num_buffers / PGBUF_SHARED_LRU, 10000)
+
+  int i;
+  unsigned int lru_idx, refresh_stat_cnt;
+
+  lru_idx = ATOMIC_INC_32 (&pgbuf_Pool.quota.add_shared_lru_idx, 1);
+  refresh_stat_cnt = lru_idx % PAGE_ADD_REFRESH_STAT;
+
+  /* check if there is an in-balance BCBs distribution accros shared LRUs */
+  if (refresh_stat_cnt == 0)
+    {
+      int shared_lru_bcb_sum;
+      int max_bcb, min_bcb;
+      int lru_idx_with_max;
+      int this_lru_cnt;
+      int curr_avoid_lru_idx;
+
+      shared_lru_bcb_sum = 0;
+      max_bcb = 0;
+      min_bcb = pgbuf_Pool.num_buffers;
+      lru_idx_with_max = -1;
+      /* update unbalanced LRU idx */
+      for (i = 0; i < PGBUF_SHARED_LRU; i++)
+	{
+	  this_lru_cnt = pgbuf_Pool.monitor.bcbs_cnt_per_lru[i];
+	  shared_lru_bcb_sum += this_lru_cnt;
+
+	  if (this_lru_cnt > max_bcb)
+	    {
+	      max_bcb = this_lru_cnt;
+	      lru_idx_with_max = i;
+	    }
+
+	  if (this_lru_cnt < min_bcb)
+	    {
+	      min_bcb = this_lru_cnt;
+	    }
+	}
+
+      if (shared_lru_bcb_sum > pgbuf_Pool.num_buffers / 10
+	  && (max_bcb > (int) (1.3f * shared_lru_bcb_sum) / PGBUF_SHARED_LRU || max_bcb > 2 * min_bcb))
+	{
+	  ATOMIC_TAS_32 (&pgbuf_Pool.quota.avoid_shared_lru_idx, lru_idx_with_max);
+	}
+      else
+	{
+	  curr_avoid_lru_idx = pgbuf_Pool.quota.avoid_shared_lru_idx;
+	  if (curr_avoid_lru_idx == -1
+	      || pgbuf_Pool.monitor.bcbs_cnt_per_lru[curr_avoid_lru_idx] < shared_lru_bcb_sum / PGBUF_SHARED_LRU)
+	    {
+	      ATOMIC_TAS_32 (&pgbuf_Pool.quota.avoid_shared_lru_idx, -1);
+	    }
+	}
+    }
+
+  lru_idx = lru_idx % PGBUF_SHARED_LRU;
+
+  /* avoid to add in shared LRU idx having too many BCBs */
+  if (pgbuf_Pool.quota.avoid_shared_lru_idx == (int) lru_idx)
+    {
+      lru_idx = ATOMIC_INC_32 (&pgbuf_Pool.quota.add_shared_lru_idx, 1);
+      lru_idx = lru_idx % PGBUF_SHARED_LRU;
+    }
+
+  return lru_idx;
+#undef PAGE_ADD_REFRESH_STAT
+}
+
+/*
+ * pgbuf_get_shared_lru_index_for_destroyed_pages () -
+ *   return: the index of the LRU index
+ *   vpid(in): VPID
+ */
+static int
+pgbuf_get_shared_lru_index_for_destroyed_pages (void)
+{
+  unsigned int lru_idx;
+
+  lru_idx = ATOMIC_INC_32 (&pgbuf_Pool.quota.add_shared_lru_idx_for_destroyed, 1);
+
+  lru_idx = PGBUF_SHARED_LRU + (lru_idx % PGBUF_GARBAGE_LRU);
+
+  return (int) lru_idx;
+}
+
+/*
+ * pgbuf_get_garbage_lru_index_for_chain_add () -
+ *   return: the index of the LRU index
+ *   vpid(in): VPID
+ */
+static int
+pgbuf_get_garbage_lru_index_for_chain_add (void)
+{
+  int i, lru_idx;
+  int min_cnt;
+
+  lru_idx = 0;
+  min_cnt = pgbuf_Pool.num_buffers;
+
+  for (i = PGBUF_SHARED_LRU; i < PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU; i++)
+    {
+      if (pgbuf_Pool.monitor.bcbs_cnt_per_lru[i] < min_cnt)
+	{
+	  lru_idx = i;
+	  min_cnt = pgbuf_Pool.monitor.bcbs_cnt_per_lru[i];
+	}
+    }
+
+  return lru_idx;
+}
+
+/*
+ * pgbuf_get_shared_lru_index_for_victim () -
+ *   return: the index of the LRU index
+ *   vpid(in): VPID
+ */
+static int
+pgbuf_get_shared_lru_index_for_victim (void)
+{
+  unsigned int lru_idx;
+
+  lru_idx = ATOMIC_INC_32 (&pgbuf_Pool.quota.vict_shared_lru_idx, 1);
+  lru_idx = lru_idx % PGBUF_SHARED_LRU;
+  return (int) lru_idx;
+}
+
+/*
+ * pgbuf_get_garbage_lru_index_for_victim () -
+ *   return: the index of the LRU index
+ *   vpid(in): VPID
+ */
+static int
+pgbuf_get_garbage_lru_index_for_victim (void)
+{
+  unsigned int lru_idx;
+
+  lru_idx = ATOMIC_INC_32 (&pgbuf_Pool.quota.vict_garbage_lru_idx, 1);
+  lru_idx = PGBUF_SHARED_LRU + lru_idx % PGBUF_GARBAGE_LRU;
+  return (int) lru_idx;
+}
 
 /*
  * pgbuf_get_victim () - find a victim BCB
@@ -7787,32 +8643,263 @@ pgbuf_get_lru_index (const VPID * vpid)
  * thread_p (in) :
  * vpid (in) :
  * max_count (in) :
+ * loop_count (in) : how may loops this thread has requested a victim
+ * sleep_before_next_try (out) : set true if should wait before next try
  *
  * Note: If a victim BCB is found, this function will already lock it. This
  *     means that the caller will have exclusive access to the returned BCB.
  */
 static PGBUF_BCB *
-pgbuf_get_victim (THREAD_ENTRY * thread_p, const VPID * vpid, int max_count)
+pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool * sleep_before_next_try)
 {
-  PGBUF_BCB *victim = NULL;
+#define PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW 4
+#define PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE 2
 
-  if (pgbuf_Pool.buf_AIN_list.ain_count >= pgbuf_Pool.buf_AIN_list.max_count && PGBUF_IS_2Q_ENABLED)
+#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 2
+#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 2
+#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 3
+#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 3
+
+  PGBUF_BCB *victim = NULL;
+  int shared_lru_idx = -1, private_lru_idx = -1;
+  int overflow_private_lru_idx = -1;
+  int start_shared_lru_idx;
+  int bcbs_in_lru;
+  int pending_vict_req;
+  PGBUF_PAGE_MONITOR *monitor;
+  PGBUF_PAGE_QUOTA *quota;
+  bool try_private;
+  bool force_private_lru1;
+
+  monitor = &pgbuf_Pool.monitor;
+  quota = &pgbuf_Pool.quota;
+
+  *sleep_before_next_try = false;
+
+  if (PGBUF_PAGE_QUOTA_IS_ENABLED)
     {
-      ATOMIC_INC_32 (&pgbuf_Pool.ain_victim_req_cnt, 1);
+      if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+	{
+	  private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+	}
+
+      /* first try to victimize from a garbage list */
+      if (monitor->lru_garbage_pgs > 0)
+	{
+	  /* we assume we will find a victim, so we decrement the number of
+	   * available pages to avoid that other threads enters when count is
+	   * zero */
+	  if (ATOMIC_INC_32 (&monitor->lru_garbage_pgs, -1) >= 0)
+	    {
+	      shared_lru_idx = pgbuf_get_garbage_lru_index_for_victim ();
+	      start_shared_lru_idx = shared_lru_idx;
+
+	      /* cycle through all shared lists */
+	      do
+		{
+		  bcbs_in_lru = monitor->bcbs_cnt_per_lru[shared_lru_idx];
+		  if (bcbs_in_lru <= 0)
+		    {
+		      shared_lru_idx = PGBUF_SHARED_LRU + (shared_lru_idx - PGBUF_SHARED_LRU + 1) % PGBUF_GARBAGE_LRU;
+		      if (shared_lru_idx == start_shared_lru_idx)
+			{
+			  break;
+			}
+		      continue;
+		    }
+
+		  /* search this list only if all previous searches were
+		   * successful */
+		  pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
+		  if (bcbs_in_lru >= pending_vict_req
+		      && (loop_count >= PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT
+			  || (monitor->lru_victim_found_per_lru[shared_lru_idx] >=
+			      monitor->lru_victim_req_per_lru[shared_lru_idx]
+			      && pending_vict_req <= PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE)))
+		    {
+		      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
+		      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, bcbs_in_lru, true);
+		      /* we abort victim search through shared lists, only if
+		       * victim is found */
+		      if (victim != NULL)
+			{
+			  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
+			  return victim;
+			}
+		    }
+		  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
+		  shared_lru_idx = PGBUF_SHARED_LRU + (shared_lru_idx - PGBUF_SHARED_LRU + 1) % PGBUF_GARBAGE_LRU;
+		}
+	      while (shared_lru_idx != start_shared_lru_idx);
+
+	      /* we didn't find a victim, restore count */
+	      ATOMIC_INC_32 (&monitor->lru_garbage_pgs, 1);
+
+	      *sleep_before_next_try = true;
+	    }
+	  else
+	    {
+	      ATOMIC_INC_32 (&monitor->lru_garbage_pgs, 1);
+	    }
+	}
+
+      if (private_lru_idx != -1
+	  && ((monitor->bcbs_cnt_per_lru[private_lru_idx] > quota->target_bcbs_per_lru[private_lru_idx])))
+	{
+	  *sleep_before_next_try = true;
+	  try_private = true;
+	}
+      else
+	{
+	  try_private = false;
+	}
+
+      if (try_private == true
+	  && (loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT
+	      || (monitor->lru_victim_found_per_lru[private_lru_idx]
+		  >= monitor->lru_victim_req_per_lru[private_lru_idx])))
+	{
+	  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
+
+	  /* victimize from thread's private LRU */
+	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], 1);
+	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, max_count, false);
+	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
+	  if (victim != NULL)
+	    {
+	      return victim;
+	    }
+	}
+
+      /* try to victimize from the private list having most pages */
+      overflow_private_lru_idx = quota->overflow_private_lru_idx;
+      if ((overflow_private_lru_idx != -1) && (overflow_private_lru_idx != private_lru_idx))
+	{
+	  if (monitor->bcbs_cnt_per_lru[overflow_private_lru_idx]
+	      <= quota->target_bcbs_per_lru[overflow_private_lru_idx])
+	    {
+	      /* overflow list has reached target, do not use it anymore */
+	      (void) ATOMIC_CAS_32 (&quota->overflow_private_lru_idx, overflow_private_lru_idx, -1);
+	    }
+	  else
+	    {
+	      pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[overflow_private_lru_idx], 1);
+	      if (pending_vict_req <= PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW
+		  && (loop_count >= PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT
+		      || (monitor->lru_victim_found_per_lru[overflow_private_lru_idx]
+			  >= monitor->lru_victim_req_per_lru[overflow_private_lru_idx])))
+		{
+		  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
+		  /* victimize from overflow private LRU */
+		  victim = pgbuf_get_victim_from_lru_list (thread_p, overflow_private_lru_idx, max_count, false);
+		  if (victim != NULL)
+		    {
+		      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[overflow_private_lru_idx], -1);
+		      return victim;
+		    }
+		}
+	      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[overflow_private_lru_idx], -1);
+	    }
+	}
+    }
+  else if (pgbuf_Pool.buf_AIN_list.ain_count > pgbuf_Pool.buf_AIN_list.max_count)
+    {
+      assert (PGBUF_IS_2Q_ENABLED);
+      ATOMIC_INC_32 (&monitor->ain_victim_req_cnt, 1);
       victim = pgbuf_get_victim_from_ain_list (thread_p, max_count);
+      if (victim != NULL)
+	{
+	  return victim;
+	}
     }
 
-  if (victim == NULL)
+  /* decide if we try to victimize from shared list OR force victimization from
+   * private list: we choose private list only if the amount of shared pages
+   * is still under the computed overall threshold */
+  force_private_lru1 = (monitor->lru_shared_pgs < (1.0f - quota->private_pages_ratio) * pgbuf_Pool.num_buffers)
+    ? true : false;
+
+  if (private_lru_idx != -1
+      && force_private_lru1 == true
+      && monitor->bcbs_cnt_per_lru[private_lru_idx] > 0
+      && (loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT
+	  || (monitor->lru_victim_found_per_lru[private_lru_idx] >= monitor->lru_victim_req_per_lru[private_lru_idx])))
     {
-      /* if we don't find one in the Ain list, we are going to find one in LRU lists. This may lead a hot page is
-       * evicted from buffer. This is intended for response time of workers that want to victimize one. We may choose a 
-       * policy to wait for one only in AIN list, however, the worker thread must wait for the flush thread flushes
-       * the dirty pages from AIN list while iterating the AIN list multiple times. */
-      ATOMIC_INC_32 (&pgbuf_Pool.lru_victim_req_cnt, 1);
-      victim = pgbuf_get_victim_from_lru_list (thread_p, vpid, max_count);
+      bcbs_in_lru = monitor->bcbs_cnt_per_lru[private_lru_idx];
+      /* force victimization from private LRU, including LRU1 zone */
+      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
+      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], 1);
+      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, bcbs_in_lru, true);
+      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
+      if (victim != NULL)
+	{
+	  return victim;
+	}
+    }
+
+  if (force_private_lru1 == true && loop_count < PGBUF_LOOP_CNT_SHARED_IGNORE_STAT)
+    {
+      return victim;
+    }
+
+  if (ATOMIC_INC_32 (&monitor->lru_shared_pgs, -1) > 0)
+    {
+      shared_lru_idx = pgbuf_get_shared_lru_index_for_victim ();
+      start_shared_lru_idx = shared_lru_idx;
+
+      /* cycle through all shared lists */
+      do
+	{
+	  bcbs_in_lru = monitor->bcbs_cnt_per_lru[shared_lru_idx];
+	  if (bcbs_in_lru <= 0)
+	    {
+	      shared_lru_idx = (shared_lru_idx + 1) % PGBUF_SHARED_LRU;
+	      if (shared_lru_idx == start_shared_lru_idx)
+		{
+		  break;
+		}
+	      continue;
+	    }
+
+	  /* we attempt a search only if all previous searches were successful
+	   */
+	  pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
+	  if (pending_vict_req <= 1
+	      && (loop_count >= PGBUF_LOOP_CNT_SHARED_IGNORE_STAT
+		  || (monitor->lru_victim_found_per_lru[shared_lru_idx]
+		      >= monitor->lru_victim_req_per_lru[shared_lru_idx])))
+	    {
+	      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
+	      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, max_count, false);
+	      /* we abort victim search through shared lists, even if victim is * not found */
+	      if (victim == NULL)
+		{
+		  ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
+		}
+	      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
+	      return victim;
+	    }
+	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
+	  shared_lru_idx = (shared_lru_idx + 1) % PGBUF_SHARED_LRU;
+	}
+      while (shared_lru_idx != start_shared_lru_idx);
+
+      /* we didn't find a victim, restore count */
+      ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
+    }
+  else
+    {
+      ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
     }
 
   return victim;
+
+#undef PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW
+#undef PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE
+#undef PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT
+#undef PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT
+#undef PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT
+#undef PGBUF_LOOP_CNT_SHARED_IGNORE_STAT
 }
 
 /*
@@ -7841,13 +8928,18 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
   if (ain_list->Ain_bottom == NULL)
     {
       pthread_mutex_unlock (&ain_list->Ain_mutex);
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_ain_vict_req_failed, 1);
       return NULL;
     }
 
   /* maximum amount to check in AIN is same as maximum amount to check in all LRU lists, but limited to half of target
-   * size of AIN list */
+   * size of AIN list; this limit does not apply when page quota is enabled - in such case, all pages in AIN may be
+   * victimized */
   check_count_max = max_count * pgbuf_Pool.num_LRU_list;
-  check_count_max = MIN (check_count_max, ain_list->max_count / 2);
+  if (!PGBUF_PAGE_QUOTA_IS_ENABLED)
+    {
+      check_count_max = MIN (check_count_max, ain_list->max_count / 2);
+    }
   check_count = MAX (check_count_max, 1);
 
   dirty_count = 0;
@@ -7879,6 +8971,10 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
 
   pthread_mutex_unlock (&ain_list->Ain_mutex);
 
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.ain_victim_searches_cnt, check_count_max - check_count);
+
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.ain_victim_dirty_skipped_cnt, dirty_count);
+
   if (bufptr == NULL || dirty_count > max_count / 2)
     {
       /* Flush some pages. We do this either because we have too many dirty pages or we didn't find a victim. */
@@ -7887,20 +8983,27 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
       if (bufptr == NULL)
 	{
 	  /* We didn't find any victim. */
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_ain_vict_req_failed, 1);
 	  return NULL;
 	}
     }
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
-  /* Since this is the first time we actually get exclusive access to this bufptr, we have to reevaluate our choice */
-  if (bufptr->dirty == true || bufptr->avoid_victim == true || bufptr->fcnt != 0 || bufptr->latch_mode != PGBUF_NO_LATCH
-      || bufptr->zone != PGBUF_AIN_ZONE || pgbuf_is_exist_blocked_reader_writer_victim (bufptr) == true)
+  /* Since this is the first time we actually get exclusive access to this bufptr, we have to reevaluate our choice
+   */
+  if (bufptr->dirty == true
+      || bufptr->avoid_victim == true
+      || bufptr->fcnt != 0
+      || bufptr->latch_mode != PGBUF_NO_LATCH
+      || PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_AIN_ZONE
+      || pgbuf_is_exist_blocked_reader_writer_victim (bufptr) == true)
     {
       /* Oops! While we were playing around with the Ain list, somebody else fixed this page and we can't know if we
        * should victimize it or not. Release bufptr mutex and return NULL. We will find another victim at next pass. */
       bufptr->victim_candidate = false;
       pthread_mutex_unlock (&bufptr->BCB_mutex);
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_ain_vict_req_failed, 1);
 
       return NULL;
     }
@@ -7909,14 +9012,17 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
       rv = pthread_mutex_lock (&ain_list->Ain_mutex);
       pgbuf_remove_from_ain_list (bufptr);
       ain_list->ain_count -= 1;
+      bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
       pthread_mutex_unlock (&ain_list->Ain_mutex);
 
       bufptr->victim_candidate = false;
-      bufptr->zone = PGBUF_VOID_ZONE;
 
       /* Add vpid to AOUT list. We won't be able to do it when we actually victimize the page because we will not know
        * where the BCB came from. */
-      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid);
+      if (!PGBUF_PAGE_QUOTA_IS_ENABLED)
+	{
+	  pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, PGBUF_AOUT_WAS_IN_AIN);
+	}
 
       return bufptr;
     }
@@ -7926,8 +9032,9 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
  * pgbuf_get_victim_from_lru_list () - Get victim BCB from the bottom of
  *				       LRU list
  *   return: If success, BCB, otherwise NULL
- *   vpid (in)	      : VPID used for determining resident LRU list
+ *   lru_idx (in)     : index of LRU list
  *   max_count (in)   : maximum number of elements to consider
+ *   use_lru1_zone(in): true if allowed to victimize from LRU1 section (otherwise, only LRU2 is allowed)
  *
  * Note: This function disconnects BCB from the bottom of the LRU list and
  *       returns it if its fcnt == 0. If its fcnt != 0, makes bufptr->PrevBCB
@@ -7935,20 +9042,25 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
  *       holder of the LRU list.
  */
 static PGBUF_BCB *
-pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid, int max_count)
+pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int max_count, bool use_lru1_zone)
 {
+#define MIN_LRU_SEARCH_TO_FLUSH 16
+#define MIN_LRU_DIRTY_TO_FLUSH 4
+
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
 
   PGBUF_BCB *bufptr;
-  int lru_idx;
+  int zone1_list;
+  int zone2_list;
+  int dirty_cnt;
+  PGBUF_LRU_LIST *lru_list;
+  int search_cnt;
   int check_count;
   bool found;
   bool list_bottom_dirty = false;
-  PGBUF_LRU_LIST *lru_list;
 
-  lru_idx = pgbuf_get_lru_index (vpid);
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
 
   /* check if LRU list is empty */
@@ -7957,21 +9069,34 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid, int 
       return NULL;
     }
 
+  zone1_list = use_lru1_zone ? (PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_1_ZONE)) : -1;
+  zone2_list = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
+
   found = false;
   check_count = max_count;
+  dirty_cnt = 0;
 
   rv = pthread_mutex_lock (&lru_list->LRU_mutex);
   bufptr = lru_list->LRU_bottom;
 
   /* search for non dirty PGBUF */
-  while (bufptr != NULL && check_count > 0 && bufptr->zone == PGBUF_LRU_2_ZONE)
+  while (bufptr != NULL && check_count > 0 && (bufptr->zone_lru == zone2_list || bufptr->zone_lru == zone1_list))
     {
-      if (!bufptr->dirty && !bufptr->avoid_victim && bufptr->fcnt == 0 && bufptr->latch_mode == PGBUF_NO_LATCH
-	  && bufptr->victim_candidate == false && !pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
+      if (!bufptr->dirty
+	  && !bufptr->avoid_victim
+	  && bufptr->fcnt == 0
+	  && bufptr->latch_mode == PGBUF_NO_LATCH
+	  && bufptr->victim_candidate == false
+	  && !pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
 	{
 	  bufptr->victim_candidate = true;
 	  found = true;
 	  break;
+	}
+
+      if (bufptr->dirty)
+	{
+	  dirty_cnt++;
 	}
 
       bufptr = bufptr->prev_BCB;
@@ -7990,24 +9115,37 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid, int 
 
   pthread_mutex_unlock (&lru_list->LRU_mutex);
 
-  if (list_bottom_dirty == true)
-    {
+  search_cnt = max_count - check_count;
+  if ((list_bottom_dirty == true
+       && (search_cnt > MIN_LRU_SEARCH_TO_FLUSH
+	   || dirty_cnt > MIN_LRU_DIRTY_TO_FLUSH)) || (bufptr == NULL && dirty_cnt > 0))
+     {
       /* flush dirty pages */
       pgbuf_wakeup_flush_thread (thread_p);
     }
 
+  ATOMIC_CGTAS_32 (&pgbuf_Pool.monitor.lru_victim_search_depth_per_lru[lru_idx], search_cnt, search_cnt);
+  ATOMIC_CGTAS_32 (&pgbuf_Pool.monitor.lru_victim_dirty_per_lru[lru_idx], dirty_cnt, dirty_cnt);
+
   if (bufptr == NULL)
     {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
       return NULL;
     }
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
-  if (bufptr->dirty == true || bufptr->avoid_victim == true || bufptr->zone != PGBUF_LRU_2_ZONE || bufptr->fcnt != 0
+  if (bufptr->dirty == true || bufptr->avoid_victim == true
+      || (bufptr->zone_lru != zone2_list
+	  && bufptr->zone_lru != zone1_list)
+      || bufptr->fcnt != 0
       || bufptr->latch_mode != PGBUF_NO_LATCH || pgbuf_is_exist_blocked_reader_writer_victim (bufptr) == true)
     {
       bufptr->victim_candidate = false;
       pthread_mutex_unlock (&bufptr->BCB_mutex);
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
 
       return NULL;
     }
@@ -8016,11 +9154,30 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const VPID * vpid, int 
       rv = pthread_mutex_lock (&lru_list->LRU_mutex);
       /* disconnect bufptr from the LRU list */
       pgbuf_remove_from_lru_list (bufptr, lru_list);
-      pthread_mutex_unlock (&lru_list->LRU_mutex);
+      if (bufptr->zone_lru == zone1_list)
+	{
+	  assert_release (use_lru1_zone == true);
+	  assert_release (lru_list->LRU_1_zone_cnt >= 1);
+	  assert_release (!PGBUF_IS_SHARED_LRU_INDEX (lru_idx));
+	  lru_list->LRU_1_zone_cnt -= 1;
+	}
+      if (bufptr->zone_lru == zone1_list || bufptr->zone_lru == zone2_list)
+	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx], -1);
+	}
+
+      bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
 
       bufptr->victim_candidate = false;
-      bufptr->zone = PGBUF_VOID_ZONE;
+      pthread_mutex_unlock (&lru_list->LRU_mutex);
 
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_found_per_lru[lru_idx], 1);
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
+
+      if (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx))
+	{
+	  pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
+	}
       return bufptr;
     }
 }
@@ -8040,7 +9197,7 @@ pgbuf_invalidate_bcb_from_lru (PGBUF_BCB * bufptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  lru_idx = pgbuf_get_lru_index (&bufptr->vpid);
+  lru_idx = PGBUF_GET_LRU_INDEX (bufptr->zone_lru);
 
   /* the caller is holding bufptr->BCB_mutex */
   /* delete the bufptr from the LRU list */
@@ -8072,12 +9229,18 @@ pgbuf_invalidate_bcb_from_lru (PGBUF_BCB * bufptr)
     }
 
   bufptr->prev_BCB = bufptr->next_BCB = NULL;
-  if (bufptr->zone == PGBUF_LRU_1_ZONE)
+  if (bufptr->zone_lru == PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_1_ZONE))
     {
       pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt -= 1;
     }
 
-  bufptr->zone = PGBUF_VOID_ZONE;
+  if (bufptr->zone_lru == PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE)
+      || bufptr->zone_lru == PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_1_ZONE))
+    {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx], -1);
+    }
+
+  bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
 
   pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 
@@ -8097,7 +9260,7 @@ pgbuf_invalidate_bcb_from_ain (PGBUF_BCB * bufptr)
   int rv;
 #endif /* SERVER_MODE */
   PGBUF_AIN_LIST *ain_list;
-  assert (bufptr->zone == PGBUF_AIN_ZONE);
+  assert (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_AIN_ZONE);
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_AIN_list.Ain_mutex);
   ain_list = &pgbuf_Pool.buf_AIN_list;
@@ -8122,7 +9285,7 @@ pgbuf_invalidate_bcb_from_ain (PGBUF_BCB * bufptr)
 
   bufptr->next_BCB = NULL;
   bufptr->prev_BCB = NULL;
-  bufptr->zone = PGBUF_VOID_ZONE;
+  bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
 
   pthread_mutex_unlock (&ain_list->Ain_mutex);
   return NO_ERROR;
@@ -8132,35 +9295,37 @@ pgbuf_invalidate_bcb_from_ain (PGBUF_BCB * bufptr)
  * pgbuf_relocate_top_lru () - Relocate given BCB into the LRU list
  *   return: NO_ERROR
  *   bufptr(in): pointer to buffer page
- *   dest_zone(in): zone part of LRU to relocate to
+ *   dest_zone(in): zone part of LRU to relocate to (LRU2 or LRU1)
+ *   lru_idx(in): LRU index to relocate to
  *
- * Note: This function puts BCB to the top of the LRU list.
+ * Note: This function puts BCB to the top of the LRU2 or LRU1 list section
  */
 static int
-pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone)
+pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone, const int lru_idx)
 {
-  int lru_idx;
+  int zone1_threshold;
   PGBUF_BCB *ref_bufptr;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+  bool original_not_in_lru = false;
 
-  assert (bufptr->zone != PGBUF_LRU_1_ZONE);
-
-  lru_idx = pgbuf_get_lru_index (&bufptr->vpid);
+  assert (PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_LRU_1_ZONE);
 
   /* the caller is holding bufptr->BCB_mutex */
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 
   if (dest_zone == PGBUF_LRU_2_ZONE
-      && (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom == NULL || pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle == NULL
-	  || pgbuf_Pool.buf_LRU_list[lru_idx].LRU_top == NULL || bufptr->zone == PGBUF_LRU_2_ZONE))
+      && (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom == NULL
+	  || pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle == NULL
+	  || pgbuf_Pool.buf_LRU_list[lru_idx].LRU_top == NULL || PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_2_ZONE))
     {
       dest_zone = PGBUF_LRU_1_ZONE;
     }
 
-  if (bufptr->zone == PGBUF_LRU_2_ZONE)
+  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_2_ZONE)
     {
+      assert_release (PGBUF_GET_LRU_INDEX (bufptr->zone_lru) == lru_idx);
       /* delete bufptr from LRU list */
       if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_top == bufptr)
 	{
@@ -8183,6 +9348,10 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone)
 	  (bufptr->prev_BCB)->next_BCB = bufptr->next_BCB;
 	}
     }
+  else
+    {
+      original_not_in_lru = true;
+    }
 
   if (dest_zone == PGBUF_LRU_2_ZONE)
     {
@@ -8201,7 +9370,7 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone)
 	}
       ref_bufptr->next_BCB = bufptr;
 
-      bufptr->zone = PGBUF_LRU_2_ZONE;
+      bufptr->zone_lru = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
     }
   else
     {
@@ -8225,16 +9394,20 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone)
 	  pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle = bufptr;
 	}
 
-      bufptr->zone = PGBUF_LRU_1_ZONE;	/* OK. */
+      bufptr->zone_lru = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_1_ZONE);
       pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt += 1;
-      if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt > PGBUF_LRU_1_ZONE_THRESHOLD)
+      zone1_threshold = PGBUF_LRU_1_ZONE_THRESHOLD (lru_idx);
+      if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt > zone1_threshold)
 	{
 	  PGBUF_BCB *temp_bufptr;
 
 	  temp_bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle;
-	  while (temp_bufptr != NULL && (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt > PGBUF_LRU_1_ZONE_THRESHOLD))
+	  while (temp_bufptr != NULL
+		 && temp_bufptr->zone_lru == PGBUF_MAKE_ZONE (lru_idx,
+							      PGBUF_LRU_1_ZONE)
+		 && (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt > zone1_threshold))
 	    {
-	      temp_bufptr->zone = PGBUF_LRU_2_ZONE;
+	      temp_bufptr->zone_lru = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
 	      pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle = temp_bufptr->prev_BCB;
 	      pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt -= 1;
 	      temp_bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle;
@@ -8242,89 +9415,330 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone)
 	}
     }
 
+  if (original_not_in_lru)
+    {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx], 1);
+      if (PGBUF_IS_GARBAGE_LRU_INDEX (lru_idx))
+	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_garbage_pgs, 1);
+	}
+      else if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx))
+	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, 1);
+	}
+    }
+
+  /* There are two extreme cases :
+   * - only hot pages are contained by the LRU : all BCBs will compete for a 
+   * place in LRU1, in such case a BCB which get pushed out of LRU1 into LRU2
+   * needs to be relocated again to LRU1 at first reference while it is in LRU2
+   *
+   * - only new pages are walked through the list: since new pages
+   * enter by LRU2, and they are not referenced again, they will exit the list
+   * by victimization; during this time, BCBs in LRU1 (if any) will remain
+   * untouched;
+   * this second scenario is very unlikely: some BCBs may be relocated
+   * from LRU2 to LRU1, dislocating older pages from LRU1, eventually leading to 
+   * slowly discarding the older pages, this is also helped by lowering the 
+   * LRU1 theshold of list */
+  if (dest_zone == PGBUF_LRU_2_ZONE)
+    {
+      bufptr->list_tick = pgbuf_Pool.monitor.lru2_tick[lru_idx];
+      pgbuf_Pool.monitor.lru2_tick[lru_idx] += 1;
+      if (pgbuf_Pool.monitor.lru2_tick[lru_idx] >= DB_INT32_MAX)
+	{
+	  pgbuf_Pool.monitor.lru2_tick[lru_idx] = 0;
+	}
+    }
+  else
+    {
+      bufptr->list_tick = PGBUF_AGE_DIFF (PGBUF_LRU2_AGE_THRESHOLD (lru_idx), pgbuf_Pool.monitor.lru2_tick[lru_idx]);
+      pgbuf_Pool.monitor.lru1_tick[lru_idx] += 1;
+      if (pgbuf_Pool.monitor.lru1_tick[lru_idx] >= DB_INT32_MAX)
+	{
+	  pgbuf_Pool.monitor.lru1_tick[lru_idx] = 0;
+	}
+    }
+
   pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 
   return NO_ERROR;
+}
+
+/*
+ * pgbuf_move_from_lru_to_top_lru () -
+ *   return: NO_ERROR
+ *   bufptr(in): pointer to buffer page
+ *   dest_zone(in): zone part of LRU to relocate to
+ *
+ * Note: This function puts BCB to the top of the LRU list.
+ */
+static void
+pgbuf_move_from_lru_to_top_lru (PGBUF_BCB * bufptr, int dest_lru_idx, int dest_zone)
+{
+  int curr_lru_idx;
+  PGBUF_LRU_LIST *lru_list;
+
+  curr_lru_idx = PGBUF_GET_LRU_INDEX (bufptr->zone_lru);
+
+  /* disconnect bufptr from the owner LRU list */
+  lru_list = &pgbuf_Pool.buf_LRU_list[curr_lru_idx];
+  pthread_mutex_lock (&lru_list->LRU_mutex);
+  if (PGBUF_GET_LRU_INDEX (bufptr->zone_lru) != curr_lru_idx)
+    {
+      assert_release (false);
+      /* the thread was pre-empted and BCB was relocated */
+      pthread_mutex_unlock (&lru_list->LRU_mutex);
+      return;
+    }
+  pgbuf_remove_from_lru_list (bufptr, lru_list);
+  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
+    {
+      assert_release (lru_list->LRU_1_zone_cnt >= 1);
+      lru_list->LRU_1_zone_cnt -= 1;
+    }
+
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[curr_lru_idx], -1);
+  if (PGBUF_IS_GARBAGE_LRU_INDEX (curr_lru_idx))
+    {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_garbage_pgs, -1);
+    }
+  else if (PGBUF_IS_SHARED_LRU_INDEX (curr_lru_idx))
+    {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, -1);
+    }
+
+  bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
+  bufptr->sticky_private_list = false;
+
+  pthread_mutex_unlock (&lru_list->LRU_mutex);
+
+  /* add bufptr to top of the LRU list */
+  (void) pgbuf_relocate_top_lru (bufptr, dest_zone, dest_lru_idx);
 }
 
 /*
  * pgbuf_relocate_bottom_lru () - Relocate given BCB into the bottom of LRU list
  *   return: NO_ERROR
  *   bufptr(in): pointer to buffer page
+ *   lru_idx(in): LRU index to relocate to
+ *   sticky_bit(in): true if sticky bit field should be set
  *
  * Note: This function puts BCB to the bottom of the LRU list.
  */
 static int
-pgbuf_relocate_bottom_lru (PGBUF_BCB * bufptr)
+pgbuf_relocate_bottom_lru (PGBUF_BCB * bufptr, const int lru_idx, const bool sticky_bit)
 {
-  int lru_idx;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
+  PGBUF_LRU_LIST *lru_list;
+  int curr_lru_idx;
 
-  assert (bufptr->zone != PGBUF_LRU_1_ZONE && bufptr->zone != PGBUF_INVALID_ZONE);
+  assert (PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_INVALID_ZONE
+	  && PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_AIN_ZONE);
 
-  lru_idx = pgbuf_get_lru_index (&bufptr->vpid);
-
-  /* the caller is holding bufptr->BCB_mutex */
-  rv = pthread_mutex_lock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
-
-  if (bufptr->zone == PGBUF_LRU_2_ZONE)
+  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_2_ZONE || PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
     {
-      assert (false);
+      curr_lru_idx = PGBUF_GET_LRU_INDEX (bufptr->zone_lru);
+      lru_list = &pgbuf_Pool.buf_LRU_list[curr_lru_idx];
 
-      /* delete bufptr from LRU list */
-      if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom == bufptr)
+      pthread_mutex_lock (&lru_list->LRU_mutex);
+
+      pgbuf_remove_from_lru_list (bufptr, lru_list);
+
+      if (bufptr->zone_lru == PGBUF_MAKE_ZONE (curr_lru_idx, PGBUF_LRU_1_ZONE))
 	{
-	  pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
-	  return NO_ERROR;
+	  lru_list->LRU_1_zone_cnt -= 1;
 	}
 
-      if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_top == bufptr)
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[curr_lru_idx], -1);
+      if (PGBUF_IS_GARBAGE_LRU_INDEX (curr_lru_idx))
 	{
-	  pgbuf_Pool.buf_LRU_list[lru_idx].LRU_top = bufptr->next_BCB;
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_garbage_pgs, -1);
 	}
+      else if (PGBUF_IS_SHARED_LRU_INDEX (curr_lru_idx))
+	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, -1);
+	}
+      bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
 
-      if (bufptr->next_BCB != NULL)
-	{
-	  (bufptr->next_BCB)->prev_BCB = bufptr->prev_BCB;
-	}
-
-      if (bufptr->prev_BCB != NULL)
-	{
-	  (bufptr->prev_BCB)->next_BCB = bufptr->next_BCB;
-	}
+      pthread_mutex_unlock (&lru_list->LRU_mutex);
     }
+
+  lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
+  /* the caller is holding bufptr->BCB_mutex */
+  pthread_mutex_lock (&lru_list->LRU_mutex);
 
   /* put BCB into the bottom of the LRU list */
   bufptr->next_BCB = NULL;
-  bufptr->prev_BCB = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom;
-  if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom == NULL)
+  bufptr->prev_BCB = lru_list->LRU_bottom;
+  if (lru_list->LRU_bottom == NULL)
     {
-      pgbuf_Pool.buf_LRU_list[lru_idx].LRU_top = bufptr;
+      lru_list->LRU_top = bufptr;
     }
   else
     {
-      (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom)->next_BCB = bufptr;
+      (lru_list->LRU_bottom)->next_BCB = bufptr;
     }
 
-  pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom = bufptr;
-  if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle == NULL)
+  lru_list->LRU_bottom = bufptr;
+  /* LRU_middle is the bottom of LRU1, not changed here since we are inserting
+   * at the bottom of LRU2 */
+#if 0
+  if (lru_list->LRU_middle == NULL)
     {
-      pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle = bufptr;
+      lru_list->LRU_middle = bufptr;
+    }
+#endif
+
+  bufptr->zone_lru = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
+  bufptr->sticky_private_list = sticky_bit;
+  bufptr->list_tick = PGBUF_AGE_DIFF (PGBUF_LRU2_AGE_THRESHOLD (lru_idx), pgbuf_Pool.monitor.lru2_tick[lru_idx]);
+
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx], 1);
+  if (PGBUF_IS_GARBAGE_LRU_INDEX (lru_idx))
+    {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_garbage_pgs, 1);
+    }
+  else if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx))
+    {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, 1);
     }
 
-  bufptr->zone = PGBUF_LRU_2_ZONE;	/* OK. */
-
-  pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
+  pthread_mutex_unlock (&lru_list->LRU_mutex);
 
   return NO_ERROR;
 }
 
 /*
+ * pgbuf_relocate_chain_private_lru_to_shared () -
+ *   return: NO_ERROR
+ *   bufptr(in): pointer to buffer page
+ */
+static int
+pgbuf_relocate_chain_private_lru_to_shared (const int private_lru_idx)
+{
+  PGBUF_LRU_LIST *private_lru_list;
+  PGBUF_LRU_LIST *shared_lru_list;
+  PGBUF_BCB *bufptr;
+  int shared_lru_idx;
+  int cnt_private_lru;
+  int list_tick;
+  int cnt_removed_aout;
+  PGBUF_PAGE_MONITOR *monitor;
+
+  assert (PGBUF_IS_PRIVATE_LRU_INDEX (private_lru_idx));
+
+  monitor = &pgbuf_Pool.monitor;
+
+  if (pgbuf_Pool.buf_AOUT_list.max_count > 0)
+    {
+      cnt_removed_aout = pgbuf_remove_private_from_aout_list (private_lru_idx);
+
+      if (cnt_removed_aout > 0)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"pgbuf_relocate_chain_private_lru_to_shared: "
+			"removed %d pages from Aout, priv_lru_idx:%d", cnt_removed_aout, private_lru_idx);
+	}
+    }
+
+  (void) ATOMIC_CAS_32 (&pgbuf_Pool.quota.overflow_private_lru_idx, private_lru_idx, -1);
+
+  private_lru_list = &pgbuf_Pool.buf_LRU_list[private_lru_idx];
+  if (private_lru_list->LRU_top == NULL)
+    {
+      /* list is empty */
+      return NO_ERROR;
+    }
+
+  shared_lru_idx = pgbuf_get_garbage_lru_index_for_chain_add ();
+  shared_lru_list = &pgbuf_Pool.buf_LRU_list[shared_lru_idx];
+
+  pthread_mutex_lock (&private_lru_list->LRU_mutex);
+
+  cnt_private_lru = monitor->bcbs_cnt_per_lru[private_lru_idx];
+
+  pthread_mutex_lock (&shared_lru_list->LRU_mutex);
+  list_tick = monitor->lru2_tick[shared_lru_idx];
+
+  /* parse the list and set new zone identifer */
+  bufptr = private_lru_list->LRU_bottom;
+  while (bufptr != NULL)
+    {
+      bufptr->zone_lru = PGBUF_MAKE_ZONE (shared_lru_idx, PGBUF_LRU_2_ZONE);
+      bufptr->sticky_private_list = true;
+      bufptr->list_tick = list_tick;
+      bufptr = bufptr->prev_BCB;
+    }
+
+  if (shared_lru_list->LRU_bottom == NULL)
+    {
+      /* shared list is empty */
+      shared_lru_list->LRU_bottom = private_lru_list->LRU_bottom;
+      shared_lru_list->LRU_top = private_lru_list->LRU_top;
+      shared_lru_list->LRU_middle = NULL;
+      shared_lru_list->LRU_1_zone_cnt = 0;
+    }
+  else
+    {
+      if (private_lru_list->LRU_top != NULL)
+	{
+	  private_lru_list->LRU_top->prev_BCB = shared_lru_list->LRU_bottom;
+	}
+      shared_lru_list->LRU_bottom->next_BCB = private_lru_list->LRU_top;
+      shared_lru_list->LRU_bottom = private_lru_list->LRU_bottom;
+    }
+
+  ATOMIC_INC_32 (&monitor->bcbs_cnt_per_lru[shared_lru_idx], cnt_private_lru);
+  if (PGBUF_IS_GARBAGE_LRU_INDEX (shared_lru_idx))
+    {
+      ATOMIC_INC_32 (&monitor->lru_garbage_pgs, cnt_private_lru);
+    }
+  else if (PGBUF_IS_SHARED_LRU_INDEX (shared_lru_idx))
+    {
+      ATOMIC_INC_32 (&monitor->lru_shared_pgs, cnt_private_lru);
+    }
+  pthread_mutex_unlock (&shared_lru_list->LRU_mutex);
+
+  /* clean owner list */
+  private_lru_list->LRU_top = NULL;
+  private_lru_list->LRU_bottom = NULL;
+  private_lru_list->LRU_middle = NULL;
+  private_lru_list->LRU_1_zone_cnt = 0;
+
+  ATOMIC_TAS_32 (&monitor->bcbs_cnt_per_lru[private_lru_idx], 0);
+  ATOMIC_TAS_32 (&monitor->lru_victim_search_depth_per_lru[private_lru_idx], 0);
+  ATOMIC_TAS_32 (&monitor->lru_victim_dirty_per_lru[private_lru_idx], 0);
+  ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[private_lru_idx], 0);
+  ATOMIC_TAS_32 (&monitor->lru_victim_found_per_lru[private_lru_idx], 0);
+
+  pthread_mutex_unlock (&private_lru_list->LRU_mutex);
+
+  /* this shared list should be prefered for flushing victims */
+  ATOMIC_INC_32 (&monitor->lru_victim_req_per_lru[shared_lru_idx], cnt_private_lru);
+  /* avoid flushing from this private list */
+  ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[private_lru_idx], 0);
+
+#if defined (SERVER_MODE)
+  if (PGBUF_IS_GARBAGE_LRU_INDEX (shared_lru_idx)
+      && ((shared_lru_idx - PGBUF_SHARED_LRU) % (PGBUF_GARBAGE_LRU / 2)) == 0)
+    {
+      pgbuf_wakeup_flush_thread (NULL);
+    }
+#endif
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_relocate_chain_private_lru_to_shared: "
+		"relocated %d pages from LRU %d (tran:%d) to LRU %d",
+		cnt_private_lru, private_lru_idx, PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (private_lru_idx), shared_lru_idx);
+
+  return NO_ERROR;
+}
+
+
+/*
  * pgbuf_remove_from_lru_list () - Remove a BCB from the LRU list
  * return : void
  * bufptr (in) : BCB
+ * lru_list (in) : LRU list to which BVB currently belongs to
  *
  *  Note: The caller MUST hold the LRU list mutex.
  */
@@ -8373,14 +9787,14 @@ pgbuf_relocate_top_ain (PGBUF_BCB * bufptr)
 #endif
   PGBUF_AIN_LIST *list;
 
-  /* Ain should only relocate to top new buffers */
-  assert (bufptr->zone == PGBUF_VOID_ZONE || (bufptr->zone == PGBUF_AIN_ZONE && bufptr->dirty));
+  assert (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_VOID_ZONE
+	  || (PGBUF_PAGE_QUOTA_IS_ENABLED && !PGBUF_IS_SHARED_LRU_INDEX (PGBUF_GET_LRU_INDEX (bufptr->zone_lru))));
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_AIN_list.Ain_mutex);
 
   list = &pgbuf_Pool.buf_AIN_list;
 
-  if (bufptr->zone == PGBUF_AIN_ZONE)
+  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_AIN_ZONE)
     {
       if (list->Ain_top == bufptr)
 	{
@@ -8411,13 +9825,13 @@ pgbuf_relocate_top_ain (PGBUF_BCB * bufptr)
       list->Ain_top = bufptr;
     }
 
-  bufptr->zone = PGBUF_AIN_ZONE;
+  bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_AIN_ZONE);
 
   /* No sense in verifying Ain count here. We might end up holding a lot more buffers in Ain list than the limit we
    * have set, but this just means that we will be victimize this list more. Hot pages will end up in LRU anyway
    * (eventually). */
   list->ain_count += 1;
-  bufptr->ain_tick = list->tick;
+  bufptr->list_tick = list->tick;
 
 cleanup:
   list->tick++;
@@ -8434,12 +9848,12 @@ cleanup:
  * pgbuf_move_from_ain_to_lru () - Relocate a BCB from Ain list to top LRU
  * return : void
  * bufptr (in) : BCB
+ * lru_idx (in) : LRU destination index
  *
- * Note: this should only be called if the page is dirty. Also, the caller
- * must hold the BCB mutex.
+ * Note: The caller must hold the BCB mutex.
  */
 static void
-pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr)
+pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr, const int lru_idx)
 {
 #if defined(SERVER_MODE)
   int rv;
@@ -8447,23 +9861,23 @@ pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr)
   PGBUF_AIN_LIST *list;
 
   /* should only relocate dirty buffers from Ain */
-  assert (bufptr->zone == PGBUF_AIN_ZONE);
+  assert (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_AIN_ZONE);
+  assert (lru_idx >= 0 && lru_idx < PGBUF_TOTAL_LRU);
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_AIN_list.Ain_mutex);
 
   list = &pgbuf_Pool.buf_AIN_list;
 
-  if (bufptr->zone == PGBUF_AIN_ZONE)
+  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_AIN_ZONE)
     {
       pgbuf_remove_from_ain_list (bufptr);
       list->ain_count -= 1;
     }
 
+  bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
   pthread_mutex_unlock (&list->Ain_mutex);
 
-  bufptr->zone = PGBUF_VOID_ZONE;
-
-  pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE);
+  pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE, lru_idx);
 }
 
 /*
@@ -8508,9 +9922,10 @@ pgbuf_remove_from_ain_list (PGBUF_BCB * bufptr)
  * return : void
  * thread_p (in) :
  * vpid (in) :
+ * lru_idx (in) : LRU index in which the VPID had been
  */
 static void
-pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
+pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx)
 {
 #if defined(SERVER_MODE)
   int rv;
@@ -8552,6 +9967,7 @@ pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 
   aout_buf->next = NULL;
   aout_buf->prev = NULL;
+  aout_buf->lru_idx = lru_idx;
   VPID_COPY (&aout_buf->vpid, vpid);
 
   /* add to hash */
@@ -8577,17 +9993,19 @@ pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
     }
 
   pthread_mutex_unlock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
-
 }
 
 /*
  * pgbuf_remove_vpid_from_aout_list () - Search for VPID in Aout and remove it
  *					 from the queue
- * return : true if found, false otherwise
+ * return : identifier of list from which was removed:
+ *	    0 and positive: LRU list
+ *	    -1 : Ain list
+ *	    -2 : not found in Aout list
  * thread_p (in) :
  * vpid (in) :
  */
-static bool
+static int
 pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 {
 #if defined(SERVER_MODE)
@@ -8595,11 +10013,12 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 #endif /* SERVER_MODE */
   PGBUF_AOUT_BUF *aout_buf;
   int hash_idx;
+  int aout_list_id = PGBUF_AOUT_NOT_FOUND;
 
   if (pgbuf_Pool.buf_AOUT_list.max_count <= 0)
     {
       /* Aout list not used */
-      return false;
+      return PGBUF_AOUT_NOT_FOUND;
     }
 
   hash_idx = AOUT_HASH_IDX (vpid, (&pgbuf_Pool.buf_AOUT_list));
@@ -8608,7 +10027,7 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
   if (aout_buf == NULL)
     {
       /* vpid not in Aout */
-      return false;
+      return PGBUF_AOUT_NOT_FOUND;
     }
 
   /* Remove it from Aout. We were optimistic and assumed we will not find it. Unfortunately, after we get exclusive
@@ -8622,14 +10041,14 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 	{
 	  /* Not there anymore, just return */
 	  pthread_mutex_unlock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
-	  return false;
+	  return PGBUF_AOUT_NOT_FOUND;
 	}
     }
 
   /* We can assume that aout_buf is what we're looking for if it still has the same VPID as before acquiring the mutex. 
    * The reason for this is that nobody can change it while we're holding the mutex. Any changes must be visible before 
    * we acquire this mutex */
-
+  aout_list_id = aout_buf->lru_idx;
   if (aout_buf == pgbuf_Pool.buf_AOUT_list.Aout_bottom)
     {
       pgbuf_Pool.buf_AOUT_list.Aout_bottom = pgbuf_Pool.buf_AOUT_list.Aout_bottom->prev;
@@ -8666,6 +10085,7 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 
   /* add to free list */
   VPID_SET_NULL (&aout_buf->vpid);
+  aout_buf->lru_idx = PGBUF_AOUT_NOT_FOUND;
   aout_buf->next = NULL;
   aout_buf->prev = NULL;
 
@@ -8674,7 +10094,93 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 
   pthread_mutex_unlock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
 
-  return true;
+  return aout_list_id;
+}
+
+/*
+ * pgbuf_remove_private_from_aout_list () - Search for VPID in Aout and removes
+ *					 all VPIDs having a specific LRU idx
+ *
+ * return : number of VPIDs removed
+ * lru_idx (in) :
+ */
+static int
+pgbuf_remove_private_from_aout_list (const int lru_idx)
+{
+  PGBUF_AOUT_BUF *aout_buf;
+  PGBUF_AOUT_BUF *aout_buf_next;
+  int hash_idx;
+  int cnt_removed = 0;
+
+  if (pgbuf_Pool.buf_AOUT_list.max_count <= 0)
+    {
+      /* Aout list not used */
+      return cnt_removed;
+    }
+
+  pthread_mutex_lock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
+  aout_buf = pgbuf_Pool.buf_AOUT_list.Aout_top;
+  while (aout_buf != NULL)
+    {
+      if (aout_buf->lru_idx != lru_idx)
+	{
+	  aout_buf = aout_buf->next;
+	  continue;
+	}
+
+      aout_buf_next = aout_buf->next;
+
+      /* remove this item */
+      if (aout_buf == pgbuf_Pool.buf_AOUT_list.Aout_bottom)
+	{
+	  pgbuf_Pool.buf_AOUT_list.Aout_bottom = pgbuf_Pool.buf_AOUT_list.Aout_bottom->prev;
+
+	  if (pgbuf_Pool.buf_AOUT_list.Aout_bottom != NULL)
+	    {
+	      pgbuf_Pool.buf_AOUT_list.Aout_bottom->next = NULL;
+	    }
+	  aout_buf->prev = NULL;
+	}
+
+      if (aout_buf == pgbuf_Pool.buf_AOUT_list.Aout_top)
+	{
+	  pgbuf_Pool.buf_AOUT_list.Aout_top = pgbuf_Pool.buf_AOUT_list.Aout_top->next;
+
+	  if (pgbuf_Pool.buf_AOUT_list.Aout_top != NULL)
+	    {
+	      pgbuf_Pool.buf_AOUT_list.Aout_top->prev = NULL;
+	    }
+	  aout_buf->next = NULL;
+	}
+
+      if (aout_buf->prev != NULL)
+	{
+	  aout_buf->prev->next = aout_buf->next;
+	}
+      if (aout_buf->next != NULL)
+	{
+	  aout_buf->next->prev = aout_buf->prev;
+	}
+
+      hash_idx = AOUT_HASH_IDX (&aout_buf->vpid, (&pgbuf_Pool.buf_AOUT_list));
+      mht_rem (pgbuf_Pool.buf_AOUT_list.aout_buf_ht[hash_idx], &aout_buf->vpid, NULL, NULL);
+
+      /* add to free list */
+      VPID_SET_NULL (&aout_buf->vpid);
+      aout_buf->lru_idx = PGBUF_AOUT_NOT_FOUND;
+      aout_buf->next = NULL;
+      aout_buf->prev = NULL;
+
+      aout_buf->next = pgbuf_Pool.buf_AOUT_list.Aout_free;
+      pgbuf_Pool.buf_AOUT_list.Aout_free = aout_buf;
+
+      aout_buf = aout_buf_next;
+      cnt_removed++;
+    }
+
+  pthread_mutex_unlock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
+
+  return cnt_removed;
 }
 
 /*
@@ -9961,6 +11467,42 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
     }
   return false;
 }
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_has_waiters_on_fixed () - 
+ *
+ * return	       : true if the threads has any fixed pages and other
+ *			 threads are waiting on any of them.
+ * thread_p (in)       : Thread entry.
+ *
+ */
+static bool
+pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool *has_fixed_pages)
+{
+  int thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  int count = 0;
+  PGBUF_HOLDER *holder = NULL;
+
+  *has_fixed_pages = false;
+
+  if (pgbuf_Pool.thrd_holder_info[thrd_idx].num_hold_cnt == 0)
+    {
+      return false;
+    }
+
+  *has_fixed_pages = true;
+
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+    {
+      if (holder->bufptr->next_wait_thrd != NULL)
+	{
+	  true;
+	}
+    }
+  return false;
+}
+#endif /* SERVER_MODE */
 
 enum
 {
@@ -11764,6 +13306,1254 @@ pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, VPID * vpid_p)
 #endif
 
 /*
+ * pgbuf_initialize_page_quota_parameters () - Initializes page quota parameters
+ *  
+ *   return: NO_ERROR, or ER_code
+ *
+ *   Note: Call this before any LRU initialization
+ */
+static int
+pgbuf_initialize_page_quota_parameters (void)
+{
+  PGBUF_PAGE_QUOTA *quota;
+  bool auto_num_private_chains = false;
+
+  quota = &(pgbuf_Pool.quota);
+  memset (quota, 0, sizeof (PGBUF_PAGE_QUOTA));
+
+  quota->is_adjusting = 0;
+
+  quota->max_pages_private_quota = prm_get_integer_value (PRM_ID_PB_TRAN_PAGES_QUOTA);
+  if (quota->max_pages_private_quota > 0 && quota->max_pages_private_quota < PGBUF_PRIVATE_MIN_QUOTA)
+    {
+#if defined(CUBRID_DEBUG)
+      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING "
+		    "Pages_tran_quota = %d is too small. %d was assumed",
+		    quota->max_pages_tran_quota, PGBUF_PRIVATE_MIN_QUOTA_USERS);
+#endif /* CUBRID_DEBUG */
+      quota->max_pages_private_quota = PGBUF_PRIVATE_MIN_QUOTA;
+    }
+
+  if (quota->max_pages_private_quota > PGBUF_MAX_HARD_QUOTA)
+    {
+#if defined(CUBRID_DEBUG)
+      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING "
+		    "Pages_tran_quota = %d is too large. %d was assumed",
+		    quota->max_pages_private_quota, PGBUF_MAX_HARD_QUOTA);
+#endif /* CUBRID_DEBUG */
+      quota->max_pages_private_quota = PGBUF_MAX_HARD_QUOTA;
+    }
+
+  quota->num_private_LRU_list = prm_get_integer_value (PRM_ID_PB_NUM_PRIVATE_CHAINS);
+  auto_num_private_chains = (quota->num_private_LRU_list == -1) ? true : false;
+  if (auto_num_private_chains)
+    {
+      /* automatic value set */
+      quota->num_private_LRU_list = (quota->max_pages_private_quota != 0) ? (MAX_NTRANS + VACUUM_MAX_WORKER_COUNT) : 0;
+      /* count of pages per private LRU should be large enough to allow
+       * victimization */
+      if (quota->num_private_LRU_list > 0)
+	{
+	  if ((pgbuf_Pool.num_buffers / quota->num_private_LRU_list) < PGBUF_MIN_PAGES_IN_PRIVATE_CHAIN)
+	    {
+	      quota->num_private_LRU_list = pgbuf_Pool.num_buffers / PGBUF_MIN_PAGES_IN_PRIVATE_CHAIN;
+	    }
+	  quota->num_private_LRU_list = MAX (quota->num_private_LRU_list, PGBUF_MIN_PRIVATE_CHAINS);
+	  quota->num_private_LRU_list = MIN (quota->num_private_LRU_list, PGBUF_MAX_PRIVATE_CHAINS);
+	}
+    }
+  else
+    {
+      if (quota->num_private_LRU_list > PGBUF_MAX_PRIVATE_CHAINS)
+	{
+#if defined(CUBRID_DEBUG)
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING "
+			"num_private_chains = %d is too large. %d was assumed",
+			quota->num_private_LRU_list, PGBUF_MAX_PRIVATE_CHAINS);
+#endif /* CUBRID_DEBUG */
+	  quota->num_private_LRU_list = PGBUF_MAX_PRIVATE_CHAINS;
+	}
+
+      if (quota->num_private_LRU_list > 0 && quota->num_private_LRU_list < PGBUF_MIN_PRIVATE_CHAINS)
+	{
+#if defined(CUBRID_DEBUG)
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING "
+			"num_private_chains = %d is low large. %d was assumed",
+			quota->num_private_LRU_list, PGBUF_MIN_PRIVATE_CHAINS);
+#endif /* CUBRID_DEBUG */
+	  quota->num_private_LRU_list = PGBUF_MIN_PRIVATE_CHAINS;
+	}
+    }
+
+  if (quota->num_private_LRU_list == 0)
+    {
+      /* transaction quota is disabled */
+      quota->max_pages_private_quota = 0;
+    }
+
+  if (quota->max_pages_private_quota == 0)
+    {
+      quota->num_private_LRU_list = 0;
+    }
+  else if (quota->max_pages_private_quota == -1)
+    {
+      /* automatic value set */
+      quota->max_pages_private_quota = MAX (pgbuf_Pool.num_buffers / quota->num_private_LRU_list, PGBUF_MAX_SOFT_QUOTA);
+
+      quota->max_pages_private_quota = MIN (quota->max_pages_private_quota, PGBUF_MAX_HARD_QUOTA);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_initialize_page_quota () - Initializes page quota
+ *   return: NO_ERROR, or ER_code
+ */
+static int
+pgbuf_initialize_page_quota (void)
+{
+  PGBUF_PAGE_QUOTA *quota;
+  int i;
+  int error_status = NO_ERROR;
+
+  quota = &(pgbuf_Pool.quota);
+
+  quota->target_bcbs_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (quota->target_bcbs_per_lru[0]));
+  if (quota->target_bcbs_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (quota->target_bcbs_per_lru[0])));
+      goto exit;
+    }
+
+  quota->lru_victim_flush_priority_per_lru =
+    (float *) malloc (PGBUF_TOTAL_LRU * sizeof (quota->lru_victim_flush_priority_per_lru[0]));
+  if (quota->lru_victim_flush_priority_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (quota->lru_victim_flush_priority_per_lru[0])));
+      goto exit;
+    }
+
+  quota->lru1_threshold_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (quota->lru1_threshold_per_lru[0]));
+  if (quota->lru1_threshold_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (quota->lru1_threshold_per_lru[0])));
+      goto exit;
+    }
+
+  quota->private_lru_distr = (float *) malloc (PGBUF_TOTAL_LRU * sizeof (quota->private_lru_distr[0]));
+  if (quota->private_lru_distr == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (quota->private_lru_distr[0])));
+      goto exit;
+    }
+
+  quota->private_lru_session_cnt = (int *) malloc (PGBUF_PRIVATE_LRU * sizeof (quota->private_lru_session_cnt[0]));
+  if (quota->private_lru_session_cnt == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (quota->private_lru_session_cnt[0])));
+      goto exit;
+    }
+
+  /* initialize the quota data for each LRU */
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      quota->lru_victim_flush_priority_per_lru[i] = 0;
+
+      if (PGBUF_PRIVATE_LRU > 0)
+	{
+	  quota->private_lru_distr[i] = (float) 1 / (float) (PGBUF_PRIVATE_LRU);
+	}
+
+      if (PGBUF_IS_PRIVATE_LRU_INDEX (i))
+	{
+	  float lru1_ratio = prm_get_float_value (PRM_ID_PB_LRU_HOT_RATIO);
+
+	  quota->target_bcbs_per_lru[i] = PGBUF_MAX_QUOTA;
+	  quota->lru1_threshold_per_lru[i] = (int) (lru1_ratio * quota->target_bcbs_per_lru[i]);
+	  quota->private_lru_session_cnt[PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (i)] = 0;
+	}
+      else if (PGBUF_IS_GARBAGE_LRU_INDEX (i))
+	{
+	  quota->target_bcbs_per_lru[i] = 0;
+	  quota->lru1_threshold_per_lru[i] = 1;
+	}
+      else
+	{
+	  quota->target_bcbs_per_lru[i] = 0;
+	  quota->lru1_threshold_per_lru[i] = pgbuf_Pool.num_LRU1_zone_threshold;
+	}
+    }
+
+  if (PGBUF_PAGE_QUOTA_IS_ENABLED)
+    {
+      quota->private_pages_ratio = 1.0f;
+    }
+  else
+    {
+      quota->private_pages_ratio = 0;
+    }
+
+  quota->vict_shared_lru_idx = 0;
+  quota->vict_garbage_lru_idx = 0;
+  quota->add_shared_lru_idx = 0;
+  quota->add_shared_lru_idx_for_destroyed = 0;
+  quota->avoid_shared_lru_idx = -1;
+  quota->overflow_private_lru_idx = -1;
+
+exit:
+  return error_status;
+}
+
+/*
+ * pgbuf_initialize_page_monitor () - Initializes page monitor
+ *   return: NO_ERROR, or ER_code
+ */
+static int
+pgbuf_initialize_page_monitor (void)
+{
+  PGBUF_PAGE_MONITOR *monitor;
+  int i;
+  int error_status = NO_ERROR;
+
+  monitor = &(pgbuf_Pool.monitor);
+
+  memset (monitor, 0, sizeof (PGBUF_PAGE_MONITOR));
+
+  monitor->bcbs_cnt_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->bcbs_cnt_per_lru[0]));
+  if (monitor->bcbs_cnt_per_lru == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->bcbs_cnt_per_lru[0])));
+      goto exit;
+    }
+
+  monitor->lru_victim_req_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_req_per_lru[0]));
+  if (monitor->lru_victim_req_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_req_per_lru[0])));
+      goto exit;
+    }
+
+  monitor->lru_pending_victim_req_per_lru =
+    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_pending_victim_req_per_lru[0]));
+  if (monitor->lru_pending_victim_req_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_pending_victim_req_per_lru[0])));
+      goto exit;
+    }
+
+  monitor->lru_victim_search_depth_per_lru =
+    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_search_depth_per_lru[0]));
+  if (monitor->lru_victim_search_depth_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_search_depth_per_lru[0])));
+      goto exit;
+    }
+
+  monitor->lru_victim_dirty_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_dirty_per_lru[0]));
+  if (monitor->lru_victim_dirty_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_dirty_per_lru[0])));
+      goto exit;
+    }
+
+  monitor->lru_victim_found_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_found_per_lru[0]));
+  if (monitor->lru_victim_found_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_found_per_lru[0])));
+      goto exit;
+    }
+
+  monitor->lru_victim_pressure_per_lru =
+    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_pressure_per_lru[0]));
+  if (monitor->lru_victim_pressure_per_lru == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_pressure_per_lru[0])));
+      goto exit;
+    }
+
+  monitor->lru2_tick = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru2_tick[0]));
+  if (monitor->lru2_tick == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru2_tick[0])));
+      goto exit;
+    }
+
+  monitor->lru1_tick = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru1_tick[0]));
+  if (monitor->lru1_tick == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru1_tick[0])));
+      goto exit;
+    }
+
+  monitor->lru1_hit = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru1_hit[0]));
+  if (monitor->lru1_hit == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru1_hit[0])));
+      goto exit;
+    }
+
+  monitor->prev_lru2_tick = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->prev_lru2_tick[0]));
+  if (monitor->prev_lru2_tick == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->prev_lru2_tick[0])));
+      goto exit;
+    }
+
+  monitor->lru2_age_diff = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru2_age_diff[0]));
+  if (monitor->lru2_age_diff == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru2_age_diff[0])));
+      goto exit;
+    }
+
+  monitor->prev_lru1_tick = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->prev_lru1_tick[0]));
+  if (monitor->prev_lru1_tick == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->prev_lru1_tick[0])));
+      goto exit;
+    }
+
+  monitor->lru1_age_diff = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru1_age_diff[0]));
+  if (monitor->lru1_age_diff == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru1_age_diff[0])));
+      goto exit;
+    }
+
+  monitor->lru_activity = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_activity[0]));
+  if (monitor->lru_activity == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_activity[0])));
+      goto exit;
+    }
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  monitor->lru_relocated_destroyed_pages =
+    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_relocated_destroyed_pages[0]));
+  if (monitor->lru_relocated_destroyed_pages == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_relocated_destroyed_pages[0])));
+      goto exit;
+    }
+#endif
+
+  /* initialize the monitor data for each LRU */
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      monitor->bcbs_cnt_per_lru[i] = 0;
+
+      monitor->lru_victim_req_per_lru[i] = 0;
+      monitor->lru_pending_victim_req_per_lru[i] = 0;
+      monitor->lru_victim_search_depth_per_lru[i] = 0;
+      monitor->lru_victim_dirty_per_lru[i] = 0;
+      monitor->lru_victim_found_per_lru[i] = 0;
+      monitor->lru_victim_pressure_per_lru[i] = 0;
+      monitor->lru2_tick[i] = 0;
+      monitor->lru1_tick[i] = 0;
+      monitor->lru1_hit[i] = 0;
+      monitor->prev_lru2_tick[i] = 0;
+      monitor->lru2_age_diff[i] = 0;
+      monitor->prev_lru1_tick[i] = 0;
+      monitor->lru1_age_diff[i] = 0;
+      monitor->lru_activity[i] = 0;
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+      monitor->lru_relocated_destroyed_pages[i] = 0;
+#endif
+    }
+
+  monitor->lru_victim_req_cnt = 0;
+  monitor->ain_victim_req_cnt = 0;
+  monitor->ain_victim_searches_cnt = 0;
+  monitor->ain_victim_dirty_skipped_cnt = 0;
+  monitor->fix_req_cnt = 0;
+
+
+  monitor->pg_lru_vict_req_failed = 0;
+  monitor->pg_ain_vict_req_failed = 0;
+  monitor->pg_unfix = 0;
+  monitor->pg_unfix_with_private_lru = 0;
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  monitor->pg_destroyed_pages = 0;
+#endif
+
+  monitor->lru_shared_pgs = 0;
+  monitor->lru_garbage_pgs = 0;
+
+exit:
+  return error_status;
+}
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+/*
+ * pgbuf_print_lru_distribution () -
+ * return : void
+ */
+static void
+pgbuf_print_lru_distribution (void)
+{
+  static char msg[16384];
+  int pos = 0;
+  int cnt, i;
+  PGBUF_LRU_LIST *lru_list;
+  int sum_private_bcbs, sum_shared_bcbs, sum_garbage_bcbs;
+  int check_lru_idx = -1;
+
+  sum_private_bcbs = 0;
+  sum_shared_bcbs = 0;
+  sum_garbage_bcbs = 0;
+  msg[0] = '\0';
+  for (i = 0; i < PGBUF_TOTAL_LRU && pos < sizeof (msg) - 100; i++)
+    {
+      lru_list = &pgbuf_Pool.buf_LRU_list[i];
+      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%5d/%4d/%4d,%s",
+		      pgbuf_Pool.monitor.bcbs_cnt_per_lru[i],
+		      lru_list->LRU_1_zone_cnt, PGBUF_LRU_1_ZONE_THRESHOLD (i), PGBUF_QUOTA_MARKER_STRING (i));;
+      if (PGBUF_IS_SHARED_LRU_INDEX (i))
+	{
+	  sum_shared_bcbs += pgbuf_Pool.monitor.bcbs_cnt_per_lru[i];
+	}
+      else if (PGBUF_IS_GARBAGE_LRU_INDEX (i))
+	{
+	  sum_garbage_bcbs += pgbuf_Pool.monitor.bcbs_cnt_per_lru[i];
+	}
+      else
+	{
+	  sum_private_bcbs += pgbuf_Pool.monitor.bcbs_cnt_per_lru[i];
+	}
+
+      if (cnt <= 0)
+	{
+	  break;
+	}
+      pos += cnt;
+    }
+
+  msg[pos] = '\0';
+  er_log_debug (ARG_FILE_LINE, "pgbuf_print_lru_distribution : "
+		"sum_shared_bcbs:%d(%d), sum_garbage_bcbs :%d(%d), "
+		"sum_private_bcbs: %d, diff:%d\n"
+		"bcbs_in_lru/zone1_bcb/zone1_threshold\n"
+		"%s\n",
+		sum_shared_bcbs, pgbuf_Pool.monitor.lru_shared_pgs,
+		sum_garbage_bcbs, pgbuf_Pool.monitor.lru_garbage_pgs,
+		sum_private_bcbs, sum_private_bcbs + sum_shared_bcbs + sum_garbage_bcbs - pgbuf_Pool.num_buffers, msg);
+}
+
+
+/*
+ * pgbuf_print_lru_destroyed_pg_distribution () -
+ * return : void
+ */
+static void
+pgbuf_print_lru_destroyed_pg_distribution (void)
+{
+  static char msg[16384];
+  int pos;
+  int cnt, i;
+  int total_relocated_destroyed_pages = 0;
+  int relocated_destroyed_pages;
+
+  if (pgbuf_Pool.monitor.pg_destroyed_pages <= 0)
+    {
+      return;
+    }
+
+  pos = 0;
+  msg[0] = '\0';
+  for (i = 0; i < PGBUF_TOTAL_LRU && pos < sizeof (msg) - 100; i++)
+    {
+      relocated_destroyed_pages = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_relocated_destroyed_pages[i], 0);
+      total_relocated_destroyed_pages += relocated_destroyed_pages;
+      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%5d,%s",
+		      relocated_destroyed_pages, PGBUF_QUOTA_MARKER_STRING (i));
+      if (cnt <= 0)
+	{
+	  break;
+	}
+      pos += cnt;
+
+    }
+
+  msg[pos] = '\0';
+  er_log_debug (ARG_FILE_LINE, "pgbuf_print_lru_destroyed_pg_distribution : "
+		"total_destroyed_pg:%d, relocated_destroyed_pages:%d\n%s\n",
+		pgbuf_Pool.monitor.pg_destroyed_pages, total_relocated_destroyed_pages, msg);
+
+  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.pg_destroyed_pages, 0);
+}
+
+/*
+ * pgbuf_print_lru_pending_vict_req () -
+ * return : void
+ */
+static void
+pgbuf_print_lru_pending_vict_req (void)
+{
+  static char msg[16384];
+  int pos;
+  int cnt, i;
+  int total_pending_vict_req = 0;
+  int pending_vict_req;
+
+  pos = 0;
+  msg[0] = '\0';
+  for (i = 0; i < PGBUF_TOTAL_LRU && pos < sizeof (msg) - 100; i++)
+    {
+      pending_vict_req = pgbuf_Pool.monitor.lru_pending_victim_req_per_lru[i];
+      total_pending_vict_req += pending_vict_req;
+      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%2d,%s", pending_vict_req, PGBUF_QUOTA_MARKER_STRING (i));
+      if (cnt <= 0)
+	{
+	  break;
+	}
+      pos += cnt;
+    }
+
+  msg[pos] = '\0';
+  er_log_debug (ARG_FILE_LINE, "pgbuf_print_lru_pending_vict_req : "
+		"total_pending_vict_req:%d\n%s\n", total_pending_vict_req, msg);
+}
+
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+/*
+ * pgbuf_compute_lru_vict_target () -
+ * return : void
+ */
+static void
+pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_victim_req_cnt)
+{
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  static char msg[16384];
+  int pos = 0;
+  int cnt;
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+  int i;
+  int total_lru_vict_search_depth;
+  int total_lru_vict_req;
+  int total_lru_dirties_found;
+  int vict_req_this_lru;
+  int vict_search_depth_this_lru;
+  int vict_dirty_this_lru;
+  int cand_found_in_this_lru = 0;
+  int vict_found_this_lru;
+  int vict_pressure_this_lru;
+  int bcb_this_lru;
+  float flush_priority_this_lru;
+  int max_vict_dirty_shared_lru;
+
+  PGBUF_PAGE_MONITOR *monitor;
+
+  monitor = &pgbuf_Pool.monitor;
+
+  assert (lru_sum_flush_priority != NULL);
+  assert (lru_with_victim_req_cnt != NULL);
+
+  total_lru_vict_search_depth = 0;
+  total_lru_dirties_found = 0;
+  *lru_sum_flush_priority = 0;
+  *lru_with_victim_req_cnt = 0;
+  max_vict_dirty_shared_lru = -1;
+
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      vict_dirty_this_lru = monitor->lru_victim_dirty_per_lru[i];
+      total_lru_dirties_found += vict_dirty_this_lru;
+      total_lru_vict_search_depth += monitor->lru_victim_search_depth_per_lru[i];
+      if (monitor->lru_victim_req_per_lru[i] > 0)
+	{
+	  *lru_with_victim_req_cnt += 1;
+	}
+
+      if (PGBUF_IS_SHARED_LRU_INDEX (i) && vict_dirty_this_lru > max_vict_dirty_shared_lru)
+	{
+	  max_vict_dirty_shared_lru = vict_dirty_this_lru;
+	}
+    }
+
+  total_lru_vict_req = monitor->lru_victim_req_cnt;
+  if (*lru_with_victim_req_cnt <= 0 || total_lru_vict_req <= 0 || total_lru_dirties_found <= 0)
+    {
+      return;
+    }
+
+  assert (total_lru_vict_search_depth > 0);
+
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      bcb_this_lru = monitor->bcbs_cnt_per_lru[i];
+
+      /* reset victim counters on this LRU */
+      vict_req_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[i], 0);
+      vict_found_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_found_per_lru[i], 0);
+      vict_search_depth_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_search_depth_per_lru[i], 0);
+      vict_dirty_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_dirty_per_lru[i], 0);
+
+      /* victim pressure sum of not served victimization requests and level of search for victim */
+      vict_pressure_this_lru = (vict_req_this_lru - vict_found_this_lru) + vict_search_depth_this_lru;
+
+      /* assing non-zero flush priority for:
+       * - shared, private and garbage LRU having dirty pages 
+       * - shared LRU if there is at least one shared LRU with dirty pages
+       *   (this aims to avoid shared LRU-debalancing) */
+      if (vict_dirty_this_lru > 0 || (PGBUF_IS_SHARED_LRU_INDEX (i) && max_vict_dirty_shared_lru > 0))
+	{
+	  float vict_req_term;
+	  float lru_size_term;
+	  float lru_search_term;
+	  float lru_dirty_term;
+
+	  vict_req_term = (float) vict_req_this_lru / (float) total_lru_vict_req;
+
+	  lru_size_term = (float) bcb_this_lru / (float) pgbuf_Pool.num_buffers;
+
+	  lru_dirty_term = (float) vict_dirty_this_lru / (float) total_lru_dirties_found;
+
+	  lru_search_term = (float) vict_search_depth_this_lru / (float) total_lru_vict_search_depth;
+
+	  /* TODO : it seems more complex formula introduces spikes of flush
+	   * priority for some LRUs due to unpredictable dirty page count;
+	   * For now, just use simpler 'request victimization' which is more
+	   * flat */
+
+#if 0
+	  flush_priority_this_lru = vict_req_term + (lru_search_term + lru_size_term) / 10 + lru_dirty_term / 2;
+#else
+	  if (PGBUF_IS_SHARED_LRU_INDEX (i))
+	    {
+	      flush_priority_this_lru = (float) MAX (vict_req_this_lru, vict_search_depth_this_lru);
+	    }
+	  else if (PGBUF_IS_GARBAGE_LRU_INDEX (i))
+	    {
+	      flush_priority_this_lru = (float) bcb_this_lru;
+	    }
+	  else
+	    {
+	      flush_priority_this_lru = (float) vict_search_depth_this_lru;
+	    }
+#endif
+	}
+      else
+	{
+	  flush_priority_this_lru = 0;
+	}
+
+      pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] = flush_priority_this_lru;
+
+      *lru_sum_flush_priority += flush_priority_this_lru;
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+      if (pos < sizeof (msg) - 100)
+	{
+	  cnt =
+	    snprintf (&msg[pos], sizeof (msg) - pos - 1,
+		      "%5d/%5d/%4d/%4d/%.4f,%s", vict_req_this_lru,
+		      vict_found_this_lru, vict_search_depth_this_lru,
+		      vict_dirty_this_lru, flush_priority_this_lru, PGBUF_QUOTA_MARKER_STRING (i));
+	  if (cnt > 0)
+	    {
+	      pos += cnt;
+	    }
+	}
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+      ATOMIC_INC_32 (&monitor->lru_victim_pressure_per_lru[i], vict_pressure_this_lru);
+    }
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  msg[pos] = '\0';
+  er_log_debug (ARG_FILE_LINE, "pgbuf_compute_lru_vict_target : "
+		"total_lru_vict_req:%d, total_lru_vict_req_fails:%d, "
+		"total_lru_vict_search_depth:%d, total_lru_dirties_found:%d, "
+		"lru_sum_flush_priority:%.f, lru_with_victim_req_cnt:%d\n"
+		"ain_vict_req:%d, ain_vict_req_fails:%d, "
+		"ain_victim_searches_cnt:%d\n"
+		"vict_req/vict_found/vict_search_depth/dirty_found/"
+		"flush_priority\n"
+		"%s\n",
+		total_lru_vict_req, monitor->pg_lru_vict_req_failed,
+		total_lru_vict_search_depth, total_lru_dirties_found,
+		*lru_sum_flush_priority, *lru_with_victim_req_cnt,
+		monitor->ain_victim_req_cnt, monitor->pg_ain_vict_req_failed, monitor->ain_victim_searches_cnt, msg);
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+}
+
+/*
+ * pgbuf_adjust_quotas () -
+ * return : void
+ */
+void
+pgbuf_adjust_quotas (struct timeval *curr_time_p)
+{
+#define NEW_AVG_H(curr,avg,alpha) \
+  ((float)(avg) - ((float)(avg) - (float)(curr)) * (float)(alpha))
+#define MAX_PRIVATE_RATIO 0.998f
+#define MIN_PRIVATE_RATIO 0.01f
+  PGBUF_PAGE_QUOTA *quota;
+  PGBUF_PAGE_MONITOR *monitor;
+  int i;
+  float lru1_ratio = prm_get_float_value (PRM_ID_PB_LRU_HOT_RATIO);
+  int lru2_speed_shared, lru2_speed_tran;
+  int lru1_hit_shared, lru1_hit_tran;
+  int lru1_speed_shared, lru1_speed_tran;
+  int all_private_quota, lru1_threshold;
+  int lru_vict_pressure_shared, lru_vict_pressure_private;
+  float sum_distr;
+  int sum_private_lru_activity_total;
+  int active_private_lru;
+  int this_lru_activity_diff;
+  int avg_private_activity_now;
+  static struct timeval last_adjust_time = { 0, 0 };
+  struct timeval curr_time, diff_time;
+  INT64 diff_usec;
+  int total_private_activity;
+  int total_shared_activity;
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  int cnt;
+  int pos;
+  static char msg[16384];
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+  quota = &(pgbuf_Pool.quota);
+  monitor = &(pgbuf_Pool.monitor);
+
+  if (!PGBUF_PAGE_QUOTA_IS_ENABLED || quota->is_adjusting)
+    {
+      return;
+    }
+
+  quota->is_adjusting = 1;
+
+  if (curr_time_p == NULL)
+    {
+      (void) gettimeofday (&curr_time, NULL);
+      DIFF_TIMEVAL (last_adjust_time, curr_time, diff_time);
+    }
+  else
+    {
+      DIFF_TIMEVAL (last_adjust_time, *curr_time_p, diff_time);
+    }
+
+  diff_usec = diff_time.tv_sec * 1000000LL + diff_time.tv_usec;
+
+  /* quota adjust if :
+   * - force mode (curr_time_p == NULL)
+   * - or more than 1 sec since last adjustement and activity is more than
+   *   threshold
+   * - or more than 5 min since last adjustement and activity is more 1% of
+   *   threshold
+   */
+  if (curr_time_p != NULL
+      && ((pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY
+	   && diff_usec < 1000000LL)
+	  || (pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100 && diff_usec < 300 * 1000000LL)))
+    {
+      quota->is_adjusting = 0;
+      return;
+    }
+
+  if (curr_time_p == NULL)
+    {
+      last_adjust_time = curr_time;
+    }
+  else
+    {
+      last_adjust_time = *curr_time_p;
+    }
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  if (curr_time_p == NULL || diff_usec > 300 * 1000000LL)
+    {
+      pgbuf_print_lru_distribution ();
+      pgbuf_print_lru_destroyed_pg_distribution ();
+      pgbuf_print_lru_pending_vict_req ();
+    }
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+  active_private_lru = 0;
+  lru2_speed_shared = 0;
+  lru2_speed_tran = 0;
+  lru1_speed_shared = 0;
+  lru1_speed_tran = 0;
+  lru1_hit_shared = 0;
+  lru1_hit_tran = 0;
+  sum_distr = 0;
+  lru_vict_pressure_shared = 0;
+  lru_vict_pressure_private = 0;
+
+  /* compute delta speeds of LRU lists */
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      int lru2_age_diff, lru1_age_diff;
+
+      if (PGBUF_IS_GARBAGE_LRU_INDEX (i))
+	{
+	  continue;
+	}
+
+      if (PGBUF_IS_PRIVATE_LRU_INDEX (i))
+	{
+	  if (quota->private_lru_session_cnt[PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (i)] > 0)
+	    {
+	      active_private_lru++;
+	    }
+	}
+      lru2_age_diff = PGBUF_AGE_DIFF (monitor->prev_lru2_tick[i], monitor->lru2_tick[i]);
+
+      monitor->lru2_age_diff[i] = lru2_age_diff;
+      monitor->prev_lru2_tick[i] = monitor->lru2_tick[i];
+      if (!PGBUF_IS_PRIVATE_LRU_INDEX (i))
+	{
+	  lru2_speed_shared += lru2_age_diff;
+	}
+      else
+	{
+	  lru2_speed_tran += lru2_age_diff;
+	}
+
+      lru1_age_diff = PGBUF_AGE_DIFF (monitor->prev_lru1_tick[i], monitor->lru1_tick[i]);
+
+      monitor->lru1_age_diff[i] = lru1_age_diff;
+      monitor->prev_lru1_tick[i] = monitor->lru1_tick[i];
+      if (!PGBUF_IS_PRIVATE_LRU_INDEX (i))
+	{
+	  lru1_speed_shared += lru1_age_diff;
+	  lru1_hit_shared += monitor->lru1_hit[i];
+	  lru_vict_pressure_shared += monitor->lru_victim_pressure_per_lru[i];
+	}
+      else
+	{
+	  lru1_speed_tran += lru1_age_diff;
+	  lru1_hit_tran += monitor->lru1_hit[i];
+	  lru_vict_pressure_private += monitor->lru_victim_pressure_per_lru[i];
+	}
+    }
+
+  active_private_lru = MAX (active_private_lru, 1);
+
+  /* update activity indicators for each LRU and take release inactive LRUs */
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  pos = 0;
+  msg[0] = '\0';
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+  sum_private_lru_activity_total = 0;
+
+  avg_private_activity_now = (PGBUF_LRU_ACTIVITY (lru1_hit_tran, lru1_speed_tran, lru2_speed_tran,
+						  lru_vict_pressure_private, active_private_lru)) / active_private_lru;
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      int lru1_age_diff, lru2_age_diff;
+      int lru_vict_pressure;
+      int activity_incr;
+
+      lru1_age_diff = monitor->lru1_age_diff[i];
+      lru2_age_diff = monitor->lru2_age_diff[i];
+      lru_vict_pressure = monitor->lru_victim_pressure_per_lru[i];
+
+      this_lru_activity_diff = PGBUF_LRU_ACTIVITY (monitor->lru1_hit[i], lru1_age_diff, lru2_age_diff,
+						   lru_vict_pressure, active_private_lru);
+
+      if (PGBUF_IS_PRIVATE_LRU_INDEX (i))
+	{
+	  if (this_lru_activity_diff == 0)
+	    {
+	      if (quota->private_lru_session_cnt[PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (i)] > 0)
+		{
+		  activity_incr = -avg_private_activity_now;
+		}
+	      else
+		{
+		  activity_incr = -avg_private_activity_now * active_private_lru;
+		}
+
+	      if (monitor->lru_activity[i] > 0)
+		{
+		  ATOMIC_INC_32 (&monitor->lru_activity[i], activity_incr);
+
+		  if (monitor->lru_activity[i] < -1)
+		    {
+		      ATOMIC_TAS_32 (&monitor->lru_activity[i], -1);
+		    }
+		}
+
+	      if (monitor->lru_activity[i] <= 0 && monitor->bcbs_cnt_per_lru[i] > 0)
+		{
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+		  er_log_debug (ARG_FILE_LINE, "pgbuf_adjust_tran_quotas: "
+				"private_LRU %d (LRU_idx:%d) released due to inactivity",
+				PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (i), i);
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+		  ATOMIC_TAS_32 (&monitor->lru_activity[i], -1);
+
+		  /* reclaim BCBs from inactive transactions */
+		  pgbuf_relocate_chain_private_lru_to_shared (i);
+		}
+	    }
+	  else
+	    {
+	      activity_incr = this_lru_activity_diff - avg_private_activity_now;
+	      ATOMIC_INC_32 (&monitor->lru_activity[i], activity_incr);
+
+	      /* upper and lower limits for LRU activity: this allows adaptation
+	       * to changing pattern */
+	      if (monitor->lru_activity[i] > PGBUF_TRAN_MAX_ACTIVITY)
+		{
+		  ATOMIC_TAS_32 (&monitor->lru_activity[i], PGBUF_TRAN_MAX_ACTIVITY);
+		}
+	      else if (monitor->lru_activity[i] < PGBUF_TRAN_THRESHOLD_ACTIVITY)
+		{
+		  ATOMIC_TAS_32 (&monitor->lru_activity[i], PGBUF_TRAN_THRESHOLD_ACTIVITY);
+		}
+	    }
+	  sum_private_lru_activity_total += monitor->lru_activity[i];
+	}
+      else
+	{
+	  activity_incr = this_lru_activity_diff;
+	}
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+      activity_incr = MAX (activity_incr, -99999);
+      activity_incr = MIN (activity_incr, 99999);
+      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1,
+		      "%5d/%5d/%5d/%5d/%6d,%s",
+		      lru2_age_diff, lru1_age_diff,
+		      monitor->lru1_hit[i], lru_vict_pressure, activity_incr, PGBUF_QUOTA_MARKER_STRING (i));
+      if (cnt <= 0)
+	{
+	  break;
+	}
+      pos += cnt;
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+      ATOMIC_TAS_32 (&monitor->lru1_hit[i], 0);
+      ATOMIC_TAS_32 (&monitor->lru_victim_pressure_per_lru[i], 0);
+    }
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  msg[pos] = '\0';
+  er_log_debug (ARG_FILE_LINE, "pgbuf_adjust_quotas1: lru_shared_spd:%d/%d,"
+		" lru_tran_spd:%d/%d, lru1_hit_shared:%d, lru1_hit_tran:%d\n"
+		"lru_vict_pressure_shared:%d, lru_vict_pressure_private:%d, "
+		"diff_usec:%lld\n"
+		"unfix_all:%d/%d, avoid_lru:%d, overflow_priv_lru_idx:%d(%d)\n"
+		"LRU2_age/LRU1_age/LRU1_hit/LRU_vict_pressure/activity_incr\n"
+		"%s\n",
+		lru2_speed_shared, lru1_speed_shared,
+		lru2_speed_tran, lru1_speed_tran,
+		lru1_hit_shared, lru1_hit_tran,
+		lru_vict_pressure_shared, lru_vict_pressure_private,
+		diff_usec, monitor->pg_unfix,
+		monitor->pg_unfix_with_private_lru,
+		quota->avoid_shared_lru_idx,
+		PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (quota->
+						   overflow_private_lru_idx), quota->overflow_private_lru_idx, msg);
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+  /* update ratio of private pages only when there are */
+  total_private_activity = PGBUF_LRU_ACTIVITY (lru1_hit_tran, lru1_speed_tran, 0, lru_vict_pressure_private,
+					       active_private_lru);
+  total_shared_activity = PGBUF_LRU_ACTIVITY (lru1_hit_shared, lru1_speed_shared, 0, lru_vict_pressure_shared,
+					      active_private_lru);
+
+  if (total_private_activity > 0 || total_shared_activity > 0)
+    {
+      float private_ratio;
+      float alpha;
+
+      private_ratio = (float) (total_private_activity) / (float) (total_private_activity + total_shared_activity);
+      private_ratio = MIN (MAX_PRIVATE_RATIO, private_ratio);
+      private_ratio = MAX (MIN_PRIVATE_RATIO, private_ratio);
+
+      alpha = (float) monitor->pg_unfix / (float) PGBUF_TRAN_MAX_ACTIVITY;
+
+      if (alpha >= 1.0f)
+	{
+	  quota->private_pages_ratio = private_ratio;
+	}
+      else if (alpha > 0.0f)
+	{
+	  quota->private_pages_ratio = NEW_AVG_H (private_ratio, quota->private_pages_ratio, alpha);
+	}
+    }
+  ATOMIC_TAS_32 (&monitor->pg_unfix, 0);
+  ATOMIC_TAS_32 (&monitor->pg_unfix_with_private_lru, 0);
+
+  all_private_quota = (int) ((pgbuf_Pool.num_buffers - pgbuf_Pool.buf_invalid_list.invalid_cnt)
+			     * quota->private_pages_ratio);
+
+  if (lru1_speed_tran > 0 || lru1_speed_shared > 0)
+    {
+      int max_overflow = PGBUF_PRIVATE_MIN_QUOTA;
+      int overflow_priv_lru_idx = -1;
+      int avg_shared_lru_size;
+
+      /* LRU1 threshold : adjust with actual shared/private quota */
+      avg_shared_lru_size = (pgbuf_Pool.num_buffers - all_private_quota) / pgbuf_Pool.num_LRU_list;
+      avg_shared_lru_size = MAX (avg_shared_lru_size, 100);
+      avg_shared_lru_size = MIN (avg_shared_lru_size, pgbuf_Pool.num_buffers / pgbuf_Pool.num_LRU_list);
+
+      pgbuf_Pool.num_LRU1_zone_threshold = (int) (avg_shared_lru_size * lru1_ratio);
+      pgbuf_Pool.num_LRU1_zone_threshold = MAX (pgbuf_Pool.num_LRU1_zone_threshold,
+						(int) (avg_shared_lru_size * 0.05f));
+      pgbuf_Pool.num_LRU1_zone_threshold = MIN (pgbuf_Pool.num_LRU1_zone_threshold,
+						(int) (avg_shared_lru_size * 0.95f));
+
+      for (i = 0; i < PGBUF_SHARED_LRU; i++)
+	{
+	  ATOMIC_TAS_32 (&quota->lru1_threshold_per_lru[i], pgbuf_Pool.num_LRU1_zone_threshold);
+	}
+
+      for (i = PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU; i < PGBUF_TOTAL_LRU; i++)
+	{
+	  int new_quota;
+	  float new_lru_ratio;
+
+	  if (sum_private_lru_activity_total > 0)
+	    {
+	      if (monitor->lru_activity[i] > 0)
+		{
+		  new_lru_ratio = (float) (monitor->lru_activity[i]) / (float) sum_private_lru_activity_total;
+		}
+	      else
+		{
+		  new_lru_ratio = 0.0f;
+		}
+	    }
+	  else
+	    {
+	      new_lru_ratio = 1.0f / (float) PGBUF_PRIVATE_LRU;
+	    }
+
+	  quota->private_lru_distr[i] = new_lru_ratio;
+
+	  new_quota = (int) (all_private_quota * new_lru_ratio);
+
+	  new_quota = MIN (new_quota, PGBUF_MAX_QUOTA);
+	  new_quota = MAX (new_quota, PGBUF_PRIVATE_MIN_QUOTA);
+
+	  sum_distr += quota->private_lru_distr[i];
+
+	  ATOMIC_TAS_32 (&quota->target_bcbs_per_lru[i], new_quota);
+	  lru1_threshold = MAX (1, (int) (lru1_ratio * new_quota));
+	  lru1_threshold = MIN (lru1_threshold, new_quota);
+	  ATOMIC_TAS_32 (&quota->lru1_threshold_per_lru[i], lru1_threshold);
+
+	  if (monitor->bcbs_cnt_per_lru[i] > quota->target_bcbs_per_lru[i]
+	      && (monitor->bcbs_cnt_per_lru[i] - quota->target_bcbs_per_lru[i]) > max_overflow)
+	    {
+	      max_overflow = monitor->bcbs_cnt_per_lru[i] - quota->target_bcbs_per_lru[i];
+	      overflow_priv_lru_idx = i;
+	    }
+	}
+
+      ATOMIC_TAS_32 (&quota->overflow_private_lru_idx, overflow_priv_lru_idx);
+    }
+
+#if defined(PGBUF_TRAN_QUOTA_DEBUG)
+  msg[0] = '\0';
+  pos = 0;
+  for (i = PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU; i < PGBUF_TOTAL_LRU && pos < sizeof (msg) - 4; i++)
+    {
+      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%5d/%6d/%.3f,%s",
+		      quota->target_bcbs_per_lru[i],
+		      monitor->lru_activity[i], quota->private_lru_distr[i], PGBUF_QUOTA_MARKER_STRING (i));
+      if (cnt <= 0)
+	{
+	  break;
+	}
+      pos += cnt;
+    }
+
+  msg[pos] = '\0';
+  er_log_debug (ARG_FILE_LINE, "pgbuf_adjust_quotas2: "
+		"all_private_ratio:%f, all_private_quota:%d, active_private_lru:%d, "
+		"max_pages_quota:%d,\nsum_distr:%f, sum_lru_activity:%d, "
+		"avg_private_activity_now:%d\n"
+		"target_bcbs/lru_activity/lru_distr\n"
+		"%s\n",
+		quota->private_pages_ratio, all_private_quota,
+		active_private_lru, quota->max_pages_private_quota,
+		sum_distr, sum_private_lru_activity_total, avg_private_activity_now, msg);
+#endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+  quota->is_adjusting = 0;
+#undef NEW_AVG_H
+}
+
+/*
+ * pgbuf_assign_private_lru_id () -
+ *   return: NO_ERROR
+ *   is_vacuum(in): true if client is a vacuum thread
+ *   id(in): id of client (vaccuum index or session id)
+ */
+int
+pgbuf_assign_private_lru (bool is_vacuum, const int id)
+{
+  int i;
+  int min_activitity;
+  int min_bcbs;
+  int lru_cand_idx, lru_cand_zero_sessions;
+  int private_idx;
+  int cnt_lru;
+  PGBUF_PAGE_MONITOR *monitor;
+  PGBUF_PAGE_QUOTA *quota;
+  int retry_cnt = 0;
+
+  if (!PGBUF_PAGE_QUOTA_IS_ENABLED)
+    {
+      return -1;
+    }
+
+  monitor = &pgbuf_Pool.monitor;
+  quota = &pgbuf_Pool.quota;
+
+  /* Priority for choosing a private list :
+   * 1. the list with zero sessions having the least number of pages
+   * 2. the list having least activity */
+
+retry:
+  lru_cand_zero_sessions = -1;
+  lru_cand_idx = -1;
+  min_bcbs = pgbuf_Pool.num_buffers;
+  min_activitity = PGBUF_TRAN_MAX_ACTIVITY;
+  for (i = PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU; i < PGBUF_TOTAL_LRU; i++)
+    {
+      if (quota->private_lru_session_cnt[PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (i)] == 0)
+	{
+	  if (monitor->bcbs_cnt_per_lru[i] < min_bcbs)
+	    {
+	      min_bcbs = monitor->bcbs_cnt_per_lru[i];
+	      lru_cand_zero_sessions = i;
+
+	      if (min_bcbs <= 0)
+		{
+		  break;
+		}
+	    }
+	}
+      if (monitor->lru_activity[i] < min_activitity)
+	{
+	  min_activitity = monitor->lru_activity[i];
+	  lru_cand_idx = i;
+	}
+    }
+
+  if (lru_cand_zero_sessions != -1)
+    {
+      lru_cand_idx = lru_cand_zero_sessions;
+    }
+
+  assert (lru_cand_idx != -1);
+
+  cnt_lru = monitor->bcbs_cnt_per_lru[lru_cand_idx];
+
+  private_idx = PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (lru_cand_idx);
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_assign_private_lru_id: "
+		"%s ID %d will use private LRU %d (LRU_idx:%d). "
+		"List has %d assigned sessions and %d pages\n",
+		(is_vacuum) ? "Vacuum worker" : "Session",
+		id, private_idx, lru_cand_idx, quota->private_lru_session_cnt[private_idx], cnt_lru);
+
+  if (lru_cand_zero_sessions != -1)
+    {
+      if (ATOMIC_INC_32 (&quota->private_lru_session_cnt[private_idx], 1) > 1)
+	{
+	  /* another thread stole this lru, retry */
+	  if (retry_cnt++ < 5)
+	    {
+	      ATOMIC_INC_32 (&quota->private_lru_session_cnt[private_idx], -1);
+	      goto retry;
+	    }
+	}
+    }
+  else
+    {
+      ATOMIC_INC_32 (&quota->private_lru_session_cnt[private_idx], 1);
+    }
+
+  pgbuf_adjust_quotas (NULL);
+
+  return private_idx;
+}
+
+/*
+ * pgbuf_release_private_lru () -
+ *   return: NO_ERROR
+ *   bufptr(in): pointer to buffer page
+ *
+ * Note: This function puts BCB to the bottom of the LRU list.
+ */
+int
+pgbuf_release_private_lru (const int private_idx)
+{
+  if (PGBUF_PAGE_QUOTA_IS_ENABLED && private_idx >= 0 && private_idx < PGBUF_PRIVATE_LRU && pgbuf_Pool.num_buffers > 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "pgbuf_release_private_lru: "
+		    "private_LRU %d (LRU_idx:%d) - session disconnected\n",
+		    private_idx, PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
+
+      if (ATOMIC_INC_32 (&pgbuf_Pool.quota.private_lru_session_cnt[private_idx], -1) <= 0)
+	{
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_release_private_lru: "
+			"private_LRU %d (LRU_idx:%d) - no active sessions\n",
+			private_idx, PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
+
+	  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_activity[PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx)], -1);
+
+	  pgbuf_relocate_chain_private_lru_to_shared (PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
+
+	  pgbuf_adjust_quotas (NULL);
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * pgbuf_initialize_seq_flusher () - Initializes sequential flusher on a list of
  *				     pages to be flushed
  *
@@ -11908,15 +14698,15 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
 	  *dirty_cnt = *dirty_cnt + 1;
 	}
 
-      if (bufptr->zone == PGBUF_LRU_1_ZONE)
+      if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
 	{
 	  *lru1_cnt = *lru1_cnt + 1;
 	}
-      else if (bufptr->zone == PGBUF_LRU_2_ZONE)
+      else if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_2_ZONE)
 	{
 	  *lru2_cnt = *lru2_cnt + 1;
 	}
-      else if (bufptr->zone == PGBUF_AIN_ZONE)
+      else if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_AIN_ZONE)
 	{
 	  *aint_cnt = *aint_cnt + 1;
 	}
@@ -11949,7 +14739,7 @@ int
 pgbuf_flush_control_from_dirty_ratio (void)
 {
   static int prev_dirties_cnt = 0;
-  int crt_dirties_cnt = (int) pgbuf_Pool.dirties_cnt;
+  int crt_dirties_cnt = (int) pgbuf_Pool.monitor.dirties_cnt;
   int desired_dirty_cnt = pgbuf_Pool.num_buffers / 2;
   int adapt_flush_rate = 0;
 

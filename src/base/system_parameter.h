@@ -388,8 +388,11 @@ enum param_id
 
   PRM_ID_LOG_UNIQUE_STATS,
 
+  PRM_ID_PB_TRAN_PAGES_QUOTA,
+  PRM_ID_PB_NUM_PRIVATE_CHAINS,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_LOG_UNIQUE_STATS
+  PRM_LAST_ID = PRM_ID_PB_NUM_PRIVATE_CHAINS
 };
 
 /*

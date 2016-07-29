@@ -413,7 +413,8 @@ extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 extern void pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
-extern void pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid, DKNPAGES npages, bool need_invalidate);
+extern void pgbuf_invalidate_temporary_file (THREAD_ENTRY * thread_p, VOLID volid, PAGEID first_pageid, DKNPAGES npages,
+					     bool need_invalidate);
 extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_check_page_type_no_error (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
@@ -457,4 +458,9 @@ extern int pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data);
 
 extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
+
+extern int pgbuf_release_private_lru (const int private_idx);
+extern int pgbuf_assign_private_lru (bool is_vacuum, const int id);
+extern void pgbuf_adjust_quotas (struct timeval *curr_time_p);
+
 #endif /* _PAGE_BUFFER_H_ */
