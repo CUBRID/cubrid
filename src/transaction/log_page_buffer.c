@@ -221,13 +221,7 @@ struct log_buffer
   LOG_PAGEID pageid;		/* Logical page of the log. (Page identifier of the infinite log) */
   LOG_PHY_PAGEID phy_pageid;	/* Physical pageid for the active log portion */
   int fcnt;			/* Fix count */
-  int ipool;			/* Buffer pool index. Used to optimize the Clock algorithm and to find the address of
-				 * buffer given the page address  */
   bool dirty;			/* Is page dirty */
-  bool recently_freed;		/* Reference value 0/1 used by the clock algorithm - NU */
-  bool flush_running;		/* Is page beging flushed ? */
-
-  bool dummy_for_align;		/* Dummy field for 8byte alignment of log page */
   LOG_PAGE *logpage;		/* The actual buffered log page */
 };
 
@@ -447,7 +441,6 @@ logpb_unfix_page (LOG_BUFFER * bufptr)
       bufptr->fcnt = 0;
     }
 
-  bufptr->recently_freed = true;
 }
 
 /*
@@ -466,9 +459,7 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
   log_buffer_p->pageid = NULL_PAGEID;
   log_buffer_p->phy_pageid = NULL_PAGEID;
   log_buffer_p->fcnt = 0;
-  log_buffer_p->recently_freed = false;
   log_buffer_p->dirty = false;
-  log_buffer_p->flush_running = false;
   /* 
    * Scramble the content of buffers. This is done for debugging
    * reasons to make sure that a user of a buffer does not assume
@@ -499,7 +490,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   LOG_PAGE *log_pages_area;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
-
+  printf ("%d\n", sizeof (LOG_BUFFER));
 
 
   if (lzo_init () == LZO_E_OK)
@@ -619,7 +610,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       log_Pb.buffers[i] = log_bufptr;
       MEM_REGION_INIT (log_Pb.pages_area[i], LOG_PAGESIZE);
       logpb_initialize_log_buffer (log_bufptr, log_Pb.pages_area[i]);
-      log_bufptr->ipool = i;
     }
 
   log_Pb.num_buffers = total_buffers;
@@ -1361,7 +1351,7 @@ logpb_dump_pages (FILE * out_fp)
 	{
 	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p %4s %5lld %5d\n",
 		   i, (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
-		   log_bufptr->recently_freed, log_bufptr->fcnt, (void *) log_bufptr, (void *) (log_bufptr->logpage),
+		   log_bufptr->fcnt, (void *) log_bufptr, (void *) (log_bufptr->logpage),
 		   (void *) (&log_bufptr->logpage->area[LOGAREA_SIZE - 1]), "",
 		   (long long) log_bufptr->logpage->hdr.logical_pageid, log_bufptr->logpage->hdr.offset);
 	}
@@ -4318,7 +4308,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        * Make sure that we have found the smallest dirty append page to flush
        * which should be flushed at the end.
        */
-      assert (!bufptr->flush_running);
       if (last_idxflush == -1)
 	{
 	  if (bufptr->dirty == true)
