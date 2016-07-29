@@ -221,7 +221,7 @@ struct log_buffer
   LOG_PAGEID pageid;		/* Logical page of the log. (Page identifier of the infinite log) */
   LOG_PHY_PAGEID phy_pageid;	/* Physical pageid for the active log portion */
   int fcnt;			/* Fix count */
-  int dirty;			/* Is page dirty */
+  bool dirty;			/* Is page dirty */
   LOG_PAGE *logpage;		/* The actual buffered log page */
 };
 
@@ -490,8 +490,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   LOG_PAGE *log_pages_area;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
-  printf ("%d %d %d %d\n", sizeof (LOG_PAGEID), sizeof (LOG_PHY_PAGEID), sizeof (LOG_PAGE *), sizeof (LOG_BUFFER));
-
 
   if (lzo_init () == LZO_E_OK)
     {				/* lzo library init */
