@@ -850,7 +850,9 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   LOG_BUFFER *log_bufptr = NULL;	/* A log buffer */
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;	/* The corresponding physical page */
   bool is_perf_tracking;
-  TSC_TICKS start_tick;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
   is_perf_tracking = mnt_is_perf_tracking (thread_p);
@@ -929,6 +931,18 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
     }
 
   mnt_log_fetches (thread_p);
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      fix_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (fix_wait_time > 0)
+	{
+	  mnt_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
+				    PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
+	}
+    }
+
   assert (log_bufptr != NULL);
   /* for debugging in release mode */
   if (log_bufptr == NULL)
