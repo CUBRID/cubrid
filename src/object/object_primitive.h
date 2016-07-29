@@ -348,5 +348,11 @@ extern int pr_area_init (void);
 extern void pr_area_final (void);
 
 extern int pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain);
+extern int mr_get_compression_length (char *string, int charlen);
+extern int mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size);
+
+#define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
+#define PRIM_TEMPORARY_DISK_SIZE 256
+#define PRIM_COMPRESSION_LENGTH_OFFSET 4
 
 #endif /* _OBJECT_PRIMITIVE_H_ */

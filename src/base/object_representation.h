@@ -1569,4 +1569,7 @@ extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 extern char *or_pack_sha1 (char *ptr, SHA1Hash * sha1);
 extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 
+/* Get the compressed and the decompressed lengths of a string stored in buffer */
+extern int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size);
+
 #endif /* _OBJECT_REPRESENTATION_H_ */

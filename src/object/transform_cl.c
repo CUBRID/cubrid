@@ -1472,6 +1472,8 @@ string_disk_size (const char *string)
 {
   DB_VALUE value;
   int str_length = 0;
+  int length = 0;
+  int compressed = 0;
 
   if (string)
     {
@@ -1483,7 +1485,9 @@ string_disk_size (const char *string)
     }
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  return (*(tp_VarNChar.data_lengthval)) (&value, 1);
+  length = (*(tp_VarNChar.data_lengthval)) (&value, 1);
+
+  return length;
 }
 
 
@@ -1562,7 +1566,6 @@ put_string (OR_BUF * buf, const char *string)
     {
       str_length = 0;
     }
-
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   (*(tp_VarNChar.data_writeval)) (buf, &value);
 }

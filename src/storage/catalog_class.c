@@ -4230,11 +4230,14 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   RECDES class_record;
   OID *class_oid_p, tmp_oid;
   const char *class_name_p;
-  const char *attr_name_p;
+  char *attr_name_p;
   CT_ATTR *atts;
   int n_atts;
   int c, a, i;
   HEAP_SCANCACHE scan;
+  char *string = NULL;
+  int alloced_string = 0;
+  int error = NO_ERROR;
 
   /* check if an old version database */
   if (catcls_find_class_oid_by_class_name (thread_p, CT_CLASS_NAME, &tmp_oid) != NO_ERROR)
@@ -4273,7 +4276,17 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
       for (i = 0; i < n_atts; i++)
 	{
-	  attr_name_p = or_get_attrname (&class_record, i);
+	  string = NULL;
+	  alloced_string = 0;
+
+	  error = or_get_attrname (&class_record, i, &string, &alloced_string);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+
+	  attr_name_p = string;
 	  if (attr_name_p == NULL)
 	    {
 	      (void) heap_scancache_end (thread_p, &scan);
@@ -4285,8 +4298,19 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	      if (strcmp (atts[a].ca_name, attr_name_p) == 0)
 		{
 		  atts[a].ca_id = i;
+
+		  if (string != NULL && alloced_string == 1)
+		    {
+		      db_private_free_and_init (thread_p, string);
+		    }
+
 		  break;
 		}
+	    }
+
+	  if (string != NULL && alloced_string == 1)
+	    {
+	      db_private_free_and_init (thread_p, string);
 	    }
 	}
       if (heap_scancache_end (thread_p, &scan) != NO_ERROR)
@@ -4380,7 +4404,18 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
 
   for (i = 0; i < attr_info.num_values; i++)
     {
-      const char *rec_attr_name_p = or_get_attrname (&recdes, i);
+      char *rec_attr_name_p, *string = NULL;
+      int alloced_string = 0;
+      bool set_break = false;
+
+      error = or_get_attrname (&recdes, i, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      rec_attr_name_p = string;
       if (rec_attr_name_p == NULL)
 	{
 	  error = ER_FAILED;
@@ -4392,7 +4427,8 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
 	  charset_att_id = i;
 	  if (lang_att_id != -1)
 	    {
-	      break;
+	      set_break = true;
+	      goto clean_string;
 	    }
 	}
 
@@ -4401,13 +4437,25 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
 	  lang_att_id = i;
 	  if (charset_att_id != -1)
 	    {
-	      break;
+	      set_break = true;
+	      goto clean_string;
 	    }
 	}
 
       if (strcmp ("timezone_checksum", rec_attr_name_p) == 0)
 	{
 	  timezone_id = i;
+	}
+
+    clean_string:
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
+	}
+
+      if (set_break == true)
+	{
+	  break;
 	}
     }
 
@@ -4802,7 +4850,17 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 
   for (i = 0; i < attr_info.num_values; i++)
     {
-      const char *rec_attr_name_p = or_get_attrname (&recdes, i);
+      char *rec_attr_name_p, *string = NULL;
+      int alloced_string = 0;
+
+      error = or_get_attrname (&recdes, i, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      rec_attr_name_p = string;
       if (rec_attr_name_p == NULL)
 	{
 	  error = ER_FAILED;
@@ -4829,6 +4887,12 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 	  checksum_att_id = i;
 	  att_id_cnt++;
 	}
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
+	}
+
       if (att_id_cnt >= 4)
 	{
 	  break;
@@ -5022,7 +5086,17 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
 
   for (i = 0; i < attr_info.num_values; i++)
     {
-      const char *rec_attr_name_p = or_get_attrname (&recdes, i);
+      char *rec_attr_name_p, *string = NULL;
+      int alloced_string = 0;
+
+      error = or_get_attrname (&recdes, i, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      rec_attr_name_p = string;
       if (rec_attr_name_p == NULL)
 	{
 	  error = ER_FAILED;
@@ -5032,7 +5106,18 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
       if (strcmp ("log_record_time", rec_attr_name_p) == 0)
 	{
 	  log_record_time_att_id = i;
+
+	  if (string != NULL && alloced_string == 1)
+	    {
+	      db_private_free_and_init (thread_p, string);
+	    }
+
 	  break;
+	}
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
 	}
     }
 

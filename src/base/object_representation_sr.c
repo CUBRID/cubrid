@@ -96,7 +96,7 @@ static void or_install_btids (OR_CLASSREP * rep, DB_SEQ * props);
 static OR_CLASSREP *or_get_current_representation (RECDES * record, int do_indexes);
 static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid, int do_indexes);
 static const char *or_find_diskattr (RECDES * record, int attr_id);
-static const char *or_get_attr_string (RECDES * record, int attr_id, int attr_index);
+static int or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -3705,20 +3705,27 @@ or_find_diskattr (RECDES * record, int attr_id)
 
 /*
  * or_get_attr_string () - Get the string of the given attribute (id,index)
- *   return: a pointer to desired attribute (id,index)
+ *   return: NO_ERROR or error code.
  *   record(in): disk record
  *   attr_id(in): desired attribute id
  *   attr_index(in): index to a string among the attribute
+ *   string(out) : The pointer towards the desire attribute.
+ *   alloced_string(out) : States whether the returned string was alloc'ed due do decompression,
+ *			   or is just a pointer from the record.
  *
  *   If the given attribute identifier does not exist for current
  *   representation, NULL is returned.
  */
-static const char *
-or_get_attr_string (RECDES * record, int attr_id, int attr_index)
+int
+or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string)
 {
   char *diskatt, *attr = NULL;
   int offset = 0, offset_next = 0;
   unsigned char len = 0;
+  OR_BUF buffer;
+  int compressed_length = 0, decompressed_length = 0, net_charlen = 0, rc = NO_ERROR;
+
+  assert (*alloced_string == 0);
 
   assert (attr_index < ORC_ATT_LAST_INDEX);
 
@@ -3755,19 +3762,48 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
       if (offset == offset_next)
 	{
 	  attr = NULL;
+	  *string = NULL;
 	}
       else if (len < 0xFFU)
 	{
 	  assert (len != 0);
 	  attr += 1;
+	  *string = attr;
 	}
       else
 	{
-	  attr = attr + 1 + OR_INT_SIZE;
+	  OR_BUF_INIT (buffer, attr, -1);
+
+	  rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
+	  if (rc != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      *string = NULL;
+	      return rc;
+	    }
+
+	  assert (*string == NULL);
+	  *string = db_private_alloc (NULL, decompressed_length + 1);
+	  if (*string == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  *alloced_string = 1;
+
+	  rc = mr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
+	  if (rc != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      db_private_free (NULL, *string);
+	      *alloced_string = 0;
+	      *string = NULL;
+	      return rc;
+	    }
 	}
     }
 
-  return attr;
+  return rc;
 }
 
 /*
@@ -3775,35 +3811,36 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
  *   return: the name of the attribute
  *   record(in): disk record
  *   attrid(in): desired attribute
- *
- * Note: The name returned is an actual pointer to the record structure
- *       if the record is changed, the pointer may be trashed.
+ *   string(out): Desired attribute name
+ *   alloced_string(out) : States whether the attribute name was alloc'ed or it is just a pointer.
  *
  *       The name returned is the name of the actual representation.
  *       If the given attribute identifier does not exist for current
  *       representation, NULL is returned.
  */
-const char *
-or_get_attrname (RECDES * record, int attrid)
+int
+or_get_attrname (RECDES * record, int attrid, char **string, int *alloced_string)
 {
-  return or_get_attr_string (record, attrid, ORC_ATT_NAME_INDEX);
+  return or_get_attr_string (record, attrid, ORC_ATT_NAME_INDEX, string, alloced_string);
 }
 
 /*
  * or_get_attrcomment () - Find the comment of the given attribute
- *   return: the comment of attribute
+ *   return: NO_ERROR or error code
  *   record(in): disk record
  *   attrid(in): desired attribute
+ *   string(out): Desired string
+ *   alloced_string(out) : States whether the string was alloc'ed due to decompression or it is just a pointer.
  *
  * Note: The comment returned is an actual pointer to the record structure
  *       If the record is changed, the pointer may be trashed.
  *       If the given attribute identifier does not exist for current
  *       representation, NULL is returned.
  */
-const char *
-or_get_attrcomment (RECDES * record, int attrid)
+int
+or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_string)
 {
-  return or_get_attr_string (record, attrid, ORC_ATT_COMMENT_INDEX);
+  return or_get_attr_string (record, attrid, ORC_ATT_COMMENT_INDEX, string, alloced_string);
 }
 
 /*
