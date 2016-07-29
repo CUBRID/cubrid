@@ -874,9 +874,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   if (pageid == LOGPB_HEADER_PAGE_ID)
     {
       log_bufptr = log_Pb.header_buffer;
-
     }
-
   else
     {
       log_bufptr = log_Pb.buffers[MOD ((int) pageid)];
