@@ -179,7 +179,6 @@ typedef enum
   PAGE_HEAP,			/* heap page */
   PAGE_VOLHEADER,		/* volume header page */
   PAGE_VOLBITMAP,		/* volume bitmap page */
-  PAGE_XASL,                    /* Obsolete; it was used to store XASL's on disk */
   PAGE_QRESULT,			/* query result page */
   PAGE_EHASH,			/* ehash bucket/dir page */
   PAGE_LARGEOBJ,		/* large object/dir page */

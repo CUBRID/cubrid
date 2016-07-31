@@ -1315,6 +1315,15 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   json_set_alloc_funcs (malloc, free);
 
+#if defined(CS_MODE)
+  /* Initialize of the lzo library. */
+  error_code = lzo_init ();
+  if (error_code != LZO_E_OK)
+    {
+      goto error;
+    }
+#endif
+
   return error_code;
 
 error:
