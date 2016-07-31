@@ -598,14 +598,6 @@ enum t_diag_server_type
 };
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
-#define MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS \
-  (PERF_PAGE_FIX_COUNTERS + PERF_PAGE_PROMOTE_COUNTERS \
-  + PERF_PAGE_PROMOTE_COUNTERS + PERF_PAGE_UNFIX_COUNTERS \
-  + PERF_PAGE_LOCK_TIME_COUNTERS + PERF_PAGE_HOLD_TIME_COUNTERS \
-  + PERF_PAGE_FIX_TIME_COUNTERS + PERF_MVCC_SNAPSHOT_COUNTERS \
-  + PERF_OBJ_LOCK_STAT_COUNTERS + PERF_MODULE_CNT + PERF_MODULE_CNT \
-  + PERF_MODULE_CNT + PERF_MODULE_CNT + PERF_MODULE_CNT)
-
 extern void mnt_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
 
 extern void mnt_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size,
@@ -629,7 +621,6 @@ extern bool mnt_is_perf_tracking ();
 #endif /* SERVER_MODE || SA_MODE */
 
 extern void perfmon_add_stat (THREAD_ENTRY * thread_p, UINT64 amount, PERF_STAT_ID psid);
-extern void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int offset, PERF_STAT_ID psid);
 extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
 extern void perfmon_set_stat (THREAD_ENTRY * thread_p, int statval, PERF_STAT_ID psid);
 extern void perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_STAT_ID psid);
@@ -841,108 +832,30 @@ struct perf_utime_tracker
 /*
  * Statistics at file io level
  */
+  extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
-#define mnt_add_in_statistics_array(thread_p, value, statistic_id) \
-  mnt_x_add_in_statistics_array (thread_p, value, statistic_id)
+  extern UINT64 mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
+  extern void mnt_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id);
 
+  extern void mnt_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
 
-/*
- * Statistics at lock level
- */
-#define mnt_lk_waited_time_on_objects(thread_p, lock_mode, time_usec) \
-							    mnt_x_lk_waited_time_on_objects(thread_p, \
-							    lock_mode, \
-							    time_usec)
+  extern UINT64 mnt_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
 
-/* Execution statistics for the heap manager */
+  extern void mnt_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type);
+  extern void mnt_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
+			       UINT64 amount);
+  extern void mnt_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
+			     int holder_latch);
+  extern void mnt_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					 int cond_type, UINT64 amount);
+  extern void mnt_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					 UINT64 amount);
+  extern void mnt_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					int cond_type, UINT64 amount);
+  #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+   extern void mnt_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
+  #endif
 
-#define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type) \
-						 mnt_x_pbx_fix(thread_p, page_type, \
-						 page_found_mode,latch_mode, \
-						 cond_type)
-#define mnt_pbx_promote(thread_p,page_type,promote_cond,holder_latch,success, amount) \
-						 mnt_x_pbx_promote(thread_p, page_type, \
-						 promote_cond, \
-						 holder_latch, \
-						 success, amount)
-#define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch) \
-						   mnt_x_pbx_unfix(thread_p, page_type, \
-						   buf_dirty, \
-						   dirtied_by_holder, \
-						   holder_latch)
-#define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount) \
-						   mnt_x_pbx_hold_acquire_time(thread_p, \
-						   page_type, \
-						   page_found_mode, \
-						   latch_mode, \
-						   amount)
-#define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount) \
-						  mnt_x_pbx_lock_acquire_time(thread_p, \
-						  page_type, \
-						  page_found_mode, \
-						  latch_mode, \
-						  cond_type, \
-						  amount)
-#define mnt_pbx_fix_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount) \
-						  mnt_x_pbx_fix_acquire_time(thread_p, \
-						  page_type, \
-						  page_found_mode, \
-						  latch_mode, \
-						  cond_type, \
-						  amount)
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-#define mnt_mvcc_snapshot(thread_p,snapshot,rec_type,visibility) \
-						  mnt_x_mvcc_snapshot(thread_p, \
-						  snapshot, \
-						  rec_type, \
-						  visibility)
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT * /
-
-          #define mnt_heap_update_log_time(thread_p,amount) \
-          mnt_x_heap_update_log_time (thread_p, amount)
-
-          extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
-
-          extern void mnt_x_set_value_to_statistic (THREAD_ENTRY * thread_p, const int value, const int statistic_id);
-          extern UINT64 mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
-          extern void mnt_x_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id);
-
-          extern void mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
-
-          extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
-
-          extern void mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type);
-          extern void mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
-          UINT64 amount);
-          extern void mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
-          int holder_latch);
-          extern void mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-          int cond_type, UINT64 amount);
-          extern void mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-          UINT64 amount);
-          extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-          int cond_type, UINT64 amount);
-          #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-          extern void mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
-          #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-
-#else /* SERVER_MODE || SA_MODE */
-#define mnt_add_in_statistics_array (thread_p, value, statistic_id)
-
-#define mnt_lk_waited_time_on_objects(thread_p, lock_mode, time_usec)
-
-#define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type)
-#define mnt_pbx_promote(thread_p,page_type,promote_cond,holder_latch,success,amount)
-#define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch)
-#define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount)
-#define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
-#define mnt_pbx_fix_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-#define mnt_mvcc_snapshot(thread_p,snapshot,rec_type,visibility)
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-
-#define mnt_heap_update_log_time(thread_p,amount)
-
-#endif /* CS_MODE */
+#endif /* SERVER_MODE || SA_MODE */
 
 #endif /* _PERF_MONITOR_H_ */

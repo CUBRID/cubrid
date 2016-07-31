@@ -8111,6 +8111,8 @@ mnt_server_copy_global_stats (UINT64 * to_stats)
   reply = (char * ) malloc(nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
   if(reply == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 
+	      nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }

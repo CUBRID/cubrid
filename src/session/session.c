@@ -2147,7 +2147,7 @@ session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name
 
   name_str = DB_GET_STRING (name);
 
-  stat_val = mnt_x_get_stats_and_clear (thread_p, name_str);
+  stat_val = mnt_get_stats_and_clear (thread_p, name_str);
   DB_MAKE_BIGINT (result, stat_val);
 
   return NO_ERROR;

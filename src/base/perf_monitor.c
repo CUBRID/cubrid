@@ -572,6 +572,7 @@ PSTAT_METADATA pstat_Metadata[] = {
     } while (0)
 
 static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, int offset);
+static void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int offset, PERF_STAT_ID psid);
 static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset);
 static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset);
 
@@ -602,73 +603,81 @@ static int mnt_calc_global_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
 
 /*
  * mnt_start_stats - Start collecting client execution statistics
- *   return: NO_ERROR or ER_FAILED
+ *   return: NO_ERROR or ERROR
  */
 int
 mnt_start_stats (bool for_all_trans)
 {
   int err = NO_ERROR;
   
+  if(mnt_Iscollecting_stats == true)
+    {
+      goto exit;
+    }
+
   mnt_Stat_info.old_global_stats = NULL;
   mnt_Stat_info.current_global_stats = NULL;
   mnt_Stat_info.base_server_stats = NULL;
   mnt_Stat_info.current_server_stats = NULL;
 
-  if (mnt_Iscollecting_stats != true)
+  err = mnt_server_start_stats ();
+  if(err != NO_ERROR)
     {
-      err = mnt_server_start_stats ();
-
-      if (err != ER_FAILED)
-	{
-	  mnt_Iscollecting_stats = true;
-
-	  mnt_get_current_times (&mnt_Stat_info.cpu_start_usr_time, &mnt_Stat_info.cpu_start_sys_time,
-				 &mnt_Stat_info.elapsed_start_time);
-
-	  if (for_all_trans)
-	    {
-	      mnt_Stat_info.old_global_stats = perfmon_allocate_values();
-	      if(mnt_Stat_info.old_global_stats == NULL)
-		{
-		  err = ER_OUT_OF_VIRTUAL_MEMORY;
-		  goto error;
-		}
-	      mnt_Stat_info.current_global_stats = perfmon_allocate_values();
-
-	      if(mnt_Stat_info.current_global_stats == NULL)
-		{
-		  err = ER_OUT_OF_VIRTUAL_MEMORY;
-		  goto error;
-		}
-
-	      if(mnt_get_global_stats () == NO_ERROR)
-		{
-		  perfmon_copy_values(mnt_Stat_info.old_global_stats, mnt_Stat_info.current_global_stats);
-		}
-	    }
-	  else
-	    {
-	      mnt_Stat_info.base_server_stats = perfmon_allocate_values();
-	      if(mnt_Stat_info.base_server_stats == NULL)
-		{
-		  err = ER_OUT_OF_VIRTUAL_MEMORY;
-		  goto error;
-		}
-	      mnt_Stat_info.current_server_stats = perfmon_allocate_values();
-	      if(mnt_Stat_info.current_server_stats == NULL)
-		{
-		  err = ER_OUT_OF_VIRTUAL_MEMORY;
-		  goto error;
-		}
-
-	      if(mnt_get_stats () == NO_ERROR)
-		{
-		  perfmon_copy_values(mnt_Stat_info.base_server_stats, mnt_Stat_info.current_server_stats);
-		}
-	    }
-	}
+      ASSERT_ERROR ();
+      goto exit;
     }
-error:
+
+  mnt_Iscollecting_stats = true;
+
+  mnt_get_current_times (&mnt_Stat_info.cpu_start_usr_time, &mnt_Stat_info.cpu_start_sys_time,
+			 &mnt_Stat_info.elapsed_start_time);
+
+  if (for_all_trans)
+    {
+      mnt_Stat_info.old_global_stats = perfmon_allocate_values();
+      if(mnt_Stat_info.old_global_stats == NULL)
+	{
+	    ASSERT_ERROR ();
+	    err = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto exit;
+	}
+	mnt_Stat_info.current_global_stats = perfmon_allocate_values();
+
+	if(mnt_Stat_info.current_global_stats == NULL)
+	  {
+	    ASSERT_ERROR ();
+	    err = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto exit;
+	  }
+
+	if(mnt_get_global_stats () == NO_ERROR)
+	  {
+	    perfmon_copy_values(mnt_Stat_info.old_global_stats, mnt_Stat_info.current_global_stats);
+	  }
+     }
+     else
+      {
+	mnt_Stat_info.base_server_stats = perfmon_allocate_values();
+	if(mnt_Stat_info.base_server_stats == NULL)
+	  {
+	    ASSERT_ERROR ();
+	    err = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto exit;
+	  }
+	mnt_Stat_info.current_server_stats = perfmon_allocate_values();
+	if(mnt_Stat_info.current_server_stats == NULL)
+	  {
+	    ASSERT_ERROR ();
+	    err = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto exit;
+	  }
+
+	if(mnt_get_stats () == NO_ERROR)
+	  {
+	    perfmon_copy_values(mnt_Stat_info.base_server_stats, mnt_Stat_info.current_server_stats);
+	  }
+      }
+exit:
   return err;
 }
 
@@ -766,6 +775,11 @@ mnt_get_global_stats (void)
 
   /* Refresh statistics from server */
   err = mnt_server_copy_global_stats (mnt_Stat_info.current_global_stats);
+  if(err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
   return err;
 }
 
@@ -788,12 +802,13 @@ mnt_print_stats (FILE * stream)
       return err;
     }
   
-  diff_result = perfmon_allocate_values();
+  diff_result = perfmon_allocate_values ();
 
   if(diff_result == NULL)
     {
+       ASSERT_ERROR ();
        err = ER_OUT_OF_VIRTUAL_MEMORY;
-       goto error;
+       goto exit;
     }
 
   if (stream == NULL)
@@ -801,29 +816,35 @@ mnt_print_stats (FILE * stream)
       stream = stdout;
     }
 
-  if (mnt_get_stats () ==  NO_ERROR)
+  if(mnt_get_stats () != NO_ERROR)
     {
-      mnt_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time, &elapsed_total_time);
-
-      fprintf (stream, "\n *** CLIENT EXECUTION STATISTICS ***\n");
-
-      fprintf (stream, "System CPU (sec)              = %10d\n",
-	       (int) (cpu_total_sys_time - mnt_Stat_info.cpu_start_sys_time));
-      fprintf (stream, "User CPU (sec)                = %10d\n",
-	       (int) (cpu_total_usr_time - mnt_Stat_info.cpu_start_usr_time));
-      fprintf (stream, "Elapsed (sec)                 = %10d\n",
-	       (int) (elapsed_total_time - mnt_Stat_info.elapsed_start_time));
-
-      if (mnt_calc_diff_stats (diff_result, mnt_Stat_info.current_server_stats, mnt_Stat_info.base_server_stats) ==
-	  NO_ERROR)
-	{
-	  mnt_server_dump_stats (diff_result, stream, NULL);
-	}
+      ASSERT_ERROR ();
+      goto exit;
     }
-error:
+
+    mnt_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time, &elapsed_total_time);
+
+    fprintf (stream, "\n *** CLIENT EXECUTION STATISTICS ***\n");
+
+    fprintf (stream, "System CPU (sec)              = %10d\n",
+	    (int) (cpu_total_sys_time - mnt_Stat_info.cpu_start_sys_time));
+    fprintf (stream, "User CPU (sec)                = %10d\n",
+	     (int) (cpu_total_usr_time - mnt_Stat_info.cpu_start_usr_time));
+    fprintf (stream, "Elapsed (sec)                 = %10d\n",
+	     (int) (elapsed_total_time - mnt_Stat_info.elapsed_start_time));
+
+    if (mnt_calc_diff_stats (diff_result, mnt_Stat_info.current_server_stats, mnt_Stat_info.base_server_stats) !=
+	  NO_ERROR)
+      {
+	assert (false);
+	goto exit;
+      }
+    mnt_server_dump_stats (diff_result, stream, NULL);
+    
+exit:
     if(diff_result != NULL)
       {
-	free_and_init(diff_result);
+	free_and_init (diff_result);
       }
     return err;
 }
@@ -836,7 +857,7 @@ error:
 int
 mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 {
-  UINT64 *diff_result;
+  UINT64 *diff_result = NULL;
   int err = NO_ERROR;
 
   if (stream == NULL)
@@ -848,26 +869,33 @@ mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 
   if(diff_result == NULL)
     {
+      ASSERT_ERROR ();
       err = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
+      goto exit;
+    }
+  err = mnt_get_global_stats ();
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
     }
 
-  if (mnt_get_global_stats () == NO_ERROR)
+  if (cumulative)
     {
-      if (cumulative)
-	{
-	  mnt_server_dump_stats (mnt_Stat_info.current_global_stats, stream, substr);
-	}
-      else
-	{
-	  if (mnt_calc_global_diff_stats
-	      (diff_result, mnt_Stat_info.current_global_stats, mnt_Stat_info.old_global_stats) == NO_ERROR)
-	    {
-	      mnt_server_dump_stats (diff_result, stream, substr);
-	    }
-	}
+      mnt_server_dump_stats (mnt_Stat_info.current_global_stats, stream, substr);
     }
-error:
+  else
+    {
+      if (mnt_calc_global_diff_stats
+	  (diff_result, mnt_Stat_info.current_global_stats, mnt_Stat_info.old_global_stats) != NO_ERROR)
+	{
+	  assert (false);
+	  goto exit;
+	}
+      mnt_server_dump_stats (diff_result, stream, substr);
+    }
+    
+exit:
   if(diff_result != NULL)
     {
       free_and_init(diff_result);
@@ -2023,11 +2051,11 @@ mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
 }
 
 /*
- *   mnt_x_add_in_statistics_array - 
+ *   mnt_add_in_statistics_array - 
  *   return: none
  */
 void
-mnt_x_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id)
+mnt_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id)
 {
   UINT64 *stats;
   int module;
@@ -2050,12 +2078,12 @@ mnt_x_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int 
 
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 /*
- * mnt_x_lk_waited_time_on_objects - Increase lock time wait counter of
+ * mnt_lk_waited_time_on_objects - Increase lock time wait counter of
  *                              the current transaction index
  *   return: none
  */
 void
-mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount)
+mnt_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2080,7 +2108,7 @@ mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
 UINT64
-mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
+mnt_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
 {
   UINT64 *stats;
   int i;
@@ -2122,11 +2150,11 @@ mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
 }
 
 /*
- *   mnt_x_pbx_fix - 
+ *   mnt_pbx_fix - 
  *   return: none
  */
 void
-mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type)
+mnt_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type)
 {
   UINT64 *stats;
   int module;
@@ -2151,12 +2179,12 @@ mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int 
 }
 
 /*
- *   mnt_x_pbx_promote - 
+ *   mnt_pbx_promote - 
  *   return: none
  */
 void
-mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
-		   UINT64 amount)
+mnt_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
+		 UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2182,11 +2210,11 @@ mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int
 }
 
 /*
- *   mnt_x_pbx_unfix - 
+ *   mnt_pbx_unfix - 
  *   return: none
  */
 void
-mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder, int holder_latch)
+mnt_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder, int holder_latch)
 {
   UINT64 *stats;
   int module;
@@ -2211,11 +2239,11 @@ mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirt
 }
 
 /*
- *   mnt_x_pbx_lock_acquire_time - 
+ *   mnt_pbx_lock_acquire_time - 
  *   return: none
  */
 void
-mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type,
+mnt_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type,
 			     UINT64 amount)
 {
   UINT64 *stats;
@@ -2242,11 +2270,11 @@ mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_fo
 }
 
 /*
- *   mnt_x_pbx_hold_acquire_time - 
+ *   mnt_pbx_hold_acquire_time - 
  *   return: none
  */
 void
-mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, UINT64 amount)
+mnt_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2271,12 +2299,12 @@ mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_fo
 }
 
 /*
- *   mnt_x_pbx_fix_acquire_time - 
+ *   mnt_pbx_fix_acquire_time - 
  *   return: none
  */
 void
-mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type,
-			    UINT64 amount)
+mnt_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type,
+			  UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2303,11 +2331,11 @@ mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_fou
 
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 /*
- *   mnt_x_mvcc_snapshot - 
+ *   mnt_mvcc_snapshot - 
  *   return: none
  */
 void
-mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility)
+mnt_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility)
 {
   UINT64 *stats;
   int offset;
@@ -4173,7 +4201,7 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, UINT64 amount, PERF_STAT_ID psid)
  * return	 : Void.
  * thread_p (in) : Thread entry.
  * amount (in)	 : Amount to add.
- * offset (in): 
+ * offset (in): offset at which to add the amount
  * psid (in)	 : Statistic ID.
  */
 void
