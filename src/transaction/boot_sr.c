@@ -4296,7 +4296,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  (void) xtran_server_abort (thread_p);
 	}
 
-      xperfmon_stop_watch (thread_p);
+      perfmon_stop_watch (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
       CUBRID_CONN_END (client_id, tdes->client.db_user);

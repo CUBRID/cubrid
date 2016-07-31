@@ -258,7 +258,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	{
 	  /* Record was inserted and is visible for all transactions */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
 			     PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return SNAPSHOT_SATISFIED;
@@ -267,7 +267,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	{
 	  /* Record was inserted by current transaction and is visible */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
 			     PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return SNAPSHOT_SATISFIED;
@@ -277,7 +277,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	  /* Record was inserted by an active transaction or by a transaction that has committed after snapshot was
 	   * obtained. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
 			     PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return TOO_NEW_FOR_SNAPSHOT;
@@ -288,12 +288,12 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
 				 PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST, PERF_SNAPSHOT_VISIBLE);
 	    }
 	  else
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
 				 PERF_SNAPSHOT_VISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
@@ -307,7 +307,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	{
 	  /* The record was deleted by current transaction and it is not visible anymore. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
 			     PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return TOO_OLD_FOR_SNAPSHOT;
@@ -318,7 +318,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	   *       they will be the same). It only adds an extra-check in a function frequently called.
 	   */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_DELETED,
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_DELETED,
 			     PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return TOO_NEW_FOR_SNAPSHOT;
@@ -328,7 +328,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	  /* The record was deleted by an active transaction or by a transaction that has committed after snapshot was
 	   * obtained. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
 			     PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return SNAPSHOT_SATISFIED;
@@ -339,12 +339,12 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
 				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST, PERF_SNAPSHOT_INVISIBLE);
 	    }
 	  else
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
 				 PERF_SNAPSHOT_INVISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
@@ -416,18 +416,18 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (MVCC_IS_HEADER_DELID_VALID (rec_header) && MVCC_IS_REC_DELETED_SINCE_MVCCID (rec_header, oldest_mvccid))
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
-				 PERF_SNAPSHOT_INVISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+				     PERF_SNAPSHOT_INVISIBLE);
 	    }
 	  else if (!MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (rec_header))
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
-				 PERF_SNAPSHOT_INVISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
+				     PERF_SNAPSHOT_INVISIBLE);
 	    }
 	  else
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
-				 PERF_SNAPSHOT_INVISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
+				     PERF_SNAPSHOT_INVISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return VACUUM_RECORD_CANNOT_VACUUM;
@@ -437,8 +437,8 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
 	  /* The inserter transaction has committed and the record is visible to all running transactions. Insert
 	   * MVCCID and previous version lsa can be removed. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
-			     PERF_SNAPSHOT_VISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
+				 PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return VACUUM_RECORD_DELETE_INSID_PREV_VER;
 	}
@@ -447,8 +447,8 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
     {
       /* The deleter transaction has committed and the record is not visible to any running transactions. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
-			 PERF_SNAPSHOT_VISIBLE);
+      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+			     PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
       return VACUUM_RECORD_REMOVE;
     }
@@ -478,8 +478,8 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	{
 	  /* Record was inserted and is visible for all transactions */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
-			     PERF_SNAPSHOT_VISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
+				 PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_CAN_DELETE;
 	}
@@ -488,8 +488,8 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	{
 	  /* Record is only visible to current transaction and can be safely deleted. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
-			     PERF_SNAPSHOT_VISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
+				 PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_CAN_DELETE;
 	}
@@ -497,8 +497,8 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	{
 	  /* Record is inserted by an active transaction and is not visible to current transaction. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
-			     PERF_SNAPSHOT_INVISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
+				 PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_INSERT_IN_PROGRESS;
 	}
@@ -508,13 +508,13 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
-				 PERF_SNAPSHOT_VISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
+				     PERF_SNAPSHOT_VISIBLE);
 	    }
 	  else
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
-				 PERF_SNAPSHOT_VISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
+				     PERF_SNAPSHOT_VISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_CAN_DELETE;
@@ -527,8 +527,8 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	{
 	  /* Record was already deleted by me... */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
-			     PERF_SNAPSHOT_INVISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
+				 PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_SELF_DELETED;
 	}
@@ -536,8 +536,8 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	{
 	  /* Record was deleted by an active transaction. Current transaction must wait until the deleter completes. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
-			     PERF_SNAPSHOT_INVISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+				 PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_DELETE_IN_PROGRESS;
 	}
@@ -547,13 +547,13 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
-				 PERF_SNAPSHOT_INVISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
+				     PERF_SNAPSHOT_INVISIBLE);
 	    }
 	  else
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
-				 PERF_SNAPSHOT_INVISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+				     PERF_SNAPSHOT_INVISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return DELETE_RECORD_DELETED;
@@ -598,8 +598,8 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	{
 	  /* Record was inserted and is visible for all transactions */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
-			     PERF_SNAPSHOT_VISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
+				 PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return SNAPSHOT_SATISFIED;
 	}
@@ -607,8 +607,8 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	{
 	  /* Record was inserted by current transaction and is visible */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
-			     PERF_SNAPSHOT_VISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
+				 PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return SNAPSHOT_SATISFIED;
 	}
@@ -617,8 +617,8 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	  /* Record is inserted by an active transaction and is visible */
 	  snapshot->lowest_active_mvccid = MVCC_GET_INSID (rec_header);
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
-			     PERF_SNAPSHOT_VISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
+				 PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return SNAPSHOT_SATISFIED;
 	}
@@ -628,13 +628,13 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
-				 PERF_SNAPSHOT_VISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED_LOST,
+				     PERF_SNAPSHOT_VISIBLE);
 	    }
 	  else
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
-				 PERF_SNAPSHOT_VISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
+				     PERF_SNAPSHOT_VISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return SNAPSHOT_SATISFIED;
@@ -647,8 +647,8 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	{
 	  /* Record was deleted by current transaction and is not visible */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
-			     PERF_SNAPSHOT_INVISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
+				 PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return TOO_OLD_FOR_SNAPSHOT;
 	}
@@ -657,8 +657,8 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	  /* Record was deleted by other active transaction and is still visible */
 	  snapshot->highest_completed_mvccid = rec_header->delid_chn.mvcc_del_id;
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
-			     PERF_SNAPSHOT_VISIBLE);
+	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
+				 PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return SNAPSHOT_SATISFIED;
 	}
@@ -668,13 +668,13 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
-				 PERF_SNAPSHOT_INVISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
+				     PERF_SNAPSHOT_INVISIBLE);
 	    }
 	  else
 	    {
-	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
-				 PERF_SNAPSHOT_INVISIBLE);
+	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
+				     PERF_SNAPSHOT_INVISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 	  return TOO_OLD_FOR_SNAPSHOT;

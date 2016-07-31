@@ -5313,8 +5313,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
-      xperfmon_start_watch (thread_p);
-      xmnt_server_copy_stats (thread_p, base_stats);
+      perfmon_start_watch (thread_p);
+      xperfmon_server_copy_stats (thread_p, base_stats);
 
       tsc_getticks (&start_tick);
 
@@ -5493,8 +5493,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	  response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
 
-	  xmnt_server_copy_stats (thread_p, current_stats);
-	  mnt_calc_diff_stats (diff_stats, current_stats, base_stats);
+	  xperfmon_server_copy_stats (thread_p, current_stats);
+	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
 
 	  if (response_time >= trace_slow_msec)
 	    {
@@ -5508,7 +5508,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      event_log_many_ioreads (thread_p, &info, response_time, diff_stats);
 	    }
 
-	  xperfmon_stop_watch (thread_p);
+	  perfmon_stop_watch (thread_p);
 	}
 
       if (thread_p->event_stats.temp_expand_pages > 0)
@@ -5570,7 +5570,7 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UIN
 
   if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
     {
-      mnt_server_dump_stats_to_buffer (diff_stats, stat_buf, STATDUMP_BUF_SIZE, NULL);
+      perfmon_server_dump_stats_to_buffer (diff_stats, stat_buf, STATDUMP_BUF_SIZE, NULL);
     }
   else
     {
@@ -6381,7 +6381,7 @@ smnt_server_start_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  xperfmon_start_watch (thread_p);
+  perfmon_start_watch (thread_p);
 
   (void) or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -6404,7 +6404,7 @@ smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  xperfmon_stop_watch (thread_p);
+  perfmon_stop_watch (thread_p);
   /* dummy reply message */
   (void) or_pack_int (reply, 1);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -6446,7 +6446,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     }
   reply_start = PTR_ALIGN(reply, MAX_ALIGNMENT);
 
-  xmnt_server_copy_stats (thread_p, stats);
+  xperfmon_server_copy_stats (thread_p, stats);
   net_pack_stats (reply_start, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply_start, nr_statistic_values * sizeof(UINT64));
   free_and_init(stats);
@@ -6488,7 +6488,7 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   reply_start = PTR_ALIGN(reply, MAX_ALIGNMENT);
 
-  xmnt_server_copy_global_stats (thread_p, stats);
+  xperfmon_server_copy_global_stats (thread_p, stats);
   net_pack_stats (reply_start, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply_start, nr_statistic_values * sizeof(UINT64));
   free_and_init (stats);

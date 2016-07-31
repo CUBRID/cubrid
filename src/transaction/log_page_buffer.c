@@ -1113,7 +1113,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -1214,7 +1214,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
        * archive vs page is found in log page buffer */
       if (fix_wait_time > 0)
 	{
-	  mnt_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
+	  perfmon_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
 				    PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
 	}
     }
@@ -2129,7 +2129,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -2177,7 +2177,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
        * archive vs page is found in log page buffer */
       if (fix_wait_time > 0)
 	{
-	  mnt_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
+	  perfmon_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
 				    PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
 	}
     }

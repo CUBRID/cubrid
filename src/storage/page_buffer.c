@@ -1387,7 +1387,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   lock_wait_time = 0;
 
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
 
   if (is_perf_tracking)
     {
@@ -1752,7 +1752,7 @@ try_again:
 	      perf_cond_type = PERF_UNCONDITIONAL_FIX_WITH_WAIT;
 	      if (holder_wait_time > 0)
 		{
-		  mnt_pbx_hold_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode,
+		  perfmon_pbx_hold_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode,
 					     holder_wait_time);
 		}
 	    }
@@ -1766,10 +1766,10 @@ try_again:
 	  perf_cond_type = PERF_CONDITIONAL_FIX;
 	}
 
-      mnt_pbx_fix (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type);
+      perfmon_pbx_fix (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type);
       if (lock_wait_time > 0)
 	{
-	  mnt_pbx_lock_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
+	  perfmon_pbx_lock_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
 				     lock_wait_time);
 	}
 
@@ -1779,7 +1779,7 @@ try_again:
 
       if (fix_wait_time > 0)
 	{
-	  mnt_pbx_fix_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
+	  perfmon_pbx_fix_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
 				    fix_wait_time);
 	}
     }
@@ -1866,7 +1866,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
 #if defined(SERVER_MODE)	/* SERVER_MODE */
   /* performance tracking - get start counter */
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -2046,8 +2046,8 @@ end:
 	}
 
       /* aggregate success/fail */
-      mnt_pbx_promote (thread_p, perf_page_type, perf_promote_cond_type, perf_holder_latch, stat_success,
-		       promote_wait_time);
+      perfmon_pbx_promote (thread_p, perf_page_type, perf_promote_cond_type, perf_holder_latch, stat_success,
+			   promote_wait_time);
     }
 
   /* all successful */
@@ -2149,7 +2149,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 #endif /* CUBRID_DEBUG */
 
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
@@ -2174,8 +2174,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	  assert (holder_perf_stat.hold_has_write_latch);
 	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
 	}
-      mnt_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold, holder_perf_stat.dirtied_by_holder,
-		     perf_holder_latch);
+      perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold, holder_perf_stat.dirtied_by_holder,
+			 perf_holder_latch);
     }
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
@@ -6778,7 +6778,7 @@ pgbuf_search_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
 
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
 #endif
 
   mbw_cnt = 0;
@@ -6940,7 +6940,7 @@ pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, PGBUF_BCB * bufpt
 
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -6994,7 +6994,7 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
 
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -7105,7 +7105,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
     }
 
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
 #endif
 
   cur_thrd_entry = thread_p;
@@ -7223,7 +7223,7 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
     {
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
       thread_p = thread_get_thread_entry_info ();
-      is_perf_tracking = mnt_is_perf_tracking ();
+      is_perf_tracking = perfmon_is_perf_tracking ();
       if (is_perf_tracking)
 	{
 	  tsc_getticks (&start_tick);

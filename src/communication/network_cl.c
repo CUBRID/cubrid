@@ -671,7 +671,7 @@ net_histo_clear (void)
 
   if (net_Histo_setup_mnt)
     {
-      mnt_reset_stats ();
+      perfmon_reset_stats ();
     }
 
   net_Histo_call_count = 0;
@@ -742,7 +742,7 @@ net_histo_print (FILE * stream)
     }
   if (net_Histo_setup_mnt)
     {
-      err = mnt_print_stats (stream);
+      err = perfmon_print_stats (stream);
     }
   return err;
 }
@@ -761,7 +761,7 @@ net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr
 
   if (net_Histo_setup_mnt)
     {
-      err = mnt_print_global_stats (stream, cumulative, substr);
+      err = perfmon_print_global_stats (stream, cumulative, substr);
     }
   return err;
 }
@@ -785,7 +785,7 @@ net_histo_start (bool for_all_trans)
 
   if (net_Histo_setup_mnt == 0)
     {
-      if (mnt_start_stats (for_all_trans) != NO_ERROR)
+      if (perfmon_start_stats (for_all_trans) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -809,7 +809,7 @@ net_histo_stop (void)
 
   if (net_Histo_setup_mnt == 1)
     {
-      err = mnt_stop_stats ();
+      err = perfmon_stop_stats ();
       net_Histo_setup_mnt = 0;
     }
 

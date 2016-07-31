@@ -2776,8 +2776,8 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
 
       if (xasl->orderby_stats.orderby_filesort)
 	{
-	  old_sort_pages = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-	  old_sort_ioreads = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+	  old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	  old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
 	}
     }
 
@@ -2799,8 +2799,8 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
 
       if (xasl->orderby_stats.orderby_filesort)
 	{
-	  xasl->orderby_stats.orderby_pages = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages;
-	  xasl->orderby_stats.orderby_ioreads = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads;
+	  xasl->orderby_stats.orderby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages;
+	  xasl->orderby_stats.orderby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads;
 	}
     }
 
@@ -4190,8 +4190,8 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   if (thread_is_on_trace (thread_p))
     {
       xasl->groupby_stats.groupby_sort = true;
-      old_sort_pages = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-      old_sort_ioreads = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
     }
 
   /* unsorted list is not empty; dump hash table to partial list */
@@ -4379,8 +4379,8 @@ wrapup:
 
 	if (xasl->groupby_stats.groupby_sort == true)
 	  {
-	    xasl->groupby_stats.groupby_pages = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages;
-	    xasl->groupby_stats.groupby_ioreads = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads;
+	    xasl->groupby_stats.groupby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages;
+	    xasl->groupby_stats.groupby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads;
 	  }
       }
 
@@ -12762,8 +12762,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
     {
       tsc_getticks (&start_tick);
 
-      old_fetches = mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      old_ioreads = mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
     }
 
   error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state, p_class_instance_lock_info);
@@ -12774,8 +12774,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (xasl->xasl_stats.elapsed_time, tv_diff);
 
-      xasl->xasl_stats.fetches += mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-      xasl->xasl_stats.ioreads += mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      xasl->xasl_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      xasl->xasl_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
     }
 
   thread_dec_recursion_depth (thread_p);
@@ -13477,8 +13477,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  tsc_getticks (&start_tick);
 
-		  old_fetches = mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-		  old_ioreads = mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+		  old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+		  old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
 		}
 
 	      if (qexec_execute_connect_by (thread_p, xasl->connect_by_ptr, xasl_state, &tplrec) != NO_ERROR)
@@ -13505,8 +13505,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 		  TSC_ADD_TIMEVAL (xasl_stats->elapsed_time, tv_diff);
 
-		  xasl_stats->fetches = mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-		  xasl_stats->ioreads = mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+		  xasl_stats->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+		  xasl_stats->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
 		}
 	    }
 	}
@@ -15632,8 +15632,8 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID
 	    {
 	      tsc_getticks (&start_tick);
 
-	      old_sort_pages = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-	      old_sort_ioreads = mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+	      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
 	    }
 
 	  /* sort the list file */
@@ -15693,8 +15693,8 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID
 
 	      xasl->orderby_stats.orderby_filesort = true;
 
-	      xasl->orderby_stats.orderby_pages += mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages;
-	      xasl->orderby_stats.orderby_ioreads += mnt_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads;
+	      xasl->orderby_stats.orderby_pages += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages;
+	      xasl->orderby_stats.orderby_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads;
 	    }
 	}
     }				

@@ -600,15 +600,15 @@ enum t_diag_server_type
 };
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
-extern void mnt_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
+extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
 
-extern void mnt_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size,
-					     const char *substr);
+extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size,
+						 const char *substr);
 
-extern void mnt_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
+extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 
-extern int mnt_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
-				UINT64 * old_stats);
+extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
+				    UINT64 * old_stats);
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
 extern int get_number_of_statistic_values();
@@ -617,9 +617,9 @@ extern char* perfmon_allocate_packed_values_buffer(void);
 extern void perfmon_copy_values(UINT64* src, UINT64* dest);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-extern void xperfmon_start_watch (THREAD_ENTRY * thread_p);
-extern void xperfmon_stop_watch (THREAD_ENTRY * thread_p);
-extern bool mnt_is_perf_tracking ();
+extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
+extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
+extern bool perfmon_is_perf_tracking ();
 #endif /* SERVER_MODE || SA_MODE */
 
 extern void perfmon_add_stat (THREAD_ENTRY * thread_p, UINT64 amount, PERF_STAT_ID psid);
@@ -629,8 +629,8 @@ extern void perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_ST
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
-typedef struct mnt_client_stat_info MNT_CLIENT_STAT_INFO;
-struct mnt_client_stat_info
+typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
+struct perfmon_client_stat_info
 {
   time_t cpu_start_usr_time;
   time_t cpu_start_sys_time;
@@ -641,15 +641,15 @@ struct mnt_client_stat_info
   UINT64 *current_global_stats;
 };
 
-extern bool mnt_Iscollecting_stats;
+extern bool perfmon_Iscollecting_stats;
 
-extern int mnt_start_stats (bool for_all_trans);
-extern int mnt_stop_stats (void);
-extern void mnt_reset_stats (void);
-extern int mnt_print_stats (FILE * stream);
-extern int mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr);
-extern int mnt_get_stats (void);
-extern int mnt_get_global_stats (void);
+extern int perfmon_start_stats (bool for_all_trans);
+extern int perfmon_stop_stats (void);
+extern void perfmon_reset_stats (void);
+extern int perfmon_print_stats (FILE * stream);
+extern int perfmon_print_global_stats (FILE * stream, bool cumulative, const char *substr);
+extern int perfmon_get_stats (void);
+extern int perfmon_get_global_stats (void);
 #endif /* CS_MODE || SA_MODE */
 
 #if defined (DIAG_DEVEL)
@@ -788,7 +788,7 @@ struct perf_utime_tracker
 #define PERF_UTIME_TRACKER_START(thread_p, track) \
   do \
     { \
-      (track)->is_perf_tracking = mnt_is_perf_tracking (); \
+      (track)->is_perf_tracking = perfmon_is_perf_tracking (); \
       if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
     } \
   while (false)
@@ -834,28 +834,28 @@ struct perf_utime_tracker
 /*
  * Statistics at file io level
  */
-  extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
+  extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
 
-  extern UINT64 mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
-  extern void mnt_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id);
+  extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
+  extern void perfmon_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id);
 
-  extern void mnt_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
+  extern void perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
 
-  extern UINT64 mnt_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
+  extern UINT64 perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
 
-  extern void mnt_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type);
-  extern void mnt_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
-			       UINT64 amount);
-  extern void mnt_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
-			     int holder_latch);
-  extern void mnt_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					 int cond_type, UINT64 amount);
-  extern void mnt_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					 UINT64 amount);
-  extern void mnt_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					int cond_type, UINT64 amount);
+  extern void perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type);
+  extern void perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
+				   UINT64 amount);
+  extern void perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
+				 int holder_latch);
+  extern void perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					     int cond_type, UINT64 amount);
+  extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					     UINT64 amount);
+  extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					    int cond_type, UINT64 amount);
   #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-   extern void mnt_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
+   extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
   #endif
 
 #endif /* SERVER_MODE || SA_MODE */

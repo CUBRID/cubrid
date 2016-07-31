@@ -1025,11 +1025,11 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
     {
       if (DB_GET_INT (value) == 1)
 	{
-	  xperfmon_start_watch (NULL);
+	  perfmon_start_watch (NULL);
 	}
       else if (DB_GET_INT (value) == 0)
 	{
-	  xperfmon_stop_watch (NULL);
+	  perfmon_stop_watch (NULL);
 	}
     }
   else if (strncasecmp (name_str, "trace_plan", 10) == 0)
@@ -2147,7 +2147,7 @@ session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name
 
   name_str = DB_GET_STRING (name);
 
-  stat_val = mnt_get_stats_and_clear (thread_p, name_str);
+  stat_val = perfmon_get_stats_and_clear (thread_p, name_str);
   DB_MAKE_BIGINT (result, stat_val);
 
   return NO_ERROR;

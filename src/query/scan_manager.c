@@ -4768,8 +4768,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
       tsc_getticks (&start_tick);
 
-      old_fetches = mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      old_ioreads = mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
     }
 
   switch (scan_id->type)
@@ -4830,8 +4830,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (scan_id->stats.elapsed_scan, tv_diff);
 
-      scan_id->stats.num_fetches += mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-      scan_id->stats.num_ioreads += mnt_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      scan_id->stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      scan_id->stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
     }
 
   return status;

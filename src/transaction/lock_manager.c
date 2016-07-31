@@ -3288,7 +3288,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   thrd_entry = thread_p;
 
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  is_perf_tracking = mnt_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking ();
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   new_mode = group_mode = old_mode = NULL_LOCK;
@@ -3930,7 +3930,7 @@ blocked:
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      mnt_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
+      perfmon_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
     }
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
   if (ret_val != LOCK_RESUMED)
