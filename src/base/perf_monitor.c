@@ -491,86 +491,6 @@ PSTAT_METADATA pstat_Metadata[] = {
 #define PSTAT_COUNTER_TIMER_MAX_TIME_VALUE(startvalp) ((startvalp) + 2)
 #define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
 
-#define CALC_GLOBAL_STAT_DIFF(DIFF, NEW, OLD, ID)						      \
-  do {												      \
-    if ((NEW)[ID] >= (OLD)[ID])									      \
-      {												      \
-        (DIFF)[ID] = (NEW)[ID] - (OLD)[ID];							      \
-      }												      \
-    else											      \
-     {												      \
-       (DIFF)[ID] = 0;										      \
-     }												      \
-  } while (0)
-
-#define CALC_STAT_DIFF(DIFF, NEW, OLD, ID)							  \
-  do {												  \
-    if ((NEW)[ID] >= (OLD)[ID])									  \
-      {												  \
-        (DIFF)[ID] = (NEW)[ID] - (OLD)[ID];							  \
-      }												  \
-    else											  \
-     {												  \
-       (DIFF)[ID] = (NEW)[ID];									  \
-       (OLD)[ID] = 0;										  \
-     }												  \
-  } while (0)
-
-#define CALC_GLOBAL_STAT_DIFF_ARRAY(DIFF, NEW, OLD, ID, CNT)						  \
-  do {													  \
-    int i = 0;												  \
-    for (i = pstat_Metadata[ID].start_offset; i < pstat_Metadata[ID].start_offset + (CNT); i++)		  \
-      {													  \
-	if ((NEW)[i] >= (OLD)[i])									  \
-	  {												  \
-	    (DIFF)[i] = (NEW)[i] - (OLD)[i];								  \
-	  }												  \
-	else												  \
-	 {												  \
-	   (DIFF)[i] = 0;										  \
-	 }												  \
-      }													  \
-  } while (0)
-
-#define CALC_STAT_DIFF_ARRAY(DIFF, NEW, OLD, ID, CNT)							  \
-  do {													  \
-    int i = 0;												  \
-    for (i = pstat_Metadata[ID].start_offset; i < pstat_Metadata[ID].start_offset + (CNT); i++)		  \
-      {													  \
-	if ((NEW)[i] >= (OLD)[i])									  \
-	  {												  \
-	    (DIFF)[i] = (NEW)[i] - (OLD)[i];								  \
-	  }												  \
-	else												  \
-	  {												  \
-	    (DIFF)[i] = (NEW)[i];									  \
-	    (OLD)[i] = 0;										  \
-	  }												  \
-      }													  \
-    } while (0)
-
-#define PUT_STAT(RES, NEW, ID)     ((RES)[ID] = (NEW)[ID])
-
-#define MNT_CALC_STATS(RES, NEW, OLD, DIFF_METHOD)							      \
-  do {													      \
-    int i = 0;												      \
-    for (i = 0; i < PSTAT_COUNT; i++)									      \
-      {													      \
-	if ((pstat_Metadata[i].valtype != PSTAT_PEEK_SINGLE_VALUE && pstat_Metadata[i].valtype != PSTAT_COMPLEX_VALUE) || (i == PSTAT_PB_AVOID_VICTIM_CNT))	      \
-	  {												      \
-	    DIFF_METHOD (RES, NEW, OLD, i);								      \
-	  }												      \
-	else if(pstat_Metadata[i].valtype != PSTAT_COMPLEX_VALUE)					      \
-	  {												      \
-	    PUT_STAT (RES, NEW, i);									      \
-	  }												      \
-	else												      \
-	{												      \
-	  DIFF_METHOD##_ARRAY ( RES, NEW, OLD, i, pstat_Metadata[i].f_load());				      \
-	}												      \
-    }													      \
-    } while (0)
-
 static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, int offset);
 static void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int offset, PERF_STAT_ID psid);
 static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset);
@@ -598,8 +518,6 @@ bool mnt_Iscollecting_stats = false;
 
 /* Client execution statistics */
 static MNT_CLIENT_STAT_INFO mnt_Stat_info;
-static int mnt_calc_global_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
-				       UINT64 * old_stats);
 
 /*
  * mnt_start_stats - Start collecting client execution statistics
@@ -886,7 +804,7 @@ mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr)
     }
   else
     {
-      if (mnt_calc_global_diff_stats
+      if (mnt_calc_diff_stats
 	  (diff_result, mnt_Stat_info.current_global_stats, mnt_Stat_info.old_global_stats) != NO_ERROR)
 	{
 	  assert (false);
@@ -903,30 +821,6 @@ exit:
   return err;
 }
 
-/*
- *   mnt_calc_global_diff_stats -
- *   return:
- *   stats_diff :
- *   new_stats :
- *   old_stats :
- */
-static int
-mnt_calc_global_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
-			    UINT64 * old_stats)
-{
-  assert (stats_diff && new_stats && old_stats);
-
-  if (!stats_diff || !new_stats || !old_stats)
-    {
-      return ER_FAILED;
-    }
-
-  MNT_CALC_STATS (stats_diff, new_stats, old_stats, CALC_GLOBAL_STAT_DIFF);
-
-  mnt_server_calc_stats (stats_diff);
-
-  return NO_ERROR;
-}
 #endif /* CS_MODE || SA_MODE */
 
 #if defined (DIAG_DEVEL)
@@ -2356,30 +2250,63 @@ mnt_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visi
 
 #endif /* SERVER_MODE || SA_MODE */
 
-/*
- *   mnt_calc_diff_stats -
- *   return:
- *   stats_diff :
- *   new_stats :
- *   old_stats :
- */
-int
-mnt_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
-		     UINT64 * old_stats)
+int mnt_calc_diff_stats(UINT64* stats_diff, UINT64* new_stats, UINT64* old_stats)
 {
-  assert (stats_diff && new_stats && old_stats);
+  int i, j;
+  int offset;
 
-  if (!stats_diff || !new_stats || !old_stats)
+  if(!stats_diff || !new_stats || !old_stats)
     {
+      assert (false);
       return ER_FAILED;
     }
 
-  MNT_CALC_STATS (stats_diff, new_stats, old_stats, CALC_STAT_DIFF);
+  offset = pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset;
+  if(new_stats[offset] >= old_stats[offset])
+    {
+      stats_diff[offset] = new_stats[offset] - old_stats[offset];
+    }
+  else
+    {
+      stats_diff[offset] = 0;
+    }
 
-  mnt_server_calc_stats (stats_diff);
+  for(i = 0;i < PSTAT_COUNT;i++)
+    {
+    switch(pstat_Metadata[i].valtype)
+      {
+      case PSTAT_ACCUMULATE_SINGLE_VALUE:
+      case PSTAT_COUNTER_TIMER_VALUE:
+      case PSTAT_COMPLEX_VALUE:
+      case PSTAT_COMPUTED_RATIO_VALUE:
+	for(j = pstat_Metadata[i].start_offset;j < pstat_Metadata[i].start_offset + pstat_Metadata[i].n_vals;j++)
+	  {
+	    if(new_stats[j] >= old_stats[j])
+	      {
+		stats_diff[j] = new_stats[j] - old_stats[j];
+	      }
+	    else
+	      {
+		stats_diff[j] = 0; 
+	      }
+	  }
+	break;
 
+      case PSTAT_PEEK_SINGLE_VALUE:
+	if(i != PSTAT_PB_AVOID_VICTIM_CNT)
+	  {
+	    stats_diff[pstat_Metadata[i].start_offset] = new_stats[pstat_Metadata[i].start_offset];
+	  }
+	break;
+      default:
+	assert (false);
+	break;
+      }
+    }
+
+  mnt_server_calc_stats(stats_diff);
   return NO_ERROR;
-}
+  }
 
 /*
  * mnt_server_dump_stats_to_buffer -
@@ -4219,7 +4146,6 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int of
     }
 
   metadata = &pstat_Metadata[psid];
-  assert (metadata->valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
   
   /* Update statistics. */
   perfmon_add_at_offset (thread_p, amount, metadata->start_offset + offset);
