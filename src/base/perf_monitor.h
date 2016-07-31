@@ -149,6 +149,8 @@
 
 #define PERF_OBJ_LOCK_STAT_COUNTERS (PERF_MODULE_CNT * (SCH_M_LOCK + 1))
 
+#define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
+
 typedef enum
 {
   PERF_MODULE_SYSTEM = 0,

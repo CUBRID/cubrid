@@ -2655,36 +2655,27 @@ mnt_server_calc_stats (UINT64 * stats)
 	}
     }
 
-  stats[PSTAT_PB_VACUUM_EFFICIENCY] =
-    (total_unfix_vacuum == 0) ? 0 : (total_unfix_vacuum_dirty) * 100 * 100 / total_unfix_vacuum;
+  stats[PSTAT_PB_VACUUM_EFFICIENCY] = SAFE_DIV (total_unfix_vacuum_dirty * 100 * 100, total_unfix_vacuum);
 
-  stats[PSTAT_PB_VACUUM_FETCH_RATIO] =
-    (total_unfix == 0) ? 0 : (total_unfix_vacuum) * 100 * 100 / total_unfix;
-
-  stats[PSTAT_VACUUM_DATA_HIT_RATIO] =
-    (total_fix_vacuum == 0) ? 0 : (total_fix_vacuum_hit) * 100 * 100 / total_fix_vacuum;
-
-  stats[PSTAT_PB_HIT_RATIO] =
-    (stats[PSTAT_PB_NUM_FETCHES] ==
-     0) ? 0 : (stats[PSTAT_PB_NUM_FETCHES] -
-	       stats[PSTAT_PB_NUM_IOREADS]) * 100 * 100 / stats[PSTAT_PB_NUM_FETCHES];
-
-  stats[PSTAT_LOG_HIT_RATIO] =
-    (stats[PSTAT_LOG_NUM_FETCHES] ==
-     0) ? 0 : (stats[PSTAT_LOG_NUM_FETCHES] -
-	       stats[PSTAT_LOG_NUM_FETCH_IOREADS]) * 100 * 100 / stats[PSTAT_PB_NUM_FETCHES];
-
+  stats[PSTAT_PB_VACUUM_FETCH_RATIO] = SAFE_DIV (total_unfix_vacuum * 100 * 100, total_unfix);
+    
+  stats[PSTAT_VACUUM_DATA_HIT_RATIO] = SAFE_DIV (total_fix_vacuum_hit * 100 * 100, total_fix_vacuum);
+    
+  stats[PSTAT_PB_HIT_RATIO] = SAFE_DIV ((stats[PSTAT_PB_NUM_FETCHES] - stats[PSTAT_PB_NUM_IOREADS]) * 100 * 100, 
+				        stats[PSTAT_PB_NUM_FETCHES]); 
+  
+  stats[PSTAT_LOG_HIT_RATIO] = SAFE_DIV((stats[PSTAT_LOG_NUM_FETCHES] - stats[PSTAT_LOG_NUM_FETCH_IOREADS]) * 100 * 100,
+					 stats[PSTAT_PB_NUM_FETCHES]);
+					 
   stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC] = 100 * lock_time_usec / 1000;
   stats[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] = 100 * hold_time_usec / 1000;
   stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] = 100 * fix_time_usec / 1000;
 
-  stats[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO] =
-    (stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] ==
-     0) ? 0 : ((stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] -
-		stats[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] -
-		stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC]) * 100 * 100 /
-	       stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC]);
-
+  stats[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO] = SAFE_DIV ((stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] - 
+							stats[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] -
+							stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC]) * 100 * 100,
+							stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC]);
+    
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
       for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
@@ -2735,7 +2726,6 @@ mnt_server_calc_stats (UINT64 * stats)
 		    &(stats[PSTAT_PB_AVOID_VICTIM_CNT]), &(stats[PSTAT_PB_VICTIM_CAND_CNT]));
 #endif
 }
-
 
 /*
  * perf_stat_module_name () -
