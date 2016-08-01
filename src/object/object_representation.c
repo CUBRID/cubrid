@@ -1408,7 +1408,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       if (compressed_length >= charlen - 8)
 	{
 	  /* Compression failed */
-	  compressed_length = 0;
+	  compressed_length = -1;
 	}
 
       /* Store the compression size */
