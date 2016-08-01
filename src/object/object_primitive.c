@@ -11313,7 +11313,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		}
 	      if (compressed_size <= 0)
 		{
-		  assert (compressed_size != 0);
+		  assert (compressed_size == 0);
 		  str_length = decompressed_size;
 		}
 	      else
@@ -14098,7 +14098,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 
 	      if (compressed_size <= 0)
 		{
-		  assert (compressed_size != 0);
+		  assert (compressed_size == 0);
 		  str_length = decompressed_size;
 		}
 	      else
