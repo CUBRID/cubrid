@@ -689,11 +689,6 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
     }
 #endif /* CUBRID_DEBUG */
 
-  /* 
-   * Remove hash table
-   */
-
-
   free_and_init (log_Pb.buffers);
   log_Pb.num_buffers = 0;
 
@@ -1218,7 +1213,7 @@ logpb_dump (THREAD_ENTRY * thread_p, FILE * out_fp)
       return;
     }
   /* modified mutex with assertion of CS */
-  LOG_CS_OWN_WRITE_MODE (thread_p);
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   logpb_dump_information (out_fp);
 
