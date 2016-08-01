@@ -2514,7 +2514,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
   LOG_LSA rcv_lsa;		/* Address of redo log record */
   LOG_LSA *rcv_page_lsaptr;	/* LSA of data page for log record to redo */
-  LOG_TDES *tdes;	/* Transaction descriptor */
+  LOG_TDES *tdes;		/* Transaction descriptor */
   int num_particps;		/* Number of participating sites */
   int particp_id_length;	/* Length of particp_ids block */
   void *block_particps_ids;	/* A block of participant ids */
@@ -3381,7 +3381,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    tdes = LOG_FIND_TDES (tran_index);
 		    assert (tdes && tdes->state != TRAN_ACTIVE);
-  		    free_tran = true;
+		    free_tran = true;
 		  }
 
 		if (stopat != NULL && *stopat != -1)
