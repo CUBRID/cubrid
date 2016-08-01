@@ -1225,7 +1225,7 @@ lock_remove_resource (LK_RES * res_ptr)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_RES);
   int success = 0, rc;
 
-  rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, &success);
+  rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, res_ptr, &success);
   if (!success)
     {
       /* this should not happen, as the hash entry is mutex protected and no clear operations are performed on the hash 
@@ -1236,6 +1236,7 @@ lock_remove_resource (LK_RES * res_ptr)
     }
   else
     {
+      assert (rc == NO_ERROR);
       return rc;
     }
 }

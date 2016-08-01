@@ -99,6 +99,14 @@ if(WIN32)
   list(APPEND CUBRID_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cubrid-bin ${CUBRID_SOURCES})
+if(WIN32)
+  if(MSVC_VERSION LESS 1600)
+    # for VS 2008 (9.0) or less version
+    set_target_properties(cubrid-bin PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
+  else(MSVC_VERSION LESS 1600)
+    set_target_properties(cubrid-bin PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
+  endif(MSVC_VERSION LESS 1600)
+endif(WIN32)
 set_target_properties(cubrid-bin PROPERTIES OUTPUT_NAME cubrid)
 target_link_libraries(cubrid-bin LINK_PRIVATE cubridsa)
 
@@ -220,7 +228,7 @@ if(UNIX)
     ${EXECUTABLES_DIR}/unittests_lf.c
     )
   add_executable(unittests_lf ${UNITTESTS_LF_SOURCES})
-  target_compile_definitions(unittests_lf PRIVATE SERVER_MODE ${COMMON_DEFS})
+  target_compile_definitions(unittests_lf PRIVATE UNITTEST_LF SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_lf PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_lf LINK_PRIVATE cubridcs)
 
@@ -233,11 +241,11 @@ if(UNIX)
   target_include_directories(unittests_area PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_area LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
 
-  set(UNITTESTS_AREA_SOURCES
+  set(UNITTESTS_CQUEUE_SOURCES
     ${EXECUTABLES_DIR}/unittests_cqueue.c
     )
-  add_executable(unittests_cqueue ${UNITTESTS_AREA_SOURCES})
-  target_compile_definitions(unittests_cqueue PRIVATE SERVER_MODE ${COMMON_DEFS})
+  add_executable(unittests_cqueue ${UNITTESTS_CQUEUE_SOURCES})
+  target_compile_definitions(unittests_cqueue PRIVATE UNITTEST_CQ SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_cqueue PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
   

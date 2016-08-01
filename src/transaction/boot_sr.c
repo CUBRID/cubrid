@@ -3432,17 +3432,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = heap_manager_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
   /* 
    * How to restart the system ?
    */
@@ -3462,6 +3451,17 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	{
 	  goto error;
 	}
+    }
+
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = heap_manager_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
     }
 
   /* 
@@ -4330,6 +4330,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
   CSS_CONN_ENTRY *conn;
   LOG_TDES *tdes;
   int client_id;
+  int r;
 
   if (thread_p == NULL)
     {
@@ -4342,9 +4343,8 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
   conn = thread_p->conn_entry;
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
+  r = rmutex_lock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   client_id = conn->client_id;
   tdes = LOG_FIND_TDES (tran_index);
@@ -4356,9 +4356,8 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (thread_p, &conn->csect);
+  r = rmutex_unlock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 #endif /* SERVER_MODE */
 

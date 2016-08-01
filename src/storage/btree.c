@@ -1762,7 +1762,7 @@ btree_get_node_level (PAGE_PTR page_ptr)
 bool
 btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
 {
-  if (*clear_flag == true)
+  if (*clear_flag == true || key_value->need_clear == true)
     {
       pr_clear_value (key_value);
       *clear_flag = false;
@@ -4334,6 +4334,11 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 	}
     }
 
+  if (key != NULL && key->need_clear)
+    {
+      *clear_key = true;
+    }
+
   buf.ptr = PTR_ALIGN (buf.ptr, OR_INT_SIZE);
 
   *offset = CAST_BUFLEN (buf.ptr - buf.buffer);
@@ -5750,7 +5755,7 @@ btree_generate_prefix_domain (BTID_INT * btid)
   dbtype = TP_DOMAIN_TYPE (domain);
 
   /* varying domains did not come into use until btree revision level 1 */
-  if (!pr_is_variable_type (dbtype) && pr_is_string_type (dbtype))
+  if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_BIT)
     {
       switch (dbtype)
 	{
@@ -5764,10 +5769,6 @@ btree_generate_prefix_domain (BTID_INT * btid)
 	  vartype = DB_TYPE_VARBIT;
 	  break;
 	default:
-	  assert (false);
-#if defined(CUBRID_DEBUG)
-	  printf ("Corrupt domain in btree_generate_prefix_domain\n");
-#endif /* CUBRID_DEBUG */
 	  return NULL;
 	}
 
@@ -6514,6 +6515,11 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 	  pr_clear_value (&(env->pkeys_val[i]));	/* clear saved */
 	  pr_clone_value (&elem, &(env->pkeys_val[i]));	/* save */
 
+	  if (elem.need_clear == true)
+	    {
+	      pr_clear_value (&elem);
+	    }
+
 	  /* propagate to the following partial key-values */
 	  prev_k_index = prev_i_index;
 	  prev_k_ptr = prev_i_ptr;
@@ -6529,6 +6535,11 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 	      env->stat_info->pkeys[k]++;
 	      pr_clear_value (&(env->pkeys_val[k]));	/* clear saved */
 	      pr_clone_value (&elem, &(env->pkeys_val[k]));	/* save */
+
+	      if (elem.need_clear == true)
+		{
+		  pr_clear_value (&elem);
+		}
 	    }
 
 	  break;
@@ -16519,7 +16530,12 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 		  goto end;	/* give up */
 		}
 	    }
+	  if (!DB_IS_NULL (&ep) && ep.need_clear == true)
+	    {
+	      pr_clear_value (&ep);
+	    }
 	}
+
 
       /* 
        * Only in case that key_range_satisfied is true,
@@ -16549,7 +16565,6 @@ end:
   return ret;
 
 exit_on_error:
-
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
@@ -19382,9 +19397,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      c =
-	pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
-			    &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
+      c = pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
+			      &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc)
@@ -21059,20 +21073,34 @@ index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * rec
 {
   int i, n, remain_size;
   char *buf_p = NULL;
-  const char *attr_name = NULL;
+  char *attr_name;
   char format[20];
   int error = NO_ERROR;
+  int alloced_string = 0;
+  char *string = NULL;
 
   buf_p = buf;
   remain_size = buf_size;
 
   for (i = 0; i < index_p->n_atts; i++)
     {
-      attr_name = or_get_attrname (recdes, index_p->atts[i]->id);
+      bool set_break = false;
+      alloced_string = 0;
+      string = NULL;
+
+      error = or_get_attrname (recdes, index_p->atts[i]->id, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  set_break = true;
+	  goto clean_string;
+	}
+      attr_name = string;
+
       if (attr_name == NULL)
 	{
 	  error = ER_FAILED;
-	  break;
+	  set_break = true;
+	  goto clean_string;
 	}
 
       format[0] = '\0';
@@ -21092,6 +21120,17 @@ index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * rec
 	}
 
       n = snprintf (buf_p, remain_size, format, attr_name);
+
+    clean_string:
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (NULL, string);
+	}
+
+      if (set_break == true)
+	{
+	  break;
+	}
 
       if (n >= remain_size)	/* The buffer has not enough space */
 	{
@@ -31682,6 +31721,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   int offset_to_object = NOT_FOUND;	/* Offset in record where object to be removed is found. */
   int offset_to_second_object = NOT_FOUND;	/* Offset to second visible object. */
   BTREE_OP_PURPOSE second_object_search_purpose;	/* Purpose used for searching second object. */
+  BTREE_MVCC_INFO match_2nd_obj_mvccinfo;	/* MVCC info of second object to be matched. */
 
   /* Recovery structures. */
   /* Undo recovery structures. */
@@ -31818,11 +31858,13 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Previous object was not deleted. Search as if we'd want to delete it. */
       second_object_search_purpose = BTREE_OP_DELETE_OBJECT_PHYSICAL;
     }
+  /* Copy second object MVCC info we want to match (so it is not overwritten). */
+  match_2nd_obj_mvccinfo = delete_helper->second_object_info.mvcc_info;
   error_code =
     btree_find_oid_and_its_page (thread_p, btid_int, &delete_helper->second_object_info.oid, *leaf_page,
-				 second_object_search_purpose, &delete_helper->second_object_info.mvcc_info,
-				 &leaf_record, &leaf_rec_info, offset_after_key, &found_page, &prev_found_page,
-				 &offset_to_second_object, &delete_helper->second_object_info.mvcc_info);
+				 second_object_search_purpose, &match_2nd_obj_mvccinfo, &leaf_record, &leaf_rec_info,
+				 offset_after_key, &found_page, &prev_found_page, &offset_to_second_object,
+				 &delete_helper->second_object_info.mvcc_info);
   if (error_code != NO_ERROR)
     {
       assert_release (false);

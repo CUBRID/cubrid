@@ -342,7 +342,7 @@ static int catalog_fixup_missing_class_info (THREAD_ENTRY * thread_p, OID * clas
 static DISK_ISVALID catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid);
 static void catalog_dump_disk_attribute (DISK_ATTR * atr);
 static void catalog_dump_representation (DISK_REPR * dr);
-static void catalog_clear_hash_table ();
+static void catalog_clear_hash_table (void);
 
 static void catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p);
 static void catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p);
@@ -5044,7 +5044,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 }
 
 static void
-catalog_clear_hash_table ()
+catalog_clear_hash_table (void)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
 

@@ -4134,7 +4134,7 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * inde
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply;
   char *request, *ptr;
-  int request_size;
+  size_t request_size;
   int i;
 
   request_size = OR_INT_SIZE;	/* check_flag */
@@ -7271,9 +7271,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   int req_error, senddata_size, replydata_size_listid, replydata_size_page, replydata_size_plan;
   char *request, *reply, *senddata = NULL;
   char *replydata_listid = NULL, *replydata_page = NULL, *replydata_plan = NULL, *ptr;
-  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 4 + OR_CACHE_TIME_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 4 + OR_CACHE_TIME_SIZE
+		  + EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
-  int i;
+  int i, request_len;
   const DB_VALUE *dbval;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -7302,6 +7303,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
       /* change senddata_size as real packing size */
       senddata_size = CAST_BUFLEN (ptr - senddata);
+      if (senddata_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE)
+	{
+	  flag |= EXECUTE_QUERY_WITHOUT_DATA_BUFFERS;
+	}
     }
 
   /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a 
@@ -7314,19 +7319,34 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   OR_PACK_CACHE_TIME (ptr, clt_cache_time);
   ptr = or_pack_int (ptr, query_timeout);
 
-  req_error =
-    net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), senddata, senddata_size, NULL, 0,
-				      &replydata_listid, &replydata_size_listid, &replydata_page, &replydata_size_page,
-				      &replydata_plan, &replydata_size_plan);
+  request_len = OR_XASL_ID_SIZE + OR_INT_SIZE * 4 + OR_CACHE_TIME_SIZE;
+  if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (flag))
+    {
+      /* Execute without data buffers. The data has small size. Include the data in the argument buffer. */
+      assert (senddata != NULL && 0 < senddata_size);
 
+      memcpy (ptr, senddata, senddata_size);
+      request_len += senddata_size;
+
+      free_and_init (senddata);
+      senddata_size = 0;
+    }
+  else
+    {
+      /* Execute with data buffer. The data has big size. */
+    }
+
+  req_error = net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE, request, request_len, reply,
+						OR_ALIGNED_BUF_SIZE (a_reply), senddata, senddata_size, NULL, 0,
+						&replydata_listid, &replydata_size_listid, &replydata_page,
+						&replydata_size_page, &replydata_plan, &replydata_size_plan);
   if (replydata_plan != NULL)
     {
       db_set_execution_plan (replydata_plan, replydata_size_plan);
       free_and_init (replydata_plan);
     }
 
-  if (senddata)
+  if (senddata != NULL)
     {
       free_and_init (senddata);
     }

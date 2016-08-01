@@ -1140,7 +1140,8 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
   RECDES class_record;
   HEAP_CACHE_ATTRINFO attr_info;
   int i, error = NO_ERROR;
-  const char *attr_name_p;
+  char *attr_name_p, *string = NULL;
+  int alloced_string = 0;
 
   serial_Num_attrs = -1;
 
@@ -1164,7 +1165,17 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 
   for (i = 0; i < attr_info.num_values; i++)
     {
-      attr_name_p = or_get_attrname (&class_record, i);
+      string = NULL;
+      alloced_string = 0;
+
+      error = or_get_attrname (&class_record, i, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+
+      attr_name_p = string;
       if (attr_name_p == NULL)
 	{
 	  error = ER_FAILED;
@@ -1214,6 +1225,11 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
       else if (strcmp (attr_name_p, SERIAL_ATTR_CACHED_NUM) == 0)
 	{
 	  serial_Attrs_id[SERIAL_ATTR_CACHED_NUM_INDEX] = i;
+	}
+
+      if (string != NULL && alloced_string)
+	{
+	  db_private_free_and_init (NULL, string);
 	}
     }
 

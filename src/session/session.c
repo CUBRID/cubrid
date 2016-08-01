@@ -710,7 +710,7 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   assert (session_p->ref_count == 0);
 #endif
 
-  error = lf_hash_delete_already_locked (t_entry, &sessions.sessions_table, (void *) &id, &success);
+  error = lf_hash_delete_already_locked (t_entry, &sessions.sessions_table, (void *) &id, session_p, &success);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
@@ -2893,7 +2893,7 @@ session_get_session_tz_region (THREAD_ENTRY * thread_p)
 static int
 session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
 {
-  int ref_count = 0;
+  int ref_count = 0, r;
   CSS_CONN_ENTRY *conn;
 
   if (session_p == NULL)
@@ -2908,7 +2908,7 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session
       return ER_FAILED;
     }
 
-  csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
@@ -2920,12 +2920,12 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session
 
   if (ref_count != session_p->ref_count)
     {
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
       assert (0);
       return ER_FAILED;
     }
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   return NO_ERROR;
 }
