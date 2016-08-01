@@ -2803,7 +2803,6 @@ prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node, int num_crumbs, const
     }
 
   node->ulength = length;
-
   return NO_ERROR;
 }
 
