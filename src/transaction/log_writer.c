@@ -2029,7 +2029,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	  log_pgptr = (LOG_PAGE *) p;
 	  if (copy_from_file == true)
 	    {
-	      if (logpb_copy_page_from_file (thread_p, pageid, log_pgptr) == NULL)
+	      if (logpb_copy_page_from_file (thread_p, pageid, log_pgptr) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
 		  goto error;
@@ -2037,7 +2037,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	    }
 	  else
 	    {
-	      if (logpb_copy_page_from_log_buffer (thread_p, pageid, log_pgptr) == NULL)
+	      if (logpb_copy_page_from_log_buffer (thread_p, pageid, log_pgptr) != NO_ERROR)
 		{
 		  error_code = ER_FAILED;
 		  goto error;

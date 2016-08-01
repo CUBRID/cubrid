@@ -1109,7 +1109,7 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
        * of forcing the page to disk without doing fync
        */
 
-      if (logpb_write_page_to_disk (thread_p, log_pgptr, bufptr->pageid) == NULL)
+      if (logpb_write_page_to_disk (thread_p, log_pgptr, bufptr->pageid) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1585,7 +1585,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
   header_lsa.pageid = LOGPB_HEADER_PAGE_ID;
   header_lsa.offset = LOG_PAGESIZE;
 
-  if ((logpb_fetch_page (thread_p, &header_lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
+  if ((logpb_fetch_page (thread_p, &header_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_fetch_hdr_with_buf");
       /* This statement should not be reached */
@@ -1659,7 +1659,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 /*
  * logpb_fetch_page - Fetch a exist_log page using local buffer
  *
- * return: Pointer to the page or NULL
+ * return: NO_ERROR if everything is ok
  *
  *   pageid(in): Page identifier
  *   log_pgptr(in): Page buffer to copy
@@ -1668,7 +1668,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *              If there is the page in hash table, copy it to buffer and return it.
  *              If not, read log page from log.
  */
-LOG_PAGE *
+int
 logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
   LOG_LSA append_lsa, append_prev_lsa;
@@ -1719,16 +1719,18 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
    */
   rv = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
   assert (rv == NO_ERROR);
-  return log_pgptr;
+  if (log_pgptr == NULL)
+    return ER_GENERIC_ERROR;
+  return NO_ERROR;
 }
 
 /*
  * logpb_copy_page_from_log_buffer -
  *
- * return: Pointer to the page or NULL
+ * return: NO_ERROR if everything is ok
  *
  */
-LOG_PAGE *
+int
 logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
 {
   int rv;
@@ -1738,19 +1740,19 @@ logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG
 
   rv = logpb_copy_page (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
   assert (rv == NO_ERROR);
-  return log_pgptr;
+  return NO_ERROR;
 }
 
 /*
  * logpb_copy_page_from_file -
  *
- * return: Pointer to the page or NULL
+ * return: NO_ERROR if everything is ok
  *
  */
-LOG_PAGE *
+int
 logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
 {
-  LOG_PAGE *ret_pgptr = NULL;
+  int rv;
 
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
@@ -1759,17 +1761,18 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
   LOG_CS_ENTER_READ_MODE (thread_p);
   if (log_pgptr != NULL)
     {
-      ret_pgptr = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
+      rv = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
+      assert (rv == NO_ERROR);
     }
   LOG_CS_EXIT (thread_p);
 
-  return ret_pgptr;
+  return NO_ERROR;
 }
 
 /*
  * logpb_copy_page - copy a exist_log page using local buffer
  *
- * return: Pointer to the page or NULL
+ * return: NO_ERROR if everything is ok
  *
  *   pageid(in): Page identifier
  *   access_mode(in): access mode (reader, safe reader, writer)
@@ -1784,14 +1787,13 @@ static int
 logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
   LOG_BUFFER *log_bufptr = NULL;
-  LOG_PAGE *ret_pgptr = NULL;
   bool is_perf_tracking;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
   bool log_csect_entered = false;
-
+  int rv;
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
@@ -1813,14 +1815,14 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       log_bufptr = log_Pb.header_buffer;
       if (log_bufptr->pageid == NULL_PAGEID)
 	{
-	  ret_pgptr = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+	  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+	  assert (rv == NO_ERROR);
 	  mnt_log_fetch_ioreads (thread_p);
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	}
       else
 	{
 	  memcpy (log_pgptr, log_bufptr->logpage, LOG_PAGESIZE);
-	  ret_pgptr = log_bufptr->logpage;
 	}
 
       goto exit;
@@ -1835,22 +1837,20 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
       if (log_bufptr->pageid == pageid)
 	{
-	  ret_pgptr = log_bufptr->logpage;
 	  goto exit;
 	}
     }
 
   /* Could not get from log page buffer cache */
-  ret_pgptr = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+  assert (rv == NO_ERROR);
   mnt_log_fetch_ioreads (thread_p);
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-  if (ret_pgptr == NULL)
+  if (log_pgptr == NULL)
     {
       /* handle error */
       return ER_GENERIC_ERROR;
     }
-
-  /* Copy from ret_pgptr to log_pgptr */
 
 
   /* Always exit through here */
@@ -1882,14 +1882,14 @@ exit:
 /*
  * logpb_read_page_from_file - Fetch a exist_log page from log files
  *
- * return: Pointer to the page or NULL
+ * return: NO_ERROR if everything is ok
  *
  *   pageid(in): Page identifier
  *   log_pgptr(in): Page buffer to read
  *
  * NOTE:read the log page identified by pageid into a buffer from from archive or active log.
  */
-LOG_PAGE *
+int
 logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			   LOG_PAGE * log_pgptr)
 {
@@ -1979,14 +1979,14 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
       LOG_CS_EXIT (thread_p);
     }
   /* keep old function's usage */
-  return log_pgptr;
+  return NO_ERROR;
 
 error:
   if (log_csect_entered)
     {
       LOG_CS_EXIT (thread_p);
     }
-  return NULL;
+  return ER_GENERIC_ERROR;
 }
 
 /*
@@ -2036,14 +2036,14 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 /*
  * logpb_write_page_to_disk - writes and syncs a log page to disk
  *
- * return: nothing
+ * return: error code
  *
  *   log_pgptr(in): Log page pointer
  *   logical_pageid(in): logical page id
  *
  * NOTE:writes and syncs a log page to disk
  */
-LOG_PAGE *
+int
 logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid)
 {
   int nbytes;
@@ -2074,10 +2074,11 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 	}
 
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_write_page_to_disk");
-      return NULL;
+      return ER_GENERIC_ERROR;
     }
-
-  return log_pgptr;
+  if (log_pgptr == NULL)
+    return ER_GENERIC_ERROR;
+  return NO_ERROR;
 }
 
 /*
@@ -2657,7 +2658,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  current_lsa.offset = LOG_PAGESIZE;
 	  /* to flush all omitted pages by the previous archiving */
 	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      fileio_dismount (thread_p, bg_arv_info->vdes);
 	      bg_arv_info->vdes = NULL_VOLDES;
