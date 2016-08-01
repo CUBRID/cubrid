@@ -8549,7 +8549,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      int i;
 
 		      /* read lob attributes */
-		      scan_code = heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK, NULL_CHN);
+		      scan_code =
+			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
+						  NULL_CHN);
 		      if (scan_code == S_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -9405,7 +9407,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  int i;
 
 		  /* read lob attributes */
-		  scan_code = heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK, NULL_CHN);
+		  scan_code =
+		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
+					      NULL_CHN);
 		  if (scan_code == S_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -10220,7 +10224,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   /* get attribute values */
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
-  scan_code = heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
+  scan_code =
+    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
   if (scan_code != S_SUCCESS)
     {
       assert (er_errid () == ER_INTERRUPTED);

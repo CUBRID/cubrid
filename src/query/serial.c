@@ -632,7 +632,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid , &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)

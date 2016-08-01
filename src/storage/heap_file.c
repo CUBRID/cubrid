@@ -8386,7 +8386,9 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 	{
 	  /* Scanrange ends with the given object */
 	  scan_range->last_oid = *last_oid;
-	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid, &recdes, &scan_range->scan_cache, PEEK, NULL_CHN);
+	  scan =
+	    heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid, &recdes,
+				      &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -8481,7 +8483,9 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes, H
     {
       /* Retrieve the first object in the scanrange */
       *next_oid = scan_range->first_oid;
-      scan = heap_get_visible_version (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes, &scan_range->scan_cache, ispeeking, NULL_CHN);
+      scan =
+	heap_get_visible_version (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes,
+				  &scan_range->scan_cache, ispeeking, NULL_CHN);
       if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
 	  scan =
@@ -24115,7 +24119,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 */
 SCAN_CODE
 heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
@@ -24149,10 +24153,10 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   assert (context->scan_cache != NULL);
 
   if (context->class_oid_p == NULL)
-  {
-    /* we need class_oid to check if the class is mvcc enabled */
-    context->class_oid_p = &class_oid_local;
-  }
+    {
+      /* we need class_oid to check if the class is mvcc enabled */
+      context->class_oid_p = &class_oid_local;
+    }
 
   scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
@@ -24172,14 +24176,14 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
     }
 
   if (mvcc_snapshot != NULL || context->old_chn != NULL_CHN)
-  {
-    /* */
-    scan = heap_get_mvcc_header (thread_p, context, &mvcc_header);
-    if (scan != S_SUCCESS)
     {
-      goto exit;
+      /* */
+      scan = heap_get_mvcc_header (thread_p, context, &mvcc_header);
+      if (scan != S_SUCCESS)
+	{
+	  goto exit;
+	}
     }
-  }
 
   if (mvcc_snapshot != NULL)
     {
@@ -24552,8 +24556,9 @@ heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
  * scan_cache (in) : Scan cache.
  * ispeeking (in)  : PEEK or COPY
  */
-SCAN_CODE 
-heap_get_class_record (THREAD_ENTRY * thread_p, OID *class_oid, RECDES * recdes_p, HEAP_SCANCACHE * scan_cache, int ispeeking)
+SCAN_CODE
+heap_get_class_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes_p, HEAP_SCANCACHE * scan_cache,
+		       int ispeeking)
 {
   HEAP_GET_CONTEXT context;
   OID root_oid = *oid_Root_class_oid;
@@ -24562,17 +24567,17 @@ heap_get_class_record (THREAD_ENTRY * thread_p, OID *class_oid, RECDES * recdes_
 #if !defined(NDEBUG)
   /* for debugging set root_oid NULL and check afterwards if it really is root oid */
   OID_SET_NULL (&root_oid);
-#endif // !NDEBUG
+#endif /* !NDEBUG */
 
-  heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, scan_cache, PEEK, NULL_CHN);
-  
+  heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, scan_cache, ispeeking, NULL_CHN);
+
   scan = heap_get_last_version (thread_p, &context);
 
   heap_clean_get_context (thread_p, &context);
 
 #if !defined(NDEBUG)
   assert (OID_ISNULL (&root_oid) || OID_IS_ROOTOID (&root_oid));
-#endif // !NDEBUG
+#endif /* !NDEBUG */
 
   return scan;
 }

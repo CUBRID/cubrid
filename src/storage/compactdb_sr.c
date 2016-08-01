@@ -216,13 +216,13 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
   if (scan_code != S_SUCCESS)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-      {
-	assert (scan_code == S_DOESNT_EXIST || scan_code == S_SNAPSHOT_NOT_SATISFIED);
-	er_clear ();
-      }
+	{
+	  assert (scan_code == S_DOESNT_EXIST || scan_code == S_SNAPSHOT_NOT_SATISFIED);
+	  er_clear ();
+	}
 
       if (scan_code == S_DOESNT_EXIST || scan_code == S_SNAPSHOT_NOT_SATISFIED)
-      {
+	{
 	  return 0;
 	}
 

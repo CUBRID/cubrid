@@ -8433,7 +8433,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
 	}
 
       /* Check heap file is really exist. It can be removed. */
-	if (heap_get_class_record (thread_p, &btdes.class_oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, &btdes.class_oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan_cache);
 	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
