@@ -187,11 +187,6 @@ static void f_dump_in_file_Time_data_page_hold_acquire_time (FILE *, const UINT6
 static void f_dump_in_file_Time_data_page_fix_acquire_time (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Num_mvcc_snapshot_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Time_obj_lock_acquire_time (FILE *, const UINT64 * stat_vals);
-static void f_dump_in_file_Time_get_snapshot_acquire_time (FILE *, const UINT64 * stat_vals);
-static void f_dump_in_file_Count_get_snapshot_retry (FILE *, const UINT64 * stat_vals);
-static void f_dump_in_file_Time_tran_complete_time (FILE *, const UINT64 * stat_vals);
-static void f_dump_in_file_Time_get_oldest_mvcc_acquire_time (FILE *, const UINT64 * stat_vals);
-static void f_dump_in_file_Count_get_oldest_mvcc_retry (FILE *, const UINT64 * stat_vals);
 
 static void f_dump_in_buffer_Num_data_page_fix_ext (char *, const UINT64 * stat_vals, int * remaining_size);
 static void f_dump_in_buffer_Num_data_page_promote_ext (char *, const UINT64 * stat_vals, int * remaining_size);
@@ -202,11 +197,6 @@ static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char *, const UIN
 static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char *, const UINT64 * stat_vals, int * remaining_size);
 static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char *, const UINT64 * stat_vals, int * remaining_size);
 static void f_dump_in_buffer_Time_obj_lock_acquire_time (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Time_get_snapshot_acquire_time (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Count_get_snapshot_retry (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Time_tran_complete_time (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Time_get_oldest_mvcc_acquire_time (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Count_get_oldest_mvcc_retry (char *, const UINT64 * stat_vals, int * remaining_size);
 
 static void perfmon_stat_dump_in_file_fix_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr); 
@@ -449,6 +439,12 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_VAC_WORKER_PROCESS_LOG, "vacuum_worker_process_log"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_VAC_WORKER_EXECUTE, "vacuum_worker_execute"),
 
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, "Time_get_snapshot_acquire_time"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, "Count_get_snapshot_retry"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, "Time_tran_complete_time"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, "Time_get_oldest_mvcc_acquire_time"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, "Count_get_oldest_mvcc_retry"),
+
   /* computed statistics */
   /* TODO: add callback functions. */
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_HIT_RATIO, "Data_page_buffer_hit_ratio"),
@@ -477,12 +473,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_HOLD_TIME_COUNTERS, "Time_data_page_hold_acquire_time", &f_dump_in_file_Time_data_page_hold_acquire_time, &f_dump_in_buffer_Time_data_page_hold_acquire_time, &f_load_Time_data_page_hold_acquire_time),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_TIME_COUNTERS, "Time_data_page_fix_acquire_time", &f_dump_in_file_Time_data_page_fix_acquire_time, &f_dump_in_buffer_Time_data_page_fix_acquire_time, &f_load_Time_data_page_fix_acquire_time),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_MVCC_SNAPSHOT_COUNTERS, "Num_mvcc_snapshot_ext", &f_dump_in_file_Num_mvcc_snapshot_ext, &f_dump_in_buffer_Num_mvcc_snapshot_ext, &f_load_Num_mvcc_snapshot_ext),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time", &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time, &f_load_Time_obj_lock_acquire_time),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, "Time_get_snapshot_acquire_time", &f_dump_in_file_Time_get_snapshot_acquire_time, &f_dump_in_buffer_Time_get_snapshot_acquire_time, &f_load_Time_get_snapshot_acquire_time),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, "Count_get_snapshot_retry", &f_dump_in_file_Count_get_snapshot_retry, &f_dump_in_buffer_Count_get_snapshot_retry, &f_load_Count_get_snapshot_retry),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, "Time_tran_complete_time", &f_dump_in_file_Time_tran_complete_time, &f_dump_in_buffer_Time_tran_complete_time, &f_load_Time_tran_complete_time),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, "Time_get_oldest_mvcc_acquire_time", &f_dump_in_file_Time_get_oldest_mvcc_acquire_time, &f_dump_in_buffer_Time_get_oldest_mvcc_acquire_time, &f_load_Time_get_oldest_mvcc_acquire_time),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, "Count_get_oldest_mvcc_retry", &f_dump_in_file_Count_get_oldest_mvcc_retry, &f_dump_in_buffer_Count_get_oldest_mvcc_retry, &f_load_Count_get_oldest_mvcc_retry)
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time", &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time, &f_load_Time_obj_lock_acquire_time)
 };
 
 /* Count & timer values. */
@@ -1944,32 +1935,6 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
   return 0;
 }
 
-/*
- *   perfmon_add_in_statistics_array - 
- *   return: none
- */
-void
-perfmon_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id)
-{
-  UINT64 *stats;
-  int module;
-  int offset;
-
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      module = perfmon_get_module_type (thread_p);
-
-      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-
-      assert (value > 0);
-
-      offset = module;
-
-      perfmon_add_stat_at_offset (thread_p, value, offset, statistic_id);
-    }
-}
-
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 /*
  * perfmon_lk_waited_time_on_objects - Increase lock time wait counter of
@@ -1980,23 +1945,15 @@ void
 perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount)
 {
   UINT64 *stats;
-  int module;
-  int offset;
-
+  
   stats = perfmon_server_get_stats (thread_p);
   if (stats != NULL)
     {
       perfmon_add_stat (thread_p, amount, PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS);
 
-      module = perfmon_get_module_type (thread_p);
-
-      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
       assert (lock_mode >= NA_LOCK && lock_mode <= SCH_M_LOCK);
 
-      offset = PERF_OBJ_LOCK_STAT_OFFSET (module, lock_mode);
-      assert (offset < PERF_OBJ_LOCK_STAT_COUNTERS);
-
-      perfmon_add_stat_at_offset (thread_p, amount, offset, PSTAT_OBJ_LOCK_TIME_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, amount, lock_mode, PSTAT_OBJ_LOCK_TIME_COUNTERS);
     }
 }
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
@@ -2368,12 +2325,14 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	      if(pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
 		  ret =
-		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[offset]);
+		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, 
+			      (unsigned long long) stats_ptr[offset]);
 		}
 	      else
 		{
 		  ret = 
-		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)]);
+		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, 
+			      (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)]);
 		}
 	    }
 	  else
@@ -2462,11 +2421,13 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	    {
 	      if(pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[offset]);
+		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, 
+			  (unsigned long long) stats_ptr[offset]);
 		}
 	      else
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)]);
+		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, 
+			  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)]);
 		} 
 	    }
 	  else
@@ -3701,35 +3662,27 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
 static void
 perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
 {
-  int module;
   int lock_mode;
-  int offset;
   const UINT64 *counter;
   int ret;
 
   assert (remaining_size != NULL);
   if (s != NULL)
     {
-      for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+      for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
 	{
-	  for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
+	  counter = stats_ptr + lock_mode;
+	  if (*counter == 0)
 	    {
-	      offset = PERF_OBJ_LOCK_STAT_OFFSET (module, lock_mode);
+	      continue;
+	    }
 
-	      assert (offset < PERF_OBJ_LOCK_STAT_COUNTERS);
-	      counter = stats_ptr + offset;
-	      if (*counter == 0)
-		{
-		  continue;
-		}
-
-	      ret = snprintf (s, *remaining_size, "%-6s,%-10s = %16llu\n", perfmon_stat_module_name (module),
-			      perfmon_stat_lock_mode_name (lock_mode), (long long unsigned int) *counter);
-	      *remaining_size -= ret;
-	      if (*remaining_size <= 0)
-		{
-		  return;
-		}
+	  ret = snprintf (s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode), 
+			     (long long unsigned int) *counter);
+	  *remaining_size -= ret;
+	  if (*remaining_size <= 0)
+	    {
+	      return;
 	    }
 	}
     }
@@ -3747,28 +3700,21 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
 static void
 perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * stats_ptr)
 {
-  int module;
   int lock_mode;
-  int offset;
   const UINT64 *counter;
 
   assert (stream != NULL);
-  for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
+  
+  for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
     {
-      for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
+      counter = stats_ptr + lock_mode;
+      if (*counter == 0)
 	{
-	  offset = PERF_OBJ_LOCK_STAT_OFFSET (module, lock_mode);
-
-	  assert (offset < PERF_OBJ_LOCK_STAT_COUNTERS);
-	  counter = stats_ptr + offset;
-	  if (*counter == 0)
-	    {
-	      continue;
-	    }
-
-	  fprintf (stream, "%-6s,%-10s = %16llu\n", perfmon_stat_module_name (module),
-		   perfmon_stat_lock_mode_name (lock_mode), (long long unsigned int) *counter);
+	  continue;
 	}
+
+      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode), 
+	      (long long unsigned int) *counter);
     }
 }
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
@@ -4475,31 +4421,6 @@ void f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_va
 #endif
 }
 
-void f_dump_in_file_Time_get_snapshot_acquire_time (FILE * f, const UINT64 * stat_vals)
-{
-  perfmon_stat_dump_in_file_snapshot_array_stat(f, stat_vals);
-}
-
-void f_dump_in_file_Count_get_snapshot_retry (FILE * f, const UINT64 * stat_vals)
-{
-  perfmon_stat_dump_in_file_snapshot_array_stat(f, stat_vals);
-}
-
-void f_dump_in_file_Time_tran_complete_time (FILE * f, const UINT64 * stat_vals)
-{
-  perfmon_stat_dump_in_file_snapshot_array_stat(f, stat_vals);
-}
-
-void f_dump_in_file_Time_get_oldest_mvcc_acquire_time (FILE * f, const UINT64 * stat_vals)
-{
-  perfmon_stat_dump_in_file_snapshot_array_stat(f, stat_vals);
-}
-
-void f_dump_in_file_Count_get_oldest_mvcc_retry (FILE * f, const UINT64 * stat_vals)
-{
-  perfmon_stat_dump_in_file_snapshot_array_stat(f, stat_vals);
-}
-
 void f_dump_in_buffer_Num_data_page_fix_ext (char * s, const UINT64 * stat_vals, int * remaining_size)
 {
   perfmon_stat_dump_in_buffer_fix_page_array_stat (stat_vals, s, remaining_size);    
@@ -4547,31 +4468,6 @@ void f_dump_in_buffer_Time_obj_lock_acquire_time (char * s, const UINT64 * stat_
 #if defined PERF_ENABLE_LOCK_OBJECT_STAT
   perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
 #endif
-}
-
-void f_dump_in_buffer_Time_get_snapshot_acquire_time (char * s, const UINT64 * stat_vals, int * remaining_size)
-{
-  perfmon_stat_dump_in_buffer_snapshot_array_stat (stat_vals, s, remaining_size);
-}
-
-void f_dump_in_buffer_Count_get_snapshot_retry (char * s, const UINT64 * stat_vals, int * remaining_size)
-{
-  perfmon_stat_dump_in_buffer_snapshot_array_stat (stat_vals, s, remaining_size);
-}
-
-void f_dump_in_buffer_Time_tran_complete_time (char * s, const UINT64 * stat_vals, int * remaining_size)
-{
-  perfmon_stat_dump_in_buffer_snapshot_array_stat (stat_vals, s, remaining_size);
-}
-
-void f_dump_in_buffer_Time_get_oldest_mvcc_acquire_time (char * s, const UINT64 * stat_vals, int * remaining_size)
-{
-  perfmon_stat_dump_in_buffer_snapshot_array_stat (stat_vals, s, remaining_size);
-}
-
-void f_dump_in_buffer_Count_get_oldest_mvcc_retry (char * s, const UINT64 * stat_vals, int * remaining_size)
-{
-  perfmon_stat_dump_in_buffer_snapshot_array_stat (stat_vals, s, remaining_size);
 }
 
 int get_number_of_statistic_values()

@@ -4364,11 +4364,11 @@ start_get_mvcc_table:
       snapshot_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (snapshot_wait_time > 0)
 	{
-	  perfmon_add_in_statistics_array (thread_p, snapshot_wait_time, PSTAT_LOG_SNAPSHOT_TIME_COUNTERS);
+	  perfmon_add_stat (thread_p, snapshot_wait_time, PSTAT_LOG_SNAPSHOT_TIME_COUNTERS);
 	}
       if (snapshot_retry_cnt > 1)
 	{
-	  perfmon_add_in_statistics_array (thread_p, snapshot_retry_cnt - 1, PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS);
+	  perfmon_add_stat (thread_p, snapshot_retry_cnt - 1, PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS);
 	}
     }
 
@@ -4579,11 +4579,11 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
       oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (oldest_time > 0)
 	{
-	  perfmon_add_in_statistics_array (thread_p, oldest_time, PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS);
+	  perfmon_add_stat (thread_p, oldest_time, PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS);
 	}
       if (retry_cnt > 1)
 	{
-	  perfmon_add_in_statistics_array (thread_p, retry_cnt - 1, PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS);
+	  perfmon_add_stat (thread_p, retry_cnt - 1, PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS);
 	}
     }
 #if !defined (NDEBUG)
@@ -5231,7 +5231,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (tran_complete_time > 0)
 	{
-	  perfmon_add_in_statistics_array (thread_p, tran_complete_time, PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS);
+	  perfmon_add_stat (thread_p, tran_complete_time, PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS);
 	}
     }
 }

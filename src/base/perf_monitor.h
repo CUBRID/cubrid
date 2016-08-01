@@ -144,10 +144,7 @@
   ((snapshot) * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT \
    + (rec_type) * PERF_SNAPSHOT_VISIBILITY_CNT + (visibility))
 
-#define PERF_OBJ_LOCK_STAT_OFFSET(module,lock_mode) \
-  ((module) * (SCH_M_LOCK + 1) + (lock_mode))
-
-#define PERF_OBJ_LOCK_STAT_COUNTERS (PERF_MODULE_CNT * (SCH_M_LOCK + 1))
+#define PERF_OBJ_LOCK_STAT_COUNTERS (SCH_M_LOCK + 1)
 
 #define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
@@ -469,6 +466,13 @@ typedef enum
   PSTAT_VAC_WORKER_PROCESS_LOG,
   PSTAT_VAC_WORKER_EXECUTE,
 
+  /* Log statistics */
+  PSTAT_LOG_SNAPSHOT_TIME_COUNTERS,
+  PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS,
+  PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS,
+  PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS,
+  PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS,
+
   /* Other statistics (change MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) */
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
   PSTAT_PB_HIT_RATIO,
@@ -505,12 +509,7 @@ typedef enum
   PSTAT_PBX_FIX_TIME_COUNTERS,
   PSTAT_MVCC_SNAPSHOT_COUNTERS,
   PSTAT_OBJ_LOCK_TIME_COUNTERS,
-  PSTAT_LOG_SNAPSHOT_TIME_COUNTERS,
-  PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS,
-  PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS,
-  PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS,
-  PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS,
-
+  
   PSTAT_COUNT = PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS + 1
 } PERF_STAT_ID;
 
@@ -837,8 +836,7 @@ struct perf_utime_tracker
   extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
 
   extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
-  extern void perfmon_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id);
-
+  
   extern void perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
 
   extern UINT64 perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
