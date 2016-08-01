@@ -109,8 +109,6 @@ static int rv;
 #define COND_DESTROY(a)
 #endif /* !SERVER_MODE */
 
-#define LOGPB_RMUTEX_LOG_PB (&logpb_Rmutex_log_pb)
-#define LOGPB_RMUTEX_LOG_PB_NAME "LOGPB_RMUTEX_LOG_PB"
 #define PB_DATA_SIZE 65536
 
 #define LOGPB_FIND_BUFPTR(bufid) log_Pb.buffers[(bufid)]
