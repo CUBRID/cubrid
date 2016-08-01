@@ -2583,7 +2583,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   volatile int i;
   int k, j;
   char *classname;
-  const char *attr_name;
+  char *attr_name;
   DB_VALUE def_dbvalue;
   PR_TYPE *pr_type;
   int disk_length;
@@ -2592,6 +2592,8 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   RECDES recdes;		/* Used to obtain attrnames */
   int ret = NO_ERROR;
   char *index_name = NULL;
+  char *string = NULL;
+  int alloced_string = 0;
 
   /* 
    * The class is feteched to print the attribute names.
@@ -2636,8 +2638,16 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 
   for (i = 0, attrepr = repr->attributes; i < repr->n_attributes; i++, attrepr++)
     {
+      string = NULL;
+      alloced_string = 0;
+      ret = or_get_attrname (&recdes, attrepr->id, &string, &alloced_string);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
 
-      attr_name = or_get_attrname (&recdes, attrepr->id);
+      attr_name = string;
       if (attr_name == NULL)
 	{
 	  attr_name = "?????";
@@ -2645,6 +2655,11 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 
       fprintf (fp, "\n Attrid = %d, Attrname = %s, type = %s,\n location = %d, position = %d,\n", attrepr->id,
 	       attr_name, pr_type_name (attrepr->type), attrepr->location, attrepr->position);
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
+	}
 
       if (!OID_ISNULL (&attrepr->classoid) && !OID_EQ (&attrepr->classoid, class_oid))
 	{
@@ -12202,8 +12217,11 @@ heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATT
   HEAP_CACHE_ATTRINFO attr_info;
   int error = NO_ERROR;
   int i = 0;
-  const char *attr_name = NULL;
+  char *attr_name = NULL;
   bool is_scan_cache_started = false, is_attrinfo_started = false;
+  char *string = NULL;
+  int alloced_string = 0;
+
 
   if (type_id == NULL || values_id == NULL)
     {
@@ -12235,7 +12253,17 @@ heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATT
 
   for (i = 0; i < attr_info.num_values && (*type_id == NULL_ATTRID || *values_id == NULL_ATTRID); i++)
     {
-      attr_name = or_get_attrname (&recdes, i);
+      alloced_string = 0;
+      string = NULL;
+
+      error = or_get_attrname (&recdes, i, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+
+      attr_name = string;
       if (attr_name == NULL)
 	{
 	  error = ER_FAILED;
@@ -12249,6 +12277,11 @@ heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATT
       if (strcmp (attr_name, "pvalues") == 0)
 	{
 	  *values_id = i;
+	}
+
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (thread_p, string);
 	}
     }
 
@@ -13782,6 +13815,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
 
+      if (value.need_clear == true)
+	{
+	  pr_clear_value (&value);
+	}
       if (key_domain != NULL)
 	{
 	  if (k == 0)
@@ -13933,6 +13970,10 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
       k++;
     }
 
+  if (value.need_clear == true)
+    {
+      pr_clear_value (&value);
+    }
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
   midxkey->ncolumns = num_vals;
   midxkey->domain = NULL;
@@ -18041,7 +18082,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 {
   int i, idx_in_cache;
   char *classname = NULL;
-  const char *attr_name;
+  char *attr_name = NULL;
   RECDES recdes;		/* Used to obtain attribute name */
   char serial_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   HEAP_ATTRVALUE *value;
@@ -18055,6 +18096,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
   HEAP_SCANCACHE local_scan_cache;
   bool use_local_scan_cache = false;
   int ret = NO_ERROR;
+  int alloced_string = 0;
+  char *string = NULL;
 
   if (!attr_info || !scan_cache)
     {
@@ -18100,7 +18143,17 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		  goto exit_on_error;
 		}
 
-	      attr_name = or_get_attrname (&recdes, att->id);
+	      string = NULL;
+	      alloced_string = 0;
+
+	      ret = or_get_attrname (&recdes, att->id, &string, &alloced_string);
+	      if (ret != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+
+	      attr_name = string;
 	      if (attr_name == NULL)
 		{
 		  ret = ER_FAILED;
@@ -18108,6 +18161,11 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		}
 
 	      SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, classname, attr_name);
+
+	      if (string != NULL && alloced_string == 1)
+		{
+		  db_private_free_and_init (thread_p, string);
+		}
 
 	      free_and_init (classname);
 
