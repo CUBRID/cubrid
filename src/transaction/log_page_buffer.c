@@ -386,8 +386,8 @@ static void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const 
 static void logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty);
 static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
-static LOG_PAGE *logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
-				  LOG_PAGE * log_pgptr);
+static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
+			    LOG_PAGE * log_pgptr);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -1671,8 +1671,8 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 LOG_PAGE *
 logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
-  LOG_PAGE *ret_pgptr = NULL;
   LOG_LSA append_lsa, append_prev_lsa;
+  int rv;
 
   assert (log_pgptr != NULL);
   assert (req_lsa != NULL);
@@ -1717,9 +1717,9 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
    * most of the cases, we don't need calling logpb_copy_page with LOG_CS exclusive access,
    * if needed, we acquire READ mode in logpb_copy_page
    */
-  ret_pgptr = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
-
-  return ret_pgptr;
+  rv = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
+  assert (rv == NO_ERROR);
+  return log_pgptr;
 }
 
 /*
@@ -1731,15 +1731,14 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
 LOG_PAGE *
 logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
 {
-  LOG_PAGE *ret_pgptr = NULL;
-
+  int rv;
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
   assert (pageid <= log_Gl.hdr.append_lsa.pageid);
 
-  ret_pgptr = logpb_copy_page (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
-
-  return ret_pgptr;
+  rv = logpb_copy_page (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
+  assert (rv == NO_ERROR);
+  return log_pgptr;
 }
 
 /*
@@ -1780,8 +1779,8 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
  *              If there is the page in hash table, copy it to buffer and return it.
  *              If not, read log page from log.
  */
-  /* TODO: change return to error code */
-static LOG_PAGE *
+
+static int
 logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
   LOG_BUFFER *log_bufptr = NULL;
@@ -1848,7 +1847,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   if (ret_pgptr == NULL)
     {
       /* handle error */
-      return NULL;
+      return ER_GENERIC_ERROR;
     }
 
   /* Copy from ret_pgptr to log_pgptr */
@@ -1877,7 +1876,7 @@ exit:
 	}
     }
 
-  return ret_pgptr;
+  return NO_ERROR;
 }
 
 /*
