@@ -97,7 +97,6 @@ static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * 
   __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
   __attribute__ ((ALWAYS_INLINE));
-static int or_get_varchar_uncompressed_length (OR_BUF * buf, int *rc);
 
 /*
  * classobj_get_prop - searches a property list for a value with the given name
@@ -1395,7 +1394,8 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	}
 
       /* Compress the string */
-      rc = lzo1x_1_compress (string, charlen, compressed_string, &compressed_length, wrkmem);
+      rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) charlen, (lzo_bytep) compressed_string,
+			     &compressed_length, wrkmem);
       if (rc != LZO_E_OK)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
@@ -1405,14 +1405,14 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  goto cleanup;
 	}
 
-      if (compressed_length >= charlen - 8)
+      if (compressed_length >= (lzo_uint) (charlen - 8))
 	{
-	  /* Compression failed */
-	  compressed_length = -1;
+	  /* Compression successful but its length exceeds the original length of the string. */
+	  compressed_length = 0;
 	}
 
       /* Store the compression size */
-      assert (compressed_length < charlen - 8);
+      assert (compressed_length < (lzo_uint) (charlen - 8));
       OR_PUT_INT (&net_charlen, compressed_length);
       rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
@@ -1429,7 +1429,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  goto cleanup;
 	}
 
-      if (compressed_length == -1)
+      if (compressed_length == 0)
 	{
 	  /* Compression failed. */
 	  /* Store the original string bytes */
@@ -1554,7 +1554,9 @@ int
 or_get_varchar_length (OR_BUF * buf, int *rc)
 {
   int net_charlen, charlen, compressed_length = 0, decompressed_length = 0;
-  rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
+
+  *rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
+
   if (compressed_length > 0)
     {
       charlen = compressed_length;
@@ -8504,7 +8506,7 @@ htond (double from)
  *
  * return			  :   NO_ERROR or error_code.
  * buf(in)			  :   The buffer where the string is stored.
- * compressed_size(out)		  :   The compressed size of the string. Set to -1 if the string was not compressed.
+ * compressed_size(out)		  :   The compressed size of the string. Set to 0 if the string was not compressed.
  * decompressed_size(out)	  :   The uncompressed size of the string.
  */
 
@@ -8547,8 +8549,8 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
     }
   else
     {
-      /* String was not compressed so we set compressed_size to -1 to know that no compression happened. */
-      *compressed_size = -1;
+      /* String was not compressed so we set compressed_size to 0 to know that no compression happened. */
+      *compressed_size = 0;
       *decompressed_size = size_prefix;
     }
 
