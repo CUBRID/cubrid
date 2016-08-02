@@ -180,12 +180,26 @@ ansisql_strcasecmp (const char *s, const char *t)
 int
 db_alignment (int n)
 {
-  return (n >= (int) sizeof (double)) ? (int) sizeof (double) : (n >=
-								 (int) sizeof (void *))? (int) sizeof (void *) : (n >=
-														  (int)
-														  sizeof
-														  (int))
-    ? (int) sizeof (int) : (n >= (int) sizeof (short)) ? (int) sizeof (short) : 1;
+  if (n >= (int) sizeof (double))
+    {
+      return (int) sizeof (double);
+    }
+  else if (n >= (int) sizeof (void *))
+    {
+      return (int) sizeof (void *);
+    }
+  else if (n >= (int) sizeof (int))
+    {
+      return (int) sizeof (int);
+    }
+  else if (n >= (int) sizeof (short))
+    {
+      return (int) sizeof (short);
+    }
+  else
+    {
+      return 1;
+    }
 }
 
 /*

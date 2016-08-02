@@ -2685,6 +2685,7 @@ static void
 mr_data_readmem_short (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
   int rc = NO_ERROR;
+
   if (mem == NULL)
     {
       or_advance (buf, tp_Short.disksize);
@@ -3004,9 +3005,13 @@ static int
 mr_setmem_float (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 {
   if (value == NULL)
-    mr_initmem_float (mem, domain);
+    {
+      mr_initmem_float (mem, domain);
+    }
   else
-    *(float *) mem = db_get_float (value);
+    {
+      *(float *) mem = db_get_float (value);
+    }
 
   return NO_ERROR;
 }
@@ -3027,6 +3032,7 @@ static void
 mr_data_readmem_float (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
   int rc = NO_ERROR;
+
   if (mem == NULL)
     {
       or_advance (buf, tp_Float.disksize);
@@ -5019,7 +5025,9 @@ mr_setmem_money (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   DB_MONETARY *money;
 
   if (value == NULL)
-    mr_initmem_money (mem, domain);
+    {
+      mr_initmem_money (mem, domain);
+    }
   else
     {
       money = db_get_monetary (value);
@@ -5743,7 +5751,6 @@ mr_data_writeval_object (OR_BUF * buf, DB_VALUE * value)
   MOP mop;
 #endif
   OID *oidp = NULL;
-
   int rc = NO_ERROR;
 
 #if !defined (SERVER_MODE)
@@ -5792,8 +5799,10 @@ mr_data_writeval_object (OR_BUF * buf, DB_VALUE * value)
 	       * assign a permanent one. */
 	      oidp = tf_need_permanent_oid (buf, mop);
 	      if (oidp == NULL)
-		/* normally would have used or_abort by now */
-		oidp = (OID *) (&oid_Null_oid);
+		{
+		  /* normally would have used or_abort by now */
+		  oidp = (OID *) (&oid_Null_oid);
+		}
 	    }
 	  rc = or_put_oid (buf, oidp);
 	}
@@ -6348,11 +6357,9 @@ mr_data_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
 
       if (elo != NULL && elo->type != ELO_NULL)
 	{
-	  len =
-	    OR_BIGINT_SIZE + OR_LOID_SIZE + or_packed_string_length (elo->locator,
-								     NULL) + or_packed_string_length (elo->meta_data,
-												      NULL) +
-	    OR_INT_SIZE;
+	  len = (OR_BIGINT_SIZE + OR_LOID_SIZE
+		 + or_packed_string_length (elo->locator, NULL) + or_packed_string_length (elo->meta_data, NULL)
+		 + OR_INT_SIZE);
 	}
     }
   else
@@ -8620,9 +8627,8 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
   assert_release (midxkey2->domain != NULL);
   assert_release (midxkey2->domain->precision == midxkey2->ncolumns);
 
-  c =
-    pr_midxkey_compare (midxkey1, midxkey2, do_coercion, total_order, -1, start_colp, &dummy_size1, &dummy_size2,
-			&dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
+  c = pr_midxkey_compare (midxkey1, midxkey2, do_coercion, total_order, -1, start_colp, &dummy_size1, &dummy_size2,
+			  &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 
   assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
@@ -8687,9 +8693,8 @@ mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   midxkey1.ncolumns = midxkey2.ncolumns = n_atts;
   midxkey1.domain = midxkey2.domain = domain;
 
-  c =
-    pr_midxkey_compare (&midxkey1, &midxkey2, do_coercion, total_order, -1, start_colp, &dummy_size1, &dummy_size2,
-			&dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
+  c = pr_midxkey_compare (&midxkey1, &midxkey2, do_coercion, total_order, -1, start_colp, &dummy_size1, &dummy_size2,
+			  &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
   assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
   return c;
@@ -8948,7 +8953,6 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 static void
 mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
-
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
     {
@@ -9057,9 +9061,13 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
       /* better have a non-NULL value by the time writeval is called ! */
       precision = db_value_precision (value);
       if (disk)
-	len = OR_NUMERIC_SIZE (precision);
+	{
+	  len = OR_NUMERIC_SIZE (precision);
+	}
       else
-	len = MR_NUMERIC_SIZE (precision);
+	{
+	  len = MR_NUMERIC_SIZE (precision);
+	}
     }
   return len;
 }
@@ -9299,7 +9307,6 @@ pr_type_name (DB_TYPE id)
   return name;
 }
 
-
 /*
  * pr_is_set_type - Test to see if a type identifier is one of the set types.
  *    return: non-zero if type is one of the set types
@@ -9320,7 +9327,6 @@ pr_is_set_type (DB_TYPE type)
 
   return status;
 }
-
 
 /*
  * pr_is_string_type - Test to see if a type identifier is one of the string
@@ -9380,7 +9386,6 @@ pr_is_variable_type (DB_TYPE id)
 
   return is_variable;
 }
-
 
 /*
  * pr_find_type - Locate a type descriptor given a name.
@@ -9834,9 +9839,8 @@ pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
   midx_lf_key = DB_PULL_MIDXKEY (key1);
   midx_uf_key = DB_PULL_MIDXKEY (key2);
 
-  ret =
-    pr_midxkey_compare (midx_lf_key, midx_uf_key, 0, 1, -1, NULL, &size1, &size2, &diff_column, &dom_is_desc,
-			&next_dom_is_desc);
+  ret = pr_midxkey_compare (midx_lf_key, midx_uf_key, 0, 1, -1, NULL, &size1, &size2, &diff_column, &dom_is_desc,
+			    &next_dom_is_desc);
 
   if (ret == DB_UNK)
     {
@@ -10032,9 +10036,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
   assert (midxkey1->domain == midxkey2->domain);
   assert (midxkey1->domain->setdomain == midxkey2->domain->setdomain);
 
-  c =
-    pr_midxkey_compare (midxkey1, midxkey2, 0, 1, -1, NULL, &size1, &size2, &diff_column, &dom_is_desc,
-			&next_dom_is_desc);
+  c = pr_midxkey_compare (midxkey1, midxkey2, 0, 1, -1, NULL, &size1, &size2, &diff_column, &dom_is_desc,
+			  &next_dom_is_desc);
   if (dom_is_desc)
     {
       c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
@@ -10929,12 +10932,16 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
    * domain
    */
   if (size < 0)
-    return;
+    {
+      return;
+    }
 
   if (memptr == NULL)
     {
       if (size)
-	or_advance (buf, size);
+	{
+	  or_advance (buf, size);
+	}
     }
   else
     {
@@ -10966,7 +10973,9 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 
 	  new_ = db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
-	    or_abort (buf);
+	    {
+	      or_abort (buf);
+	    }
 	  else
 	    {
 	      /* store the length in our memory prefix */
@@ -10987,7 +10996,9 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	   * well obey it. */
 	  pad = size - (int) (buf->ptr - start);
 	  if (pad > 0)
-	    or_advance (buf, pad);
+	    {
+	      or_advance (buf, pad);
+	    }
 	}
       *mem = new_;
     }
@@ -11275,6 +11286,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	    }
 	  else
 	    {
+	      assert (compressed_size == 0);
+
 	      str_length = decompressed_size;
 	      db_make_varchar (value, precision, buf->ptr, decompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
@@ -11376,6 +11389,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  if (compressed_size > 0)
 		    {
 		      /* String was compressed */
+		      assert (decompressed_size > 0);
+
 		      decompression_size = 0;
 
 		      /* Handle decompression */
@@ -11389,16 +11404,15 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			}
 
 		      /* decompressing the string */
-		      rc =
-			lzo1x_decompress ((lzo_bytep) new_, (lzo_uint) compressed_size, decompressed_string,
-					  &decompression_size, NULL);
+		      rc = lzo1x_decompress ((lzo_bytep) new_, (lzo_uint) compressed_size,
+					     (lzo_bytep) decompressed_string, &decompression_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
 			  rc = ER_IO_LZO_DECOMPRESS_FAIL;
 			  goto cleanup;
 			}
-		      if (decompression_size != decompressed_size)
+		      if (decompression_size != (lzo_uint) decompressed_size)
 			{
 			  /* Decompression failed. It shouldn't. */
 			  assert (false);
@@ -11825,8 +11839,11 @@ mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       if (pad)
 	{
 	  int i;
+
 	  for (i = src_length; i < mem_length; i++)
-	    mem[i] = ' ';
+	    {
+	      mem[i] = ' ';
+	    }
 	}
     }
   return error;
@@ -12454,8 +12471,8 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       mem_length1 = mem_length2 = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
     }
 
-  c =
-    QSTR_CHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2, mem_length2);
+  c = QSTR_CHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
+			 mem_length2);
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -12505,9 +12522,8 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       return DB_UNK;
     }
 
-  c =
-    QSTR_CHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-		       (int) DB_GET_STRING_SIZE (value2));
+  c = QSTR_CHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
+			 (int) DB_GET_STRING_SIZE (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -12607,7 +12623,9 @@ mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   int src_precision, src_length, mem_length, pad;
 
   if (value == NULL)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
 
   /* Get information from the value */
   src = db_get_string (value);
@@ -12621,8 +12639,9 @@ mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
   /* Check for special NTS flag.  This may not be necessary any more. */
   if (src_length < 0)
-    src_length = strlen (src);
-
+    {
+      src_length = strlen (src);
+    }
 
   /* 
    * The only thing we really care about at this point, is the byte
@@ -12655,13 +12674,16 @@ mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       if (pad)
 	{
 	  int i;
+
 	  for (i = src_length; i < mem_length; i++)
-	    mem[i] = ' ';
+	    {
+	      mem[i] = ' ';
+	    }
 	}
     }
+
   return error;
 }
-
 
 /*
  * We always ensure that the string returned here is NULL terminated
@@ -12802,7 +12824,9 @@ mr_data_readmem_nchar (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 	{
 	  padding = size - mem_length;
 	  if (padding > 0)
-	    or_advance (buf, padding);
+	    {
+	      or_advance (buf, padding);
+	    }
 	}
     }
 }
@@ -12826,9 +12850,13 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   char *src_string, *new_;
 
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
-    db_value_domain_init (dest, DB_TYPE_NCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+    {
+      db_value_domain_init (dest, DB_TYPE_NCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+    }
   else if (DB_IS_NULL (src))
-    db_value_domain_init (dest, DB_TYPE_NCHAR, db_value_precision (src), 0);
+    {
+      db_value_domain_init (dest, DB_TYPE_NCHAR, db_value_precision (src), 0);
+    }
   else
     {
       /* Get information from the value */
@@ -12842,13 +12870,17 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       if (src_string != NULL)
 	{
 	  if (!copy)
-	    db_make_nchar (dest, src_precision, src_string, src_length, DB_GET_STRING_CODESET (src),
-			   DB_GET_STRING_COLLATION (src));
+	    {
+	      db_make_nchar (dest, src_precision, src_string, src_length, DB_GET_STRING_CODESET (src),
+			     DB_GET_STRING_COLLATION (src));
+	    }
 	  else
 	    {
 	      /* Check for NTS marker, may not need to do this any more */
 	      if (src_length < 0)
-		src_length = strlen (src_string);
+		{
+		  src_length = strlen (src_string);
+		}
 
 	      /* make sure the copy gets a NULL terminator */
 	      new_ = db_private_alloc (NULL, src_length + 1);
@@ -12920,9 +12952,8 @@ mr_data_lengthval_nchar (DB_VALUE * value, int disk)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL,
-						     STR_SIZE (char_count,
-							       src_codeset));
+	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+
 	  intl_convert_charset ((unsigned char *) src, char_count, src_codeset, (unsigned char *) converted_string,
 				lang_charset (), &unconverted);
 
@@ -12997,6 +13028,7 @@ mr_writeval_nchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
     {
       int unconverted;
       int char_count = db_get_string_length (value);
+
       converted_string = (char *) db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
       (void) intl_convert_charset ((unsigned char *) src, char_count, src_codeset, (unsigned char *) converted_string,
 				   lang_charset (), &unconverted);
@@ -13171,7 +13203,8 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	    }
 	  else
 	    {
-	      if ((rc = or_get_data (buf, new_, mem_length)) != NO_ERROR)
+	      rc = or_get_data (buf, new_, mem_length);
+	      if (rc != NO_ERROR)
 		{
 		  if (new_ != copy_buf)
 		    {
@@ -13209,6 +13242,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
       else if (!copy)
 	{
 	  int str_length;
+
 	  intl_char_size ((unsigned char *) buf->ptr, domain->precision, TP_DOMAIN_CODESET (domain), &str_length);
 	  if (str_length == 0)
 	    {
@@ -13246,7 +13280,9 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	  else
 	    {
 	      int actual_size = 0;
-	      if ((rc = or_get_data (buf, new_, mem_length)) != NO_ERROR)
+
+	      rc = or_get_data (buf, new_, mem_length);
+	      if (rc != NO_ERROR)
 		{
 		  if (new_ != copy_buf)
 		    {
@@ -13289,6 +13325,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
       int unconverted;
       int char_count;
       char *temp_string = db_get_nchar (value, &char_count);
+
       if (char_count > 0)
 	{
 	  new_ = db_private_alloc (NULL, STR_SIZE (char_count, TP_DOMAIN_CODESET (domain)));
@@ -13352,9 +13389,8 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
       mem_length1 = mem_length2 = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
     }
 
-  c =
-    QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2, mem_length2,
-			(INTL_CODESET) TP_DOMAIN_CODESET (domain));
+  c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
+			  mem_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -13380,9 +13416,8 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
       return DB_UNK;
     }
 
-  c =
-    QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			(int) DB_GET_STRING_SIZE (value2), (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
+			  (int) DB_GET_STRING_SIZE (value2), (INTL_CODESET) DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -13662,12 +13697,16 @@ mr_data_readmem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int si
 
   /* Must have an explicit size here - can't be determined from the domain */
   if (size < 0)
-    return;
+    {
+      return;
+    }
 
   if (memptr == NULL)
     {
       if (size)
-	or_advance (buf, size);
+	{
+	  or_advance (buf, size);
+	}
     }
   else
     {
@@ -13699,7 +13738,9 @@ mr_data_readmem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int si
 
 	  new_ = db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
-	    or_abort (buf);
+	    {
+	      or_abort (buf);
+	    }
 	  else
 	    {
 	      /* store the length in our memory prefix */
@@ -13720,7 +13761,9 @@ mr_data_readmem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int si
 	   */
 	  pad = size - (int) (buf->ptr - start);
 	  if (pad > 0)
-	    or_advance (buf, pad);
+	    {
+	      or_advance (buf, pad);
+	    }
 	}
       *mem = new_;
     }
@@ -13735,7 +13778,9 @@ mr_freemem_varnchar (void *memptr)
     {
       cur = *(char **) memptr;
       if (cur != NULL)
-	db_private_free_and_init (NULL, cur);
+	{
+	  db_private_free_and_init (NULL, cur);
+	}
     }
 }
 
@@ -13767,14 +13812,15 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       src_precision = db_value_precision (src);
       src_length = db_get_string_size (src);
       if (src_length < 0)
-	src_length = strlen (src_str);
+	{
+	  src_length = strlen (src_str);
+	}
 
       /* should we be paying attention to this? it is extremely dangerous */
       if (!copy)
 	{
-	  error =
-	    db_make_varnchar (dest, src_precision, src_str, src_length, DB_GET_STRING_CODESET (src),
-			      DB_GET_STRING_COLLATION (src));
+	  error = db_make_varnchar (dest, src_precision, src_str, src_length, DB_GET_STRING_CODESET (src),
+				    DB_GET_STRING_COLLATION (src));
 	}
       else
 	{
@@ -13857,7 +13903,9 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
     {
       src_length = db_get_string_size (value);	/* size in bytes */
       if (src_length < 0)
-	src_length = strlen (str);
+	{
+	  src_length = strlen (str);
+	}
 
       if (src_length >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
@@ -13876,9 +13924,8 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL,
-						     STR_SIZE (char_count,
-							       src_codeset));
+	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+
 	  intl_convert_charset ((unsigned char *) str, char_count, src_codeset, (unsigned char *) converted_string,
 				lang_charset (), &unconverted);
 
@@ -13918,7 +13965,9 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
     {
       src_size = db_get_string_size (value);	/* size in bytes */
       if (src_size < 0)
-	src_size = strlen (str);
+	{
+	  src_size = strlen (str);
+	}
 
       src_codeset = (INTL_CODESET) db_get_string_codeset (value);
 #if !defined (SERVER_MODE)
@@ -13926,9 +13975,8 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
-	  char *converted_string = db_private_alloc (NULL,
-						     STR_SIZE (char_count,
-							       src_codeset));
+	  char *converted_string = db_private_alloc (NULL, STR_SIZE (char_count, src_codeset));
+
 	  (void) intl_convert_charset ((unsigned char *) str, char_count, src_codeset,
 				       (unsigned char *) converted_string, lang_charset (), &unconverted);
 
@@ -13968,6 +14016,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	}
 #endif /* !SERVER_MODE */
     }
+
   return rc;
 }
 
@@ -14033,6 +14082,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	    {
 	      return rc;
 	    }
+
 	  if (compressed_size > 0)
 	    {
 	      str_length = compressed_size;
@@ -14160,6 +14210,9 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		    {
 		      /* String was compressed */
 		      lzo_uint decompression_size = 0;
+
+		      assert (decompressed_size > 0);
+
 		      /* Handle decompression */
 		      decompressed_string = db_private_alloc (NULL, decompressed_size + 1);
 
@@ -14172,9 +14225,8 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 			}
 
 		      /* decompressing the string */
-		      rc =
-			lzo1x_decompress ((lzo_bytep) new_, (lzo_uint) compressed_size, decompressed_string,
-					  &decompression_size, NULL);
+		      rc = lzo1x_decompress ((lzo_bytep) new_, (lzo_uint) compressed_size,
+					     (lzo_bytep) decompressed_string, &decompression_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
@@ -14182,7 +14234,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 			  goto cleanup;
 			}
 
-		      if (decompression_size != decompressed_size)
+		      if (decompression_size != (lzo_uint) decompressed_size)
 			{
 			  /* Decompression failed. It shouldn't. */
 			  assert (false);
@@ -14236,6 +14288,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	  int unconverted;
 	  int char_count;
 	  char *temp_string = db_get_nchar (value, &char_count);
+
 	  if (char_count > 0)
 	    {
 	      new_ = (char *) db_private_alloc (NULL, STR_SIZE (char_count, codeset));
@@ -14301,9 +14354,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
-      c =
-	QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) str1, str_length1, (unsigned char *) str2,
-			    str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+      c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) str1, str_length1, (unsigned char *) str2,
+			      str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
       c = MR_CMP_RETURN_CODE (c);
       return c;
     }
@@ -14390,9 +14442,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
     }
 
   /* Compare the strings */
-  c =
-    QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) buf1.ptr, str_length1,
-			(unsigned char *) buf2.ptr, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+  c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) buf1.ptr, str_length1,
+			  (unsigned char *) buf2.ptr, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
   c = MR_CMP_RETURN_CODE (c);
   /* Clean up the strings */
   if (string1 != NULL && alloced_string1 == true)
@@ -14444,9 +14495,8 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
       return DB_UNK;
     }
 
-  c =
-    QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			(int) DB_GET_STRING_SIZE (value2), (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
+			  (int) DB_GET_STRING_SIZE (value2), (INTL_CODESET) DB_GET_STRING_CODESET (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -14549,7 +14599,9 @@ mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   int src_precision, src_length, mem_length, pad;
 
   if (value == NULL)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
 
   /* Get information from the value */
   src = db_get_string (value);
@@ -14590,10 +14642,14 @@ mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       if (pad)
 	{
 	  int i;
+
 	  for (i = src_length; i < mem_length; i++)
-	    mem[i] = '\0';
+	    {
+	      mem[i] = '\0';
+	    }
 	}
     }
+
   return error;
 }
 
@@ -14607,7 +14663,9 @@ mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
 
   if (!copy)
-    new_ = (char *) mem;
+    {
+      new_ = (char *) mem;
+    }
   else
     {
       new_ = db_private_alloc (NULL, mem_length + 1);
@@ -14621,7 +14679,9 @@ mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
   db_make_bit (value, domain->precision, new_, domain->precision);
   if (copy)
-    value->need_clear = true;
+    {
+      value->need_clear = true;
+    }
 
   return NO_ERROR;
 }
@@ -14692,7 +14752,9 @@ mr_data_readmem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 	{
 	  padding = size - mem_length;
 	  if (padding > 0)
-	    or_advance (buf, padding);
+	    {
+	      or_advance (buf, padding);
+	    }
 	}
     }
 }
@@ -14716,9 +14778,13 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   char *src_string, *new_;
 
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
-    db_value_domain_init (dest, DB_TYPE_BIT, TP_FLOATING_PRECISION_VALUE, 0);
+    {
+      db_value_domain_init (dest, DB_TYPE_BIT, TP_FLOATING_PRECISION_VALUE, 0);
+    }
   else if (DB_IS_NULL (src))
-    db_value_domain_init (dest, DB_TYPE_BIT, db_value_precision (src), 0);
+    {
+      db_value_domain_init (dest, DB_TYPE_BIT, db_value_precision (src), 0);
+    }
   else
     {
       /* Get information from the value */
@@ -14879,6 +14945,7 @@ mr_writeval_bit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	      if (pad)
 		{
 		  int i;
+
 		  for (i = src_length; i < packed_length; i++)
 		    {
 		      rc = or_put_byte (buf, (int) '\0');
@@ -14906,6 +14973,7 @@ mr_writeval_bit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	{
 	  rc = or_put_data (buf, (char *) (&packed_length), OR_INT_SIZE);
 	}
+
       if (rc == NO_ERROR)
 	{
 	  /* store the data */
@@ -14992,7 +15060,8 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	    }
 	  else
 	    {
-	      if ((rc = or_get_data (buf, new_, mem_length)) != NO_ERROR)
+	      rc = or_get_data (buf, new_, mem_length);
+	      if (rc != NO_ERROR)
 		{
 		  if (new_ != copy_buf)
 		    {
@@ -15060,7 +15129,8 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	    }
 	  else
 	    {
-	      if ((rc = or_get_data (buf, new_, mem_length)) != NO_ERROR)
+	      rc = or_get_data (buf, new_, mem_length);
+	      if (rc != NO_ERROR)
 		{
 		  if (new_ != copy_buf)
 		    {
@@ -15277,7 +15347,9 @@ mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       else
 	{
 	  if (cur != NULL)
-	    db_private_free_and_init (NULL, cur);
+	    {
+	      db_private_free_and_init (NULL, cur);
+	    }
 
 	  /* pack in the length prefix */
 	  *(int *) new_ = src_length_bits;
@@ -15335,6 +15407,7 @@ mr_getmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    }
 	}
     }
+
   return error;
 }
 
@@ -15351,7 +15424,9 @@ mr_data_lengthmem_varbit (void *memptr, TP_DOMAIN * domain, int disk)
 
   len = 0;
   if (!disk)
-    len = tp_VarBit.size;
+    {
+      len = tp_VarBit.size;
+    }
   else if (memptr != NULL)
     {
       mem = (char **) memptr;
@@ -15616,6 +15691,7 @@ mr_lengthval_varbit_internal (DB_VALUE * value, int disk, int align)
 	  len = or_varbit_length (bit_length);
 	}
     }
+
   return len;
 }
 
@@ -15639,9 +15715,9 @@ mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  rc = or_put_varbit (buf, str, src_bit_length);
 	}
     }
+
   return rc;
 }
-
 
 /*
  * Size can come in as negative here to create a value with a pointer
@@ -16190,13 +16266,14 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
       /* Handle decompression */
 
       /* decompressing the string */
-      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &decompression_size, NULL);
+      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, (lzo_bytep) data, &decompression_size,
+			     NULL);
       if (rc != LZO_E_OK)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
 	  return ER_IO_LZO_DECOMPRESS_FAIL;
 	}
-      if (decompression_size != decompressed_size)
+      if (decompression_size != (lzo_uint) decompressed_size)
 	{
 	  /* Decompression failed. It shouldn't. */
 	  assert (false);
@@ -16224,7 +16301,7 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
  * charlen(in)				  : The length of the string to be compressed.
  */
 int
-mr_get_compression_length (char *string, int charlen)
+mr_get_compression_length (const char *string, int charlen)
 {
   lzo_voidp wrkmem;
   char *compressed_string = NULL;
@@ -16254,7 +16331,8 @@ mr_get_compression_length (char *string, int charlen)
     }
 
   /* Compress the string */
-  rc = lzo1x_1_compress (string, length, compressed_string, &compressed_length, wrkmem);
+  rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) length, (lzo_bytep) compressed_string, &compressed_length,
+			 wrkmem);
   if (rc != LZO_E_OK)
     {
       /* We should not be having any kind of errors here. Because if this compression fails, there is not warranty
@@ -16267,7 +16345,7 @@ mr_get_compression_length (char *string, int charlen)
       goto cleanup;
     }
 
-  if (length >= compressed_length + 8)
+  if ((lzo_uint) length >= compressed_length + 8)
     {
       /* Compression successful */
       length = (int) compressed_length;
