@@ -237,10 +237,10 @@ extern int serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num,
 extern int serial_get_current_value (DB_VALUE * value, OID * oid_p, int cached_num);
 extern int serial_decache (OID * oid);
 
-extern int mnt_server_start_stats (void);
-extern int mnt_server_stop_stats (void);
-extern int mnt_server_copy_stats (UINT64 * to_stats);
-extern int mnt_server_copy_global_stats (UINT64 * to_stats);
+extern int perfmon_server_start_stats (void);
+extern int perfmon_server_stop_stats (void);
+extern int perfmon_server_copy_stats (UINT64 * to_stats);
+extern int perfmon_server_copy_global_stats (UINT64 * to_stats);
 extern int catalog_check_rep_dir (OID * class_id, OID * rep_dir_p);
 extern int thread_kill_tran_index (int kill_tran_index, char *kill_user, char *kill_host, int kill_pid);
 extern int thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is_dba_group_member,

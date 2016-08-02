@@ -529,7 +529,7 @@ perfmon_start_stats (bool for_all_trans)
   perfmon_Stat_info.base_server_stats = NULL;
   perfmon_Stat_info.current_server_stats = NULL;
 
-  err = mnt_server_start_stats ();
+  err = perfmon_server_start_stats ();
   if(err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -539,7 +539,7 @@ perfmon_start_stats (bool for_all_trans)
   perfmon_Iscollecting_stats = true;
 
   perfmon_get_current_times (&perfmon_Stat_info.cpu_start_usr_time, &perfmon_Stat_info.cpu_start_sys_time,
-			 &perfmon_Stat_info.elapsed_start_time);
+			    &perfmon_Stat_info.elapsed_start_time);
 
   if (for_all_trans)
     {
@@ -601,7 +601,7 @@ perfmon_stop_stats (void)
 
   if (perfmon_Iscollecting_stats != false)
     {
-      err = mnt_server_stop_stats ();
+      err = perfmon_server_stop_stats ();
       perfmon_Iscollecting_stats = false;
     }
 
@@ -659,7 +659,7 @@ perfmon_get_stats ()
       return ER_FAILED;
     }
 
-  err = mnt_server_copy_stats (perfmon_Stat_info.current_server_stats);
+  err = perfmon_server_copy_stats (perfmon_Stat_info.current_server_stats);
   return err;
 }
 
@@ -683,7 +683,7 @@ perfmon_get_global_stats (void)
   perfmon_Stat_info.old_global_stats = tmp_stats;
 
   /* Refresh statistics from server */
-  err = mnt_server_copy_global_stats (perfmon_Stat_info.current_global_stats);
+  err = perfmon_server_copy_global_stats (perfmon_Stat_info.current_global_stats);
   if(err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1887,7 +1887,7 @@ perfmon_server_get_stats (THREAD_ENTRY * thread_p)
 
 /*
  *   xperfmon_server_copy_stats - Copy recorded server statistics for the current
- *				transaction index
+ *				  transaction index
  *   return: none
  *   to_stats(out): buffer to copy
  */
@@ -4470,7 +4470,7 @@ void f_dump_in_buffer_Time_obj_lock_acquire_time (char * s, const UINT64 * stat_
 #endif
 }
 
-int get_number_of_statistic_values()
+int perfmon_get_number_of_statistic_values(void)
 {
   return pstat_Global.n_stat_values;
 }

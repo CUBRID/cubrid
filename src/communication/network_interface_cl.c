@@ -7954,14 +7954,14 @@ serial_decache (OID * oid)
 }
 
 /*
- * mnt_server_start_stats -
+ * perfmon_server_start_stats -
  *
  * return:
  *
  * NOTE:
  */
 int
-mnt_server_start_stats (void)
+perfmon_server_start_stats (void)
 {
 #if defined(CS_MODE)
   int status = ER_FAILED;
@@ -7992,14 +7992,14 @@ mnt_server_start_stats (void)
 }
 
 /*
- * mnt_server_stop_stats -
+ * perfmon_server_stop_stats -
  *
  * return:
  *
  * NOTE:
  */
 int
-mnt_server_stop_stats (void)
+perfmon_server_stop_stats (void)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -8028,7 +8028,7 @@ mnt_server_stop_stats (void)
 }
 
 /*
- * mnt_server_copy_stats -
+ * perfmon_server_copy_stats -
  *
  * return:
  *
@@ -8037,7 +8037,7 @@ mnt_server_stop_stats (void)
  * NOTE:
  */
 int
-mnt_server_copy_stats (UINT64 * to_stats)
+perfmon_server_copy_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -8046,12 +8046,14 @@ mnt_server_copy_stats (UINT64 * to_stats)
   int nr_statistic_values;
   int err = NO_ERROR;
 
-  nr_statistic_values = get_number_of_statistic_values();
+  nr_statistic_values = perfmon_get_number_of_statistic_values();
   /* Align to 8 bytes */
   reply = (char * ) malloc(nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
   
   if(reply == NULL)
     {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 
+		nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
         err = ER_OUT_OF_VIRTUAL_MEMORY;
 	goto error;
     }
@@ -8088,7 +8090,7 @@ error:
 }
 
 /*
- * mnt_server_copy_global_stats -
+ * perfmon_server_copy_global_stats -
  *
  * return:
  *
@@ -8097,7 +8099,7 @@ error:
  * NOTE:
  */
 int
-mnt_server_copy_global_stats (UINT64 * to_stats)
+perfmon_server_copy_global_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -8106,7 +8108,7 @@ mnt_server_copy_global_stats (UINT64 * to_stats)
   int nr_statistic_values;
   int err = NO_ERROR;
 
-  nr_statistic_values = get_number_of_statistic_values();
+  nr_statistic_values = perfmon_get_number_of_statistic_values();
   /* Align to 8 bytes */
   reply = (char * ) malloc(nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
   if(reply == NULL)

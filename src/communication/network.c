@@ -48,7 +48,7 @@ net_pack_stats (char *buf, UINT64 * stats)
   int nr_statistic_values;
 
   ptr = buf;
-  nr_statistic_values = get_number_of_statistic_values();
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
 
   for (i = 0; i < nr_statistic_values; i++)
     {
@@ -75,7 +75,7 @@ net_unpack_stats (char *buf, UINT64 * stats)
   int i;
   int nr_statistic_values;
 
-  nr_statistic_values = get_number_of_statistic_values();
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
   ptr = buf;
 
   for (i = 0; i < nr_statistic_values; i++)
