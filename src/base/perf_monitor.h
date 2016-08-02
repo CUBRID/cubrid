@@ -625,6 +625,8 @@ extern void perfmon_add_stat (THREAD_ENTRY * thread_p, UINT64 amount, PERF_STAT_
 extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
 extern void perfmon_set_stat (THREAD_ENTRY * thread_p, int statval, PERF_STAT_ID psid);
 extern void perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_STAT_ID psid);
+extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
+extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */

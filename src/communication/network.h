@@ -273,10 +273,6 @@ enum net_server_request
 #define NET_CAP_HA_REPLICA              0x00000004
 #define NET_CAP_HA_IGNORE_REPL_DELAY	0x00000002
 
-extern char *net_pack_stats (char *buf, UINT64 * stats);
-extern char *net_unpack_stats (char *buf, UINT64 * stats);
-
-
 /* Server startup */
 extern int net_server_start (const char *name);
 extern const char *net_server_request_name (int request);

@@ -34,6 +34,10 @@
 #include "perf_monitor.h"
 #include "network_interface_cl.h"
 #include "error_manager.h"
+#include "network.h"
+#include "memory_alloc.h"
+#include "object_representation.h"
+#include "config.h"
 
 #if !defined(SERVER_MODE)
 #include "memory_alloc.h"
@@ -539,7 +543,7 @@ perfmon_start_stats (bool for_all_trans)
   perfmon_Iscollecting_stats = true;
 
   perfmon_get_current_times (&perfmon_Stat_info.cpu_start_usr_time, &perfmon_Stat_info.cpu_start_sys_time,
-			    &perfmon_Stat_info.elapsed_start_time);
+			     &perfmon_Stat_info.elapsed_start_time);
 
   if (for_all_trans)
     {
@@ -4504,4 +4508,61 @@ char* perfmon_allocate_packed_values_buffer(void)
 void perfmon_copy_values(UINT64* dest, UINT64* src)
 {
   memcpy (dest, src, PERFMON_VALUES_MEMSIZE);
+}
+
+/*
+ * perfmon_pack_stats -
+ *
+ * return:
+ *
+ *   buf(in):
+ *   stats(in):
+ *
+ *
+ */
+char *
+perfmon_pack_stats (char *buf, UINT64 * stats)
+{
+  char *ptr;
+  int i;
+  int nr_statistic_values;
+
+  ptr = buf;
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+
+  for (i = 0; i < nr_statistic_values; i++)
+    {
+      OR_PUT_INT64 (ptr, &(stats[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  return (ptr);
+}
+
+/*
+ * perfmon_unpack_stats -
+ *
+ * return:
+ *
+ *   buf(in):
+ *   stats(in):
+ *
+ */
+char *
+perfmon_unpack_stats (char *buf, UINT64 * stats)
+{
+  char *ptr;
+  int i;
+  int nr_statistic_values;
+
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  ptr = buf;
+
+  for (i = 0; i < nr_statistic_values; i++)
+    {
+      OR_GET_INT64 (ptr, &(stats[i]));
+      ptr += OR_INT64_SIZE;
+    }
+
+  return (ptr);
 }

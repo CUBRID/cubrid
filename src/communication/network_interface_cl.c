@@ -8065,7 +8065,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
 			0);
   if (!req_error)
     {
-      net_unpack_stats (reply_start, to_stats);
+      perfmon_unpack_stats (reply_start, to_stats);
     }
   else
     {
@@ -8125,7 +8125,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
 			NULL, 0);
   if (!req_error)
     {
-      net_unpack_stats (reply_start, to_stats);
+      perfmon_unpack_stats (reply_start, to_stats);
     }
   else
     {

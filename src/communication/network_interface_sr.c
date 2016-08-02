@@ -6434,6 +6434,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   
   if(stats == NULL)
     {
+      ASSERT_ERROR ();
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -6441,13 +6442,14 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   reply = perfmon_allocate_packed_values_buffer();
   if(reply == NULL)
     {
+      ASSERT_ERROR ();
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
   reply_start = PTR_ALIGN(reply, MAX_ALIGNMENT);
 
   xperfmon_server_copy_stats (thread_p, stats);
-  net_pack_stats (reply_start, stats);
+  perfmon_pack_stats (reply_start, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply_start, nr_statistic_values * sizeof(UINT64));
   free_and_init(stats);
   free_and_init(reply);
@@ -6476,6 +6478,7 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
   stats = perfmon_allocate_values();
   if(stats == NULL)
     {
+      ASSERT_ERROR ();
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -6483,13 +6486,14 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
   reply = perfmon_allocate_packed_values_buffer();
   if(reply == NULL)
     {
+      ASSERT_ERROR ();
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
   reply_start = PTR_ALIGN(reply, MAX_ALIGNMENT);
 
   xperfmon_server_copy_global_stats (thread_p, stats);
-  net_pack_stats (reply_start, stats);
+  perfmon_pack_stats (reply_start, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply_start, nr_statistic_values * sizeof(UINT64));
   free_and_init (stats);
   free_and_init (reply);
