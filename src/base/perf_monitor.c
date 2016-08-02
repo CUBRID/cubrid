@@ -34,10 +34,6 @@
 #include "perf_monitor.h"
 #include "network_interface_cl.h"
 #include "error_manager.h"
-#include "network.h"
-#include "memory_alloc.h"
-#include "object_representation.h"
-#include "config.h"
 
 #if !defined(SERVER_MODE)
 #include "memory_alloc.h"
