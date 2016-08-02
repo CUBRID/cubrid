@@ -4003,6 +4003,41 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 }
 
 /*
+ * log_check_system_op_is_started () - Check system op is started.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ */
+bool
+log_check_system_op_is_started (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+    }
+  else
+    {
+      tdes = LOG_FIND_TDES (tran_index);
+    }
+  if (tdes == NULL)
+    {
+      assert_release (false);
+      return false;
+    }
+  if (!LOG_IS_SYSTEM_OP_STARTED (tdes))
+    {
+      assert_release (false);
+      return false;
+    }
+  return true;
+}
+
+/*
  * log_get_parent_lsa_system_op - Get parent lsa of top operation
  *
  * return: lsa of parent or NULL

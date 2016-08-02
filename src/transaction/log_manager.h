@@ -77,6 +77,8 @@ struct log_topop_range
   LOG_LSA end_lsa;
 };
 
+#define LOG_IS_SYSTEM_OP_STARTED(tdes) ((tdes)->topops.last >= 0)
+
 extern const char *log_to_string (LOG_RECTYPE type);
 extern bool log_is_in_crash_recovery (void);
 extern LOG_LSA *log_get_restart_lsa (void);
@@ -153,6 +155,7 @@ extern LOG_LSA *log_start_system_op (THREAD_ENTRY * thread_p);
 extern void log_start_compensate_system_op (THREAD_ENTRY * thread_p, LOG_LSA * compensate_undo_nxlsa);
 extern void log_start_postpone_system_op (THREAD_ENTRY * thread_p, LOG_LSA * reference_lsa);
 extern TRAN_STATE log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result);
+extern bool log_check_system_op_is_started (THREAD_ENTRY * thread_p);
 extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p, LOG_LSA * parent_lsa);
 extern bool log_is_tran_in_system_op (THREAD_ENTRY * thread_p);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);

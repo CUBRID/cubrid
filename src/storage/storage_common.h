@@ -81,6 +81,8 @@ typedef INT32 PAGEID;		/* Data page identifier */
 typedef INT64 LOG_PAGEID;	/* Log page identifier */
 typedef PAGEID LOG_PHY_PAGEID;	/* physical log page identifier */
 
+typedef INT32 SECTID;
+
 typedef INT16 VOLID;		/* Volume identifier */
 typedef PAGEID DKNPAGES;	/* Number of disk pages */
 
@@ -179,7 +181,7 @@ typedef enum
   PAGE_HEAP,			/* heap page */
   PAGE_VOLHEADER,		/* volume header page */
   PAGE_VOLBITMAP,		/* volume bitmap page */
-  PAGE_XASL,                    /* Obsolete; it was used to store XASL's on disk */
+  PAGE_XASL,			/* Obsolete; it was used to store XASL's on disk */
   PAGE_QRESULT,			/* query result page */
   PAGE_EHASH,			/* ehash bucket/dir page */
   PAGE_LARGEOBJ,		/* large object/dir page */

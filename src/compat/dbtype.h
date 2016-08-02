@@ -700,18 +700,27 @@ typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
 struct vpid
 {
   INT32 pageid;			/* Page identifier */
-  INT16 volid;			/* Volume identifier where the page reside */
+  INT16 volid;			/* Volume identifier where the page resides */
 };
 #define VPID_INITIALIZER \
   { NULL_PAGEID, NULL_VOLID }
 
 #define VPID_AS_ARGS(vpidp) (vpidp)->volid, (vpidp)->pageid
 
+typedef struct vsid VSID;	/* REAL SECTOR IDENTIFIER */
+struct vsid
+{
+  INT32 sectid;			/* Sector identifier */
+  INT16 volid;			/* Volume identifier where the sector resides */
+};
+#define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
+#define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->pageid
+
 typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
 struct vfid
 {
   INT32 fileid;			/* File identifier */
-  INT16 volid;			/* Volume identifier where the file reside */
+  INT16 volid;			/* Volume identifier where the file resides */
 };
 #define VFID_INITIALIZER \
   { NULL_FILEID, NULL_VOLID }

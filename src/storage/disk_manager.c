@@ -889,6 +889,7 @@ disk_del_volume_extension (THREAD_ENTRY * thread_p, INT16 volid)
  *   vol_purpose(in): Purpose of storage page
  *
  */
+/* TODO: File manager redesign: replace numpages with num sectors. */
 VOLID
 disk_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid, INT16 undesirable_volid, INT32 exp_numpages,
 		   DISK_SETPAGE_TYPE setpage_type, DISK_VOLPURPOSE vol_purpose)
@@ -6436,4 +6437,813 @@ disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
   DISK_VERIFY_VAR_HEADER (vhdr);
+}
+
+/************************************************************************/
+/*                                                                      */
+/* FILE MANAGER REDESIGN                                                */
+/*                                                                      */
+/************************************************************************/
+
+/*
+ * TODO: Remove DISK_PERMVOL_TEMP_PURPOSE and DISK_EITHER_TEMP_PURPOSE.
+ */
+
+/*
+ * Disk allocation table section.
+ */
+
+/* The default unit used to divide a page of allocation table. Currently it is a char (8 bit).
+ * If we ever want to change the type of unit, this can be modified and should be handled automatically. However, some
+ * other structures may need updating (e.g. DISK_ALLOCTBL_CURSOR).
+ */
+typedef char DISK_ALLOCTBL_UNIT;
+
+/* Disk allocation table cursor. Used to iterate through table bits. */
+typedef struct disk_alloctbl_cursor DISK_ALLOCTBL_CURSOR;
+struct disk_alloctbl_cursor
+{
+  const DISK_VAR_HEADER *volheader;	/* Volume header */
+
+  PAGEID pageid;		/* Current page ID */
+  int offset_to_unit;		/* Offset to current unit in page. */
+  int offset_to_bit;		/* Offset to current bit in unit. */
+
+  PAGE_PTR page;		/* Fixed table page. */
+  DISK_ALLOCTBL_UNIT *unit;	/* Unit pointer in current page. */
+};
+#define DISK_SECTALLOCTBL_CURSOR_INITIALIZER { NULL, 0, 0, 0, NULL, NULL }
+
+/* Allocation table macro's */
+/* Bit count in a unit */
+#define DISK_ALLOCTBL_UNIT_BIT_COUNT	    (sizeof (DISK_ALLOCTBL_UNIT) * CHAR_BIT)
+/* Unit count in a table page */
+#define DISK_ALLOCTBL_PAGE_UNITS_COUNT	    (DB_PAGESIZE / DISK_ALLOCTBL_UNIT_BIT_COUNT)
+/* Bit count in a table page */
+#define DISK_ALLOCTBL_PAGE_BIT_COUNT	    (DISK_ALLOCTBL_UNIT_BIT_COUNT * DISK_ALLOCTBL_PAGE_UNITS_COUNT)
+
+/* Get page offset for sector ID. Note this is not the real page ID (since table does not start from page 0). */
+#define DISK_ALLOCTBL_SECTOR_PAGE_OFFSET(sect) ((sect) / DISK_ALLOCTBL_PAGE_BIT_COUNT)
+/* Get unit offset in page for sector ID. */
+#define DISK_ALLOCTBL_SECTOR_BYTE_OFFSET(sect) (((sect) % DISK_ALLOCTBL_PAGE_BIT_COUNT) / DISK_ALLOCTBL_UNIT_BIT_COUNT)
+/* Get bit offset in unit for sector ID */
+#define DISK_ALLOCTBL_SECTOR_BIT_OFFSET(sect) (((sect) % DISK_ALLOCTBL_PAGE_BIT_COUNT) % DISK_ALLOCTBL_UNIT_BIT_COUNT)
+
+/*
+ * disk_alloctbl_cursor_set_at_sectid () - Position cursor for allocation table at sector ID.
+ *
+ * return	  : Void.
+ * volheader (in) : Volume header.
+ * sectid (in)	  : Sector ID.
+ * cursor (out)	  : Allocation table cursor.
+ */
+STATIC_INLINE void
+disk_alloctbl_cursor_set_at_sectid (const DISK_VAR_HEADER * volheader, SECTID sectid, DISK_ALLOCTBL_CURSOR * cursor)
+{
+  assert (volheader != NULL);
+  assert (cursor != NULL);
+  assert (sectid >= 0 && sectid < volheader->total_sects);
+
+  cursor->volheader = volheader;
+
+  cursor->pageid = volheader->sect_alloctb_page1 + DISK_ALLOCTBL_SECTOR_PAGE_OFFSET (sectid);
+  assert (cursor->pageid < volheader->sect_alloctb_page1 + volheader->sect_alloctb_npages);
+  cursor->offset_to_unit = DISK_ALLOCTBL_SECTOR_BYTE_OFFSET (sectid);
+  cursor->offset_to_bit = DISK_ALLOCTBL_SECTOR_BIT_OFFSET (sectid);
+
+  cursor->page = NULL;
+  cursor->unit = NULL;
+}
+
+/*
+ * disk_alloctbl_cursor_set_at_end () - Position cursor at the end of allocation table.
+ *
+ * return	  : Void.
+ * volheader (in) : Volume header.
+ * cursor (out)   : Allocation table cursor.
+ */
+STATIC_INLINE void
+disk_alloctbl_cursor_set_at_end (const DISK_VAR_HEADER * volheader, DISK_ALLOCTBL_CURSOR * cursor)
+{
+  assert (volheader != NULL);
+  assert (cursor != NULL);
+
+  cursor->volheader = volheader;
+
+  cursor->pageid = volheader->sect_alloctb_page1 + volheader->sect_alloctb_npages;
+  cursor->offset_to_unit = 0;
+  cursor->offset_to_bit = 0;
+  cursor->page = NULL;
+  cursor->unit = NULL;
+}
+
+/*
+ * disk_alloctbl_cursor_set_at_start () - Position cursor at the start of allocation table.
+ *
+ * return	  : Void.
+ * volheader (in) : Volume header.
+ * cursor (out)   : Allocation table cursor.
+ */
+STATIC_INLINE void
+disk_alloctbl_cursor_set_at_start (const DISK_VAR_HEADER * volheader, DISK_ALLOCTBL_CURSOR * cursor)
+{
+  assert (volheader != NULL);
+  assert (cursor != NULL);
+
+  cursor->volheader = volheader;
+
+  cursor->pageid = volheader->sect_alloctb_page1;
+  cursor->offset_to_unit = 0;
+  cursor->offset_to_bit = 0;
+  cursor->page = NULL;
+  cursor->unit = NULL;
+}
+
+/*
+ * disk_alloctbl_cursor_next () - Move allocation table cursor to next position.
+ *
+ * return	   : True if end of allocation table page is not reached. False otherwise.
+ * cursor (in/out) : Modified cursor to next position.
+ *
+ * NOTE: It is up to the caller to change page.
+ */
+STATIC_INLINE bool
+disk_alloctbl_cursor_next (DISK_ALLOCTBL_CURSOR * cursor)
+{
+  /* Increment offset to bit. */
+  assert (cursor != NULL);
+  assert (cursor->page != NULL);
+  assert (cursor->unit != NULL);
+
+  ++cursor->offset_to_bit;
+  if (cursor->offset_to_bit == DISK_ALLOCTBL_UNIT_BIT_COUNT)
+    {
+      /* Current unit is consumed. Reset offset to bit and increment offset to unit and unit pointer */
+      cursor->offset_to_bit--;
+      cursor->offset_to_unit++;
+      cursor->unit++;
+    }
+  if (cursor->offset_to_unit == DISK_ALLOCTBL_PAGE_UNITS_COUNT)
+    {
+      /* Page was finished. */
+      cursor->offset_to_unit = 0;
+      cursor->offset_to_bit = 0;
+      cursor->unit = NULL;
+      cursor->pageid++;
+      return false;
+    }
+  return true;
+}
+
+/*
+ * disk_alloctbl_cursor_compare () - Compare two allocation table cursors.
+ *
+ * return	      : -1 if first cursor is positioned before second cursor.
+ *			0 if both cursors have the same position.
+ *			1 if first cursor is positioned after second cursor.
+ * first_cursor (in)  : First cursor.
+ * second_cursor (in) : Second cursor.
+ */
+STATIC_INLINE int
+disk_alloctbl_cursor_compare (const DISK_ALLOCTBL_CURSOR * first_cursor, const DISK_ALLOCTBL_CURSOR * second_cursor)
+{
+  assert (first_cursor != NULL);
+  assert (second_cursor != NULL);
+
+  if (first_cursor->pageid < second_cursor->pageid)
+    {
+      return -1;
+    }
+  else if (first_cursor->pageid > second_cursor->pageid)
+    {
+      return 1;
+    }
+
+  if (first_cursor->offset_to_unit < second_cursor->offset_to_unit)
+    {
+      return -1;
+    }
+  else if (first_cursor->offset_to_unit > second_cursor->offset_to_unit)
+    {
+      return 1;
+    }
+
+  if (first_cursor->offset_to_bit < second_cursor->offset_to_bit)
+    {
+      return -1;
+    }
+  else if (first_cursor->offset_to_bit > second_cursor->offset_to_bit)
+    {
+      return 1;
+    }
+
+  return 0;
+}
+
+/*
+ * disk_alloctable_cursor_check_valid () - Check allocation table cursor validity.
+ *
+ * return      : void.
+ * cursor (in) : Allocation table cursor.
+ *
+ * NOTE: This is a debug function.
+ */
+STATIC_INLINE void
+disk_alloctable_cursor_check_valid (const DISK_ALLOCTBL_CURSOR * cursor)
+{
+  assert (cursor != NULL);
+
+  /* Cursor must have valid volheader pointer. */
+  assert (cursor->volheader != NULL);
+
+  /* Cursor must have a valid position. */
+  assert (cursor->pageid >= cursor->volheader->sect_alloctb_page1);
+  assert (cursor->pageid < cursor->volheader->sect_alloctb_page1 + cursor->volheader->sect_alloctb_npages);
+  assert (cursor->offset_to_unit >= 0);
+  assert (cursor->offset_to_unit < DISK_ALLOCTBL_PAGE_UNITS_COUNT);
+  assert (cursor->offset_to_bit >= 0);
+  assert (cursor->offset_to_bit < DISK_ALLOCTBL_UNIT_BIT_COUNT);
+
+  if (cursor->unit != NULL)
+    {
+      /* Must have a page fixed */
+      assert (cursor->page != NULL);
+      /* Unit pointer must match offset_to_unit */
+      assert ((cursor->unit - ((DISK_ALLOCTBL_UNIT *) cursor->page)) == cursor->offset_to_unit);
+    }
+}
+
+/*
+ * disk_alloctbl_cursor_is_bit_set () - Is bit set on current allocation table cursor.
+ *
+ * return      : True if bit is set, false otherwise.
+ * cursor (in) : Allocation table cursor.
+ */
+STATIC_INLINE bool
+disk_alloctbl_cursor_is_bit_set (const DISK_ALLOCTBL_CURSOR * cursor)
+{
+  disk_alloctable_cursor_check_valid (cursor);
+  return (*cursor->unit) & (((DISK_ALLOCTBL_UNIT) 1) << cursor->offset_to_bit) ? true : false;
+}
+
+/*
+ * disk_alloctbl_cursor_set_bit () - Set bit on current allocation table cursor.
+ *
+ * return	   : Void.
+ * cursor (in/out) : Allocation table cursor.
+ */
+STATIC_INLINE void
+disk_alloctbl_cursor_set_bit (DISK_ALLOCTBL_CURSOR * cursor)
+{
+  disk_alloctable_cursor_check_valid (cursor);
+  assert (!disk_alloctbl_cursor_is_bit_set (cursor));
+
+  *cursor->unit |= ((DISK_ALLOCTBL_UNIT) 1) << cursor->offset_to_bit;
+}
+
+/*
+ * disk_alloctbl_cursor_clear_bit () - Clear bit on current allocation table cursor.
+ *
+ * return	   : Void.
+ * cursor (in/out) : Allocation table cursor.
+ */
+STATIC_INLINE void
+disk_alloctbl_cursor_clear_bit (DISK_ALLOCTBL_CURSOR * cursor)
+{
+  disk_alloctable_cursor_check_valid (cursor);
+  assert (!disk_alloctbl_cursor_is_bit_set (cursor));
+
+  *cursor->unit &= ~(((DISK_ALLOCTBL_UNIT) 1) << cursor->offset_to_bit);
+}
+
+/*
+ * disk_alloctbl_cursor_get_bit_index_in_page () - Get the index of cursor bit in allocation table page.
+ *
+ * return      : Bit index in page.
+ * cursor (in) : Allocation table cursor.
+ */
+STATIC_INLINE int
+disk_alloctbl_cursor_get_bit_index_in_page (const DISK_ALLOCTBL_CURSOR * cursor)
+{
+  disk_alloctable_cursor_check_valid (cursor);
+  return cursor->offset_to_unit * DISK_ALLOCTBL_UNIT_BIT_COUNT + cursor->offset_to_bit;
+}
+
+/*
+ * disk_alloctbl_cursor_get_sectid () - Get the sector ID of cursor.
+ *
+ * return      : Sector ID.
+ * cursor (in) : Allocation table cursor.
+ */
+STATIC_INLINE SECTID
+disk_alloctbl_cursor_get_sectid (const DISK_ALLOCTBL_CURSOR * cursor)
+{
+  SECTID sectid;
+  int n_pages = cursor->pageid - cursor->volheader->sect_alloctb_page1;
+
+  disk_alloctable_cursor_check_valid (cursor);
+
+  sectid = n_pages * DISK_ALLOCTBL_PAGE_BIT_COUNT;
+  sectid += cursor->offset_to_unit * DISK_ALLOCTBL_UNIT_BIT_COUNT;
+  sectid += cursor->offset_to_bit;
+
+  return sectid;
+}
+
+/*
+ * disk_alloctbl_cursor_fix () - Fix current table page.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * cursor (in/out) : Allocation table cursor.
+ * latch_mode (in) : Page latch mode.
+ */
+STATIC_INLINE int
+disk_alloctbl_cursor_fix (THREAD_ENTRY * thread_p, DISK_ALLOCTBL_CURSOR * cursor, PGBUF_LATCH_MODE latch_mode)
+{
+  VPID vpid = VPID_INITIALIZER;
+  int error_code = NO_ERROR;
+
+  assert (cursor->page == NULL);
+
+  cursor->unit = NULL;
+
+  /* Fix page. */
+  vpid.volid = cursor->volheader->volid;
+  vpid.pageid = cursor->pageid;
+  cursor->page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (cursor->page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  cursor->unit = cursor->page + cursor->offset_to_unit;
+
+  return NO_ERROR;
+}
+
+/*
+ * disk_alloctbl_cursor_unfix () - Unfix page from allocation table cursor.
+ *
+ * return	   : Void.
+ * thread_p (in)   : Thread entry.
+ * cursor (in/out) : Allocation table cursor.
+ */
+STATIC_INLINE void
+disk_alloctbl_cursor_unfix (THREAD_ENTRY * thread_p, DISK_ALLOCTBL_CURSOR * cursor)
+{
+  if (cursor->page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, cursor->page);
+    }
+  cursor->unit = NULL;
+}
+
+/*
+ * disk_reserve_sectors_in_range () - Reserve a number of sectors in given range.
+ *
+ * return		     : Error code.
+ * thread_p (in)	     : Thread entry.
+ * start_cursor (in)	     : Range start cursor.
+ * end_cursor (in)	     : Range end cursor.
+ * n_sectors (in)	     : The number of sectors to reserve.
+ * do_logging (in)	     : True if logging is required.
+ * n_total_reserved (in/out) : Total number of reserved sectors (it may start different than 0).
+ * n_crt_reserved (out)	     : Number of reserved sectors in this range.
+ * reserved (in/out)	     : Array of reserved sectors.
+ */
+static int
+disk_reserve_sectors_in_range (THREAD_ENTRY * thread_p, const DISK_ALLOCTBL_CURSOR * start_cursor,
+			       const DISK_ALLOCTBL_CURSOR * end_cursor, int n_sectors, bool do_logging,
+			       int *n_total_reserved, int *n_crt_reserved, VSID * reserved)
+{
+  VSID crt_vsid = VSID_INITIALIZER;
+  DISK_ALLOCTBL_CURSOR cursor = DISK_SECTALLOCTBL_CURSOR_INITIALIZER;
+  int error_code = NO_ERROR;
+  int i = 0;
+
+  INT32 start_bit;
+  INT32 n_bits;
+
+  bool is_page_end = false;
+  bool is_page_dirty = false;
+
+  assert (start_cursor != NULL);
+  assert (end_cursor != NULL);
+  assert (n_sectors > 0);
+  assert (n_total_reserved != NULL);
+  assert (n_crt_reserved != NULL);
+  assert (reserved != NULL);
+
+  /* Initialize */
+  *n_crt_reserved = 0;
+  crt_vsid.volid = start_cursor->volheader->volid;
+
+  /* Try to reserve n_sectors from starting cursor. Loop until enough sectors are reserved or until end of range is
+   * reached. */
+  cursor = *start_cursor;
+  while (n_sectors > 0 && disk_alloctbl_cursor_compare (&cursor, end_cursor) < 0)
+    {
+      disk_alloctable_cursor_check_valid (&cursor);
+
+      /* Fix cursor page. */
+      error_code = disk_alloctbl_cursor_fix (thread_p, &cursor, PGBUF_LATCH_WRITE);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      /* Start a new loop in allocation table page. Stop when enough sectors are reserved or when end of page is
+       * reached. */
+      is_page_end = false;
+      while (n_sectors > 0 && !is_page_end)
+	{
+	  /* Skip all bits that are set. */
+	  while (!is_page_end && disk_alloctbl_cursor_is_bit_set (&cursor))
+	    {
+	      is_page_end = !disk_alloctbl_cursor_next (&cursor);
+	    }
+	  if (is_page_end)
+	    {
+	      /* No unset bits left in page. */
+	      break;
+	    }
+
+	  /* Found unset bit */
+	  start_bit = disk_alloctbl_cursor_get_bit_index_in_page (&cursor);
+	  crt_vsid.sectid = disk_alloctbl_cursor_get_sectid (&cursor);
+	  n_bits = 0;
+	  /* Loop to find the required number of sectors. Stop when enough sectors are reserved or when end of page is
+	   * reached or when a set bit is found.
+	   */
+	  do
+	    {
+	      n_bits++;
+	      n_sectors--;
+	      /* Set bit */
+	      disk_alloctbl_cursor_set_bit (&cursor);
+
+	      /* Move the cursor */
+	      is_page_end = disk_alloctbl_cursor_next (&cursor);
+	    }
+	  while (n_sectors > 0 && !is_page_end && !disk_alloctbl_cursor_is_bit_set (&cursor));
+
+	  /* Save all reserved VSID's */
+	  for (i = 0; i < n_bits; i++, crt_vsid.sectid++, (*n_total_reserved)++, (*n_crt_reserved)++)
+	    {
+	      reserved[*n_total_reserved] = crt_vsid;
+	    }
+
+	  if (do_logging)
+	    {
+	      /* TODO. Collect start_bit and n_bits for log. */
+	    }
+	  /* Page was modified */
+	  is_page_dirty = true;
+	}
+
+      if (is_page_dirty)
+	{
+	  if (do_logging)
+	    {
+	      /* TODO. Log all start_bit/n_bits pairs. */
+	    }
+	  pgbuf_set_dirty (thread_p, cursor.page, DONT_FREE);
+	}
+
+      disk_alloctbl_cursor_unfix (thread_p, &cursor);
+    }
+
+  /* Finished searching range. */
+  assert (cursor.page == NULL);
+  return NO_ERROR;
+}
+
+/*
+ * disk_reserve_sectors_in_volume () - Reserve a number of sectors in the given volume.
+ *
+ * return		    : Error code.
+ * thread_p (in)	    : Thread entry.
+ * purpose (in)		    : The purpose of allocation (data, index, generic or temporary).
+ * volid (in)		    : Volume ID.
+ * n_sectors (in)	    : Number of sectors to reserve.
+ * n_reserved_sectors (out) : Number of reserved sectors.
+ * reserved_sectors (out)   : Array of reserved sectors.
+ */
+static int
+disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID volid, int n_sectors,
+				int *n_reserved_sectors, VSID * reserved_sectors)
+{
+  PAGE_PTR page_volheader = NULL;
+  DISK_VAR_HEADER *volheader = NULL;
+  VPID vpid_volheader = VPID_INITIALIZER;
+  int error_code = NO_ERROR;
+  bool do_logging = false;	/* TODO: Logging. */
+  DISK_ALLOCTBL_CURSOR start_cursor = DISK_SECTALLOCTBL_CURSOR_INITIALIZER;
+  DISK_ALLOCTBL_CURSOR end_cursor = DISK_SECTALLOCTBL_CURSOR_INITIALIZER;
+  int n_reserved_last_range = 0;
+
+  assert (n_sectors > 0);
+  assert (n_reserved_sectors != NULL);
+  assert (reserved_sectors != NULL);
+
+  /* Do we need to log our changes? Not if we need temporary volume. */
+  do_logging = purpose != DISK_TEMPVOL_TEMP_PURPOSE;
+  if (do_logging)
+    {
+      /* A system operation should have been started. */
+      if (!log_check_system_op_is_started (thread_p))
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+    }
+
+  /* Initialize n_reserved_sectors */
+  *n_reserved_sectors = 0;
+
+  if (volid == NULL_VOLID)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  /* Fix volume header. We might modify it, so we need write latch. */
+  vpid_volheader.volid = volid;
+  vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
+  page_volheader = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_volheader == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  (void) disk_verify_volume_header (thread_p, page_volheader);
+
+  volheader = (DISK_VAR_HEADER *) page_volheader;
+
+  if (volheader->free_sects <= 0)
+    {
+      /* Not enough space. */
+      assert (volheader->free_sects == 0);
+      goto exit;
+    }
+
+  if (volheader->purpose == DISK_PERMVOL_DATA_PURPOSE && purpose != DISK_PERMVOL_DATA_PURPOSE)
+    {
+      /* Unacceptable */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+  if (volheader->purpose == DISK_PERMVOL_INDEX_PURPOSE && purpose != DISK_PERMVOL_INDEX_PURPOSE)
+    {
+      /* Unacceptable */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+  if ((volheader->purpose == DISK_TEMPVOL_TEMP_PURPOSE) != (purpose == DISK_TEMPVOL_TEMP_PURPOSE))
+    {
+      /* Temporary volumes to be used only for temporary purpose (and vice-versa) */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+
+  if (volheader->free_sects < n_sectors)
+    {
+      /* We should consume the entire volume */
+      n_sectors = volheader->free_sects;
+    }
+
+  /* Allocate all possible sectors. Start with hinted sector. */
+  if (volheader->hint_allocsect != NULL_SECTID)
+    {
+      disk_alloctbl_cursor_set_at_sectid (volheader, volheader->hint_allocsect, &start_cursor);
+      disk_alloctbl_cursor_set_at_end (volheader, &end_cursor);
+      error_code =
+	disk_reserve_sectors_in_range (thread_p, &start_cursor, &end_cursor, n_sectors, do_logging, n_reserved_sectors,
+				       &n_reserved_last_range, reserved_sectors);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      n_sectors -= n_reserved_last_range;
+      if (n_sectors > 0)
+	{
+	  end_cursor = start_cursor;
+	  disk_alloctbl_cursor_set_at_start (volheader, &start_cursor);
+
+	  error_code =
+	    disk_reserve_sectors_in_range (thread_p, &start_cursor, &end_cursor, n_sectors, do_logging,
+					   n_reserved_sectors, &n_reserved_last_range, reserved_sectors);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+	}
+    }
+  else
+    {
+      /* Search the entire volume. */
+      disk_alloctbl_cursor_set_at_start (volheader, &start_cursor);
+      disk_alloctbl_cursor_set_at_end (volheader, &end_cursor);
+      error_code =
+	disk_reserve_sectors_in_range (thread_p, &start_cursor, &end_cursor, n_sectors, do_logging, n_reserved_sectors,
+				       &n_reserved_last_range, reserved_sectors);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+  if (*n_reserved_sectors > 0)
+    {
+      /* Change header, log changes and update cache. */
+      volheader->free_sects -= *n_reserved_sectors;
+      volheader->hint_allocsect =
+	volheader->free_sects > 0 ? reserved_sectors[(*n_reserved_sectors) - 1].sectid + 1 : NULL_SECTID;
+
+      switch (purpose)
+	{
+	case DISK_PERMVOL_DATA_PURPOSE:
+	  volheader->used_index_npages += *n_reserved_sectors;
+	  assert (volheader->used_data_npages + volheader->used_index_npages <= volheader->total_pages);
+	  break;
+	case DISK_PERMVOL_INDEX_PURPOSE:
+	  volheader->used_index_npages += *n_reserved_sectors;
+	  assert (volheader->used_data_npages + volheader->used_index_npages <= volheader->total_pages);
+	  break;
+	default:
+	  /* Do nothing. */
+	  break;
+	}
+
+      if (do_logging)
+	{
+	  /* TODO */
+	}
+
+      /* TODO: Update cache. */
+    }
+  else
+    {
+      /* We should have reserved something. */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+
+exit:
+  if (page_volheader != NULL)
+    {
+      pgbuf_unfix (thread_p, page_volheader);
+    }
+}
+
+/* TODO: Rename as disk_find_goodvol. This is similar to disk_find_goodvol, except the n_sectors argument and code
+ *	 rearrangement. */
+static int
+dkre_find_goodvol (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_TYPE reserve_type, VOLID desired_volid,
+		   VOLID banned_volid, int n_sectors, INT16 * volid)
+{
+  bool continue_check;
+
+  assert (volid != NULL);
+
+  while (true)
+    {
+      *volid =
+	disk_find_goodvol_from_disk_cache (thread_p, desired_volid, banned_volid, n_sectors * DISK_SECTOR_NPAGES,
+					   reserve_type, purpose);
+
+      if (*volid != NULL_VOLID)
+	{
+	  /* Found */
+	  return NO_ERROR;
+	}
+
+      if (logtb_is_interrupted (thread_p, false, &continue_check))
+	{
+	  /* Interrupted */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return ER_INTERRUPTED;
+	}
+
+      /* Try to extend the volumes. */
+      *volid = disk_add_auto_volume_extension (thread_p, n_sectors * DISK_SECTOR_NPAGES, reserve_type, purpose);
+
+      if (*volid == NULL_VOLID)
+	{
+	  /* No expansion. */
+	  break;
+	}
+
+      if (purpose != DISK_PERMVOL_GENERIC_PURPOSE)
+	{
+	  /* Expanded volume is good enough. */
+	  /* TODO: why do we check again when the purpose is generic? This is legacy and maybe we can remove it. */
+	  break;
+	}
+
+      if (*volid == banned_volid)
+	{
+	  /* Banned volume was extended so maybe we can use it. */
+	  banned_volid = NULL_VOLID;
+	}
+
+      /* Loop and check again */
+    }
+
+  if (*volid == NULL_VOLID)
+    {
+      if (logtb_is_interrupted (thread_p, false, &continue_check))
+	{
+	  /* Interrupted */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return ER_INTERRUPTED;
+	}
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE, 1,
+	      n_sectors * DISK_SECTOR_NPAGES);
+      return ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE;
+    }
+
+  /* Found a volume. */
+  return NO_ERROR;
+}
+
+/*
+ * disk_reserve_sectors () - Reserve the required number of sectors in all database volumes.
+ *
+ * return		  : Error code.
+ * thread_p (in)	  : Thread entry.
+ * purpose (in)		  : Reservations purpose (data, index, generic or temp).
+ * reserve_type (in)	  : Contiguous/non-contiguous (not used).
+ * n_sectors (in)	  : Number of sectors to reserve.
+ * reserved_sectors (out) : Array of reserved sectors.
+ */
+int
+disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_TYPE reserve_type, int n_sectors,
+		      VSID * reserved_sectors)
+{
+  int n_sectors_found = 0;
+  int n_sectors_found_in_last_volume = 0;
+  int n_sectors_to_find = n_sectors;
+  int error_code = NO_ERROR;
+  VOLID volid;
+
+  assert (purpose >= DISK_PERMVOL_DATA_PURPOSE && purpose <= DISK_TEMPVOL_TEMP_PURPOSE);
+
+  if (n_sectors <= 0 || reserved_sectors == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  if (purpose != DISK_TEMPVOL_TEMP_PURPOSE && !log_check_system_op_is_started (thread_p))
+    {
+      /* We really need a system operation. */
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  while (n_sectors_to_find > 0)
+    {
+      error_code =
+	dkre_find_goodvol (thread_p, purpose, reserve_type, NULL_VOLID, NULL_VOLID, n_sectors_to_find, &volid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (volid == NULL_VOLID)
+	{
+	  /* Should have returned error. */
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      error_code =
+	disk_reserve_sectors_in_volume (thread_p, purpose, volid, n_sectors_to_find, &n_sectors_found_in_last_volume,
+					reserved_sectors + n_sectors_found);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      n_sectors_to_find -= n_sectors_found_in_last_volume;
+      n_sectors_found += n_sectors_found_in_last_volume;
+    }
+
+  /* Should have enough sectors. */
+  assert (n_sectors_found == n_sectors);
+  return NO_ERROR;
 }
