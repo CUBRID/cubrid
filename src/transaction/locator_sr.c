@@ -7508,7 +7508,13 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
       else if (HEAP_IS_UPDATE_INPLACE (force_update_inplace) || need_locking == false)
 	{
-	  scan = heap_get_visible_version (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	  HEAP_GET_CONTEXT context;
+
+	  /* don't consider visiblity, just get the last version of the object */
+	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	  scan = heap_get_last_version (thread_p, &context);
+	  heap_clean_get_context (thread_p, &context);
+
 	  assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
 		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
 					    LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
