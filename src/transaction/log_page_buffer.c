@@ -1659,7 +1659,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 /*
  * logpb_fetch_page - Fetch a exist_log page using local buffer
  *
- * return: NO_ERROR if everything is ok
+ * return: NO_ERROR if everything is ok, else ER_GENERIC_ERROR
  *
  *   pageid(in): Page identifier
  *   log_pgptr(in/out): Page buffer to copy
