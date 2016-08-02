@@ -3220,6 +3220,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  error_code = perfmon_initialize (MAX_NTRANS);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
     {
@@ -3409,13 +3416,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
-
-  error_code = perfmon_initialize (MAX_NTRANS);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
 
   /* 
    * Compose the full name of the database and find location of logs
@@ -5593,7 +5593,12 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 
       er_clear ();
     }
-  perfmon_initialize(0);
+  error_code = perfmon_initialize (0);
+  if(error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   /* Find the prefix for the database */
   log_prefix = fileio_get_base_file_name (db_name);
