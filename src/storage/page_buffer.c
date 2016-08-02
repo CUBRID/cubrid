@@ -730,7 +730,7 @@ struct pgbuf_page_monitor
   int *bcbs_cnt_per_lru;	/* current number of BCBs in each LRU */
 
   /* LRU victimization */
-  int *lru_victim_req_per_lru;	/* count of BCB victim requests */
+  int *lru_victim_req_per_lru;		/* count of BCB victim requests */
   int *lru_pending_victim_req_per_lru;	/* count of pending victim requests */
   int *lru_victim_search_depth_per_lru;	/* depth of search (by workers) in this list */
   int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
@@ -758,8 +758,6 @@ struct pgbuf_page_monitor
 
   int lru_victim_req_cnt;	/* number of victim request from all LRUs */
   int ain_victim_req_cnt;	/* number of victim request from AIN */
-  int ain_victim_searches_cnt;	/* number of victim seaches from AIN */
-  int ain_victim_dirty_skipped_cnt;	/* number of dirty buffers skipped during victim seaches from AIN */
 
   int fix_req_cnt;		/* number of fix requests */
 
@@ -793,8 +791,14 @@ struct pgbuf_page_quota
   unsigned int vict_garbage_lru_idx;	/* circular index of garbage LRU for victimization */
   unsigned int add_shared_lru_idx;	/* circular index of shared LRU for relocating to shared */
   unsigned int add_shared_lru_idx_for_destroyed;	/* circular index of garbage LRU for relocating destroyed pages */
-  int avoid_shared_lru_idx;	/* index of shared LRU to avoid when relocating to shared */
-  int overflow_private_lru_idx;	/* index of private LRU having highest overflow */
+  int avoid_shared_lru_idx;	/* index of shared LRU to avoid when relocating to shared;
+				 * this is ussually the index of shared LRU with maximum number of BCBs;
+				 * transaction will avoid this list when relocating to shared LRU (like when moving from
+				 * a garbage LRU); such LRU list returns to normal size through victimization */
+  int overflow_private_lru_idx;	/* index of private LRU having highest overflow (number of BCBs in LRU higher then
+				 * target); this helps "vacuuming" private list with spikes of activity and longer
+				 * "silent" periods; if such overflow LRU exists, transactions will prefer victimizing
+				 * from this LRU */
 
   int is_adjusting;
 };
@@ -808,12 +812,12 @@ struct pgbuf_buffer_pool
 
   /* buffer related tables and lists (the essential structures) */
 
-  PGBUF_BCB *BCB_table;		/* BCB table */
+  PGBUF_BCB *BCB_table;			/* BCB table */
   PGBUF_BUFFER_HASH *buf_hash_table;	/* buffer hash table */
   PGBUF_BUFFER_LOCK *buf_lock_table;	/* buffer lock table */
   PGBUF_IOPAGE_BUFFER *iopage_table;	/* IO page table */
-  int num_LRU_list;		/* number of shared LRU lists */
-  int num_LRU1_zone_threshold;	/* target number of pages in LRU1 zone */
+  int num_LRU_list;			/* number of shared LRU lists */
+  int num_LRU1_zone_threshold;		/* target number of pages in LRU1 zone (for shared LRUs) */
   int last_flushed_LRU_list_idx;	/* index of the last flushed LRU list */
   PGBUF_LRU_LIST *buf_LRU_list;	/* LRU lists. When Page quota is enabled, first 'num_LRU_list' store shared pages;
 				 * the next 'num_garbage_LRU_list' lists store shared garbage pages;
@@ -1180,7 +1184,7 @@ static void pgbuf_print_lru_distribution (void);
 static void pgbuf_print_lru_destroyed_pg_distribution (void);
 static void pgbuf_print_lru_pending_vict_req (void);
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
-static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_victim_req_cnt);
+static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -3468,9 +3472,8 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float l
     {
       victim_flush_priority_this_lru = pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx];
 
-      /* do not flush from this LRU when there are no victim requests,
-       * or no pages in list or all victim requests were quickly served from
-       * bottom LRU (vict_searches_this_lru == 0) */
+      /* do not flush from this LRU when there are no victim requests, or no pages in list or all victim requests were
+       * quickly served from bottom LRU (vict_searches_this_lru == 0) */
       if (victim_flush_priority_this_lru <= 0)
 	{
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
@@ -3527,6 +3530,12 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float l
 	      cand_found_in_this_lru++;
 	    }
 
+	  if (zone_lru1 == -1 && PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
+	    {
+	      /* entered LRU1 zone and we choose to ignore it */
+	      break;
+	    }
+
 	  bufptr = bufptr->prev_BCB;
 	  i--;
 	}
@@ -3543,8 +3552,7 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float l
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
       /* Note that we don't hold the mutex, however it will not be an issue.
-       * Also note that we are updating the last_flushed_LRU_list_idx
-       * whether the list has flushed or not.
+       * Also note that we are updating the last_flushed_LRU_list_idx whether the list has flushed or not.
        */
       pgbuf_Pool.last_flushed_LRU_list_idx = lru_idx;
 
@@ -3592,7 +3600,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   float lru_to_ain_req_ratio;
   int lru_victim_req_cnt, ain_victim_req_cnt, fix_req_cnt;
   float lru_sum_flush_priority;
-  int lru_with_victim_req_cnt;
 #if defined(SERVER_MODE)
   int rv;
   static THREAD_ENTRY *page_flush_thread = NULL;
@@ -3622,7 +3629,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   pgbuf_print_lru_pending_vict_req ();
 #endif
 
-  pgbuf_compute_lru_vict_target (&lru_sum_flush_priority, &lru_with_victim_req_cnt);
+  pgbuf_compute_lru_vict_target (&lru_sum_flush_priority);
 
   victim_cand_list = pgbuf_Pool.victim_cand_list;
 
@@ -3638,8 +3645,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
   lru_victim_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 0);
   ain_victim_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.ain_victim_req_cnt, 0);
-  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.ain_victim_searches_cnt, 0);
-  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.ain_victim_dirty_skipped_cnt, 0);
   fix_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.fix_req_cnt, 0);
   ATOMIC_TAS_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 0);
   ATOMIC_TAS_32 (&pgbuf_Pool.monitor.pg_ain_vict_req_failed, 0);
@@ -8647,7 +8652,7 @@ pgbuf_get_garbage_lru_index_for_victim (void)
  * sleep_before_next_try (out) : set true if should wait before next try
  *
  * Note: If a victim BCB is found, this function will already lock it. This
- *     means that the caller will have exclusive access to the returned BCB.
+ *       means that the caller will have exclusive access to the returned BCB.
  */
 static PGBUF_BCB *
 pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool * sleep_before_next_try)
@@ -8686,9 +8691,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       /* first try to victimize from a garbage list */
       if (monitor->lru_garbage_pgs > 0)
 	{
-	  /* we assume we will find a victim, so we decrement the number of
-	   * available pages to avoid that other threads enters when count is
-	   * zero */
+	  /* we assume we will find a victim, so we decrement the number of available pages to avoid that other threads
+	   * enters when count is zero */
 	  if (ATOMIC_INC_32 (&monitor->lru_garbage_pgs, -1) >= 0)
 	    {
 	      shared_lru_idx = pgbuf_get_garbage_lru_index_for_victim ();
@@ -8708,8 +8712,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		      continue;
 		    }
 
-		  /* search this list only if all previous searches were
-		   * successful */
+		  /* search this list only if all previous searches were successful */
 		  pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
 		  if (bcbs_in_lru >= pending_vict_req
 		      && (loop_count >= PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT
@@ -8719,8 +8722,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		    {
 		      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
 		      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, bcbs_in_lru, true);
-		      /* we abort victim search through shared lists, only if
-		       * victim is found */
+		      /* abort victim search through shared lists, only if victim is found */
 		      if (victim != NULL)
 			{
 			  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
@@ -8732,7 +8734,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		}
 	      while (shared_lru_idx != start_shared_lru_idx);
 
-	      /* we didn't find a victim, restore count */
+	      /* no victim found, restore count */
 	      ATOMIC_INC_32 (&monitor->lru_garbage_pgs, 1);
 
 	      *sleep_before_next_try = true;
@@ -8813,9 +8815,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	}
     }
 
-  /* decide if we try to victimize from shared list OR force victimization from
-   * private list: we choose private list only if the amount of shared pages
-   * is still under the computed overall threshold */
+  /* decide if we try to victimize from shared list OR force victimization from private list:
+   * choose private list only if the amount of shared pages is still under the computed overall threshold */
   force_private_lru1 = (monitor->lru_shared_pgs < (1.0f - quota->private_pages_ratio) * pgbuf_Pool.num_buffers)
     ? true : false;
 
@@ -8842,6 +8843,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       return victim;
     }
 
+  /* try to victimize from regular shared LRUs */
   if (ATOMIC_INC_32 (&monitor->lru_shared_pgs, -1) > 0)
     {
       shared_lru_idx = pgbuf_get_shared_lru_index_for_victim ();
@@ -8861,8 +8863,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	      continue;
 	    }
 
-	  /* we attempt a search only if all previous searches were successful
-	   */
+	  /* try to search only if all previous searches were successful and this is the only thread attempting it */
 	  pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
 	  if (pending_vict_req <= 1
 	      && (loop_count >= PGBUF_LOOP_CNT_SHARED_IGNORE_STAT
@@ -8871,7 +8872,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	    {
 	      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
 	      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, max_count, false);
-	      /* we abort victim search through shared lists, even if victim is * not found */
+	      /* abort victim search through shared lists, even if victim is not found */
 	      if (victim == NULL)
 		{
 		  ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
@@ -8884,7 +8885,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	}
       while (shared_lru_idx != start_shared_lru_idx);
 
-      /* we didn't find a victim, restore count */
+      /* no victim found, restore count */
       ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
     }
   else
@@ -8970,10 +8971,6 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
     }
 
   pthread_mutex_unlock (&ain_list->Ain_mutex);
-
-  ATOMIC_INC_32 (&pgbuf_Pool.monitor.ain_victim_searches_cnt, check_count_max - check_count);
-
-  ATOMIC_INC_32 (&pgbuf_Pool.monitor.ain_victim_dirty_skipped_cnt, dirty_count);
 
   if (bufptr == NULL || dirty_count > max_count / 2)
     {
@@ -9091,6 +9088,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 	{
 	  bufptr->victim_candidate = true;
 	  found = true;
+	  break;
+	}
+
+      if (zone1_list == -1 && PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
+	{
+	  /* LRU1 section was reached and we don't want to search in it */
 	  break;
 	}
 
@@ -13704,8 +13707,6 @@ pgbuf_initialize_page_monitor (void)
 
   monitor->lru_victim_req_cnt = 0;
   monitor->ain_victim_req_cnt = 0;
-  monitor->ain_victim_searches_cnt = 0;
-  monitor->ain_victim_dirty_skipped_cnt = 0;
   monitor->fix_req_cnt = 0;
 
 
@@ -13859,10 +13860,12 @@ pgbuf_print_lru_pending_vict_req (void)
 
 /*
  * pgbuf_compute_lru_vict_target () -
+ *
+ * lru_sum_flush_priority(out) : sum of all flush priorities of all LRUs
  * return : void
  */
 static void
-pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_victim_req_cnt)
+pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 {
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
   static char msg[16384];
@@ -13882,18 +13885,18 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_vict
   int bcb_this_lru;
   float flush_priority_this_lru;
   int max_vict_dirty_shared_lru;
+  int lru_with_victim_req_cnt;
 
   PGBUF_PAGE_MONITOR *monitor;
 
   monitor = &pgbuf_Pool.monitor;
 
   assert (lru_sum_flush_priority != NULL);
-  assert (lru_with_victim_req_cnt != NULL);
 
   total_lru_vict_search_depth = 0;
   total_lru_dirties_found = 0;
   *lru_sum_flush_priority = 0;
-  *lru_with_victim_req_cnt = 0;
+  lru_with_victim_req_cnt = 0;
   max_vict_dirty_shared_lru = -1;
 
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
@@ -13903,7 +13906,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_vict
       total_lru_vict_search_depth += monitor->lru_victim_search_depth_per_lru[i];
       if (monitor->lru_victim_req_per_lru[i] > 0)
 	{
-	  *lru_with_victim_req_cnt += 1;
+	  lru_with_victim_req_cnt++;
 	}
 
       if (PGBUF_IS_SHARED_LRU_INDEX (i) && vict_dirty_this_lru > max_vict_dirty_shared_lru)
@@ -13913,7 +13916,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_vict
     }
 
   total_lru_vict_req = monitor->lru_victim_req_cnt;
-  if (*lru_with_victim_req_cnt <= 0 || total_lru_vict_req <= 0 || total_lru_dirties_found <= 0)
+  if (lru_with_victim_req_cnt <= 0 || total_lru_vict_req <= 0 || total_lru_dirties_found <= 0)
     {
       return;
     }
@@ -13952,10 +13955,9 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_vict
 
 	  lru_search_term = (float) vict_search_depth_this_lru / (float) total_lru_vict_search_depth;
 
-	  /* TODO : it seems more complex formula introduces spikes of flush
-	   * priority for some LRUs due to unpredictable dirty page count;
-	   * For now, just use simpler 'request victimization' which is more
-	   * flat */
+	  /* TODO : it seems more complex formula introduces spikes of flush priority for some LRUs due to varying
+	   * dirty page count;
+	   * For now, just use simpler 'request victimization' which is more flat */
 
 #if 0
 	  flush_priority_this_lru = vict_req_term + (lru_search_term + lru_size_term) / 10 + lru_dirty_term / 2;
@@ -14007,29 +14009,34 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority, int *lru_with_vict
 		"total_lru_vict_req:%d, total_lru_vict_req_fails:%d, "
 		"total_lru_vict_search_depth:%d, total_lru_dirties_found:%d, "
 		"lru_sum_flush_priority:%.f, lru_with_victim_req_cnt:%d\n"
-		"ain_vict_req:%d, ain_vict_req_fails:%d, "
-		"ain_victim_searches_cnt:%d\n"
-		"vict_req/vict_found/vict_search_depth/dirty_found/"
-		"flush_priority\n"
-		"%s\n",
+		"ain_vict_req:%d, ain_vict_req_fails:%d\n"
+		"vict_req/vict_found/vict_search_depth/dirty_found/flush_priority\n%s\n",
 		total_lru_vict_req, monitor->pg_lru_vict_req_failed,
 		total_lru_vict_search_depth, total_lru_dirties_found,
-		*lru_sum_flush_priority, *lru_with_victim_req_cnt,
-		monitor->ain_victim_req_cnt, monitor->pg_ain_vict_req_failed, monitor->ain_victim_searches_cnt, msg);
+		*lru_sum_flush_priority, lru_with_victim_req_cnt,
+		monitor->ain_victim_req_cnt, monitor->pg_ain_vict_req_failed, msg);
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
 }
 
 /*
- * pgbuf_adjust_quotas () -
+ * pgbuf_adjust_quotas () - Adjusts the quotas of LRUs. Each LRU list has a target of numberf of BCBs
+ *			    (target_bcbs_per_lru); when the number of BCBs drops bellow this level, victimization from
+ *			    such list is skipped. Also, each LRU list has a threshold (a maximum number) of BCBs 
+ *			    which may hold with LRU1 state (lru1_threshold_per_lru). The purpose of this function is to
+ *			    dynamically adjust these two sets of values.
+ *			    The adjustemnt is performed based on other sets of collected data such as activity
+ *			    (formula based on individual LRU speed, victimization pressure, LRU hit count).
+ *
+ * curr_time_p (in) : current time argument (can be NULL, in such case quota adjustement is forced)
  * return : void
  */
 void
 pgbuf_adjust_quotas (struct timeval *curr_time_p)
 {
-#define NEW_AVG_H(curr,avg,alpha) \
-  ((float)(avg) - ((float)(avg) - (float)(curr)) * (float)(alpha))
+#define NEW_AVG_H(curr,avg,alpha) ((float)(avg) - ((float)(avg) - (float)(curr)) * (float)(alpha))
 #define MAX_PRIVATE_RATIO 0.998f
 #define MIN_PRIVATE_RATIO 0.01f
+
   PGBUF_PAGE_QUOTA *quota;
   PGBUF_PAGE_MONITOR *monitor;
   int i;
@@ -14079,10 +14086,9 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
 
   /* quota adjust if :
    * - force mode (curr_time_p == NULL)
-   * - or more than 1 sec since last adjustement and activity is more than
-   *   threshold
-   * - or more than 5 min since last adjustement and activity is more 1% of
-   *   threshold
+   * - or more than 1 sec since last adjustement and activity is more than threshold
+   * - or more than 5 min since last adjustement and activity is more 1% of threshold
+   * Activity of page buffer is measured in number of page unfixes
    */
   if (curr_time_p != NULL
       && ((pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY
@@ -14122,7 +14128,7 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
   lru_vict_pressure_shared = 0;
   lru_vict_pressure_private = 0;
 
-  /* compute delta speeds of LRU lists */
+  /* compute aggregate delta speeds of LRU lists (cumulative values for shared and private) */
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
       int lru2_age_diff, lru1_age_diff;
@@ -14172,7 +14178,7 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
 
   active_private_lru = MAX (active_private_lru, 1);
 
-  /* update activity indicators for each LRU and take release inactive LRUs */
+  /* update activity indicators for each LRU and release inactive LRUs */
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
   pos = 0;
   msg[0] = '\0';
@@ -14293,7 +14299,7 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
 						   overflow_private_lru_idx), quota->overflow_private_lru_idx, msg);
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
-  /* update ratio of private pages only when there are */
+  /* update ratio of private pages only when there is activity */
   total_private_activity = PGBUF_LRU_ACTIVITY (lru1_hit_tran, lru1_speed_tran, 0, lru_vict_pressure_private,
 					       active_private_lru);
   total_shared_activity = PGBUF_LRU_ACTIVITY (lru1_hit_shared, lru1_speed_shared, 0, lru_vict_pressure_shared,
@@ -14347,6 +14353,8 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
 	  ATOMIC_TAS_32 (&quota->lru1_threshold_per_lru[i], pgbuf_Pool.num_LRU1_zone_threshold);
 	}
 
+      /* compute target BCB count and LRU1 threshold for each private LRU; search the overflow private LRU (if required)
+       */
       for (i = PGBUF_SHARED_LRU + PGBUF_GARBAGE_LRU; i < PGBUF_TOTAL_LRU; i++)
 	{
 	  int new_quota;
