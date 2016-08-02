@@ -16345,7 +16345,7 @@ mr_get_compression_length (const char *string, int charlen)
       goto cleanup;
     }
 
-  if ((lzo_uint) length >= compressed_length + 8)
+  if (compressed_length < (lzo_uint) (charlen - 8))
     {
       /* Compression successful */
       length = (int) compressed_length;
