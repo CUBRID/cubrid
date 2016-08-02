@@ -1662,7 +1662,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  * return: NO_ERROR if everything is ok
  *
  *   pageid(in): Page identifier
- *   log_pgptr(in): Page buffer to copy
+ *   log_pgptr(in/out): Page buffer to copy
  *
  * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
  *              If there is the page in hash table, copy it to buffer and return it.
@@ -1728,6 +1728,8 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
  * logpb_copy_page_from_log_buffer -
  *
  * return: NO_ERROR if everything is ok
+ *  pageid(in): Page identifier
+ *  log_pgptr(in/out): Page buffer
  *
  */
 int
@@ -1745,7 +1747,8 @@ logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG
 
 /*
  * logpb_copy_page_from_file -
- *
+ *  pageid(in): Page identifier
+ *  log_pgptr(in/out): Page buffer
  * return: NO_ERROR if everything is ok
  *
  */
@@ -1776,7 +1779,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
  *
  *   pageid(in): Page identifier
  *   access_mode(in): access mode (reader, safe reader, writer)
- *   log_pgptr(in): Page buffer to copy
+ *   log_pgptr(in/out): Page buffer to copy
  *
  * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
  *              If there is the page in hash table, copy it to buffer and return it.
@@ -1885,7 +1888,7 @@ exit:
  * return: NO_ERROR if everything is ok
  *
  *   pageid(in): Page identifier
- *   log_pgptr(in): Page buffer to read
+ *   log_pgptr(in/out): Page buffer to read
  *
  * NOTE:read the log page identified by pageid into a buffer from from archive or active log.
  */
@@ -1992,11 +1995,11 @@ error:
 /*
  * logpb_read_page_from_active_log -
  *
- *   return:
+ *   return: new num_pages
  *
  *   pageid(in):
  *   num_pages(in):
- *   log_pgptr(out):
+ *   log_pgptr(in/out):
  */
 int
 logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages, LOG_PAGE * log_pgptr)
@@ -2038,7 +2041,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
  *
  * return: error code
  *
- *   log_pgptr(in): Log page pointer
+ *   log_pgptr(in/out): Log page pointer
  *   logical_pageid(in): logical page id
  *
  * NOTE:writes and syncs a log page to disk
