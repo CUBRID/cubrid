@@ -16267,7 +16267,7 @@ mr_get_compression_length (char *string, int charlen)
       goto cleanup;
     }
 
-  if (length >= compressed_length + 8)
+  if (compressed_length < charlen - 8)
     {
       /* Compression successful */
       length = (int) compressed_length;
