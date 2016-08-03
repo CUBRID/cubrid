@@ -581,9 +581,9 @@ perfmon_start_stats (bool for_all_trans)
 	    goto exit;
 	  }
 
-	if(perfmon_get_stats () == NO_ERROR)
+	if(perfmon_get_stats() == NO_ERROR)
 	  {
-	    perfmon_copy_values(perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
+	    perfmon_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
 	  }
       }
 exit:
@@ -742,8 +742,8 @@ perfmon_print_stats (FILE * stream)
     fprintf (stream, "Elapsed (sec)                 = %10d\n",
 	     (int) (elapsed_total_time - perfmon_Stat_info.elapsed_start_time));
 
-    if (perfmon_calc_diff_stats (diff_result, perfmon_Stat_info.current_server_stats, perfmon_Stat_info.base_server_stats) !=
-	  NO_ERROR)
+    if (perfmon_calc_diff_stats (diff_result, perfmon_Stat_info.current_server_stats, 
+				 perfmon_Stat_info.base_server_stats) != NO_ERROR)
       {
 	assert (false);
 	goto exit;
@@ -2035,7 +2035,7 @@ perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, in
  */
 void
 perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
-		 UINT64 amount)
+		     UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2095,7 +2095,7 @@ perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int di
  */
 void
 perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type,
-			     UINT64 amount)
+			       UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2125,7 +2125,8 @@ perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
  *   return: none
  */
 void
-perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, UINT64 amount)
+perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, 
+			       UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2155,7 +2156,7 @@ perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
  */
 void
 perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type,
-			  UINT64 amount)
+			      UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2337,7 +2338,8 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	    }
 	  else
 	    {
-	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name, (float) stats_ptr[offset] / 100);
+	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name, 
+			      (float) stats_ptr[offset] / 100);
 	    }
 	  remained_size -= ret;
 	  p += ret;
@@ -4521,12 +4523,10 @@ perfmon_pack_stats (char *buf, UINT64 * stats)
 {
   char *ptr;
   int i;
-  int nr_statistic_values;
-
+  
   ptr = buf;
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
-
-  for (i = 0; i < nr_statistic_values; i++)
+  
+  for (i = 0; i < pstat_Global.n_stat_values; i++)
     {
       OR_PUT_INT64 (ptr, &(stats[i]));
       ptr += OR_INT64_SIZE;
@@ -4549,12 +4549,10 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 {
   char *ptr;
   int i;
-  int nr_statistic_values;
-
-  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  
   ptr = buf;
 
-  for (i = 0; i < nr_statistic_values; i++)
+  for (i = 0; i < pstat_Global.n_stat_values; i++)
     {
       OR_GET_INT64 (ptr, &(stats[i]));
       ptr += OR_INT64_SIZE;

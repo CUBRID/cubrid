@@ -4549,7 +4549,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	  return DISK_ERROR;
 	}
       /* Check heap file is really exist. It can be removed. */
-      if (heap_get (thread_p, oid, &peek_recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan_cache);
 	  lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);

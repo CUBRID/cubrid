@@ -8435,7 +8435,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
 	}
 
       /* Check heap file is really exist. It can be removed. */
-      if (heap_get (thread_p, &btdes.class_oid, &peek_recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, &btdes.class_oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan_cache);
 	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
@@ -24604,7 +24604,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
        * Otherwise, use dirty version with lock since need to check whether the
        * object exists.
        */
-      if (heap_is_mvcc_disabled_for_class (class_oid))
+      if (mvcc_is_mvcc_disabled_class (class_oid))
 	{
 	  find_unique_helper.snapshot = logtb_get_mvcc_snapshot (thread_p);
 	  key_function = btree_key_find_unique_version_oid;
@@ -30631,7 +30631,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 
 	      /* BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED is used only for non-MVCC classes. */
 	      assert (delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED || !LOG_ISRESTARTED ()
-		      || heap_is_mvcc_disabled_for_class (BTREE_DELETE_CLASS_OID (delete_helper)));
+		      || mvcc_is_mvcc_disabled_class (BTREE_DELETE_CLASS_OID (delete_helper)));
 	    }
 	  if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	      && OID_ISNULL (&delete_helper->second_object_info.class_oid))

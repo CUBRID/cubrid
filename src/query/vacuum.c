@@ -7059,7 +7059,7 @@ vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid, OID * 
       OID cls_oid;
       if (class_oid == NULL || OID_ISNULL (class_oid))
 	{
-	  if (heap_get_class_oid (thread_p, &cls_oid, oid) != S_SUCCESS)
+	  if (heap_get_class_oid (thread_p, oid, &cls_oid) != S_SUCCESS)
 	    {
 	      ASSERT_ERROR ();
 	      return DISK_ERROR;
