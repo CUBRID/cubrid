@@ -681,3 +681,38 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	}
     }
 }
+
+/*
+* mvcc_is_mvcc_disabled_class () - MVCC is disabled for root class and
+*					db_serial, db_partition.
+*
+* return	  : True if MVCC is disabled for class.
+* thread_p (in)  : Thread entry.
+* class_oid (in) : Class OID.
+*/
+bool
+mvcc_is_mvcc_disabled_class (const OID * class_oid)
+{
+  if (OID_ISNULL (class_oid) || OID_IS_ROOTOID (class_oid))
+    {
+      /* MVCC is disabled for root class */
+      return true;
+    }
+
+  if (oid_is_serial (class_oid))
+    {
+      return true;
+    }
+
+  if (oid_check_cached_class_oid (OID_CACHE_COLLATION_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  if (oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  return false;
+}

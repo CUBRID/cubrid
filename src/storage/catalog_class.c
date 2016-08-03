@@ -2906,12 +2906,8 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
       if (DB_VALUE_TYPE (&element) == DB_TYPE_OID)
 	{
 	  oid_p = DB_PULL_OID (&element);
-	  /* 
-	   * Need to get class OID using SNAPSHOT_TYPE_NONE, since
-	   * the OID may be referred from other catalog class and we
-	   * want the class OID of referred OID.
-	   */
-	  scan_code = heap_get_class_oid_with_lock (thread_p, &class_oid, oid_p, SNAPSHOT_TYPE_NONE, NULL_LOCK);
+
+	  scan_code = heap_get_class_oid (thread_p, oid_p, &class_oid);
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* Currently, we have reached here the situation where an instance has already been removed by the same
@@ -3758,7 +3754,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   is_lock_inited = true;
 #endif /* SERVER_MODE */
 
-  if (heap_get (thread_p, oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3855,7 +3851,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   record.data = NULL;
   old_record.data = NULL;
 
-  if (heap_get (thread_p, oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4268,7 +4264,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	{
 	  return ER_FAILED;
 	}
-      if (heap_get (thread_p, class_oid_p, &class_record, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, class_oid_p, &class_record, &scan, PEEK) != S_SUCCESS)
 	{
 	  (void) heap_scancache_end (thread_p, &scan);
 	  return ER_FAILED;
@@ -4396,7 +4392,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
   (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   scan_cache_inited = true;
 
-  if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
       error = ER_FAILED;
       goto exit;
@@ -4842,7 +4838,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   scan_cache_inited = true;
 
-  if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
       error = ER_FAILED;
       goto exit;
@@ -5078,7 +5074,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   scan_cache_inited = true;
 
-  if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
       error = ER_FAILED;
       goto exit;

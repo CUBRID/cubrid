@@ -212,7 +212,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
   /* get record into record desc */
-  scan = heap_get (thread_p, serial_oidp, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -524,7 +524,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  scan = heap_get (thread_p, &entry->oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan = heap_get_visible_version (thread_p, &entry->oid, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -632,7 +632,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  scan = heap_get (thread_p, serial_oidp, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -1151,7 +1151,7 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
     {
       return ER_FAILED;
     }
-  if (heap_get (thread_p, &serial_Cache_pool.db_serial_class_oid, &class_record, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, &serial_Cache_pool.db_serial_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
       return ER_FAILED;
     }

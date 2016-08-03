@@ -6086,7 +6086,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
-  if (curr_spec->type == TARGET_CLASS && heap_is_mvcc_disabled_for_class (&ACCESS_SPEC_CLS_OID (curr_spec)))
+  if (curr_spec->type == TARGET_CLASS && mvcc_is_mvcc_disabled_class (&ACCESS_SPEC_CLS_OID (curr_spec)))
     {
       assert (!force_select_lock);
 
@@ -7248,6 +7248,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	  if (isidp->range_pred.regu_list)
 	    {
 	      heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
+
+	      /* some attributes might remain also cached in pred_expr
+	       * (lhs|rhs).value.attr_descr.cache_dbvalp might point to attr_cache values
+	       * see fetch_peek_dbval for example */
+	      qexec_reset_pred_expr (isidp->range_pred.pred_expr);
 	    }
 	  if (isidp->key_pred.regu_list)
 	    {
@@ -8544,7 +8549,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      int i;
 
 		      /* read lob attributes */
-		      scan_code = heap_get (thread_p, oid, &recdes, internal_class->scan_cache, 1, NULL_CHN);
+		      scan_code =
+			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
+						  NULL_CHN);
 		      if (scan_code == S_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -9400,7 +9407,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  int i;
 
 		  /* read lob attributes */
-		  scan_code = heap_get (thread_p, oid, &recdes, internal_class->scan_cache, 1, NULL_CHN);
+		  scan_code =
+		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
+					      NULL_CHN);
 		  if (scan_code == S_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -10215,7 +10224,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   /* get attribute values */
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
-  scan_code = heap_get (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
+  scan_code =
+    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
   if (scan_code != S_SUCCESS)
     {
       assert (er_errid () == ER_INTERRUPTED);
@@ -11168,7 +11178,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   RECDES oRec = RECDES_INITIALIZER;
   HEAP_SCANCACHE scan_cache;
   ACCESS_SPEC_TYPE *specp = NULL;
-  OID cls_oid;
+  OID cls_oid = OID_INITIALIZER;
   int dead_end = false;
   int unqualified_dead_end = false;
   FETCH_PROC_NODE *fetch = &xasl->proc.fetch;
@@ -11255,6 +11265,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       int scan_cache_end_needed = false;
       int status = NO_ERROR;
       MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+      SCAN_CODE scan;
+      LOCK lock_mode;
 
       /* Start heap file scan operation */
       /* A new argument(is_indexscan = false) is appended */
@@ -11268,11 +11280,21 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       (void) heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, false, mvcc_snapshot);
       scan_cache_end_needed = true;
 
+      /* must choose corresponding lock_mode for scan_operation_type. 
+       * for root classes the lock_mode is considered, not the operation type */
+      lock_mode = locator_get_lock_mode_from_op_type (scan_operation_type);
+
       /* fetch the object and the class oid */
-      if (heap_get_with_class_oid (thread_p, &cls_oid, dbvaloid, &oRec, &scan_cache, scan_operation_type, PEEK,
-				   LOG_ERROR_IF_DELETED) != S_SUCCESS)
+      scan = locator_get_object (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
+				 PEEK, NULL_CHN);
+      if (scan != S_SUCCESS)
 	{
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear 
+	   * way of handling the return code; it is imposible to decide at low level heap get functions if it is
+	   * expected to reach a deleted object and also it is difficult to propagate the NON_EXISTENT_HANDLING 
+	   * argument through all the callers; this system can currently generate some irrelevant error log that is
+	   * hard to eliminate */
+	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* dangling object reference */
 	      dead_end = true;
@@ -11818,7 +11840,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	    {
 	      ACCESS_SPEC_TYPE *specp;
 
-	      if (heap_get_class_oid (thread_p, &class_oid_buf, oid) != S_SUCCESS)
+	      if (heap_get_class_oid (thread_p, oid, &class_oid_buf) != S_SUCCESS)
 		{
 		  ASSERT_ERROR ();
 		  goto exit_on_error;
@@ -11900,8 +11922,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 		}
 	      /* need to handle reevaluation */
 	      scan_code =
-		heap_mvcc_get_for_delete (thread_p, oid, class_oid, NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-					  LOG_WARNING_IF_DELETED);
+		locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, NULL, &scan_cache, COPY,
+							     NULL_CHN, p_mvcc_reev_data, LOG_WARNING_IF_DELETED);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
@@ -20676,7 +20698,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   assert (xasl_state != NULL);
   class_oid = &(xasl->spec_list->s.cls_node.cls_oid);
 
-  if (heap_get (thread_p, class_oid, &class_record, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -21541,7 +21563,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   assert (xasl_state != NULL);
   class_oid = &(xasl->spec_list->s.cls_node.cls_oid);
 
-  if (heap_get (thread_p, class_oid, &class_record, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
       GOTO_EXIT_ON_ERROR;
     }
