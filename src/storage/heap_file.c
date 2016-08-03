@@ -11545,7 +11545,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   DB_VALUE temp_dbvalue;
   PR_TYPE *pr_type;		/* Primitive type array function structure */
   unsigned int repid_bits;
-  SCAN_CODE status;
   int i;
   DB_VALUE *dbvalue = NULL;
   int expected_size, tmp;
@@ -11553,9 +11552,14 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   int mvcc_wasted_space = 0, header_size;
   int error = NO_ERROR;
 
+#define CHECK_ERROR \
+  if (error != ER_TF_BUFFER_OVERFLOW) { ASSERT_ERROR (); return S_ERROR; } \
+  else goto doesnt_fit
+
   /* check to make sure the attr_info has been used, it should not be empty. */
   if (attr_info->num_values == -1)
     {
+      assert (false);
       return S_ERROR;
     }
 
@@ -11564,6 +11568,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
    */
   if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
     {
+      assert (false);
       return S_ERROR;
     }
 
@@ -11577,8 +11582,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   mvcc_wasted_space = (OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE);
   /* reserve enough space if need to add additional MVCC header info */
   expected_size += mvcc_wasted_space;
-
-  status = S_SUCCESS;
 
   /* 
    * Store the representation of the class along with bound bit
@@ -11606,34 +11609,24 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   if (!mvcc_is_mvcc_disabled_class (&(attr_info->class_oid)))
     {
       repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
-      if ((error = or_put_int (buf, repid_bits)) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      error = or_put_int (buf, repid_bits);
+      CHECK_ERROR;
 
-      if ((error = or_put_bigint (buf, 0)) != NO_ERROR)	/* MVCC insert id */
-	{
-	  goto exit_on_error;
-	}
+      error = or_put_bigint (buf, 0);	/* MVCC insert id */
+      CHECK_ERROR;
 
-      if ((error = or_put_int (buf, 0)) != NO_ERROR)	/* CHN, short size */
-	{
-	  goto exit_on_error;
-	}
+      error = or_put_int (buf, 0);	/* CHN, short size */
+      CHECK_ERROR;
 
       header_size = OR_MVCC_INSERT_HEADER_SIZE;
     }
   else
     {
-      if ((error = or_put_int (buf, repid_bits)) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      error = or_put_int (buf, repid_bits);
+      CHECK_ERROR;
 
-      if ((error = or_put_int (buf, attr_info->inst_chn)) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      error = or_put_int (buf, attr_info->inst_chn);
+      CHECK_ERROR;
 
       header_size = OR_NON_MVCC_HEADER_SIZE;
     }
@@ -11692,6 +11685,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    {
 	      if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  return S_ERROR;
 		}
 	    }
@@ -11713,10 +11707,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	       * pad the appropriate amount, writeval needs to be modified
 	       * to accept a domain so it can perform this padding.
 	       */
-	      if ((error = or_pad (buf, tp_domain_disk_size (value->last_attrepr->domain))) != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
+	      error = or_pad (buf, tp_domain_disk_size (value->last_attrepr->domain));
+	      CHECK_ERROR;
 	    }
 	  else
 	    {
@@ -11724,10 +11716,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	       * Write the value.
 	       */
 	      OR_ENABLE_BOUND_BIT (ptr_bound, value->last_attrepr->position);
-	      if ((error = (*(pr_type->data_writeval)) (buf, dbvalue)) != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
+	      error = (*(pr_type->data_writeval)) (buf, dbvalue);
+	      CHECK_ERROR;
 	    }
 	}
       else
@@ -11751,12 +11741,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 	  buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
 	  /* compute the variable offsets relative to the end of the header (beginning of variable table) */
-	  if ((error =
-	       or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size),
-				       offset_size)) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+	  error = or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+	  CHECK_ERROR;
 
 	  if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
 	    {
@@ -11785,6 +11771,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 		  if (new_meta_data == NULL)
 		    {
+		      ASSERT_ERROR ();
 		      return S_ERROR;
 		    }
 
@@ -11809,15 +11796,13 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		    }
 		  else
 		    {
+		      ASSERT_ERROR ();
 		      return S_ERROR;
 		    }
 		}
 
-	      if ((error = (*(pr_type->data_writeval)) (buf, dbvalue)) != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
+	      error = (*(pr_type->data_writeval)) (buf, dbvalue);
+	      CHECK_ERROR;
 	      ptr_varvals = buf->ptr;
 	    }
 	}
@@ -11833,12 +11818,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       /* Write the offset to the end of the variable attributes table */
       buf->ptr = ((char *) (OR_VAR_ELEMENT_PTR (buf->buffer, attr_info->last_classrepr->n_variable)));
-      if ((error =
-	   or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size),
-				   offset_size)) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      error = or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+      CHECK_ERROR;
 
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
@@ -11849,18 +11830,16 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   /* if not enough MVCC wasted space need to reallocate */
   if (ptr_varvals + mvcc_wasted_space < buf->endptr)
     {
-      return status;
+      return S_SUCCESS;
     }
 
-exit_on_error:
+doesnt_fit:
 
   if (error != ER_TF_BUFFER_OVERFLOW)
     {
       ASSERT_ERROR ();
       return S_ERROR;
     }
-
-  status = S_DOESNT_FIT;
 
   /* 
    * Give a hint of the needed space. The hint is given as a negative
@@ -11881,9 +11860,9 @@ exit_on_error:
        */
       new_recdes->length = -(int) (new_recdes->area_size * 1.20);
     }
+  return S_DOESNT_FIT;
 
-  assert (status == S_DOESNT_FIT);
-  return status;
+#undef CHECK_ERROR
 }
 
 /*
