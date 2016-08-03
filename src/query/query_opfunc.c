@@ -378,7 +378,7 @@ int
 qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *tuple_val_size)
 {
   char *val_p;
-  int val_size, align;
+  int val_size, align, rc;
   OR_BUF buf;
   PR_TYPE *pr_type;
   DB_TYPE dbval_type;
@@ -396,13 +396,20 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval_p);
       pr_type = PR_TYPE_FROM_ID (dbval_type);
+      if (pr_type == NULL)
+	{
+	  return ER_FAILED;
+	}
 
       val_size = pr_data_writeval_disk_size (dbval_p);
 
       OR_BUF_INIT (buf, val_p, val_size);
 
-      if (pr_type == NULL || (*(pr_type->data_writeval)) (&buf, dbval_p) != NO_ERROR)
+      rc = (*(pr_type->data_writeval)) (&buf, dbval_p);
+      if (rc != NO_ERROR)
 	{
+	  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
+	  assert (rc != ER_TF_BUFFER_OVERFLOW);
 	  return ER_FAILED;
 	}
 
@@ -7157,8 +7164,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       if (agg_p->function == PT_CUME_DIST || agg_p->function == PT_PERCENT_RANK)
 	{
 	  /* CUME_DIST and PERCENT_RANK use a REGU_VAR_LIST reguvar as operator and are treated in a special manner */
-	  int error = qdata_calculate_aggregate_cume_dist_percent_rank (thread_p, agg_p,
-									val_desc_p);
+	  error = qdata_calculate_aggregate_cume_dist_percent_rank (thread_p, agg_p, val_desc_p);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -7221,8 +7227,12 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  if ((dbval_size != 0) && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
 	    {
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	      if ((*(pr_type_p->data_writeval)) (&buf, &dbval) != NO_ERROR)
+	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
+	      if (error != NO_ERROR)
 		{
+		  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
+		  assert (error != ER_TF_BUFFER_OVERFLOW);
+
 		  db_private_free_and_init (thread_p, disk_repr_p);
 		  pr_clear_value (&dbval);
 		  return ER_FAILED;
@@ -7259,9 +7269,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    {
 	      assert (percentile->percentile_reguvar != NULL);
 
-	      error =
-		fetch_peek_dbval (thread_p, percentile->percentile_reguvar, val_desc_p, NULL, NULL, NULL,
-				  &percentile_val);
+	      error = fetch_peek_dbval (thread_p, percentile->percentile_reguvar, val_desc_p, NULL, NULL, NULL,
+					&percentile_val);
 	      if (error != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -7378,8 +7387,6 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
       else if (agg_p->function == PT_GROUP_CONCAT)
 	{
-	  int error = NO_ERROR;
-
 	  assert (alt_acc_list == NULL);
 
 	  /* group concat function requires special care */
@@ -7406,12 +7413,9 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
       else
 	{
-	  int error = NO_ERROR;
-
 	  /* aggregate value */
-	  error =
-	    qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain, agg_p->function,
-						  agg_p->domain, &dbval);
+	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+							agg_p->function, agg_p->domain, &dbval);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
@@ -10627,8 +10631,12 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
       if ((dbval_size != 0) && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
 	{
 	  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	  if ((*(pr_type_p->data_writeval)) (&buf, &dbval) != NO_ERROR)
+	  error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
+	  if (error != NO_ERROR)
 	    {
+	      /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
+	      assert (error != ER_TF_BUFFER_OVERFLOW);
+
 	      db_private_free_and_init (thread_p, disk_repr_p);
 	      error = ER_FAILED;
 	      goto exit;
