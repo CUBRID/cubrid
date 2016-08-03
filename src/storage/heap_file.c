@@ -13020,16 +13020,16 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
        * fixed attributes, and variable attributes
        */
 
-      ptr_bound =
-	OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable, attr_info->last_classrepr->fixed_length);
+      ptr_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
+				     attr_info->last_classrepr->fixed_length);
 
       /* 
        * Variable offset table is relative to the beginning of the buffer
        */
 
-      ptr_varvals =
-	ptr_bound + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes -
-					attr_info->last_classrepr->n_variable);
+      ptr_varvals = (ptr_bound
+		     + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes
+					   - attr_info->last_classrepr->n_variable));
 
       /* Need to make sure that the bound array is not past the allocated buffer because OR_ENABLE_BOUND_BIT() will
        * just slam the bound bit without checking the length. */
@@ -13061,10 +13061,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	       * what value is stored. We need to set the appropiate bit in the
 	       * bound bit array for fixed attributes. For variable attributes,
 	       */
-	      buf->ptr =
-		buf->buffer + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (buf->buffer,
-								 attr_info->last_classrepr->n_variable) +
-		value->last_attrepr->location;
+	      buf->ptr = (buf->buffer
+			  + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (buf->buffer, attr_info->last_classrepr->n_variable)
+			  + value->last_attrepr->location);
+
 	      if (value->do_increment)
 		{
 		  if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
@@ -13073,6 +13073,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		      break;
 		    }
 		}
+
 	      if (dbvalue == NULL || db_value_is_null (dbvalue) == true)
 		{
 		  /* 
@@ -13121,6 +13122,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		  status = S_ERROR;
 		  break;
 		}
+
 	      buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
 	      /* compute the variable offsets relative to the end of the header (beginning of variable table) */
 	      or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
@@ -13218,7 +13220,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
     case ER_TF_BUFFER_OVERFLOW:
 
       status = S_DOESNT_FIT;
-
 
       /* 
        * Give a hint of the needed space. The hint is given as a negative

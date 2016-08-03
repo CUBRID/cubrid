@@ -1690,8 +1690,7 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 }
 
 /*
- * qfile_fast_intint_tuple_to_list () - generate a two integer value tuple into
- *                                      a listfile
+ * qfile_fast_intint_tuple_to_list () - generate a two integer value tuple into a listfile
  *   return: int (NO_ERROR or ER_FAILED)
  *   list_id(in/out): List File Identifier
  *   v1(in): first int value
@@ -1841,8 +1840,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 }
 
 /*
- * qfile_fast_val_tuple_to_list () - generate a one value tuple into
-*                                   a file
+ * qfile_fast_val_tuple_to_list () - generate a one value tuple into a file
  *   return: int (NO_ERROR, error code or positive overflow tuple size)
  *   list_id(in/out): List File Identifier
  *   val(in): integer value
