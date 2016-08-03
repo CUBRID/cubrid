@@ -695,7 +695,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   xcache_check_logging ();
 
   XCACHE_STAT_INC (lookups);
-  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_LOOKUP); 
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_LOOKUP);
 
   XASL_ID_SET_NULL (&lookup_key);
   lookup_key.sha1 = *sha1;

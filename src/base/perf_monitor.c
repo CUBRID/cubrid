@@ -86,16 +86,16 @@ typedef struct pstat_global PSTAT_GLOBAL;
 struct pstat_global
 {
   int n_stat_values;
-  
+
   UINT64 *global_stats;
 
   int n_trans;
-  UINT64 **tran_stats;	    
-			    
+  UINT64 **tran_stats;
+
   bool *is_watching;
 #if !defined (HAVE_ATOMIC_BUILTINS)
   pthread_mutex_t watch_lock;
-#endif /* !HAVE_ATOMIC_BUILTINS */
+#endif				/* !HAVE_ATOMIC_BUILTINS */
 
   INT32 n_watchers;
 
@@ -106,22 +106,22 @@ PSTAT_GLOBAL pstat_Global;
 
 typedef enum
 {
-  PSTAT_ACCUMULATE_SINGLE_VALUE,      /* A single accumulator value. */
-  PSTAT_PEEK_SINGLE_VALUE,	      /* A single value peeked from database. */
-				      /* TODO: Currently this type of statistics is set by active workers. I think in
-				       *       most cases we could peek it at "compute". There can be two approaches:
-				       *       if f_compute is provided, it is read at compute phase. If not, the
-				       *       existing value is used and it must be set by active workers.
-				       */
-  PSTAT_COUNTER_TIMER_VALUE,	      /* A counter/timer. Counter is incremented, timer is accumulated, max time
-				       * is compared with all registered timers and average time is computed.
-				       */
-  PSTAT_COMPUTED_RATIO_VALUE,	      /* Value is computed based on other values in statistics. A ratio is obtained
-				       * at the end.
-				       */
-  PSTAT_COMPLEX_VALUE		      /* A "complex" value. The creator must handle loading, adding, dumping and
-				       * computing values.
-				       */
+  PSTAT_ACCUMULATE_SINGLE_VALUE,	/* A single accumulator value. */
+  PSTAT_PEEK_SINGLE_VALUE,	/* A single value peeked from database. */
+  /* TODO: Currently this type of statistics is set by active workers. I think in
+   *       most cases we could peek it at "compute". There can be two approaches:
+   *       if f_compute is provided, it is read at compute phase. If not, the
+   *       existing value is used and it must be set by active workers.
+   */
+  PSTAT_COUNTER_TIMER_VALUE,	/* A counter/timer. Counter is incremented, timer is accumulated, max time
+				 * is compared with all registered timers and average time is computed.
+				 */
+  PSTAT_COMPUTED_RATIO_VALUE,	/* Value is computed based on other values in statistics. A ratio is obtained
+				 * at the end.
+				 */
+  PSTAT_COMPLEX_VALUE		/* A "complex" value. The creator must handle loading, adding, dumping and
+				 * computing values.
+				 */
 } PSTAT_VALUE_TYPE;
 
 /* PSTAT_METADATA
@@ -130,7 +130,7 @@ typedef enum
 typedef struct pstat_metadata PSTAT_METADATA;
 
 typedef void (*PSTAT_DUMP_IN_FILE_FUNC) (FILE *, const UINT64 * stat_vals);
-typedef void (*PSTAT_DUMP_IN_BUFFER_FUNC) (char *, const UINT64 * stat_vals, int * remaining_size);
+typedef void (*PSTAT_DUMP_IN_BUFFER_FUNC) (char *, const UINT64 * stat_vals, int *remaining_size);
 typedef int (*PSTAT_LOAD_FUNC) (void);
 
 struct pstat_metadata
@@ -188,18 +188,18 @@ static void f_dump_in_file_Time_data_page_fix_acquire_time (FILE *, const UINT64
 static void f_dump_in_file_Num_mvcc_snapshot_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Time_obj_lock_acquire_time (FILE *, const UINT64 * stat_vals);
 
-static void f_dump_in_buffer_Num_data_page_fix_ext (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Num_data_page_promote_ext (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Num_data_page_promote_time_ext (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Num_data_page_unfix_ext (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Time_data_page_lock_acquire_time (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char *, const UINT64 * stat_vals, int * remaining_size);
-static void f_dump_in_buffer_Time_obj_lock_acquire_time (char *, const UINT64 * stat_vals, int * remaining_size);
+static void f_dump_in_buffer_Num_data_page_fix_ext (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_data_page_promote_ext (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_data_page_promote_time_ext (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_data_page_unfix_ext (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Time_data_page_lock_acquire_time (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Time_obj_lock_acquire_time (char *, const UINT64 * stat_vals, int *remaining_size);
 
 static void perfmon_stat_dump_in_file_fix_page_array_stat (FILE *, const UINT64 * stats_ptr);
-static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr); 
+static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_unfix_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE *, const UINT64 * stats_ptr);
@@ -207,11 +207,15 @@ static void perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE *, const UI
 static void perfmon_stat_dump_in_file_snapshot_array_stat (FILE *, const UINT64 * stats_ptr);
 
 static void perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
-static void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char *s,
+								 int *remaining_size);
 static void perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
-static void perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
-static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
-static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr, char *s,
+								   int *remaining_size);
+static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr, char *s,
+								   int *remaining_size);
+static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char *s,
+								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
 
 PSTAT_METADATA pstat_Metadata[] = {
@@ -254,7 +258,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_END_CHECKPOINTS, "Num_log_end_checkpoints"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_WALS, "Num_log_wals"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_REPLACEMENTS, "Num_log_page_iowrites_for_replacement"),
-  
+
   /* Execution statistics for the lock manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LK_NUM_ACQUIRED_ON_PAGES, "Num_page_locks_acquired"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS, "Num_object_locks_acquired"),
@@ -267,7 +271,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   /* TODO: Count and timer */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LK_NUM_WAITED_ON_OBJECTS, "Num_object_locks_waits"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS, "Num_object_locks_time_waited_usec"),
-  
+
   /* Execution statistics for transactions */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_COMMITS, "Num_tran_commits"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_TRAN_NUM_ROLLBACKS, "Num_tran_rollbacks"),
@@ -340,7 +344,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_DELETE, "Num_plan_cache_delete"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_INVALID_XASL_ID, "Num_plan_cache_invalid_xasl_id"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_CACHE_ENTRIES, "Num_plan_cache_entries"),
-  
+
   /* Vacuum process log section. */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, "Num_vacuum_log_pages_vacuumed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_VAC_NUM_TO_VACUUM_LOG_PAGES, "Num_vacuum_log_pages_to_vacuum"),
@@ -408,10 +412,10 @@ PSTAT_METADATA pstat_Metadata[] = {
 
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_INSERT, "bt_insert"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_INSERT_TRAVERSE, "bt_insert_traverse"),
-  
+
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_DELETE, "bt_delete_obj"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_DELETE_TRAVERSE, "bt_delete_obj_traverse"),
-  
+
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_MVCC_DELETE, "bt_mvcc_delete"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_MVCC_DELETE_TRAVERSE, "bt_mvcc_delete_traverse"),
 
@@ -465,15 +469,36 @@ PSTAT_METADATA pstat_Metadata[] = {
   /* Array type statistics */
   /* TODO: add callback functions. */
   /* TODO: I don't think all that follows is array type... */
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext, &f_dump_in_buffer_Num_data_page_fix_ext, &f_load_Num_data_page_fix_ext),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_COUNTERS, "Num_data_page_promote_ext", &f_dump_in_file_Num_data_page_promote_ext, &f_dump_in_buffer_Num_data_page_promote_ext, &f_load_Num_data_page_promote_ext),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_TIME_COUNTERS, "Num_data_page_promote_time_ext", &f_dump_in_file_Num_data_page_promote_time_ext, &f_dump_in_buffer_Num_data_page_promote_time_ext, &f_load_Num_data_page_promote_time_ext),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_UNFIX_COUNTERS, "Num_data_page_unfix_ext", &f_dump_in_file_Num_data_page_unfix_ext, &f_dump_in_buffer_Num_data_page_unfix_ext, &f_load_Num_data_page_unfix_ext),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_LOCK_TIME_COUNTERS, "Time_data_page_lock_acquire_time", &f_dump_in_file_Time_data_page_lock_acquire_time, &f_dump_in_buffer_Time_data_page_lock_acquire_time, &f_load_Time_data_page_lock_acquire_time),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_HOLD_TIME_COUNTERS, "Time_data_page_hold_acquire_time", &f_dump_in_file_Time_data_page_hold_acquire_time, &f_dump_in_buffer_Time_data_page_hold_acquire_time, &f_load_Time_data_page_hold_acquire_time),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_TIME_COUNTERS, "Time_data_page_fix_acquire_time", &f_dump_in_file_Time_data_page_fix_acquire_time, &f_dump_in_buffer_Time_data_page_fix_acquire_time, &f_load_Time_data_page_fix_acquire_time),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_MVCC_SNAPSHOT_COUNTERS, "Num_mvcc_snapshot_ext", &f_dump_in_file_Num_mvcc_snapshot_ext, &f_dump_in_buffer_Num_mvcc_snapshot_ext, &f_load_Num_mvcc_snapshot_ext),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time", &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time, &f_load_Time_obj_lock_acquire_time)
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,
+			       &f_dump_in_buffer_Num_data_page_fix_ext, &f_load_Num_data_page_fix_ext),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_COUNTERS, "Num_data_page_promote_ext",
+			       &f_dump_in_file_Num_data_page_promote_ext, &f_dump_in_buffer_Num_data_page_promote_ext,
+			       &f_load_Num_data_page_promote_ext),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_TIME_COUNTERS, "Num_data_page_promote_time_ext",
+			       &f_dump_in_file_Num_data_page_promote_time_ext,
+			       &f_dump_in_buffer_Num_data_page_promote_time_ext,
+			       &f_load_Num_data_page_promote_time_ext),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_UNFIX_COUNTERS, "Num_data_page_unfix_ext",
+			       &f_dump_in_file_Num_data_page_unfix_ext, &f_dump_in_buffer_Num_data_page_unfix_ext,
+			       &f_load_Num_data_page_unfix_ext),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_LOCK_TIME_COUNTERS, "Time_data_page_lock_acquire_time",
+			       &f_dump_in_file_Time_data_page_lock_acquire_time,
+			       &f_dump_in_buffer_Time_data_page_lock_acquire_time,
+			       &f_load_Time_data_page_lock_acquire_time),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_HOLD_TIME_COUNTERS, "Time_data_page_hold_acquire_time",
+			       &f_dump_in_file_Time_data_page_hold_acquire_time,
+			       &f_dump_in_buffer_Time_data_page_hold_acquire_time,
+			       &f_load_Time_data_page_hold_acquire_time),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_TIME_COUNTERS, "Time_data_page_fix_acquire_time",
+			       &f_dump_in_file_Time_data_page_fix_acquire_time,
+			       &f_dump_in_buffer_Time_data_page_fix_acquire_time,
+			       &f_load_Time_data_page_fix_acquire_time),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_MVCC_SNAPSHOT_COUNTERS, "Num_mvcc_snapshot_ext",
+			       &f_dump_in_file_Num_mvcc_snapshot_ext, &f_dump_in_buffer_Num_mvcc_snapshot_ext,
+			       &f_load_Num_mvcc_snapshot_ext),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time",
+			       &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time,
+			       &f_load_Time_obj_lock_acquire_time)
 };
 
 /* Count & timer values. */
@@ -518,8 +543,8 @@ int
 perfmon_start_stats (bool for_all_trans)
 {
   int err = NO_ERROR;
-  
-  if(perfmon_Iscollecting_stats == true)
+
+  if (perfmon_Iscollecting_stats == true)
     {
       goto exit;
     }
@@ -530,7 +555,7 @@ perfmon_start_stats (bool for_all_trans)
   perfmon_Stat_info.current_server_stats = NULL;
 
   err = perfmon_server_start_stats ();
-  if(err != NO_ERROR)
+  if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit;
@@ -543,49 +568,49 @@ perfmon_start_stats (bool for_all_trans)
 
   if (for_all_trans)
     {
-      perfmon_Stat_info.old_global_stats = perfmon_allocate_values();
-      if(perfmon_Stat_info.old_global_stats == NULL)
+      perfmon_Stat_info.old_global_stats = perfmon_allocate_values ();
+      if (perfmon_Stat_info.old_global_stats == NULL)
 	{
-	    ASSERT_ERROR ();
-	    err = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto exit;
+	  ASSERT_ERROR ();
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
 	}
-	perfmon_Stat_info.current_global_stats = perfmon_allocate_values();
+      perfmon_Stat_info.current_global_stats = perfmon_allocate_values ();
 
-	if(perfmon_Stat_info.current_global_stats == NULL)
-	  {
-	    ASSERT_ERROR ();
-	    err = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto exit;
-	  }
+      if (perfmon_Stat_info.current_global_stats == NULL)
+	{
+	  ASSERT_ERROR ();
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
 
-	if(perfmon_get_global_stats () == NO_ERROR)
-	  {
-	    perfmon_copy_values(perfmon_Stat_info.old_global_stats, perfmon_Stat_info.current_global_stats);
-	  }
-     }
-     else
-      {
-	perfmon_Stat_info.base_server_stats = perfmon_allocate_values();
-	if(perfmon_Stat_info.base_server_stats == NULL)
-	  {
-	    ASSERT_ERROR ();
-	    err = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto exit;
-	  }
-	perfmon_Stat_info.current_server_stats = perfmon_allocate_values();
-	if(perfmon_Stat_info.current_server_stats == NULL)
-	  {
-	    ASSERT_ERROR ();
-	    err = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto exit;
-	  }
+      if (perfmon_get_global_stats () == NO_ERROR)
+	{
+	  perfmon_copy_values (perfmon_Stat_info.old_global_stats, perfmon_Stat_info.current_global_stats);
+	}
+    }
+  else
+    {
+      perfmon_Stat_info.base_server_stats = perfmon_allocate_values ();
+      if (perfmon_Stat_info.base_server_stats == NULL)
+	{
+	  ASSERT_ERROR ();
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+      perfmon_Stat_info.current_server_stats = perfmon_allocate_values ();
+      if (perfmon_Stat_info.current_server_stats == NULL)
+	{
+	  ASSERT_ERROR ();
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
 
-	if(perfmon_get_stats() == NO_ERROR)
-	  {
-	    perfmon_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
-	  }
-      }
+      if (perfmon_get_stats () == NO_ERROR)
+	{
+	  perfmon_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
+	}
+    }
 exit:
   return err;
 }
@@ -605,20 +630,20 @@ perfmon_stop_stats (void)
       perfmon_Iscollecting_stats = false;
     }
 
-  if(perfmon_Stat_info.old_global_stats != NULL)
+  if (perfmon_Stat_info.old_global_stats != NULL)
     {
       free_and_init (perfmon_Stat_info.old_global_stats);
     }
-  if(perfmon_Stat_info.current_global_stats != NULL)
-   {
+  if (perfmon_Stat_info.current_global_stats != NULL)
+    {
       free_and_init (perfmon_Stat_info.current_global_stats);
-   }
-  if(perfmon_Stat_info.base_server_stats != NULL)
+    }
+  if (perfmon_Stat_info.base_server_stats != NULL)
     {
       free_and_init (perfmon_Stat_info.base_server_stats);
     }
 
-  if(perfmon_Stat_info.current_server_stats != NULL)
+  if (perfmon_Stat_info.current_server_stats != NULL)
     {
       free_and_init (perfmon_Stat_info.current_server_stats);
     }
@@ -638,7 +663,7 @@ perfmon_reset_stats (void)
       perfmon_get_current_times (&perfmon_Stat_info.cpu_start_usr_time, &perfmon_Stat_info.cpu_start_sys_time,
 				 &perfmon_Stat_info.elapsed_start_time);
 
-      if(perfmon_get_stats () == NO_ERROR)
+      if (perfmon_get_stats () == NO_ERROR)
 	{
 	  perfmon_copy_values (perfmon_Stat_info.base_server_stats, perfmon_Stat_info.current_server_stats);
 	}
@@ -684,7 +709,7 @@ perfmon_get_global_stats (void)
 
   /* Refresh statistics from server */
   err = perfmon_server_copy_global_stats (perfmon_Stat_info.current_global_stats);
-  if(err != NO_ERROR)
+  if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
     }
@@ -703,21 +728,21 @@ perfmon_print_stats (FILE * stream)
   time_t cpu_total_usr_time;
   time_t cpu_total_sys_time;
   time_t elapsed_total_time;
-  UINT64* diff_result = NULL;
+  UINT64 *diff_result = NULL;
   int err = NO_ERROR;
 
   if (perfmon_Iscollecting_stats != true)
     {
       return err;
     }
-  
+
   diff_result = perfmon_allocate_values ();
 
-  if(diff_result == NULL)
+  if (diff_result == NULL)
     {
-       ASSERT_ERROR ();
-       err = ER_OUT_OF_VIRTUAL_MEMORY;
-       goto exit;
+      ASSERT_ERROR ();
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
     }
 
   if (stream == NULL)
@@ -725,37 +750,37 @@ perfmon_print_stats (FILE * stream)
       stream = stdout;
     }
 
-  if(perfmon_get_stats () != NO_ERROR)
+  if (perfmon_get_stats () != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit;
     }
 
-    perfmon_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time, &elapsed_total_time);
+  perfmon_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time, &elapsed_total_time);
 
-    fprintf (stream, "\n *** CLIENT EXECUTION STATISTICS ***\n");
+  fprintf (stream, "\n *** CLIENT EXECUTION STATISTICS ***\n");
 
-    fprintf (stream, "System CPU (sec)              = %10d\n",
-	    (int) (cpu_total_sys_time - perfmon_Stat_info.cpu_start_sys_time));
-    fprintf (stream, "User CPU (sec)                = %10d\n",
-	     (int) (cpu_total_usr_time - perfmon_Stat_info.cpu_start_usr_time));
-    fprintf (stream, "Elapsed (sec)                 = %10d\n",
-	     (int) (elapsed_total_time - perfmon_Stat_info.elapsed_start_time));
+  fprintf (stream, "System CPU (sec)              = %10d\n",
+	   (int) (cpu_total_sys_time - perfmon_Stat_info.cpu_start_sys_time));
+  fprintf (stream, "User CPU (sec)                = %10d\n",
+	   (int) (cpu_total_usr_time - perfmon_Stat_info.cpu_start_usr_time));
+  fprintf (stream, "Elapsed (sec)                 = %10d\n",
+	   (int) (elapsed_total_time - perfmon_Stat_info.elapsed_start_time));
 
-    if (perfmon_calc_diff_stats (diff_result, perfmon_Stat_info.current_server_stats, 
-				 perfmon_Stat_info.base_server_stats) != NO_ERROR)
-      {
-	assert (false);
-	goto exit;
-      }
-    perfmon_server_dump_stats (diff_result, stream, NULL);
-    
+  if (perfmon_calc_diff_stats (diff_result, perfmon_Stat_info.current_server_stats,
+			       perfmon_Stat_info.base_server_stats) != NO_ERROR)
+    {
+      assert (false);
+      goto exit;
+    }
+  perfmon_server_dump_stats (diff_result, stream, NULL);
+
 exit:
-    if(diff_result != NULL)
-      {
-	free_and_init (diff_result);
-      }
-    return err;
+  if (diff_result != NULL)
+    {
+      free_and_init (diff_result);
+    }
+  return err;
 }
 
 /*
@@ -774,9 +799,9 @@ perfmon_print_global_stats (FILE * stream, bool cumulative, const char *substr)
       stream = stdout;
     }
 
-  diff_result = perfmon_allocate_values();
+  diff_result = perfmon_allocate_values ();
 
-  if(diff_result == NULL)
+  if (diff_result == NULL)
     {
       ASSERT_ERROR ();
       err = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -803,11 +828,11 @@ perfmon_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 	}
       perfmon_server_dump_stats (diff_result, stream, substr);
     }
-    
+
 exit:
-  if(diff_result != NULL)
+  if (diff_result != NULL)
     {
-      free_and_init(diff_result);
+      free_and_init (diff_result);
     }
   return err;
 }
@@ -1895,7 +1920,7 @@ void
 xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
 {
   UINT64 *from_stats;
-  
+
   from_stats = perfmon_server_get_stats (thread_p);
 
   if (from_stats != NULL)
@@ -1945,7 +1970,7 @@ void
 perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount)
 {
   UINT64 *stats;
-  
+
   stats = perfmon_server_get_stats (thread_p);
   if (stats != NULL)
     {
@@ -1976,20 +2001,20 @@ perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
 	    {
 	      int offset = pstat_Metadata[i].start_offset;
 
-	      switch(pstat_Metadata[i].valtype)
+	      switch (pstat_Metadata[i].valtype)
 		{
-		  case PSTAT_ACCUMULATE_SINGLE_VALUE:
-		  case PSTAT_PEEK_SINGLE_VALUE:
-		  case PSTAT_COMPUTED_RATIO_VALUE:
-		    copied = stats_ptr[offset];
-		    break;
-		  case PSTAT_COUNTER_TIMER_VALUE:
-		    copied = stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)];
-		    break;
-		  case PSTAT_COMPLEX_VALUE:
-		  default:
-		    assert(false);
-		    break;
+		case PSTAT_ACCUMULATE_SINGLE_VALUE:
+		case PSTAT_PEEK_SINGLE_VALUE:
+		case PSTAT_COMPUTED_RATIO_VALUE:
+		  copied = stats_ptr[offset];
+		  break;
+		case PSTAT_COUNTER_TIMER_VALUE:
+		  copied = stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)];
+		  break;
+		case PSTAT_COMPLEX_VALUE:
+		default:
+		  assert (false);
+		  break;
 		}
 	      stats_ptr[offset] = 0;
 	      return copied;
@@ -2094,8 +2119,8 @@ perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int di
  *   return: none
  */
 void
-perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type,
-			       UINT64 amount)
+perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+			       int cond_type, UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2116,7 +2141,7 @@ perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
       offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
       assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
 
-      perfmon_add_stat_at_offset (thread_p, amount, offset, PSTAT_PBX_LOCK_TIME_COUNTERS);   
+      perfmon_add_stat_at_offset (thread_p, amount, offset, PSTAT_PBX_LOCK_TIME_COUNTERS);
     }
 }
 
@@ -2125,7 +2150,7 @@ perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
  *   return: none
  */
 void
-perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, 
+perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 			       UINT64 amount)
 {
   UINT64 *stats;
@@ -2155,8 +2180,8 @@ perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
  *   return: none
  */
 void
-perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type,
-			      UINT64 amount)
+perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+			      int cond_type, UINT64 amount)
 {
   UINT64 *stats;
   int module;
@@ -2208,19 +2233,20 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
 
 #endif /* SERVER_MODE || SA_MODE */
 
-int perfmon_calc_diff_stats(UINT64* stats_diff, UINT64* new_stats, UINT64* old_stats)
+int
+perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats)
 {
   int i, j;
   int offset;
 
-  if(!stats_diff || !new_stats || !old_stats)
+  if (!stats_diff || !new_stats || !old_stats)
     {
       assert (false);
       return ER_FAILED;
     }
 
   offset = pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset;
-  if(new_stats[offset] >= old_stats[offset])
+  if (new_stats[offset] >= old_stats[offset])
     {
       stats_diff[offset] = new_stats[offset] - old_stats[offset];
     }
@@ -2229,42 +2255,42 @@ int perfmon_calc_diff_stats(UINT64* stats_diff, UINT64* new_stats, UINT64* old_s
       stats_diff[offset] = 0;
     }
 
-  for(i = 0;i < PSTAT_COUNT;i++)
+  for (i = 0; i < PSTAT_COUNT; i++)
     {
-    switch(pstat_Metadata[i].valtype)
-      {
-      case PSTAT_ACCUMULATE_SINGLE_VALUE:
-      case PSTAT_COUNTER_TIMER_VALUE:
-      case PSTAT_COMPLEX_VALUE:
-      case PSTAT_COMPUTED_RATIO_VALUE:
-	for(j = pstat_Metadata[i].start_offset;j < pstat_Metadata[i].start_offset + pstat_Metadata[i].n_vals;j++)
-	  {
-	    if(new_stats[j] >= old_stats[j])
-	      {
-		stats_diff[j] = new_stats[j] - old_stats[j];
-	      }
-	    else
-	      {
-		stats_diff[j] = 0; 
-	      }
-	  }
-	break;
+      switch (pstat_Metadata[i].valtype)
+	{
+	case PSTAT_ACCUMULATE_SINGLE_VALUE:
+	case PSTAT_COUNTER_TIMER_VALUE:
+	case PSTAT_COMPLEX_VALUE:
+	case PSTAT_COMPUTED_RATIO_VALUE:
+	  for (j = pstat_Metadata[i].start_offset; j < pstat_Metadata[i].start_offset + pstat_Metadata[i].n_vals; j++)
+	    {
+	      if (new_stats[j] >= old_stats[j])
+		{
+		  stats_diff[j] = new_stats[j] - old_stats[j];
+		}
+	      else
+		{
+		  stats_diff[j] = 0;
+		}
+	    }
+	  break;
 
-      case PSTAT_PEEK_SINGLE_VALUE:
-	if(i != PSTAT_PB_AVOID_VICTIM_CNT)
-	  {
-	    stats_diff[pstat_Metadata[i].start_offset] = new_stats[pstat_Metadata[i].start_offset];
-	  }
-	break;
-      default:
-	assert (false);
-	break;
-      }
+	case PSTAT_PEEK_SINGLE_VALUE:
+	  if (i != PSTAT_PB_AVOID_VICTIM_CNT)
+	    {
+	      stats_diff[pstat_Metadata[i].start_offset] = new_stats[pstat_Metadata[i].start_offset];
+	    }
+	  break;
+	default:
+	  assert (false);
+	  break;
+	}
     }
 
-  perfmon_server_calc_stats(stats_diff);
+  perfmon_server_calc_stats (stats_diff);
   return NO_ERROR;
-  }
+}
 
 /*
  *   perfmon_server_dump_stats_to_buffer -
@@ -2283,7 +2309,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
   int remained_size;
   const char *s;
   char *p;
-  
+
   if (buffer == NULL || buf_size <= 0)
     {
       return;
@@ -2303,7 +2329,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
   stats_ptr = (UINT64 *) stats;
   for (i = 0; i < PSTAT_COUNT; i++)
     {
-      if(pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
+      if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
 	{
 	  break;
 	}
@@ -2323,22 +2349,22 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 
 	  if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
 	    {
-	      if(pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
+	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
 		  ret =
-		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, 
+		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
 			      (unsigned long long) stats_ptr[offset]);
 		}
 	      else
 		{
-		  ret = 
-		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, 
-			      (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)]);
+		  ret =
+		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			      (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
 		}
 	    }
 	  else
 	    {
-	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name, 
+	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name,
 			      (float) stats_ptr[offset] / 100);
 	    }
 	  remained_size -= ret;
@@ -2350,7 +2376,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	}
     }
 
-  while (i < PSTAT_COUNT  && remained_size > 0)
+  while (i < PSTAT_COUNT && remained_size > 0)
     {
       if (substr != NULL)
 	{
@@ -2371,8 +2397,8 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	{
 	  return;
 	}
-       pstat_Metadata[i].f_dump_in_buffer (p, &(stats[pstat_Metadata[i].start_offset]), &remained_size);
-       i++;
+      pstat_Metadata[i].f_dump_in_buffer (p, &(stats[pstat_Metadata[i].start_offset]), &remained_size);
+      i++;
     }
 
   buffer[buf_size - 1] = '\0';
@@ -2390,7 +2416,7 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
   int i;
   UINT64 *stats_ptr;
   const char *s;
-  
+
   if (stream == NULL)
     {
       stream = stdout;
@@ -2401,7 +2427,7 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
   stats_ptr = (UINT64 *) stats;
   for (i = 0; i < PSTAT_COUNT; i++)
     {
-      if(pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
+      if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
 	{
 	  break;
 	}
@@ -2421,16 +2447,16 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 
 	  if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
 	    {
-	      if(pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
+	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, 
-			  (unsigned long long) stats_ptr[offset]);
+		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			   (unsigned long long) stats_ptr[offset]);
 		}
 	      else
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, 
-			  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(offset)]);
-		} 
+		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
+		}
 	    }
 	  else
 	    {
@@ -2575,8 +2601,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    {
 		      offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
 		      assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
-		      counter =
-			&(stats[pstat_Metadata[PSTAT_PBX_FIX_TIME_COUNTERS].start_offset + offset]);
+		      counter = &(stats[pstat_Metadata[PSTAT_PBX_FIX_TIME_COUNTERS].start_offset + offset]);
 		      /* do not include fix time of log pages */
 		      if (page_type != PAGE_LOG && *counter > 0)
 			{
@@ -2585,8 +2610,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 
 		      offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
 		      assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
-		      counter =
-			&(stats[pstat_Metadata[PSTAT_PBX_LOCK_TIME_COUNTERS].start_offset + offset]);
+		      counter = &(stats[pstat_Metadata[PSTAT_PBX_LOCK_TIME_COUNTERS].start_offset + offset]);
 
 		      if (page_type != PAGE_LOG && *counter > 0)
 			{
@@ -2600,8 +2624,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 			    PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
 
 			  assert (offset < PERF_PAGE_FIX_COUNTERS);
-			  counter =
-			    &(stats[pstat_Metadata[PSTAT_PBX_FIX_COUNTERS].start_offset + offset]);
+			  counter = &(stats[pstat_Metadata[PSTAT_PBX_FIX_COUNTERS].start_offset + offset]);
 
 			  if (module == PERF_MODULE_VACUUM)
 			    {
@@ -2621,24 +2644,25 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[PSTAT_PB_VACUUM_EFFICIENCY] = SAFE_DIV (total_unfix_vacuum_dirty * 100 * 100, total_unfix_vacuum);
 
   stats[PSTAT_PB_VACUUM_FETCH_RATIO] = SAFE_DIV (total_unfix_vacuum * 100 * 100, total_unfix);
-    
+
   stats[PSTAT_VACUUM_DATA_HIT_RATIO] = SAFE_DIV (total_fix_vacuum_hit * 100 * 100, total_fix_vacuum);
-    
-  stats[PSTAT_PB_HIT_RATIO] = SAFE_DIV ((stats[PSTAT_PB_NUM_FETCHES] - stats[PSTAT_PB_NUM_IOREADS]) * 100 * 100, 
-				        stats[PSTAT_PB_NUM_FETCHES]); 
-  
-  stats[PSTAT_LOG_HIT_RATIO] = SAFE_DIV((stats[PSTAT_LOG_NUM_FETCHES] - stats[PSTAT_LOG_NUM_FETCH_IOREADS]) * 100 * 100,
-					 stats[PSTAT_PB_NUM_FETCHES]);
-					 
+
+  stats[PSTAT_PB_HIT_RATIO] = SAFE_DIV ((stats[PSTAT_PB_NUM_FETCHES] - stats[PSTAT_PB_NUM_IOREADS]) * 100 * 100,
+					stats[PSTAT_PB_NUM_FETCHES]);
+
+  stats[PSTAT_LOG_HIT_RATIO] =
+    SAFE_DIV ((stats[PSTAT_LOG_NUM_FETCHES] - stats[PSTAT_LOG_NUM_FETCH_IOREADS]) * 100 * 100,
+	      stats[PSTAT_PB_NUM_FETCHES]);
+
   stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC] = 100 * lock_time_usec / 1000;
   stats[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] = 100 * hold_time_usec / 1000;
   stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] = 100 * fix_time_usec / 1000;
 
-  stats[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO] = SAFE_DIV ((stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] - 
+  stats[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO] = SAFE_DIV ((stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] -
 							stats[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] -
 							stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC]) * 100 * 100,
-							stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC]);
-    
+						       stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC]);
+
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
       for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
@@ -2652,15 +2676,13 @@ perfmon_server_calc_stats (UINT64 * stats)
 		      offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
 		      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
 
-		      counter =
-			&(stats[pstat_Metadata[PSTAT_PBX_PROMOTE_TIME_COUNTERS].start_offset + offset]);
+		      counter = &(stats[pstat_Metadata[PSTAT_PBX_PROMOTE_TIME_COUNTERS].start_offset + offset]);
 		      if (*counter)
 			{
 			  total_promote_time += *counter;
 			}
 
-		      counter = &(stats[pstat_Metadata[PSTAT_PBX_PROMOTE_COUNTERS].start_offset
-							 + offset]);
+		      counter = &(stats[pstat_Metadata[PSTAT_PBX_PROMOTE_COUNTERS].start_offset + offset]);
 		      if (*counter)
 			{
 			  if (success)
@@ -3030,9 +3052,10 @@ perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char 
 			      continue;
 			    }
 
-			  ret =	snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s,%-11s = %10llu\n",
+			  ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s,%-11s = %10llu\n",
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-					  perfmon_stat_page_mode_name (page_mode), perfmon_stat_holder_latch_name (latch_mode),
+					  perfmon_stat_page_mode_name (page_mode),
+					  perfmon_stat_holder_latch_name (latch_mode),
 					  perfmon_stat_cond_type_name (cond_type), (long long unsigned int) *counter);
 			  *remaining_size -= ret;
 			  if (*remaining_size <= 0)
@@ -3129,10 +3152,11 @@ perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, c
 		    {
 		      for (success = 0; success < 2; success++)
 			{
-			  offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
+			  offset =
+			    PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
 
 			  assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
-	
+
 			  counter = stats_ptr + offset;
 			  if (*counter == 0)
 			    {
@@ -3142,8 +3166,8 @@ perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, c
 			  ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-13s,%-5s,%-7s = %10llu\n",
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  perfmon_stat_promote_cond_name (promote_cond),
-					  perfmon_stat_holder_latch_name (holder_latch), (success ? "SUCCESS" : "FAILED"),
-					  (long long unsigned int) *counter);
+					  perfmon_stat_holder_latch_name (holder_latch),
+					  (success ? "SUCCESS" : "FAILED"), (long long unsigned int) *counter);
 			  *remaining_size -= ret;
 			  if (*remaining_size <= 0)
 			    {
@@ -3205,7 +3229,7 @@ perfmon_stat_dump_in_file_promote_page_array_stat (FILE * stream, const UINT64 *
 	}
     }
 }
-    
+
 
 /*
  * perfmon_stat_dump_in_buffer_unfix_page_array_stat () -
@@ -3240,7 +3264,8 @@ perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, cha
 		    {
 		      for (holder_latch = PERF_HOLDER_LATCH_READ; holder_latch < PERF_HOLDER_LATCH_CNT; holder_latch++)
 			{
-			  offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty, holder_latch);
+			  offset =
+			    PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty, holder_latch);
 
 			  assert (offset < PERF_PAGE_UNFIX_COUNTERS);
 			  counter = stats_ptr + offset;
@@ -3253,7 +3278,8 @@ perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, cha
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  buf_dirty ? "BUF_DIRTY" : "BUF_NON_DIRTY",
 					  holder_dirty ? "HOLDER_DIRTY" : "HOLDER_NON_DIRTY",
-					  perfmon_stat_holder_latch_name (holder_latch), (long long unsigned int) *counter);
+					  perfmon_stat_holder_latch_name (holder_latch),
+					  (long long unsigned int) *counter);
 			  *remaining_size -= ret;
 			  if (*remaining_size <= 0)
 			    {
@@ -3284,7 +3310,7 @@ perfmon_stat_dump_in_file_unfix_page_array_stat (FILE * stream, const UINT64 * s
   int holder_latch;
   int offset;
   const UINT64 *counter;
-  
+
   assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
@@ -3357,10 +3383,11 @@ perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr,
 			    {
 			      continue;
 			    }
-	      
-			  ret =	snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s,%-11s = %16llu\n",
+
+			  ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s,%-11s = %16llu\n",
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-					  perfmon_stat_page_mode_name (page_mode), perfmon_stat_holder_latch_name (latch_mode),
+					  perfmon_stat_page_mode_name (page_mode),
+					  perfmon_stat_holder_latch_name (latch_mode),
 					  perfmon_stat_cond_type_name (cond_type), (long long unsigned int) *counter);
 			  *remaining_size -= ret;
 			  if (*remaining_size <= 0)
@@ -3392,8 +3419,8 @@ perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64
   int cond_type;
   int offset;
   const UINT64 *counter;
-  
-  assert (stream != NULL);  
+
+  assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
       for (page_type = PERF_PAGE_UNKNOWN; page_type < PERF_PAGE_CNT; page_type++)
@@ -3416,7 +3443,7 @@ perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64
 		      fprintf (stream, "%-6s,%-14s,%-18s,%-5s,%-11s = %16llu\n", perfmon_stat_module_name (module),
 			       perfmon_stat_page_type_name (page_type), perfmon_stat_page_mode_name (page_mode),
 			       perfmon_stat_holder_latch_name (latch_mode), perfmon_stat_cond_type_name (cond_type),
-			      (long long unsigned int) *counter);
+			       (long long unsigned int) *counter);
 		    }
 		}
 	    }
@@ -3462,11 +3489,11 @@ perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr,
 			{
 			  continue;
 			}
-		      
+
 		      ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s = %16llu\n",
 				      perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
-				      perfmon_stat_page_mode_name (page_mode), perfmon_stat_holder_latch_name (latch_mode),
-				      (long long unsigned int) *counter);
+				      perfmon_stat_page_mode_name (page_mode),
+				      perfmon_stat_holder_latch_name (latch_mode), (long long unsigned int) *counter);
 		      *remaining_size -= ret;
 		      if (*remaining_size <= 0)
 			{
@@ -3495,7 +3522,7 @@ perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE * stream, const UINT64
   int latch_mode;
   int offset;
   const UINT64 *counter;
-  
+
   assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
@@ -3591,11 +3618,12 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
 		    {
 		      continue;
 		    }
-		  
-		  ret = snprintf (s, *remaining_size, "%-8s,%-18s,%-9s = %16llu\n", perfmon_stat_snapshot_name (snapshot),
-				 perfmon_stat_snapshot_record_type (rec_type),
-				 (visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE",
-				 (long long unsigned int) *counter);
+
+		  ret =
+		    snprintf (s, *remaining_size, "%-8s,%-18s,%-9s = %16llu\n", perfmon_stat_snapshot_name (snapshot),
+			      perfmon_stat_snapshot_record_type (rec_type),
+			      (visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE",
+			      (long long unsigned int) *counter);
 		  *remaining_size -= ret;
 		  if (*remaining_size <= 0)
 		    {
@@ -3635,7 +3663,7 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
 	      offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
 	      assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
-  
+
 	      counter = stats_ptr + offset;
 	      if (*counter == 0)
 		{
@@ -3679,8 +3707,8 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
 	      continue;
 	    }
 
-	  ret = snprintf (s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode), 
-			     (long long unsigned int) *counter);
+	  ret = snprintf (s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode),
+			  (long long unsigned int) *counter);
 	  *remaining_size -= ret;
 	  if (*remaining_size <= 0)
 	    {
@@ -3706,7 +3734,7 @@ perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * sta
   const UINT64 *counter;
 
   assert (stream != NULL);
-  
+
   for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
     {
       counter = stats_ptr + lock_mode;
@@ -3715,8 +3743,7 @@ perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * sta
 	  continue;
 	}
 
-      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode), 
-	      (long long unsigned int) *counter);
+      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode), (long long unsigned int) *counter);
     }
 }
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
@@ -3752,7 +3779,7 @@ perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char 
 	    }
 
 	  ret = snprintf (s, *remaining_size, "%-6s = %16llu\n", perfmon_stat_module_name (module),
-			 (long long unsigned int) *counter);
+			  (long long unsigned int) *counter);
 	  *remaining_size -= ret;
 	  if (*remaining_size <= 0)
 	    {
@@ -3849,7 +3876,7 @@ perfmon_initialize (int num_trans)
 	  assert (pstat_Metadata[idx].f_dump_in_file != NULL);
 	  assert (pstat_Metadata[idx].f_dump_in_buffer != NULL);
 	}
-       pstat_Global.n_stat_values += pstat_Metadata[idx].n_vals;
+      pstat_Global.n_stat_values += pstat_Metadata[idx].n_vals;
     }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -3898,7 +3925,7 @@ perfmon_initialize (int num_trans)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
 	  goto error;
 	}
-      memset(pstat_Global.is_watching, 0, memsize);
+      memset (pstat_Global.is_watching, 0, memsize);
     }
 
   pstat_Global.n_watchers = 0;
@@ -3910,10 +3937,10 @@ error:
   perfmon_finalize ();
   return ER_OUT_OF_VIRTUAL_MEMORY;
 
-#else /* !SERVER_MODE && !SA_MODE */ /* CS_MODE */
+#else	/* !SERVER_MODE && !SA_MODE */
   pstat_Global.initialized = true;
   return NO_ERROR;
-#endif	/* CS_MODE */
+#endif /* CS_MODE */
 }
 
 
@@ -4021,7 +4048,8 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
   pstat_Global.is_watching[tran_index] = false;
 }
 
-bool perfmon_is_perf_tracking ()
+bool
+perfmon_is_perf_tracking ()
 {
   return pstat_Global.n_watchers > 0;
 }
@@ -4055,7 +4083,7 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, UINT64 amount, PERF_STAT_ID psid)
 
   metadata = &pstat_Metadata[psid];
   assert (metadata->valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
-  
+
   /* Update statistics. */
   perfmon_add_at_offset (thread_p, amount, metadata->start_offset);
 }
@@ -4084,7 +4112,7 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int of
     }
 
   metadata = &pstat_Metadata[psid];
-  
+
   /* Update statistics. */
   perfmon_add_at_offset (thread_p, amount, metadata->start_offset + offset);
 }
@@ -4224,7 +4252,7 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_STAT_ID psid)
 
   metadata = &pstat_Metadata[psid];
   assert (metadata->valtype == PSTAT_COUNTER_TIMER_VALUE);
-  
+
   perfmon_time_at_offset (thread_p, timediff, metadata->start_offset);
 }
 
@@ -4254,7 +4282,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset)
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1);
   ATOMIC_TAS_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
-  do 
+  do
     {
       max_time = ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), 0);
       if (max_time >= timediff)
@@ -4262,7 +4290,8 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset)
 	  /* No need to change max_time. */
 	  break;
 	}
-    } while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
+    }
+  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
   /* Average is not computed here. */
 
 #if defined (SERVER_MODE)
@@ -4304,185 +4333,219 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset)
  *
  */
 
-int f_load_Num_data_page_fix_ext (void)
+int
+f_load_Num_data_page_fix_ext (void)
 {
   return PERF_PAGE_FIX_COUNTERS;
 }
 
-int f_load_Num_data_page_promote_ext (void)
+int
+f_load_Num_data_page_promote_ext (void)
 {
   return PERF_PAGE_PROMOTE_COUNTERS;
 }
 
-int f_load_Num_data_page_promote_time_ext (void)
+int
+f_load_Num_data_page_promote_time_ext (void)
 {
-  return PERF_PAGE_PROMOTE_COUNTERS; 
+  return PERF_PAGE_PROMOTE_COUNTERS;
 }
 
-int f_load_Num_data_page_unfix_ext (void)
+int
+f_load_Num_data_page_unfix_ext (void)
 {
   return PERF_PAGE_UNFIX_COUNTERS;
 }
 
-int f_load_Time_data_page_lock_acquire_time (void)
+int
+f_load_Time_data_page_lock_acquire_time (void)
 {
   return PERF_PAGE_LOCK_TIME_COUNTERS;
 }
 
-int f_load_Time_data_page_hold_acquire_time (void)
+int
+f_load_Time_data_page_hold_acquire_time (void)
 {
   return PERF_PAGE_HOLD_TIME_COUNTERS;
 }
 
-int f_load_Time_data_page_fix_acquire_time (void)
+int
+f_load_Time_data_page_fix_acquire_time (void)
 {
   return PERF_PAGE_FIX_TIME_COUNTERS;
 }
 
-int f_load_Num_mvcc_snapshot_ext (void)
+int
+f_load_Num_mvcc_snapshot_ext (void)
 {
   return PERF_MVCC_SNAPSHOT_COUNTERS;
 }
 
-int f_load_Time_obj_lock_acquire_time (void)
+int
+f_load_Time_obj_lock_acquire_time (void)
 {
   return PERF_OBJ_LOCK_STAT_COUNTERS;
 }
 
-int f_load_Time_get_snapshot_acquire_time (void)
+int
+f_load_Time_get_snapshot_acquire_time (void)
 {
   return PERF_MODULE_CNT;
 }
 
-int f_load_Count_get_snapshot_retry (void)
+int
+f_load_Count_get_snapshot_retry (void)
 {
   return PERF_MODULE_CNT;
 }
 
-int f_load_Time_tran_complete_time (void)
+int
+f_load_Time_tran_complete_time (void)
 {
   return PERF_MODULE_CNT;
 }
 
-int f_load_Time_get_oldest_mvcc_acquire_time (void)
+int
+f_load_Time_get_oldest_mvcc_acquire_time (void)
 {
   return PERF_MODULE_CNT;
 }
 
-int f_load_Count_get_oldest_mvcc_retry (void)
+int
+f_load_Count_get_oldest_mvcc_retry (void)
 {
   return PERF_MODULE_CNT;
 }
 
-void f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
 {
-  perfmon_stat_dump_in_file_fix_page_array_stat (f, stat_vals);    
+  perfmon_stat_dump_in_file_fix_page_array_stat (f, stat_vals);
 }
 
-void f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
 {
-  perfmon_stat_dump_in_file_promote_page_array_stat(f, stat_vals);
+  perfmon_stat_dump_in_file_promote_page_array_stat (f, stat_vals);
 }
 
-void f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_vals)
 {
-  perfmon_stat_dump_in_file_promote_page_array_stat(f, stat_vals);
+  perfmon_stat_dump_in_file_promote_page_array_stat (f, stat_vals);
 }
 
-void f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
 {
-  perfmon_stat_dump_in_file_unfix_page_array_stat(f, stat_vals);
+  perfmon_stat_dump_in_file_unfix_page_array_stat (f, stat_vals);
 }
 
-void f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
-  perfmon_stat_dump_in_file_page_lock_time_array_stat(f, stat_vals);
+  perfmon_stat_dump_in_file_page_lock_time_array_stat (f, stat_vals);
 }
 
-void f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
-  perfmon_stat_dump_in_file_page_hold_time_array_stat(f, stat_vals);
+  perfmon_stat_dump_in_file_page_hold_time_array_stat (f, stat_vals);
 }
 
-void f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
-  perfmon_stat_dump_in_file_page_fix_time_array_stat(f, stat_vals);
+  perfmon_stat_dump_in_file_page_fix_time_array_stat (f, stat_vals);
 }
 
-void f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
 #if defined PERF_ENABLE_MVCC_SNAPSHOT_STAT
-  perfmon_stat_dump_in_file_mvcc_snapshot_array_stat(f, stat_vals);
+  perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
 #endif
 }
 
-void f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
+void
+f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
 #if defined PERF_ENABLE_LOCK_OBJECT_STAT
-  perfmon_stat_dump_in_file_obj_lock_array_stat(f, stat_vals);
+  perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
 #endif
 }
 
-void f_dump_in_buffer_Num_data_page_fix_ext (char * s, const UINT64 * stat_vals, int * remaining_size)
+void
+f_dump_in_buffer_Num_data_page_fix_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
-  perfmon_stat_dump_in_buffer_fix_page_array_stat (stat_vals, s, remaining_size);    
+  perfmon_stat_dump_in_buffer_fix_page_array_stat (stat_vals, s, remaining_size);
 }
 
-void f_dump_in_buffer_Num_data_page_promote_ext (char * s, const UINT64 * stat_vals, int * remaining_size)
-{
-  perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
-}
-
-void f_dump_in_buffer_Num_data_page_promote_time_ext (char * s, const UINT64 * stat_vals, int * remaining_size)
+void
+f_dump_in_buffer_Num_data_page_promote_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
 }
 
-void f_dump_in_buffer_Num_data_page_unfix_ext (char * s, const UINT64 * stat_vals, int * remaining_size)
+void
+f_dump_in_buffer_Num_data_page_promote_time_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
+{
+  perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
+}
+
+void
+f_dump_in_buffer_Num_data_page_unfix_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_unfix_page_array_stat (stat_vals, s, remaining_size);
 }
 
-void f_dump_in_buffer_Time_data_page_lock_acquire_time (char * s, const UINT64 * stat_vals, int * remaining_size)
+void
+f_dump_in_buffer_Time_data_page_lock_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_lock_time_array_stat (stat_vals, s, remaining_size);
 }
 
-void f_dump_in_buffer_Time_data_page_hold_acquire_time (char * s, const UINT64 * stat_vals, int * remaining_size)
+void
+f_dump_in_buffer_Time_data_page_hold_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_hold_time_array_stat (stat_vals, s, remaining_size);
 }
 
-void f_dump_in_buffer_Time_data_page_fix_acquire_time (char * s, const UINT64 * stat_vals, int * remaining_size)
+void
+f_dump_in_buffer_Time_data_page_fix_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_fix_time_array_stat (stat_vals, s, remaining_size);
 }
 
-void f_dump_in_buffer_Num_mvcc_snapshot_ext (char * s, const UINT64 * stat_vals, int * remaining_size)
+void
+f_dump_in_buffer_Num_mvcc_snapshot_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
 #if defined PERF_ENABLE_MVCC_SNAPSHOT_STAT
   perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
 #endif
 }
 
-void f_dump_in_buffer_Time_obj_lock_acquire_time (char * s, const UINT64 * stat_vals, int * remaining_size)
+void
+f_dump_in_buffer_Time_obj_lock_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
 #if defined PERF_ENABLE_LOCK_OBJECT_STAT
   perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
 #endif
 }
 
-int perfmon_get_number_of_statistic_values(void)
+int
+perfmon_get_number_of_statistic_values (void)
 {
   return pstat_Global.n_stat_values;
 }
 
-UINT64* perfmon_allocate_values(void)
+UINT64 *
+perfmon_allocate_values (void)
 {
-  UINT64* vals;
+  UINT64 *vals;
 
   vals = (UINT64 *) malloc (PERFMON_VALUES_MEMSIZE);
-  if(vals == NULL)
+  if (vals == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
     }
@@ -4490,12 +4553,13 @@ UINT64* perfmon_allocate_values(void)
   return vals;
 }
 
-char* perfmon_allocate_packed_values_buffer(void)
+char *
+perfmon_allocate_packed_values_buffer (void)
 {
-  char* buf;
+  char *buf;
 
-  buf = (char *) malloc(PERFMON_VALUES_MEMSIZE + MAX_ALIGNMENT);
-  if(buf == NULL)
+  buf = (char *) malloc (PERFMON_VALUES_MEMSIZE + MAX_ALIGNMENT);
+  if (buf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE + MAX_ALIGNMENT);
     }
@@ -4503,7 +4567,8 @@ char* perfmon_allocate_packed_values_buffer(void)
   return buf;
 }
 
-void perfmon_copy_values(UINT64* dest, UINT64* src)
+void
+perfmon_copy_values (UINT64 * dest, UINT64 * src)
 {
   memcpy (dest, src, PERFMON_VALUES_MEMSIZE);
 }
@@ -4523,9 +4588,9 @@ perfmon_pack_stats (char *buf, UINT64 * stats)
 {
   char *ptr;
   int i;
-  
+
   ptr = buf;
-  
+
   for (i = 0; i < pstat_Global.n_stat_values; i++)
     {
       OR_PUT_INT64 (ptr, &(stats[i]));
@@ -4549,7 +4614,7 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 {
   char *ptr;
   int i;
-  
+
   ptr = buf;
 
   for (i = 0; i < pstat_Global.n_stat_values; i++)

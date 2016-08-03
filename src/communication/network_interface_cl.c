@@ -8046,23 +8046,23 @@ perfmon_server_copy_stats (UINT64 * to_stats)
   int nr_statistic_values;
   int err = NO_ERROR;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values();
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
   /* Align to 8 bytes */
-  reply = (char * ) malloc(nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
-  
-  if(reply == NULL)
+  reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
+
+  if (reply == NULL)
     {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 
-		nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
-        err = ER_OUT_OF_VIRTUAL_MEMORY;
-	goto error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   reply_start = PTR_ALIGN (reply, MAX_ALIGNMENT);
 
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply_start, nr_statistic_values * OR_INT64_SIZE, NULL, 0, NULL,
-			0);
+    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply_start, nr_statistic_values * OR_INT64_SIZE,
+			NULL, 0, NULL, 0);
   if (!req_error)
     {
       perfmon_unpack_stats (reply_start, to_stats);
@@ -8072,11 +8072,11 @@ perfmon_server_copy_stats (UINT64 * to_stats)
       perfmon_Iscollecting_stats = false;
     }
 error:
-    if(reply != NULL)
-      {
-	free_and_init(reply);
-      }
-    return err;
+  if (reply != NULL)
+    {
+      free_and_init (reply);
+    }
+  return err;
 
 #else /* CS_MODE */
 
@@ -8104,16 +8104,16 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
 #if defined(CS_MODE)
   int req_error;
   char *reply = NULL;
-  char* reply_start = NULL;
+  char *reply_start = NULL;
   int nr_statistic_values;
   int err = NO_ERROR;
 
-  nr_statistic_values = perfmon_get_number_of_statistic_values();
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
   /* Align to 8 bytes */
-  reply = (char * ) malloc(nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
-  if(reply == NULL)
+  reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
+  if (reply == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
@@ -8121,8 +8121,8 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
   reply_start = PTR_ALIGN (reply, MAX_ALIGNMENT);
 
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS, NULL, 0, reply_start, nr_statistic_values * OR_INT64_SIZE, NULL, 0,
-			NULL, 0);
+    net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS, NULL, 0, reply_start,
+			nr_statistic_values * OR_INT64_SIZE, NULL, 0, NULL, 0);
   if (!req_error)
     {
       perfmon_unpack_stats (reply_start, to_stats);
@@ -8132,9 +8132,9 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
       perfmon_Iscollecting_stats = false;
     }
 error:
-  if(reply != NULL)
+  if (reply != NULL)
     {
-      free_and_init(reply);
+      free_and_init (reply);
     }
   return err;
 #else /* CS_MODE */

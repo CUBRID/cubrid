@@ -2799,10 +2799,10 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
 
       if (xasl->orderby_stats.orderby_filesort)
 	{
-	  xasl->orderby_stats.orderby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - 
-					      old_sort_pages;
-	  xasl->orderby_stats.orderby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - 
-						old_sort_ioreads;
+	  xasl->orderby_stats.orderby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) -
+	    old_sort_pages;
+	  xasl->orderby_stats.orderby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) -
+	    old_sort_ioreads;
 	}
     }
 
@@ -4381,10 +4381,10 @@ wrapup:
 
 	if (xasl->groupby_stats.groupby_sort == true)
 	  {
-	    xasl->groupby_stats.groupby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - 
-						old_sort_pages;
-	    xasl->groupby_stats.groupby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - 
-						  old_sort_ioreads;
+	    xasl->groupby_stats.groupby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) -
+	      old_sort_pages;
+	    xasl->groupby_stats.groupby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) -
+	      old_sort_ioreads;
 	  }
       }
 
@@ -6338,11 +6338,11 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  if (curr_spec->access == SEQUENTIAL || curr_spec->access == SEQUENTIAL_RECORD_INFO
 	      || curr_spec->access == SEQUENTIAL_PAGE_SCAN)
 	    {
-	      perfmon_inc_stat(thread_p, PSTAT_QM_NUM_SSCANS);
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
 	    }
 	  else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
 	    {
-	      perfmon_inc_stat(thread_p, PSTAT_QM_NUM_ISCANS);
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
 	    }
 	  if (curr_spec->parts != NULL)
 	    {
@@ -6356,7 +6356,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	case TARGET_CLASS_ATTR:
 	  break;
 	case TARGET_LIST:
-	  perfmon_inc_stat(thread_p, PSTAT_QM_NUM_LSCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
 	  break;
 	case TARGET_SHOWSTMT:
 	  /* do nothing */
@@ -6365,10 +6365,10 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  /* currently do nothing */
 	  break;
 	case TARGET_SET:
-	  perfmon_inc_stat(thread_p, PSTAT_QM_NUM_SETSCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
 	  break;
 	case TARGET_METHOD:
-	  perfmon_inc_stat(thread_p, PSTAT_QM_NUM_METHSCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
 	  break;
 	}
       scan_close_scan (thread_p, &curr_spec->s_id);
@@ -12916,7 +12916,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  return error;
 	}
       /* monitor */
-      perfmon_inc_stat(thread_p, PSTAT_QM_NUM_DELETES);
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
       break;
 
     case INSERT_PROC:
@@ -13685,7 +13685,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* monitor */
-      perfmon_inc_stat(thread_p, PSTAT_QM_NUM_SELECTS);
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
       break;
     }
 
@@ -15719,13 +15719,13 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID
 
 	      xasl->orderby_stats.orderby_filesort = true;
 
-	      xasl->orderby_stats.orderby_pages += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - 
-						   old_sort_pages;
-	      xasl->orderby_stats.orderby_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - 
-						     old_sort_ioreads;
+	      xasl->orderby_stats.orderby_pages += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) -
+		old_sort_pages;
+	      xasl->orderby_stats.orderby_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) -
+		old_sort_ioreads;
 	    }
 	}
-    }				
+    }
 
   return NO_ERROR;
 

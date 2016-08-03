@@ -557,9 +557,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     {
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
     }
-  
+
   error_code = perfmon_initialize (MAX_NTRANS);
-  if(error_code != NO_ERROR)
+  if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error_exit;
@@ -808,7 +808,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  error_code = perfmon_initialize (0	/* No trans */);
+  error_code = perfmon_initialize (0 /* No trans */ );
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

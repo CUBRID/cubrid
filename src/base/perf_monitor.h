@@ -362,7 +362,7 @@ typedef enum
   PSTAT_FC_TOKENS,
 
   /* prior lsa info */
-  PSTAT_PRIOR_LSA_LIST_SIZE,		/* kbytes */
+  PSTAT_PRIOR_LSA_LIST_SIZE,	/* kbytes */
   PSTAT_PRIOR_LSA_LIST_MAXED,
   PSTAT_PRIOR_LSA_LIST_REMOVED,
 
@@ -509,7 +509,7 @@ typedef enum
   PSTAT_PBX_FIX_TIME_COUNTERS,
   PSTAT_MVCC_SNAPSHOT_COUNTERS,
   PSTAT_OBJ_LOCK_TIME_COUNTERS,
-  
+
   PSTAT_COUNT = PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS + 1
 } PERF_STAT_ID;
 
@@ -601,19 +601,17 @@ typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
 extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
 
-extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size,
-						 const char *substr);
+extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr);
 
 extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 
-extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
-				    UINT64 * old_stats);
+extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
-extern int perfmon_get_number_of_statistic_values(void);
-extern UINT64* perfmon_allocate_values(void);
-extern char* perfmon_allocate_packed_values_buffer(void);
-extern void perfmon_copy_values(UINT64* src, UINT64* dest);
+extern int perfmon_get_number_of_statistic_values (void);
+extern UINT64 *perfmon_allocate_values (void);
+extern char *perfmon_allocate_packed_values_buffer (void);
+extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
@@ -835,28 +833,29 @@ struct perf_utime_tracker
 /*
  * Statistics at file io level
  */
-  extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
+extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
 
-  extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
-  
-  extern void perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
+extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
 
-  extern UINT64 perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
+extern void perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
 
-  extern void perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type);
-  extern void perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
-				   UINT64 amount);
-  extern void perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
-				 int holder_latch);
-  extern void perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					     int cond_type, UINT64 amount);
-  extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					     UINT64 amount);
-  extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					    int cond_type, UINT64 amount);
-  #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-   extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
-  #endif
+extern UINT64 perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
+
+extern void perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+			     int cond_type);
+extern void perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch,
+				 int success, UINT64 amount);
+extern void perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
+			       int holder_latch);
+extern void perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					   int cond_type, UINT64 amount);
+extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					   UINT64 amount);
+extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					  int cond_type, UINT64 amount);
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
+#endif
 
 #endif /* SERVER_MODE || SA_MODE */
 

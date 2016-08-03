@@ -1753,7 +1753,7 @@ try_again:
 	      if (holder_wait_time > 0)
 		{
 		  perfmon_pbx_hold_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode,
-					     holder_wait_time);
+						 holder_wait_time);
 		}
 	    }
 	  else
@@ -1770,7 +1770,7 @@ try_again:
       if (lock_wait_time > 0)
 	{
 	  perfmon_pbx_lock_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
-				     lock_wait_time);
+					 lock_wait_time);
 	}
 
       tsc_getticks (&end_tick);
@@ -1780,7 +1780,7 @@ try_again:
       if (fix_wait_time > 0)
 	{
 	  perfmon_pbx_fix_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
-				    fix_wait_time);
+					fix_wait_time);
 	}
     }
 
@@ -2174,8 +2174,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	  assert (holder_perf_stat.hold_has_write_latch);
 	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
 	}
-      perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold, holder_perf_stat.dirtied_by_holder,
-			 perf_holder_latch);
+      perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold,
+			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
     }
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);

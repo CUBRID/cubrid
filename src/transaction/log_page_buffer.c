@@ -1215,7 +1215,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       if (fix_wait_time > 0)
 	{
 	  perfmon_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
-				    PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
+					PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
 	}
     }
 
@@ -2027,7 +2027,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
    *          in log page (in delayed_free_log_pgptr)
    */
 
-  if (LSA_LE (&append_lsa, req_lsa)		/* for case 1 */
+  if (LSA_LE (&append_lsa, req_lsa)	/* for case 1 */
       || LSA_LE (&append_prev_lsa, req_lsa))	/* for case 2 */
     {
       LOG_CS_ENTER (thread_p);
@@ -2178,7 +2178,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       if (fix_wait_time > 0)
 	{
 	  perfmon_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
-				    PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
+					PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
 	}
     }
 
