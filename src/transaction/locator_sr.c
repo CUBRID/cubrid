@@ -246,8 +246,8 @@ static DB_LOGICAL locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID *
 static DB_LOGICAL locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid,
 						    HEAP_SCANCACHE * scan_cache, RECDES * recdes,
 						    UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel);
-static DB_LOGICAL mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data,
-					   const OID * oid, RECDES * recdes);
+static DB_LOGICAL locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data,
+						   const OID * oid, RECDES * recdes);
 static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 							 MVCC_REEV_DATA * mvcc_reev_data_p,
 							 MVCC_REC_HEADER * mvcc_header_p,
@@ -3948,7 +3948,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
       if (lock != NULL_LOCK)
 	{
 	  /* try to aquire requested lock or the appropriate one; it will be decided according to class type */
-	  SCAN_OPERATION_TYPE op_type = get_lock_mode_from_op_type (lock);
+	  SCAN_OPERATION_TYPE op_type = locator_get_lock_mode_from_op_type (lock);
 
 	  scan_code = locator_get_object (thread_p, oid, class_oid, NULL, NULL, op_type, lock, PEEK, NULL_CHN);
 	  if (scan_code == S_ERROR)
@@ -13462,8 +13462,8 @@ locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE *
       switch (mvcc_reev_data_p->type)
 	{
 	case REEV_DATA_SCAN:
-	  ev_res =
-	    mvcc_reevaluate_filters (thread_p, mvcc_reev_data_p->select_reev_data, curr_row_version_oid_p, recdes);
+	  ev_res = locator_mvcc_reevaluate_filters (thread_p, mvcc_reev_data_p->select_reev_data,
+						    curr_row_version_oid_p, recdes);
 	  mvcc_reev_data_p->filter_result = ev_res;
 	  break;
 
@@ -13693,7 +13693,7 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
       scan_reev.key_filter = &mvcc_cond_reeval->key_filter;
       scan_reev.data_filter = &mvcc_cond_reeval->data_filter;
       scan_reev.qualification = &mvcc_cond_reeval->qualification;
-      ev_res = mvcc_reevaluate_filters (thread_p, &scan_reev, oid_inst, recdesp);
+      ev_res = locator_mvcc_reevaluate_filters (thread_p, &scan_reev, oid_inst, recdesp);
     }
 
 end:
@@ -13706,7 +13706,7 @@ end:
 }
 
 /*
- * mvcc_reevaluate_filters () - reevaluates key range, key filter and data
+ * locator_mvcc_reevaluate_filters () - reevaluates key range, key filter and data
  *				filter predicates
  *   return: result of reevaluation
  *   thread_p(in): thread entry
@@ -13717,8 +13717,8 @@ end:
  *   recdes(in): Record descriptor that will contain the record
  */
 static DB_LOGICAL
-mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data, const OID * oid,
-			 RECDES * recdes)
+locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data, const OID * oid,
+				 RECDES * recdes)
 {
   FILTER_INFO *filter;
   DB_LOGICAL ev_res = V_TRUE;
@@ -13808,13 +13808,13 @@ locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_versi
 }
 
 /*
-* get_lock_mode_from_op_type () - returns the lock mode that corresponds to the provided operation type.
+* locator_get_lock_mode_from_op_type () - returns the lock mode that corresponds to the provided operation type.
 *
 * return	  : lock mode
 * lock_mode (in) : operation type
 */
 LOCK
-get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type)
+locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type)
 {
   switch (op_type)
     {
