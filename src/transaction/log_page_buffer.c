@@ -249,9 +249,6 @@ typedef struct
   int item_count;
 } ARV_LOG_PAGE_INFO_TABLE;
 
-#define LOG_GET_LOG_BUFFER_PTR(log_pgptr) \
-  (LOG_BUFFER *) (char*) ((LOG_BUFFER *) ((char *) (&log_pgptr) - offsetof (LOG_BUFFER, logpage)))
-
 static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 /* MIN AND MAX BUFFERS */
 #define LOG_MAX_NUM_CONTIGUOUS_BUFFERS ((unsigned int) (INT_MAX / (5 *  sizeof (LOG_BUFFER))))
@@ -384,7 +381,7 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
-LOG_BUFFER *log_get_log_buffer_ptr (LOG_PAGE * log_pg);
+STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int log_get_log_buffer_index (LOG_PAGEID log_pageid);
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -398,7 +395,7 @@ log_get_log_buffer_index (LOG_PAGEID log_pageid)
 }
 
 LOG_BUFFER *
-log_get_log_buffer_ptr (LOG_PAGE * log_pg)
+logpb_get_log_buffer (LOG_PAGE * log_pg)
 {
 
   long long index = ((char *) log_pg - (char *) log_Pb.pages_area) / LOG_PAGESIZE;
@@ -902,7 +899,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 {
   LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
   /* Get the address of the buffer from the page. */
-  bufptr = log_get_log_buffer_ptr (log_pgptr);
+  bufptr = logpb_get_log_buffer (log_pgptr);
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
       && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
@@ -936,7 +933,7 @@ logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   /* Get the address of the buffer from the page. */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  bufptr = log_get_log_buffer_ptr (log_pgptr);
+  bufptr = logpb_get_log_buffer (log_pgptr);
   is_dirty = (bool) bufptr->dirty;
 
   return is_dirty;
@@ -1025,7 +1022,7 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
   LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
 
   /* Get the address of the buffer from the page. */
-  bufptr = log_get_log_buffer_ptr (log_pgptr);
+  bufptr = logpb_get_log_buffer (log_pgptr);
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -1122,7 +1119,7 @@ logpb_free_without_mutex (LOG_PAGE * log_pgptr)
   LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
 
   /* Get the address of the buffer from the page. */
-  bufptr = log_get_log_buffer_ptr (log_pgptr);
+  bufptr = logpb_get_log_buffer (log_pgptr);
   logpb_unfix_page (bufptr);
 }
 
@@ -1143,7 +1140,7 @@ logpb_get_page_id (LOG_PAGE * log_pgptr)
 {
   LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
 
-  bufptr = log_get_log_buffer_ptr (log_pgptr);
+  bufptr = logpb_get_log_buffer (log_pgptr);
 
   assert (bufptr->fcnt > 0);
   return bufptr->pageid;
@@ -1252,7 +1249,7 @@ logpb_dump_to_flush_page (FILE * out_fp)
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {
-      log_bufptr = log_get_log_buffer_ptr (flush_info->toflush[i]);
+      log_bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
       if (i != 0)
 	{
 	  if ((i % 10) == 0)
@@ -2458,7 +2455,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
     if (log_Gl.append.delayed_free_log_pgptr != NULL)
       {
 	LOG_BUFFER *delayed_bufptr;
-	delayed_bufptr = log_get_log_buffer_ptr (log_Gl.append.delayed_free_log_pgptr);
+	delayed_bufptr = logpb_get_log_buffer (log_Gl.append.delayed_free_log_pgptr);
 	log_Stat.last_delayed_pageid = log_Gl.append.delayed_free_log_pgptr->hdr.logical_pageid;
 	log_Stat.total_delayed_page_count++;
       }
@@ -2541,7 +2538,7 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
 
   if (npages > 0)
     {
-      bufptr = log_get_log_buffer_ptr (to_flush[0]);
+      bufptr = logpb_get_log_buffer (to_flush[0]);
       phy_pageid = bufptr->phy_pageid;
 
       if (fileio_writev (thread_p, log_Gl.append.vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
@@ -2597,7 +2594,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   i = 0;
   while (pageid < prev_lsa_pageid && i < flush_info->num_toflush)
     {
-      bufptr = log_get_log_buffer_ptr (flush_info->toflush[i]);
+      bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
       if (pageid > bufptr->pageid)
 	{
 	  assert_release (pageid <= bufptr->pageid);
@@ -4061,7 +4058,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        * end of file log when it is not needed at all.
        */
 
-      bufptr = log_get_log_buffer_ptr (flush_info->toflush[0]);
+      bufptr = logpb_get_log_buffer (flush_info->toflush[0]);
       assert (bufptr->fcnt > 0);
 
       if (!logpb_is_dirty (thread_p, flush_info->toflush[0]))
@@ -4247,7 +4244,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {
-      bufptr = log_get_log_buffer_ptr (flush_info->toflush[i]);
+      bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
 
       /* 
        * Make sure that we have found the smallest dirty append page to flush
@@ -4426,7 +4423,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {
-      bufptr = log_get_log_buffer_ptr (flush_info->toflush[i]);
+      bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
 #if defined(CUBRID_DEBUG)
       if (bufptr->dirty)
 	{
