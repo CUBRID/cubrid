@@ -8646,8 +8646,7 @@ pgbuf_get_garbage_lru_index_for_victim (void)
  * pgbuf_get_victim () - find a victim BCB
  * return : victim candidate or NULL if no candidate was found
  * thread_p (in) :
- * vpid (in) :
- * max_count (in) :
+ * max_count (in) : maximum number to check in each list
  * loop_count (in) : how may loops this thread has requested a victim
  * sleep_before_next_try (out) : set true if should wait before next try
  *
