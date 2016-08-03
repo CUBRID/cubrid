@@ -230,7 +230,7 @@ struct log_pb_global_data
 {
   LOG_BUFFER *buffers;		/* Log buffer pool */
   LOG_PAGE *pages_area;
-  LOG_BUFFER *header_buffer;
+  LOG_BUFFER header_buffer;
   LOG_PAGE *header_page;
   int num_buffers;		/* Number of log buffers */
 };
@@ -265,7 +265,7 @@ int log_default_input_for_archive_log_location = 0;
 int log_default_input_for_archive_log_location = -1;
 #endif
 
-LOG_PB_GLOBAL_DATA log_Pb = { NULL, NULL, NULL, NULL, 0 };
+LOG_PB_GLOBAL_DATA log_Pb;
 
 
 LOG_LOGGING_STAT log_Stat;
@@ -403,7 +403,7 @@ log_get_log_buffer_ptr (LOG_PAGE * log_pg)
 
   long long index = ((char *) log_pg - (char *) log_Pb.pages_area) / LOG_PAGESIZE;
   if (log_pg == log_Pb.header_page)
-    return log_Pb.header_buffer;
+    return &log_Pb.header_buffer;
   /* Safe guard: index is valid. */
   assert (index >= 0 && index < log_Pb.num_buffers);
   /* Safe guard: log_pg is correctly aligned. */
@@ -576,11 +576,9 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       logpb_initialize_log_buffer (&log_Pb.buffers[i], (LOG_PAGE *) ((char *) log_Pb.pages_area + i * (LOG_PAGESIZE)));
     }
 
-
-  log_Pb.header_buffer = (LOG_BUFFER *) malloc (sizeof (LOG_BUFFER));
   log_Pb.header_page = (LOG_PAGE *) malloc (LOG_PAGESIZE);
   MEM_REGION_INIT (log_Pb.header_page, LOG_PAGESIZE);
-  logpb_initialize_log_buffer (log_Pb.header_buffer, log_Pb.header_page);
+  logpb_initialize_log_buffer (&log_Pb.header_buffer, log_Pb.header_page);
 
   error_code = logpb_initialize_flush_info ();
 
@@ -656,6 +654,8 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
   free_and_init (log_Pb.buffers);
+  free_and_init (log_Pb.pages_area);
+  free_and_init (log_Pb.header_page);
   log_Pb.num_buffers = 0;
 
   logpb_finalize_flush_info ();
@@ -813,7 +813,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 
   if (pageid == LOGPB_HEADER_PAGE_ID)
     {
-      log_bufptr = log_Pb.header_buffer;
+      log_bufptr = &log_Pb.header_buffer;
     }
   else
     {
@@ -1293,7 +1293,7 @@ logpb_dump_pages (FILE * out_fp)
 	}
       else
 	{
-	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p %4s %5lld %5d\n",
+	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %p %p-%p %4s %5lld %5d\n",
 		   i, (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
 		   log_bufptr->fcnt, (void *) log_bufptr, (void *) (log_bufptr->logpage),
 		   (void *) (&log_bufptr->logpage->area[LOGAREA_SIZE - 1]), "",
@@ -1769,7 +1769,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   if (pageid == LOGPB_HEADER_PAGE_ID)
     {
       /* copy header page into log_pgptr */
-      log_bufptr = log_Pb.header_buffer;
+      log_bufptr = &log_Pb.header_buffer;
       if (log_bufptr->pageid == NULL_PAGEID)
 	{
 	  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
