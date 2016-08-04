@@ -8066,9 +8066,12 @@ heap_last (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oi
 int
 heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes)
 {
+  HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
   char *new_area;
   int ret = NO_ERROR;
+
+  heap_scancache_quick_start (&scan_cache);
 
   if (recdes->data == NULL)
     {
@@ -8083,7 +8086,7 @@ heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes)
     }
 
   /* Get the object */
-  while ((scan = heap_get_visible_version (thread_p, oid, NULL, recdes, NULL, COPY, NULL_CHN)) != S_SUCCESS)
+  while ((scan = heap_get_visible_version (thread_p, oid, NULL, recdes, &scan_cache, COPY, NULL_CHN)) != S_SUCCESS)
     {
       if (scan == S_DOESNT_FIT)
 	{
@@ -8104,9 +8107,12 @@ heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes)
 	}
     }
 
+  heap_scancache_end (thread_p, &scan_cache);
   return ret;
 
 exit_on_error:
+
+  heap_scancache_end (thread_p, &scan_cache);
 
   if (recdes->data != NULL)
     {
