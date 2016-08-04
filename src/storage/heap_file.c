@@ -11553,7 +11553,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   int error = NO_ERROR;
 
 #define CHECK_ERROR() \
-  if (error != ER_TF_BUFFER_OVERFLOW) { ASSERT_ERROR (); return S_ERROR; } \
+  if (error != NO_ERROR && error != ER_TF_BUFFER_OVERFLOW) { ASSERT_ERROR (); return S_ERROR; } \
   else goto doesnt_fit
 
   /* check to make sure the attr_info has been used, it should not be empty. */
