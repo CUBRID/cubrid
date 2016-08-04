@@ -2438,6 +2438,11 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
     case LC_FETCH_CURRENT_VERSION:
       mvcc_snapshot = NULL;
       break;
+
+    default:
+      /* no usage at this point */
+      assert (0);
+      break;
     }
 
   /* Compute operation type */
