@@ -5683,6 +5683,9 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
 	{
 	  error = ER_FAILED;
 	}
+
+      heap_scancache_end (thread_p, &scan_cache);
+
       return error;
     }
 
