@@ -372,7 +372,7 @@ static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid);
+STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
  *
