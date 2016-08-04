@@ -762,7 +762,7 @@
 #define ER_IO_BKUP_DATABASE_VOLUME_OR_FILE_EXPECTED -634
 
 #define ER_LOG_BUFFER_POOL_TOO_SMALL                -635
-#define ER_LOG_NBUFFERS_TOO_SMALL                   -636
+#define ER_LOG_NBUFFERS_TOO_SMALL                   -636	/* Obsolete */
 #define ER_LOG_FREEING_TOO_MUCH                     -637
 #define ER_LOG_FLUSHING_UNUPDATABLE                 -638
 #define ER_LOG_WRONG_FORCE_DELAYED                  -639

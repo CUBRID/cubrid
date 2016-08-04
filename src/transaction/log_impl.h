@@ -1851,8 +1851,6 @@ typedef struct log_logging_stat
 
   /* log buffer full count */
   unsigned long log_buffer_full_count;
-  /* log buffer expand count */
-  unsigned long log_buffer_expand_count;
   /* log buffer flush count by replacement */
   unsigned long log_buffer_flush_count_by_replacement;
 
