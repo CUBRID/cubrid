@@ -2443,7 +2443,6 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   /* Compute operation type */
   operation_type = locator_decide_operation_type (lock, fetch_version_type);
 
-#if !defined (NDEBUG)
   if (class_oid == NULL)
     {
       /* The class_oid is not known by the caller. */
@@ -2486,7 +2485,6 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL,
 						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
 		  || class_lock >= SIX_LOCK)));
-#endif
 
   /* 
    * Lock and fetch the object.
