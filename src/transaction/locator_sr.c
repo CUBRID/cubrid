@@ -3948,7 +3948,9 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
       if (lock != NULL_LOCK)
 	{
 	  /* try to aquire requested lock or the appropriate one; it will be decided according to class type */
-	  SCAN_OPERATION_TYPE op_type = locator_get_lock_mode_from_op_type (lock);
+	  SCAN_OPERATION_TYPE op_type;
+
+	  op_type = locator_decide_operation_type (lock, fetch_version_type);
 
 	  scan_code = locator_get_object (thread_p, oid, class_oid, NULL, NULL, op_type, lock, PEEK, NULL_CHN);
 	  if (scan_code == S_ERROR)
