@@ -11552,7 +11552,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   int mvcc_wasted_space = 0, header_size;
   int error = NO_ERROR;
 
-#define CHECK_ERROR \
+#define CHECK_ERROR() \
   if (error != ER_TF_BUFFER_OVERFLOW) { ASSERT_ERROR (); return S_ERROR; } \
   else goto doesnt_fit
 
@@ -11610,23 +11610,23 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
     {
       repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
       error = or_put_int (buf, repid_bits);
-      CHECK_ERROR;
+      CHECK_ERROR ();
 
       error = or_put_bigint (buf, 0);	/* MVCC insert id */
-      CHECK_ERROR;
+      CHECK_ERROR ();
 
       error = or_put_int (buf, 0);	/* CHN, short size */
-      CHECK_ERROR;
+      CHECK_ERROR ();
 
       header_size = OR_MVCC_INSERT_HEADER_SIZE;
     }
   else
     {
       error = or_put_int (buf, repid_bits);
-      CHECK_ERROR;
+      CHECK_ERROR ();
 
       error = or_put_int (buf, attr_info->inst_chn);
-      CHECK_ERROR;
+      CHECK_ERROR ();
 
       header_size = OR_NON_MVCC_HEADER_SIZE;
     }
@@ -11708,7 +11708,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	       * to accept a domain so it can perform this padding.
 	       */
 	      error = or_pad (buf, tp_domain_disk_size (value->last_attrepr->domain));
-	      CHECK_ERROR;
+	      CHECK_ERROR ();
 	    }
 	  else
 	    {
@@ -11717,7 +11717,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	       */
 	      OR_ENABLE_BOUND_BIT (ptr_bound, value->last_attrepr->position);
 	      error = (*(pr_type->data_writeval)) (buf, dbvalue);
-	      CHECK_ERROR;
+	      CHECK_ERROR ();
 	    }
 	}
       else
@@ -11742,7 +11742,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
 	  /* compute the variable offsets relative to the end of the header (beginning of variable table) */
 	  error = or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
-	  CHECK_ERROR;
+	  CHECK_ERROR ();
 
 	  if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
 	    {
@@ -11802,7 +11802,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		}
 
 	      error = (*(pr_type->data_writeval)) (buf, dbvalue);
-	      CHECK_ERROR;
+	      CHECK_ERROR ();
 	      ptr_varvals = buf->ptr;
 	    }
 	}
@@ -11819,7 +11819,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       /* Write the offset to the end of the variable attributes table */
       buf->ptr = ((char *) (OR_VAR_ELEMENT_PTR (buf->buffer, attr_info->last_classrepr->n_variable)));
       error = or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
-      CHECK_ERROR;
+      CHECK_ERROR ();
 
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
@@ -11862,7 +11862,7 @@ doesnt_fit:
     }
   return S_DOESNT_FIT;
 
-#undef CHECK_ERROR
+#undef CHECK_ERROR()
 }
 
 /*
