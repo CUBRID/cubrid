@@ -11663,6 +11663,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       pr_type = value->last_attrepr->domain->type;
       if (pr_type == NULL)
 	{
+	  assert (false);
 	  return S_ERROR;
 	}
 
@@ -11736,6 +11737,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 	  if (value->do_increment != 0)
 	    {
+	      assert (false);
 	      return S_ERROR;
 	    }
 
