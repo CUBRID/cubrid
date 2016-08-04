@@ -2450,6 +2450,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       OID_SET_NULL (class_oid);
     }
 
+#if !defined (NDEBUG)
   if (OID_ISNULL (class_oid))
     {
       /*
@@ -2485,6 +2486,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL,
 						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
 		  || class_lock >= SIX_LOCK)));
+#endif /* DEBUG */
 
   /* 
    * Lock and fetch the object.
