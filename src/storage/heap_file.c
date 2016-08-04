@@ -11837,7 +11837,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 doesnt_fit:
 
-  if (error != ER_TF_BUFFER_OVERFLOW)
+  if (error != NO_ERROR && error != ER_TF_BUFFER_OVERFLOW)
     {
       ASSERT_ERROR ();
       return S_ERROR;
