@@ -2565,11 +2565,12 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   int disk_length;
   OR_BUF buf;
   bool copy;
-  RECDES recdes;		/* Used to obtain attrnames */
+  RECDES recdes = RECDES_INITIALIZER;	/* Used to obtain attrnames */
   int ret = NO_ERROR;
   char *index_name = NULL;
   char *string = NULL;
   int alloced_string = 0;
+  HEAP_SCANCACHE scan_cache;
 
   /* 
    * The class is feteched to print the attribute names.
@@ -2577,16 +2578,14 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
    * This is needed since the name of the attributes is not contained
    * in the class representation structure.
    */
-
-  recdes.data = NULL;
-  recdes.area_size = 0;
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
   if (repr == NULL)
     {
       goto exit_on_error;
     }
 
-  if (heap_get_alloc (thread_p, class_oid, &recdes) != NO_ERROR)
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, COPY) != S_SUCCESS)
     {
       goto exit_on_error;
     }
@@ -2719,16 +2718,13 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
       fprintf (fp, "\n");
     }
 
-  free_and_init (recdes.data);
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   return ret;
 
 exit_on_error:
 
-  if (recdes.data)
-    {
-      free_and_init (recdes.data);
-    }
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   fprintf (fp, "Dump has been aborted...");
 
@@ -8046,75 +8042,6 @@ heap_last (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oi
   oid->volid = hfid->vfid.volid;
 
   return heap_prev (thread_p, hfid, class_oid, oid, recdes, scan_cache, ispeeking);
-}
-
-/*
- * heap_get_alloc () - get/retrieve an object by allocating and freeing area
- *   return: NO_ERROR
- *   oid(in): Object identifier
- *   recdes(in): Record descriptor
- *
- * Note: The object associated with the given OID is copied into the
- * allocated area pointed to by the record descriptor. If the
- * object does not fit in such an area. The area is freed and a
- * new area is allocated to hold the object.
- * The caller is responsible from deallocating the area.
- *
- * Note: The area in the record descriptor is one dynamically allocated
- * with malloc and free with free_and_init.
- */
-int
-heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes)
-{
-  SCAN_CODE scan;
-  char *new_area;
-  int ret = NO_ERROR;
-
-  if (recdes->data == NULL)
-    {
-      recdes->area_size = DB_PAGESIZE;	/* assume that only one page is needed */
-      recdes->data = (char *) malloc (recdes->area_size);
-      if (recdes->data == NULL)
-	{
-	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, (size_t) recdes->area_size);
-	  goto exit_on_error;
-	}
-    }
-
-  /* Get the object */
-  while ((scan = heap_get_visible_version (thread_p, oid, NULL, recdes, NULL, COPY, NULL_CHN)) != S_SUCCESS)
-    {
-      if (scan == S_DOESNT_FIT)
-	{
-	  /* Is more space needed ? */
-	  new_area = (char *) realloc (recdes->data, -(recdes->length));
-	  if (new_area == NULL)
-	    {
-	      ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, (size_t) (-(recdes->length)));
-	      goto exit_on_error;
-	    }
-	  recdes->area_size = -recdes->length;
-	  recdes->data = new_area;
-	}
-      else
-	{
-	  goto exit_on_error;
-	}
-    }
-
-  return ret;
-
-exit_on_error:
-
-  if (recdes->data != NULL)
-    {
-      free_and_init (recdes->data);
-      recdes->area_size = 0;
-    }
-
-  return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
