@@ -892,14 +892,15 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
   char *subset = NULL;
   OID sub_class;
   int i, nsubs, found, newsize;
-  RECDES record;
+  RECDES record = RECDES_INITIALIZER;
   OR_CLASSREP *or_rep = NULL;
   OR_INDEX *or_index;
   HFID hfid;
+  HEAP_SCANCACHE scan_cache;
 
-  record.data = NULL;
-  record.area_size = 0;
-  if (heap_get_alloc (thread_p, class_, &record) != NO_ERROR)
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+
+  if (heap_get_class_record (thread_p, class_, &record, &scan_cache, COPY) != S_SUCCESS)
     {
       goto error;
     }
@@ -1033,7 +1034,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
 
 success:
   or_free_classrep (or_rep);
-  free_and_init (record.data);
+  (void) heap_scancache_end (thread_p, &scan_cache);
   return NO_ERROR;
 
 error:
@@ -1042,10 +1043,7 @@ error:
       or_free_classrep (or_rep);
     }
 
-  if (record.data)
-    {
-      free_and_init (record.data);
-    }
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   assert (er_errid () != NO_ERROR);
   return er_errid ();

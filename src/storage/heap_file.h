@@ -420,7 +420,6 @@ extern SCAN_CODE heap_first (THREAD_ENTRY * thread_p, const HFID * hfid, OID * c
 			     HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern SCAN_CODE heap_last (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
 			    HEAP_SCANCACHE * scan_cache, int ispeeking);
-extern int heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int heap_cmp (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes);
 #endif
