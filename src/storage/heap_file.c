@@ -703,8 +703,6 @@ static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       int ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
-static SCAN_CODE heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RECDES * recdes,
-				    HEAP_SCANCACHE * scan_cache, int ispeeking, int chn);
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,

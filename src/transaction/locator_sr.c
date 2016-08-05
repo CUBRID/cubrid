@@ -3954,10 +3954,14 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 	{
 	  /* try to aquire requested lock or the appropriate one; it will be decided according to class type */
 	  SCAN_OPERATION_TYPE op_type;
+	  HEAP_SCANCACHE scan_cache;
 
 	  op_type = locator_decide_operation_type (lock, fetch_version_type);
 
-	  scan_code = locator_get_object (thread_p, oid, class_oid, NULL, NULL, op_type, lock, PEEK, NULL_CHN);
+	  (void) heap_scancache_quick_start (&scan_cache);
+
+	  scan_code = locator_get_object (thread_p, oid, class_oid, NULL, &scan_cache, op_type, lock, PEEK, NULL_CHN);
+	  heap_scancache_end (thread_p, &scan_cache);
 	  if (scan_code == S_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -13048,11 +13052,11 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   assert (context->oid_p != NULL && !OID_ISNULL (context->oid_p));
   assert (context->class_oid_p != NULL && !OID_ISNULL (context->class_oid_p));
   assert (lock_mode > NULL_LOCK);	/* this is not the appropriate function for NULL_LOCK */
+  assert (context->scan_cache != NULL);
 
+  /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
   if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
     {
-      /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
-
       if (context->scan_cache && context->scan_cache->cache_last_fix_page && context->home_page_watcher.pgptr != NULL)
 	{
 	  /* prevent caching home page watcher in scan_cache */
