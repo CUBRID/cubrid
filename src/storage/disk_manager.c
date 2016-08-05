@@ -6559,6 +6559,23 @@ disk_alloctbl_cursor_set_at_start (const DISK_VAR_HEADER * volheader, DISK_ALLOC
   cursor->unit = NULL;
 }
 
+STATIC_INLINE void
+disk_alloctbl_cursor_set_for_recovery (const PAGE_PTR page_alloctbl, int bit_index, DISK_ALLOCTBL_CURSOR * cursor)
+{
+  assert (page_alloctbl != NULL);
+  assert (bit_index >= 0 && bit_index < DISK_ALLOCTBL_PAGE_BIT_COUNT);
+  assert (cursor != NULL);
+
+  cursor->volheader = NULL;
+  cursor->pageid = NULL_PAGEID;
+
+  cursor->offset_to_unit = bit_index / DISK_ALLOCTBL_UNIT_BIT_COUNT;
+  cursor->offset_to_bit = bit_index % DISK_ALLOCTBL_UNIT_BIT_COUNT;
+
+  cursor->page = page_alloctbl;
+  cursor->unit = (DISK_ALLOCTBL_UNIT *) (cursor->page + cursor->offset_to_unit);
+}
+
 /*
  * disk_alloctbl_cursor_next () - Move allocation table cursor to next position.
  *
@@ -6653,12 +6670,21 @@ disk_alloctable_cursor_check_valid (const DISK_ALLOCTBL_CURSOR * cursor)
 {
   assert (cursor != NULL);
 
-  /* Cursor must have valid volheader pointer. */
-  assert (cursor->volheader != NULL);
+  if (cursor->pageid == NULL_PAGEID)
+    {
+      /* Must be recovery. */
+      assert (!LOG_ISRESTARTED ());
+    }
+  else
+    {
+      /* Cursor must have valid volheader pointer. */
+      assert (cursor->volheader != NULL);
 
-  /* Cursor must have a valid position. */
-  assert (cursor->pageid >= cursor->volheader->sect_alloctb_page1);
-  assert (cursor->pageid < cursor->volheader->sect_alloctb_page1 + cursor->volheader->sect_alloctb_npages);
+      /* Cursor must have a valid position. */
+      assert (cursor->pageid >= cursor->volheader->sect_alloctb_page1);
+      assert (cursor->pageid < cursor->volheader->sect_alloctb_page1 + cursor->volheader->sect_alloctb_npages);
+    }
+
   assert (cursor->offset_to_unit >= 0);
   assert (cursor->offset_to_unit < DISK_ALLOCTBL_PAGE_UNITS_COUNT);
   assert (cursor->offset_to_bit >= 0);
@@ -6801,6 +6827,120 @@ disk_alloctbl_cursor_unfix (THREAD_ENTRY * thread_p, DISK_ALLOCTBL_CURSOR * curs
 }
 
 /*
+ * disk_log_update_sectors () - Log reserving/unreserving disk sectors.
+ *
+ * return		    : Void.
+ * thread_p (in)	    : Thread entry.
+ * page_alloctbl (in)	    : Allocation table page.
+ * logging_parts_count (in) : Logging parts count.
+ * logging_parts (in)	    : Logging parts.
+ * is_reserve (in)	    : True for reserving sectors, false for unreserving sectors.
+ */
+static void
+disk_log_update_sectors (THREAD_ENTRY * thread_p, PAGE_PTR page_alloctbl, int logging_parts_count,
+			 INT32 * logging_parts, bool is_reserve)
+{
+  int size = logging_parts_count * 2 * sizeof (INT32);
+  log_append_undoredo_data2 (thread_p, is_reserve ? RVDK_RESERVE_SECTORS : RVDK_UNRESERVE_SECTORS, NULL, page_alloctbl,
+			     0, size, size, logging_parts, logging_parts);
+}
+
+/*
+ * disk_rv_update_sectors () - Apply recovery for reserving/unreserving sectors.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * rcv (in)	   : Recovery data.
+ * is_reserve (in) : True for reserving sectors, false for unreserving sectors.
+ */
+static int
+disk_rv_update_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_reserve)
+{
+  PAGE_PTR page_alloctbl = rcv->pgptr;
+  INT32 *logparts = (INT32 *) rcv->data;
+  int count_logparts = rcv->length / sizeof (INT32) / 2;
+  DISK_ALLOCTBL_CURSOR cursor, cursor_end;
+  INT32 start_bit;
+  INT32 count_bits;
+  int i;
+
+  assert (page_alloctbl != NULL);
+  assert (logparts != NULL);
+  assert (count_logparts > 0);
+  assert (count_logparts * 2 * sizeof (INT32) == rcv->length);
+
+  for (i = 0; i < count_logparts; i++)
+    {
+      start_bit = logparts[count_logparts * 2];
+      count_bits = logparts[count_logparts * 2 + 1];
+      if (count_bits == 1)
+	{
+	  /* One bit */
+	  disk_alloctbl_cursor_set_for_recovery (page_alloctbl, start_bit, &cursor);
+	  if (is_reserve)
+	    {
+	      disk_alloctbl_cursor_set_bit (&cursor);
+	    }
+	  else
+	    {
+	      disk_alloctbl_cursor_clear_bit (&cursor);
+	    }
+	}
+      else
+	{
+	  /* Multiple bits. Iterate through all. */
+	  disk_alloctbl_cursor_set_for_recovery (page_alloctbl, start_bit, &cursor);
+	  disk_alloctbl_cursor_set_for_recovery (page_alloctbl, start_bit + count_bits, &cursor);
+
+	  while (disk_alloctbl_cursor_compare (&cursor, &cursor_end) < 0)
+	    {
+	      if (is_reserve)
+		{
+		  disk_alloctbl_cursor_set_bit (&cursor);
+		}
+	      else
+		{
+		  disk_alloctbl_cursor_clear_bit (&cursor);
+		}
+	      if (!disk_alloctbl_cursor_next (&cursor))
+		{
+		  /* Impossible. */
+		  assert (false);
+		  return ER_FAILED;
+		}
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * disk_rv_reserve_sectors () - Apply recovery for reserving sectors.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * rcv (in)	   : Recovery data.
+ */
+int
+disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return disk_rv_update_sectors (thread_p, rcv, true);
+}
+
+/*
+ * disk_rv_unreserve_sectors () - Apply recovery for unreserving sectors.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * rcv (in)	   : Recovery data.
+ */
+int
+disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return disk_rv_update_sectors (thread_p, rcv, false);
+}
+
+/*
  * disk_reserve_sectors_in_range () - Reserve a number of sectors in given range.
  *
  * return		     : Error code.
@@ -6818,6 +6958,7 @@ disk_reserve_sectors_in_range (THREAD_ENTRY * thread_p, const DISK_ALLOCTBL_CURS
 			       const DISK_ALLOCTBL_CURSOR * end_cursor, int n_sectors, bool do_logging,
 			       int *n_total_reserved, int *n_crt_reserved, VSID * reserved)
 {
+#define DISK_RESERVE_LOGGING_PARTS    100
   VSID crt_vsid = VSID_INITIALIZER;
   DISK_ALLOCTBL_CURSOR cursor = DISK_SECTALLOCTBL_CURSOR_INITIALIZER;
   int error_code = NO_ERROR;
@@ -6825,6 +6966,8 @@ disk_reserve_sectors_in_range (THREAD_ENTRY * thread_p, const DISK_ALLOCTBL_CURS
 
   INT32 start_bit;
   INT32 n_bits;
+  INT32 logging_parts[DISK_RESERVE_LOGGING_PARTS * 2];	/* start_bit/n_bits pairs */
+  INT32 logging_parts_count = 0;
 
   bool is_page_end = false;
   bool is_page_dirty = false;
@@ -6854,6 +6997,7 @@ disk_reserve_sectors_in_range (THREAD_ENTRY * thread_p, const DISK_ALLOCTBL_CURS
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+      logging_parts_count = 0;
 
       /* Start a new loop in allocation table page. Stop when enough sectors are reserved or when end of page is
        * reached. */
@@ -6890,15 +7034,23 @@ disk_reserve_sectors_in_range (THREAD_ENTRY * thread_p, const DISK_ALLOCTBL_CURS
 	    }
 	  while (n_sectors > 0 && !is_page_end && !disk_alloctbl_cursor_is_bit_set (&cursor));
 
+	  if (do_logging)
+	    {
+	      if (logging_parts_count == DISK_RESERVE_LOGGING_PARTS)
+		{
+		  /* We cannot collect anymore. Force logging here. */
+		  disk_log_update_sectors (thread_p, cursor.page, logging_parts_count, logging_parts, true);
+		  logging_parts_count = 0;
+		}
+	      logging_parts[logging_parts_count * 2] = start_bit;
+	      logging_parts[logging_parts_count * 2 + 1] = n_bits;
+	      logging_parts_count++;
+	    }
+
 	  /* Save all reserved VSID's */
 	  for (i = 0; i < n_bits; i++, crt_vsid.sectid++, (*n_total_reserved)++, (*n_crt_reserved)++)
 	    {
 	      reserved[*n_total_reserved] = crt_vsid;
-	    }
-
-	  if (do_logging)
-	    {
-	      /* TODO. Collect start_bit and n_bits for log. */
 	    }
 	  /* Page was modified */
 	  is_page_dirty = true;
@@ -6908,7 +7060,8 @@ disk_reserve_sectors_in_range (THREAD_ENTRY * thread_p, const DISK_ALLOCTBL_CURS
 	{
 	  if (do_logging)
 	    {
-	      /* TODO. Log all start_bit/n_bits pairs. */
+	      disk_log_update_sectors (thread_p, cursor.page, logging_parts_count, logging_parts, true);
+	      logging_parts_count = 0;
 	    }
 	  pgbuf_set_dirty (thread_p, cursor.page, DONT_FREE);
 	}
@@ -6919,6 +7072,156 @@ disk_reserve_sectors_in_range (THREAD_ENTRY * thread_p, const DISK_ALLOCTBL_CURS
   /* Finished searching range. */
   assert (cursor.page == NULL);
   return NO_ERROR;
+
+#undef DISK_RESERVE_LOGGING_PARTS
+}
+
+/*
+ * disk_update_vol_used_sectors () - Update sector meta-data in volume header.
+ *
+ * return	      : Void.
+ * volheader (in)     : Volume header.
+ * volpurpose (in)    : Purpose of modified sectors.
+ * delta_sectors (in) : Count of reserved/unreserved sectors (positive for reserved, negative otherwise).
+ * hint (in)	      : New sector ID hint for future allocations.
+ */
+STATIC_INLINE void
+disk_update_vol_used_sectors (DISK_VAR_HEADER * volheader, DB_VOLPURPOSE volpurpose, int delta_sectors, SECTID hint)
+{
+  volheader->free_sects -= delta_sectors;
+  volheader->hint_allocsect = hint;
+
+  switch (volpurpose)
+    {
+      /* TODO: Change this */
+    case DISK_PERMVOL_DATA_PURPOSE:
+      volheader->used_index_npages += delta_sectors;
+      assert (volheader->used_data_npages + volheader->used_index_npages <= volheader->total_pages);
+      break;
+    case DISK_PERMVOL_INDEX_PURPOSE:
+      volheader->used_index_npages += delta_sectors;
+      assert (volheader->used_data_npages + volheader->used_index_npages <= volheader->total_pages);
+      break;
+    default:
+      break;
+    }
+}
+
+/*
+ * disk_log_update_vol_used_sectors () - Log sector meta-data update in volume header for undo and redo.
+ *
+ * return	       : Void.
+ * thread_p (in)       : Thread entry.
+ * page_volheader (in) : Volume header page.
+ * purpose (in)	       : Purpose of sectors.
+ * n_sectors (in)      : Sector count.
+ * undo_hint (in)      : New hint value when executing undo.
+ * redo_hint (in)      : New hint value when executing redo.
+ */
+STATIC_INLINE void
+disk_log_update_vol_used_sectors (THREAD_ENTRY * thread_p, PAGE_PTR page_volheader, DB_VOLPURPOSE purpose,
+				  int count_sectors, SECTID hint_undo, SECTID hint_redo)
+{
+  /* We need to log purpose and n_sectors. */
+#define LOG_CRUMBS_COUNT 3
+  LOG_CRUMB crumbs_undo[LOG_CRUMBS_COUNT];
+  LOG_CRUMB crumbs_redo[LOG_CRUMBS_COUNT];
+  int count_undo_sectors = -count_sectors;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+
+  crumbs_redo[0].data = &count_sectors;
+  crumbs_redo[0].length = sizeof (count_sectors);
+
+  crumbs_redo[1].data = &purpose;
+  crumbs_redo[1].length = sizeof (purpose);
+
+  crumbs_redo[2].data = &hint_redo;
+  crumbs_redo[2].length = sizeof (hint_redo);
+
+  crumbs_undo[0].data = &count_sectors;
+  crumbs_undo[0].length = sizeof (count_sectors);
+
+  crumbs_undo[1].data = &purpose;
+  crumbs_undo[1].length = sizeof (purpose);
+
+  crumbs_undo[2].data = &hint_undo;
+  crumbs_undo[2].length = sizeof (hint_undo);
+
+  addr.pgptr = page_volheader;
+  log_append_undoredo_crumbs (thread_p, RVDK_UPDATE_VOL_USED_SECTORS, &addr, LOG_CRUMBS_COUNT, LOG_CRUMBS_COUNT,
+			      crumbs_undo, crumbs_redo);
+#undef LOG_CRUMBS_COUNT
+}
+
+/*
+ * disk_rv_update_vol_used_sectors () - Apply recovery for sector meta-data in volume header.
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+disk_rv_update_vol_used_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_PTR page_volheader = rcv->pgptr;
+  DB_VOLPURPOSE purpose;
+  int count_sectors;
+  SECTID sectid_hint;
+  int offset = 0;
+  DISK_VAR_HEADER *volheader = (DISK_VAR_HEADER *) page_volheader;
+
+  assert (page_volheader != NULL);
+  assert (rcv->data != NULL);
+
+  /* Unpack recovery data */
+  purpose = *(DB_VOLPURPOSE *) (rcv->data + offset);
+  offset += sizeof (DB_VOLPURPOSE);
+
+  count_sectors = *(int *) (rcv->data + offset);
+  offset += sizeof (int);
+
+  sectid_hint = *(SECTID *) (rcv->data + offset);
+  offset += sizeof (SECTID);
+
+  assert (offset == rcv->length);
+
+  /* Apply update */
+  disk_update_vol_used_sectors (volheader, purpose, count_sectors, sectid_hint);
+  pgbuf_set_dirty (thread_p, page_volheader, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * disk_rv_dump_update_vol_used_sectors () - Dump recovery for updating volume used sectors.
+ *
+ * return      : Void.
+ * fp (in)     : Output for dump.
+ * length (in) : Recovery data length.
+ * data (in)   : Recovery data.
+ */
+void
+disk_rv_dump_update_vol_used_sectors (FILE * fp, int length, void *data)
+{
+  DB_VOLPURPOSE purpose;
+  int count_sectors;
+  SECTID sectid_hint;
+  int offset = 0;
+
+  /* Unpack recovery data */
+  purpose = *(DB_VOLPURPOSE *) ((char *) data + offset);
+  offset += sizeof (DB_VOLPURPOSE);
+
+  count_sectors = *(int *) ((char *) data + offset);
+  offset += sizeof (int);
+
+  sectid_hint = *(SECTID *) ((char *) data + offset);
+  offset += sizeof (SECTID);
+
+  assert (offset == length);
+
+  fprintf (fp, "Update sectors in volume header: %d %s sectors, new hint %d \n", count_sectors,
+	   purpose == DISK_PERMVOL_DATA_PURPOSE ? "data" : (purpose == DISK_PERMVOL_INDEX_PURPOSE ? "index" : "other"),
+	   sectid_hint);
 }
 
 /*
@@ -7064,30 +7367,19 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
 
   if (*n_reserved_sectors > 0)
     {
-      /* Change header, log changes and update cache. */
-      volheader->free_sects -= *n_reserved_sectors;
-      volheader->hint_allocsect =
-	volheader->free_sects > 0 ? reserved_sectors[(*n_reserved_sectors) - 1].sectid + 1 : NULL_SECTID;
+      SECTID undo_hint, redo_hint;
+      /* On undo, set hint to first sector that will be unreserved. */
+      undo_hint = reserved_sectors[0].sectid;
+      /* For redo, set hint to NULL_SECTID if no free sectors or sectid next to last reserved otherwise */
+      redo_hint = volheader->free_sects > 0 ? reserved_sectors[(*n_reserved_sectors) - 1].sectid + 1 : NULL_SECTID;
 
-      switch (purpose)
-	{
-	case DISK_PERMVOL_DATA_PURPOSE:
-	  volheader->used_index_npages += *n_reserved_sectors;
-	  assert (volheader->used_data_npages + volheader->used_index_npages <= volheader->total_pages);
-	  break;
-	case DISK_PERMVOL_INDEX_PURPOSE:
-	  volheader->used_index_npages += *n_reserved_sectors;
-	  assert (volheader->used_data_npages + volheader->used_index_npages <= volheader->total_pages);
-	  break;
-	default:
-	  /* Do nothing. */
-	  break;
-	}
-
+      disk_update_vol_used_sectors (volheader, purpose, *n_reserved_sectors, redo_hint);
       if (do_logging)
 	{
-	  /* TODO */
+	  disk_log_update_vol_used_sectors (thread_p, page_volheader, purpose, *n_reserved_sectors, undo_hint,
+					    redo_hint);
 	}
+      pgbuf_set_dirty (thread_p, page_volheader, DONT_FREE);
 
       /* TODO: Update cache. */
     }
