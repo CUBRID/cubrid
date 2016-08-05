@@ -11543,7 +11543,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
     }
   else
     {
-      string1 = buf1.ptr;
+      /* Skip the size byte */
+      string1 = buf1.ptr + OR_BYTE_SIZE;
     }
 
   if (rc != NO_ERROR)
@@ -11585,7 +11586,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
     }
   else
     {
-      string2 = buf2.ptr;
+      /* Skip the size byte */
+      string2 = buf2.ptr + OR_BYTE_SIZE;
     }
 
   if (rc != NO_ERROR)
@@ -14392,7 +14394,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
     }
   else
     {
-      string1 = buf1.ptr;
+      /* Skip the size byte */
+      string1 = buf1.ptr + OR_BYTE_SIZE;
     }
 
   if (rc != NO_ERROR)
@@ -14432,7 +14435,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
     }
   else
     {
-      string2 = buf2.ptr;
+      /* Skip the size byte */
+      string2 = buf2.ptr + OR_BYTE_SIZE;
     }
 
   if (rc != NO_ERROR)

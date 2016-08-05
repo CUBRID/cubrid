@@ -17167,7 +17167,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
     }
   else
     {
-      string1 = str1;
+      /* Skip the size byte */
+      string1 = str1 + OR_BYTE_SIZE;
     }
 
   if (rc != NO_ERROR)
@@ -17207,7 +17208,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
     }
   else
     {
-      string2 = str2;
+      /* Skip the size byte */
+      string2 = str2 + OR_BYTE_SIZE;
     }
 
   if (rc != NO_ERROR)
