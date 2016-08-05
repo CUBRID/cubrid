@@ -39,8 +39,6 @@
 /* Special sector which can steal pages from other sectors */
 #define DISK_SECTOR_WITH_ALL_PAGES 0
 
-#define DISK_SECTOR_NPAGES 64	/* Number of pages in a sector */
-
 #define VSID_SET_NULL(vsidp) (vsidp)->sectid = NULL_SECTID; (vsidp)->volid = NULL_VOLID
 #define VSID_IS_NULL(vsidp) ((vsidp)->sectid == NULL_SECTID || (vsidp)->volid == NULL_VOLID)
 #define VSID_COPY(dest, src) *((VSID *) dest) = *((VSID *) src)

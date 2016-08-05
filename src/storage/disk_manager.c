@@ -6457,7 +6457,7 @@ disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  * If we ever want to change the type of unit, this can be modified and should be handled automatically. However, some
  * other structures may need updating (e.g. DISK_ALLOCTBL_CURSOR).
  */
-typedef char DISK_ALLOCTBL_UNIT;
+typedef unsigned char DISK_ALLOCTBL_UNIT;
 
 /* Disk allocation table cursor. Used to iterate through table bits. */
 typedef struct disk_alloctbl_cursor DISK_ALLOCTBL_CURSOR;
@@ -6778,7 +6778,7 @@ disk_alloctbl_cursor_fix (THREAD_ENTRY * thread_p, DISK_ALLOCTBL_CURSOR * cursor
       return error_code;
     }
 
-  cursor->unit = cursor->page + cursor->offset_to_unit;
+  cursor->unit = (DISK_ALLOCTBL_UNIT *) (cursor->page + cursor->offset_to_unit);
 
   return NO_ERROR;
 }
@@ -7104,6 +7104,7 @@ exit:
     {
       pgbuf_unfix (thread_p, page_volheader);
     }
+  return error_code;
 }
 
 /* TODO: Rename as disk_find_goodvol. This is similar to disk_find_goodvol, except the n_sectors argument and code

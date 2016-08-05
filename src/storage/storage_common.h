@@ -148,6 +148,18 @@ struct log_lsa
 #define LOG_PAGESIZE            (db_log_page_size())
 #define IO_PAGESIZE             (db_io_page_size())
 #define DB_PAGESIZE             (db_page_size())
+
+/*
+ * Sector
+ */
+/* Number of pages in a sector. Careful about changing this size. The whole file manager depends on this size. */
+#define DISK_SECTOR_NPAGES 64
+#define DB_SECTORSIZE		(DISK_SECTOR_NPAGES * DB_PAGESIZE)
+
+#define SECTOR_FIRST_PAGEID(sid) ((sid) * DISK_SECTOR_NPAGES)
+#define SECTOR_LAST_PAGEID(sid) ((sid) * (DISK_SECTOR_NPAGES + 1) - 1)
+#define SECTOR_FROM_PAGEID(pageid) ((pageid) / DISK_SECTOR_NPAGES)
+
 #define DB_MAX_PATH_LENGTH      PATH_MAX
 
 #define DISK_VFID_SIZE (OR_INT_SIZE + OR_SHORT_SIZE)
