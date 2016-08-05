@@ -5022,13 +5022,13 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  /* get with lock and reevaluate if the visible version wasn't the latest version */
 	  sp_scan =
-	    heap_mvcc_get_for_delete (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache, is_peeking,
-				      NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+	    locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
+							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
 	  if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 	    {
 	      continue;
 	    }
-	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT || sp_scan == S_DOESNT_EXIST)
 	    {
 	      er_clear ();
 	      continue;
@@ -5039,7 +5039,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
-      if (heap_is_mvcc_disabled_for_class (&hsidp->cls_oid))
+      if (mvcc_is_mvcc_disabled_class (&hsidp->cls_oid))
 	{
 	  LOCK lock = NULL_LOCK;
 	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5413,7 +5413,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   /* Due to the length of time that we hold onto the oid list, it is possible at lower isolation levels (UNCOMMITTED
    * INSTANCES) that the index/heap may have changed since the oid list was read from the btree.  In particular, some
-   * of the instances that we are reading may have been deleted by the time we go to fetch them via heap_get ().
+   * of the instances that we are reading may have been deleted by the time we go to fetch them via heap_get_visible_version ().
    * According to the semantics of UNCOMMITTED, it is ok if they are deleted out from under us and we can ignore the
    * SCAN_DOESNT_EXIST error. */
 
@@ -5750,7 +5750,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
     }
 
   sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				      NULL_CHN, false);
+				      NULL_CHN);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
     {
       if (SCAN_IS_INDEX_COVERED (isidp))
@@ -5808,9 +5808,9 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       /* set reevaluation data */
       SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
 
-      sp_scan =
-	heap_mvcc_get_for_delete (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				  NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+      sp_scan = locator_lock_and_get_object_with_evaluation (thread_p, isidp->curr_oidp, NULL, &recdes,
+							     &isidp->scan_cache, scan_id->fixed, NULL_CHN,
+							     &mvcc_reev_data, LOG_WARNING_IF_DELETED);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)
@@ -5825,7 +5825,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 	}
     }
 
-  if (sp_scan == S_DOESNT_EXIST && er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+  if (sp_scan == S_DOESNT_EXIST || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
     {
       er_clear ();
       if (SCAN_IS_INDEX_COVERED (isidp))
@@ -5885,7 +5885,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       return S_ERROR;
     }
 
-  if (!scan_id->mvcc_select_lock_needed && heap_is_mvcc_disabled_for_class (&isidp->cls_oid))
+  if (!scan_id->mvcc_select_lock_needed && mvcc_is_mvcc_disabled_class (&isidp->cls_oid))
     {
       /* Data filter passed. If object should be locked and is not locked yet, lock it. */
       LOCK lock = NULL_LOCK;
