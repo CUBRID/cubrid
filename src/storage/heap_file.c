@@ -24076,7 +24076,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
-  OID class_oid_local;
+  OID class_oid_local = OID_INITIALIZER;
 
   assert (context->scan_cache != NULL);
 
