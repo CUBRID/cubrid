@@ -1353,6 +1353,11 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   bool compressable = false;
   lzo_uint compressed_length = 0;
   lzo_voidp wrkmem = NULL;
+  int error_abort = 0;
+
+  error_abort = buf->error_abort;
+
+  buf->error_abort = 0;
 
   /* store the size prefix */
   if (charlen < 0xFF)
@@ -1366,7 +1371,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
     }
   if (rc != NO_ERROR)
     {
-      return rc;
+      goto cleanup;
     }
 
   if (compressable == true)
@@ -1484,6 +1489,13 @@ cleanup:
   if (wrkmem != NULL)
     {
       free_and_init (wrkmem);
+    }
+
+  buf->error_abort = error_abort;
+
+  if (rc == ER_TF_BUFFER_OVERFLOW)
+    {
+      return or_overflow (buf);
     }
 
   return rc;
