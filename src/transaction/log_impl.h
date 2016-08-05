@@ -115,9 +115,6 @@
    || csect_check_own (thread_p, CSECT_LOG) >= 1)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) \
   (csect_check_own (thread_p, CSECT_LOG) == 1)
-#define LOG_CS_OWN_READ_MODE(thread_p) \
-  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
-   || csect_check_own (thread_p, CSECT_LOG) == 2)
 
 #define LOG_ARCHIVE_CS_OWN(thread_p) \
   (csect_check (thread_p, CSECT_LOG_ARCHIVE) >= 1)
@@ -129,7 +126,7 @@
 #else /* SERVER_MODE */
 #define LOG_CS_OWN(thread_p) (true)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) (true)
-#define LOG_CS_OWN_READ_MODE(thread_p) (true)
+
 
 #define LOG_ARCHIVE_CS_OWN(thread_p) (true)
 #define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) (true)
