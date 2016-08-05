@@ -14288,10 +14288,11 @@ struct file_extensible_data
   INT16 total_data_size;
 };
 #define FILE_EXTDATA_HEADER_ALIGNED_SIZE (DB_ALIGN (sizeof (FILE_EXTENSIBLE_DATA), MAX_ALIGNMENT))
-#define FILE_EXTDATA_FULL_SIZE(ed_head) (FILE_EXTDATA_HEADER_ALIGNED_SIZE + (ed_head)->max_data_size)
+#define FILE_EXTDATA_FULL_SIZE(ed) (FILE_EXTDATA_HEADER_ALIGNED_SIZE + (ed)->max_data_size)
+#define FILE_EXTDATA_CRT_SIZE(ed) (FILE_EXTDATA_HEADER_ALIGNED_SIZE + (ed)->total_data_size)
 
-#define FILE_EXTDATA_START(ed_head) (((char *) (ed_head)) + FILE_EXTDATA_HEADER_ALIGNED_SIZE)
-#define FILE_EXTDATA_END(ed_head) (FILE_EXTDATA_START (ed_head) + (ed_head)->total_data_size)
+#define FILE_EXTDATA_START(ed) (((char *) (ed)) + FILE_EXTDATA_HEADER_ALIGNED_SIZE)
+#define FILE_EXTDATA_END(ed) (FILE_EXTDATA_START (ed) + (ed)->total_data_size)
 
 STATIC_INLINE void
 file_extdata_init (FILE_EXTENSIBLE_DATA * extdata, INT16 one_size, INT16 max_size)
@@ -14641,9 +14642,9 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 	    {
 	      if (do_logging)
 		{
-		  /* TODO. */
+		  log_append_redo_page (thread_p, page_ftab, FILE_EXTDATA_CRT_SIZE (part_table));
 		}
-	      pgbuf_unfix (thread_p, page_ftab);
+	      pgbuf_set_dirty (thread_p, page_ftab, FREE);
 	    }
 	  page_ftab = pgbuf_fix (thread_p, &vpid_ftab, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page_ftab == NULL)
@@ -14671,7 +14672,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
     {
       if (do_logging)
 	{
-	  /* TODO. */
+	  log_append_redo_page (thread_p, page_ftab, FILE_EXTDATA_CRT_SIZE (part_table));
 	}
       pgbuf_unfix_and_init (thread_p, page_ftab);
     }
@@ -14707,7 +14708,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 
   if (do_logging)
     {
-      /* TODO: Log file header page. */
+      log_append_redo_page (thread_p, page_fhead, DB_PAGESIZE);
     }
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 

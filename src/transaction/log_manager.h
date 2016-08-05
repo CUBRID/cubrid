@@ -212,4 +212,6 @@ extern int log_archive_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa,
 				      RECDES * recdes);
 
+extern void log_append_redo_page (THREAD_ENTRY * thread_p, PAGE_PTR page, int data_size);
+extern int log_redo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #endif /* _LOG_MANAGER_H_ */

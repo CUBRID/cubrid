@@ -1946,6 +1946,37 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
 }
 
 /*
+ * log_append_redo_page () - Log first data_size bytes of page for redo.
+ *
+ * return	  : Void.
+ * thread_p (in)  : Thread entry.
+ * page (in)	  : Page being logged.
+ * data_size (in) : Size of data being logged.
+ */
+void
+log_append_redo_page (THREAD_ENTRY * thread_p, PAGE_PTR page, int data_size)
+{
+  log_append_redo_data2 (thread_p, RVPG_REDO_PAGE, NULL, page, 0, data_size, page);
+}
+
+/*
+ * log_redo_page () - Apply redo for changing entire page (or at least its first part).
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+log_redo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  assert (rcv->pgptr != NULL);
+  assert (rcv->length > 0);
+  memcpy (rcv->pgptr, rcv->data, rcv->length);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
  * log_append_undoredo_crumbs -  LOG UNDO (BEFORE) + REDO (AFTER) CRUMBS OF DATA
  *
  * return: nothing

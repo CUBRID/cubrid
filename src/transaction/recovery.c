@@ -975,7 +975,14 @@ struct rvfun RV_fun[] = {
    heap_rv_undoredo_update,
    heap_rv_undoredo_update_and_update_chain,
    log_rv_dump_hexa,
-   log_rv_dump_hexa}
+   log_rv_dump_hexa},
+
+  {RVPG_REDO_PAGE,
+   "RVPG_REDO_PAGE",
+   NULL,
+   log_redo_page,
+   NULL,
+   NULL}
 };
 
 /*
