@@ -2839,9 +2839,9 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
 
   CHECK_CONNECT_MINUSONE ();
 
-  err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
-
   db_invalidate_mvcc_snapshot_after_statement ();
+
+  err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
 
   db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
@@ -2911,9 +2911,9 @@ db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** res
 
   CHECK_CONNECT_MINUSONE ();
 
-  err = db_execute_statement_local (session, stmt_ndx, result);
-
   db_invalidate_mvcc_snapshot_after_statement ();
+
+  err = db_execute_statement_local (session, stmt_ndx, result);
 
   db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
