@@ -354,4 +354,33 @@ extern int file_rv_logical_redo_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 extern int file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
+/************************************************************************/
+/*                                                                      */
+/* FILE MANAGER REDESIGN                                                */
+/*                                                                      */
+/************************************************************************/
+
+typedef struct file_tablespace FILE_TABLESPACE;
+struct file_tablespace
+{
+  int initial_size;
+  float expand_ratio;
+  int expand_min_size;
+  int expand_max_size;
+};
+
+typedef union file_descriptors FILE_DESCRIPTORS;
+union file_descriptors
+{
+  FILE_HEAP_DES heap;
+  FILE_OVF_HEAP_DES heap_overflow;
+  FILE_BTREE_DES btree;
+  FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
+  FILE_EHASH_DES ehash;
+};
+
+extern int file_rv_redo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_undo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE tablespace,
+			FILE_DESCRIPTORS * des, VFID * vfid);
 #endif /* _FILE_MANAGER_H_ */

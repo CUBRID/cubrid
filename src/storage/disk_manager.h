@@ -282,7 +282,7 @@ extern void disk_rv_dump_init_pages (FILE * fp, int length_ignore, void *data);
 /************************************************************************/
 
 extern int disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_TYPE reserve_type,
-				 int n_sectors, VSID * reserved_sectors);
+				 VOLID volid_hint, int n_sectors, VSID * reserved_sectors);
 extern int disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_update_vol_used_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

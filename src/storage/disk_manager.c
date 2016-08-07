@@ -7478,12 +7478,13 @@ dkre_find_goodvol (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_
  * thread_p (in)	  : Thread entry.
  * purpose (in)		  : Reservations purpose (data, index, generic or temp).
  * reserve_type (in)	  : Contiguous/non-contiguous (not used).
+ * volid_hint (in)	  : Hint a volume to be checked first.
  * n_sectors (in)	  : Number of sectors to reserve.
  * reserved_sectors (out) : Array of reserved sectors.
  */
 int
-disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_TYPE reserve_type, int n_sectors,
-		      VSID * reserved_sectors)
+disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_TYPE reserve_type, VOLID volid_hint,
+		      int n_sectors, VSID * reserved_sectors)
 {
   int n_sectors_found = 0;
   int n_sectors_found_in_last_volume = 0;
@@ -7510,7 +7511,7 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPA
   while (n_sectors_to_find > 0)
     {
       error_code =
-	dkre_find_goodvol (thread_p, purpose, reserve_type, NULL_VOLID, NULL_VOLID, n_sectors_to_find, &volid);
+	dkre_find_goodvol (thread_p, purpose, reserve_type, volid_hint, NULL_VOLID, n_sectors_to_find, &volid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -7534,6 +7535,9 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPA
 
       n_sectors_to_find -= n_sectors_found_in_last_volume;
       n_sectors_found += n_sectors_found_in_last_volume;
+
+      /* Reset hint volid */
+      volid_hint = NULL_VOLID;
     }
 
   /* Should have enough sectors. */

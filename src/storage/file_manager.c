@@ -14145,27 +14145,30 @@ end:
 
 /* TODO:
  * 1. Remove large object files. Remove FILE_LONGDATA and FILE_LO_DES.
+ * 2. Currently, we had some issue with vacuum workers and nested system operations that could be committed.
+ *    We fixed it by forcing all nested system operations open by vacuum workers to be attached to outer. Then top
+ *    system operation was committed. However, with the new file manager design, this can become a problem.
+ *    Allocate, deallocate routines can change the partial and full sector tables. If the file header page is released
+ *    before committing changes, concurrent threads are free to do their own page allocations/deallocations, modifying
+ *    the file table structures. To undo original changes then, we have to do "logical" undo, because there is no
+ *    guarantee the modified sector is not relocated to another file table page.
+ *    That alone would not be a problem, but it logical undo records does not work well under a system operation.
+ *    We would have to first log the logical undo operation and then consider all cases of partial redo in that
+ *    system transaction. For instance, when we want to move a full sector to partial sectors in two steps - let's say
+ *    we first delete the entry in full table and then we append a new entry to partial sectors - we need to consider
+ *    three cases: no changes were made (and undo is not necessary), the entry was only removed from full table (and
+ *    undo does not have to remove the entry from partial table) or all changes were made and undo must relocate the
+ *    entry back from partial to full table. This example is rather trivial, and is theoretically possible to handle it.
+ *    However, in some cases, we might have to also allocate/deallocate file table pages in the process, which makes
+ *    logical undo impractical.
+ *
+ *    The most practical way is to hold the file header until the system operation is committed and changes are
+ *    considered final. Page allocations are committed immediately anyway, while page deallocations are executed during
+ *    run postpone and also committed immediately.
+ *
+ *    So, file_alloc_page and file_dealloc_page will output the file header page. The caller has the responsibility to
+ *    keep the file header fixed until the system operation si committed and release it afterwards.
  */
-
-typedef struct file_tablespace FILE_TABLESPACE;
-struct file_tablespace
-{
-  int initial_size;
-  float expand_ratio;
-  int expand_min_size;
-  int expand_max_size;
-};
-
-/* TODO: Move to file_manager.h */
-typedef union file_descriptors FILE_DESCRIPTORS;
-union file_descriptors
-{
-  FILE_HEAP_DES heap;
-  FILE_OVF_HEAP_DES heap_overflow;
-  FILE_BTREE_DES btree;
-  FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
-  FILE_EHASH_DES ehash;
-};
 
 /* TODO: Rename as FILE_HEADER */
 typedef struct flre_header FLRE_HEADER;
@@ -14180,10 +14183,13 @@ struct flre_header
   /* Page counts. */
   int page_total_count;
   int page_used_count;
+  int page_table_count;
+  int page_free_count;
 
   /* Sector counts. */
   int sector_total_count;
   int sector_partial_count;
+  int sector_full_count;
   int sector_emtpy_count;
 
   FILE_TYPE type;		/* File type. */
@@ -14192,14 +14198,14 @@ struct flre_header
 
   INT32 file_flags;		/* File flags. */
 
-  INT16 free_header_space;	/* Free space in header page. */
-
   INT16 offset_to_partial_table;	/* Offset to partial sectors table. */
   INT16 offset_to_full_table;	/* Offset to full sectors table. */
   INT16 offset_to_page_table;	/* Offset to used pages table. */
+
+  VPID vpid_of_last_page_table_page;
 };
 
-#define FILEHEAD_DESCRIPTOR_MAX_SIZE	1024
+#define FILE_HEADER_ALIGNED_SIZE (DB_ALIGN (sizeof (FLRE_HEADER), MAX_ALIGNMENT))
 
 /* TODO: Add flags. */
 #define FILE_FLAG_NUMERABLE	    0x1
@@ -14322,10 +14328,16 @@ file_extdata_is_full (FILE_EXTENSIBLE_DATA * extdata)
 }
 
 STATIC_INLINE bool
-file_extadata_is_empty (FILE_EXTENSIBLE_DATA * extdata)
+file_extdata_is_empty (FILE_EXTENSIBLE_DATA * extdata)
 {
   assert (extdata->total_data_size >= 0);
   return extdata->total_data_size <= 0;
+}
+
+STATIC_INLINE INT16
+file_extdata_data_count (FILE_EXTENSIBLE_DATA * extdata)
+{
+  return extdata->total_data_size / extdata->one_data_size;
 }
 
 STATIC_INLINE INT16
@@ -14352,6 +14364,12 @@ file_extdata_append_array (FILE_EXTENSIBLE_DATA * extdata, const void *append_da
   extdata->total_data_size += extdata->one_data_size * count;
 }
 
+STATIC_INLINE bool
+file_extdata_can_merge (const FILE_EXTENSIBLE_DATA * extdata_dest, const FILE_EXTENSIBLE_DATA * extdata_src)
+{
+  return extdata_dest->total_data_size + extdata_src->total_data_size <= extdata_dest->max_data_size;
+}
+
 static int
 file_compare_vsids (const void *a, const void *b)
 {
@@ -14368,9 +14386,77 @@ file_compare_vsids (const void *a, const void *b)
   return (int) (vsid_a->sectid - vsid_b->sectid);
 }
 
-#define FILE_HEADER_PARTIAL_TABLE(fhpage, fh) (FILE_EXTENSIBLE_DATA *) ((fhpage) + (fh)->offset_to_partial_table)
-#define FILE_HEADER_FULL_TABLE(fhpage, fh) (FILE_EXTENSIBLE_DATA *) ((fhpage) + (fh)->offset_to_full_table)
-#define FILE_HEADER_PAGE_TABLE(fhpage, fh) (FILE_EXTENSIBLE_DATA *) ((fhpage) + (fh)->offset_to_page_table)
+#define FILE_HEADER_PARTIAL_TABLE(fh) (FILE_EXTENSIBLE_DATA *) (((char *) fh) + (fh)->offset_to_partial_table)
+#define FILE_HEADER_FULL_TABLE(fh) (FILE_EXTENSIBLE_DATA *) (((char *) fh) + (fh)->offset_to_full_table)
+#define FILE_HEADER_PAGE_TABLE(fh) (FILE_EXTENSIBLE_DATA *) (((char *) fh) + (fh)->offset_to_page_table)
+
+STATIC_INLINE void
+file_header_sanity_check (FLRE_HEADER * fhead)
+{
+#if !defined (NDEBUG)
+  FILE_EXTENSIBLE_DATA *part_table;
+  FILE_EXTENSIBLE_DATA *full_table;
+  FILE_EXTENSIBLE_DATA *page_table;
+
+
+  assert (!VFID_ISNULL (&fhead->self));
+  assert (fhead->type >= FILE_TRACKER && fhead->type < FILE_UNKNOWN_TYPE);
+
+  assert (fhead->page_total_count > 0);
+  assert (fhead->page_used_count >= 0);
+  assert (fhead->page_table_count > 0);
+  assert (fhead->page_free_count >= 0);
+  assert (fhead->page_free_count + fhead->page_used_count + fhead->page_table_count == fhead->page_total_count);
+
+  assert (fhead->sector_total_count > 0);
+  assert (fhead->sector_partial_count >= 0);
+  assert (fhead->sector_emtpy_count >= 0);
+  assert (fhead->sector_full_count >= 0);
+  assert (fhead->sector_emtpy_count <= fhead->sector_partial_count);
+  assert (fhead->sector_partial_count + fhead->sector_full_count == fhead->sector_total_count);
+
+  if (fhead->page_free_count == 0)
+    {
+      assert (fhead->sector_total_count == fhead->sector_full_count);
+    }
+
+  assert (fhead->offset_to_partial_table >= FILE_HEADER_ALIGNED_SIZE && fhead->offset_to_partial_table < DB_PAGESIZE);
+  part_table = FILE_HEADER_PARTIAL_TABLE (fhead);
+  if (fhead->sector_partial_count == 0)
+    {
+      assert (file_extdata_is_empty (part_table) && VPID_ISNULL (&part_table->next_page));
+    }
+  else
+    {
+      assert (!file_extdata_is_empty (part_table) || !VPID_ISNULL (&part_table->next_page));
+    }
+
+  assert (fhead->offset_to_full_table >= FILE_HEADER_ALIGNED_SIZE && fhead->offset_to_full_table < DB_PAGESIZE);
+  full_table = FILE_HEADER_PARTIAL_TABLE (fhead);
+  if (fhead->sector_full_count == 0)
+    {
+      assert (file_extdata_is_empty (full_table) && VPID_ISNULL (&full_table->next_page));
+    }
+  else
+    {
+      assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->next_page));
+    }
+
+  if (fhead->file_flags | FILE_FLAG_NUMERABLE)
+    {
+      assert (fhead->offset_to_page_table >= FILE_HEADER_ALIGNED_SIZE && fhead->offset_to_page_table < DB_PAGESIZE);
+      page_table = FILE_HEADER_PARTIAL_TABLE (fhead);
+      if (fhead->page_used_count == 0)
+	{
+	  assert (file_extdata_is_empty (page_table) && VPID_ISNULL (&page_table->next_page));
+	}
+      else
+	{
+	  assert (!file_extdata_is_empty (page_table) || !VPID_ISNULL (&page_table->next_page));
+	}
+    }
+#endif /* !NDEBUG */
+}
 
 /* TODO: Rename as file_create. */
 int
@@ -14388,6 +14474,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
   INT16 offset = 0;
   INT16 size = 0;
   bool do_logging = false;
+  bool found_vfid_page = false;
 
   /* File header vars */
   VPID vpid_fhead = VPID_INITIALIZER;
@@ -14463,7 +14550,8 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 
   volpurpose = file_get_primary_vol_purpose (file_type);
   error_code =
-    disk_reserve_sectors (thread_p, volpurpose, DISK_NONCONTIGUOUS_SPANVOLS_PAGES, sector_count, reserved_sectors);
+    disk_reserve_sectors (thread_p, volpurpose, DISK_NONCONTIGUOUS_SPANVOLS_PAGES, NULL_VOLID, sector_count,
+			  reserved_sectors);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -14471,6 +14559,9 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
     }
 
   /* We have all pages reserved. */
+
+  /* Sort sectors by VSID. But before sorting, remember last volume ID used for reservations. */
+  fhead->last_expand_volid = reserved_sectors[sector_count - 1].volid;
   qsort (reserved_sectors, sector_count, sizeof (VSID), file_compare_vsids);
 
   /* Put aside some sectors that should cover entire file table. */
@@ -14529,6 +14620,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
     }
 
   memset (page_fhead, DB_PAGESIZE, 0);
+  pgbuf_set_page_ptype (thread_p, page_fhead, PAGE_FTAB);
   fhead = (FLRE_HEADER *) page_fhead;
 
   fhead->self = *vfid;
@@ -14544,6 +14636,16 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
     {
       fhead->file_flags |= FILE_FLAG_NUMERABLE;
     }
+
+  fhead->page_total_count = 0;
+  fhead->page_used_count = 0;
+  fhead->page_table_count = 1;	/* file header */
+  fhead->page_free_count = -1;	/* without the file header... it will be added back. */
+
+  fhead->sector_total_count = 0;
+  fhead->sector_partial_count = 0;
+  fhead->sector_full_count = 0;
+  fhead->sector_emtpy_count = 0;
 
   offset = DB_ALIGN (sizeof (FLRE_HEADER), MAX_ALIGNMENT);
 
@@ -14596,7 +14698,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
     }
 
   /* We now have tables initialized, we can add sectors to the tables. We'll start by adding all sectors to  */
-  part_table = FILE_HEADER_PARTIAL_TABLE (page_fhead, fhead);
+  part_table = FILE_HEADER_PARTIAL_TABLE (fhead);
   for (vsid_reserved = reserved_sectors; vsid_reserved < reserved_sectors + sector_count; vsid_reserved++)
     {
       if (file_extdata_is_full (part_table))
@@ -14607,10 +14709,12 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 	  if (partsect_ftab == NULL)
 	    {
 	      /* This is first page. */
-	      assert (!file_extadata_is_empty (part_table));
+	      assert (!file_extdata_is_empty (part_table));
 	      partsect_ftab = (FILE_PARTIAL_SECTOR *) FILE_EXTDATA_START (part_table);
 	      vpid_ftab.pageid = SECTOR_FIRST_PAGEID (partsect_ftab->vsid.sectid);
 	      vpid_ftab.volid = partsect_ftab->vsid.volid;
+
+	      fhead->sector_emtpy_count--;
 	    }
 	  else if (file_partsect_is_full (partsect_ftab))
 	    {
@@ -14625,6 +14729,13 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 		}
 	      vpid_ftab.pageid = SECTOR_FIRST_PAGEID (partsect_ftab->vsid.sectid);
 	      vpid_ftab.volid = partsect_ftab->vsid.volid;
+
+	      /* This will be moved to full table. */
+	      fhead->sector_partial_count--;
+	      fhead->sector_full_count++;
+
+	      /* Next sector will not be empty */
+	      fhead->sector_emtpy_count--;
 	    }
 	  else
 	    {
@@ -14634,15 +14745,18 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 	    {
 	      /* Go to next page. This can't be last page in sector, because the sector bitmap would have been full */
 	      vpid_ftab.pageid++;
+	      found_vfid_page = true;
 	    }
 	  /* Set bit in sector bitmap */
 	  file_partsect_set_bit (partsect_ftab, file_partsect_pageid_to_offset (partsect_ftab, vpid_ftab.pageid));
 
+	  /* Save link in previous page. */
+	  part_table->next_page = vpid_fhead;
 	  if (page_ftab != NULL)
 	    {
 	      if (do_logging)
 		{
-		  log_append_redo_page (thread_p, page_ftab, FILE_EXTDATA_CRT_SIZE (part_table));
+		  log_append_redo_page (thread_p, page_ftab, FILE_EXTDATA_CRT_SIZE (part_table), PAGE_FTAB);
 		}
 	      pgbuf_set_dirty (thread_p, page_ftab, FREE);
 	    }
@@ -14652,9 +14766,13 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
+	  pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
 	  memset (page_ftab, DB_PAGESIZE, 0);
 	  part_table = (FILE_EXTENSIBLE_DATA *) page_ftab;
 	  file_extdata_init (part_table, sizeof (FILE_PARTIAL_SECTOR), DB_PAGESIZE);
+
+	  fhead->page_table_count++;
+	  fhead->page_free_count--;
 	}
       assert (!file_extdata_is_full (part_table));
 
@@ -14666,26 +14784,48 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 	  file_partsect_set_bit (&partsect, file_partsect_pageid_to_offset (&partsect, vpid_fhead.pageid));
 	}
       file_extdata_append (part_table, &partsect);
+      fhead->sector_total_count++;
+      fhead->sector_partial_count++;
+      fhead->sector_emtpy_count++;
+      fhead->page_total_count += DISK_SECTOR_NPAGES;
+      fhead->page_free_count += DISK_SECTOR_NPAGES;
     }
 
   if (page_ftab != NULL)
     {
       if (do_logging)
 	{
-	  log_append_redo_page (thread_p, page_ftab, FILE_EXTDATA_CRT_SIZE (part_table));
+	  log_append_redo_page (thread_p, page_ftab, FILE_EXTDATA_CRT_SIZE (part_table), PAGE_FTAB);
 	}
       pgbuf_unfix_and_init (thread_p, page_ftab);
+    }
+
+  /* Where is file header page? */
+  if (!found_vfid_page)
+    {
+      VSID vsid_of_vfid;
+      vsid_of_vfid.volid = vfid->volid;
+      vsid_of_vfid.sectid = SECTOR_FROM_PAGEID (vfid->fileid);
+      if (file_compare_vsids (&partsect_ftab->vsid, &vsid_of_vfid) < 0)
+	{
+	  /* File header is in a sector completely different than other file table pages. That sector is not empty. */
+	  fhead->sector_emtpy_count--;
+	}
     }
 
   /* Move sectors fully used by file table to full table */
   if (file_partsect_is_full (partsect_ftab))
     {
       partsect_ftab++;
+
+      /* Another full sector. */
+      fhead->sector_full_count++;
+      fhead->sector_partial_count--;
     }
-  part_table = FILE_HEADER_PARTIAL_TABLE (page_fhead, fhead);
+  part_table = FILE_HEADER_PARTIAL_TABLE (fhead);
   if (partsect_ftab > (FILE_PARTIAL_SECTOR *) FILE_EXTDATA_START (part_table))
     {
-      full_table = FILE_HEADER_FULL_TABLE (page_fhead, fhead);
+      full_table = FILE_HEADER_FULL_TABLE (fhead);
       for (partsect_iter = (FILE_PARTIAL_SECTOR *) FILE_EXTDATA_START (part_table); partsect_iter < partsect_ftab;
 	   partsect_iter++)
 	{
@@ -14705,10 +14845,14 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
     }
 
   /* If file is numerable, page table remains empty for now. */
+  VPID_SET_NULL (&fhead->vpid_of_last_page_table_page);
+
+  /* File header ready. */
+  file_header_sanity_check (fhead);
 
   if (do_logging)
     {
-      log_append_redo_page (thread_p, page_fhead, DB_PAGESIZE);
+      log_append_redo_page (thread_p, page_fhead, DB_PAGESIZE, PAGE_FTAB);
     }
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
@@ -14744,6 +14888,287 @@ exit:
     {
       /* Deallocate reserved_sectors */
       db_private_free (thread_p, reserved_sectors);
+    }
+
+  return error_code;
+}
+
+typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, void *args);
+
+int
+file_rv_undo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_PTR page_fhead = rcv->pgptr;
+  FLRE_HEADER *fhead;
+  FILE_EXTENSIBLE_DATA *part_table;
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  part_table = FILE_HEADER_PARTIAL_TABLE (fhead);
+  assert (file_extdata_data_count (part_table) == fhead->sector_partial_count);
+  part_table->total_data_size = 0;
+
+  /* Update fhead */
+  assert (fhead->page_free_count == fhead->sector_emtpy_count * DISK_SECTOR_NPAGES);
+  fhead->page_total_count -= fhead->page_free_count;
+  fhead->page_free_count = 0;
+  fhead->sector_total_count -= fhead->sector_emtpy_count;
+  fhead->sector_partial_count = 0;
+  fhead->sector_emtpy_count = 0;
+
+  file_header_sanity_check (fhead);
+
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+int
+file_rv_redo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_PTR page_fhead = rcv->pgptr;
+  FLRE_HEADER *fhead;
+  FILE_EXTENSIBLE_DATA *part_table;
+  int count_vsids;
+  VSID *vsids, *vsid_iter;
+  FILE_PARTIAL_SECTOR partsect;
+
+  vsids = (VSID *) rcv->data;
+  count_vsids = rcv->length / sizeof (VSID);
+  assert (count_vsids * sizeof (VSID) == rcv->length);
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  part_table = FILE_HEADER_PARTIAL_TABLE (fhead);
+  partsect.page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+  for (vsid_iter = vsids; vsid_iter < vsids + count_vsids; vsid_iter++)
+    {
+      partsect.vsid = *vsid_iter;
+      file_extdata_append (part_table, &partsect);
+    }
+
+  fhead->sector_total_count += count_vsids;
+  assert (fhead->sector_emtpy_count == 0);
+  fhead->sector_emtpy_count = count_vsids;
+  assert (fhead->sector_partial_count == 0);
+  fhead->sector_partial_count = count_vsids;
+
+  assert (fhead->page_free_count == 0);
+  fhead->page_free_count = count_vsids * DISK_SECTOR_NPAGES;
+  fhead->page_total_count += fhead->page_free_count;
+
+  file_header_sanity_check (fhead);
+
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+  return NO_ERROR;
+}
+
+static int
+file_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, bool do_logging)
+{
+  FLRE_HEADER *fhead = NULL;
+  int expand_min_size_in_sectors;
+  int expand_max_size_in_sectors;
+  int expand_size_in_sectors;
+  VSID *vsids_reserved = NULL;
+  VSID *vsid_iter = NULL;
+  int error_code = NO_ERROR;
+  DB_VOLPURPOSE volpurpose = file_get_primary_vol_purpose (fhead->type);
+  FILE_EXTENSIBLE_DATA *part_table;
+  FILE_PARTIAL_SECTOR partsect;
+  bool is_system_op_started = false;
+
+  if (!do_logging || log_check_system_op_is_started (thread_p));
+
+  fhead = (FLRE_HEADER *) page_fhead;
+
+  /* Compute desired expansion size;
+     expand_min_size_in_sectors = MIN (fhead->tablespace.expand_min_size / DB_SECTORSIZE, 1);
+     /* Max size should be limited to the capacity of file header partial table. */
+  expand_max_size_in_sectors =
+    MIN (fhead->tablespace.expand_max_size / DB_SECTORSIZE, file_extdata_capacity (part_table));
+  assert (expand_min_size_in_sectors <= expand_max_size_in_sectors);
+
+  expand_size_in_sectors = (int) ((float) fhead->sector_full_count * fhead->tablespace.expand_ratio);
+  expand_size_in_sectors = MAX (expand_size_in_sectors, fhead->tablespace.expand_min_size);
+  expand_size_in_sectors = MIN (expand_size_in_sectors, fhead->tablespace.expand_max_size);
+
+  /* Reserve sectors */
+  vsids_reserved = (VSID *) db_private_alloc (thread_p, expand_size_in_sectors * sizeof (VSID));
+  if (vsids_reserved == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, expand_size_in_sectors * sizeof (VSID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* Before we start, we need to open a new system operation that gets committed. It is hard to undo file expansion,
+   * because we would have to search for each VSID we added. Moreover, the file is most likely to get expanded again
+   * anyway, so let's make the expansion permanent. */
+  (void) log_start_system_op (thread_p);
+  is_system_op_started = true;
+
+  error_code =
+    disk_reserve_sectors (thread_p, volpurpose, DISK_NONCONTIGUOUS_SPANVOLS_PAGES, fhead->last_expand_volid,
+			  expand_size_in_sectors, vsids_reserved);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  /* Sort VSID's. */
+  qsort (vsids_reserved, expand_size_in_sectors, sizeof (VSID), file_compare_vsids);
+
+  /* Save in file header partial table */
+  partsect.page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+  part_table = FILE_HEADER_PARTIAL_TABLE (fhead);
+  for (vsid_iter = vsids_reserved; vsid_iter < vsids_reserved + expand_size_in_sectors; vsid_iter++)
+    {
+      partsect.vsid = *vsid_iter;
+      file_extdata_append (part_table, &partsect);
+    }
+
+  fhead->sector_total_count += expand_size_in_sectors;
+  assert (fhead->sector_emtpy_count == 0);
+  fhead->sector_emtpy_count = expand_size_in_sectors;
+  assert (fhead->sector_partial_count == 0);
+  fhead->sector_partial_count = expand_size_in_sectors;
+
+  assert (fhead->page_free_count == 0);
+  fhead->page_free_count = expand_size_in_sectors * DISK_SECTOR_NPAGES;
+  fhead->page_total_count += fhead->page_free_count;
+
+  /* File extended successfully */
+  if (do_logging)
+    {
+      log_append_undoredo_data2 (thread_p, RVFL_EXPAND, NULL, page_fhead, 0, 0, expand_size_in_sectors * sizeof (VSID),
+				 NULL, vsids_reserved);
+    }
+
+exit:
+  if (is_system_op_started)
+    {
+      if (error_code != NO_ERROR)
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	}
+      else
+	{
+	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	}
+    }
+  if (vsids_reserved != NULL)
+    {
+      db_private_free (thread_p, vsids_reserved);
+    }
+  return error_code;
+}
+
+static int
+file_merge_exdata_pages ()
+{
+}
+
+static int
+file_partial_table_to_header (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, bool do_logging)
+{
+  FLRE_HEADER *fhead = NULL;
+  FILE_EXTENSIBLE_DATA *part_table_head;
+  PAGE_PTR page_part_table_first = NULL;
+  PAGE_PTR page_part_table_second = NULL;
+
+  int error_code = NO_ERROR;
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  /* Caller should have checked */
+  assert (fhead->sector_partial_count > 0);
+
+  part_table_head = FILE_HEADER_PARTIAL_TABLE (fhead);
+  if (VPID_ISNULL (&part_table_head->next_page))
+    {
+      /* Nothing to bring to header. */
+      return NO_ERROR;
+    }
+
+  page_part_table_first =
+    pgbuf_fix (thread_p, &part_table_head->next_page, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_part_table_first == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+    }
+
+exit:
+  if (page_part_table_first != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page_part_table_first);
+    }
+  return error_code;
+}
+
+int
+file_alloc_page (THREAD_ENTRY * thread_p, VFID * vfid, FILE_INIT_PAGE_FUNC f_init_page, void *f_init_page_args)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  bool do_logging = false;
+  bool is_system_op_started = false;
+
+  int error_code = NO_ERROR;
+
+  FILE_EXTENSIBLE_DATA *part_table_head = NULL;
+
+  vpid_fhead.volid = vfid->volid;
+  vpid_fhead.pageid = vfid->fileid;
+
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  do_logging = (fhead->type != FILE_TEMP);
+
+  /* Do we have any free pages left? */
+  if (fhead->page_free_count == 0)
+    {
+      /* We need to expand the table. */
+      error_code = file_expand (thread_p, page_fhead, do_logging);
+    }
+  assert (fhead->page_free_count > 0 && fhead->sector_partial_count > 0);
+
+  part_table_head = FILE_HEADER_PARTIAL_TABLE (fhead);
+  if (file_extdata_is_empty (part_table_head))
+    {
+      PAGE_PTR page_ftab_first;
+      FILE_EXTENSIBLE_DATA *part_table_first_page;
+
+      assert (!VPID_ISNULL (&part_table_head->next_page));
+
+      page_ftab_first =
+	pgbuf_fix (thread_p, &part_table_head->next_page, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ftab_first == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+
+    }
+
+exit:
+
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
   return error_code;

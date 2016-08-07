@@ -980,7 +980,7 @@ struct rvfun RV_fun[] = {
   {RVPG_REDO_PAGE,
    "RVPG_REDO_PAGE",
    NULL,
-   log_redo_page,
+   log_rv_redo_page,
    NULL,
    NULL},
 
@@ -990,16 +990,21 @@ struct rvfun RV_fun[] = {
    disk_rv_reserve_sectors,
    NULL,
    NULL},
-
   {RVDK_UNRESERVE_SECTORS,
    "RVDK_UNRESERVE_SECTORS",
    disk_rv_reserve_sectors,
    disk_rv_unreserve_sectors,
    NULL,
    NULL},
-
   {RVDK_UPDATE_VOL_USED_SECTORS,
    "RVDK_UNRESERVE_SECTORS",
+   disk_rv_update_vol_used_sectors,
+   disk_rv_update_vol_used_sectors,
+   NULL,
+   NULL},
+
+  {RVFL_EXPAND,
+   "RVFL_EXPAND",
    disk_rv_update_vol_used_sectors,
    disk_rv_update_vol_used_sectors,
    NULL,
