@@ -127,7 +127,6 @@
 #define LOG_CS_OWN(thread_p) (true)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) (true)
 
-
 #define LOG_ARCHIVE_CS_OWN(thread_p) (true)
 #define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) (true)
 #define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) (true)
