@@ -1966,7 +1966,6 @@ extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
 extern void logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page);
 extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page);
 extern void logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
-extern void logpb_free_without_mutex (LOG_PAGE * log_pgptr);
 extern LOG_PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
 extern int logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore);
 extern int logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const char *prefix_logname,
