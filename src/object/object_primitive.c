@@ -16374,3 +16374,120 @@ cleanup:
 
   return length;
 }
+
+
+/*
+ * or_write_string_to_buffer ()	  : Writes a VARCHAR or VARNCHAR to buffer, without needing the buffer initialised.
+ *				    
+ *
+ */
+
+int
+or_write_compressed_string_to_buffer (OR_BUF * buf, char *val_p, PR_TYPE * pr_type, DB_VALUE * value, int *val_size)
+{
+  char *compressed_string = NULL, *string = NULL;
+  int rc = NO_ERROR, str_length = 0, error_abort = 0, length = 0;
+  lzo_uint compression_length = 0;
+  lzo_bytep wrkmem = NULL;
+
+  /* Checks to be sure that we have the correct input */
+  assert (pr_type->id == DB_TYPE_VARNCHAR || pr_type->id == DB_TYPE_STRING);
+  assert (DB_GET_STRING_LENGTH (value) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+
+  /* Step 1 : Compress, if possible, the dbvalue */
+
+  string = DB_GET_STRING (value);
+  str_length = DB_GET_STRING_LENGTH (value);
+
+  wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
+  if (wrkmem == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
+      goto cleanup;
+    }
+
+  memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
+
+  /* Alloc memory for the compressed string */
+  /* Worst case LZO compression size from their FAQ */
+  compressed_string = malloc (str_length + (str_length / 16) + 64 + 3);
+  if (compressed_string == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (size_t) (str_length + (str_length / 16) + 64 + 3));
+      goto cleanup;
+    }
+
+  /* Compress the string */
+  rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) str_length, (lzo_bytep) compressed_string, &compression_length,
+			 wrkmem);
+  if (rc != LZO_E_OK)
+    {
+      /* We should not be having any kind of errors here. Because if this compression fails, there is not warranty
+       * that the compression from putting data into buffer will fail as well. This needs to be checked but for now
+       * we leave it as it is.
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
+	      fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
+	      fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
+      goto cleanup;
+    }
+
+  if (compression_length < (lzo_uint) (str_length - 8))
+    {
+      /* Compression successful */
+      length = (int) compression_length;
+    }
+  else
+    {
+      /* Compression failed */
+      length = str_length;
+    }
+
+  /* 
+   * Step 2 : Compute the disk size of the dbvalue.
+   * We are sure that the initial string length is greater than 255, which means that the new encoding applies.
+   */
+
+  length += PRIM_TEMPORARY_DISK_SIZE;
+
+  switch (pr_type->id)
+    {
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_VARNCHAR:
+      length = or_packed_varchar_length (length);
+      break;
+
+    default:
+      /* It should not happen */
+      assert (false);
+      rc = ER_FAILED;
+      goto cleanup;
+    }
+
+  val_size = length;
+
+  /* Step 3 : Initialize the buffer */
+
+  OR_BUF_INIT (*buf, val_p, length);
+
+  /* Step 4 : Insert the disk representation of the dbvalue in the buffer */
+
+
+
+
+cleanup:
+  if (compressed_string != NULL)
+    {
+      free_and_init (compressed_string);
+    }
+
+  if (wrkmem != NULL)
+    {
+      free_and_init (wrkmem);
+    }
+
+
+  return rc;
+
+}
