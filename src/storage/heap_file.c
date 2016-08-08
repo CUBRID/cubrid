@@ -12498,6 +12498,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  (*(att->domain->type->index_writeval)) (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
+
+      if (!DB_IS_NULL (&value) && value.need_clear == true)
+	{
+	  pr_clear_value (&value);
+	}
+
       k++;
     }
 
