@@ -2576,13 +2576,7 @@ spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, const 
   assert (page_p != NULL);
   assert (record_descriptor_p != NULL);
 
-#if !defined (NDEBUG)
-  {
-    PGBUF_LATCH_MODE latch_mode;
-    latch_mode = pgbuf_get_latch_mode (page_p);
-    assert (latch_mode == PGBUF_LATCH_WRITE);
-  }
-#endif
+  assert (pgbuf_get_latch_mode (page_p) == PGBUF_LATCH_WRITE);
 
   if (record_descriptor_p->length < 0)
     {
@@ -2699,6 +2693,8 @@ spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slo
   SPAGE_SLOT *slot_p;
 
   assert (page_p != NULL);
+
+  assert (pgbuf_get_latch_mode (page_p) == PGBUF_LATCH_WRITE);
 
   page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_VERIFY_HEADER (page_header_p);
