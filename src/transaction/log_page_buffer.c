@@ -428,7 +428,7 @@ logpb_get_log_buffer (LOG_PAGE * log_pg)
 static void
 logpb_unfix_page (LOG_BUFFER * bufptr)
 {
-  assert (bufptr->fown > -1);
+  assert (bufptr->fown == thread_get_current_entry_index ());
   bufptr->fown = -1;
 }
 
@@ -4000,7 +4000,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        */
 
       bufptr = logpb_get_log_buffer (flush_info->toflush[0]);
-      assert (bufptr->fown > -1);
+      assert (bufptr->fown == thread_get_current_entry_index ());
       if (!logpb_is_dirty (thread_p, flush_info->toflush[0]))
 	{
 	  need_flush = false;
