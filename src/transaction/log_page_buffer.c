@@ -841,6 +841,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       assert (log_bufptr->pageid == pageid);
     }
   log_bufptr->fown = thread_index;
+  er_print_callstack (ARG_FILE_LINE, "Pageid %lld is fixed by %d", (long long) log_bufptr->pageid, log_bufptr->fown);	/* Remove me */
 
   mnt_log_fetches (thread_p);
   if (is_perf_tracking)
