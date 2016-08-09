@@ -16405,7 +16405,7 @@ mr_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val
 
   /* Checks to be sure that we have the correct input */
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING);
-  assert (DB_GET_STRING_LENGTH (value) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+  assert (DB_GET_STRING_SIZE (value) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   error_abort = buf->error_abort;
   buf->error_abort = 0;
