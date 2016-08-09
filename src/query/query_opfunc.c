@@ -426,7 +426,6 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
       /* since each tuple data value field is already aligned with MAX_ALIGNMENT, val_size by itself can be used to
        * find the maximum alignment for the following field which is next val_header */
 
-    skip_normal_write:
       align = DB_ALIGN (val_size, MAX_ALIGNMENT);	/* to align for the next field */
       *tuple_val_size = QFILE_TUPLE_VALUE_HEADER_SIZE + align;
       QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_val_p, align);
@@ -10673,7 +10672,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
       else
 	{
 	  dbval_size = pr_data_writeval_disk_size (&dbval);
-	  if ((!dbval_size) && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
+	  if (dbval_size && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
 	    {
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
 	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
