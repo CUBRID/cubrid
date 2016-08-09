@@ -16491,7 +16491,7 @@ mr_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val
     {
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_STRING:
-      rc = mr_write_compressed_string_to_buffer (buf, str, (int) compression_length, length, align);
+      rc = mr_write_compressed_string_to_buffer (buf, str, (int) compression_length, str_length, align);
       break;
 
     default:
