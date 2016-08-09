@@ -2027,7 +2027,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
    *          in log page (in delayed_free_log_pgptr)
    */
 
-  if (LSA_LE (&append_lsa, req_lsa)		/* for case 1 */
+  if (LSA_LE (&append_lsa, req_lsa)	/* for case 1 */
       || LSA_LE (&append_prev_lsa, req_lsa))	/* for case 2 */
     {
       LOG_CS_ENTER (thread_p);
@@ -3782,6 +3782,20 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_TOPOP_RESULT);
       break;
 
+    case LOG_SYSOP_COMMIT_AND_UNDO:
+      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_UNDO);
+      break;
+
+    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE);
+      break;
+
+    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE);
+      break;
+
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
       node->data_header_length = sizeof (LOG_REC_REPLICATION);
@@ -3907,6 +3921,9 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_COMMIT_TOPOPE:
+    case LOG_SYSOP_COMMIT_AND_UNDO:
+    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
+    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
     case LOG_ABORT_TOPOPE:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:

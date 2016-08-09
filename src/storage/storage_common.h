@@ -112,6 +112,8 @@ struct log_lsa
 
 #define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
 
+#define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
+
 #define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
 #define LSA_SET_INIT_TEMP(lsa_ptr)\
   do {									      \

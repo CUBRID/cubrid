@@ -77,8 +77,15 @@ static int log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p,
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				     LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
 				     bool * did_incom_recovery);
-static int log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
-					    LOG_PAGE * log_page_p);
+static int log_rv_analysis_sysop_abort (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
+static int log_rv_analysis_sysop_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					 LOG_PAGE * log_page_p);
+static int log_rv_analysis_sysop_commit_and_undo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+						  LOG_PAGE * log_page_p);
+static int log_rv_analysis_sysop_commit_and_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+							LOG_PAGE * log_page_p);
+static int log_rv_analysis_sysop_commit_and_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+							  LOG_PAGE * log_page_p, LOG_LSA * checkpoint);
 static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint);
 static int log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 					   LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool * may_use_checkpoint,
@@ -1366,6 +1373,269 @@ end:
   return NO_ERROR;
 }
 
+/* TODO: We need to understand how recovery of system operations really works. We need to find its limitations.
+ *	 For now, I did find out this:
+ *	 1. if tdes->topops.last is 0 (cannot be bigger during recovery), it means the transaction should be in
+ *	    state TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. tdes->topops.last may be incremented by
+ *	    log_rv_analysis_commit_topope_with_postpone or may be already 0 from checkpoint collected topops.
+ *	 2. In all other cases it must be -1.
+ *	 3. We used to consider that first sysop commit (or abort) that follows is the one that should end the postpone
+ *	    phase.
+ *
+ *	 Now, for TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE state we will expect last to be always 0.
+ *	 We will handle sysop ends like:
+ *	 - commit: we consider this ends the TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE phase. This also means that
+ *	   no regular system operations are allowed in this phase. for that matter, only commit/run postpone types
+ *	   system operations are allowed in this phase.
+ *	 - commit/run postpone: does not change state and only modifies transaction postpone LSA.
+ *	 - commit/other: not accepted in this phase.
+ *	 - abort: we assume this was a nested run postpone that got aborted.
+ *
+ *	 In the future, I hope we can come up with a more clear and less restrictive system to handle system operations
+ *	 during recovery.
+ */
+
+/*
+ * log_rv_analysis_sysop_abort () - Analyze system operation abort log record.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * tran_id (in)	   : Transaction ID.
+ * log_lsa (in)	   : LSA of log record.
+ * log_page_p (in) : Page of log record.
+ */
+static int
+log_rv_analysis_sysop_abort (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_TDES *tdes;
+
+  /* The top system action is declared as finished. Pop it from the stack of finished actions */
+  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_complete_topope");
+      return ER_FAILED;
+    }
+
+  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found abort sysop. tdes->trid=%d.",
+		     tdes->trid);
+    }
+
+  LSA_COPY (&tdes->tail_lsa, log_lsa);
+  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
+
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_analysis_sysop_commit () - Analyze system operation commit log record.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * tran_id (in)	   : Transaction ID.
+ * log_lsa (in)	   : LSA of log record.
+ * log_page_p (in) : Page of log record.
+ */
+static int
+log_rv_analysis_sysop_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_TDES *tdes;
+
+  /* The top system action is declared as finished. Pop it from the stack of finished actions */
+  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_complete_topope");
+      return ER_FAILED;
+    }
+
+  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found commit sysop. tdes->trid=%d.",
+		     tdes->trid);
+    }
+
+  LSA_COPY (&tdes->tail_lsa, log_lsa);
+  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
+
+  if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
+    {
+      assert (tdes->topops.last == 0);
+      /* Change state to recovery default: TRAN_UNACTIVE_UNILATERALLY_ABORTED. */
+      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+    }
+  else
+    {
+      assert (tdes->topops.last == -1);
+    }
+  tdes->topops.last = -1;
+
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_analysis_sysop_commit_and_undo () - Analyze system operation commit & undo log record.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * tran_id (in)	   : Transaction ID.
+ * log_lsa (in)	   : LSA of log record.
+ * log_page_p (in) : Page of log record.
+ */
+static int
+log_rv_analysis_sysop_commit_and_undo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_TDES *tdes;
+
+  /* The top system action is declared as finished. Pop it from the stack of finished actions */
+  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_complete_topope");
+      return ER_FAILED;
+    }
+
+  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS, "VACUUM: Found commit & undo sysop. tdes->trid=%d.",
+		     tdes->trid);
+    }
+
+  LSA_COPY (&tdes->tail_lsa, log_lsa);
+  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
+
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_analysis_sysop_commit_and_compensate () - Analyze system operation commit & compensate log record.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * tran_id (in)	   : Transaction ID.
+ * log_lsa (in)	   : LSA of log record.
+ * log_page_p (in) : Page of log record.
+ */
+static int
+log_rv_analysis_sysop_commit_and_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					     LOG_PAGE * log_page_p)
+{
+  LOG_TDES *tdes;
+  LOG_REC_SYSOP_COMMIT_AND_COMPENSATE *sysop_commit_and_compensate = NULL;
+
+  /* The top system action is declared as finished. Pop it from the stack of finished actions */
+  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_complete_topope");
+      return ER_FAILED;
+    }
+
+  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Found commit & compensate sysop. tdes->trid=%d.", tdes->trid);
+    }
+
+  /* Skip log record header */
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  /* Read log data header */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE), log_lsa, log_page_p);
+  sysop_commit_and_compensate = (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE *) ((char *) log_page_p->area + log_lsa->offset);
+
+  /* Update undo_nxlsa */
+  LSA_COPY (&tdes->undo_nxlsa, &sysop_commit_and_compensate->compensate.undo_nxlsa);
+
+  assert (tdes->topops.last == -1);
+  assert (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);	/* This may be subject to change. */
+
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_analysis_sysop_commit_and_run_postpone () - Analyze system operation commit & run postpone log record.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * tran_id (in)	   : Transaction ID.
+ * log_lsa (in)	   : LSA of log record.
+ * log_page_p (in) : Page of log record.
+ * checkpoint (in) : LSA of checkpoint.
+ */
+static int
+log_rv_analysis_sysop_commit_and_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					       LOG_PAGE * log_page_p, LOG_LSA * checkpoint)
+{
+  LOG_TDES *tdes;
+  LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE *sysop_commit_and_run_postpone = NULL;
+
+  /* The top system action is declared as finished. Pop it from the stack of finished actions */
+  tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_complete_topope");
+      return ER_FAILED;
+    }
+
+  if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
+		     "VACUUM: Found commit & run postpone sysop. tdes->trid=%d.", tdes->trid);
+    }
+
+  if (tdes->state != TRAN_UNACTIVE_WILL_COMMIT && tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
+      && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
+    {
+      /* If we are coming from a checkpoint this is the result of a system error since the transaction must have been
+       * already in one of these states.
+       * If we are not coming from a checkpoint, it is likely that we are in a commit point of either a transaction or a
+       * top operation. */
+      if (!LSA_ISNULL (checkpoint))
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"log_recovery_analysis: SYSTEM ERROR\n Incorrect state = %s\n at log_rec at %lld|%d\n"
+			" for transaction = %d (index %d).\n State should have been either of\n %s\n %s\n %s\n",
+			log_state_string (tdes->state), (long long int) log_lsa->pageid, (int) log_lsa->offset,
+			tdes->trid, tdes->tran_index, log_state_string (TRAN_UNACTIVE_WILL_COMMIT),
+			log_state_string (TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE),
+			log_state_string (TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE));
+	}
+      /* Continue the execution by guessing that the transaction has been committed */
+      if (tdes->topops.last == -1)
+	{
+	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+	}
+      else
+	{
+	  tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
+	}
+    }
+
+  /* Skip log record header */
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  /* Read log data header */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE), log_lsa, log_page_p);
+  sysop_commit_and_run_postpone =
+    (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
+
+  LSA_COPY (&tdes->tail_lsa, log_lsa);
+
+  if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
+    {
+      assert (tdes->topops.last == 0);
+      LSA_COPY (&tdes->topops.stack[tdes->topops.last].posp_lsa, &sysop_commit_and_run_postpone->run_postpone.ref_lsa);
+    }
+  else
+    {
+      assert (tdes->topops.last == -1);
+      LSA_COPY (&tdes->posp_nxlsa, &sysop_commit_and_run_postpone->run_postpone.ref_lsa);
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * log_rv_analysis_complete_topope -
  *
@@ -2047,8 +2317,19 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
       break;
 
     case LOG_COMMIT_TOPOPE:
+      log_rv_analysis_sysop_commit (thread_p, tran_id, log_lsa, log_page_p);
+      break;
     case LOG_ABORT_TOPOPE:
-      log_rv_analysis_complete_topope (thread_p, tran_id, log_lsa, log_page_p);
+      log_rv_analysis_sysop_abort (thread_p, tran_id, log_lsa, log_page_p);
+      break;
+    case LOG_SYSOP_COMMIT_AND_UNDO:
+      log_rv_analysis_sysop_commit_and_undo (thread_p, tran_id, log_lsa, log_page_p);
+      break;
+    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
+      log_rv_analysis_sysop_commit_and_compensate (thread_p, tran_id, log_lsa, log_page_p);
+      break;
+    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
+      log_rv_analysis_sysop_commit_and_run_postpone (thread_p, tran_id, log_lsa, log_page_p, checkpoint_lsa);
       break;
 
     case LOG_START_CHKPT:
@@ -2514,7 +2795,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
   LOG_LSA rcv_lsa;		/* Address of redo log record */
   LOG_LSA *rcv_page_lsaptr;	/* LSA of data page for log record to redo */
-  LOG_TDES *tdes;	/* Transaction descriptor */
+  LOG_TDES *tdes;		/* Transaction descriptor */
   int num_particps;		/* Number of participating sites */
   int particp_id_length;	/* Length of particp_ids block */
   void *block_particps_ids;	/* A block of participant ids */
@@ -3381,7 +3662,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    tdes = LOG_FIND_TDES (tran_index);
 		    assert (tdes && tdes->state != TRAN_ACTIVE);
-  		    free_tran = true;
+		    free_tran = true;
 		  }
 
 		if (stopat != NULL && *stopat != -1)
@@ -3453,6 +3734,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
 	    case LOG_COMMIT_TOPOPE:
 	    case LOG_ABORT_TOPOPE:
+	    case LOG_SYSOP_COMMIT_AND_UNDO:
+	    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
+	    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
 	    case LOG_START_CHKPT:
 	    case LOG_END_CHKPT:
 	    case LOG_SAVEPOINT:
@@ -4016,7 +4300,53 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  LSA_COPY (&prev_tranlsa, &top_result->lastparent_lsa);
 		  break;
 
+		case LOG_SYSOP_COMMIT_AND_UNDO:
+		  {
+		    /* Execute undo. */
+		    LOG_REC_SYSOP_COMMIT_AND_UNDO *sysop_commit_and_undo;
+
+		    LSA_COPY (&rcv_lsa, &log_lsa);
+
+		    /* Skip log header */
+		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+		    /* Read data header */
+		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_UNDO), &log_lsa,
+						      log_pgptr);
+		    sysop_commit_and_undo =
+		      (LOG_REC_SYSOP_COMMIT_AND_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		    rcvindex = sysop_commit_and_undo->undo.data.rcvindex;
+		    rcv.length = sysop_commit_and_undo->undo.length;
+		    rcv.offset = sysop_commit_and_undo->undo.data.offset;
+		    rcv_vpid.volid = sysop_commit_and_undo->undo.data.volid;
+		    rcv_vpid.pageid = sysop_commit_and_undo->undo.data.pageid;
+
+		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_UNDO), &log_lsa, log_pgptr);
+
+		    log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
+					undo_unzip_ptr);
+		  }
+		  break;
+
+		case LOG_SYSOP_COMMIT_AND_COMPENSATE:
+		  {
+		    /* Execute compensate. */
+		    LOG_REC_SYSOP_COMMIT_AND_COMPENSATE *sysop_commit_and_compensate;
+
+		    /* Skip log header */
+		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+		    /* Read data header */
+		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE), &log_lsa,
+						      log_pgptr);
+		    sysop_commit_and_compensate =
+		      (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		    LSA_COPY (&prev_tranlsa, &sysop_commit_and_compensate->compensate.undo_nxlsa);
+		  }
+		  break;
+
 		case LOG_RUN_POSTPONE:
+		case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
 		case LOG_WILL_COMMIT:
 		case LOG_COMMIT_WITH_POSTPONE:
 		case LOG_COMMIT:
@@ -4802,6 +5132,30 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &log_lsa, log_pgptr);
       break;
 
+    case LOG_SYSOP_COMMIT_AND_UNDO:
+      {
+	LOG_REC_SYSOP_COMMIT_AND_UNDO *sysop_commit_and_undo;
+	int undo_data_size;
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_UNDO), &log_lsa, log_pgptr);
+
+	sysop_commit_and_undo = (LOG_REC_SYSOP_COMMIT_AND_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
+	undo_data_size = (int) GET_ZIP_LEN (sysop_commit_and_undo->undo.length);
+	LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_UNDO), &log_lsa, log_pgptr);
+
+	LOG_READ_ADD_ALIGN (thread_p, undo_data_size, &log_lsa, log_pgptr);
+      }
+      break;
+
+    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE), &log_lsa, log_pgptr);
+      break;
+
+    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE), &log_lsa, log_pgptr);
+      break;
+
     case LOG_END_CHKPT:
       /* Read the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_pgptr);
@@ -5130,34 +5484,21 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 			}
 		      break;
 
-		    case LOG_COMMIT_WITH_POSTPONE:
-		      found_commit_with_postpone = true;
-		      break;
+		    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
+		      {
+			LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE *sysop_commit_and_run_postpone;
+			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE),
+							  &log_lsa, log_pgptr);
+			sysop_commit_and_run_postpone =
+			  (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE *) ((char *) log_pgptr->area + log_lsa.offset);
 
-		    case LOG_COMMIT_TOPOPE:
-		      if (found_commit_with_postpone)
-			{
-			  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-
-			  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &log_lsa,
-							    log_pgptr);
-			  topop_result = (LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + log_lsa.offset);
-
-			  if (LSA_EQ (start_postpone_lsa, &topop_result->lastparent_lsa))
-			    {
-			      start_postpone_lsa_wasapplied = true;
-			      isdone = true;
-
-			      if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
-				{
-				  _er_log_debug (ARG_FILE_LINE,
-						 "POSTPONE_DEBUG: Found postpone using commit top "
-						 "op. Postpone_lsa=%lld|%d\n",
-						 (long long int) start_postpone_lsa->pageid,
-						 (int) start_postpone_lsa->offset);
-				}
-			    }
-			}
+			if (LSA_EQ (start_postpone_lsa, &sysop_commit_and_run_postpone->run_postpone.ref_lsa))
+			  {
+			    start_postpone_lsa_wasapplied = true;
+			    isdone = true;
+			  }
+		      }
 		      break;
 
 		    case LOG_POSTPONE:

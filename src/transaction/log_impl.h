@@ -1333,6 +1333,11 @@ enum log_rectype
   LOG_MVCC_UNDO_DATA = 47,	/* Undo for MVCC operations */
   LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
+
+  LOG_SYSOP_COMMIT_AND_UNDO = 50,
+  LOG_SYSOP_COMMIT_AND_COMPENSATE = 51,
+  LOG_SYSOP_COMMIT_AND_RUN_POSTPONE = 52,
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 
@@ -1602,6 +1607,27 @@ struct log_rec_topop_result
   LOG_LSA lastparent_lsa;	/* Next log record address of transaction for UNDO purposes. Last address before the
 				 * top action */
   LOG_LSA prv_topresult_lsa;	/* Previous top action (either, partial abort or partial commit) address */
+};
+
+typedef struct log_rec_sysop_commit_and_undo LOG_REC_SYSOP_COMMIT_AND_UNDO;
+struct log_rec_sysop_commit_and_undo
+{
+  LOG_REC_TOPOP_RESULT sysop_commit;
+  LOG_REC_UNDO undo;
+};
+
+typedef struct log_rec_sysop_commit_and_compensate LOG_REC_SYSOP_COMMIT_AND_COMPENSATE;
+struct log_rec_sysop_commit_and_compensate
+{
+  LOG_REC_TOPOP_RESULT sysop_commit;
+  LOG_REC_COMPENSATE compensate;
+};
+
+typedef struct log_rec_sysop_commit_and_run_postpone LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE;
+struct log_rec_sysop_commit_and_run_postpone
+{
+  LOG_REC_TOPOP_RESULT sysop_commit;
+  LOG_REC_RUN_POSTPONE run_postpone;
 };
 
 /* Log a prepare to commit record */
