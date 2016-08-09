@@ -11294,17 +11294,21 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	   * expected to reach a deleted object and also it is difficult to propagate the NON_EXISTENT_HANDLING 
 	   * argument through all the callers; this system can currently generate some irrelevant error log that is
 	   * hard to eliminate */
-	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
-	      /* dangling object reference */
 	      dead_end = true;
+	      er_clear ();	/* clear ER_HEAP_UNKOWN_OBJECT */
 	    }
-
 	  else if (er_errid () == ER_HEAP_NODATA_NEWADDRESS)
 	    {
 	      dead_end = true;
 	      unqualified_dead_end = true;
 	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
+	    }
+	  else if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
+	    {
+	      /* dangling object reference */
+	      dead_end = true;
 	    }
 	  else
 	    {
