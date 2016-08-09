@@ -742,7 +742,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
-  if (logpb_fetch_start_append_page (thread_p) == NULL)
+  if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:logpb_fetch_start_append_page");
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
@@ -4557,7 +4557,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
     }
   else
     {
-      if (logpb_fetch_start_append_page (thread_p) != NULL)
+      if (logpb_fetch_start_append_page (thread_p) == NO_ERROR)
 	{
 	  if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
 	    {

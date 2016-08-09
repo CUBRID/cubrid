@@ -1986,7 +1986,7 @@ extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const cha
 					      const char *prefix_logname, PGLENGTH * io_page_size,
 					      PGLENGTH * log_page_size, INT64 * db_creation, float *db_compatibility,
 					      int *db_charset);
-extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
+extern int logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
 extern void logpb_flush_pages_direct (THREAD_ENTRY * thread_p);
 extern void logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa);

@@ -2041,7 +2041,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
 	    {
 	      goto error;
 	    }
-	  if (logpb_fetch_start_append_page (thread_p) == NULL)
+	  if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -2169,7 +2169,7 @@ error:
  *
  * NOTE:Fetch the start append page.
  */
-LOG_PAGE *
+int
 logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 {
   PAGE_FETCH_MODE flag = OLD_PAGE;
@@ -2204,7 +2204,8 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
   log_Gl.append.log_pgptr = logpb_fix_page (thread_p, log_Gl.hdr.append_lsa.pageid, flag);
   if (log_Gl.append.log_pgptr == NULL)
     {
-      return NULL;
+      assert (false);
+      return ER_FAILED;
     }
 
   logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
@@ -2235,8 +2236,8 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
     {
       logpb_flush_pages_direct (thread_p);
     }
-
-  return log_Gl.append.log_pgptr;
+  logpb_free_page (thread_p, log_Gl.append.log_pgptr);
+  return NO_ERROR;
 }
 
 /*
@@ -10323,7 +10324,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	{
 	  goto error;
 	}
-      if (logpb_fetch_start_append_page (thread_p) == NULL)
+      if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error;

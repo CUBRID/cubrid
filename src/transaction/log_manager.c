@@ -794,7 +794,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   log_Gl.append.vdes =
     fileio_format (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, npages,
 		   prm_get_bool_value (PRM_ID_LOG_SWEEP_CLEAN), true, false, LOG_PAGESIZE, 0, false);
-  if (log_Gl.append.vdes == NULL_VOLDES || logpb_fetch_start_append_page (thread_p) == NULL || loghdr_pgptr == NULL)
+  if (log_Gl.append.vdes == NULL_VOLDES || logpb_fetch_start_append_page (thread_p) != NO_ERROR || loghdr_pgptr == NULL)
     {
       goto error;
     }
@@ -1290,7 +1290,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * The system was shut down. There is nothing to recover.
        * Find the append page and start execution
        */
-      if (logpb_fetch_start_append_page (thread_p) == NULL)
+      if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
