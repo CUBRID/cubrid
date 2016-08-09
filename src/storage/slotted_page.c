@@ -2576,6 +2576,14 @@ spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, const 
   assert (page_p != NULL);
   assert (record_descriptor_p != NULL);
 
+#if !defined (NDEBUG)
+  {
+    PGBUF_LATCH_MODE latch_mode;
+    latch_mode = pgbuf_get_latch_mode (page_p);
+    assert (latch_mode == PGBUF_LATCH_WRITE);
+  }
+#endif
+
   if (record_descriptor_p->length < 0)
     {
       assert (false);
