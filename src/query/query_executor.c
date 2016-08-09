@@ -11294,10 +11294,11 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	   * expected to reach a deleted object and also it is difficult to propagate the NON_EXISTENT_HANDLING 
 	   * argument through all the callers; this system can currently generate some irrelevant error log that is
 	   * hard to eliminate */
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	    {
+	      /* dangling object reference */
 	      dead_end = true;
-	      er_clear ();	/* clear ER_HEAP_UNKOWN_OBJECT */
+	      er_clear ();	/* probably ER_HEAP_UNKNOWN_OBJECT is set */
 	    }
 	  else if (er_errid () == ER_HEAP_NODATA_NEWADDRESS)
 	    {
@@ -11305,10 +11306,12 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      unqualified_dead_end = true;
 	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 	    }
-	  else if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
+	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
-	      /* dangling object reference */
+	      /* where is this from? */
+	      assert (false);
 	      dead_end = true;
+	      er_clear ();	/* clear ER_HEAP_UNKOWN_OBJECT */
 	    }
 	  else
 	    {
