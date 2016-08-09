@@ -429,6 +429,7 @@ static void
 logpb_unfix_page (LOG_BUFFER * bufptr)
 {
   assert (bufptr->fown == thread_get_current_entry_index ());
+  er_print_callstack (ARG_FILE_LINE, "Unfix pageid %d (from fown=%d)", (long long) bufptr->pageid, bufptr->fown);
   bufptr->fown = -1;
 }
 
