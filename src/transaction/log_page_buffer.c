@@ -428,7 +428,7 @@ logpb_get_log_buffer (LOG_PAGE * log_pg)
 static void
 logpb_unfix_page (LOG_BUFFER * bufptr)
 {
-  assert (bufptr->fown == thread_get_current_entry_index ());
+  assert (bufptr->fown > -1);
   bufptr->fown = -1;
 }
 
