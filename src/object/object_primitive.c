@@ -888,6 +888,9 @@ static int mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 					 char *copy_buf, int copy_buf_len);
 
+static int mr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
+						 int decompressed_length, int alignment);
+
 /*
  * Value_area
  *    Area used for allocation of value containers that may be given out
@@ -16379,26 +16382,38 @@ cleanup:
 /*
  * or_write_string_to_buffer ()	  : Writes a VARCHAR or VARNCHAR to buffer, without needing the buffer initialised.
  *				    
+ * buf(out)			  : Buffer to be written to.
+ * val_p(in)			  : Memory area to be written to.
+ * value(in)			  : DB_VALUE to be written.
+ * val_size(out)		  : Disk size of the DB_VALUE.
+ * align(in)			  : 
  *
+ *  Note:
+ *	We use this to avoid double compression when it is required to have the size of the DB_VALUE, previous
+ *	to the write of the DB_VALUE in the buffer.
  */
 
 int
-or_write_compressed_string_to_buffer (OR_BUF * buf, char *val_p, PR_TYPE * pr_type, DB_VALUE * value, int *val_size)
+mr_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
 {
-  char *compressed_string = NULL, *string = NULL;
-  int rc = NO_ERROR, str_length = 0, error_abort = 0, length = 0;
+  char *compressed_string = NULL, *string = NULL, *str = NULL;
+  int rc = NO_ERROR, str_length = 0, length = 0;
   lzo_uint compression_length = 0;
   lzo_bytep wrkmem = NULL;
+  bool compressed = false;
+  int error_abort = 0;
 
   /* Checks to be sure that we have the correct input */
-  assert (pr_type->id == DB_TYPE_VARNCHAR || pr_type->id == DB_TYPE_STRING);
+  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING);
   assert (DB_GET_STRING_LENGTH (value) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
-  /* Step 1 : Compress, if possible, the dbvalue */
-
+  error_abort = buf->error_abort;
+  buf->error_abort = 0;
   string = DB_GET_STRING (value);
   str_length = DB_GET_STRING_LENGTH (value);
+  *val_size = 0;
 
+  /* Step 1 : Compress, if possible, the dbvalue */
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
     {
@@ -16437,11 +16452,15 @@ or_write_compressed_string_to_buffer (OR_BUF * buf, char *val_p, PR_TYPE * pr_ty
     {
       /* Compression successful */
       length = (int) compression_length;
+      compressed = true;
+      str = compressed_string;
     }
   else
     {
       /* Compression failed */
       length = str_length;
+      compression_length = 0;
+      str = string;
     }
 
   /* 
@@ -16449,13 +16468,11 @@ or_write_compressed_string_to_buffer (OR_BUF * buf, char *val_p, PR_TYPE * pr_ty
    * We are sure that the initial string length is greater than 255, which means that the new encoding applies.
    */
 
-  length += PRIM_TEMPORARY_DISK_SIZE;
-
-  switch (pr_type->id)
+  switch (DB_VALUE_DOMAIN_TYPE (value))
     {
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-      length = or_packed_varchar_length (length);
+      *val_size = or_packed_varchar_length (length + PRIM_TEMPORARY_DISK_SIZE) - PRIM_TEMPORARY_DISK_SIZE;
       break;
 
     default:
@@ -16465,18 +16482,27 @@ or_write_compressed_string_to_buffer (OR_BUF * buf, char *val_p, PR_TYPE * pr_ty
       goto cleanup;
     }
 
-  val_size = length;
-
   /* Step 3 : Initialize the buffer */
-
-  OR_BUF_INIT (*buf, val_p, length);
+  OR_BUF_INIT (*buf, val_p, *val_size);
 
   /* Step 4 : Insert the disk representation of the dbvalue in the buffer */
 
+  switch (DB_VALUE_DOMAIN_TYPE (value))
+    {
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_STRING:
+      rc = mr_write_compressed_string_to_buffer (buf, str, compression_length, length, align);
+      break;
 
-
+    default:
+      /* It should not happen. */
+      assert (false);
+      goto cleanup;
+    }
 
 cleanup:
+  buf->error_abort = error_abort;
+
   if (compressed_string != NULL)
     {
       free_and_init (compressed_string);
@@ -16487,7 +16513,88 @@ cleanup:
       free_and_init (wrkmem);
     }
 
+  if (rc == ER_TF_BUFFER_OVERFLOW)
+    {
+      return or_overflow (buf);
+    }
 
   return rc;
+}
 
+/* mr_write_compressed_string_to_buffer()	  : Similar function to the previous implementation of 
+ *						    or_put_varchar_internal.
+ *
+ * buf(in/out)					  : Buffer to be written the string.
+ * compressed_string(in)			  : The string to be written.
+ * compressed_length(in)			  : Compressed length of the string. If it is 0, then no
+ *						    compression happened.
+ * decompressed_length(in)			  : Decompressed length of the string.
+ * align(in)					  :
+ */
+
+static int
+mr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
+				      int decompressed_length, int align)
+{
+  int net_charlen = 0;
+  int rc = NO_ERROR;
+
+  assert (decompressed_length >= 0xFF);
+
+  /* store the size prefix */
+
+  rc = or_put_byte (buf, 0xFF);
+
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  /* Store the compressed size */
+  OR_PUT_INT (&net_charlen, compressed_length);
+  rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  /* Store the decompressed size */
+  OR_PUT_INT (&net_charlen, decompressed_length);
+  rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  /* Get the string disk size */
+  if (compressed_length > 0)
+    {
+      net_charlen = compressed_length;
+    }
+  else
+    {
+      net_charlen = decompressed_length;
+    }
+
+
+  /* store the string bytes */
+  rc = or_put_data (buf, compressed_string, net_charlen);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (align == INT_ALIGNMENT)
+    {
+      /* kludge, temporary NULL terminator */
+      rc = or_put_byte (buf, 0);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+      /* round up to a word boundary */
+      rc = or_put_align32 (buf);
+    }
+
+  return rc;
 }

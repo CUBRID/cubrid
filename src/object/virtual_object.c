@@ -1780,7 +1780,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
 {
   OR_BUF buf;
   PR_TYPE *pr_type;
-  int val_size;
+  int val_size, rc = NO_ERROR;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
@@ -1791,6 +1791,23 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
     }
 
   pr_type = tp_Type_id_map[(int) dbval_type];
+
+  if (DB_VALUE_DOMAIN_TYPE (dbval) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE (dbval) == DB_TYPE_VARNCHAR)
+    {
+      if (DB_GET_STRING_SIZE (dbval) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	{
+	  rc = mr_write_string_to_buffer (&buf, lbuf, dbval, val_size, INT_ALIGNMENT);
+	  if (rc != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+
+	  lbuf += val_size;
+
+	  return lbuf;
+	}
+    }
+
   val_size = pr_data_writeval_disk_size (dbval);
 
   or_init (&buf, lbuf, val_size);
