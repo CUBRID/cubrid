@@ -89,10 +89,10 @@ static char or_mvcc_get_flag (RECDES * record);
 static void or_mvcc_set_flag (RECDES * record, char flags);
 static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE union DELID_CHN or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
-  __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-  __attribute__ ((ALWAYS_INLINE));
+static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_get_chn (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
   __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
@@ -743,37 +743,49 @@ or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
  * mvcc_falgs(in)  : MVCC flags
  * error(out): NO_ERROR or error code
  */
-STATIC_INLINE union DELID_CHN
-or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
+STATIC_INLINE MVCCID
+or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
 {
-  union DELID_CHN delid_or_chn;
+  MVCCID delid;
 
   assert (buf != NULL && error != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   *error = NO_ERROR;
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+
+  /* MVCC DELID is active */
+  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
     {
-      /* MVCC DELID is active */
-      if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-	{
-	  *error = or_underflow (buf);
-	  delid_or_chn.mvcc_del_id = MVCCID_NULL;
-	}
-      else
-	{
-	  OR_GET_BIGINT (buf->ptr, &(delid_or_chn.mvcc_del_id));
-	  buf->ptr += OR_MVCCID_SIZE;
-	}
+      *error = or_underflow (buf);
+      delid = MVCCID_NULL;
     }
-  else if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+  else
+    {
+      OR_GET_BIGINT (buf->ptr, &(delid));
+      buf->ptr += OR_MVCCID_SIZE;
+    }
+  return delid;
+}
+
+STATIC_INLINE int
+or_mvcc_get_chn (OR_BUF * buf, int mvcc_flags, int *error)
+{
+  int chn;
+
+  assert (buf != NULL && error != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  *error = NO_ERROR;
+
+  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
     {
       *error = or_underflow (buf);
     }
   else
     {
-      delid_or_chn.chn = OR_GET_INT (buf->ptr);
+      chn = OR_GET_INT (buf->ptr);
       buf->ptr += OR_INT_SIZE;
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
@@ -789,7 +801,7 @@ or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
 	}
     }
 
-  return delid_or_chn;
+  return chn;
 }
 
 /*
@@ -800,20 +812,28 @@ or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
  * mvcc_rec_header(in): MVCC record header
  */
 STATIC_INLINE int
-or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
   int error_code = NO_ERROR;
   assert (buf != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
-    {
-      /* MVCC DELID is active */
-      return or_put_bigint (buf, mvcc_rec_header->delid_chn.mvcc_del_id);
-    }
+  /* MVCC DELID is active */
+  return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
 
+
+}
+STATIC_INLINE int
+or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+{
   /* CHN is active */
-  error_code = or_put_int (buf, mvcc_rec_header->delid_chn.chn);
+
+  int error_code = NO_ERROR;
+  assert (buf != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  error_code = or_put_int (buf, mvcc_rec_header->chn);
   if ((error_code == NO_ERROR) && (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_LONG_CHN))
     {
       error_code = or_put_int (buf, 0);
@@ -853,7 +873,9 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
       goto exit_on_error;
     }
 
-  mvcc_header->delid_chn = or_mvcc_get_delid_chn (&buf, mvcc_header->mvcc_flag, &rc);
+  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
+  mvcc_header->chn = or_mvcc_get_chn (&buf, mvcc_header->mvcc_flag, &rc);
+
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -929,7 +951,13 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_delid_chn (buf, mvcc_rec_header);
+  error = or_mvcc_set_delid (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -990,11 +1018,18 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_delid_chn (buf, mvcc_rec_header);
+  error = or_mvcc_set_delid (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
+
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
 
   error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
   if (error != NO_ERROR)
