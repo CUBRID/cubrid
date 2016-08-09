@@ -69,7 +69,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #define thread_get_thread_entry_info()  (NULL)
 #define thread_num_worker_threads()  (1)
 #define thread_num_total_threads()   (1)
-#define thread_get_current_entry_index() (0)
 #define thread_get_current_session_id() (db_Session_id)
 #define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
 #define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
