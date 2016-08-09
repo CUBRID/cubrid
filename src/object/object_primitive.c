@@ -16410,7 +16410,7 @@ mr_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val
   error_abort = buf->error_abort;
   buf->error_abort = 0;
   string = DB_GET_STRING (value);
-  str_length = DB_GET_STRING_LENGTH (value);
+  str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
 
   /* Step 1 : Compress, if possible, the dbvalue */
