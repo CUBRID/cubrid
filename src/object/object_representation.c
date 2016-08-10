@@ -746,24 +746,26 @@ or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 STATIC_INLINE MVCCID
 or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
 {
-  MVCCID delid;
+  MVCCID delid = MVCCID_NULL;
 
   assert (buf != NULL && error != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   *error = NO_ERROR;
-
-  /* MVCC DELID is active */
-  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
+  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
     {
-      *error = or_underflow (buf);
-      delid = MVCCID_NULL;
-    }
-  else
-    {
-      OR_GET_BIGINT (buf->ptr, &(delid));
-      buf->ptr += OR_MVCCID_SIZE;
+      /* MVCC DELID is active */
+      if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
+	{
+	  *error = or_underflow (buf);
+	  delid = MVCCID_NULL;
+	}
+      else
+	{
+	  OR_GET_BIGINT (buf->ptr, &(delid));
+	  buf->ptr += OR_MVCCID_SIZE;
+	}
     }
   return delid;
 }
@@ -771,32 +773,34 @@ or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
 STATIC_INLINE int
 or_mvcc_get_chn (OR_BUF * buf, int mvcc_flags, int *error)
 {
-  int chn;
+  int chn = NULL_CHN;
 
   assert (buf != NULL && error != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   *error = NO_ERROR;
-
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_DELID))
     {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      chn = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
+      if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
 	{
-	  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+	  *error = or_underflow (buf);
+	}
+      else
+	{
+	  chn = OR_GET_INT (buf->ptr);
+	  buf->ptr += OR_INT_SIZE;
+
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
 	    {
-	      *error = or_underflow (buf);
-	    }
-	  else
-	    {
-	      *error = or_advance (buf, OR_INT_SIZE);
+	      if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+		{
+		  *error = or_underflow (buf);
+		}
+	      else
+		{
+		  *error = or_advance (buf, OR_INT_SIZE);
+		}
 	    }
 	}
     }
@@ -873,9 +877,14 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
       goto exit_on_error;
     }
 
-  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
-  mvcc_header->chn = or_mvcc_get_chn (&buf, mvcc_header->mvcc_flag, &rc);
-
+  if (mvcc_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+    {
+      mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
+    }
+  else
+    {
+      mvcc_header->chn = or_mvcc_get_chn (&buf, mvcc_header->mvcc_flag, &rc);
+    }
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -951,13 +960,19 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_delid (buf, mvcc_rec_header);
+  if (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+    {
+      error = or_mvcc_set_delid (buf, mvcc_rec_header);
+    }
+  else
+    {
+      error = or_mvcc_set_chn (buf, mvcc_rec_header);
+    }
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_chn (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -1018,13 +1033,14 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_delid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
+  if (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
     {
-      goto exit_on_error;
+      error = or_mvcc_set_delid (buf, mvcc_rec_header);
     }
-
-  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  else
+    {
+      error = or_mvcc_set_chn (buf, mvcc_rec_header);
+    }
   if (error != NO_ERROR)
     {
       goto exit_on_error;
