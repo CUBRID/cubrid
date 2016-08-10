@@ -1591,6 +1591,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
       rv = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
       if (rv != NO_ERROR || log_pgptr == NULL)
 	{
+	  LOG_CS_EXIT (thread_p);
 	  return ER_FAILED;
 	}
     }
@@ -1914,7 +1915,9 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
       return ER_FAILED;
     }
   if (log_pgptr == NULL)
-    return ER_FAILED;
+    {
+      return ER_FAILED;
+    }
   return NO_ERROR;
 }
 
