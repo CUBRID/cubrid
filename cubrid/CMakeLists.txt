@@ -35,6 +35,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/binaryheap.c
+  ${BASE_DIR}/bit.c
   ${BASE_DIR}/chartype.c
   ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c

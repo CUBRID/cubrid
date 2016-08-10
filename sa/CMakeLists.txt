@@ -57,6 +57,7 @@ set(COMPAT_SOURCES
   )
 
 set(BASE_SOURCES
+  ${BASE_DIR}/bit.c
   ${BASE_DIR}/dynamic_array.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/area_alloc.c
