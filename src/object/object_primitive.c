@@ -16329,11 +16329,11 @@ mr_get_compression_length (const char *string, int charlen)
 
   /* Alloc memory for the compressed string */
   /* Worst case LZO compression size from their FAQ */
-  compressed_string = malloc (length + (length / 16) + 64 + 3);
+  compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (length));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) (length + (length / 16) + 64 + 3));
+	      1, (size_t) (LZO_COMPRESSED_STRING_SIZE (length)));
       goto cleanup;
     }
 
@@ -16380,7 +16380,8 @@ cleanup:
 
 
 /*
- * or_write_string_to_buffer ()	  : Writes a VARCHAR or VARNCHAR to buffer, without needing the buffer initialised.
+ * mr_get_size_and_write_string_to_buffer ()
+ *	  			  : Writes a VARCHAR or VARNCHAR to buffer, without needing the buffer initialized.
  *				    
  * buf(out)			  : Buffer to be written to.
  * val_p(in)			  : Memory area to be written to.
@@ -16394,7 +16395,7 @@ cleanup:
  */
 
 int
-mr_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
+mr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
 {
   char *compressed_string = NULL, *string = NULL, *str = NULL;
   int rc = NO_ERROR, str_length = 0, length = 0;
@@ -16425,11 +16426,11 @@ mr_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val
 
   /* Alloc memory for the compressed string */
   /* Worst case LZO compression size from their FAQ */
-  compressed_string = malloc (str_length + (str_length / 16) + 64 + 3);
+  compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (str_length));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) (str_length + (str_length / 16) + 64 + 3));
+	      1, (size_t) LZO_COMPRESSED_STRING_SIZE (str_length));
       goto cleanup;
     }
 

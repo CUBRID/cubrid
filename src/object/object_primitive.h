@@ -350,10 +350,14 @@ extern void pr_area_final (void);
 extern int pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain);
 extern int mr_get_compression_length (const char *string, int charlen);
 extern int mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size);
-extern int mr_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align);
+extern int mr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value,
+						   int *val_size, int align);
 
 #define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
+
+/* Worst case scenario for compression from their FAQ */
+#define LZO_COMPRESSED_STRING_SIZE(str_length) (str_length + (str_length / 16) + 64 + 3)
 
 #endif /* _OBJECT_PRIMITIVE_H_ */
