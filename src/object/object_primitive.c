@@ -10864,7 +10864,7 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 
   /* generally, index key-value is short enough */
   charlen = OR_GET_BYTE (memptr);
-  if (charlen < 0xFF)
+  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       return or_varchar_length (charlen);
     }
@@ -11504,7 +11504,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < 0xFF && str_length2 < 0xFF)
+  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION &&
+      str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
@@ -11513,11 +11514,12 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
       return c;
     }
 
-  assert (str_length1 == 0xFF || str_length2 == 0xFF);
+  assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION ||
+	  str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   /* String 1 */
   or_init (&buf1, str1, 0);
-  if (str_length1 == 0xFF)
+  if (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
       if (rc != NO_ERROR)
@@ -11560,7 +11562,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 
   or_init (&buf2, str2, 0);
 
-  if (str_length2 == 0xFF)
+  if (str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
       if (rc != NO_ERROR)
@@ -14355,7 +14357,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < 0xFF && str_length2 < 0xFF)
+  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION &&
+      str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
@@ -14365,11 +14368,12 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       return c;
     }
 
-  assert (str_length1 == 0xFF || str_length2 == 0xFF);
+  assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION ||
+	  str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   /* String 1 */
   or_init (&buf1, str1, 0);
-  if (str_length1 == 0xFF)
+  if (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
       if (rc != NO_ERROR)
@@ -14409,7 +14413,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 
   /* String 2 */
   or_init (&buf2, str2, 0);
-  if (str_length2 == 0xFF)
+  if (str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
       if (rc != NO_ERROR)
@@ -16540,7 +16544,7 @@ mr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
   int net_charlen = 0;
   int rc = NO_ERROR;
 
-  assert (decompressed_length >= 0xFF);
+  assert (decompressed_length >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   /* store the size prefix */
 

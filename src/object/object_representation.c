@@ -8536,7 +8536,7 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
       return rc;
     }
 
-  if (size_prefix == 0xFF)
+  if (size_prefix == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       /* String was compressed */
       /* Get the compressed size */
