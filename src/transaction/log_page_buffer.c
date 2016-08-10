@@ -211,7 +211,6 @@ struct log_buffer
 {
   LOG_PAGEID pageid;		/* Logical page of the log. (Page identifier of the infinite log) */
   LOG_PHY_PAGEID phy_pageid;	/* Physical pageid for the active log portion */
-  int fown;			/* Fix owner */
   bool dirty;			/* Is page dirty */
   LOG_PAGE *logpage;		/* The actual buffered log page */
 };
@@ -319,7 +318,6 @@ static void logpb_finalize_writer_info (void);
 static void logpb_dump_log_header (FILE * outfp);
 static void logpb_dump_parameter (FILE * outfp);
 static void logpb_dump_runtime (FILE * outfp);
-static void logpb_unfix_page (LOG_BUFFER * bufptr);
 static void logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg);
 
 static int logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_t backup_time);
@@ -416,24 +414,6 @@ logpb_get_log_buffer (LOG_PAGE * log_pg)
 }
 
 /*
- * logpb_unfix_page - unfix of log page buffer
- *
- * return: nothing
- *
- *   bufptr(in/oiut):
- *
- * NOTE:
- *
- */
-static void
-logpb_unfix_page (LOG_BUFFER * bufptr)
-{
-  assert (bufptr->fown == thread_get_current_entry_index ());
-  er_print_callstack (ARG_FILE_LINE, "Unfix pageid %d (from fown=%d)", (long long) bufptr->pageid, bufptr->fown);
-  bufptr->fown = -1;
-}
-
-/*
  * logpb_initialize_log_buffer -
  *
  * return: nothing
@@ -448,7 +428,6 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
 {
   log_buffer_p->pageid = NULL_PAGEID;
   log_buffer_p->phy_pageid = NULL_PAGEID;
-  log_buffer_p->fown = -1;
   log_buffer_p->dirty = false;
   log_buffer_p->logpage = log_pg;
   log_buffer_p->logpage->hdr.logical_pageid = NULL_PAGEID;
@@ -628,7 +607,6 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
 
   if (log_Gl.append.log_pgptr != NULL)
     {
-      logpb_free_page (thread_p, log_Gl.append.log_pgptr);
       log_Gl.append.log_pgptr = NULL;
       log_Gl.append.delayed_free_log_pgptr = NULL;
     }
@@ -727,7 +705,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       log_bufptr = LOGPB_FIND_BUFPTR (i);
-      if (log_bufptr->pageid != NULL_PAGEID && log_bufptr->fown == -1 && !log_bufptr->dirty == false)
+      if (log_bufptr->pageid != NULL_PAGEID && !log_bufptr->dirty == false)
 	{
 	  logpb_initialize_log_buffer (log_bufptr, log_bufptr->logpage);
 	}
@@ -781,7 +759,10 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   TSCTIMEVAL tv_diff;
   UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
-  int thread_index = thread_get_current_entry_index ();
+  int idx = 1;
+#if defined (SERVER_MODE)
+  idx = thread_p->index;
+#endif
   is_perf_tracking = mnt_is_perf_tracking (thread_p);
   if (is_perf_tracking)
     {
@@ -801,7 +782,6 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       log_bufptr = &log_Pb.buffers[logpb_get_log_buffer_index ((int) pageid)];
     }
   assert (log_bufptr != NULL);
-  assert (log_bufptr->fown == -1);	/* Should not be fixed */
 
   if (log_bufptr->pageid != NULL_PAGEID && log_bufptr->pageid != pageid)
     {
@@ -831,7 +811,6 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	  logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage);
 	  mnt_log_fetch_ioreads (thread_p);
 	}
-
       phy_pageid = logpb_to_physical_pageid (pageid);
       log_bufptr->phy_pageid = phy_pageid;
       log_bufptr->pageid = pageid;
@@ -841,8 +820,6 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       assert (fetch_mode == OLD_PAGE);
       assert (log_bufptr->pageid == pageid);
     }
-  log_bufptr->fown = thread_index;
-  er_print_callstack (ARG_FILE_LINE, "Pageid %lld is fixed by %d", (long long) log_bufptr->pageid, log_bufptr->fown);	/* Remove me */
 
   mnt_log_fetches (thread_p);
   if (is_perf_tracking)
@@ -887,10 +864,6 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 #endif /* CUBRID_DEBUG */
 
   bufptr->dirty = true;
-  if (free_page == FREE)
-    {
-      logpb_unfix_page (bufptr);
-    }
 }
 
 /*
@@ -968,7 +941,7 @@ logpb_is_any_fix (THREAD_ENTRY * thread_p)
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       bufptr = LOGPB_FIND_BUFPTR (i);
-      if (bufptr->pageid != NULL_PAGEID && bufptr->fown != -1)
+      if (bufptr->pageid != NULL_PAGEID)
 	{
 	  ret = true;
 	  break;
@@ -1004,6 +977,8 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
       && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
     {
+      /*END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p); end without start- could be deleted */
+
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE, 1, bufptr->pageid);
       return ER_LOG_FLUSHING_UNUPDATABLE;
     }
@@ -1038,11 +1013,6 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 	}
     }
 
-  if (free_page == FREE)
-    {
-      logpb_unfix_page (bufptr);
-    }
-
   /*END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p); end without start- could be deleted */
 
   return NO_ERROR;
@@ -1051,30 +1021,6 @@ error:
   /*END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p); end without start- could be deleted */
 
   return ER_FAILED;
-}
-
-/*
- * logpb_free_page - Free a log page
- *
- * return: nothing
- *
- *   log_pgptr(in):Log page pointer
- *
- * NOTE:Free the log buffer where the page associated with log_pgptr
- *              resides. The page is subject to replacement, if not fixed by
- *              other thread of execution.
- */
-void
-logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
-{
-
-  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
-
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  /* Get the address of the buffer from the page. */
-  bufptr = logpb_get_log_buffer (log_pgptr);
-  logpb_unfix_page (bufptr);
-
 }
 
 /*
@@ -1096,7 +1042,6 @@ logpb_get_page_id (LOG_PAGE * log_pgptr)
 
   bufptr = logpb_get_log_buffer (log_pgptr);
 
-  assert (bufptr->fown == thread_get_current_entry_index ());
   return bufptr->pageid;
 }
 
@@ -1235,21 +1180,45 @@ logpb_dump_pages (FILE * out_fp)
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       log_bufptr = LOGPB_FIND_BUFPTR (i);
-      if (log_bufptr->pageid == NULL_PAGEID && log_bufptr->fown == -1)
+      if (log_bufptr->pageid == NULL_PAGEID)
 	{
 	  /* *** ** (void)fprintf(stdout, "%3d ..\n", i); */
 	  continue;
 	}
       else
 	{
-	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %p %p-%p %4s %5lld %5d\n",
+	  fprintf (out_fp, "%3d %10lld %10d %3d %p %p-%p %4s %5lld %5d\n",
 		   i, (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
-		   log_bufptr->fown, (void *) log_bufptr, (void *) (log_bufptr->logpage),
+		   (void *) log_bufptr, (void *) (log_bufptr->logpage),
 		   (void *) (&log_bufptr->logpage->area[LOGAREA_SIZE - 1]), "",
 		   (long long) log_bufptr->logpage->hdr.logical_pageid, log_bufptr->logpage->hdr.offset);
 	}
     }
   (void) fprintf (out_fp, "\n");
+}
+
+
+/*
+ * logpb_print_hash_entry - Print a hash entry
+ *
+ * return: always return true.
+ *
+ *   outfp(in): FILE stream where to dump the entry.
+ *   key(in): The pageid
+ *   ent(in): The Buffer pointer
+ *   ignore(in): Nothing..
+ *
+ * NOTE:A page hash table entry is dumped.
+ */
+int
+logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore)
+{
+  const LOG_PAGEID *pageid = (LOG_PAGEID *) key;
+  LOG_BUFFER *log_bufptr = (LOG_BUFFER *) ent;
+
+  fprintf (outfp, "Pageid = %5lld, Address = %p\n", (long long int) (*pageid), (void *) log_bufptr);
+
+  return true;
 }
 
 /*
@@ -1648,7 +1617,6 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
       rv = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
       if (rv != NO_ERROR || log_pgptr == NULL)
 	{
-	  LOG_CS_EXIT (thread_p);
 	  return ER_FAILED;
 	}
     }
@@ -1681,7 +1649,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
   bool log_csect_entered = false;
-  int rv = NO_ERROR;
+  int rv;
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
@@ -1706,8 +1674,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 	  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
 	  if (rv != NO_ERROR || log_pgptr == NULL)
 	    {
-	      rv = ER_FAILED;
-	      goto exit;
+	      return ER_FAILED;
 	    }
 	  mnt_log_fetch_ioreads (thread_p);
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
@@ -1736,16 +1703,14 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
   if (rv != NO_ERROR || log_pgptr == NULL)
     {
-      rv = ER_FAILED;
-      goto exit;
+      return ER_FAILED;
     }
   mnt_log_fetch_ioreads (thread_p);
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
   if (log_pgptr == NULL)
     {
       /* handle error */
-      rv = ER_FAILED;
-      goto exit;
+      return ER_GENERIC_ERROR;
     }
 
   /* Always exit through here */
@@ -1771,7 +1736,7 @@ exit:
 	}
     }
 
-  return rv;
+  return NO_ERROR;
 }
 
 /*
@@ -2205,7 +2170,6 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
   log_Gl.append.log_pgptr = logpb_fix_page (thread_p, log_Gl.hdr.append_lsa.pageid, flag);
   if (log_Gl.append.log_pgptr == NULL)
     {
-      assert (false);
       return ER_FAILED;
     }
 
@@ -2237,7 +2201,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
     {
       logpb_flush_pages_direct (thread_p);
     }
-  logpb_free_page (thread_p, log_Gl.append.log_pgptr);
+
   return NO_ERROR;
 }
 
@@ -2322,12 +2286,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
   if (log_Gl.append.delayed_free_log_pgptr != NULL)
     {
-      /* 
-       * The free of an append page has already been fdelayed. Thus, the current
-       * page cannot be the first page of the append record that expands several
-       * log pages.
-       */
-      logpb_free_page (thread_p, log_Gl.append.log_pgptr);
+      ;
     }
   else
     {
@@ -2342,11 +2301,6 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 	  log_Gl.append.delayed_free_log_pgptr = log_Gl.append.log_pgptr;
 	  /* assert(current_setdirty == LOG_SET_DIRTY); */
 	}
-      else
-	{
-	  logpb_free_page (thread_p, log_Gl.append.log_pgptr);
-	}
-
     }
 
   log_Gl.append.log_pgptr = NULL;
@@ -4003,7 +3957,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        */
 
       bufptr = logpb_get_log_buffer (flush_info->toflush[0]);
-      assert (bufptr->fown == thread_get_current_entry_index ());
       if (!logpb_is_dirty (thread_p, flush_info->toflush[0]))
 	{
 	  need_flush = false;
@@ -4721,7 +4674,6 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
        * and start form scratch
        */
       logpb_flush_pages_direct (thread_p);
-      logpb_free_page (thread_p, log_Gl.append.log_pgptr);
       log_Gl.append.log_pgptr = NULL;
     }
 
@@ -10325,7 +10277,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	{
 	  goto error;
 	}
-      if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
+      if (logpb_fetch_start_append_page (thread_p) == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;

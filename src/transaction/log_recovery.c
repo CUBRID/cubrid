@@ -4499,10 +4499,6 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 
 	  if (log_Gl.append.vdes == NULL_VOLDES || loghdr_pgptr == NULL)
 	    {
-	      if (loghdr_pgptr != NULL)
-		{
-		  logpb_free_page (thread_p, loghdr_pgptr);
-		}
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
 	      return;
 	    }

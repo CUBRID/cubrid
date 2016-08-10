@@ -850,14 +850,11 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   }
 #endif /* CUBRID_DEBUG */
 
-  logpb_free_page (thread_p, loghdr_pgptr);
-
   /* logpb_flush_header(); */
 
   /* 
    * Free the append and header page and dismount the lg active volume
    */
-  logpb_free_page (thread_p, log_Gl.append.log_pgptr);
   log_Gl.append.log_pgptr = NULL;
 
   fileio_dismount (thread_p, log_Gl.append.vdes);
