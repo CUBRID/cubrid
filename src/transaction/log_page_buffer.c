@@ -1195,30 +1195,6 @@ logpb_dump_pages (FILE * out_fp)
   (void) fprintf (out_fp, "\n");
 }
 
-
-/*
- * logpb_print_hash_entry - Print a hash entry
- *
- * return: always return true.
- *
- *   outfp(in): FILE stream where to dump the entry.
- *   key(in): The pageid
- *   ent(in): The Buffer pointer
- *   ignore(in): Nothing..
- *
- * NOTE:A page hash table entry is dumped.
- */
-int
-logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore)
-{
-  const LOG_PAGEID *pageid = (LOG_PAGEID *) key;
-  LOG_BUFFER *log_bufptr = (LOG_BUFFER *) ent;
-
-  fprintf (outfp, "Pageid = %5lld, Address = %p\n", (long long int) (*pageid), (void *) log_bufptr);
-
-  return true;
-}
-
 /*
  * logpb_initialize_backup_info - initialized backup information
  *
@@ -1647,7 +1623,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
   bool log_csect_entered = false;
-  int rv;
+  int rv = NO_ERROR;
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
@@ -1672,7 +1648,8 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 	  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
 	  if (rv != NO_ERROR || log_pgptr == NULL)
 	    {
-	      return ER_FAILED;
+	      rv = ER_FAILED;
+	      goto exit;
 	    }
 	  mnt_log_fetch_ioreads (thread_p);
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
@@ -1701,14 +1678,16 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
   if (rv != NO_ERROR || log_pgptr == NULL)
     {
-      return ER_FAILED;
+      rv = ER_FAILED;
+      goto exit;
     }
   mnt_log_fetch_ioreads (thread_p);
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
   if (log_pgptr == NULL)
     {
       /* handle error */
-      return ER_GENERIC_ERROR;
+      rv = ER_FAILED;
+      goto exit;
     }
 
   /* Always exit through here */
@@ -1734,7 +1713,7 @@ exit:
 	}
     }
 
-  return NO_ERROR;
+  return rv;
 }
 
 /*
