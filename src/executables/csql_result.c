@@ -351,12 +351,6 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
    * Write_results_to_stream may need to fetch instances if value type is object or set of objects.
    * Make sure fetch type is not set to current version since all the versions are identified by
    * the same OID and snapshot must be considered to reach the visible version again. */
-
-  /* Set fetch type to current version since the
-   * snapshot has been already invalidated for current command and we don't want
-   * to acquire another one for writing command results (that will require
-   * snapshot invalidation also).
-   */
   assert (TM_TRAN_READ_FETCH_VERSION () != LC_FETCH_CURRENT_VERSION);
   if (write_results_to_stream (csql_arg, csql_Output_fp, &result_info) == CSQL_FAILURE)
     {
