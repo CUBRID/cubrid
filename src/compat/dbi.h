@@ -701,7 +701,7 @@ extern int db_execute_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT
 extern int db_execute_and_keep_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
 extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION * session, int stmt_id);
 
-extern void db_invalidate_mvcc_snapshot_after_statement (void);
+extern void db_invalidate_mvcc_snapshot_before_statement (void);
 
 extern void db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version);
 
