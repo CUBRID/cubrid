@@ -391,7 +391,10 @@ extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int
 				 bool do_fetch);
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				   bool do_fetch);
+
 extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page);
+#define pgbuf_set_dirty_and_free(thread_p, pgptr) pgbuf_set_dirty (thread_p, pgptr, FREE); pgptr = NULL
+
 extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
 extern int pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa);
 extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr);

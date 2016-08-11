@@ -7125,7 +7125,7 @@ log_ascii_dump (FILE * out_fp, int length, void *data)
  * length (in) : Recovery data length.
  * data (in)   : Recovery data.
  */
-static void
+void
 log_hexa_dump (FILE * out_fp, int length, void *data)
 {
   char *ptr;			/* Pointer to data */

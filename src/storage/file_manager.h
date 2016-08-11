@@ -379,8 +379,26 @@ union file_descriptors
   FILE_EHASH_DES ehash;
 };
 
+typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, VPID * vpid, void *args);
+
+extern int flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE tablespace,
+			FILE_DESCRIPTORS * des, bool is_temp, VFID * vfid);
+
+extern int file_alloc_page (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid_out);
+
+/* Recovery stuff */
 extern int file_rv_redo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_undo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE tablespace,
-			FILE_DESCRIPTORS * des, VFID * vfid);
+extern int file_rv_logical_undo_alloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_partsect_set (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_partsect_clear (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_set_next (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_add (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+/* Recovery dump stuff */
+extern void file_rv_dump_logical_undo_alloc_page (FILE * fp, int length, void *data);
+extern void file_rv_dump_extdata_set_next (FILE * fp, int length, void *data);
+extern void file_rv_dump_extdata_add (FILE * fp, int length, void *data);
+extern void file_rv_dump_extdata_remove (FILE * fp, int length, void *data);
 #endif /* _FILE_MANAGER_H_ */
