@@ -3036,6 +3036,13 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
       *(char **) result = NULL;
     }
 
+  if (is_new_statement)
+    {
+      /* invalidate snapshot before compile/execution take place */
+      db_invalidate_mvcc_snapshot_before_statement ();
+      db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
+    }
+
   /* Open buffer and compile first statement */
   error = db_open_buffer_and_compile_first_statement (CSQL_query, query_error, include_oid, &session, &stmt_no);
   if (session == NULL)
