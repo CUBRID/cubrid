@@ -723,7 +723,8 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   assert (WS_ISDIRTY (serial_object) == false);
 
   ws_decache (serial_object);
-  /* no need to get last version for serial */
+  /* no need to get last version for serial - actually, the purpose is AU_FETCH_WRITE, so fetch type is not relevant;
+   * the last version will be locked and it will be considered visibile only if delid is not set */
   error = au_fetch_instance_force (serial_object, NULL, AU_FETCH_WRITE, LC_FETCH_CURRENT_VERSION);
   if (error != NO_ERROR)
     {
@@ -1962,7 +1963,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
 
   ws_decache (serial_mop);
 
-  /* no need to get the last version for serial */
+  /* no need to get the last version for serial - actually, AU_FETCH_WRITE will get only last version, for locking */
   error = au_fetch_instance_force (serial_mop, NULL, AU_FETCH_WRITE, LC_FETCH_CURRENT_VERSION);
   if (error != NO_ERROR)
     {
@@ -2187,7 +2188,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   ws_decache (serial_object);
 
-  /* no need to get the last version for serial */
+  /* no need to get the last version for serial - actually, AU_FETCH_WRITE will get only last version, for locking */
   error = au_fetch_instance_force (serial_object, NULL, AU_FETCH_WRITE, LC_FETCH_CURRENT_VERSION);
   if (error != NO_ERROR)
     {
