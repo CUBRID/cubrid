@@ -16484,10 +16484,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
       goto cleanup;
     }
 
-  /* Step 3 : Initialize the buffer */
-  //OR_BUF_INIT (*buf, val_p, *val_size);
-
-  /* Step 4 : Insert the disk representation of the dbvalue in the buffer */
+  /* Step 3 : Insert the disk representation of the dbvalue in the buffer */
 
   switch (DB_VALUE_DOMAIN_TYPE (value))
     {
