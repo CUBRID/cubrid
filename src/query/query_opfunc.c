@@ -416,6 +416,8 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	{
 	  val_size = pr_data_writeval_disk_size (dbval_p);
 
+	  OR_BUF_INIT (buf, val_p, val_size);
+
 	  rc = (*(pr_type->data_writeval)) (&buf, dbval_p);
 	}
 

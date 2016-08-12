@@ -16385,7 +16385,7 @@ cleanup:
 
 /*
  * pr_get_size_and_write_string_to_buffer ()
- *	  			  : Writes a VARCHAR or VARNCHAR to buffer, without needing the buffer initialized.
+ *	  			  : Writes a VARCHAR or VARNCHAR to buffer and gets the correct size on the disk.
  *				    
  * buf(out)			  : Buffer to be written to.
  * val_p(in)			  : Memory area to be written to.
