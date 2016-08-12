@@ -342,26 +342,20 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	}
       else
 	{
-	  /* 
-	   * Logical logging. The undo function is responsible for logging the
-	   * needed undo and redo records to make the logical undo operation
-	   * atomic.
-	   * The recovery manager sets a dummy compensating record, to fix the
-	   * undo_nx_lsa record at crash recovery time.
+	  /* Logical logging? This is a logical undo. For now, we also use a logical compensation, meaning that we
+	   * open a system operation that is committed & compensate at the same time.
+	   * However, there might be cases when compensation is not necessarily logical. If the compensation can be
+	   * made in a single log record and can be attached to a page, the system operation becomes useless. Take the
+	   * example of some b-tree cases for compensations. There might be other cases too.
 	   */
-	  LSA_COPY (&logical_undo_nxlsa, &tdes->undo_nxlsa);
 	  save_state = tdes->state;
 
-	  /* 
-	   * A system operation is needed since the postpone operations of an
-	   * undo log must be done at the end of the logical undo. Without
-	   * this if there is a crash, we will be in trouble since we will not
-	   * be able to undo a postpone operation.
-	   */
-	  log_start_compensate_system_op (thread_p, &logical_undo_nxlsa);
+	  LSA_COPY (&rcv->reference_lsa, &tdes->undo_nxlsa);
+	  log_sysop_start (thread_p);
 
 #if defined(CUBRID_DEBUG)
 	  {
+	    /* TODO: What is this? We might remove the block. */
 	    LOG_LSA check_tail_lsa;
 
 	    LSA_COPY (&check_tail_lsa, &tdes->tail_lsa);
@@ -387,7 +381,8 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 #else /* CUBRID_DEBUG */
 	  (void) (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 #endif /* CUBRID_DEBUG */
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
+	  log_sysop_commit_and_compensate (thread_p, rcvindex, &rcv->reference_lsa);
 	  tdes->state = save_state;
 	}
     }

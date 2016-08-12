@@ -383,10 +383,12 @@ typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, VPID * vpid, void *
 
 extern int flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE tablespace,
 			FILE_DESCRIPTORS * des, bool is_temp, VFID * vfid);
+extern void file_postpone_destroy (THREAD_ENTRY * thread_p, VFID * vfid);
 
 extern int file_alloc (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid_out);
 
 /* Recovery stuff */
+extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_redo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_undo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_logical_undo_alloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

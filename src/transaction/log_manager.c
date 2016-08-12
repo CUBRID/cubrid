@@ -8464,23 +8464,17 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	}
       else
 	{
-	  /* 
-	   * Logical logging. The undo function is responsible for logging the
-	   * needed undo and redo records to make the logical undo operation
-	   * atomic.
-	   * The recovery manager sets a dummy compensating record, to fix the
-	   * undo_nxlsa record at crash recovery time.
+	  /* Logical logging? This is a logical undo. For now, we also use a logical compensation, meaning that we
+	   * open a system operation that is committed & compensate at the same time.
+	   * However, there might be cases when compensation is not necessarily logical. If the compensation can be
+	   * made in a single log record and can be attached to a page, the system operation becomes useless. Take the
+	   * example of some b-tree cases for compensations. There might be other cases too.
 	   */
-	  LSA_COPY (&logical_undo_nxlsa, &tdes->undo_nxlsa);
 	  save_state = tdes->state;
 
-	  /* 
-	   * A system operation is needed since the postpone operations of an
-	   * undo log must be done at the end of the logical undo. Without
-	   * this if there is a crash, we will be in trouble since we will not
-	   * be able to undo a postpone operation.
-	   */
-	  log_start_compensate_system_op (thread_p, &logical_undo_nxlsa);
+	  LSA_COPY (&rcv->reference_lsa, &tdes->undo_nxlsa);
+
+	  log_sysop_start (thread_p);
 
 #if defined(CUBRID_DEBUG)
 	  {
@@ -8517,7 +8511,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	      assert (false);
 	    }
 
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_commit_and_compensate (thread_p, rcvindex, &rcv->reference_lsa);
 	  tdes->state = save_state;
 	}
     }
@@ -9475,14 +9469,11 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 	}
       else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
 	{
-	  if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
-	    {
-	      _er_log_debug (ARG_FILE_LINE, "POSTPONE_DEBUG: Run postpone of drop file for ", "%lld|%d.\n",
-			     (long long int) log_lsa->pageid, (int) log_lsa->offset);
-	    }
-	  LSA_COPY (&rcv.reference_lsa, log_lsa);
+	  /* Logical postpone. Use a system operation and commit with run postpone */
+	  log_sysop_start (thread_p);
 	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
 	  assert (error_code == NO_ERROR);
+	  log_sysop_commit_and_run_postpone (thread_p, rcvindex, log_lsa);
 	}
       else
 	{

@@ -1050,6 +1050,12 @@ struct rvfun RV_fun[] = {
    file_rv_fhead_alloc_undo,
    file_rv_fhead_alloc_redo,
    NULL,
+   NULL},
+  {RVFL_DESTROY,
+   "RVFL_DESTROY",
+   file_rv_destroy,
+   file_rv_destroy,
+   NULL,
    NULL}
 };
 

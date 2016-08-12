@@ -14506,6 +14506,78 @@ file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata, int index, int count)
   extdata->n_items -= count;
 }
 
+typedef int (*FILE_EXTDATA_FUNC) (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+				  void *args);
+typedef int (*FILE_EXTDATA_ITEM_FUNC) (THREAD_ENTRY * thread_p, const void *data, bool * stop, void *args);
+
+static int
+file_extdata_apply_funcs (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, FILE_EXTDATA_FUNC f_extdata,
+			  void *f_extdata_args, FILE_EXTDATA_ITEM_FUNC f_item, void *f_item_args)
+{
+  int i;
+  bool stop = false;
+  PAGE_PTR page_extdata = NULL;
+
+  int error_code = NO_ERROR;
+
+  while (true)
+    {
+      if (f_extdata)
+	{
+	  error_code = f_extdata (thread_p, extdata, &stop, f_extdata_args);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+	  if (stop)
+	    {
+	      goto exit;
+	    }
+	}
+      if (f_item != NULL)
+	{
+	  /* Iterate through all data in current page. */
+	  for (i = 0; i < file_extdata_item_count (extdata); i++)
+	    {
+	      error_code = f_item (thread_p, file_extdata_at (extdata, i), &stop, f_item_args);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit;
+		}
+	      if (stop)
+		{
+		  goto exit;
+		}
+	    }
+	}
+      if (VPID_ISNULL (&extdata->vpid_next))
+	{
+	  /* End of extensible data. */
+	  break;
+	}
+      if (page_extdata != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_extdata);
+	}
+      page_extdata = pgbuf_fix (thread_p, &extdata->vpid_next, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_extdata == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      extdata = (const FILE_EXTENSIBLE_DATA *) page_extdata;
+    }
+
+exit:
+  if (page_extdata != NULL)
+    {
+      pgbuf_unfix (thread_p, page_extdata);
+    }
+  return error_code;
+}
+
 static int
 file_extdata_find_not_full (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extdata, PAGE_PTR * page_out, bool * found)
 {
@@ -15143,6 +15215,160 @@ exit:
     }
 
   return error_code;
+}
+
+typedef struct file_vsid_collecter FILE_VSID_COLLECTER;
+struct file_vsid_collecter
+{
+  VSID *vsids;
+  int n_vsids;
+};
+
+static int
+file_table_collect_vsid (THREAD_ENTRY * thread_p, const void *data, bool * stop, void *args)
+{
+  const VSID *vsid = (VSID *) data;
+  FILE_VSID_COLLECTER *collecter = (FILE_VSID_COLLECTER *) args;
+
+  collecter->vsids[collecter->n_vsids++] = *vsid;
+}
+
+static int
+flre_destroy (THREAD_ENTRY * thread_p, VFID * vfid)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead;
+  FLRE_HEADER *fhead = NULL;
+  VSID *vsids = NULL;
+  FILE_VSID_COLLECTER vsid_collecter;
+  FILE_EXTENSIBLE_DATA *extdata_part_ftab;
+  FILE_EXTENSIBLE_DATA *extdata_full_ftab;
+
+  int error_code = NO_ERROR;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+
+  vpid_fhead.volid = vfid->volid;
+  vpid_fhead.pageid = vfid->fileid;
+
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  assert (!FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
+
+  /* Allocate enough space to collect all sectors. */
+  vsids = (VSID *) db_private_alloc (thread_p, fhead->n_sector_total * sizeof (VSID));
+  if (vsids == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, fhead->n_sector_total * sizeof (VSID));
+      goto exit;
+    }
+  vsid_collecter.vsids = vsids;
+  vsid_collecter.n_vsids = 0;
+
+  /* Collect from partial table */
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_part_ftab, NULL, NULL, file_table_collect_vsid, &vsid_collecter);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      goto exit;
+    }
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      /* Collect from full table. */
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_full_ftab, NULL, NULL, file_table_collect_vsid, &vsid_collecter);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+  if (vsid_collecter.n_vsids != fhead->n_sector_total)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+  qsort (vsids, fhead->n_sector_total, sizeof (VSID), file_compare_vsids);
+
+  /* TODO: Unreserve sectors from disk */
+
+  /* Done */
+
+exit:
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+  if (vsids != NULL)
+    {
+      db_private_free (thread_p, vsids);
+    }
+  return error_code;
+}
+
+int
+file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  VFID *vfid = (VFID *) rcv->data;
+  int error_code = NO_ERROR;
+
+  assert (sizeof (vfid) == rcv->length);
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  error_code = flre_destroy (thread_p, vfid);
+  if (error_code != NO_ERROR)
+    {
+      /* Not acceptable. */
+      assert_release (false);
+      return error_code;
+    }
+  return NO_ERROR;
+}
+
+void
+file_postpone_destroy (THREAD_ENTRY * thread_p, VFID * vfid)
+{
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+
+#if !defined (NDEBUG)
+  /* This should be used for permanent files! */
+  {
+    VPID vpid_fhead;
+    PAGE_PTR page_fhead;
+    FLRE_HEADER *fhead;
+
+    vpid_fhead.volid = vfid->volid;
+    vpid_fhead.pageid = vfid->fileid;
+    page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    if (page_fhead == NULL)
+      {
+	ASSERT_ERROR ();
+	return;
+      }
+    fhead = (FLRE_HEADER *) page_fhead;
+    assert (!FILE_IS_TEMPORARY (fhead));
+    pgbuf_unfix_and_init (thread_p, page_fhead);
+  }
+#endif /* !NDEBUG */
+
+  log_append_postpone (thread_p, RVFL_DESTROY, &addr, sizeof (*vfid), vfid);
 }
 
 int

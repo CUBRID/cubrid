@@ -222,8 +222,9 @@ typedef enum
   RVFL_EXTDATA_REMOVE = 160,
   RVFL_FHEAD_SET_LAST_PAGE_FTAB = 161,
   RVFL_FHEAD_ALLOC = 162,
+  RVFL_DESTROY = 163,		/* Use for undo/postpone */
 
-  RV_LAST_LOGID = RVFL_FHEAD_ALLOC,
+  RV_LAST_LOGID = RVFL_DESTROY,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -274,12 +275,13 @@ extern void rv_check_rvfuns (void);
    || ((idx) == RVBT_MVCC_INSERT_OBJECT_UNQ))
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
-  ((((vpid)->volid == NULL_VOLID) \
-    || ((vpid)->pageid == NULL_PAGEID) \
-    || RCV_IS_BTREE_LOGICAL_LOG (idx) \
-    || ((idx) == RVBT_MVCC_INCREMENTS_UPD) \
-    || ((idx) == RVBT_CREATE_INDEX) \
-    || ((idx) == RVFL_POSTPONE_DESTROY_FILE) \
-    || ((idx) == RVPGBUF_FLUSH_PAGE)) ? true : false)
+  (((vpid)->volid == NULL_VOLID) \
+   || ((vpid)->pageid == NULL_PAGEID) \
+   || RCV_IS_BTREE_LOGICAL_LOG (idx) \
+   || ((idx) == RVBT_MVCC_INCREMENTS_UPD) \
+   || ((idx) == RVBT_CREATE_INDEX) \
+   || ((idx) == RVFL_POSTPONE_DESTROY_FILE) /* TODO: Remove me */\
+   || ((idx) == RVPGBUF_FLUSH_PAGE) \
+   || ((idx) == RVFL_DESTROY))
 
 #endif /* _RECOVERY_H_ */
