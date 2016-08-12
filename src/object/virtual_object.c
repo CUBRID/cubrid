@@ -1796,7 +1796,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
     {
       if (DB_GET_STRING_SIZE (dbval) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
-	  rc = mr_get_size_and_write_string_to_buffer (&buf, lbuf, dbval, val_size, INT_ALIGNMENT);
+	  rc = pr_get_size_and_write_string_to_buffer (&buf, lbuf, dbval, &val_size, INT_ALIGNMENT);
 	  if (rc != NO_ERROR)
 	    {
 	      return NULL;

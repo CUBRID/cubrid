@@ -888,7 +888,7 @@ static int mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 					 char *copy_buf, int copy_buf_len);
 
-static int mr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
+static int pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
 						 int decompressed_length, int alignment);
 
 /*
@@ -10842,7 +10842,7 @@ mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
 	  if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	    {
 	      /* Skip the length of the string */
-	      len = mr_get_compression_length ((cur + sizeof (int)), len) + PRIM_TEMPORARY_DISK_SIZE;
+	      len = pr_get_compression_length ((cur + sizeof (int)), len) + PRIM_TEMPORARY_DISK_SIZE;
 	      len = or_packed_varchar_length (len) - PRIM_TEMPORARY_DISK_SIZE;
 	    }
 	  else
@@ -11159,7 +11159,7 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
     {
       if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
-	  len = mr_get_compression_length (str, len) + PRIM_TEMPORARY_DISK_SIZE;
+	  len = pr_get_compression_length (str, len) + PRIM_TEMPORARY_DISK_SIZE;
 	  compressable = true;
 	}
 
@@ -11277,7 +11277,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  goto cleanup;
 		}
 
-	      rc = mr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
+	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
 	      if (rc != NO_ERROR)
 		{
 		  goto cleanup;
@@ -11504,8 +11504,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION &&
-      str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+      && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
@@ -11514,8 +11514,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
       return c;
     }
 
-  assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION ||
-	  str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+  assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+	  || str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   /* String 1 */
   or_init (&buf1, str1, 0);
@@ -11537,7 +11537,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 
       alloced_string1 = true;
 
-      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      rc = pr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -11580,7 +11580,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 
       alloced_string2 = true;
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      rc = pr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -13916,7 +13916,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 
       if (src_length >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
-	  src_length = mr_get_compression_length (str, src_length) + PRIM_TEMPORARY_DISK_SIZE;
+	  src_length = pr_get_compression_length (str, src_length) + PRIM_TEMPORARY_DISK_SIZE;
 	  compressable = true;
 	}
 
@@ -14103,7 +14103,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		}
 
 	      /* Getting data from the buffer. */
-	      rc = mr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
+	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
 
 	      if (rc != NO_ERROR)
 		{
@@ -14357,8 +14357,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION &&
-      str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+      && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
@@ -14368,8 +14368,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       return c;
     }
 
-  assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION ||
-	  str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+  assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+	  || str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   /* String 1 */
   or_init (&buf1, str1, 0);
@@ -14390,7 +14390,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	}
       alloced_string1 = true;
 
-      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      rc = pr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -14431,7 +14431,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 
       alloced_string2 = true;
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      rc = pr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -16257,7 +16257,7 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
 }
 
 /*
- * mr_get_compressed_data_from_buffer ()	  - Uncompresses a data stored in buffer.
+ * pr_get_compressed_data_from_buffer ()	  - Uncompresses a data stored in buffer.
  *
  * return()					  : NO_ERROR or error code.
  * buf(in)					  : The buffer from which is needed decompression.
@@ -16266,7 +16266,7 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  * decompressed_size(in)			  : The uncompressed data size.
  */
 int
-mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
+pr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
 {
   int rc = NO_ERROR;
 
@@ -16304,7 +16304,7 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
 }
 
 /* 
- * mr_get_compression_length()		  - Simulate a compression to find its length to be stored on the disk.
+ * pr_get_compression_length()		  - Simulate a compression to find its length to be stored on the disk.
  * 
  * return()				  : The length of the compression, based on the new encoding of varchar.
  *					    If the compression fails, then it returns charlen.
@@ -16312,7 +16312,7 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
  * charlen(in)				  : The length of the string to be compressed.
  */
 int
-mr_get_compression_length (const char *string, int charlen)
+pr_get_compression_length (const char *string, int charlen)
 {
   lzo_voidp wrkmem;
   char *compressed_string = NULL;
@@ -16384,7 +16384,7 @@ cleanup:
 
 
 /*
- * mr_get_size_and_write_string_to_buffer ()
+ * pr_get_size_and_write_string_to_buffer ()
  *	  			  : Writes a VARCHAR or VARNCHAR to buffer, without needing the buffer initialized.
  *				    
  * buf(out)			  : Buffer to be written to.
@@ -16399,21 +16399,24 @@ cleanup:
  */
 
 int
-mr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
+pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
 {
   char *compressed_string = NULL, *string = NULL, *str = NULL;
   int rc = NO_ERROR, str_length = 0, length = 0;
   lzo_uint compression_length = 0;
   lzo_bytep wrkmem = NULL;
   bool compressed = false;
-  int error_abort = 0;
+  int error_abort = -1;
 
   /* Checks to be sure that we have the correct input */
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING);
   assert (DB_GET_STRING_SIZE (value) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
-  error_abort = buf->error_abort;
-  buf->error_abort = 0;
+  if (buf->error_abort != NULL)
+    {
+      error_abort = buf->error_abort;
+      buf->error_abort = 0;
+    }
   string = DB_GET_STRING (value);
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
@@ -16496,7 +16499,7 @@ mr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
     {
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_STRING:
-      rc = mr_write_compressed_string_to_buffer (buf, str, (int) compression_length, str_length, align);
+      rc = pr_write_compressed_string_to_buffer (buf, str, (int) compression_length, str_length, align);
       break;
 
     default:
@@ -16506,7 +16509,10 @@ mr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
     }
 
 cleanup:
-  buf->error_abort = error_abort;
+  if (error_abort != -1)
+    {
+      buf->error_abort = error_abort;
+    }
 
   if (compressed_string != NULL)
     {
@@ -16526,7 +16532,7 @@ cleanup:
   return rc;
 }
 
-/* mr_write_compressed_string_to_buffer()	  : Similar function to the previous implementation of 
+/* pr_write_compressed_string_to_buffer()	  : Similar function to the previous implementation of 
  *						    or_put_varchar_internal.
  *
  * buf(in/out)					  : Buffer to be written the string.
@@ -16538,10 +16544,10 @@ cleanup:
  */
 
 static int
-mr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
+pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
 				      int decompressed_length, int align)
 {
-  int net_charlen = 0;
+  int storage_length = 0;
   int rc = NO_ERROR;
 
   assert (decompressed_length >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
@@ -16555,16 +16561,16 @@ mr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
       return rc;
     }
   /* Store the compressed size */
-  OR_PUT_INT (&net_charlen, compressed_length);
-  rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+  OR_PUT_INT (&storage_length, compressed_length);
+  rc = or_put_data (buf, (char *) &storage_length, OR_INT_SIZE);
   if (rc != NO_ERROR)
     {
       return rc;
     }
 
   /* Store the decompressed size */
-  OR_PUT_INT (&net_charlen, decompressed_length);
-  rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+  OR_PUT_INT (&storage_length, decompressed_length);
+  rc = or_put_data (buf, (char *) &storage_length, OR_INT_SIZE);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -16573,16 +16579,16 @@ mr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
   /* Get the string disk size */
   if (compressed_length > 0)
     {
-      net_charlen = compressed_length;
+      storage_length = compressed_length;
     }
   else
     {
-      net_charlen = decompressed_length;
+      storage_length = decompressed_length;
     }
 
 
   /* store the string bytes */
-  rc = or_put_data (buf, compressed_string, net_charlen);
+  rc = or_put_data (buf, compressed_string, storage_length);
   if (rc != NO_ERROR)
     {
       return rc;

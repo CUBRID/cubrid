@@ -404,7 +404,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
       if ((DB_VALUE_DOMAIN_TYPE (dbval_p) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE (dbval_p) == DB_TYPE_VARNCHAR)
 	  && DB_GET_STRING_SIZE (dbval_p) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
-	  rc = mr_get_size_and_write_string_to_buffer (&buf, val_p, dbval_p, &val_size, INT_ALIGNMENT);
+	  rc = pr_get_size_and_write_string_to_buffer (&buf, val_p, dbval_p, &val_size, INT_ALIGNMENT);
 	}
       else
 	{
@@ -7244,7 +7244,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  pr_clear_value (&dbval);
 		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
-	      error = mr_get_size_and_write_string_to_buffer (&buf, disk_repr_p, &dbval, &dbval_size, INT_ALIGNMENT);
+	      error = pr_get_size_and_write_string_to_buffer (&buf, disk_repr_p, &dbval, &dbval_size, INT_ALIGNMENT);
 	      if (error != NO_ERROR)
 		{
 		  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
@@ -10673,7 +10673,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto exit;
 	    }
-	  error = mr_get_size_and_write_string_to_buffer (&buf, disk_repr_p, &dbval, &dbval_size, INT_ALIGNMENT);
+	  error = pr_get_size_and_write_string_to_buffer (&buf, disk_repr_p, &dbval, &dbval_size, INT_ALIGNMENT);
 	  if (error != NO_ERROR)
 	    {
 	      /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
