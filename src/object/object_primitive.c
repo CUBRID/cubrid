@@ -16406,17 +16406,11 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   lzo_uint compression_length = 0;
   lzo_bytep wrkmem = NULL;
   bool compressed = false;
-  int error_abort = -1;
 
   /* Checks to be sure that we have the correct input */
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING);
   assert (DB_GET_STRING_SIZE (value) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
-  if (buf->error_abort != NULL)
-    {
-      error_abort = buf->error_abort;
-      buf->error_abort = 0;
-    }
   string = DB_GET_STRING (value);
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
@@ -16509,11 +16503,6 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
     }
 
 cleanup:
-  if (error_abort != -1)
-    {
-      buf->error_abort = error_abort;
-    }
-
   if (compressed_string != NULL)
     {
       free_and_init (compressed_string);
@@ -16522,11 +16511,6 @@ cleanup:
   if (wrkmem != NULL)
     {
       free_and_init (wrkmem);
-    }
-
-  if (rc == ER_TF_BUFFER_OVERFLOW)
-    {
-      return or_overflow (buf);
     }
 
   return rc;
