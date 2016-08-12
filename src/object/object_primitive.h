@@ -359,6 +359,9 @@ extern int pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
 
+/* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
+#define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + length + MAX_ALIGNMENT)
+
 /* Worst case scenario for compression from their FAQ */
 #define LZO_COMPRESSED_STRING_SIZE(str_length) (str_length + (str_length / 16) + 64 + 3)
 

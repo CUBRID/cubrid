@@ -407,7 +407,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	  && DB_GET_STRING_SIZE (dbval_p) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
 	  /* Get max val_size from string */
-	  val_size = OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + DB_GET_STRING_SIZE (dbval_p) + MAX_ALIGNMENT;
+	  val_size = PRIM_STRING_MAXIMUM_DISK_SIZE (DB_GET_STRING_LENGTH (dbval_p));
 	  OR_BUF_INIT (buf, val_p, val_size);
 
 	  rc = pr_get_size_and_write_string_to_buffer (&buf, val_p, dbval_p, &val_size, INT_ALIGNMENT);
@@ -7251,7 +7251,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 	      /* Get max dbval_size */
-	      dbval_size = OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + DB_GET_STRING_LENGTH (&dbval) + MAX_ALIGNMENT;
+	      dbval_size = PRIM_STRING_MAXIMUM_DISK_SIZE (DB_GET_STRING_LENGTH (&dbval));
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
 
 	      error = pr_get_size_and_write_string_to_buffer (&buf, disk_repr_p, &dbval, &dbval_size, INT_ALIGNMENT);
@@ -10685,7 +10685,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	    }
 
 	  /* Get max dbval_size and init the buffer */
-	  dbval_size = OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + DB_GET_STRING_LENGTH (&dbval) + MAX_ALIGNMENT;
+	  dbval_size = PRIM_STRING_MAXIMUM_DISK_SIZE (DB_GET_STRING_LENGTH (&dbval));
 	  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
 
 	  error = pr_get_size_and_write_string_to_buffer (&buf, disk_repr_p, &dbval, &dbval_size, INT_ALIGNMENT);
