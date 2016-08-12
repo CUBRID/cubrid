@@ -1038,7 +1038,19 @@ struct rvfun RV_fun[] = {
    file_rv_extdata_add,
    file_rv_extdata_remove,
    file_rv_dump_extdata_add,
-   file_rv_dump_extdata_remove}
+   file_rv_dump_extdata_remove},
+  {RVFL_FHEAD_SET_LAST_PAGE_FTAB,
+   "RVFL_FHEAD_SET_LAST_PAGE_FTAB",
+   file_rv_fhead_set_last_page_ftab,
+   file_rv_fhead_set_last_page_ftab,
+   NULL,
+   NULL},
+  {RVFL_FHEAD_ALLOC,
+   "RVFL_FHEAD_ALLOC",
+   file_rv_fhead_alloc_undo,
+   file_rv_fhead_alloc_redo,
+   NULL,
+   NULL}
 };
 
 /*
