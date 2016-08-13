@@ -2027,7 +2027,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
    *          in log page (in delayed_free_log_pgptr)
    */
 
-  if (LSA_LE (&append_lsa, req_lsa)		/* for case 1 */
+  if (LSA_LE (&append_lsa, req_lsa)	/* for case 1 */
       || LSA_LE (&append_prev_lsa, req_lsa))	/* for case 2 */
     {
       LOG_CS_ENTER (thread_p);
@@ -3289,7 +3289,8 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	      assert (CAST_BUFLEN (tmp_ptr - redo_data) == rlength);
 	    }
 
-	  assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length);
+	  assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length
+		  || ulength < LOG_ZIP_MIN_SIZE_TO_COMPRESS || rlength < LOG_ZIP_MIN_SIZE_TO_COMPRESS);
 
 	  if (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS && rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
 	    {
