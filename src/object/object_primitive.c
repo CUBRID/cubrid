@@ -16382,7 +16382,6 @@ cleanup:
   return length;
 }
 
-
 /*
  * pr_get_size_and_write_string_to_buffer ()
  *	  			  : Writes a VARCHAR or VARNCHAR to buffer and gets the correct size on the disk.
@@ -16397,7 +16396,6 @@ cleanup:
  *	We use this to avoid double compression when it is required to have the size of the DB_VALUE, previous
  *	to the write of the DB_VALUE in the buffer.
  */
-
 int
 pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
 {
@@ -16424,6 +16422,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   if (wrkmem == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
+      rc = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
 
@@ -16434,8 +16433,9 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (str_length));
   if (compressed_string == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) LZO_COMPRESSED_STRING_SIZE (str_length));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) LZO_COMPRESSED_STRING_SIZE (str_length));
+      rc = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
 
@@ -16451,6 +16451,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
 	      fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
 	      fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
+      rc = ER_IO_LZO_COMPRESS_FAIL;
       goto cleanup;
     }
 
@@ -16500,6 +16501,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
     default:
       /* It should not happen. */
       assert (false);
+      rc = ER_FAILED;
       goto cleanup;
     }
 
@@ -16546,13 +16548,12 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
   assert (decompressed_length >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   /* store the size prefix */
-
   rc = or_put_byte (buf, 0xFF);
-
   if (rc != NO_ERROR)
     {
       return rc;
     }
+
   /* Store the compressed size */
   OR_PUT_INT (&storage_length, compressed_length);
   rc = or_put_data (buf, (char *) &storage_length, OR_INT_SIZE);
@@ -16578,7 +16579,6 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
     {
       storage_length = decompressed_length;
     }
-
 
   /* store the string bytes */
   rc = or_put_data (buf, compressed_string, storage_length);
