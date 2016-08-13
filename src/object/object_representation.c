@@ -1290,7 +1290,7 @@ or_varchar_length_internal (int charlen, int align)
 {
   int len;
 
-  if (charlen < 0xFF)
+  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       len = 1 + charlen;
     }
@@ -1360,7 +1360,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   buf->error_abort = 0;
 
   /* store the size prefix */
-  if (charlen < 0xFF)
+  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_put_byte (buf, charlen);
     }
@@ -1389,11 +1389,11 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Alloc memory for the compressed string */
       /* Worst case LZO compression size from their FAQ */
-      compressed_string = malloc (charlen + (charlen / 16) + 64 + 3);
+      compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
       if (compressed_string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (charlen + (charlen / 16) + 64 + 3));
+		  1, (size_t) (LZO_COMPRESSED_STRING_SIZE (charlen)));
 	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
@@ -8536,7 +8536,7 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
       return rc;
     }
 
-  if (size_prefix == 0xFF)
+  if (size_prefix == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       /* String was compressed */
       /* Get the compressed size */
