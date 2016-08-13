@@ -730,7 +730,7 @@ struct pgbuf_page_monitor
   int *bcbs_cnt_per_lru;	/* current number of BCBs in each LRU */
 
   /* LRU victimization */
-  int *lru_victim_req_per_lru;		/* count of BCB victim requests */
+  int *lru_victim_req_per_lru;	/* count of BCB victim requests */
   int *lru_pending_victim_req_per_lru;	/* count of pending victim requests */
   int *lru_victim_search_depth_per_lru;	/* depth of search (by workers) in this list */
   int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
@@ -812,12 +812,12 @@ struct pgbuf_buffer_pool
 
   /* buffer related tables and lists (the essential structures) */
 
-  PGBUF_BCB *BCB_table;			/* BCB table */
+  PGBUF_BCB *BCB_table;		/* BCB table */
   PGBUF_BUFFER_HASH *buf_hash_table;	/* buffer hash table */
   PGBUF_BUFFER_LOCK *buf_lock_table;	/* buffer lock table */
   PGBUF_IOPAGE_BUFFER *iopage_table;	/* IO page table */
-  int num_LRU_list;			/* number of shared LRU lists */
-  int num_LRU1_zone_threshold;		/* target number of pages in LRU1 zone (for shared LRUs) */
+  int num_LRU_list;		/* number of shared LRU lists */
+  int num_LRU1_zone_threshold;	/* target number of pages in LRU1 zone (for shared LRUs) */
   int last_flushed_LRU_list_idx;	/* index of the last flushed LRU list */
   PGBUF_LRU_LIST *buf_LRU_list;	/* LRU lists. When Page quota is enabled, first 'num_LRU_list' store shared pages;
 				 * the next 'num_garbage_LRU_list' lists store shared garbage pages;
@@ -1149,7 +1149,7 @@ static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
 static bool pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error);
 #if defined (SERVER_MODE)
-static bool pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool *has_fixed_pages);
+static bool pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool * has_fixed_pages);
 #endif /* SERVER_MODE */
 static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int *flushed_pages);
 static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
@@ -1346,7 +1346,7 @@ pgbuf_initialize (void)
 	      (pgbuf_Pool.num_buffers * sizeof (PGBUF_VICTIM_CANDIDATE_LIST)));
       goto error;
     }
- 
+
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = false;
 #endif
@@ -1523,7 +1523,7 @@ pgbuf_finalize (void)
       free_and_init (pgbuf_Pool.seq_chkpt_flusher.flush_list);
     }
 
- /* Free quota structure data */
+  /* Free quota structure data */
   if (pgbuf_Pool.quota.target_bcbs_per_lru != NULL)
     {
       free_and_init (pgbuf_Pool.quota.target_bcbs_per_lru);
@@ -8128,7 +8128,7 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       return ER_FAILED;
     }
 
-   bufptr->sticky_private_list = false;
+  bufptr->sticky_private_list = false;
 
   /* 
    * If above function returns success,
@@ -9082,8 +9082,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 	  && !bufptr->avoid_victim
 	  && bufptr->fcnt == 0
 	  && bufptr->latch_mode == PGBUF_NO_LATCH
-	  && bufptr->victim_candidate == false
-	  && !pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
+	  && bufptr->victim_candidate == false && !pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
 	{
 	  bufptr->victim_candidate = true;
 	  found = true;
@@ -9121,7 +9120,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   if ((list_bottom_dirty == true
        && (search_cnt > MIN_LRU_SEARCH_TO_FLUSH
 	   || dirty_cnt > MIN_LRU_DIRTY_TO_FLUSH)) || (bufptr == NULL && dirty_cnt > 0))
-     {
+    {
       /* flush dirty pages */
       pgbuf_wakeup_flush_thread (thread_p);
     }
@@ -11480,7 +11479,7 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
  *
  */
 static bool
-pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool *has_fixed_pages)
+pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool * has_fixed_pages)
 {
   int thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
   int count = 0;
