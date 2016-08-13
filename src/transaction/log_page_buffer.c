@@ -3170,6 +3170,8 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 					   LOG_DATA_ADDR * addr, int num_ucrumbs, const LOG_CRUMB * ucrumbs,
 					   int num_rcrumbs, const LOG_CRUMB * rcrumbs)
 {
+#define LOG_ZIP_MIN_SIZE_TO_COMPRESS 255
+
   LOG_REC_REDO *redo_p = NULL;
   LOG_REC_UNDO *undo_p = NULL;
   LOG_REC_UNDOREDO *undoredo_p = NULL;
@@ -3235,7 +3237,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       can_zip = log_zip_support && zip_undo;
     }
 
-  if (can_zip == true)
+  if (can_zip == true && (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS || rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS))
     {
       /* Try to zip undo and/or redo data */
       total_length = 0;
@@ -3257,7 +3259,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	{
 	  tmp_ptr = data_ptr;
 
-	  if (ulength > 0)
+	  if (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
 	    {
 	      assert (has_undo == true);
 
@@ -3272,7 +3274,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	      assert (CAST_BUFLEN (tmp_ptr - undo_data) == ulength);
 	    }
 
-	  if (rlength > 0)
+	  if (rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
 	    {
 	      assert (has_redo == true);
 
@@ -3289,7 +3291,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 
 	  assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length);
 
-	  if (ulength > 0 && rlength > 0)
+	  if (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS && rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
 	    {
 	      (void) log_diff (ulength, undo_data, rlength, redo_data);
 
@@ -3303,11 +3305,11 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	    }
 	  else
 	    {
-	      if (ulength > 0)
+	      if (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
 		{
 		  is_undo_zip = log_zip (zip_undo, ulength, undo_data);
 		}
-	      if (rlength > 0)
+	      if (rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
 		{
 		  is_redo_zip = log_zip (zip_redo, rlength, redo_data);
 		}
@@ -3558,6 +3560,8 @@ error:
     }
 
   return error_code;
+
+#undef LOG_ZIP_MIN_SIZE_TO_COMPRESS
 }
 
 /*
