@@ -711,9 +711,13 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
 	{
 	  fetch_version_type = LC_FETCH_DIRTY_VERSION;
 	}
-      else
+      else if (isclass == LC_CLASS)
 	{
 	  fetch_version_type = LC_FETCH_CURRENT_VERSION;
+	}
+      else
+	{
+	  assert (fetch_version_type == LC_FETCH_MVCC_VERSION);
 	}
     }
   else if (class_mop != NULL)
