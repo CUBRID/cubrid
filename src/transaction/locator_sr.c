@@ -13362,7 +13362,7 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
 	{
 	  ASSERT_ERROR ();
 	  heap_clean_get_context (thread_p, &context);
-	  return ER_FAILED;
+	  return S_DOESNT_EXIST;
 	}
     }
 
