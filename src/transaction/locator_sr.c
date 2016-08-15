@@ -13238,12 +13238,16 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
     {
-      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR
-	  || heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  heap_clean_get_context (thread_p, &context);
-	  return ER_FAILED;
+	  return S_ERROR;
+	}
+      if (heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+	{
+	  heap_clean_get_context (thread_p, &context);
+	  return S_DOESNT_EXIST;
 	}
     }
 
@@ -13354,10 +13358,14 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
     {
-      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR
-	  || heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  heap_clean_get_context (thread_p, &context);
+	  return S_ERROR;
+	}
+      if (heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+	{
 	  heap_clean_get_context (thread_p, &context);
 	  return S_DOESNT_EXIST;
 	}
