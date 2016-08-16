@@ -807,7 +807,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
    * Flush the append page, so that the end of the log mark is written.
    * Then, free the page, same for the header page.
    */
-  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
+  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
   logpb_flush_pages_direct (thread_p);
 
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
@@ -815,7 +815,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   /* Flush the log header */
 
   memcpy (loghdr_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr));
-  logpb_set_dirty (thread_p, loghdr_pgptr, DONT_FREE);
+  logpb_set_dirty (thread_p, loghdr_pgptr);
 
 #if defined(CUBRID_DEBUG)
   {

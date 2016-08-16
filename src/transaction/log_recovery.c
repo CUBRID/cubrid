@@ -4558,7 +4558,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	  if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
 	    {
 	      memcpy ((char *) log_Gl.append.log_pgptr, (char *) newappend_pgptr, LOG_PAGESIZE);
-	      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
+	      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 	    }
 	  logpb_flush_pages_direct (thread_p);
 	}
