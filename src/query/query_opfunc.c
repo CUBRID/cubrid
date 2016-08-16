@@ -8753,7 +8753,8 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
   instance_oid_p = DB_PULL_OID (val_p);
   if (heap_get_class_oid (thread_p, instance_oid_p, &class_oid) != S_SUCCESS)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
     }
 
   DB_MAKE_OID (function_p->value, &class_oid);
