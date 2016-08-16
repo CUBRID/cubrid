@@ -860,7 +860,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
  *
  *   log_pgptr(in): Log page pointer
  *
- * NOTE:Mark the current log page as dirty and optionally free the page.
+ * NOTE:Mark the current log page as dirty.
  */
 void
 logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
@@ -2274,17 +2274,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
     }
 
-  /* 
-   * If a log append page is already delayed. We can free the current page
-   * since it is not the first one. (i.e., end of log can be detected since
-   * previous page has not been released).
-   */
-
-  if (log_Gl.append.delayed_free_log_pgptr != NULL)
-    {
-      ;
-    }
-  else
+  if (log_Gl.append.delayed_free_log_pgptr == NULL)
     {
       /* 
        * We have not delayed freeing an append page. Therefore, the current
