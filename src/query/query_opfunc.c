@@ -8755,7 +8755,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
   err = heap_get_class_oid (thread_p, instance_oid_p, &class_oid);
   if (err != S_SUCCESS)
     {
-      ASSERT_ERROR_AND_SET(err);
+      ASSERT_ERROR_AND_SET (err);
       return err;
     }
 
