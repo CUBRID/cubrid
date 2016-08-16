@@ -2491,6 +2491,9 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL,
 						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
 		  || class_lock >= SIX_LOCK)));
+
+  /* LC_FETCH_CURRENT_VERSION should be used for classes only */
+  assert (fetch_version_type != LC_FETCH_CURRENT_VERSION || OID_IS_ROOTOID (class_oid));
 #endif /* DEBUG */
 
   /* 
