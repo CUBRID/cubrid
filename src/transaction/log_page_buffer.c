@@ -314,6 +314,10 @@ static int log_data_length = 0;
 
 LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
 
+#define LOG_ZIP_MIN_SIZE_TO_COMPRESS log_zip_min_size_to_compress
+
+static int log_zip_min_size_to_compress = 0;
+
 /*
  * Functions
  */
@@ -667,6 +671,8 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
+
+  log_zip_min_size_to_compress = prm_get_integer_value (PRM_ID_LOG_ZIP_MIN_SIZE_COMPRESS);
 
   if (rmutex_initialize (LOGPB_RMUTEX_LOG_PB, LOGPB_RMUTEX_LOG_PB_NAME) != NO_ERROR)
     {
@@ -3170,8 +3176,6 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 					   LOG_DATA_ADDR * addr, int num_ucrumbs, const LOG_CRUMB * ucrumbs,
 					   int num_rcrumbs, const LOG_CRUMB * rcrumbs)
 {
-#define LOG_ZIP_MIN_SIZE_TO_COMPRESS 255
-
   LOG_REC_REDO *redo_p = NULL;
   LOG_REC_UNDO *undo_p = NULL;
   LOG_REC_UNDOREDO *undoredo_p = NULL;
@@ -3561,8 +3565,6 @@ error:
     }
 
   return error_code;
-
-#undef LOG_ZIP_MIN_SIZE_TO_COMPRESS
 }
 
 /*

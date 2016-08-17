@@ -612,6 +612,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_UNIQUE_STATS "log_unique_stats"
 
+#define PRM_NAME_LOG_ZIP_MIN_SIZE_COMPRESS "log_zip_min_size_to_compress"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
 /*
@@ -2009,6 +2011,12 @@ static unsigned int prm_pb_sequential_victim_flush_flag = 0;
 bool PRM_LOG_UNIQUE_STATS = false;
 static bool prm_log_unique_stats_default = false;
 static unsigned int prm_log_unique_stats_flag = 0;
+
+int PRM_LOG_ZIP_MIN_SIZE_COMPRESS = 255;
+static int prm_log_zip_min_size_compress_default = 255;
+static int prm_log_zip_min_size_compress_lower = 0;
+static int prm_log_zip_min_size_compress_upper = 16 * 1024 * 1024;    /* 16 M */
+static unsigned int prm_log_zip_min_size_compress_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4874,6 +4882,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_LOG_ZIP_MIN_SIZE_COMPRESS,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_log_zip_min_size_compress_flag,
+   (void *) &prm_log_zip_min_size_compress_default,
+   (void *) &PRM_LOG_ZIP_MIN_SIZE_COMPRESS,
+   (void *) &prm_log_zip_min_size_compress_upper,
+   (void *) &prm_log_zip_min_size_compress_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
