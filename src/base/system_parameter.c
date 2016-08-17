@@ -4884,7 +4884,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_LOG_ZIP_MIN_SIZE_COMPRESS,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
+   PRM_INTEGER,
    (void *) &prm_log_zip_min_size_compress_flag,
    (void *) &prm_log_zip_min_size_compress_default,
    (void *) &PRM_LOG_ZIP_MIN_SIZE_COMPRESS,
