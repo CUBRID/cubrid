@@ -1690,7 +1690,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   else
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
-      return NULL;
+      return ER_LOG_PAGE_CORRUPTED;
     }
   if (log_bufptr->pageid == pageid)
     {
