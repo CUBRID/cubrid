@@ -941,7 +941,14 @@ pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2)
   const VPID *vpid1 = (VPID *) key_vpid1;
   const VPID *vpid2 = (VPID *) key_vpid2;
 
-  return VPID_EQ (vpid1, vpid2);
+  if (vpid1->volid == vpid2->volid)
+    {
+      return vpid1->pageid - vpid2->pageid;
+    }
+  else
+    {
+      return vpid1->volid - vpid2->volid;
+    }
 }
 
 /*

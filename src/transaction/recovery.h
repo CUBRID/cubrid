@@ -223,8 +223,16 @@ typedef enum
   RVFL_FHEAD_SET_LAST_PAGE_FTAB = 161,
   RVFL_FHEAD_ALLOC = 162,
   RVFL_DESTROY = 163,		/* Use for undo/postpone */
+  RVFL_DEALLOC = 164,
+  RVFL_USER_PAGE_MARK_DELETE = 165,
+  RVFL_USER_PAGE_MARK_DELETE_COMPENSATE = 166,
+  RVFL_PARTSECT_DEALLOC = 167,
+  RVFL_EXTDATA_MERGE = 168,
+  RVFL_EXTDATA_MERGE_COMPARE_VSID = 169,
+  RVFL_FHEAD_DEALLOC = 170,
+  RVFL_USER_PAGE_REMOVE = 171,
 
-  RV_LAST_LOGID = RVFL_DESTROY,
+  RV_LAST_LOGID = RVFL_USER_PAGE_REMOVE,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -274,6 +282,13 @@ extern void rv_check_rvfuns (void);
    || ((idx) == RVBT_DELETE_OBJECT_POSTPONE) \
    || ((idx) == RVBT_MVCC_INSERT_OBJECT_UNQ))
 
+#define RCV_IS_LOGICAL_COMPENSATE_MANUAL(idx) \
+  (RCV_IS_BTREE_LOGICAL_LOG(idx) \
+   || (idx) == RVFL_ALLOC \
+   || (idx) == RVFL_USER_PAGE_MARK_DELETE)
+#define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
+  ((idx) == RVFL_DEALLOC)
+
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   (((vpid)->volid == NULL_VOLID) \
    || ((vpid)->pageid == NULL_PAGEID) \
@@ -282,6 +297,8 @@ extern void rv_check_rvfuns (void);
    || ((idx) == RVBT_CREATE_INDEX) \
    || ((idx) == RVFL_POSTPONE_DESTROY_FILE) /* TODO: Remove me */\
    || ((idx) == RVPGBUF_FLUSH_PAGE) \
-   || ((idx) == RVFL_DESTROY))
+   || ((idx) == RVFL_DESTROY) \
+   || ((idx) == RVFL_ALLOC) \
+   || ((idx) == RVFL_DEALLOC))
 
 #endif /* _RECOVERY_H_ */

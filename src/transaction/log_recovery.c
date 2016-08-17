@@ -285,7 +285,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
 	    }
 	}
-      else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex))
+      else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
 	   * compensation since the "undone" page can be accessed and logged. Only no-page logical operations require
@@ -301,7 +301,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 				 (long long int) rcv_undo_lsa->pageid, (int) rcv_undo_lsa->offset,
 				 (unsigned long long int) rcv->mvcc_id, (int) rcv->offset, (int) rcv->length);
 	    }
-	  else if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	  else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex) && prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
 			     "BTREE_UNDO: Successfully executed undo/compensate for log entry at "

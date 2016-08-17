@@ -8416,7 +8416,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	      assert (false);
 	    }
 	}
-      else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex))
+      else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
 	   * compensation since the "undone" page can be accessed and logged. Only no-page logical operations require
@@ -8435,7 +8435,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
 	      assert (false);
 	    }
-	  else if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	  else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex) && prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
 			     "BTREE_ROLLBACK: Successfully executed undo/compensate for log entry before "
@@ -8496,6 +8496,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  }
 #else /* CUBRID_DEBUG */
 	  /* Invoke Undo recovery function */
+	  /* TODO: Is undo restartable needed? */
 	  rv_err = log_undo_rec_restartable (thread_p, rcvindex, rcv);
 #endif /* CUBRID_DEBUG */
 
@@ -9458,14 +9459,22 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
     {
       if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
 	{
+	  /* TODO: RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL */
 	  error_code = disk_rv_alloctable_with_volheader (thread_p, &rcv, log_lsa);
 	  assert (error_code == NO_ERROR);
 	}
       else if (rcvindex == RVVAC_DROPPED_FILE_ADD)
 	{
 	  /* We don't know yet in which page the dropped file will end up so we have to do a special call here. */
+	  /* TODO: RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL */
 	  error_code = vacuum_notify_dropped_file (thread_p, &rcv, log_lsa);
 	  assert (error_code == NO_ERROR);
+	}
+      else if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
+	{
+	  LSA_COPY (&rcv.reference_lsa, log_lsa);
+	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+	  assert (error_code != NO_ERROR);
 	}
       else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
 	{

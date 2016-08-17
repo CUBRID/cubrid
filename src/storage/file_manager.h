@@ -398,11 +398,20 @@ extern int file_rv_extdata_set_next (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_add (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_set_last_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_alloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_alloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_merge_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_merge_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_merge_compare_vsid_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_dealloc_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_dealloc_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 /* Recovery dump stuff */
-extern void file_rv_dump_logical_undo_alloc_page (FILE * fp, int length, void *data);
+extern void file_rv_dump_vfid_and_vpid (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_set_next (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_add (FILE * fp, int length, void *data);
 extern void file_rv_dump_extdata_remove (FILE * fp, int length, void *data);
