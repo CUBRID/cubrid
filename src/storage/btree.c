@@ -1385,7 +1385,7 @@ static const char *node_type_to_string (short node_type);
 static char *key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type);
 static int index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * recdes);
 static SCAN_CODE btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_values, int out_cnt,
-						   const char *class_name, OR_INDEX * index_p, OID * oid_p);
+						   const char *class_name, OR_INDEX * index_p, OID * class_oid_p);
 static SCAN_CODE btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_values, int out_cnt,
 						     const char *class_name, OR_INDEX * index_p);
 static bool btree_leaf_lsa_eq (THREAD_ENTRY * thread_p, LOG_LSA * a, LOG_LSA * b);
@@ -21316,7 +21316,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   char *class_name = NULL;
   OR_CLASSREP *classrep = NULL;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
-  OID *oid_p = NULL;
+  OID *class_oid_p = NULL;
   int idx_in_cache;
   int selected_index = 0;
   int i, index_idx, oid_idx;
@@ -21333,16 +21333,16 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   index_idx = cursor % ctx->indexes_count;
   oid_idx = cursor / ctx->indexes_count;
 
-  oid_p = &ctx->class_oids[oid_idx];
+  class_oid_p = &ctx->class_oids[oid_idx];
 
-  class_name = heap_get_class_name (thread_p, oid_p);
+  class_name = heap_get_class_name (thread_p, class_oid_p);
   if (class_name == NULL)
     {
       ret = S_ERROR;
       goto cleanup;
     }
 
-  classrep = heap_classrepr_get (thread_p, oid_p, NULL, NULL_REPRID, &idx_in_cache);
+  classrep = heap_classrepr_get (thread_p, class_oid_p, NULL, NULL_REPRID, &idx_in_cache);
   if (classrep == NULL)
     {
       ret = S_ERROR;
@@ -21380,7 +21380,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   if (ctx->show_type == SHOWSTMT_INDEX_HEADER || ctx->show_type == SHOWSTMT_ALL_INDEXES_HEADER)
     {
-      ret = btree_scan_for_show_index_header (thread_p, out_values, out_cnt, class_name, index_p, oid_p);
+      ret = btree_scan_for_show_index_header (thread_p, out_values, out_cnt, class_name, index_p, class_oid_p);
     }
   else
     {
@@ -21447,11 +21447,11 @@ btree_index_end_scan (THREAD_ENTRY * thread_p, void **ptr)
  *   out_cnt(in):
  *   class_name(in);
  *   index_p(in);
- *   oid_p(in);
+ *   class_oid_p(in);
  */
 static SCAN_CODE
 btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_values, int out_cnt, const char *class_name,
-				  OR_INDEX * index_p, OID * oid_p)
+				  OR_INDEX * index_p, OID * class_oid_p)
 {
   int idx = 0;
   int error = NO_ERROR;
@@ -21464,13 +21464,12 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
   int num_oids = 0, num_nulls = 0, num_keys = 0;
   bool fetch_unique_stats = false;
   int unique_stats_idx = -1;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   BTID *btid_p = NULL;
+  HEAP_SCANCACHE scan_cache;
+  bool scan_cache_inited = false;
 
   assert_release (index_p != NULL);
-
-  recdes.data = NULL;
-  recdes.area_size = 0;
 
   /* get root header point */
   btid_p = &index_p->btid;
@@ -21573,15 +21572,18 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
       goto error;
     }
 
-  /* unfix page buffer before heap_get_alloc() */
+  /* unfix page buffer before heap_get_class_record() */
   if (root_page_ptr != NULL)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
     }
 
+  /* Init scan_cache for heap object retrieving */
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  scan_cache_inited = true;
+
   /* Get the name list with asc/desc info of attributes */
-  error = heap_get_alloc (thread_p, oid_p, &recdes);
-  if (error != NO_ERROR)
+  if (heap_get_class_record (thread_p, class_oid_p, &recdes, &scan_cache, COPY) != S_SUCCESS)
     {
       goto error;
     }
@@ -21614,10 +21616,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
       db_make_int (out_values[unique_stats_idx + 2], num_keys);
     }
 
-  if (recdes.data != NULL)
-    {
-      free_and_init (recdes.data);
-    }
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   return S_SUCCESS;
 
@@ -21628,9 +21627,9 @@ error:
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
     }
 
-  if (recdes.data != NULL)
+  if (scan_cache_inited)
     {
-      free_and_init (recdes.data);
+      (void) heap_scancache_end (thread_p, &scan_cache);
     }
 
   return S_ERROR;

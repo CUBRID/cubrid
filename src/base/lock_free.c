@@ -753,6 +753,8 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   void *entry;
+  bool local_tran = false;
+
   assert (tran_entry != NULL);
   assert (freelist != NULL);
   assert (freelist->entry_desc != NULL);
@@ -773,11 +775,22 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
       return entry;
     }
 
+  /* We need a transaction. Careful: we cannot increment transaction ID! */
+  if (tran_entry->transaction_id == LF_NULL_TRANSACTION_ID)
+    {
+      local_tran = true;
+      lf_tran_start_with_mb (tran_entry, false);
+    }
+
   /* clean retired list, if possible */
   if (LF_TRAN_CLEANUP_NECESSARY (tran_entry))
     {
       if (lf_freelist_transport (tran_entry, freelist) != NO_ERROR)
 	{
+	  if (local_tran)
+	    {
+	      lf_tran_end_with_mb (tran_entry);
+	    }
 	  return NULL;
 	}
     }
@@ -796,6 +809,10 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	  if ((edesc->f_init != NULL) && (edesc->f_init (entry) != NO_ERROR))
 	    {
 	      /* can't initialize it */
+	      if (local_tran)
+		{
+		  lf_tran_end_with_mb (tran_entry);
+		}
 	      return NULL;
 	    }
 
@@ -803,6 +820,10 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	  OF_GET_PTR_DEREF (entry, edesc->of_next) = NULL;
 
 	  /* done! */
+	  if (local_tran)
+	    {
+	      lf_tran_end_with_mb (tran_entry);
+	    }
 	  return entry;
 	}
       else
@@ -812,6 +833,10 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	   * beats synchronizing the operations */
 	  if (lf_freelist_alloc_block (freelist) != NO_ERROR)
 	    {
+	      if (local_tran)
+		{
+		  lf_tran_end_with_mb (tran_entry);
+		}
 	      return NULL;
 	    }
 
@@ -822,6 +847,10 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 
   /* impossible! */
   assert (false);
+  if (local_tran)
+    {
+      lf_tran_end_with_mb (tran_entry);
+    }
   return NULL;
 }
 

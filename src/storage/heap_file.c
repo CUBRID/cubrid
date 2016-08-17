@@ -687,8 +687,6 @@ static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       int ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
-static SCAN_CODE heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RECDES * recdes,
-				    HEAP_SCANCACHE * scan_cache, int ispeeking, int chn);
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
@@ -2550,11 +2548,12 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   int disk_length;
   OR_BUF buf;
   bool copy;
-  RECDES recdes;		/* Used to obtain attrnames */
+  RECDES recdes = RECDES_INITIALIZER;	/* Used to obtain attrnames */
   int ret = NO_ERROR;
   char *index_name = NULL;
   char *string = NULL;
   int alloced_string = 0;
+  HEAP_SCANCACHE scan_cache;
 
   /* 
    * The class is feteched to print the attribute names.
@@ -2562,16 +2561,14 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
    * This is needed since the name of the attributes is not contained
    * in the class representation structure.
    */
-
-  recdes.data = NULL;
-  recdes.area_size = 0;
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
   if (repr == NULL)
     {
       goto exit_on_error;
     }
 
-  if (heap_get_alloc (thread_p, class_oid, &recdes) != NO_ERROR)
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, COPY) != S_SUCCESS)
     {
       goto exit_on_error;
     }
@@ -2704,16 +2701,13 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
       fprintf (fp, "\n");
     }
 
-  free_and_init (recdes.data);
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   return ret;
 
 exit_on_error:
 
-  if (recdes.data)
-    {
-      free_and_init (recdes.data);
-    }
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   fprintf (fp, "Dump has been aborted...");
 
@@ -7292,6 +7286,12 @@ try_again:
   ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
   if (ret != NO_ERROR)
     {
+      if (ret == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  /* bad page id, consider the object does not exist and let the caller handle the case */
+	  return S_DOESNT_EXIST;
+	}
+
       goto error;
     }
 
@@ -8031,75 +8031,6 @@ heap_last (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oi
   oid->volid = hfid->vfid.volid;
 
   return heap_prev (thread_p, hfid, class_oid, oid, recdes, scan_cache, ispeeking);
-}
-
-/*
- * heap_get_alloc () - get/retrieve an object by allocating and freeing area
- *   return: NO_ERROR
- *   oid(in): Object identifier
- *   recdes(in): Record descriptor
- *
- * Note: The object associated with the given OID is copied into the
- * allocated area pointed to by the record descriptor. If the
- * object does not fit in such an area. The area is freed and a
- * new area is allocated to hold the object.
- * The caller is responsible from deallocating the area.
- *
- * Note: The area in the record descriptor is one dynamically allocated
- * with malloc and free with free_and_init.
- */
-int
-heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes)
-{
-  SCAN_CODE scan;
-  char *new_area;
-  int ret = NO_ERROR;
-
-  if (recdes->data == NULL)
-    {
-      recdes->area_size = DB_PAGESIZE;	/* assume that only one page is needed */
-      recdes->data = (char *) malloc (recdes->area_size);
-      if (recdes->data == NULL)
-	{
-	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, (size_t) recdes->area_size);
-	  goto exit_on_error;
-	}
-    }
-
-  /* Get the object */
-  while ((scan = heap_get_visible_version (thread_p, oid, NULL, recdes, NULL, COPY, NULL_CHN)) != S_SUCCESS)
-    {
-      if (scan == S_DOESNT_FIT)
-	{
-	  /* Is more space needed ? */
-	  new_area = (char *) realloc (recdes->data, -(recdes->length));
-	  if (new_area == NULL)
-	    {
-	      ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, (size_t) (-(recdes->length)));
-	      goto exit_on_error;
-	    }
-	  recdes->area_size = -recdes->length;
-	  recdes->data = new_area;
-	}
-      else
-	{
-	  goto exit_on_error;
-	}
-    }
-
-  return ret;
-
-exit_on_error:
-
-  if (recdes->data != NULL)
-    {
-      free_and_init (recdes->data);
-      recdes->area_size = 0;
-    }
-
-  return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -9260,15 +9191,18 @@ SCAN_CODE
 heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
 {
   PGBUF_WATCHER page_watcher;
+  int err;
 
   PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
   assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
   OID_SET_NULL (class_oid);
 
-  if (heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
+  err = heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ);
+  if (err != NO_ERROR)
     {
-      return S_ERROR;
+      /* for non existent object, return S_DOESNT_EXIST and let the caller handle the case; */
+      return err == ER_HEAP_UNKNOWN_OBJECT ? S_DOESNT_EXIST : S_ERROR;
     }
 
   /* Get class OID from HEAP_CHAIN. */
@@ -12558,6 +12492,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  (*(att->domain->type->index_writeval)) (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
+
+      if (!DB_IS_NULL (&value) && value.need_clear == true)
+	{
+	  pr_clear_value (&value);
+	}
+
       k++;
     }
 
@@ -24133,7 +24073,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
-  OID class_oid_local;
+  OID class_oid_local = OID_INITIALIZER;
 
   assert (context->scan_cache != NULL);
 
@@ -24143,7 +24083,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       context->class_oid_p = &class_oid_local;
     }
 
-  scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
+  scan = heap_prepare_get_context (thread_p, context, context->latch_mode, is_heap_scan, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -24344,7 +24284,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   assert (context->scan_cache != NULL);
   assert (context->recdes_p != NULL);
 
-  scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
+  scan = heap_prepare_get_context (thread_p, context, context->latch_mode, false, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -24381,9 +24321,13 @@ exit:
 }
 
 /* 
- * heap_prepare_object_page () - Check if provided page matches the page of provided OID or fix the right one
+ * heap_prepare_object_page () - Check if provided page matches the page of provided OID or fix the right one.
  *
- *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * oid (in)	       : Object identifier.
+ * page_watcher_p(out) : Page watcher used for page fix.
+ * latch_mode (in)     : Latch mode.
  */
 int
 heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
@@ -24494,6 +24438,14 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->scan_cache = scan_cache;
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
+  if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
+    {
+      context->latch_mode = PGBUF_LATCH_WRITE;
+    }
+  else
+    {
+      context->latch_mode = PGBUF_LATCH_READ;
+    }
 }
 
 
