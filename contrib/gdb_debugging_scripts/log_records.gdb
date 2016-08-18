@@ -25,7 +25,10 @@ end
 #
 define logpb_get_page
   set $idx = $arg0 % log_Pb.num_buffers
-  set $arg1 = log_Pb.buffers[$idx]->logpage
+  set $arg1 = 0
+  if $idx == $arg0
+	set $arg1 = log_Pb.buffers[$idx]->logpage
+  end
 end
 
 
