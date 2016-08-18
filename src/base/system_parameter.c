@@ -2015,7 +2015,7 @@ static unsigned int prm_log_unique_stats_flag = 0;
 int PRM_LOG_ZIP_MIN_SIZE_COMPRESS = 255;
 static int prm_log_zip_min_size_compress_default = 255;
 static int prm_log_zip_min_size_compress_lower = 0;
-static int prm_log_zip_min_size_compress_upper = 16 * 1024 * 1024;    /* 16 M */
+static int prm_log_zip_min_size_compress_upper = 16 * 1024 * 1024;	/* 16 M */
 static unsigned int prm_log_zip_min_size_compress_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
