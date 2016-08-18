@@ -584,7 +584,7 @@
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
 /* representation id, MVCC insert id and CHN == 36 ?? */
-#define OR_MVCC_MAX_HEADER_SIZE  28
+#define OR_MVCC_MAX_HEADER_SIZE  32
 
 /* representation id and CHN */
 #define OR_MVCC_MIN_HEADER_SIZE  8
@@ -696,18 +696,18 @@
 
 /* in MVCC, chn follow by rep_id and/or ins_id depending by flags */
 #define OR_GET_MVCC_CHN(ptr, mvcc_flags) \
-  (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) \
-   ? NULL_CHN \
-   : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
+  ( (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID & OR_MVCC_FLAG_VALID_INSID) \
+      ? (OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE)) \
+      : ( (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) || ((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID)) \
       ? (OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE)) \
-      : ((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE)))))
+      : ((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE))))))
 
 #define OR_GET_MVCC_CHN_OFFSET(mvcc_flags) \
-  (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) \
-   ? -1 \
-   : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
-      ? (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE) \
-      : (OR_REP_OFFSET + OR_MVCC_REP_SIZE)))
+  ( (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID &OR_MVCC_FLAG_VALID_DELID) \
+      ? (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE) \
+      :( (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) || ((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID)) \
+      ?  (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE) \
+      : (OR_REP_OFFSET + OR_MVCC_REP_SIZE))))
 
 #define OR_GET_MVCC_FLAG(ptr) \
   (((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) \

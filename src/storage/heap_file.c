@@ -16059,7 +16059,7 @@ heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   /* Fixed size header. Remove flag for delete MVCCID, and set long chn. */
   MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
-  MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_LONG_CHN);
+
   MVCC_SET_CHN (&mvcc_header, chn);
 
   /* Change header. */
@@ -16224,7 +16224,6 @@ heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
   assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID));
-  assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_LONG_CHN));
 
   /* Set delete MVCCID. */
   MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
@@ -18617,7 +18616,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
 	}
       else
 	{
@@ -18695,7 +18694,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
 	}
       else
 	{
@@ -20445,24 +20444,24 @@ heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, int recor
 {
   assert (header_p != NULL);
 
-  /* put delete MVCCID */
-  if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_DELID))
-    {
-      if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_LONG_CHN))
-	{
-	  /* the record contains short CHN, we need to extend to bigint */
-	  record_size += OR_INT_SIZE;
-	}
-      else
-	{
-	  /* we already have long CHN */
-	  MVCC_CLEAR_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_LONG_CHN);
-	}
-    }
-  else
-    {
-      assert (!MVCCID_IS_VALID (MVCC_GET_DELID (header_p)));
-    }
+  /* put delete MVCCID *
+     if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_DELID))
+     {
+     if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_LONG_CHN))
+     {
+     /* the record contains short CHN, we need to extend to bigint *
+     record_size += OR_INT_SIZE;
+     }
+     else
+     {
+     /* we already have long CHN *
+     MVCC_CLEAR_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_LONG_CHN);
+     }
+     }
+     else
+     {
+     assert (!MVCCID_IS_VALID (MVCC_GET_DELID (header_p)));
+     } */
   MVCC_SET_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_DELID (header_p, mvcc_id);
 
@@ -20798,8 +20797,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (!MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_DELID)
 	  && !MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_LONG_CHN))
 	{
-	  /* extend short CHN to MVCCID */
-	  adjusted_size += OR_INT_SIZE;
+	  adjusted_size += OR_MVCCID_SIZE;
 	}
 
       if (heap_is_big_length (adjusted_size))

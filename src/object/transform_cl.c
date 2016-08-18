@@ -1349,18 +1349,17 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
 	  /* skip delete id */
-	  chn = NULL_CHN;
 	  or_advance (buf, OR_MVCCID_SIZE);
 	}
-      else
-	{
-	  chn = or_get_int (buf, &rc);
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
-	    {
-	      /* skip 4 bytes - fixed MVCC header size */
-	      or_advance (buf, OR_INT_SIZE);
-	    }
-	}
+
+      {
+	chn = or_get_int (buf, &rc);
+	if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
+	  {
+	    /* skip 4 bytes - fixed MVCC header size */
+	    or_advance (buf, OR_INT_SIZE);
+	  }
+      }
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	{

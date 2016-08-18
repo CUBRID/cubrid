@@ -479,23 +479,19 @@ or_chn (RECDES * record)
     }
 
   mvcc_flag = OR_GET_MVCC_FLAG (record->data);
-  if (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
-    {
-      return NULL_CHN;
-    }
-  else
-    {
-      if (mvcc_flag & OR_MVCC_FLAG_VALID_INSID)
-	{
-	  /* CHN is positioned after representation id and insert MVCC id */
-	  return OR_GET_INT (record->data + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE);
-	}
-      else
-	{
-	  /* CHN is positioned after representation id */
-	  return OR_GET_INT (record->data + OR_MVCC_REP_SIZE);
-	}
-    }
+
+  {
+    if (mvcc_flag & OR_MVCC_FLAG_VALID_INSID)
+      {
+	/* CHN is positioned after representation id and insert MVCC id */
+	return OR_GET_INT (record->data + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE);
+      }
+    else
+      {
+	/* CHN is positioned after representation id */
+	return OR_GET_INT (record->data + OR_MVCC_REP_SIZE);
+      }
+  }
 
   return OR_GET_NON_MVCC_CHN (record->data);
 }
@@ -514,11 +510,8 @@ or_mvcc_chn (OR_BUF * buf, int mvcc_flags, int *error)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-    {
-      return NULL_CHN;
-    }
-  else if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+
+  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
     {
       *error = or_underflow (buf);
       return NULL_CHN;
@@ -563,11 +556,7 @@ or_replace_chn (RECDES * record, int chn)
   else
     {
       /* MVCC record */
-      if (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
-	{
-	  /* delid is active, cannot replace chn */
-	  return ER_FAILED;
-	}
+
 
       offset = OR_GET_MVCC_CHN_OFFSET (mvcc_flag);
       assert (offset > 0);
@@ -577,10 +566,7 @@ or_replace_chn (RECDES * record, int chn)
 
   error = or_put_int (buf, chn);
 
-  if (error == NO_ERROR && (mvcc_flag & OR_MVCC_FLAG_VALID_LONG_CHN))
-    {
-      error = or_put_int (buf, 0);
-    }
+
 
   return error;
 }
@@ -780,30 +766,19 @@ or_mvcc_get_chn (OR_BUF * buf, int mvcc_flags, int *error)
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   *error = NO_ERROR;
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_DELID))
-    {
-      if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-	{
-	  *error = or_underflow (buf);
-	}
-      else
-	{
-	  chn = OR_GET_INT (buf->ptr);
-	  buf->ptr += OR_INT_SIZE;
 
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
-	    {
-	      if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-		{
-		  *error = or_underflow (buf);
-		}
-	      else
-		{
-		  *error = or_advance (buf, OR_INT_SIZE);
-		}
-	    }
-	}
+  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
     }
+  else
+    {
+      chn = OR_GET_INT (buf->ptr);
+      buf->ptr += OR_INT_SIZE;
+
+
+    }
+
 
   return chn;
 }
@@ -838,10 +813,7 @@ or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   error_code = or_put_int (buf, mvcc_rec_header->chn);
-  if ((error_code == NO_ERROR) && (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_LONG_CHN))
-    {
-      error_code = or_put_int (buf, 0);
-    }
+
   return error_code;
 }
 
@@ -881,10 +853,9 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
     {
       mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
     }
-  else
-    {
-      mvcc_header->chn = or_mvcc_get_chn (&buf, mvcc_header->mvcc_flag, &rc);
-    }
+
+  mvcc_header->chn = or_mvcc_get_chn (&buf, mvcc_header->mvcc_flag, &rc);
+
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -964,10 +935,10 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
     {
       error = or_mvcc_set_delid (buf, mvcc_rec_header);
     }
-  else
-    {
-      error = or_mvcc_set_chn (buf, mvcc_rec_header);
-    }
+
+  {
+    error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  }
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -1037,10 +1008,10 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
     {
       error = or_mvcc_set_delid (buf, mvcc_rec_header);
     }
-  else
-    {
-      error = or_mvcc_set_chn (buf, mvcc_rec_header);
-    }
+
+  {
+    error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  }
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -7892,10 +7863,10 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
     {
       mvcc_header_size += OR_MVCCID_SIZE;
     }
-  else
-    {
-      mvcc_header_size += OR_INT_SIZE;
-    }
+
+  {
+    mvcc_header_size += OR_INT_SIZE;
+  }
 
   if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
     {
