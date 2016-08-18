@@ -4507,7 +4507,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	   * Flush the header page and first append page so that we can record
 	   * the header page on it
 	   */
-	  if (logpb_flush_page (thread_p, loghdr_pgptr, FREE) != NO_ERROR)
+	  if (logpb_flush_page (thread_p, loghdr_pgptr) != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_recovery_resetlog");
 	    }
@@ -4519,7 +4519,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
 	  return;
 	}
-      if (logpb_flush_page (thread_p, append_pgptr, FREE) != NO_ERROR)
+      if (logpb_flush_page (thread_p, append_pgptr) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_recovery_resetlog");
 	  return;

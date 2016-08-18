@@ -831,7 +831,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   }
 #endif /* CUBRID_DEBUG */
 
-  error_code = logpb_flush_page (thread_p, loghdr_pgptr, DONT_FREE);
+  error_code = logpb_flush_page (thread_p, loghdr_pgptr);
   if (error_code != NO_ERROR)
     {
       goto error;

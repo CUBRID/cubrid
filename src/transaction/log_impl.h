@@ -1964,7 +1964,7 @@ extern void logpb_invalidate_pool (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
 extern void logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
-extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page);
+extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern LOG_PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
 extern int logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const char *prefix_logname,
 				    DKNPAGES npages, INT64 * db_creation);
@@ -1972,8 +1972,8 @@ extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
 extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
 extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
-extern int logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
-			     LOG_PAGE * log_pgptr);
+extern int logpb_fetch_page_with_buffer (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
+					 LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
