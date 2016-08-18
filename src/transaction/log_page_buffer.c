@@ -314,9 +314,7 @@ static int log_data_length = 0;
 
 LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
 
-#define LOG_ZIP_MIN_SIZE_TO_COMPRESS log_zip_min_size_to_compress
-
-static int log_zip_min_size_to_compress = 0;
+static int log_zip_min_size_to_compress = 255;
 
 /*
  * Functions
@@ -671,8 +669,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
-
-  log_zip_min_size_to_compress = prm_get_integer_value (PRM_ID_LOG_ZIP_MIN_SIZE_COMPRESS);
 
   if (rmutex_initialize (LOGPB_RMUTEX_LOG_PB, LOGPB_RMUTEX_LOG_PB_NAME) != NO_ERROR)
     {
@@ -3241,7 +3237,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       can_zip = log_zip_support && zip_undo;
     }
 
-  if (can_zip == true && (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS || rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS))
+  if (can_zip == true && (ulength >= log_zip_min_size_to_compress || rlength >= log_zip_min_size_to_compress))
     {
       /* Try to zip undo and/or redo data */
       total_length = 0;
@@ -3263,7 +3259,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	{
 	  tmp_ptr = data_ptr;
 
-	  if (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
+	  if (ulength >= log_zip_min_size_to_compress)
 	    {
 	      assert (has_undo == true);
 
@@ -3278,7 +3274,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	      assert (CAST_BUFLEN (tmp_ptr - undo_data) == ulength);
 	    }
 
-	  if (rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
+	  if (rlength >= log_zip_min_size_to_compress)
 	    {
 	      assert (has_redo == true);
 
@@ -3294,9 +3290,9 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	    }
 
 	  assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length
-		  || ulength < LOG_ZIP_MIN_SIZE_TO_COMPRESS || rlength < LOG_ZIP_MIN_SIZE_TO_COMPRESS);
+		  || ulength < log_zip_min_size_to_compress || rlength < log_zip_min_size_to_compress);
 
-	  if (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS && rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
+	  if (ulength >= log_zip_min_size_to_compress && rlength >= log_zip_min_size_to_compress)
 	    {
 	      (void) log_diff (ulength, undo_data, rlength, redo_data);
 
@@ -3310,11 +3306,11 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	    }
 	  else
 	    {
-	      if (ulength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
+	      if (ulength >= log_zip_min_size_to_compress)
 		{
 		  is_undo_zip = log_zip (zip_undo, ulength, undo_data);
 		}
-	      if (rlength >= LOG_ZIP_MIN_SIZE_TO_COMPRESS)
+	      if (rlength >= log_zip_min_size_to_compress)
 		{
 		  is_redo_zip = log_zip (zip_redo, rlength, redo_data);
 		}

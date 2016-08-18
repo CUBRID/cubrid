@@ -388,10 +388,8 @@ enum param_id
 
   PRM_ID_LOG_UNIQUE_STATS,
 
-  PRM_ID_LOG_ZIP_MIN_SIZE_COMPRESS,
-
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_LOG_ZIP_MIN_SIZE_COMPRESS
+  PRM_LAST_ID = PRM_ID_LOG_UNIQUE_STATS
 };
 
 /*
