@@ -3898,6 +3898,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   bool hold_flush_mutex = false;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  LOG_PAGE *first_append_log_page = NULL;
 
   LOG_RECORD_HEADER save_record = {
     {NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
@@ -4011,7 +4012,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * append record as log end record. Flush and then check it back.
    */
 
-  if (log_Gl.append.delayed_free_log_pgptr != NULL)
+  if (log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
     {
       /* 
        * Flush all log append records on such page except the current log
@@ -4029,8 +4030,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 #endif /* CUBRID_DEBUG */
-
-      tmp_eof = (LOG_RECORD_HEADER *) LOG_PREV_APPEND_PTR ();
+      first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
+      tmp_eof = (LOG_RECORD_HEADER *) ((char *) first_append_log_page->area + log_Gl.append.prev_lsa.offset);
       save_record = *tmp_eof;
 
       /* Overwrite it with an end of log marker */
@@ -4055,6 +4056,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       eof.type = LOG_END_OF_LOG;
 
       logpb_start_append (thread_p, &eof);
+      first_append_log_page = NULL;
     }
 
   /* 
@@ -4131,7 +4133,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        */
       if (last_idxflush == -1)
 	{
-	  if (bufptr->dirty == true && bufptr->pageid == logpb_get_log_buffer_index (bufptr->pageid))
+	  if (bufptr->dirty == true)
 	    {
 	      /* We have found the smallest dirty page */
 	      last_idxflush = i;
@@ -4334,7 +4336,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * flush and synchronize
    */
 
-  if (log_Gl.append.delayed_free_log_pgptr != NULL)
+  if (first_append_log_page != NULL)
     {
       /* 
        * Restore the log append record
@@ -4343,14 +4345,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       *tmp_eof = save_record;
 
-      if (logpb_writev_append_pages (thread_p, &log_Gl.append.delayed_free_log_pgptr, 1) == NULL)
+      if (logpb_writev_append_pages (thread_p, &first_append_log_page, 1) == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
 	}
 
       ++flush_page_count;
-      log_Gl.append.delayed_free_log_pgptr = NULL;
+      first_append_log_page = NULL;
     }
 
   flush_info->num_toflush = 0;
