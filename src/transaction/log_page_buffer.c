@@ -4348,6 +4348,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+
+      ++flush_page_count;
       log_Gl.append.delayed_free_log_pgptr = NULL;
     }
 
