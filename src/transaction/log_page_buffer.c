@@ -821,8 +821,6 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	      assert_release (false);
 	      return NULL;
 	    }
-
-	  mnt_log_ioreads (thread_p);
 	}
       phy_pageid = logpb_to_physical_pageid (pageid);
       log_bufptr->phy_pageid = phy_pageid;
@@ -1499,7 +1497,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *   log_pgptr(in/out): Page buffer to copy
  *
  * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
- *              If there is the page in hash table, copy it to buffer and return it.
+ *              If there is the page in the log page buffer, copy it to buffer and return it.
  *              If not, read log page from log.
  */
 int
@@ -1626,7 +1624,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
  *   log_pgptr(in/out): Page buffer to copy
  *
  * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
- *              If there is the page in hash table, copy it to buffer and return it.
+ *              If there is the page in the log page buffer, copy it to buffer and return it.
  *              If not, read log page from log.
  */
 
@@ -1669,7 +1667,6 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 	      rv = ER_FAILED;
 	      goto exit;
 	    }
-	  mnt_log_ioreads (thread_p);
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	}
       else
@@ -1694,7 +1691,10 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     {
       /* Copy page from log_bufptr into log_pgptr */
       memcpy (log_pgptr, log_bufptr->logpage, LOG_PAGESIZE);
-      goto exit;
+      if (log_bufptr->pageid == pageid)
+	{
+	  goto exit;
+	}
     }
 
   /* Could not get from log page buffer cache */
@@ -1704,7 +1704,6 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       rv = ER_FAILED;
       goto exit;
     }
-  mnt_log_ioreads (thread_p);
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
 
@@ -1929,10 +1928,10 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 	}
 
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_write_page_to_disk");
-      mnt_log_iowrites (thread_p, 1);
       return ER_FAILED;
     }
 
+  mnt_log_iowrites (thread_p, 1);
   return NO_ERROR;
 }
 
