@@ -4131,7 +4131,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        */
       if (last_idxflush == -1)
 	{
-	  if (bufptr->dirty == true)
+	  if (bufptr->dirty == true && bufptr->pageid == logpb_get_log_buffer_index (bufptr->pageid))
 	    {
 	      /* We have found the smallest dirty page */
 	      last_idxflush = i;
@@ -4342,18 +4342,17 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       assert (tmp_eof != NULL);
 
       *tmp_eof = save_record;
-      logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr);
 
-      flush_info->toflush[0] = log_Gl.append.delayed_free_log_pgptr;
-      flush_info->num_toflush = 1;
-      logpb_set_nxio_lsa (&log_Gl.append.prev_lsa);
+      if (logpb_writev_append_pages (thread_p, &log_Gl.append.delayed_free_log_pgptr, 1) == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      log_Gl.append.delayed_free_log_pgptr = NULL;
     }
-  else
-    {
-      flush_info->num_toflush = 0;
 
-      logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
-    }
+  flush_info->num_toflush = 0;
+  logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
 
   if (log_Gl.append.log_pgptr != NULL)
     {
