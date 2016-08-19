@@ -389,15 +389,14 @@ extern int file_alloc (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid_out);
 
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_redo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_undo_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_logical_undo_alloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_partsect_set (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_partsect_clear (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_set_next (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_add (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_set_last_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -406,8 +405,8 @@ extern int file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LO
 extern int file_rv_extdata_merge_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_merge_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_merge_compare_vsid_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_dealloc_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_dealloc_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 /* Recovery dump stuff */

@@ -162,6 +162,10 @@ struct log_lsa
 #define SECTOR_LAST_PAGEID(sid) ((sid) * (DISK_SECTOR_NPAGES + 1) - 1)
 #define SECTOR_FROM_PAGEID(pageid) ((pageid) / DISK_SECTOR_NPAGES)
 
+#define VSID_FROM_VPID(vsid, vpid) (vsid)->volid = (vpid)->volid; (vsid)->sectid = SECTOR_FROM_PAGEID ((vpid)->pageid)
+#define VSID_IS_SECTOR_OF_VPID(vsid, vpid) \
+  ((vsid)->volid == (vpid)->volid && (vsid)->sectid == SECTOR_FROM_PAGEID ((vpid)->pageid))
+
 #define DB_MAX_PATH_LENGTH      PATH_MAX
 
 #define DISK_VFID_SIZE (OR_INT_SIZE + OR_SHORT_SIZE)
