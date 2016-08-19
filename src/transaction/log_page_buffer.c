@@ -4012,7 +4012,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * append record as log end record. Flush and then check it back.
    */
 
-  if (log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid && log_Gl.append.prev_lsa.pageid != NULL_PAGEID)
+  if (log_Gl.append.delayed_free_log_pgptr != NULL)
     {
       /* 
        * Flush all log append records on such page except the current log
@@ -4030,7 +4030,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 #endif /* CUBRID_DEBUG */
-      printf ("%d ", log_Gl.append.prev_lsa.pageid);
       first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
       tmp_eof = (LOG_RECORD_HEADER *) ((char *) first_append_log_page->area + log_Gl.append.prev_lsa.offset);
       save_record = *tmp_eof;
@@ -5135,7 +5134,7 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   if (log_Gl.append.delayed_free_log_pgptr != NULL)
     {
-      assert (logpb_is_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr));
+      // assert (logpb_is_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr));
 
       logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr);
       log_Gl.append.delayed_free_log_pgptr = NULL;
