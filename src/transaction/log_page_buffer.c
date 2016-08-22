@@ -4011,7 +4011,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * a new log record. Otherwise, we need to change the label of the last
    * append record as log end record. Flush and then check it back.
    */
-
+  printf ("%d %d %d %d\n", log_Gl.append.prev_lsa.pageid, log_Gl.hdr.append_lsa.pageid,
+	  logpb_get_page_id (log_Gl.append.delayed_free_log_pgptr), logpb_get_page_id (log_Gl.append.log_pgptr));
   if (log_Gl.append.prev_lsa.pageid > -1 && log_Gl.hdr.append_lsa.pageid > -1 &&
       log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
     {
