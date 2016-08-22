@@ -4012,7 +4012,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * append record as log end record. Flush and then check it back.
    */
 
-  if (log_Gl.append.delayed_free_log_pgptr != NULL)
+  if (log_Gl.append.prev_lsa.pageid > -1 && log_Gl.hdr.append_lsa.pageid > -1 &&
+      log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
     {
       /* 
        * Flush all log append records on such page except the current log
