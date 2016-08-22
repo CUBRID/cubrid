@@ -2344,7 +2344,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
 
   scan = locator_get_object (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, op_type, lock_mode, COPY,
 			     chn);
-  if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END)
+  if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END || scan == S_DOESNT_EXIST)
     {
       return scan;
     }
@@ -2491,6 +2491,9 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL,
 						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
 		  || class_lock >= SIX_LOCK)));
+
+  /* LC_FETCH_CURRENT_VERSION should be used for classes only */
+  assert (fetch_version_type != LC_FETCH_CURRENT_VERSION || OID_IS_ROOTOID (class_oid));
 #endif /* DEBUG */
 
   /* 
@@ -2732,8 +2735,9 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
 	  /* 
 	   * Unable to find out the class identifier.
 	   */
+	  ASSERT_ERROR_AND_SET (error_code);
 	  *fetch_area = NULL;
-	  return ER_FAILED;
+	  return error_code;
 	}
     }
 
@@ -13219,6 +13223,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
   DB_LOGICAL ev_res;		/* Re-evaluation result. */
   OID class_oid_local = OID_INITIALIZER;
   LOCK lock_mode = X_LOCK;
+  int err;
 
   if (recdes == NULL && mvcc_reev_data != NULL)
     {
@@ -13238,12 +13243,19 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
     {
-      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR
-	  || heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+      err = heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ);
+      if (err != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  heap_clean_get_context (thread_p, &context);
-	  return ER_FAILED;
+
+	  /* for non existent object, return S_DOESNT_EXIST and let the caller handle the case */
+	  return err == ER_HEAP_UNKNOWN_OBJECT ? S_DOESNT_EXIST : S_ERROR;
+	}
+      if (heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+	{
+	  heap_clean_get_context (thread_p, &context);
+	  return S_DOESNT_EXIST;
 	}
     }
 
@@ -13338,6 +13350,7 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
   SCAN_CODE scan_code;
   OID class_oid_local = OID_INITIALIZER;
   HEAP_GET_CONTEXT context;
+  int err;
 
   /* decide the type of lock before anything */
 
@@ -13354,10 +13367,17 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
     {
-      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR
-	  || heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+      err = heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ);
+      if (err != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  heap_clean_get_context (thread_p, &context);
+
+	  /* for non existent object, return S_DOESNT_EXIST and let the caller handle the case */
+	  return err == ER_HEAP_UNKNOWN_OBJECT ? S_DOESNT_EXIST : S_ERROR;
+	}
+      if (heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+	{
 	  heap_clean_get_context (thread_p, &context);
 	  return S_DOESNT_EXIST;
 	}

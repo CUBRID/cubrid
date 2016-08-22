@@ -1290,27 +1290,27 @@ or_varchar_length_internal (int charlen, int align)
 {
   int len;
 
-  if (charlen < 0xFF)
+  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
-      len = 1 + charlen;
+      len = OR_BYTE_SIZE + charlen;
     }
   else
     {
       /* 
        * Regarding the new encoding for VARCHAR and VARNCHAR, the strings stored in buffers have this representation:
-       * 1               : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
+       * OR_BYTE_SIZE    : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
        *                 : Otherwise, the first byte states the length of the string.
        * 1st OR_INT_SIZE : string's compressed length
        * 2nd OR_INT_SIZE : string's decompressed length
        * charlen         : string's disk length
        */
-      len = 1 + OR_INT_SIZE + OR_INT_SIZE + charlen;
+      len = OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + charlen;
     }
 
   if (align == INT_ALIGNMENT)
     {
       /* size of NULL terminator */
-      len += 1;
+      len += OR_BYTE_SIZE;
 
       len = DB_ALIGN (len, INT_ALIGNMENT);
     }
@@ -1360,7 +1360,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   buf->error_abort = 0;
 
   /* store the size prefix */
-  if (charlen < 0xFF)
+  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_put_byte (buf, charlen);
     }
@@ -1369,6 +1369,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       rc = or_put_byte (buf, 0xFF);
       compressable = true;
     }
+
   if (rc != NO_ERROR)
     {
       goto cleanup;
@@ -1389,11 +1390,11 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Alloc memory for the compressed string */
       /* Worst case LZO compression size from their FAQ */
-      compressed_string = malloc (charlen + (charlen / 16) + 64 + 3);
+      compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
       if (compressed_string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (charlen + (charlen / 16) + 64 + 3));
+		  1, (size_t) (LZO_COMPRESSED_STRING_SIZE (charlen)));
 	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
@@ -1443,7 +1444,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	    {
 	      goto cleanup;
 	    }
-
 	}
       else
 	{
@@ -8536,7 +8536,7 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
       return rc;
     }
 
-  if (size_prefix == 0xFF)
+  if (size_prefix == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       /* String was compressed */
       /* Get the compressed size */

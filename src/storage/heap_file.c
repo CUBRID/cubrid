@@ -7301,6 +7301,12 @@ try_again:
   ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
   if (ret != NO_ERROR)
     {
+      if (ret == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  /* bad page id, consider the object does not exist and let the caller handle the case */
+	  return S_DOESNT_EXIST;
+	}
+
       goto error;
     }
 
@@ -9200,15 +9206,18 @@ SCAN_CODE
 heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
 {
   PGBUF_WATCHER page_watcher;
+  int err;
 
   PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
   assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
   OID_SET_NULL (class_oid);
 
-  if (heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
+  err = heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ);
+  if (err != NO_ERROR)
     {
-      return S_ERROR;
+      /* for non existent object, return S_DOESNT_EXIST and let the caller handle the case; */
+      return err == ER_HEAP_UNKNOWN_OBJECT ? S_DOESNT_EXIST : S_ERROR;
     }
 
   /* Get class OID from HEAP_CHAIN. */
@@ -24328,9 +24337,13 @@ exit:
 }
 
 /* 
- * heap_prepare_object_page () - Check if provided page matches the page of provided OID or fix the right one
+ * heap_prepare_object_page () - Check if provided page matches the page of provided OID or fix the right one.
  *
- *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * oid (in)	       : Object identifier.
+ * page_watcher_p(out) : Page watcher used for page fix.
+ * latch_mode (in)     : Latch mode.
  */
 int
 heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,

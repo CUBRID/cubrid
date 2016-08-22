@@ -1729,7 +1729,7 @@ input_internal ()
 }
 
 static char *
-parser_c_hint ()
+parser_c_hint (void)
 {
   int c, c1;
   char buff[CSQL_MAXNAME];
@@ -1761,13 +1761,13 @@ parser_c_hint ()
 
           if (i >= (CSQL_MAXNAME - 1))
 	    {
-	      i ++;
+	      i++;
+	      yybuffer_pos += i;
 	      goto consume_comment;
 	    }
 
 	  buff[i++] = c;
 	}
-
 
       buff[i] = 0;
 
@@ -1786,15 +1786,18 @@ parser_c_hint ()
     }
 
 consume_comment:
-  yybuffer_pos += i;
   while ((c = input_internal ()) != '*' && c != 0 && c != -1)
-  {
-    yybuffer_pos ++;
-  }
+    {
+      yybuffer_pos++;
+    }
 
   if ((c1 = input_internal ()) != '/' && c != 0 && c != -1)
     {
       unput (c1);
+      if (c == '*')
+	{
+	  yybuffer_pos++;
+	}
       goto consume_comment;
     }
     

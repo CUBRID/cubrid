@@ -191,7 +191,6 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
   int *attr_lengths = NULL;
   DB_TYPE *attr_types = NULL;
   int max_attr_name_length = 0;
-  LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
   /* trivial case - no results */
   if (result == NULL || (err = db_query_first_tuple (result)) == DB_CURSOR_END)
@@ -348,20 +347,15 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
   result_info.curr_stmt_type = stmt_type;
   result_info.curr_stmt_line_no = line_no;
 
-  /* 
-   * Write_results_to_stream may need to fetch instances if value type
-   * is object or set of objects. Set fetch type to current version since the
-   * snapshot has been already invalidated for current command and we don't want
-   * to acquire another one for writing command results (that will require
-   * snapshot invalidation also).
-   */
-  read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
-  db_set_read_fetch_instance_version (LC_FETCH_CURRENT_VERSION);
+  /*
+   * Write_results_to_stream may need to fetch instances if value type is object or set of objects.
+   * Make sure fetch type is not set to current version since all the versions are identified by
+   * the same OID and snapshot must be considered to reach the visible version again. */
+  assert (TM_TRAN_READ_FETCH_VERSION () != LC_FETCH_CURRENT_VERSION);
   if (write_results_to_stream (csql_arg, csql_Output_fp, &result_info) == CSQL_FAILURE)
     {
       if (csql_Error_code == CSQL_ERR_SQL_ERROR)
 	{
-	  db_set_read_fetch_instance_version (read_fetch_instance_version);
 	  goto error;
 	}
       else
@@ -370,7 +364,6 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
 	}
     }
 
-  db_set_read_fetch_instance_version (read_fetch_instance_version);
   /* free memories */
   if (attr_names != NULL)
     {
