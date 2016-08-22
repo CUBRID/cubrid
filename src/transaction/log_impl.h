@@ -1835,11 +1835,6 @@ typedef struct log_logging_stat
   /* time taken to use a page for logging */
   double use_append_page_sec;
 
-  /* total delayed page count */
-  unsigned long total_delayed_page_count;
-  /* last delayed page id */
-  LOG_PAGEID last_delayed_pageid;
-
   /* log buffer full count */
   unsigned long log_buffer_full_count;
   /* log buffer flush count by replacement */

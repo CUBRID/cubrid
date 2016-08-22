@@ -2299,8 +2299,6 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 #if defined(CUBRID_DEBUG)
   {
     log_Stat.last_append_pageid = log_Gl.hdr.append_lsa.pageid;
-
-    log_Stat.last_delayed_pageid = NULL_PAGEID;
   }
 #endif /* CUBRID_DEBUG */
 
@@ -2350,12 +2348,10 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
 #if defined(CUBRID_DEBUG)
   er_log_debug (ARG_FILE_LINE,
-		"log_next_append_page: new page id(%lld) delayed page id(%lld) "
-		"total_append_page_count(%ld) total_delayed_page_count(%ld) "
-		" num_toflush(%d) use_append_page_sec(%f) need_flush(%d) "
-		"commit_count(%ld) total_commit_count(%ld)\n", (int) log_Stat.last_append_pageid,
-		(int) log_Stat.last_delayed_pageid, log_Stat.total_append_page_count,
-		log_Stat.total_delayed_page_count, flush_info->num_toflush, log_Stat.use_append_page_sec, need_flush,
+		"log_next_append_page: new page id(%lld) total_append_page_count(%ld)"
+		" num_toflush(%d) use_append_page_sec(%f) need_flush(%d) commit_count(%ld)"
+		" total_commit_count(%ld)\n", (int) log_Stat.last_append_pageid, log_Stat.total_append_page_count,
+		flush_info->num_toflush, log_Stat.use_append_page_sec, need_flush,
 		log_Stat.last_commit_count_while_using_a_page, log_Stat.total_commit_count_while_using_a_page);
 #endif /* CUBRID_DEBUG */
 }
