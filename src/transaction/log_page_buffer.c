@@ -199,11 +199,6 @@ static int rv;
     LOG_APPEND_ALIGN ((thread_p), LOG_SET_DIRTY); \
   } while (0)
 
-#define LOG_PREV_APPEND_PTR() \
-  ((log_Gl.append.delayed_free_log_pgptr != NULL) \
-   ? ((char *) log_Gl.append.delayed_free_log_pgptr->area + log_Gl.append.prev_lsa.offset) \
-   : ((char *) log_Gl.append.log_pgptr->area + log_Gl.append.prev_lsa.offset))
-
 /* LOG BUFFER STRUCTURE */
 
 typedef struct log_buffer LOG_BUFFER;
@@ -608,7 +603,6 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   if (log_Gl.append.log_pgptr != NULL)
     {
       log_Gl.append.log_pgptr = NULL;
-      log_Gl.append.delayed_free_log_pgptr = NULL;
     }
   logpb_set_nxio_lsa (&NULL_LSA);
   LSA_SET_NULL (&log_Gl.append.prev_lsa);
@@ -1095,7 +1089,7 @@ logpb_dump (THREAD_ENTRY * thread_p, FILE * out_fp)
 static void
 logpb_dump_information (FILE * out_fp)
 {
-  long long int delayed_free, append;
+  long long int append;
   int i;
   fprintf (out_fp, "\n\n ** DUMP OF LOG BUFFER POOL INFORMATION **\n\n");
 
@@ -1114,15 +1108,6 @@ logpb_dump_information (FILE * out_fp)
 	   (long long int) log_Gl.prior_info.prior_lsa.pageid, (int) log_Gl.prior_info.prior_lsa.offset,
 	   (long long int) log_Gl.prior_info.prev_lsa.pageid, (int) log_Gl.prior_info.prev_lsa.offset);
 
-  if (log_Gl.append.delayed_free_log_pgptr == NULL)
-    {
-      delayed_free = NULL_PAGEID;
-    }
-  else
-    {
-      delayed_free = logpb_get_page_id (log_Gl.append.delayed_free_log_pgptr);
-    }
-
   if (log_Gl.append.log_pgptr == NULL)
     {
       append = NULL_PAGEID;
@@ -1133,8 +1118,7 @@ logpb_dump_information (FILE * out_fp)
     }
 
   fprintf (out_fp, " Append to_flush array: max = %d, num_active = %d\n"
-	   " Delayed free page = %lld, Current append page = %lld\n",
-	   log_Gl.flush_info.max_toflush, log_Gl.flush_info.num_toflush, delayed_free, append);
+	   " Current append page = %lld\n", log_Gl.flush_info.max_toflush, log_Gl.flush_info.num_toflush, append);
 }
 
 /*
@@ -1523,7 +1507,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
    *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list)
    *  case 2. EOL record which is written temporarily by
    *          logpb_flush_all_append_pages is cleared so there is no EOL
-   *          in log page (in delayed_free_log_pgptr)
+   *          in log page
    */
 
   if (LSA_LE (&append_lsa, req_lsa)	/* for case 1 */
@@ -2157,10 +2141,9 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
     }
 
   /* 
-   * Fetch the start append page and set delayed free to NULL.
+   * Fetch the start append page
    */
 
-  log_Gl.append.delayed_free_log_pgptr = NULL;
   log_Gl.append.log_pgptr = logpb_locate_page (thread_p, log_Gl.hdr.append_lsa.pageid, flag);
   if (log_Gl.append.log_pgptr == NULL)
     {
@@ -2209,7 +2192,6 @@ logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
 {
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  log_Gl.append.delayed_free_log_pgptr = NULL;
   log_Gl.append.log_pgptr = logpb_locate_page (thread_p, log_Gl.hdr.append_lsa.pageid, NEW_PAGE);
   if (log_Gl.append.log_pgptr == NULL)
     {
@@ -2272,21 +2254,6 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
     }
 
-  if (log_Gl.append.delayed_free_log_pgptr == NULL)
-    {
-      /* 
-       * We have not delayed freeing an append page. Therefore, the current
-       * log append page is a candidate for a page holding a new append log
-       * record.
-       */
-
-      if (logpb_is_dirty (thread_p, log_Gl.append.log_pgptr) == true)
-	{
-	  log_Gl.append.delayed_free_log_pgptr = log_Gl.append.log_pgptr;
-	  /* assert(current_setdirty == LOG_SET_DIRTY); */
-	}
-    }
-
   log_Gl.append.log_pgptr = NULL;
 
   log_Gl.hdr.append_lsa.pageid++;
@@ -2334,13 +2301,6 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
     log_Stat.last_append_pageid = log_Gl.hdr.append_lsa.pageid;
 
     log_Stat.last_delayed_pageid = NULL_PAGEID;
-    if (log_Gl.append.delayed_free_log_pgptr != NULL)
-      {
-	LOG_BUFFER *delayed_bufptr;
-	delayed_bufptr = logpb_get_log_buffer (log_Gl.append.delayed_free_log_pgptr);
-	log_Stat.last_delayed_pageid = log_Gl.append.delayed_free_log_pgptr->hdr.logical_pageid;
-	log_Stat.total_delayed_page_count++;
-      }
   }
 #endif /* CUBRID_DEBUG */
 
@@ -4012,7 +3972,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * append record as log end record. Flush and then check it back.
    */
 
-  if (log_Gl.append.prev_lsa.pageid > -1 && log_Gl.hdr.append_lsa.pageid > -1 &&
+  if (log_Gl.append.prev_lsa.pageid != NULL_PAGEID && log_Gl.hdr.append_lsa.pageid != NULL_PAGEID &&
       log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
     {
       /* 
@@ -4023,16 +3983,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        * the current append log sequence address
        */
 
-#if defined(CUBRID_DEBUG)
-      if (logpb_get_page_id (log_Gl.append.delayed_free_log_pgptr) != log_Gl.append.prev_lsa.pageid)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRONG_FORCE_DELAYED, 2,
-		  log_Gl.append.prev_lsa.pageid, logpb_get_page_id (log_Gl.append.delayed_free_log_pgptr));
-	  goto error;
-	}
-#endif /* CUBRID_DEBUG */
       first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
-      log_Gl.append.delayed_free_log_pgptr = first_append_log_page;
       tmp_eof = (LOG_RECORD_HEADER *) ((char *) first_append_log_page->area + log_Gl.append.prev_lsa.offset);
       save_record = *tmp_eof;
 
@@ -4040,8 +3991,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       LSA_SET_NULL (&tmp_eof->forw_lsa);
       tmp_eof->type = LOG_END_OF_LOG;
       LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.append.prev_lsa);
-
-      logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr);
     }
   else
     {
@@ -5134,16 +5083,9 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
    */
   assert (LSA_EQ (&header->forw_lsa, &log_Gl.hdr.append_lsa));
 
-  if (log_Gl.append.prev_lsa.pageid > -1 && log_Gl.hdr.append_lsa.pageid > -1 &&
-      log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
-    {
-      logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr);
-      log_Gl.append.delayed_free_log_pgptr = NULL;
-    }
-  else
-    {
-      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-    }
+  if (!(log_Gl.append.prev_lsa.pageid != NULL_PAGEID && log_Gl.hdr.append_lsa.pageid != NULL_PAGEID &&
+	log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid))
+    logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 }
 
 /*

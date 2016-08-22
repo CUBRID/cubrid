@@ -602,7 +602,6 @@ struct log_append_info
   LOG_LSA nxio_lsa;		/* Lowest log sequence number which has not been written to disk (for WAL). */
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
-  LOG_PAGE *delayed_free_log_pgptr;	/* Delay freeing a log append page */
 
 #if !defined(HAVE_ATOMIC_BUILTINS)
   pthread_mutex_t nxio_lsa_mutex;
@@ -619,8 +618,6 @@ struct log_append_info
     /* prev_lsa */                                            \
     {NULL_PAGEID, NULL_OFFSET},                               \
     /* log_pgptr */                                           \
-    NULL,                                                     \
-    /* delayed_free_log_pgptr */                              \
     NULL}
 #else
 #define LOG_APPEND_INFO_INITIALIZER                           \
@@ -632,8 +629,6 @@ struct log_append_info
     /* prev_lsa */                                            \
     {NULL_PAGEID, NULL_OFFSET},                               \
     /* log_pgptr */                                           \
-    NULL,                                                     \
-    /* delayed_free_log_pgptr */                              \
     NULL,                                                     \
     /* nxio_lsa_mutex */                                      \
     PTHREAD_MUTEX_INITIALIZER}

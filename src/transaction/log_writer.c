@@ -2066,8 +2066,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 
   er_log_debug (ARG_FILE_LINE,
 		"logwr_pack_log_pages, fpageid(%lld), lpageid(%lld), num_pages(%lld),"
-		"\n status(%d), delayed_free_log_pgptr(%p)\n", fpageid, lpageid, num_logpgs, entry->status,
-		log_Gl.append.delayed_free_log_pgptr);
+		"\n status(%d)\n", fpageid, lpageid, num_logpgs, entry->status);
 
   return NO_ERROR;
 
