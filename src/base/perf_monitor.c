@@ -4049,7 +4049,7 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 }
 
 bool
-perfmon_is_perf_tracking ()
+perfmon_is_perf_tracking (void)
 {
   return pstat_Global.n_watchers > 0;
 }
