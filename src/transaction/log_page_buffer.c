@@ -3962,7 +3962,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   /* 
    * Add an end of log marker to detect the end of the log.
-   * The marker should be added at the end of the log if there is not more
+   * The marker should be added at the end of the log if there is no more
    * than one page. That is, if we are not in the middle of appending
    * a new log record. Otherwise, we need to change the label of the last
    * append record as log end record. Flush and then check it back.
