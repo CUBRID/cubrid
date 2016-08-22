@@ -3937,7 +3937,7 @@ error:
   perfmon_finalize ();
   return ER_OUT_OF_VIRTUAL_MEMORY;
 
-#else	/* !SERVER_MODE && !SA_MODE */
+#else /* !SERVER_MODE && !SA_MODE */
   pstat_Global.initialized = true;
   return NO_ERROR;
 #endif /* CS_MODE */
