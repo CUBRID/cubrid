@@ -379,13 +379,28 @@ union file_descriptors
   FILE_EHASH_DES ehash;
 };
 
-typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, VPID * vpid, void *args);
+typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 
-extern int flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE tablespace,
-			FILE_DESCRIPTORS * des, bool is_temp, VFID * vfid);
-extern void file_postpone_destroy (THREAD_ENTRY * thread_p, VFID * vfid);
+extern int flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tablespace,
+			FILE_DESCRIPTORS * des, bool is_temp, bool is_numerable, VFID * vfid);
+extern int flre_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npages, FILE_DESCRIPTORS * des,
+				    VFID * vfid);
+extern int flre_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
+extern int file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
+extern int flre_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash,
+			      VFID * vfid);
+extern int flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash,
+				  VFID * vfid);
 
-extern int file_alloc (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid_out);
+extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int flre_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
+
+extern int file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
+extern int file_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
+				void *f_init_args, VPID * vpid_alloc);
+
+extern int file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
+				    VPID * vpid_nth);
 
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

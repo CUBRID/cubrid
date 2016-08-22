@@ -2453,13 +2453,10 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
-		  if (file_create_tmp (thread_p, &sort_param->multipage_file, SORT_MULTIPAGE_FILE_SIZE_ESTIMATE, NULL)
-		      == NULL)
+		  error = flre_create_temp (thread_p, 1, &sort_param->multipage_file);
+		  if (error != NO_ERROR)
 		    {
-		      /* Disk full; so return */
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		      assert (error != NO_ERROR);
+		      ASSERT_ERROR ();
 		      goto exit_on_error;
 		    }
 		}
@@ -4469,13 +4466,20 @@ static int
 sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc)
 {
   VPID new_vpid;
-  int new_nthpg;
-  int pg_cnt_est2;
   int ret = NO_ERROR;
-  int file_numpages, alloc_npages;
 
-  if (file_create_tmp (thread_p, vfid, file_pg_cnt_est, NULL) == NULL)
+  /* todo: sort file is a case I missed that seems to use file_find_nthpages. I don't know if it can be optimized to
+   *       work without numerable files, that remains to be seen. */
+
+  ret = file_create_temp_numerable (thread_p, file_pg_cnt_est, vfid);
+  if (ret != NO_ERROR)
     {
+      ASSERT_ERROR ();
+      return ret;
+    }
+  if (VFID_ISNULL (vfid))
+    {
+      assert_release (false);
       return ER_FAILED;
     }
 
@@ -4483,40 +4487,20 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
     {
       return NO_ERROR;
     }
-
   /* page allocation force is specified, allocate pages for the file */
-
-  /* 
-   * We don't initialize pages during allocation since we do not care the
-   * state of the pages after a rollback or system crashes. Nothing need
-   * to be log on the page. The pages are initialized at a later time.
-   */
-  file_numpages = file_get_numpages (thread_p, vfid);
-  alloc_npages = file_pg_cnt_est - file_numpages;
-
-  if (alloc_npages > 0)
+  /* todo: we don't have multiple page allocation, but allocation should be fast enough */
+  while (file_pg_cnt_est > 0)
     {
-      if (file_alloc_pages_as_noncontiguous (thread_p, vfid, &new_vpid, &new_nthpg, alloc_npages, NULL, NULL, NULL,
-					     NULL) == NULL)
+      ret = file_alloc (thread_p, vfid, &new_vpid);
+      if (ret != NO_ERROR)
 	{
-	  if (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  /* allocation failed with this estimate, try to allocate maximum possible. */
-	  pg_cnt_est2 = (int) (boot_max_pages_new_volume () * 0.95);
-	  pg_cnt_est2 = MAX (1, pg_cnt_est2);
-
-	  if (pg_cnt_est2 < file_pg_cnt_est
-	      && file_alloc_pages_as_noncontiguous (thread_p, vfid, &new_vpid, &new_nthpg, pg_cnt_est2, NULL, NULL,
-						    NULL, NULL) == NULL
-	      && er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
-	    {
-	      return ER_FAILED;
-	    }
+	  ASSERT_ERROR ();
+	  goto exit;
 	}
     }
+
+exit:
+  /* todo: do not leak file */
 
   return ret;
 }
@@ -4542,34 +4526,10 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   PAGE_PTR page_ptr = NULL;
   VPID vpid;
   INT32 page_no;
-  INT32 file_size;
-  int new_nthpg;
-  int alloc_pgcnt;
   int i;
   int ret = NO_ERROR;
 
   /* initializations */
-  vpid.volid = vfid->volid;
-  file_size = file_get_numpages (thread_p, vfid);
-  alloc_pgcnt = first_page + num_pages - file_size;
-
-  /* Check if the file has enough pages */
-  if ((first_page + num_pages) > file_size)
-    {
-      /* Allocate new pages to the current file We don't initialize pages during allocation since we do not care the
-       * state of the pages after a rollback or system crashes. Nothing need to be log on the page. The pages are
-       * initialized at a later time. */
-      if (file_alloc_pages_as_noncontiguous (thread_p, vfid, &vpid, &new_nthpg, alloc_pgcnt, NULL, NULL, NULL, NULL) ==
-	  NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  ret = er_errid ();
-	  assert (ret != NO_ERROR);
-
-	  return ret;
-	}
-    }
-
   page_no = first_page;
 
   /* Flush pages buffered in the given area to the specified file */
@@ -4578,17 +4538,20 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
 
   for (i = 0; i < num_pages; i++)
     {
-      if (file_find_nthpages (thread_p, vfid, &vpid, page_no++, 1) == -1
-	  || pgbuf_copy_from_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true) == NULL)
+      /* file is automatically expanded if page is not allocated (as long as it is missing only one page) */
+      ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, &vpid);
+      if (ret != NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  ret = er_errid ();
-	  assert (ret != NO_ERROR);
-
+	  ASSERT_ERROR ();
+	  return ret;
+	}
+      if (pgbuf_copy_from_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;
 	}
 
-      page_ptr = (PAGE_PTR) ((char *) page_ptr + DB_PAGESIZE);
+      page_ptr += DB_PAGESIZE;
     }
 
   return NO_ERROR;
@@ -4624,17 +4587,19 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_
 
   for (i = 0; i < num_pages; i++)
     {
-      if (file_find_nthpages (thread_p, vfid, &vpid, page_no++, 1) == -1
-	  || pgbuf_copy_to_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true) == NULL)
+      ret = file_numerable_find_nth (thread_p, vfid, page_no++, false, &vpid);
+      if (ret != NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  ret = er_errid ();
-	  assert (ret != NO_ERROR);
-
+	  ASSERT_ERROR ();
+	  return ret;
+	}
+      if (pgbuf_copy_to_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;
 	}
 
-      page_ptr = (PAGE_PTR) ((char *) page_ptr + DB_PAGESIZE);
+      page_ptr += DB_PAGESIZE;
     }
 
   return NO_ERROR;

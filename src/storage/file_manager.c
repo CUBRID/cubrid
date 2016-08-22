@@ -14245,8 +14245,10 @@ struct flre_header
 #define FILE_IS_NUMERABLE(fh) (((fh)->file_flags & FILE_FLAG_NUMERABLE) != 0)
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
 
-/* Numerable file types. Currently, we used this property for extendible hashes. */
-#define FILE_TYPE_IS_NUMERABLE(ftype) ((ftype) == FILE_EXTENDIBLE_HASH || (ftype) == FILE_EXTENDIBLE_HASH_DIRECTORY)
+/* Numerable file types. Currently, we used this property for extensible hashes and sort files. */
+#define FILE_TYPE_CAN_BE_NUMERABLE(ftype) ((ftype) == FILE_EXTENDIBLE_HASH \
+					   || (ftype) == FILE_EXTENDIBLE_HASH_DIRECTORY \
+					   || (ftype) == FILE_TEMP)
 
 /* Convert VFID to file header page VPID. */
 #define FILE_GET_HEADER_VPID(vfid, vpid) (vpid)->volid = (vfid)->volid; (vpid)->pageid = (vfid)->fileid
@@ -14346,6 +14348,23 @@ struct file_partial_sector
 /* Utility structures                                                   */
 /************************************************************************/
 
+/* Table space default macro's */
+#define FILE_TABLESPACE_DEFAULT_RATIO_EXPAND ((float) 0.01)	/* 1% of current size */
+#define FILE_TABLESPACE_DEFAULT_MIN_EXPAND (DISK_SECTOR_NPAGES * DB_PAGESIZE);	/* one sector */
+#define FILE_TABLESPACE_DEFAULT_MAX_EXPAND (DISK_SECTOR_NPAGES * DB_PAGESIZE * 1024);	/* 1k sectors */
+
+#define FILE_TABLESPACE_FOR_PERM_NPAGES(tabspace, npages) \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = npages * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->expand_ratio = FILE_TABLESPACE_DEFAULT_RATIO_EXPAND; \
+  ((FILE_TABLESPACE *) (tabspace))->expand_min_size = FILE_TABLESPACE_DEFAULT_MIN_EXPAND; \
+  ((FILE_TABLESPACE *) (tabspace))->expand_max_size = FILE_TABLESPACE_DEFAULT_MAX_EXPAND
+
+#define FILE_TABLESPACE_FOR_TEMP_NPAGES(tabspace, npages) \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = npages * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->expand_ratio = 0; \
+  ((FILE_TABLESPACE *) (tabspace))->expand_min_size = 0; \
+  ((FILE_TABLESPACE *) (tabspace))->expand_max_size = 0
+
 /* FILE_VSID_COLLECTOR -
  * Collect sector ID's. File destroy uses it. */
 typedef struct file_vsid_collector FILE_VSID_COLLECTOR;
@@ -14376,6 +14395,15 @@ typedef enum
 /************************************************************************/
 
 #define FILE_USER_PAGE_MARK_DELETED ((PAGEID) 0x80000000)
+
+/* FILE_FIND_NTH_CONTEXT -
+ * structure used for finding nth page. */
+typedef struct file_find_nth_context FILE_FIND_NTH_CONTEXT;
+struct file_find_nth_context
+{
+  VPID *vpid_nth;
+  int nth;
+};
 
 /************************************************************************/
 /* End of structures, globals and macro's                               */
@@ -14501,10 +14529,11 @@ STATIC_INLINE int file_table_try_extdata_merge (THREAD_ENTRY * thread_p, PAGE_PT
 static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensate_or_run_postpone);
 
 /************************************************************************/
-/* Numerable file section.                                              */
+/* Numerable files section.                                             */
 /************************************************************************/
 
 static int file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid);
+static int file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 
 /************************************************************************/
 /* Temporary file section                                               */
@@ -16133,23 +16162,132 @@ file_compare_vpids (const void *first, const void *second)
 /* File manipulation section.                                           */
 /************************************************************************/
 
+/*
+ * flre_create_with_npages () - Create a permanent file big enough to store a number of pages.
+ *
+ * return	  : Error code
+ * thread_p (in)  : Thread entry
+ * file_type (in) : File type
+ * npages (in)	  : Number of pages.
+ * des (in)	  : File descriptor.
+ * vfid (out)	  : File identifier.
+ */
+int
+flre_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npages, FILE_DESCRIPTORS * des, VFID * vfid)
+{
+  FILE_TABLESPACE tablespace;
+
+  assert (file_type != FILE_TEMP);
+
+  FILE_TABLESPACE_FOR_PERM_NPAGES (&tablespace, npages);
+
+  return flre_create (thread_p, file_type, &tablespace, des, false, false, vfid);
+}
+
+/*
+ * flre_create_temp () - Create a temporary file.
+ *
+ * return	 : Error code
+ * thread_p (in) : Thread entry
+ * npages (in)	 : Number of pages
+ * vfid (out)	 : File identifier
+ */
+int
+flre_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
+{
+  FILE_TABLESPACE tablespace;
+
+  /* todo: shouldn't we consider the npages? */
+  if (file_tmpfile_cache_get (thread_p, vfid, FILE_TEMP) != NULL)
+    {
+      assert (!VFID_ISNULL (vfid));
+      return NO_ERROR;
+    }
+
+  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
+
+  return flre_create (thread_p, FILE_TEMP, &tablespace, NULL, true, false, vfid);
+}
+
+/*
+ * file_create_temp_numerable () - Create a temporary file with numerable property.
+ *
+ * return	 : Error code
+ * thread_p (in) : Thread entry
+ * npages (in)	 : Number of pages
+ * vfid (out)	 : File identifier
+ */
+int
+file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
+{
+  FILE_TABLESPACE tablespace;
+
+  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
+
+  return flre_create (thread_p, FILE_TEMP, &tablespace, NULL, true, true, vfid);
+}
+
+/*
+ * flre_create_ehash () - Create a permanent or temporary file for extensible hash table. This file will have the
+ *			  numerable property.
+ *
+ * return	  : Error code
+ * thread_p (in)  : Thread entry
+ * npages (in)	  : Number of pages
+ * is_tmp (in)	  : True if is temporary, false if is permanent
+ * des_ehash (in) : Extensible hash descriptor.
+ * vfid (out)	  : File identifier.
+ */
+int
+flre_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash, VFID * vfid)
+{
+  FILE_TABLESPACE tablespace;
+
+  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
+
+  return flre_create (thread_p, FILE_EXTENDIBLE_HASH, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp, true, vfid);
+}
+
+
+/*
+ * flre_create_ehash_dir () - Create a permanent or temporary file for extensible hash directory. This file will have
+ *			      the numerable property.
+ *
+ * return	  : Error code
+ * thread_p (in)  : Thread entry
+ * npages (in)	  : Number of pages
+ * is_tmp (in)	  : True if is temporary, false if is permanent
+ * des_ehash (in) : Extensible hash descriptor.
+ * vfid (out)	  : File identifier.
+ */
+int
+flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash, VFID * vfid)
+{
+  FILE_TABLESPACE tablespace;
+
+  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
+
+  return flre_create (thread_p, FILE_EXTENDIBLE_HASH_DIRECTORY, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp,
+		      true, vfid);
+}
+
 /* TODO: Rename as file_create. */
 /*
  * flre_create () - Create a new file.
  *
- * return	   : Error code.
- * thread_p (in)   : Thread entry.
- * file_type (in)  : File type.
- * tablespace (in) : File table space.
- * des (in)	   : File descriptor (based on file type).
- * is_temp (in)	   : True if file should be temporary.
- * vfid (out)	   : Output new file identifier.
+ * return	     : Error code.
+ * thread_p (in)     : Thread entry.
+ * file_type (in)    : File type.
+ * tablespace (in)   : File table space.
+ * des (in)	     : File descriptor (based on file type).
+ * is_temp (in)	     : True if file should be temporary.
+ * is_numerable (in) : True if file should be numerable.
+ * vfid (out)	     : Output new file identifier.
  */
 int
-flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE tablespace, FILE_DESCRIPTORS * des,
-	     bool is_temp, VFID * vfid)
+flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tablespace, FILE_DESCRIPTORS * des,
+	     bool is_temp, bool is_numerable, VFID * vfid)
 {
-  bool is_numerable = false;
   int total_size;
   int n_sectors;
   VSID *vsids_reserved = NULL;
@@ -16187,14 +16325,12 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
   int error_code = NO_ERROR;
 
   assert (file_type >= FILE_TRACKER && file_type <= FILE_LAST);
-  assert (tablespace.initial_size > 0);
+  assert (tablespace->initial_size > 0);
   assert (file_type != FILE_TEMP || is_temp);
   assert (vfid != NULL);
 
-  is_numerable = FILE_TYPE_IS_NUMERABLE (file_type);
-
   /* Estimate the required size including file header & tables. */
-  total_size = tablespace.initial_size;
+  total_size = tablespace->initial_size;
 
   if (!is_numerable)
     {
@@ -16317,7 +16453,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE table
 
   /* initialize header */
   fhead->self = *vfid;
-  fhead->tablespace = tablespace;
+  fhead->tablespace = *tablespace;
   if (des != NULL)
     {
       fhead->descriptor = *des;
@@ -16688,7 +16824,7 @@ file_table_collect_vsid (THREAD_ENTRY * thread_p, const void *item, int index_un
  * thread_p (in) : Thread entry
  * vfid (in)	 : File identifier
  */
-static int
+int
 flre_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   VPID vpid_fhead;
@@ -16821,7 +16957,7 @@ file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * vfid (in)	 : File identifier
  */
 void
-file_postpone_destroy (THREAD_ENTRY * thread_p, VFID * vfid)
+file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
@@ -17473,7 +17609,7 @@ exit:
  * vpid_out (out) : VPID of page.
  */
 int
-file_alloc (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid_out)
+file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out)
 {
 #define UNDO_DATA_SIZE (sizeof (VFID) + sizeof (VPID))
   VPID vpid_fhead;
@@ -17578,6 +17714,47 @@ exit:
 }
 
 /*
+ * file_alloc_and_init () - Allocate page and initialize it.
+ *
+ * return	    : Error code.
+ * thread_p (in)    : Thread entry.
+ * vfid (in)	    : File identifier.
+ * f_init (in)	    : Page init function.
+ * f_init_args (in) : Page init arguments.
+ * vpid_alloc (out) : VPID of allocated page.
+ */
+int
+file_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
+		     VPID * vpid_alloc)
+{
+  PAGE_PTR page_alloc = NULL;
+  int error_code;
+
+  error_code = file_alloc (thread_p, vfid, vpid_alloc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  page_alloc = pgbuf_fix (thread_p, vpid_alloc, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_alloc == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  error_code = f_init (thread_p, page_alloc, f_init_args);
+  pgbuf_unfix (thread_p, page_alloc);
+
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  return error_code;
+}
+
+/*
  * file_dealloc () - Deallocate a file page.
  *
  * return	       : Error code
@@ -17590,7 +17767,7 @@ exit:
  *			 start.
  */
 int
-file_dealloc (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid, FILE_TYPE file_type_hint)
+file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid, FILE_TYPE file_type_hint)
 {
 #define LOG_DATA_SIZE (sizeof (VFID) + sizeof (VPID))
   VPID vpid_fhead;
@@ -17616,6 +17793,8 @@ file_dealloc (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid, FILE_TYPE file_
    *
    * numerable files: we mark the page for 
    */
+
+  /* todo: add known is_temp/is_numerable */
 
   /* read file type from header if caller doesn't know it. debug always reads the type from file header to check caller
    * is not wrong. */
@@ -17646,12 +17825,11 @@ file_dealloc (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid, FILE_TYPE file_
       log_append_postpone (thread_p, RVFL_DEALLOC, &log_addr, LOG_DATA_SIZE, log_data);
     }
 
-  if (!FILE_TYPE_IS_NUMERABLE (file_type_hint))
+  if (!FILE_TYPE_CAN_BE_NUMERABLE (file_type_hint))
     {
       /* we don't need to do anything now. the actual deallocation is postponed (or skipped altogether). */
       goto exit;
     }
-  /* numerable file. we need to mark page in user page table as deleted. (so we can have a correct order of pages). */
 
   if (page_fhead == NULL)
     {
@@ -17668,7 +17846,11 @@ file_dealloc (THREAD_ENTRY * thread_p, VFID * vfid, VPID * vpid, FILE_TYPE file_
     }
   assert (page_fhead != NULL);
   assert (fhead != NULL);
-  assert (FILE_IS_NUMERABLE (fhead));
+  if (!FILE_IS_NUMERABLE (fhead))
+    {
+      /* we don't need to do anything now. the actual deallocation is postponed (or skipped altogether). */
+      goto exit;
+    }
 
   /* search for VPID in user page table */
   FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
@@ -18396,6 +18578,129 @@ exit:
     {
       assert (page_ftab != page_fhead);
       pgbuf_unfix (thread_p, page_ftab);
+    }
+
+  return error_code;
+}
+
+/*
+ * file_extdata_find_nth_vpid () - Function callable by file_extdata_apply_funcs. Used to find the nth VPID not marked
+ *				   as deleted (numerable files).
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : Thread entry
+ * data (in)	 : Pointer in user page table (VPID *).
+ * index (in)	 : Not used.
+ * stop (out)	 : Output true when nth page is reached.
+ * args (in/out) : FILE_FIND_NTH_CONTEXT *
+ */
+static int
+file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
+{
+  FILE_FIND_NTH_CONTEXT *find_nth_context = (FILE_FIND_NTH_CONTEXT *) args;
+  VPID *vpidp = (VPID *) data;
+
+  if (vpidp->pageid & FILE_USER_PAGE_MARK_DELETED)
+    {
+      /* skip marked deleted */
+      return NO_ERROR;
+    }
+  if (find_nth_context->nth == 0)
+    {
+      /* found nth */
+      *find_nth_context->vpid_nth = *vpidp;
+      *stop = true;
+    }
+  else
+    {
+      /* update nth */
+      find_nth_context->nth--;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * file_numerable_find_nth () - Find nth page VPID in numerable file.
+ *
+ * return	   : Error code
+ * thread_p (in)   : Thread entry
+ * vfid (in)	   : File identifier
+ * nth (in)	   : Index of page
+ * auto_alloc (in) : True to allow file extension.
+ * vpid_nth (out)  : VPID at index
+ */
+int
+file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc, VPID * vpid_nth)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  FILE_EXTENSIBLE_DATA *extdata_user_page_ftab = NULL;
+  FILE_FIND_NTH_CONTEXT find_nth_context;
+
+  int error_code = NO_ERROR;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+  assert (nth >= 0);
+  assert (vpid_nth != NULL);
+
+  VPID_SET_NULL (vpid_nth);
+
+  /* how it works:
+   * iterate through user page table, skipping pages marked as deleted, and decrement counter until it reaches 0.
+   * save the VPID found on the nth position. */
+
+  /* get file header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+  assert (nth < fhead->n_page_user);
+
+  /* iterate in user page table */
+  FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
+  find_nth_context.vpid_nth = vpid_nth;
+  find_nth_context.nth = nth;
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, NULL, NULL, file_extdata_find_nth_vpid,
+			      &find_nth_context, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+  if (VPID_ISNULL (vpid_nth))
+    {
+      if (find_nth_context.nth == 0 && auto_alloc)
+	{
+	  error_code = file_alloc (thread_p, vfid, vpid_nth);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+	}
+      else if (auto_alloc)
+	{
+	  /* should not happen */
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+    }
+
+  assert (error_code == NO_ERROR);
+
+exit:
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
     }
 
   return error_code;
