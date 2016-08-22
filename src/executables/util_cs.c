@@ -2712,7 +2712,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
   do
     {
       print_timestamp (outfp);
-      if(histo_print_global_stats (outfp, cumulative, substr) != NO_ERROR)
+      if (histo_print_global_stats (outfp, cumulative, substr) != NO_ERROR)
 	{
 	  goto error_exit;
 	}
