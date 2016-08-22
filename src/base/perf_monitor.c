@@ -4558,11 +4558,12 @@ perfmon_allocate_packed_values_buffer (void)
 {
   char *buf;
 
-  buf = (char *) malloc (PERFMON_VALUES_MEMSIZE + MAX_ALIGNMENT);
+  buf = (char *) malloc (PERFMON_VALUES_MEMSIZE);
   if (buf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE + MAX_ALIGNMENT);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
     }
+  ASSERT_ALIGN(buf, MAX_ALIGNMENT);
 
   return buf;
 }
