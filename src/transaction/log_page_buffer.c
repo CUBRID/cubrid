@@ -4012,7 +4012,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * append record as log end record. Flush and then check it back.
    */
 
-  if (log_Gl.append.delayed_free_log_pgptr != NULL)
+  if (log_Gl.append.prev_lsa.pageid > -1 && log_Gl.hdr.append_lsa.pageid > -1 &&
+      log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
     {
       /* 
        * Flush all log append records on such page except the current log
@@ -4134,7 +4135,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        */
       if (last_idxflush == -1)
 	{
-	  if (bufptr->dirty == true)
+	  if (bufptr->dirty == true && bufptr->pageid == flush_info->toflush[i]->hdr.logical_pageid)
 	    {
 	      /* We have found the smallest dirty page */
 	      last_idxflush = i;
@@ -5133,10 +5134,9 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
    */
   assert (LSA_EQ (&header->forw_lsa, &log_Gl.hdr.append_lsa));
 
-  if (log_Gl.append.delayed_free_log_pgptr != NULL)
+  if (log_Gl.append.prev_lsa.pageid > -1 && log_Gl.hdr.append_lsa.pageid > -1 &&
+      log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
     {
-      assert (logpb_is_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr));
-
       logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr);
       log_Gl.append.delayed_free_log_pgptr = NULL;
     }
