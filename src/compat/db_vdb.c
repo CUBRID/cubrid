@@ -2852,9 +2852,9 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
 
   CHECK_CONNECT_MINUSONE ();
 
-  err = db_execute_and_keep_statement_local (session, stmt_ndx, result, query_execution_ending_type);
+  db_invalidate_mvcc_snapshot_before_statement ();
 
-  db_invalidate_mvcc_snapshot_after_statement ();
+  err = db_execute_and_keep_statement_local (session, stmt_ndx, result, query_execution_ending_type);
 
   db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
@@ -2931,10 +2931,9 @@ db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** res
   assert (query_execution_ending_type != NULL);
   assert (*query_execution_ending_type == DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED
 	  || *query_execution_ending_type == DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_invalidate_mvcc_snapshot_before_statement ();
 
   err = db_execute_statement_local (session, stmt_ndx, result, query_execution_ending_type);
-
-  db_invalidate_mvcc_snapshot_after_statement ();
 
   db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
@@ -3057,6 +3056,13 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
       *(char **) result = NULL;
     }
 
+  if (is_new_statement)
+    {
+      /* invalidate snapshot before compile/execution take place */
+      db_invalidate_mvcc_snapshot_before_statement ();
+      db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
+    }
+
   /* Open buffer and compile first statement */
   error = db_open_buffer_and_compile_first_statement (CSQL_query, query_error, include_oid, &session, &stmt_no);
   if (session == NULL)
@@ -3080,7 +3086,7 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
 	   * COMMITTED isolation. */
 	  if (is_new_statement)
 	    {
-	      db_invalidate_mvcc_snapshot_after_statement ();
+	      db_invalidate_mvcc_snapshot_before_statement ();
 
 	      db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 	    }
@@ -3094,7 +3100,7 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
       *(DB_QUERY_TYPE **) result = db_get_query_type_list (session, stmt_no);
       if (is_new_statement)
 	{
-	  db_invalidate_mvcc_snapshot_after_statement ();
+	  db_invalidate_mvcc_snapshot_before_statement ();
 
 	  db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 	}
@@ -3817,7 +3823,7 @@ db_query_produce_updatable_result (DB_SESSION * session, int stmt_ndx)
 }
 
 /*
- * db_invalidate_mvcc_snapshot_after_statement () - When MVCC is enabled,
+ * db_invalidate_mvcc_snapshot_before_statement () - When MVCC is enabled,
  *						    server uses a snapshot to
  *						    filter data. Snapshot is
  *						    obtained with the first
@@ -3832,7 +3838,7 @@ db_query_produce_updatable_result (DB_SESSION * session, int stmt_ndx)
  *	 MVCC, snapshot must be invalidated only on commit/rollback.
  */
 void
-db_invalidate_mvcc_snapshot_after_statement (void)
+db_invalidate_mvcc_snapshot_before_statement (void)
 {
   if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
     {

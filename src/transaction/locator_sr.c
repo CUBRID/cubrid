@@ -70,6 +70,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "db.h"
 #include "filter_pred_cache.h"
+#include "fetch.h"
 
 #if defined(DMALLOC)
 #include "dmalloc.h"
@@ -237,6 +238,20 @@ static DISK_ISVALID locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID
 static void locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p, OID * class_oid);
 
 static int redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
+static SCAN_CODE locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+						       LOCK lock_mode);
+static DB_LOGICAL locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
+						  HEAP_SCANCACHE * scan_cache, RECDES * recdes,
+						  MVCC_UPDDEL_REEV_DATA * mvcc_reev_data);
+static DB_LOGICAL locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid,
+						    HEAP_SCANCACHE * scan_cache, RECDES * recdes,
+						    UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel);
+static DB_LOGICAL locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data,
+						   const OID * oid, RECDES * recdes);
+static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
+							 MVCC_REEV_DATA * mvcc_reev_data_p,
+							 MVCC_REC_HEADER * mvcc_header_p,
+							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -2121,8 +2136,7 @@ locator_find_lockset_missing_class_oids (THREAD_ENTRY * thread_p, LC_LOCKSET * l
        * Caller does not know the class identifier of the requested object.
        * Get the class identifier from disk
        */
-      if (heap_get_class_oid_with_lock (thread_p, &class_oid, &reqobjs[i].oid, SNAPSHOT_TYPE_MVCC, NULL_LOCK) !=
-	  S_SUCCESS)
+      if (heap_get_class_oid (thread_p, &reqobjs[i].oid, &class_oid) != S_SUCCESS)
 	{
 	  /* 
 	   * Unable to find the class of the object. Remove the object from
@@ -2328,69 +2342,9 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
       chn = heap_chnguess_get (thread_p, oid, tran_index);
     }
 
-  /* Locking rules: 1. Non-MVCC: Always lock before getting object. This applies for root class instances and other
-   * classes for which MVCC was disabled (e.g.  db_serial). 2. MVCC S_LOCK: Read locks are not required due to
-   * snapshot.  Use heap_mvcc_get_visible (to obtain visible version with no locks). 3. MVCC X_LOCK: Need exclusive
-   * lock on object. Since the object may have several version, always last version must be locked.  Use
-   * heap_mvcc_get_version_for_delete function. 4. NULL_LOCK: No locks and just call heap_mvcc_get_visible. */
-  /* First check intention locks are not used for instances. */
-  if (!OID_IS_ROOTOID (class_oid) && lock_mode > NULL_LOCK)
-    {
-      if (lock_mode == IS_LOCK)
-	{
-	  /* Use S_LOCK. This lock will be transformed into NULL_LOCK if op_type is S_SELECT and MVCC is not disabled
-	   * for class OID. */
-	  if (op_type == S_SELECT && !heap_is_mvcc_disabled_for_class (class_oid))
-	    {
-	      lock_mode = NULL_LOCK;
-	    }
-	  else
-	    {
-	      lock_mode = S_LOCK;
-	    }
-
-	}
-      else if (lock_mode == IX_LOCK)
-	{
-	  assert (0);
-	  lock_mode = X_LOCK;
-	}
-      assert (lock_mode == S_LOCK || lock_mode == X_LOCK);
-    }
-
-  if (heap_is_mvcc_disabled_for_class (class_oid))
-    {
-      if (lock_mode > NULL_LOCK)
-	{
-	  /* Lock object now. */
-	  lock_ret = lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK);
-	  if (lock_ret != LK_GRANTED)
-	    {
-	      /* Could not lock. */
-	      return S_ERROR;
-	    }
-	}
-      /* Get object. */
-      scan = heap_get (thread_p, oid, &assign->recdes, assign->ptr_scancache, COPY, chn);
-    }
-  else if (lock_mode == X_LOCK || lock_mode == S_LOCK)
-    {
-      /* Get and lock last object version. */
-      scan =
-	heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache,
-					       op_type, COPY, chn, NULL, LOG_WARNING_IF_DELETED);
-    }
-  else
-    {
-      /* !heap_is_mvcc_disabled_for_class && (lock_mode == NULL_LOCK) */
-      assert (!heap_is_mvcc_disabled_for_class (class_oid) && (lock_mode == NULL_LOCK));
-      /* Don't lock anything and get visible object version. */
-      scan =
-	heap_get_visible_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, COPY, NULL_CHN,
-				  false);
-    }
-
-  if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END)
+  scan = locator_get_object (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, op_type, lock_mode, COPY,
+			     chn);
+  if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END || scan == S_DOESNT_EXIST)
     {
       return scan;
     }
@@ -2465,6 +2419,35 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       skip_fetch_version_type_check = true;
     }
 
+  switch (fetch_version_type)
+    {
+    case LC_FETCH_MVCC_VERSION:
+      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (mvcc_snapshot == NULL)
+	{
+	  error_code = er_errid ();
+	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
+	}
+      break;
+
+    case LC_FETCH_DIRTY_VERSION:
+      mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+      mvcc_snapshot = &mvcc_snapshot_dirty;
+      break;
+
+    case LC_FETCH_CURRENT_VERSION:
+      mvcc_snapshot = NULL;
+      break;
+
+    default:
+      /* no usage at this point */
+      assert (0);
+      break;
+    }
+
+  /* Compute operation type */
+  operation_type = locator_decide_operation_type (lock, fetch_version_type);
+
   if (class_oid == NULL)
     {
       /* The class_oid is not known by the caller. */
@@ -2472,98 +2455,26 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       OID_SET_NULL (class_oid);
     }
 
+#if !defined (NDEBUG)
   if (OID_ISNULL (class_oid))
     {
-      /* 
+      /*
        * Caller does not know the class of the object. Get the class
        * identifier from disk
        */
-      SNAPSHOT_TYPE snapshot_type = SNAPSHOT_TYPE_NONE;
-
-      switch (fetch_version_type)
-	{
-	case LC_FETCH_MVCC_VERSION:
-	  snapshot_type = SNAPSHOT_TYPE_MVCC;
-	  operation_type = S_SELECT;
-	  break;
-
-	case LC_FETCH_DIRTY_VERSION:
-	  snapshot_type = SNAPSHOT_TYPE_DIRTY;
-	  operation_type = S_SELECT_WITH_LOCK;
-	  break;
-
-	case LC_FETCH_CURRENT_VERSION:
-	  snapshot_type = SNAPSHOT_TYPE_NONE;
-	  operation_type = S_SELECT;
-	  break;
-
-	default:
-	  assert (0);
-	}
-
-      scan = heap_get_class_oid_with_lock (thread_p, class_oid, oid, snapshot_type, lock);
+      scan = heap_get_class_oid (thread_p, oid, class_oid);
       if (scan != S_SUCCESS)
 	{
 	  /* Unable to find the class of the object.. return */
 	  *fetch_area = NULL;
 
-	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
+	  error_code = ER_HEAP_UNKNOWN_OBJECT;
+	  if (er_errid () != error_code)
 	    {
-	      error_code = ER_HEAP_UNKNOWN_OBJECT;
-	      if (er_errid () != error_code)
-		{
-		  /* error has not been previously set */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
-		}
-	      return error_code;
+	      /* error has not been previously set */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
 	    }
-	  else
-	    {
-	      assert (scan == S_ERROR);
-	      ASSERT_ERROR_AND_SET (error_code);
-	      return error_code;
-	    }
-	}
-
-      /* prepare for getting the current OID (no snapshot) without lock */
-      mvcc_snapshot = NULL;
-      operation_type = S_SELECT;
-
-      /* object already locked or it doesn't need locking */
-      object_need_locking = false;
-
-      if (lock > NULL_LOCK && (snapshot_type != SNAPSHOT_TYPE_MVCC || heap_is_mvcc_disabled_for_class (class_oid)))
-	{
-	  object_locked = true;
-	}
-    }
-  else
-    {
-      switch (fetch_version_type)
-	{
-	case LC_FETCH_MVCC_VERSION:
-	  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-	  if (mvcc_snapshot == NULL)
-	    {
-	      error_code = er_errid ();
-	      return (error_code == NO_ERROR ? ER_FAILED : error_code);
-	    }
-	  operation_type = S_SELECT;
-	  break;
-
-	case LC_FETCH_DIRTY_VERSION:
-	  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
-	  mvcc_snapshot = &mvcc_snapshot_dirty;
-	  operation_type = S_SELECT_WITH_LOCK;
-	  break;
-
-	case LC_FETCH_CURRENT_VERSION:
-	  mvcc_snapshot = NULL;
-	  operation_type = S_SELECT;
-	  break;
-
-	default:
-	  assert (0);
+	  return error_code;
 	}
     }
 
@@ -2581,27 +2492,13 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
 		  || class_lock >= SIX_LOCK)));
 
-  if (!OID_IS_ROOTOID (class_oid) && lock > NULL_LOCK && !object_locked)
-    {
-      if (lock == IS_LOCK)
-	{
-	  /* Use S_LOCK. This lock will be transformed into NULL_LOCK if op_type is S_SELECT and MVCC is not disabled
-	   * for class OID. */
-	  lock = S_LOCK;
-	}
-      else if (lock == IX_LOCK)
-	{
-	  assert (0);
-	  lock = X_LOCK;
-	}
-      assert (lock == S_LOCK || lock == X_LOCK);
-    }
+  /* LC_FETCH_CURRENT_VERSION should be used for classes only */
+  assert (fetch_version_type != LC_FETCH_CURRENT_VERSION || OID_IS_ROOTOID (class_oid));
+#endif /* DEBUG */
 
   /* 
-   * Lock and fetch the object and its class.
+   * Lock and fetch the object.
    */
-
-  error_code = NO_ERROR;
 
   /* Assume that the needed object can fit in one page */
   copyarea_length = DB_PAGESIZE;
@@ -2633,15 +2530,14 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       nxobj.mobjs->num_objs = 0;
 
       /* Get the interested object first */
-      scan =
-	locator_lock_and_return_object (thread_p, &nxobj, class_oid, p_oid, chn, object_need_locking ? lock : NULL_LOCK,
-					operation_type);
+      scan = locator_lock_and_return_object (thread_p, &nxobj, class_oid, p_oid, chn,
+					     object_need_locking ? lock : NULL_LOCK, operation_type);
       if (scan == S_SUCCESS)
 	{
 	  if (object_need_locking)
 	    {
 	      object_need_locking = false;
-	      is_mvcc_disabled_class = heap_is_mvcc_disabled_for_class (class_oid);
+	      is_mvcc_disabled_class = mvcc_is_mvcc_disabled_class (class_oid);
 	      if (is_mvcc_disabled_class == true)
 		{
 		  if (lock > NULL_LOCK)
@@ -2673,7 +2569,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
        * If the object does not fit even when the copy area seems to be
        * large enough, increase the copy area by at least one page size.
        */
-      if (scan == S_DOESNT_EXIST)
+      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
 	  heap_scancache_end (thread_p, &nxobj.area_scancache);
 	  nxobj.comm_area = *fetch_area = NULL;
@@ -2704,27 +2600,17 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	}
     }
 
-  error_code = heap_scancache_end (thread_p, &nxobj.area_scancache);
-  if (error_code != NO_ERROR)
-    {
-      locator_free_copy_area (nxobj.comm_area);
-      *fetch_area = NULL;
-      error_code = ER_FAILED;
-      goto error;
-    }
-  nxobj.ptr_scancache = NULL;
-
   /* 
    * Then, get the interested class, if given class coherency number is not
    * current.
    */
-  scan =
-    locator_lock_and_return_object (thread_p, &nxobj, oid_Root_class_oid, class_oid, class_chn, NULL_LOCK, S_SELECT);
+  scan = locator_lock_and_return_object (thread_p, &nxobj, oid_Root_class_oid, class_oid, class_chn, NULL_LOCK,
+					 S_SELECT);
   if (scan == S_SUCCESS && nxobj.mobjs->num_objs == 2)
     {
       LC_COPYAREA_ONEOBJ *first, *second;
       LC_COPYAREA_ONEOBJ save;
-      /* 
+      /*
        * It is better if the class is cached first, so swap the
        * description. The object was stored first because it has
        * priority of retrieval, however, if both the object and its
@@ -2740,6 +2626,17 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       *first = *second;
       *second = save;
     }
+
+  error_code = heap_scancache_end (thread_p, &nxobj.area_scancache);
+  if (error_code != NO_ERROR)
+    {
+      locator_free_copy_area (nxobj.comm_area);
+      *fetch_area = NULL;
+      error_code = ER_FAILED;
+      goto error;
+    }
+  nxobj.ptr_scancache = NULL;
+
 
   prefetch_des.mobjs = nxobj.mobjs;
   prefetch_des.obj = &nxobj.obj;
@@ -2779,7 +2676,7 @@ error:
 	    }
 	}
       else if (is_mvcc_disabled_class == true
-	       || (is_mvcc_disabled_class == -1 && heap_is_mvcc_disabled_for_class (class_oid)))
+	       || (is_mvcc_disabled_class == -1 && mvcc_is_mvcc_disabled_class (class_oid)))
 	{
 	  if (lock <= S_LOCK)
 	    {
@@ -2833,13 +2730,14 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
        * Caller does not know the class of the object. Get the class identifier
        * from disk
        */
-      if (heap_get_class_oid_with_lock (thread_p, class_oid, oid, SNAPSHOT_TYPE_MVCC, NULL_LOCK) != S_SUCCESS)
+      if (heap_get_class_oid (thread_p, oid, class_oid) != S_SUCCESS)
 	{
 	  /* 
 	   * Unable to find out the class identifier.
 	   */
+	  ASSERT_ERROR_AND_SET (error_code);
 	  *fetch_area = NULL;
-	  return ER_FAILED;
+	  return error_code;
 	}
     }
 
@@ -3597,10 +3495,11 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid, int prune_lev
   while (stack_actual_size > 0)
     {
       ref_num = stack[--stack_actual_size];	/* Pop */
+
       /* Get the object to find out its direct references */
-      scan =
-	heap_get_with_class_oid (thread_p, &class_oid, &lockset->objects[ref_num].oid, &peek_recdes, &scan_cache,
-				 S_SELECT, PEEK, LOG_WARNING_IF_DELETED);
+      OID_SET_NULL (&class_oid);
+      scan = heap_get_visible_version (thread_p, &lockset->objects[ref_num].oid, &class_oid, &peek_recdes, &scan_cache,
+				       PEEK, NULL_CHN);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_EXIST && (quit_on_errors == true || er_errid () == ER_INTERRUPTED))
@@ -4011,11 +3910,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 		     OID * class_oid, int class_chn, int need_fetching, int prefetching, LC_COPYAREA ** fetch_area)
 {
   OID tmp_oid;
-  SNAPSHOT_TYPE snapshot_type;
-  bool check_oid_heap = true;
-  bool object_locked = false;
   SCAN_CODE scan_code = S_SUCCESS;
-  LC_FETCH_VERSION_TYPE initial_fetch_version_type = fetch_version_type;
 
   if (need_fetching && fetch_area != NULL)
     {
@@ -4028,121 +3923,66 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
       OID_SET_NULL (class_oid);
     }
 
-  switch (fetch_version_type)
+  /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
+   * removed with one of the refactoring issues anyway.
+   */
+  if (HEAP_ISVALID_OID (oid) != DISK_VALID)
     {
-    case LC_FETCH_MVCC_VERSION:
-      snapshot_type = SNAPSHOT_TYPE_MVCC;
-      break;
-
-    case LC_FETCH_DIRTY_VERSION:
-      snapshot_type = SNAPSHOT_TYPE_DIRTY;
-      break;
-
-    case LC_FETCH_CURRENT_VERSION:
-      snapshot_type = SNAPSHOT_TYPE_NONE;
-      break;
-
-    default:
-      assert (0);
+      return LC_DOESNOT_EXIST;
     }
 
-  if (OID_ISNULL (class_oid))
+  /* Prefetch the object if that operation is desirable */
+  if (need_fetching && fetch_area != NULL)
     {
-      /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
-       * removed with one of the refactoring issues anyway.
-       */
-      if (HEAP_ISVALID_OID (oid) != DISK_VALID)
-	{
-	  return LC_DOESNOT_EXIST;
-	}
-
-      /* 
-       * Caller does not know the class of the object. Get the class identifier
-       * from disk
-       */
-      class_chn = CHN_UNKNOWN_ATCLIENT;
-      scan_code = heap_get_class_oid_with_lock (thread_p, class_oid, oid, snapshot_type, lock);
-      if (scan_code == S_ERROR)
+      int ret = xlocator_fetch (thread_p, oid, NULL_CHN, lock, fetch_version_type, fetch_version_type,
+				class_oid, class_chn, prefetching, fetch_area);
+      if (ret == ER_FAILED)
 	{
 	  ASSERT_ERROR ();
-	  return LC_ERROR;
-	}
-      else if (scan_code != S_SUCCESS)
-	{
-	  /* Unable to find the class of the object.. return */
-	  return LC_DOESNOT_EXIST;
-	}
-
-      if (heap_is_mvcc_disabled_for_class (class_oid))
-	{
-	  if (!heap_does_exist (thread_p, class_oid, oid))
-	    {
-	      if (lock != NULL_LOCK)
-		{
-		  lock_unlock_object (thread_p, oid, class_oid, lock, false);
-		}
-	      return LC_DOESNOT_EXIST;
-	    }
-	}
-
-      /* fetch current version without lock */
-      fetch_version_type = LC_FETCH_CURRENT_VERSION;
-    }
-  else if (heap_is_mvcc_disabled_for_class (class_oid))
-    {
-      /* Non-MVCC class, just lock and check object exists. */
-      if (lock != NULL_LOCK && (lock_object (thread_p, oid, class_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED))
-	{
-	  ASSERT_ERROR ();
-	  return LC_ERROR;
-	}
-      if (!heap_does_exist (thread_p, class_oid, oid))
-	{
 	  if (lock != NULL_LOCK)
 	    {
 	      lock_unlock_object (thread_p, oid, class_oid, lock, false);
 	    }
+	  return LC_ERROR;
+	}
+      else if (ret != NO_ERROR)
+	{
 	  return LC_DOESNOT_EXIST;
 	}
-      /* Fall through to fetch if needed. */
+
+      /* success -> fall through */
     }
   else
     {
-      /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
-       * removed with one of the refactoring issues anyway.
-       */
-      if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+      if (lock != NULL_LOCK)
 	{
-	  return LC_DOESNOT_EXIST;
-	}
+	  /* try to aquire requested lock or the appropriate one; it will be decided according to class type */
+	  SCAN_OPERATION_TYPE op_type;
+	  HEAP_SCANCACHE scan_cache;
 
-      /* MVCC class, call heap_mvcc_lock_object (it also verifies object exists). */
-      scan_code = heap_mvcc_lock_object (thread_p, oid, class_oid, lock, snapshot_type);
-      if (scan_code == S_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return LC_ERROR;
-	}
-      else if (scan_code != S_SUCCESS)
-	{
-	  return LC_DOESNOT_EXIST;
-	}
-      /* Fall through to fetch if needed. */
-    }
+	  op_type = locator_decide_operation_type (lock, fetch_version_type);
 
-  /* The object exist. Prefetch the object if that operation is desirable */
-  if (need_fetching && fetch_area != NULL)
-    {
-      if (xlocator_fetch (thread_p, oid, NULL_CHN, NULL_LOCK, fetch_version_type,
-			  initial_fetch_version_type, class_oid, class_chn, prefetching, fetch_area) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  if (lock != NULL_LOCK)
+	  (void) heap_scancache_quick_start (&scan_cache);
+
+	  scan_code = locator_get_object (thread_p, oid, class_oid, NULL, &scan_cache, op_type, lock, PEEK, NULL_CHN);
+	  heap_scancache_end (thread_p, &scan_cache);
+	  if (scan_code == S_ERROR)
 	    {
-	      lock_unlock_object (thread_p, oid, class_oid, lock, false);
+	      ASSERT_ERROR ();
+	      return LC_ERROR;
 	    }
-	  return LC_ERROR;
+	  else if (scan_code != S_SUCCESS)
+	    {
+	      return LC_DOESNOT_EXIST;
+	    }
 	}
+      else if (!heap_does_exist (thread_p, class_oid, oid))
+	{
+	  /* object doesn't exist */
+	  return LC_DOESNOT_EXIST;
+	}
+
+      /* success -> fall through */
     }
 
   /* Success */
@@ -4657,11 +4497,16 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  recdes.data = NULL;
 		  /* TO DO - handle reevaluation */
 
-		  scan_code =
-		    heap_mvcc_get_for_delete (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache, COPY, NULL_CHN,
-					      NULL, LOG_ERROR_IF_DELETED);
+		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
+		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, oid_ptr->volid,
+				  oid_ptr->pageid, oid_ptr->slotid);
+			}
+
 		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 			{
 			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
@@ -4685,7 +4530,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
-		      /* oid already locked at heap_mvcc_get_for_delete */
+		      /* oid already locked at locator_lock_and_get_object */
 		      error_code =
 			locator_delete_force (thread_p, &hfid, oid_ptr, true, SINGLE_ROW_DELETE, &scan_cache,
 					      &force_count, NULL, false);
@@ -4715,7 +4560,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			      goto error1;
 			    }
 			}
-		      /* oid already locked at heap_mvcc_get_for_delete */
+		      /* oid already locked at locator_lock_and_get_object */
 		      error_code =
 			locator_attribute_info_force (thread_p, &hfid, oid_ptr, &attr_info, attr_ids, index->n_atts,
 						      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan_cache, &force_count,
@@ -4975,11 +4820,15 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  recdes.data = NULL;
 		  /* TO DO - handle reevaluation */
 
-		  scan_code =
-		    heap_mvcc_get_for_delete (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache, COPY, NULL_CHN,
-					      NULL, LOG_ERROR_IF_DELETED);
+		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
+		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, oid_ptr->volid,
+				  oid_ptr->pageid, oid_ptr->slotid);
+			}
 		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 			{
 			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
@@ -5020,7 +4869,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    {
 		      assert (false);
 		    }
-		  /* oid already locked at heap_mvcc_get_for_delete */
+		  /* oid already locked at locator_lock_and_get_object */
 		  error_code =
 		    locator_attribute_info_force (thread_p, &hfid, oid_ptr, &attr_info, attr_ids, index->n_atts,
 						  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan_cache, &force_count, false,
@@ -5665,7 +5514,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      old_record.data = NULL;
 	      old_recdes = &old_record;
 
-	      if (heap_get (thread_p, oid, old_recdes, scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
+	      if (heap_get_class_record (thread_p, oid, old_recdes, scan_cache, PEEK) == S_SUCCESS)
 		{
 		  or_class_rep_dir (old_recdes, &old_rep_dir);
 
@@ -5840,7 +5689,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       /* There will be no pruning after this point so we should reset op_type to a non pruning operation */
 
-      if (!heap_is_mvcc_disabled_for_class (class_oid))
+      if (!mvcc_is_mvcc_disabled_class (class_oid))
 	{
 	  if (oldrecdes == NULL)
 	    {
@@ -5854,23 +5703,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      if (need_locking)
 		{
-		  if (pruning_type == DB_NOT_PARTITIONED_CLASS)
-		    {
-		      scan =
-			heap_mvcc_get_for_delete (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY,
-						  NULL_CHN, mvcc_reev_data, LOG_ERROR_IF_DELETED);
-		    }
-		  else
-		    {
-		      /* do not affect class_oid since is used at partition pruning */
-		      scan =
-			heap_mvcc_get_for_delete (thread_p, oid, NULL, &copy_recdes, local_scan_cache, COPY, NULL_CHN,
-						  mvcc_reev_data, LOG_ERROR_IF_DELETED);
-		    }
+		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
+								      local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
+								      LOG_ERROR_IF_DELETED);
 		}
 	      else
 		{
-		  scan = heap_get (thread_p, oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
+		  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY,
+						   NULL_CHN);
 		}
 
 
@@ -5893,6 +5733,12 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		    }
 		  else
 		    {
+		      if ((scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
+			  && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, oid->volid, oid->pageid,
+				  oid->slotid);
+			}
 		      error_code = er_errid ();
 		      if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 			{
@@ -6005,7 +5851,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  goto error;
 		}
 
-	      scan = heap_get (thread_p, oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
+	      scan =
+		heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
 	      if (scan == S_SUCCESS)
 		{
 		  oldrecdes = &copy_recdes;
@@ -6052,7 +5899,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	  /* make sure we use the correct class oid - we could be dealing with a classoid resulted from a unique btid
 	   * pruning */
-	  if (heap_get_class_oid (thread_p, class_oid, oid) != S_SUCCESS)
+	  if (heap_get_class_oid (thread_p, oid, class_oid) != S_SUCCESS)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
@@ -6326,7 +6173,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
   /* Update note : While scanning objects, the given scancache does not fix the last accessed page. So, the object must 
    * be copied to the record descriptor. Changes : (1) variable name : peek_recdes => copy_recdes (2) function call :
-   * heap_get(..., PEEK, ...) => heap_get(..., COPY, ...) (3) SCAN_CODE scan, char *new_area are added */
+   * heap_get_visible_version(..., PEEK, ...) => heap_get_visible_version(..., COPY, ...) (3) SCAN_CODE scan, char *new_area are added */
 
   copy_recdes.data = NULL;
 
@@ -6347,8 +6194,9 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
   /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
-  scan_code = heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-					mvcc_reev_data, LOG_WARNING_IF_DELETED);
+  scan_code =
+    locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
+						 mvcc_reev_data, LOG_WARNING_IF_DELETED);
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
@@ -6357,7 +6205,6 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
   if (scan_code != S_SUCCESS)
     {
-      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 
       if (error_code == ER_HEAP_NODATA_NEWADDRESS)
@@ -6367,7 +6214,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
 	  error_code = NO_ERROR;
 	}
-      else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+      else if (error_code == ER_HEAP_UNKNOWN_OBJECT || scan_code == S_DOESNT_EXIST)
 	{
 	  isold_object = false;
 	  er_clear ();
@@ -6457,7 +6304,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       if (isold_object == true && has_index)
 	{
 	  /* if MVCC then delete before updating index */
-	  if (!heap_is_mvcc_disabled_for_class (&class_oid))
+	  if (!mvcc_is_mvcc_disabled_class (&class_oid))
 	    {
 	      HEAP_OPERATION_CONTEXT delete_context;
 
@@ -6620,7 +6467,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 	    }
 	  scan_cache_inited = true;
 	  copy_recdes.data = NULL;
-	  scan = heap_get (thread_p, oid, &copy_recdes, &scan_cache, COPY, NULL_CHN);
+	  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
@@ -7051,7 +6898,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
     {
       assert (OID_ISNULL (&obj->oid) != true);
 
-      scan = heap_get (thread_p, &obj->oid, old_recdes, force_scancache, PEEK, NULL_CHN);
+      scan =
+	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, PEEK, NULL_CHN);
 
       if (scan != S_SUCCESS)
 	{
@@ -7675,7 +7523,13 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
       else if (HEAP_IS_UPDATE_INPLACE (force_update_inplace) || need_locking == false)
 	{
-	  scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	  HEAP_GET_CONTEXT context;
+
+	  /* don't consider visiblity, just get the last version of the object */
+	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	  scan = heap_get_last_version (thread_p, &context);
+	  heap_clean_get_context (thread_p, &context);
+
 	  assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
 		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
 					    LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
@@ -7692,20 +7546,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	      scan_cache->mvcc_snapshot = NULL;
 	    }
 
-	  if (need_locking)
-	    {
-	      scan =
-		heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN, NULL,
-					  LOG_ERROR_IF_DELETED);
-	    }
-	  else
-	    {			/* unreachable code. need_locking == false is covered above */
-	      assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
-		      || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
-						LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
-	      scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
-	    }
-
+	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
+					      NULL_CHN, LOG_ERROR_IF_DELETED);
 	  if (saved_mvcc_snapshot != NULL)
 	    {
 	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
@@ -7723,26 +7565,15 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
       else if (scan == S_DOESNT_EXIST)
 	{
-	  int err_id;
-
-	  assert (er_errid () != NO_ERROR);
-	  err_id = er_errid ();
+	  int err_id = er_errid ();
 	  if (err_id == ER_HEAP_NODATA_NEWADDRESS)
 	    {
 	      /* it is an immature record. go ahead to update */
 	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 	    }
-	  else if (err_id == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      /* This means that the object we're looking for does not exist. This information is useful for the caller 
-	       * of this function so return this error code instead of ER_FAILD. An example for which we need to know
-	       * this error code is when we're updating partitioned tables and previous iterations removed this record
-	       * and placed it in another partition. */
-	      return err_id;
-	    }
 	  else
 	    {
-	      return ((err_id == NO_ERROR) ? ER_FAILED : err_id);
+	      return ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
 	    }
 	}
       else if (scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -7997,7 +7828,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
 #if defined(SERVER_MODE)
-  if (!heap_is_mvcc_disabled_for_class (class_oid))
+  if (!mvcc_is_mvcc_disabled_class (class_oid))
     {
       /* Use MVCC if it's not disabled for current class */
       use_mvcc = true;
@@ -8504,7 +8335,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   mvccid = MVCCID_NULL;
 
 #if defined(SERVER_MODE)
-  if (!heap_is_mvcc_disabled_for_class (class_oid))
+  if (!mvcc_is_mvcc_disabled_class (class_oid))
     {
       use_mvcc = true;
 
@@ -10286,7 +10117,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	       * check to make sure that the OID is one of the OIDs from our
 	       * list of classes.
 	       */
-	      if (heap_get_class_oid (thread_p, &cl_oid, &oid_area[i]) != S_SUCCESS)
+	      if (heap_get_class_oid (thread_p, &oid_area[i], &cl_oid) != S_SUCCESS)
 		{
 		  (void) heap_scancache_end (thread_p, &isid.scan_cache);
 		  goto error;
@@ -10656,7 +10487,7 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
       return DISK_ERROR;
     }
 
-  if (heap_get (thread_p, cls_oid, &copy_rec, &scan, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, cls_oid, &copy_rec, &scan, COPY) != S_SUCCESS)
     {
       heap_scancache_end (thread_p, &scan);
       return DISK_ERROR;
@@ -10677,7 +10508,7 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 	}
 
       copy_rec.data = NULL;
-      if (heap_get (thread_p, cls_oid, &copy_rec, &scan, COPY, NULL_CHN) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, cls_oid, &copy_rec, &scan, COPY) != S_SUCCESS)
 	{
 	  lock_unlock_object (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK, true);
 	  heap_scancache_end (thread_p, &scan);
@@ -10779,7 +10610,7 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 	    }
 
 	  copy_rec.data = NULL;
-	  code = heap_get (thread_p, &oid, &copy_rec, &scan, COPY, NULL_CHN);
+	  code = heap_get_class_record (thread_p, &oid, &copy_rec, &scan, COPY);
 	  if (code != S_SUCCESS)
 	    {
 	      break;
@@ -10959,7 +10790,7 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 	   * Get the class to find out its immediate subclasses
 	   */
 
-	  scan = heap_get (thread_p, &lockhint->classes[ref_num].oid, &peek_recdes, &scan_cache, PEEK, NULL_CHN);
+	  scan = heap_get_class_record (thread_p, &lockhint->classes[ref_num].oid, &peek_recdes, &scan_cache, PEEK);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan != S_DOESNT_EXIST && (lockhint->quit_on_errors == true || er_errid () == ER_INTERRUPTED))
@@ -12001,7 +11832,7 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, OID * class_oid, RECDES 
       return ER_FAILED;
     }
 
-  if (heap_get (thread_p, class_oid, &classrec, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_oid, &classrec, &scan, PEEK) != S_SUCCESS)
     {
       heap_scancache_end (thread_p, &scan);
       return ER_FAILED;
@@ -12066,7 +11897,7 @@ xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, O
 	  return ER_FAILED;
 	}
 
-      if (heap_get (thread_p, &unique_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_visible_version (thread_p, &unique_oid, class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan);
 	  return ER_FAILED;
@@ -12219,7 +12050,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		  continue;
 		}
 
-	      scan = heap_get (thread_p, &oid, &recdes, &scan_cache, COPY, NULL_CHN);
+	      scan = heap_get_visible_version (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN);
 	      if (scan != S_SUCCESS)
 		{
 		  (*nfailed_instance_locks)++;
@@ -13133,7 +12964,8 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
 	      recdes.data = NULL;
 
-	      if (heap_get (thread_p, &inst_oid, &recdes, &scan_cache, COPY, NULL_CHN) != S_SUCCESS)
+	      if (heap_get_visible_version (thread_p, &inst_oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN) !=
+		  S_SUCCESS)
 		{
 		  error = ER_FAILED;
 		  goto exit;
@@ -13202,4 +13034,830 @@ int
 xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list)
 {
   return redistribute_partition_data (thread_p, class_oid, no_oids, oid_list);
+}
+
+/*
+ * locator_lock_and_get_object_internal () - Internal function: aquire lock and return object
+ *
+ * return : scan code
+ * thread_p (in)   : 
+ * context (in/out): Heap get context .
+ * lock_mode (in)  : Type of lock.
+ *
+ * NOTE: Caller must handle the cleanup of context
+ */
+static SCAN_CODE
+locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode)
+{
+  SCAN_CODE scan = S_SUCCESS;
+  bool lock_acquired = false;
+
+  assert (context != NULL);
+  assert (context->oid_p != NULL && !OID_ISNULL (context->oid_p));
+  assert (context->class_oid_p != NULL && !OID_ISNULL (context->class_oid_p));
+  assert (lock_mode > NULL_LOCK);	/* this is not the appropriate function for NULL_LOCK */
+  assert (context->scan_cache != NULL);
+
+  /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
+  if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
+    {
+      if (context->scan_cache && context->scan_cache->cache_last_fix_page && context->home_page_watcher.pgptr != NULL)
+	{
+	  /* prevent caching home page watcher in scan_cache */
+	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+	}
+      heap_clean_get_context (thread_p, context);
+      if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  goto error;
+	}
+
+      lock_acquired = true;
+
+      /* Prepare for getting record again. Since pages have been unlatched, others may have changed them */
+      scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
+      if (scan != S_SUCCESS)
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      lock_acquired = true;
+    }
+
+  assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
+
+  /* Lock should be aquired now -> get recdes */
+  if (context->recdes_p != NULL)
+    {
+      scan = heap_get_last_version (thread_p, context);
+      /* this scan_code must be preserved until the end of this function to be returned; - unless an error occur */
+      if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
+	{
+	  goto error;
+	}
+    }
+
+  /* Check isolation restrictions and the visibility of the object if it belongs to a mvcc class */
+  if (!mvcc_is_mvcc_disabled_class (context->class_oid_p))
+    {
+      MVCC_REC_HEADER recdes_header;
+
+      /* get header: directly from recdes if it has been obtained, otherwise from heap */
+      if (context->recdes_p == NULL || scan == S_SUCCESS_CHN_UPTODATE)
+	{
+	  /* ensure context is prepared to get header of the record */
+	  if (heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) !=
+	      S_SUCCESS)
+	    {
+	      scan = S_ERROR;
+	      goto error;
+	    }
+	  if (heap_get_mvcc_header (thread_p, context, &recdes_header) != S_SUCCESS)
+	    {
+	      scan = S_ERROR;
+	      goto error;
+	    }
+	}
+      else if (or_mvcc_get_header (context->recdes_p, &recdes_header) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
+      if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
+	  && logtb_check_class_for_rr_isolation_err (context->class_oid_p))
+	{
+	  /* In these isolation levels, the transaction is not allowed to modify an object that was already
+	   * modified by other transactions. This would be true if last version matched the visible version.
+	   *
+	   * TODO: We already know here that this last row version is not deleted. It would be enough to just
+	   * check whether the insert MVCCID is considered active relatively to transaction's snapshot.
+	   */
+	  MVCC_SNAPSHOT *tran_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
+
+	  assert (tran_snapshot != NULL && tran_snapshot->snapshot_fnc != NULL);
+	  snapshot_res = tran_snapshot->snapshot_fnc (thread_p, &recdes_header, tran_snapshot);
+	  if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
+	    {
+	      /* Not visible. */
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
+		      context->oid_p->pageid, context->oid_p->slotid);
+	      scan = S_DOESNT_EXIST;
+	      goto error;
+	    }
+	  else if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
+	    {
+	      /* Trying to modify a version already modified by concurrent transaction, which is an isolation conflict.
+	       */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+	      goto error;
+	    }
+	  else if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
+	    {
+	      /* Trying to modify version deleted by concurrent transaction, which is an isolation conflict. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+	      goto error;
+	    }
+	  else
+	    {
+	      /* Last version is also visible version and it is not deleted. Fall through. */
+	    }
+	}
+
+      if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
+	{
+	  scan = S_DOESNT_EXIST;
+	  goto error;
+	}
+    }
+
+  return scan;
+
+error:
+
+  if (scan == S_ERROR)
+    {
+      /* Caller should handle error setting for other scan codes e.g. S_DOESNT_EXIST, S_DOESNT_FIT. */
+      ASSERT_ERROR ();
+    }
+
+  if (lock_acquired)
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, context->oid_p, context->class_oid_p, lock_mode);
+    }
+
+  return (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE) ? scan : S_ERROR;
+}
+
+/*
+ * locator_lock_and_get_object_with_evaluation () - Get MVCC object version for delete/update and check reevaluation.
+ *
+ * return	       : SCAN_CODE.
+ * thread_p (in)       : Thread entry.
+ * oid (in)	       : Object OID.
+ * class_oid (in)      : Class OID.
+ * recdes (out)	       : Record descriptor.
+ * scan_cache (in)     : Heap scan cache.
+ * ispeeking (in)      : PEEK or COPY.
+ * old_chn (in)	       : CHN of known record data.
+ * mvcc_reev_data (in) : MVCC reevaluation data.
+ * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
+ *				ER_HEAP_UNKNOWN_OBJECT error to log
+ *                            - LOG_WARNING_IF_DELETED: set only warning
+ * 
+ * Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
+ */
+SCAN_CODE
+locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
+					     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+					     MVCC_REEV_DATA * mvcc_reev_data,
+					     NON_EXISTENT_HANDLING non_ex_handling_type)
+{
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan;
+  RECDES recdes_local = RECDES_INITIALIZER;
+  MVCC_REC_HEADER mvcc_header;
+  DB_LOGICAL ev_res;		/* Re-evaluation result. */
+  OID class_oid_local = OID_INITIALIZER;
+  LOCK lock_mode = X_LOCK;
+  int err;
+
+  if (recdes == NULL && mvcc_reev_data != NULL)
+    {
+      /* peek if only for reevaluation */
+      recdes = &recdes_local;
+      ispeeking = PEEK;
+      old_chn = NULL_CHN;
+    }
+
+  if (class_oid == NULL)
+    {
+      class_oid = &class_oid_local;
+    }
+
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+
+  /* get class_oid if it is unknown */
+  if (OID_ISNULL (class_oid))
+    {
+      err = heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ);
+      if (err != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  heap_clean_get_context (thread_p, &context);
+
+	  /* for non existent object, return S_DOESNT_EXIST and let the caller handle the case */
+	  return err == ER_HEAP_UNKNOWN_OBJECT ? S_DOESNT_EXIST : S_ERROR;
+	}
+      if (heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+	{
+	  heap_clean_get_context (thread_p, &context);
+	  return S_DOESNT_EXIST;
+	}
+    }
+
+  scan = locator_lock_and_get_object_internal (thread_p, &context, lock_mode);
+
+  /* perform reevaluation */
+  if (mvcc_reev_data != NULL && (scan == S_SUCCESS || scan == S_SUCCESS_CHN_UPTODATE))
+    {
+      if (scan == S_SUCCESS_CHN_UPTODATE)
+	{
+	  /* PEEK record */
+	  scan = heap_get_record_data_when_all_ready (thread_p, &context);
+	  assert (scan == S_SUCCESS);
+	}
+
+      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
+	{
+	  scan = S_ERROR;
+	  goto exit;
+	}
+
+      if (scan_cache->mvcc_snapshot)
+	{
+	  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
+
+	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
+	  if (snapshot_res == SNAPSHOT_SATISFIED)
+	    {
+	      /* Skip the re-evaluation if last version is visible. It should be the same as the visible version
+	       * which was already evaluated. */
+	      goto exit;
+	    }
+	}
+      ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
+      if (ev_res != V_TRUE)
+	{
+	  /* did not pass the evaluation or error occurred - unlock object */
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+	}
+      switch (ev_res)
+	{
+	case V_TRUE:
+	  /* Object was locked and passed re-evaluation. Get record. */
+	  goto exit;
+	case V_ERROR:
+	  /* Error. */
+	  assert (er_errid () != NO_ERROR);
+	  scan = S_ERROR;
+	  goto exit;
+	case V_FALSE:
+	case V_UNKNOWN:
+	  /* Record didn't pass re-evaluation. Return S_SUCCESS and let the caller handle the case. */
+	  goto exit;
+	default:
+	  /* Unhandled. */
+	  assert_release (false);
+	  scan = S_ERROR;
+	  goto exit;
+	}
+
+    }
+
+exit:
+  heap_clean_get_context (thread_p, &context);
+  return scan;
+}
+
+/*
+ * locator_get_object () - Retrieve heap objects and decide the type of lock according to the operation type
+ *
+ * return	  : Scan code.
+ * thread_p (in)  : Thread entry.
+ * oid (in)       : Object identifier.
+ * class_oid (in) : Class oid.
+ * recdes (out)	  : Record descriptor.
+ * scan_cache (in): Scan cache.
+ * op_type (in)	  : Requested type of operation.
+ * lock_mode (in) : Lock type, see note.
+ * ispeeking (in) : Peek record or copy.
+ *
+ * Note: This function should be used when class_oid is unknown, which is required to decide lock_mode;
+ *       When lock_mode is known, a more appropriate function is recommended.
+ *
+ *	 op_type and lock_mode exclude each other according to class type:
+ *	    - root class    : lock_mode is considered, op_type is ignored
+ *	    - instance class: op_type is considered, a new lock_mode is used (according to op_type)
+ */
+SCAN_CODE
+locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+		    HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode, int ispeeking, int chn)
+{
+  SCAN_CODE scan_code;
+  OID class_oid_local = OID_INITIALIZER;
+  HEAP_GET_CONTEXT context;
+  int err;
+
+  /* decide the type of lock before anything */
+
+  assert (oid != NULL && !OID_ISNULL (oid));
+
+  if (class_oid == NULL)
+    {
+      /* mandatory to decide the lock type */
+      class_oid = &class_oid_local;
+    }
+
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn);
+
+  /* get class_oid if it is unknown */
+  if (OID_ISNULL (class_oid))
+    {
+      err = heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ);
+      if (err != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  heap_clean_get_context (thread_p, &context);
+
+	  /* for non existent object, return S_DOESNT_EXIST and let the caller handle the case */
+	  return err == ER_HEAP_UNKNOWN_OBJECT ? S_DOESNT_EXIST : S_ERROR;
+	}
+      if (heap_get_class_oid_from_page (thread_p, context.home_page_watcher.pgptr, class_oid) != NO_ERROR)
+	{
+	  heap_clean_get_context (thread_p, &context);
+	  return S_DOESNT_EXIST;
+	}
+    }
+
+  /* decide lock_mode according to class_oid and op_type */
+  if (!OID_IS_ROOTOID (class_oid))
+    {
+      if (op_type == S_SELECT && !mvcc_is_mvcc_disabled_class (class_oid))
+	{
+	  /* S_SELECT and mvcc class */
+	  lock_mode = NULL_LOCK;
+	}
+      else if (op_type == S_DELETE || op_type == S_UPDATE)
+	{
+	  assert (lock_mode > S_LOCK);
+	  lock_mode = X_LOCK;
+	}
+      else
+	{
+	  /* S_SELECT and non-mvcc class || S_SELECT_WITH_LOCK */
+	  assert (op_type == S_SELECT || op_type == S_SELECT_WITH_LOCK);
+	  if (lock_mode > S_LOCK)
+	    {
+	      assert (false);
+	      lock_mode = X_LOCK;
+	    }
+	  else
+	    {
+	      lock_mode = S_LOCK;
+	    }
+	}
+    }
+
+  if (op_type == S_SELECT && lock_mode == NULL_LOCK)
+    {
+      /* No locking */
+      scan_code = heap_get_visible_version_internal (thread_p, &context, false);
+    }
+  else
+    {
+      /* Locking */
+      scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock_mode);
+    }
+
+  heap_clean_get_context (thread_p, &context);
+
+  return scan_code;
+}
+
+
+/*
+ * locator_lock_and_get_object () - Get MVCC object version for delete/update.
+ *
+ * return	       : SCAN_CODE.
+ * thread_p (in)       : Thread entry.
+ * oid (in)	       : Object OID.
+ * class_oid (in)      : Class OID.
+ * recdes (out)	       : Record descriptor.
+ * scan_cache (in)     : Heap scan cache.
+ * ispeeking (in)      : PEEK or COPY.
+ * old_chn (in)	       : CHN of known record data.
+ * mvcc_reev_data (in) : MVCC reevaluation data.
+ * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
+ *				ER_HEAP_UNKNOWN_OBJECT error to log
+ *                            - LOG_WARNING_IF_DELETED: set only warning
+ */
+SCAN_CODE
+locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+			     HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking, int old_chn,
+			     NON_EXISTENT_HANDLING non_ex_handling_type)
+{
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan_code;
+
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+
+  scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
+
+  heap_clean_get_context (thread_p, &context);
+  return scan_code;
+}
+
+/*
+ * locator_mvcc_reev_cond_and_assignment () -
+ *
+ *   return: DB_LOGICAL
+ *   thread_p(in): thread entry
+ *   scan_cache(in):
+ *   mvcc_reev_data_p(in/out):
+ *   mvcc_header_p(in):
+ *   curr_row_version_oid_p(in):
+ *   recdes(in):
+ */
+/* TODO: We need to reevaluate relation between primary key * and foreign key. */
+static DB_LOGICAL
+locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
+				       MVCC_REEV_DATA * mvcc_reev_data_p, MVCC_REC_HEADER * mvcc_header_p,
+				       const OID * curr_row_version_oid_p, RECDES * recdes)
+{
+  bool ev_res = V_TRUE;
+
+  if (mvcc_reev_data_p == NULL)
+    {
+      return ev_res;
+    }
+
+  assert (mvcc_header_p != NULL && curr_row_version_oid_p != NULL);
+
+  ev_res = V_TRUE;
+  if (!MVCC_IS_REC_INSERTED_BY_ME (thread_p, mvcc_header_p))
+    {
+      switch (mvcc_reev_data_p->type)
+	{
+	case REEV_DATA_SCAN:
+	  ev_res = locator_mvcc_reevaluate_filters (thread_p, mvcc_reev_data_p->select_reev_data,
+						    curr_row_version_oid_p, recdes);
+	  mvcc_reev_data_p->filter_result = ev_res;
+	  break;
+
+	case REEV_DATA_UPDDEL:
+	  ev_res =
+	    locator_mvcc_reev_cond_assigns (thread_p, &scan_cache->node.class_oid, curr_row_version_oid_p, scan_cache,
+					    recdes, mvcc_reev_data_p->upddel_reev_data);
+	  mvcc_reev_data_p->filter_result = ev_res;
+	  break;
+
+	default:
+	  break;
+	}
+    }
+  else
+    {
+      mvcc_reev_data_p->filter_result = V_TRUE;
+    }
+
+  return ev_res;
+}
+
+/*
+ * locator_mvcc_reev_cond_assigns () - reevaluates conditions and assignments
+ *				    at update/delete stage of an UPDATE/DELETE
+ *				    statement
+ *   return: result of reevaluation
+ *   thread_p(in): thread entry
+ *   class_oid(in): OID of the class that triggered reevaluation
+ *   oid(in) : The OID of the latest version of record that triggered
+ *	       reevaluation
+ *   scan_cache(in): scan_cache
+ *   recdes(in): Record descriptor that will contain the updated/deleted record
+ *   mvcc_reev_data(in): The structure that contains data needed for
+ *			 reevaluation
+ *
+ *  Note: the current transaction already acquired X-LOCK on oid parameter
+ *	    before calling this function. If the condition returns false then
+ *	    the lock must be released by the caller.
+ *	  The function reevaluates entire condition: key range, key filter and
+ *	    data filter.
+ *	  This function allocates memory for recdes and deallocates it if it
+ *	    was already allocated for previous reevaluated record. After last
+ *	    reevaluation this memory must be deallocated by one of its callers
+ *	    (e.g. qexec_execute_update).
+ */
+static DB_LOGICAL
+locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, HEAP_SCANCACHE * scan_cache,
+				RECDES * recdes, MVCC_UPDDEL_REEV_DATA * mvcc_reev_data)
+{
+  DB_LOGICAL ev_res = V_TRUE;
+  UPDDEL_MVCC_COND_REEVAL *mvcc_cond_reeval = NULL;
+  int idx;
+
+  /* reevaluate condition for each class involved into */
+  for (mvcc_cond_reeval = mvcc_reev_data->mvcc_cond_reev_list; mvcc_cond_reeval != NULL;
+       mvcc_cond_reeval = mvcc_cond_reeval->next)
+    {
+      ev_res =
+	locator_mvcc_reeval_scan_filters (thread_p, oid, scan_cache, recdes, mvcc_cond_reeval,
+					  mvcc_reev_data->curr_upddel == mvcc_cond_reeval);
+      if (ev_res != V_TRUE)
+	{
+	  goto end;
+	}
+    }
+
+  if (mvcc_reev_data->new_recdes == NULL)
+    {
+      /* Seems that the caller wants to reevaluate only the condition */
+      goto end;
+    }
+
+  /* reload data from classes involved only in right side of assignments (not in condition) */
+  if (mvcc_reev_data->curr_extra_assign_reev != NULL)
+    {
+      for (idx = 0; idx < mvcc_reev_data->curr_extra_assign_cnt; idx++)
+	{
+	  mvcc_cond_reeval = mvcc_reev_data->curr_extra_assign_reev[idx];
+	  ev_res = locator_mvcc_reeval_scan_filters (thread_p, oid, scan_cache, recdes, mvcc_cond_reeval, false);
+	  if (ev_res != V_TRUE)
+	    {
+	      goto end;
+	    }
+	}
+    }
+
+  /* after reevaluation perform assignments */
+  if (mvcc_reev_data->curr_assigns != NULL)
+    {
+      UPDATE_MVCC_REEV_ASSIGNMENT *assign = mvcc_reev_data->curr_assigns;
+      int rc;
+      DB_VALUE *dbval = NULL;
+
+      if (heap_attrinfo_clear_dbvalues (mvcc_reev_data->curr_attrinfo) != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+      for (; assign != NULL; assign = assign->next)
+	{
+	  if (assign->constant != NULL)
+	    {
+	      rc = heap_attrinfo_set (oid, assign->att_id, assign->constant, mvcc_reev_data->curr_attrinfo);
+	    }
+	  else
+	    {
+	      if (fetch_peek_dbval (thread_p, assign->regu_right, mvcc_reev_data->vd, (OID *) class_oid, (OID *) oid,
+				    NULL, &dbval) != NO_ERROR)
+		{
+		  ev_res = V_ERROR;
+		  goto end;
+		}
+	      rc = heap_attrinfo_set (oid, assign->att_id, dbval, mvcc_reev_data->curr_attrinfo);
+	    }
+	  if (rc != NO_ERROR)
+	    {
+	      ev_res = V_ERROR;
+	      goto end;
+	    }
+	}
+
+      /* TO DO - reuse already allocated area */
+      if (mvcc_reev_data->copyarea != NULL)
+	{
+	  locator_free_copy_area (mvcc_reev_data->copyarea);
+	  mvcc_reev_data->new_recdes->data = NULL;
+	  mvcc_reev_data->new_recdes->area_size = 0;
+	}
+      mvcc_reev_data->copyarea =
+	locator_allocate_copy_area_by_attr_info (thread_p, mvcc_reev_data->curr_attrinfo, recdes,
+						 mvcc_reev_data->new_recdes, -1, LOB_FLAG_INCLUDE_LOB);
+      if (mvcc_reev_data->copyarea == NULL)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+    }
+
+end:
+
+  return ev_res;
+}
+
+/*
+ * locator_mvcc_reeval_scan_filters () - reevaluates conditions for a scan table
+ *				    at update/delete stage of an UPDATE/DELETE
+ *				    statement
+ *   return: result of reevaluation
+ *   thread_p(in): thread entry
+ *   oid(in) : The OID of the latest version of record that triggered
+ *	       reevaluation
+ *   scan_cache(in): scan_cache
+ *   recdes(in): Record descriptor of the record to be updated/deleted.
+ *   mvcc_cond_reeval(in): The structure that contains data needed for
+ *			   reevaluation
+ *   is_upddel(in): true if current scan is updated/deleted when reevaluation
+ *		    occured.
+ *
+ *  Note: The current transaction already acquired X-LOCK on oid parameter
+ *	    before calling this function. If the condition returns false then
+ *	    the lock must be released by the caller.
+ *	  The function reevaluates entire condition: key range, key filter and
+ *	    data filter.
+ */
+static DB_LOGICAL
+locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP_SCANCACHE * scan_cache,
+				  RECDES * recdes, UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel)
+{
+  OID *cls_oid = NULL;
+  const OID *oid_inst = NULL;
+  MVCC_SCAN_REEV_DATA scan_reev;
+  RECDES temp_recdes, *recdesp = NULL;
+  HEAP_SCANCACHE local_scan_cache;
+  bool scan_cache_inited = false;
+  SCAN_CODE scan_code;
+  DB_LOGICAL ev_res = V_TRUE;
+
+  cls_oid = &mvcc_cond_reeval->cls_oid;
+  if (!is_upddel)
+    {
+      /* the class is different than the class to be updated/deleted, so use the latest version of row */
+      recdesp = &temp_recdes;
+      oid_inst = oid;
+      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &scan_cache->node.hfid) != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+      scan_cache_inited = true;
+      scan_code = heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN);
+      if (scan_code != S_SUCCESS)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+    }
+  else
+    {
+      /* the class to be updated/deleted */
+      recdesp = recdes;
+      oid_inst = mvcc_cond_reeval->inst_oid;
+    }
+
+  if (mvcc_cond_reeval->rest_attrs->num_attrs != 0)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, oid_inst, recdesp, NULL, mvcc_cond_reeval->rest_attrs->attr_cache) !=
+	  NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+
+      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, PEEK)
+	  != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+    }
+
+  if (mvcc_cond_reeval->range_filter.scan_pred != NULL || mvcc_cond_reeval->key_filter.scan_pred != NULL
+      || mvcc_cond_reeval->data_filter.scan_pred != NULL)
+    {
+      /* evaluate conditions */
+      scan_reev.range_filter = &mvcc_cond_reeval->range_filter;
+      scan_reev.key_filter = &mvcc_cond_reeval->key_filter;
+      scan_reev.data_filter = &mvcc_cond_reeval->data_filter;
+      scan_reev.qualification = &mvcc_cond_reeval->qualification;
+      ev_res = locator_mvcc_reevaluate_filters (thread_p, &scan_reev, oid_inst, recdesp);
+    }
+
+end:
+  if (scan_cache_inited)
+    {
+      heap_scancache_end (thread_p, &local_scan_cache);
+    }
+
+  return ev_res;
+}
+
+/*
+ * locator_mvcc_reevaluate_filters () - reevaluates key range, key filter and data
+ *				filter predicates
+ *   return: result of reevaluation
+ *   thread_p(in): thread entry
+ *   mvcc_reev_data(in): The structure that contains data needed for
+ *			 reevaluation
+ *   oid(in) : The record that was modified by other transactions and is
+ *	       involved in filters.
+ *   recdes(in): Record descriptor that will contain the record
+ */
+static DB_LOGICAL
+locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data, const OID * oid,
+				 RECDES * recdes)
+{
+  FILTER_INFO *filter;
+  DB_LOGICAL ev_res = V_TRUE;
+
+  filter = mvcc_reev_data->range_filter;
+  if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache) != NO_ERROR)
+	{
+	  return V_ERROR;
+	}
+      ev_res =
+	(*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, (OID *) oid);
+      ev_res = update_logical_result (thread_p, ev_res, NULL, NULL, NULL, NULL);
+      if (ev_res != V_TRUE)
+	{
+	  goto end;
+	}
+    }
+
+  filter = mvcc_reev_data->key_filter;
+  if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache) != NO_ERROR)
+	{
+	  return V_ERROR;
+	}
+      ev_res =
+	(*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, (OID *) oid);
+      ev_res = update_logical_result (thread_p, ev_res, NULL, NULL, NULL, NULL);
+      if (ev_res != V_TRUE)
+	{
+	  goto end;
+	}
+    }
+
+  filter = mvcc_reev_data->data_filter;
+  if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
+    {
+      ev_res = eval_data_filter (thread_p, (OID *) oid, recdes, NULL, filter);
+      ev_res =
+	update_logical_result (thread_p, ev_res, (int *) mvcc_reev_data->qualification, mvcc_reev_data->key_filter,
+			       recdes, oid);
+    }
+
+end:
+  return ev_res;
+}
+
+/*
+ * locator_decide_operation_type () - returns the operation type that corresponds to the provided lock mode.
+ *
+ * return	  : operation type
+ * lock_mode (in) : lock_mode
+ */
+SCAN_OPERATION_TYPE
+locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type)
+{
+  SCAN_OPERATION_TYPE op_type;
+
+  if (lock_mode == NULL_LOCK)
+    {
+      /* for non-mvcc classes, corresponding lock for S_SELECT is S_LOCK; 
+       * this inconsistency should be acceptable, as the operation type is ignored anyway for non-mvcc classes */
+      op_type = S_SELECT;
+    }
+  else if (lock_mode <= S_LOCK)
+    {
+      op_type = S_SELECT_WITH_LOCK;
+    }
+  else
+    {
+      op_type = S_DELETE;
+      /* equivalent to S_UPDATE */
+    }
+
+  if (lock_mode > NULL_LOCK && lock_mode <= S_LOCK
+      && (fetch_version_type == LC_FETCH_MVCC_VERSION || fetch_version_type == LC_FETCH_CURRENT_VERSION))
+    {
+      /* In this situation, the operation type must be changed to S_SELECT. 
+       * The final lock mode will be decided when class type will be known */
+      assert (op_type == S_SELECT_WITH_LOCK);
+      op_type = S_SELECT;
+    }
+
+  return op_type;
+}
+
+/*
+* locator_get_lock_mode_from_op_type () - returns the lock mode that corresponds to the provided operation type.
+*
+* return	  : lock mode
+* lock_mode (in) : operation type
+*/
+LOCK
+locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type)
+{
+  switch (op_type)
+    {
+    case S_SELECT:
+    case S_SELECT_WITH_LOCK:
+      /* S_LOCK -> will be converted to NULL_LOCK for mvcc classes */
+      return S_LOCK;
+    case S_UPDATE:
+    case S_DELETE:
+      return X_LOCK;
+    default:
+      assert (false);
+      return NA_LOCK;
+    }
 }

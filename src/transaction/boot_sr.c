@@ -3432,17 +3432,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = heap_manager_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
   /* 
    * How to restart the system ?
    */
@@ -3462,6 +3451,17 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	{
 	  goto error;
 	}
+    }
+
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  error_code = heap_manager_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
     }
 
   /* 
@@ -4544,7 +4544,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	  return DISK_ERROR;
 	}
       /* Check heap file is really exist. It can be removed. */
-      if (heap_get (thread_p, oid, &peek_recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan_cache);
 	  lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);

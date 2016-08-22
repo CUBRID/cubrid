@@ -1807,7 +1807,7 @@ catalog_get_rep_dir (THREAD_ENTRY * thread_p, OID * class_oid_p, OID * rep_dir_p
 
       heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
-      if (heap_get (thread_p, class_oid_p, &record, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
+      if (heap_get_class_record (thread_p, class_oid_p, &record, &scan_cache, PEEK) == S_SUCCESS)
 	{
 	  or_class_rep_dir (&record, rep_dir_p);
 	}
@@ -5672,7 +5672,7 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
   /* not found in cache, get it from class record */
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
-  if (heap_get (thread_p, class_id_p, &record, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_id_p, &record, &scan_cache, PEEK) == S_SUCCESS)
     {
       or_class_rep_dir (&record, dir_oid_p);
     }
@@ -5683,6 +5683,9 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
 	{
 	  error = ER_FAILED;
 	}
+
+      heap_scancache_end (thread_p, &scan_cache);
+
       return error;
     }
 

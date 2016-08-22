@@ -1132,8 +1132,8 @@ trigger_to_object (TR_TRIGGER * trigger)
       trigger->object = object_p;
       obt_p = NULL;
 
-      /* get the CHN so we know this template is still valid get the current version, not the latest one. */
-      if (au_fetch_instance_force (object_p, &obj, AU_FETCH_READ, LC_FETCH_CURRENT_VERSION) == 0)
+      /* get the object CHN so we know this template is still valid; get dirty version, as we need lock for triggers fetch */
+      if (au_fetch_instance_force (object_p, &obj, AU_FETCH_READ, LC_FETCH_DIRTY_VERSION) == 0)
 	{
 	  trigger->chn = WS_CHN (obj);
 	}

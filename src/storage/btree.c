@@ -1383,7 +1383,7 @@ static const char *node_type_to_string (short node_type);
 static char *key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type);
 static int index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * recdes);
 static SCAN_CODE btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_values, int out_cnt,
-						   const char *class_name, OR_INDEX * index_p, OID * oid_p);
+						   const char *class_name, OR_INDEX * index_p, OID * class_oid_p);
 static SCAN_CODE btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_values, int out_cnt,
 						     const char *class_name, OR_INDEX * index_p);
 static bool btree_leaf_lsa_eq (THREAD_ENTRY * thread_p, LOG_LSA * a, LOG_LSA * b);
@@ -1762,7 +1762,7 @@ btree_get_node_level (PAGE_PTR page_ptr)
 bool
 btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
 {
-  if (*clear_flag == true)
+  if (*clear_flag == true || key_value->need_clear == true)
     {
       pr_clear_value (key_value);
       *clear_flag = false;
@@ -4334,6 +4334,11 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 	}
     }
 
+  if (key != NULL && key->need_clear)
+    {
+      *clear_key = true;
+    }
+
   buf.ptr = PTR_ALIGN (buf.ptr, OR_INT_SIZE);
 
   *offset = CAST_BUFLEN (buf.ptr - buf.buffer);
@@ -5750,7 +5755,7 @@ btree_generate_prefix_domain (BTID_INT * btid)
   dbtype = TP_DOMAIN_TYPE (domain);
 
   /* varying domains did not come into use until btree revision level 1 */
-  if (!pr_is_variable_type (dbtype) && pr_is_string_type (dbtype))
+  if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_BIT)
     {
       switch (dbtype)
 	{
@@ -5764,10 +5769,6 @@ btree_generate_prefix_domain (BTID_INT * btid)
 	  vartype = DB_TYPE_VARBIT;
 	  break;
 	default:
-	  assert (false);
-#if defined(CUBRID_DEBUG)
-	  printf ("Corrupt domain in btree_generate_prefix_domain\n");
-#endif /* CUBRID_DEBUG */
 	  return NULL;
 	}
 
@@ -6514,6 +6515,11 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 	  pr_clear_value (&(env->pkeys_val[i]));	/* clear saved */
 	  pr_clone_value (&elem, &(env->pkeys_val[i]));	/* save */
 
+	  if (elem.need_clear == true)
+	    {
+	      pr_clear_value (&elem);
+	    }
+
 	  /* propagate to the following partial key-values */
 	  prev_k_index = prev_i_index;
 	  prev_k_ptr = prev_i_ptr;
@@ -6529,6 +6535,11 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 	      env->stat_info->pkeys[k]++;
 	      pr_clear_value (&(env->pkeys_val[k]));	/* clear saved */
 	      pr_clone_value (&elem, &(env->pkeys_val[k]));	/* save */
+
+	      if (elem.need_clear == true)
+		{
+		  pr_clear_value (&elem);
+		}
 	    }
 
 	  break;
@@ -8422,7 +8433,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
 	}
 
       /* Check heap file is really exist. It can be removed. */
-      if (heap_get (thread_p, &btdes.class_oid, &peek_recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, &btdes.class_oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan_cache);
 	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
@@ -16519,7 +16530,12 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 		  goto end;	/* give up */
 		}
 	    }
+	  if (!DB_IS_NULL (&ep) && ep.need_clear == true)
+	    {
+	      pr_clear_value (&ep);
+	    }
 	}
+
 
       /* 
        * Only in case that key_range_satisfied is true,
@@ -16549,7 +16565,6 @@ end:
   return ret;
 
 exit_on_error:
-
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
@@ -19382,9 +19397,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	  return DB_UNK;
 	}
 
-      c =
-	pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
-			    &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
+      c = pr_midxkey_compare (DB_GET_MIDXKEY (key1), DB_GET_MIDXKEY (key2), do_coercion, total_order, -1, start_colp,
+			      &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc)
@@ -21059,20 +21073,34 @@ index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * rec
 {
   int i, n, remain_size;
   char *buf_p = NULL;
-  const char *attr_name = NULL;
+  char *attr_name;
   char format[20];
   int error = NO_ERROR;
+  int alloced_string = 0;
+  char *string = NULL;
 
   buf_p = buf;
   remain_size = buf_size;
 
   for (i = 0; i < index_p->n_atts; i++)
     {
-      attr_name = or_get_attrname (recdes, index_p->atts[i]->id);
+      bool set_break = false;
+      alloced_string = 0;
+      string = NULL;
+
+      error = or_get_attrname (recdes, index_p->atts[i]->id, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  set_break = true;
+	  goto clean_string;
+	}
+      attr_name = string;
+
       if (attr_name == NULL)
 	{
 	  error = ER_FAILED;
-	  break;
+	  set_break = true;
+	  goto clean_string;
 	}
 
       format[0] = '\0';
@@ -21092,6 +21120,17 @@ index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * rec
 	}
 
       n = snprintf (buf_p, remain_size, format, attr_name);
+
+    clean_string:
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (NULL, string);
+	}
+
+      if (set_break == true)
+	{
+	  break;
+	}
 
       if (n >= remain_size)	/* The buffer has not enough space */
 	{
@@ -21275,7 +21314,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   char *class_name = NULL;
   OR_CLASSREP *classrep = NULL;
   SHOW_INDEX_SCAN_CTX *ctx = NULL;
-  OID *oid_p = NULL;
+  OID *class_oid_p = NULL;
   int idx_in_cache;
   int selected_index = 0;
   int i, index_idx, oid_idx;
@@ -21292,16 +21331,16 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   index_idx = cursor % ctx->indexes_count;
   oid_idx = cursor / ctx->indexes_count;
 
-  oid_p = &ctx->class_oids[oid_idx];
+  class_oid_p = &ctx->class_oids[oid_idx];
 
-  class_name = heap_get_class_name (thread_p, oid_p);
+  class_name = heap_get_class_name (thread_p, class_oid_p);
   if (class_name == NULL)
     {
       ret = S_ERROR;
       goto cleanup;
     }
 
-  classrep = heap_classrepr_get (thread_p, oid_p, NULL, NULL_REPRID, &idx_in_cache);
+  classrep = heap_classrepr_get (thread_p, class_oid_p, NULL, NULL_REPRID, &idx_in_cache);
   if (classrep == NULL)
     {
       ret = S_ERROR;
@@ -21339,7 +21378,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   if (ctx->show_type == SHOWSTMT_INDEX_HEADER || ctx->show_type == SHOWSTMT_ALL_INDEXES_HEADER)
     {
-      ret = btree_scan_for_show_index_header (thread_p, out_values, out_cnt, class_name, index_p, oid_p);
+      ret = btree_scan_for_show_index_header (thread_p, out_values, out_cnt, class_name, index_p, class_oid_p);
     }
   else
     {
@@ -21406,11 +21445,11 @@ btree_index_end_scan (THREAD_ENTRY * thread_p, void **ptr)
  *   out_cnt(in):
  *   class_name(in);
  *   index_p(in);
- *   oid_p(in);
+ *   class_oid_p(in);
  */
 static SCAN_CODE
 btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_values, int out_cnt, const char *class_name,
-				  OR_INDEX * index_p, OID * oid_p)
+				  OR_INDEX * index_p, OID * class_oid_p)
 {
   int idx = 0;
   int error = NO_ERROR;
@@ -21423,13 +21462,12 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
   int num_oids = 0, num_nulls = 0, num_keys = 0;
   bool fetch_unique_stats = false;
   int unique_stats_idx = -1;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   BTID *btid_p = NULL;
+  HEAP_SCANCACHE scan_cache;
+  bool scan_cache_inited = false;
 
   assert_release (index_p != NULL);
-
-  recdes.data = NULL;
-  recdes.area_size = 0;
 
   /* get root header point */
   btid_p = &index_p->btid;
@@ -21532,15 +21570,18 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
       goto error;
     }
 
-  /* unfix page buffer before heap_get_alloc() */
+  /* unfix page buffer before heap_get_class_record() */
   if (root_page_ptr != NULL)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
     }
 
+  /* Init scan_cache for heap object retrieving */
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  scan_cache_inited = true;
+
   /* Get the name list with asc/desc info of attributes */
-  error = heap_get_alloc (thread_p, oid_p, &recdes);
-  if (error != NO_ERROR)
+  if (heap_get_class_record (thread_p, class_oid_p, &recdes, &scan_cache, COPY) != S_SUCCESS)
     {
       goto error;
     }
@@ -21573,10 +21614,7 @@ btree_scan_for_show_index_header (THREAD_ENTRY * thread_p, DB_VALUE ** out_value
       db_make_int (out_values[unique_stats_idx + 2], num_keys);
     }
 
-  if (recdes.data != NULL)
-    {
-      free_and_init (recdes.data);
-    }
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   return S_SUCCESS;
 
@@ -21587,9 +21625,9 @@ error:
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
     }
 
-  if (recdes.data != NULL)
+  if (scan_cache_inited)
     {
-      free_and_init (recdes.data);
+      (void) heap_scancache_end (thread_p, &scan_cache);
     }
 
   return S_ERROR;
@@ -24557,7 +24595,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
        * Otherwise, use dirty version with lock since need to check whether the
        * object exists.
        */
-      if (heap_is_mvcc_disabled_for_class (class_oid))
+      if (mvcc_is_mvcc_disabled_class (class_oid))
 	{
 	  find_unique_helper.snapshot = logtb_get_mvcc_snapshot (thread_p);
 	  key_function = btree_key_find_unique_version_oid;
@@ -30581,7 +30619,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 
 	      /* BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED is used only for non-MVCC classes. */
 	      assert (delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED || !LOG_ISRESTARTED ()
-		      || heap_is_mvcc_disabled_for_class (BTREE_DELETE_CLASS_OID (delete_helper)));
+		      || mvcc_is_mvcc_disabled_class (BTREE_DELETE_CLASS_OID (delete_helper)));
 	    }
 	  if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	      && OID_ISNULL (&delete_helper->second_object_info.class_oid))

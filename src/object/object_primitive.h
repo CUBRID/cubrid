@@ -348,5 +348,21 @@ extern int pr_area_init (void);
 extern void pr_area_final (void);
 
 extern int pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain);
+extern int pr_get_compression_length (const char *string, int charlen);
+extern int pr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size);
+extern int pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value,
+						   int *val_size, int align);
+
+/* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
+#define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
+
+#define PRIM_TEMPORARY_DISK_SIZE 256
+#define PRIM_COMPRESSION_LENGTH_OFFSET 4
+
+/* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
+#define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + (length) + MAX_ALIGNMENT)
+
+/* Worst case scenario for compression from their FAQ */
+#define LZO_COMPRESSED_STRING_SIZE(str_length) ((str_length) + ((str_length) / 16) + 64 + 3)
 
 #endif /* _OBJECT_PRIMITIVE_H_ */

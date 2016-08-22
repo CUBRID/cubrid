@@ -464,7 +464,7 @@ process_value (DB_VALUE * value)
 
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
-	scan_code = heap_get_visible_version (NULL, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN, false);
+	scan_code = heap_get_visible_version (NULL, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN);
 	heap_scancache_end (NULL, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
@@ -676,8 +676,13 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
   RECDES oldrec = { 0, 0, 0, NULL };
   bool old_object;
   int success;
+  HEAP_GET_CONTEXT context;
+  HEAP_SCANCACHE scan_cache;
 
-  old_object = (heap_get_alloc (NULL, obj_oid, &oldrec) == NO_ERROR);
+  (void) heap_scancache_quick_start (&scan_cache);
+  heap_init_get_context (NULL, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN);
+
+  old_object = (heap_get_last_version (NULL, &context) == S_SUCCESS);
 
   if (old_object)
     {
@@ -695,10 +700,8 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
       success = ER_FAILED;
     }
 
-  if (oldrec.data != NULL)
-    {
-      free_and_init (oldrec.data);
-    }
+  heap_clean_get_context (NULL, &context);
+  (void) heap_scancache_end (NULL, &scan_cache);
 
   return success;
 }
