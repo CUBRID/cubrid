@@ -4134,7 +4134,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        */
       if (last_idxflush == -1)
 	{
-	  if (bufptr->dirty == true && bufptr->pageid == (flush_info->toflush[i])->hdr.logical_pageid)
+	  if (bufptr->dirty == true)
 	    {
 	      /* We have found the smallest dirty page */
 	      last_idxflush = i;
