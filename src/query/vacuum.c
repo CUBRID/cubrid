@@ -2641,6 +2641,8 @@ restart:
 			 (long long int) entry->start_lsa.pageid, (int) entry->start_lsa.offset,
 			 (long long int) vacuum_Global_oldest_active_mvccid,
 			 (long long int) log_Gl.append.prev_lsa.pageid);
+
+	  /* todo: remember this as starting point for next iteration of generating jobs */
 	  break;
 	}
       if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
@@ -4311,8 +4313,16 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   page_unvacuumed_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (page_unvacuumed_data->blockid);
   page_free_blockid = page_unvacuumed_blockid + (data_page->index_free - data_page->index_unvacuumed);
   assert (page_free_blockid == VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_free - 1].blockid) + 1);
+
   while (true)
     {
+      /* todo: remove me */
+      vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Search page %d|%d, blockid range %lld - %lld. "
+		     "page_start_index = %d, index = %d, index_unvacuumed = %d, index_free = %d. \n",
+		     pgbuf_get_volume_id ((PAGE_PTR) data_page), pgbuf_get_page_id ((PAGE_PTR) data_page),
+		     (long long int) page_unvacuumed_blockid, (long long int) page_free_blockid,
+		     page_start_index, index, data_page->index_unvacuumed, data_page->index_free);
+
       /* Loop until all blocks from current pages are marked. */
       while ((index < n_finished_blocks)
 	     && ((blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (finished_blocks[index])) < page_free_blockid))
@@ -4321,6 +4331,13 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	  data = page_unvacuumed_data + (blockid - page_unvacuumed_blockid);
 	  assert (VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid) == blockid);
 	  assert (VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (data->blockid));
+
+	  /* todo: remove me */
+	  if (VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid) != blockid)
+	    {
+	      abort ();
+	    }
+
 	  if (VACUUM_BLOCK_STATUS_IS_VACUUMED (finished_blocks[index]))
 	    {
 	      /* Block has been vacuumed. */
@@ -4348,10 +4365,17 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	{
 	  /* No changes in page. Nothing to do. */
 	  /* Fall through. */
+
+	  /* todo: remove me */
+	  vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Nothing found in page %d|%d.\n",
+			 pgbuf_get_volume_id ((PAGE_PTR) data_page), pgbuf_get_page_id ((PAGE_PTR) data_page));
 	}
       else
 	{
 	  /* Some blocks in page were changed. */
+
+	  /* todo: remove me */
+	  vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! index_unvacuumed before is %d.\n", data_page->index_unvacuumed);
 
 	  /* Update index_unvacuumed. */
 	  while (data_page->index_unvacuumed < data_page->index_free
@@ -4361,9 +4385,17 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	      data_page->index_unvacuumed++;
 	    }
 
+	  /* todo: remove me */
+	  vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! index_unvacuumed after is %d.\n", data_page->index_unvacuumed);
+
 	  if (data_page->index_unvacuumed == data_page->index_free)
 	    {
 	      /* Nothing left in page to be vacuumed. */
+
+	      /* todo: remove me */
+	      vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "page %d|%d all vacuumed (index_unvacuumed = index_free = %d).\n",
+			     pgbuf_get_volume_id ((PAGE_PTR) data_page), pgbuf_get_page_id ((PAGE_PTR) data_page),
+			     data_page->index_unvacuumed);
 
 	      vacuum_data_empty_page (thread_p, prev_data_page, &data_page);
 	      /* Should have advanced on next page. */
@@ -4377,6 +4409,8 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 		  if (n_finished_blocks > index)
 		    {
 		      assert (false);
+		      /* todo: remove me */
+		      abort ();
 		      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
 				     "VACUUM ERROR: Finished blocks not found in vacuum data!!!!\n");
 		      return;
@@ -4384,12 +4418,18 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 		  else
 		    {
 		      /* Break loop. */
+		      /* todo: remove me */
+		      vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! finished.\n");
 		      break;
 		    }
 		}
 	      else
 		{
 		  /* Continue with new page. */
+
+		  /* todo: remove me */
+		  vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Continue to page next to the one deallocated.\n");
+
 		  page_start_index = index;
 		  assert (data_page->index_unvacuumed >= 0);
 		  page_unvacuumed_data = data_page->data + data_page->index_unvacuumed;
@@ -4402,9 +4442,20 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	    {
 	      /* Page still has some data. */
 
+	      /* todo: remove me */
+	      vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Page %d|%d still has data: index_unvacuumed = %d, "
+			     "index_free = %d, blockid_unvacuumed=%lld, blockid_free=%lld.\n",
+			     pgbuf_get_volume_id ((PAGE_PTR) data_page), pgbuf_get_page_id ((PAGE_PTR) data_page),
+			     data_page->index_unvacuumed, data_page->index_free,
+			     VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid),
+			     VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_free - 1].blockid) + 1);
+
 	      if (VPID_ISNULL (&data_page->next_page))
 		{
 		  /* We remove first blocks that have been vacuumed. */
+		  /* todo: remove me */
+		  vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Reset page. \n");
+
 		  if (data_page->index_unvacuumed > 0)
 		    {
 		      /* Relocate everything at the start of the page. */
@@ -4437,11 +4488,18 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
       if (VPID_ISNULL (&data_page->next_page))
 	{
 	  assert (false);
+	  /* todo: remove me */
+	  abort ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
 			 "VACUUM ERROR: Finished blocks not found in vacuum data!!!!\n");
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  return;
 	}
+
+      /* todo: remove me */
+      vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Go to next page %d|%d. prev=%d|%d \n",
+		     pgbuf_get_volume_id ((PAGE_PTR) data_page), pgbuf_get_page_id ((PAGE_PTR) data_page),
+		     data_page->next_page.volid, data_page->next_page.pageid);
 
       prev_data_page = data_page;
       VPID_COPY (&next_vpid, &data_page->next_page);
@@ -4493,6 +4551,9 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 
   if (*data_page == vacuum_Data.first_page && VPID_ISNULL (&(*data_page)->next_page))
     {
+      /* todo: remove me */
+      vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Empty vacuum data. Reset first page %d|%d. \n",
+		     pgbuf_get_volume_id ((PAGE_PTR) (*data_page)), pgbuf_get_page_id ((PAGE_PTR) (*data_page)));
       /* Case 1. */
       /* Reset page. */
       vacuum_data_initialize_new_page (thread_p, *data_page);
@@ -4516,6 +4577,11 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       /* Case 2. */
       VACUUM_DATA_PAGE *save_first_page = vacuum_Data.first_page;
       VPID save_first_vpid;
+
+      /* todo: remove me */
+      vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Remove first page %d|%d. New first page will be %d|%d. \n",
+		     pgbuf_get_volume_id ((PAGE_PTR) (*data_page)), pgbuf_get_page_id ((PAGE_PTR) (*data_page)),
+		     (*data_page)->next_page.volid, (*data_page)->next_page.pageid);
 
       *data_page = vacuum_fix_data_page (thread_p, &((*data_page)->next_page));
       if (*data_page == NULL)
@@ -4587,6 +4653,12 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	  return;
 	}
 
+      /* todo: remove me */
+      vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Remove non-first page %d|%d. Prev page %d|%d, next page %d|%d. \n",
+		     pgbuf_get_volume_id ((PAGE_PTR) (*data_page)), pgbuf_get_page_id ((PAGE_PTR) (*data_page)),
+		     pgbuf_get_volume_id ((PAGE_PTR) prev_data_page), pgbuf_get_page_id ((PAGE_PTR) prev_data_page),
+		     (*data_page)->next_page.volid, (*data_page)->next_page.pageid);
+
       (void) log_start_system_op (thread_p);
 
       /* We need to unfix page before deallocating. But if it is last vacuum data page, we must first change
@@ -4633,6 +4705,11 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	{
 	  /* Move data at the beginning. */
 	  assert (prev_data_page->index_free > prev_data_page->index_unvacuumed);
+
+	  /* todo: remove me */
+	  vacuum_er_log (VACUUM_ER_LOG_VERBOSE, "!!!!! Remove vacuumed from last page %d|%d (index_unvacuumed=%d). \n",
+			 pgbuf_get_volume_id ((PAGE_PTR) prev_data_page), pgbuf_get_page_id ((PAGE_PTR) prev_data_page),
+			 prev_data_page->index_unvacuumed);
 
 	  memmove (prev_data_page->data, prev_data_page->data + prev_data_page->index_unvacuumed,
 		   (prev_data_page->index_free - prev_data_page->index_unvacuumed) * sizeof (VACUUM_DATA_ENTRY));
