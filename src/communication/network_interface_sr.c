@@ -5285,33 +5285,16 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
 
-  base_stats = perfmon_allocate_values ();
-  if (base_stats == NULL)
-    {
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      return;
-    }
-
-  current_stats = perfmon_allocate_values ();
-  if (current_stats == NULL)
-    {
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      free_and_init (base_stats);
-      return;
-    }
-
-  diff_stats = perfmon_allocate_values ();
-  if (diff_stats == NULL)
-    {
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      free_and_init (base_stats);
-      free_and_init (current_stats);
-      return;
-    }
-
   if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
       perfmon_start_watch (thread_p);
+
+      base_stats = perfmon_allocate_values ();
+      if (base_stats == NULL)
+	{
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  return;
+	}
       xperfmon_server_copy_stats (thread_p, base_stats);
 
       tsc_getticks (&start_tick);
@@ -5491,6 +5474,29 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	  response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
 
+	  if(base_stats == NULL)
+	    {
+	      base_stats = perfmon_allocate_values ();
+	      if (base_stats == NULL)
+		{
+		  css_send_abort_to_client (thread_p->conn_entry, rid);
+		  return;
+		}
+	    }
+
+	  current_stats = perfmon_allocate_values ();
+	  if (current_stats == NULL)
+	    {
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      goto exit;
+	    }
+	  diff_stats = perfmon_allocate_values ();
+	  if (diff_stats == NULL)
+	    {
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      goto exit;
+	    }
+
 	  xperfmon_server_copy_stats (thread_p, current_stats);
 	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
 
@@ -5544,6 +5550,20 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   if (list_id)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
+    }
+
+exit:
+  if (base_stats != NULL)
+    {
+      free_and_init (base_stats);
+    }
+  if (current_stats != NULL)
+    {
+      free_and_init (current_stats);
+    }
+  if (diff_stats != NULL)
+    {
+      free_and_init (diff_stats);
     }
 }
 
