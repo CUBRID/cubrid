@@ -675,7 +675,7 @@ perfmon_reset_stats (void)
  *   return: client statistics
  */
 int
-perfmon_get_stats ()
+perfmon_get_stats (void)
 {
   int err = NO_ERROR;
 
@@ -820,8 +820,8 @@ perfmon_print_global_stats (FILE * stream, bool cumulative, const char *substr)
     }
   else
     {
-      if (perfmon_calc_diff_stats
-	  (diff_result, perfmon_Stat_info.current_global_stats, perfmon_Stat_info.old_global_stats) != NO_ERROR)
+      if (perfmon_calc_diff_stats (diff_result, perfmon_Stat_info.current_global_stats,
+				   perfmon_Stat_info.old_global_stats) != NO_ERROR)
 	{
 	  assert (false);
 	  goto exit;
