@@ -49,6 +49,7 @@
 #include "xserver_interface.h"
 #include "tsc_timer.h"
 #include "mvcc.h"
+#include "locator_sr.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -4490,6 +4491,9 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_METHOD_SCAN:
+      break;
+
+    default:
       break;
     }
 
