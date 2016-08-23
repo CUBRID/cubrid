@@ -2640,7 +2640,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
 
-  if (file_create_queryarea (thread_p, &tfile_vfid_p->temp_vfid, TEMP_FILE_DEFAULT_PAGES, "Query result file") == NULL)
+  if (flre_create_query_area (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
     {
       free_and_init (tfile_vfid_p);
       return NULL;
@@ -2672,6 +2672,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       /* query entry is not found */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
+      flre_destroy (thread_p, &tfile_vfid_p->temp_vfid);
       free_and_init (tfile_vfid_p);
       return NULL;
     }

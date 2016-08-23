@@ -16287,6 +16287,30 @@ file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 }
 
 /*
+ * flre_create_query_area () - Create a query area file (temporary, not numerable).
+ *
+ * return	 : Error code
+ * thread_p (in) : Thread entry
+ * vfid (out)	 : File identifier
+ */
+int
+flre_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid)
+{
+  FILE_TABLESPACE tablespace;
+
+  /* todo: shouldn't we consider the npages? */
+  if (file_tmpfile_cache_get (thread_p, vfid, FILE_QUERY_AREA) != NULL)
+    {
+      assert (!VFID_ISNULL (vfid));
+      return NO_ERROR;
+    }
+
+  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, 1);	/* min size */
+
+  return flre_create (thread_p, FILE_QUERY_AREA, &tablespace, NULL, true, false, vfid);
+}
+
+/*
  * flre_create_ehash () - Create a permanent or temporary file for extensible hash table. This file will have the
  *			  numerable property.
  *

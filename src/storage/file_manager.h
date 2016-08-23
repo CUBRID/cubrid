@@ -387,6 +387,7 @@ extern int flre_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type
 				    VFID * vfid);
 extern int flre_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
 extern int file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
+extern int flre_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid);
 extern int flre_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash,
 			      VFID * vfid);
 extern int flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash,
