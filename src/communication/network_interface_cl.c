@@ -8042,30 +8042,26 @@ perfmon_server_copy_stats (UINT64 * to_stats)
 #if defined(CS_MODE)
   int req_error;
   char *reply;
-  char *reply_start;
   int nr_statistic_values;
   int err = NO_ERROR;
 
   nr_statistic_values = perfmon_get_number_of_statistic_values ();
   /* Align to 8 bytes */
-  reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
+  reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
 
   if (reply == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * OR_INT64_SIZE);
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
 
-  reply_start = PTR_ALIGN (reply, MAX_ALIGNMENT);
-
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply_start, nr_statistic_values * OR_INT64_SIZE,
+    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply, nr_statistic_values * OR_INT64_SIZE,
 			NULL, 0, NULL, 0);
   if (!req_error)
     {
-      perfmon_unpack_stats (reply_start, to_stats);
+      perfmon_unpack_stats (reply, to_stats);
     }
   else
     {
