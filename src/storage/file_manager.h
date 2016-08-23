@@ -423,6 +423,7 @@ extern int file_rv_extdata_merge_compare_vsid_redo (THREAD_ENTRY * thread_p, LOG
 extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 /* Recovery dump stuff */
 extern void file_rv_dump_vfid_and_vpid (FILE * fp, int length, void *data);

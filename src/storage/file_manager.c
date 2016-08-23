@@ -14169,6 +14169,7 @@ end:
  *
  *    So, file_alloc_page and file_dealloc_page will output the file header page. The caller has the responsibility to
  *    keep the file header fixed until the system operation si committed and release it afterwards.
+ * 3. improve merging extdata.
  */
 
 /************************************************************************/
@@ -14199,6 +14200,7 @@ struct flre_header
   int n_page_ftab;		/* Page count used for file tables. */
   int n_page_free;		/* Free page count. Pages that were reserved on disk and can be allocated by user (or
 				 * table) in the future. */
+  int n_page_mark_delete;	/* used by numerable files to track marked deleted pages */
 
   /* Sector counts. */
   int n_sector_total;		/* File total sector count. */
@@ -14394,7 +14396,10 @@ typedef enum
 /* Numerable files section                                              */
 /************************************************************************/
 
-#define FILE_USER_PAGE_MARK_DELETED ((PAGEID) 0x80000000)
+#define FILE_USER_PAGE_MARK_DELETE_FLAG ((PAGEID) 0x80000000)
+#define FILE_USER_PAGE_IS_MARKED_DELETED(vpid) ((((VPID *) vpid)->pageid & FILE_USER_PAGE_MARK_DELETE_FLAG) != 0)
+#define FILE_USER_PAGE_MARK_DELETED(vpid) ((VPID *) vpid)->pageid |= FILE_USER_PAGE_MARK_DELETE_FLAG
+#define FILE_USER_PAGE_CLEAR_MARK_DELETED(vpid) ((VPID *) vpid)->pageid &= ~FILE_USER_PAGE_MARK_DELETE_FLAG
 
 /* FILE_FIND_NTH_CONTEXT -
  * structure used for finding nth page. */
@@ -14426,6 +14431,8 @@ STATIC_INLINE void file_log_fhead_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_
 					 bool was_empty, bool is_full) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_log_fhead_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 					   bool is_empty, bool was_full) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_header_update_mark_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, int delta)
+  __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* File extensible data section                                         */
@@ -14533,7 +14540,10 @@ static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, boo
 /************************************************************************/
 
 static int file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid);
-static int file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
+static int file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+				       void *args);
+static int file_extdata_find_nth_vpid_and_skip_marked (THREAD_ENTRY * thread_p, const void *data, int index,
+						       bool * stop, void *args);
 
 /************************************************************************/
 /* Temporary file section                                               */
@@ -14577,6 +14587,8 @@ file_header_sanity_check (FLRE_HEADER * fhead)
   assert (fhead->n_page_ftab > 0);
   assert (fhead->n_page_free >= 0);
   assert (fhead->n_page_free + fhead->n_page_user + fhead->n_page_ftab == fhead->n_page_total);
+  assert (fhead->n_page_mark_delete >= 0);
+  assert (fhead->n_page_mark_delete <= fhead->n_page_user);
 
   assert (fhead->n_sector_total > 0);
   assert (fhead->n_sector_partial >= 0);
@@ -14854,6 +14866,53 @@ file_log_fhead_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
 #undef LOG_BOOL_COUNT
+}
+
+/*
+ * file_header_update_mark_deleted () - Update mark deleted count in file header and log change.
+ *
+ * return	   : Void
+ * thread_p (in)   : Thread entry
+ * page_fhead (in) : File header page
+ * delta (in)	   : Mark deleted delta
+ */
+STATIC_INLINE void
+file_header_update_mark_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, int delta)
+{
+  FLRE_HEADER *fhead = (FLRE_HEADER *) page_fhead;
+  int undo_delta = -delta;
+
+  fhead->n_page_mark_delete += delta;
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      log_append_undoredo_data2 (thread_p, RVFL_FHEAD_MARK_DELETE, NULL, page_fhead, 0, sizeof (undo_delta),
+				 sizeof (delta), &undo_delta, &delta);
+    }
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+}
+
+/*
+ * file_rv_header_update_mark_deleted () - Recovery for mark deleted count in file header
+ *
+ * return	 : NO_ERROR
+ * thread_p (in) : Thread entry
+ * rcv (in)	 : Recovery data
+ */
+int
+file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  int delta = *(int *) rcv->data;
+  PAGE_PTR page_fhead = rcv->pgptr;
+  FLRE_HEADER *fhead;
+
+  assert (page_fhead != NULL);
+  assert (rcv->length == sizeof (int));
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  fhead->n_page_mark_delete += delta;
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+  return NO_ERROR;
 }
 
 /************************************************************************/
@@ -16143,18 +16202,18 @@ file_compare_vsids (const void *first, const void *second)
 static int
 file_compare_vpids (const void *first, const void *second)
 {
-  const VPID *first_vpid = (const VPID *) first;
-  const VPID *second_vpid = (const VPID *) second;
+  VPID first_vpid = *(VPID *) first;
+  VPID second_vpid = *(VPID *) second;
 
-  if (first_vpid->volid == second_vpid->volid)
+  if (first_vpid.volid == second_vpid.volid)
     {
-      PAGEID first_pageid = first_vpid->pageid & (~FILE_USER_PAGE_MARK_DELETED);
-      PAGEID second_pageid = second_vpid->pageid & (~FILE_USER_PAGE_MARK_DELETED);
-      return first_pageid - second_pageid;
+      FILE_USER_PAGE_CLEAR_MARK_DELETED (&first_vpid);
+      FILE_USER_PAGE_CLEAR_MARK_DELETED (&second_vpid);
+      return first_vpid.pageid - second_vpid.pageid;
     }
   else
     {
-      return first_vpid->volid - second_vpid->volid;
+      return first_vpid.volid - second_vpid.volid;
     }
 }
 
@@ -16479,6 +16538,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
   fhead->n_page_user = 0;
   fhead->n_page_ftab = 1;	/* file header */
   fhead->n_page_free = 0;
+  fhead->n_page_mark_delete = 0;
 
   fhead->n_sector_total = 0;
   fhead->n_sector_partial = 0;
@@ -17778,6 +17838,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid, FILE_TYPE
   LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab = NULL;
   PAGE_PTR page_ftab = NULL;
+  PAGE_PTR page_extdata = NULL;
   bool found = false;
   int pos = -1;
   VPID *vpid_found;
@@ -17871,7 +17932,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid, FILE_TYPE
     }
   /* check not marked as deleted */
   vpid_found = (VPID *) file_extdata_at (extdata_user_page_ftab, pos);
-  if (vpid_found->pageid & FILE_USER_PAGE_MARK_DELETED)
+  if (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_found))
     {
       /* already marked as deleted? I don't think so! */
       assert_release (false);
@@ -17880,17 +17941,19 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid, FILE_TYPE
     }
 
   /* mark page as deleted */
-  vpid_found->pageid |= FILE_USER_PAGE_MARK_DELETED;
+  FILE_USER_PAGE_MARK_DELETED (vpid_found);
+  page_extdata = page_ftab != NULL ? page_ftab : page_fhead;
+  pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
   if (!FILE_IS_TEMPORARY (fhead))
     {
       /* log it */
       LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-      addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
+      addr.pgptr = page_extdata;
       addr.offset = (PGLENGTH) (((char *) vpid_found) - addr.pgptr);
       log_append_undoredo_data (thread_p, RVFL_USER_PAGE_MARK_DELETE, &addr, LOG_DATA_SIZE, 0, log_data, NULL);
     }
-
-  pgbuf_set_dirty (thread_p, page_ftab != NULL ? page_ftab : page_fhead, DONT_FREE);
+  /* update file header */
+  file_header_update_mark_deleted (thread_p, page_fhead, 1);
 
   /* done */
   assert (error_code != NO_ERROR);
@@ -18332,6 +18395,13 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
 	  goto exit;
 	}
 
+      /* is mark deleted? */
+      if (FILE_USER_PAGE_IS_MARKED_DELETED (file_extdata_at (extdata_user_page_ftab, position)))
+	{
+	  /* update file header */
+	  file_header_update_mark_deleted (thread_p, page_fhead, -1);
+	}
+
       /* remove VPID */
       addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
       file_log_extdata_remove (thread_p, extdata_user_page_ftab, addr.pgptr, position, 1);
@@ -18584,8 +18654,39 @@ exit:
 }
 
 /*
- * file_extdata_find_nth_vpid () - Function callable by file_extdata_apply_funcs. Used to find the nth VPID not marked
- *				   as deleted (numerable files).
+ * file_extdata_find_nth_vpid () - Function callable by file_extdata_apply_funcs. An optimal way of finding nth page
+ *				   when there is no page marked as deleted.
+ *
+ * return	 : NO_ERROR
+ * thread_p (in) : Thread entry
+ * extdata (in)	 : Extensible data
+ * stop (in)	 : Output true when search must be stopped
+ * args (in)	 : FILE_FIND_NTH_CONTEXT *
+ */
+static int
+file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
+{
+  FILE_FIND_NTH_CONTEXT *find_nth_context = (FILE_FIND_NTH_CONTEXT *) args;
+  int count_vpid = file_extdata_item_count (extdata);
+
+  if (count_vpid <= find_nth_context->nth)
+    {
+      /* not in this extensible data. continue searching. */
+      find_nth_context->nth -= count_vpid;
+    }
+  else
+    {
+      /* nth VPID is in this extensible data. get it and stop searching */
+      VPID_COPY (find_nth_context->vpid_nth, (VPID *) file_extdata_at (extdata, find_nth_context->nth));
+      assert (!FILE_USER_PAGE_IS_MARKED_DELETED (find_nth_context->vpid_nth));
+      *stop = true;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * file_extdata_find_nth_vpid_and_skip_marked () - Function callable by file_extdata_apply_funcs. Used to find the nth
+ *						   VPID not marked as deleted (numerable files).
  *
  * return        : NO_ERROR
  * thread_p (in) : Thread entry
@@ -18595,12 +18696,13 @@ exit:
  * args (in/out) : FILE_FIND_NTH_CONTEXT *
  */
 static int
-file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
+file_extdata_find_nth_vpid_and_skip_marked (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
+					    void *args)
 {
   FILE_FIND_NTH_CONTEXT *find_nth_context = (FILE_FIND_NTH_CONTEXT *) args;
   VPID *vpidp = (VPID *) data;
 
-  if (vpidp->pageid & FILE_USER_PAGE_MARK_DELETED)
+  if (FILE_USER_PAGE_IS_MARKED_DELETED (vpidp))
     {
       /* skip marked deleted */
       return NO_ERROR;
@@ -18649,7 +18751,9 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 
   /* how it works:
    * iterate through user page table, skipping pages marked as deleted, and decrement counter until it reaches 0.
-   * save the VPID found on the nth position. */
+   * save the VPID found on the nth position.
+   * if there are no marked deleted pages, we can skip entire extensible data components and go directly to nth page.
+   */
 
   /* get file header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
@@ -18667,13 +18771,31 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
   FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
   find_nth_context.vpid_nth = vpid_nth;
   find_nth_context.nth = nth;
-  error_code =
-    file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, NULL, NULL, file_extdata_find_nth_vpid,
-			      &find_nth_context, NULL, NULL);
-  if (error_code != NO_ERROR)
+
+  if (fhead->n_page_mark_delete > 0)
     {
-      ASSERT_ERROR ();
-      goto exit;
+      /* we don't know where the marked deleted pages are... we need to iterate through all pages and skip the marked
+       * deleted. */
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, NULL, NULL,
+				  file_extdata_find_nth_vpid_and_skip_marked, &find_nth_context, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+  else
+    {
+      /* we can go directly to the right VPID. */
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, file_extdata_find_nth_vpid, &find_nth_context, NULL,
+				  NULL, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
     }
   if (VPID_ISNULL (vpid_nth))
     {
@@ -18686,7 +18808,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	      goto exit;
 	    }
 	}
-      else if (auto_alloc)
+      else
 	{
 	  /* should not happen */
 	  assert_release (false);
@@ -18720,8 +18842,8 @@ file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VPID *vpid_ptr = NULL;
 
   vpid_ptr = (VPID *) (page_ftab + rcv->offset);
-  assert ((vpid_ptr->pageid & FILE_USER_PAGE_MARK_DELETED) == 0);
-  vpid_ptr->pageid |= FILE_USER_PAGE_MARK_DELETED;
+  assert (!FILE_USER_PAGE_IS_MARKED_DELETED (vpid_ptr));
+  FILE_USER_PAGE_MARK_DELETED (vpid_ptr);
 
   pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
   return NO_ERROR;
@@ -18806,9 +18928,9 @@ file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   /* go to VPID in current extensible data */
   vpid_in_table = (VPID *) file_extdata_at (extdata_user_page_ftab, position);
-  assert ((vpid_in_table->pageid & FILE_USER_PAGE_MARK_DELETED) != 0);
+  assert (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_in_table));
 
-  vpid_in_table->pageid &= ~FILE_USER_PAGE_MARK_DELETED;	/* Unmark */
+  FILE_USER_PAGE_CLEAR_MARK_DELETED (vpid_in_table);
   assert (VPID_EQ (vpid, vpid_in_table));
 
   /* compensate logging. */
@@ -18850,9 +18972,9 @@ file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv
   /* note: this is used to compensate undo of mark delete. this time the location of VPID is known */
 
   vpid_ptr = (VPID *) (page_ftab + rcv->offset);
-  assert ((vpid_ptr->pageid & FILE_USER_PAGE_MARK_DELETED) != 0);
+  assert (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_ptr));
 
-  vpid_ptr->pageid &= ~FILE_USER_PAGE_MARK_DELETED;	/* unmark */
+  FILE_USER_PAGE_CLEAR_MARK_DELETED (vpid_ptr);
 
   pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
   return NO_ERROR;

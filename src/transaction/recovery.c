@@ -1098,6 +1098,12 @@ struct rvfun RV_fun[] = {
    file_rv_fhead_alloc,
    file_rv_fhead_dealloc,
    NULL,
+   NULL},
+  {RVFL_FHEAD_MARK_DELETE,
+   "RVFL_FHEAD_MARK_DELETE",
+   file_rv_header_update_mark_deleted,
+   file_rv_header_update_mark_deleted,
+   NULL,
    NULL}
 };
 
