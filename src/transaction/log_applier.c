@@ -3693,7 +3693,7 @@ la_make_room_for_mvcc_insid (RECDES * recdes)
   mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
   assert (mvcc_flag != 0);
-  assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN)));
+  assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)));
 
   assert (recdes->area_size >= recdes->length + OR_MVCCID_SIZE);
 
@@ -3764,7 +3764,7 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 	    {
 	      /* skip chn */
 	      (void) or_advance (buf, OR_INT_SIZE);
-	      if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
+	      if (mvcc_flags & OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)
 		{
 		  /* skip 4 bytes - fixed MVCC header size */
 		  (void) or_advance (buf, OR_INT_SIZE);
@@ -4660,8 +4660,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 	    }
 	}
     }
-  else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
-	    && recdes->type == REC_RELOCATION)
+  else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM) && recdes->type == REC_RELOCATION)
     {
       error = la_get_relocation_recdes (lrec, pg, 0, &logs, &rec_type, recdes);
       if (error == NO_ERROR)
