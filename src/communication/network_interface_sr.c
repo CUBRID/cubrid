@@ -6460,6 +6460,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   if (reply == NULL)
     {
       ASSERT_ERROR ();
+      free_and_init (stats);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
@@ -6502,6 +6503,7 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
   if (reply == NULL)
     {
       ASSERT_ERROR ();
+      free_and_init (stats);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
