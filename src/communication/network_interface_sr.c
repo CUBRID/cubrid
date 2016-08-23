@@ -5224,7 +5224,7 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
       aligned_data_buf = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
       data = aligned_data_buf;
       memcpy (data, ptr, data_size);
-    }  
+    }
   else if (0 < dbval_cnt)
     {
       /* receive parameter values (DB_VALUE) from the client */
