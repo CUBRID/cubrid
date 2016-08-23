@@ -507,7 +507,7 @@ PSTAT_METADATA pstat_Metadata[] = {
 #define PSTAT_COUNTER_TIMER_MAX_TIME_VALUE(startvalp) ((startvalp) + 2)
 #define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
 
-static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, int offset);
+static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount);
 static void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount);
 static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset);
 static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset);
@@ -4085,7 +4085,7 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
   assert (metadata->valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
 
   /* Update statistics. */
-  perfmon_add_at_offset (thread_p, amount, metadata->start_offset);
+  perfmon_add_at_offset (thread_p, metadata->start_offset, amount);
 }
 
 /*
@@ -4114,7 +4114,7 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
   metadata = &pstat_Metadata[psid];
 
   /* Update statistics. */
-  perfmon_add_at_offset (thread_p, amount, metadata->start_offset + offset);
+  perfmon_add_at_offset (thread_p, metadata->start_offset + offset, amount);
 }
 
 /*
@@ -4139,7 +4139,7 @@ perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
  * offset (in)	 : Offset to statistics value.
  */
 static void
-perfmon_add_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, int offset)
+perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 {
   UINT64 *statvalp = NULL;
 #if defined (SERVER_MODE)
