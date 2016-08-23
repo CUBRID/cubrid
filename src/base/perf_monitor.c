@@ -4170,11 +4170,11 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * statval (in)  : New statistic value.
- * psid (in)	 : Statistic ID.
+ * psid (in)	 : New statistic value.
+ * statval (in) : Statistic ID.
  */
 void
-perfmon_set_stat (THREAD_ENTRY * thread_p, int statval, PERF_STAT_ID psid)
+perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
 {
   PSTAT_METADATA *metadata = NULL;
 

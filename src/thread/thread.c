@@ -3193,7 +3193,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
       if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
 	{
 	  css_unset_ha_repl_delayed ();
-	  perfmon_set_stat (tsd_ptr, 0, PSTAT_HA_REPL_DELAY);
+	  perfmon_set_stat (tsd_ptr, PSTAT_HA_REPL_DELAY, 0);
 
 
 	  log_append_ha_server_state (tsd_ptr, server_state);
@@ -3246,7 +3246,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 		    }
 		}
 
-	      perfmon_set_stat (tsd_ptr, curr_delay_in_secs, PSTAT_HA_REPL_DELAY);
+	      perfmon_set_stat (tsd_ptr, PSTAT_HA_REPL_DELAY, curr_delay_in_secs);
 	    }
 	}
 #endif /* WINDOWS */

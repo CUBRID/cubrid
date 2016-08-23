@@ -1124,7 +1124,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   XCACHE_STAT_INC (deletes);
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
-  perfmon_set_stat (thread_p, xcache_Entry_count, PSTAT_PC_NUM_CACHE_ENTRIES);
+  perfmon_set_stat (thread_p, PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
 
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
@@ -1299,7 +1299,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	    {
 	      /* This is a new entry. If recompile_xasl flag is true, then this replaces another cache entry. */
 	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
-	      perfmon_set_stat (thread_p, xcache_Entry_count, PSTAT_PC_NUM_CACHE_ENTRIES);
+	      perfmon_set_stat (thread_p, PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
 	    }
 	  (*xcache_entry)->free_data_on_uninit = true;
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_ADD);
@@ -1971,7 +1971,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
 	  XCACHE_STAT_INC (deletes_at_cleanup);
 	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
-	  perfmon_set_stat (thread_p, xcache_Entry_count, PSTAT_PC_NUM_CACHE_ENTRIES);
+	  perfmon_set_stat (thread_p, PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
 	}
       else
 	{
