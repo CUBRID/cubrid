@@ -510,7 +510,7 @@ PSTAT_METADATA pstat_Metadata[] = {
 static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount);
 static void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount);
 static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval);
-static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset);
+static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff);
 
 static void perfmon_server_calc_stats (UINT64 * stats);
 
@@ -4253,7 +4253,7 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
   metadata = &pstat_Metadata[psid];
   assert (metadata->valtype == PSTAT_COUNTER_TIMER_VALUE);
 
-  perfmon_time_at_offset (thread_p, timediff, metadata->start_offset);
+  perfmon_time_at_offset (thread_p, metadata->start_offset, timediff);
 }
 
 /*
@@ -4261,13 +4261,13 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * timediff (in) : Time difference to add to timer.
- * offset (in)	 : Offset to timer values.
+ * offset (in)   : Time difference to add to timer.
+ * timediff (in) : Offset to timer values.
  *
  * NOTE: There will be three values modified: counter, total time and max time.
  */
 static void
-perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset)
+perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 {
   /* Update global statistics */
   UINT64 *statvalp = NULL;
