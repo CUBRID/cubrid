@@ -5272,9 +5272,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   int queryinfo_string_length = 0;
   char queryinfo_string[QUERY_INFO_BUF_SIZE];
 
-  UINT64 *base_stats;
-  UINT64 *current_stats;
-  UINT64 *diff_stats;
+  UINT64 *base_stats = NULL;
+  UINT64 *current_stats = NULL;
+  UINT64 *diff_stats = NULL;
   char *sql_id = NULL;
   int error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
@@ -6442,7 +6442,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
-  
+
   xperfmon_server_copy_stats (thread_p, stats);
   perfmon_pack_stats (reply, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, nr_statistic_values * sizeof (UINT64));
@@ -6484,7 +6484,7 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
-  
+
   xperfmon_server_copy_global_stats (thread_p, stats);
   perfmon_pack_stats (reply, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, nr_statistic_values * sizeof (UINT64));
