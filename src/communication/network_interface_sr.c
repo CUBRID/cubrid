@@ -5475,7 +5475,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	  response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
 
-	  if(base_stats == NULL)
+	  if (base_stats == NULL)
 	    {
 	      base_stats = perfmon_allocate_values ();
 	      if (base_stats == NULL)
