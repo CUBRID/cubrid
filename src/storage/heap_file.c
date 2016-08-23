@@ -155,7 +155,7 @@ static int rv;
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID \
 			     | OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)) \
 	{ \
-	  ; \
+	   MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE); \
 	} \
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_PREV_VERSION)) \
 	{ \
