@@ -1974,7 +1974,7 @@ perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT6
   stats = perfmon_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      perfmon_add_stat (thread_p, amount, PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS);
+      perfmon_add_stat (thread_p, PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS, amount);
 
       assert (lock_mode >= NA_LOCK && lock_mode <= SCH_M_LOCK);
 
@@ -4068,7 +4068,7 @@ perfmon_is_perf_tracking (void)
  * psid (in)	 : Statistic ID.
  */
 void
-perfmon_add_stat (THREAD_ENTRY * thread_p, UINT64 amount, PERF_STAT_ID psid)
+perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 {
   PSTAT_METADATA *metadata = NULL;
 
@@ -4127,7 +4127,7 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int of
 void
 perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
 {
-  perfmon_add_stat (thread_p, 1, psid);
+  perfmon_add_stat (thread_p, psid, 1);
 }
 
 /*

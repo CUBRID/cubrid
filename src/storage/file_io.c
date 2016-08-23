@@ -801,9 +801,9 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec, int *
   *token_consumed = tb->token_consumed;
   tb->token_consumed = 0;
 
-  perfmon_add_stat (thread_p, fc_Stats.num_pages, PSTAT_FC_NUM_PAGES);
-  perfmon_add_stat (thread_p, fc_Stats.num_log_pages, PSTAT_FC_NUM_LOG_PAGES);
-  perfmon_add_stat (thread_p, fc_Stats.num_tokens, PSTAT_FC_TOKENS);
+  perfmon_add_stat (thread_p, PSTAT_FC_NUM_PAGES, fc_Stats.num_pages);
+  perfmon_add_stat (thread_p, PSTAT_FC_NUM_LOG_PAGES, fc_Stats.num_log_pages);
+  perfmon_add_stat (thread_p, PSTAT_FC_TOKENS, fc_Stats.num_tokens);
 
 
   if (prm_get_bool_value (PRM_ID_ADAPTIVE_FLUSH_CONTROL) == true)
@@ -4170,7 +4170,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 #endif
 
   fileio_compensate_flush (thread_p, vol_fd, num_pages);
-  perfmon_add_stat (thread_p, num_pages, PSTAT_FILE_NUM_IOWRITES);
+  perfmon_add_stat (thread_p, PSTAT_FILE_NUM_IOWRITES, num_pages);
   return io_pages_p;
 }
 

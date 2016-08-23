@@ -1099,7 +1099,7 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
     }
 
   heap_Bestspace->num_stats_entries++;
-  perfmon_add_stat (thread_p, heap_Bestspace->num_stats_entries, PSTAT_HF_NUM_STATS_ENTRIES);
+  perfmon_add_stat (thread_p, PSTAT_HF_NUM_STATS_ENTRIES, heap_Bestspace->num_stats_entries);
 
 end:
 
@@ -1139,7 +1139,7 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
 
   heap_Bestspace->num_stats_entries -= del_cnt;
 
-  perfmon_add_stat (thread_p, heap_Bestspace->num_stats_entries, PSTAT_HF_NUM_STATS_ENTRIES);
+  perfmon_add_stat (thread_p, PSTAT_HF_NUM_STATS_ENTRIES, heap_Bestspace->num_stats_entries);
 
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
@@ -1174,7 +1174,7 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
 
   heap_Bestspace->num_stats_entries -= 1;
 
-  perfmon_add_stat (thread_p, heap_Bestspace->num_stats_entries, PSTAT_HF_NUM_STATS_ENTRIES);
+  perfmon_add_stat (thread_p, PSTAT_HF_NUM_STATS_ENTRIES, heap_Bestspace->num_stats_entries);
 
 end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
@@ -3168,7 +3168,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 
 	      heap_Bestspace->num_stats_entries--;
 
-	      perfmon_add_stat (thread_p, heap_Bestspace->num_stats_entries, PSTAT_HF_NUM_STATS_ENTRIES);
+	      perfmon_add_stat (thread_p, PSTAT_HF_NUM_STATS_ENTRIES, heap_Bestspace->num_stats_entries);
 
 	      notfound_cnt++;
 	    }

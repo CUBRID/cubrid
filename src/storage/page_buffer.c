@@ -6857,7 +6857,7 @@ try_again:
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      perfmon_add_stat (thread_p, lock_wait_time, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS, lock_wait_time);
     }
 #endif
   bufptr = hash_anchor->hash_next;
@@ -6955,7 +6955,7 @@ pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, PGBUF_BCB * bufpt
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      perfmon_add_stat (thread_p, lock_wait_time, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS, lock_wait_time);
     }
 #endif
   bufptr->hash_next = hash_anchor->hash_next;
@@ -7013,7 +7013,7 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      perfmon_add_stat (thread_p, lock_wait_time, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS, lock_wait_time);
     }
 #endif
   if (bufptr->avoid_victim == true)
@@ -7139,7 +7139,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		{
 		  tsc_getticks (&end_tick);
 		  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-		  perfmon_add_stat (thread_p, lock_wait_time, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+		  perfmon_add_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS, lock_wait_time);
 		}
 #endif
 
@@ -7235,7 +7235,7 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
 	{
 	  tsc_getticks (&end_tick);
 	  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-	  perfmon_add_stat (thread_p, lock_wait_time, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+	  perfmon_add_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS, lock_wait_time);
 	}
 #endif
     }
