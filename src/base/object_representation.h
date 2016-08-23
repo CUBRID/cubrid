@@ -642,7 +642,7 @@
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
 
 /* The record contains 8 bytes CHN */
-#define OR_MVCC_FLAG_VALID_LONG_CHN	  0x08
+#define OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE	  0x08
 
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 

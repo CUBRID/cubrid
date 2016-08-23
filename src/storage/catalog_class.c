@@ -3120,7 +3120,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
       or_advance (buf_p, OR_MVCCID_SIZE);	/* skip INS_ID */
     }
 
-  if (mvcc_flags & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN))
+  if (mvcc_flags & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE))
     {
       or_advance (buf_p, OR_MVCCID_SIZE);	/* skip DEL_ID */
     }
