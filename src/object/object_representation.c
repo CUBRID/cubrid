@@ -7863,10 +7863,7 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
     {
       mvcc_header_size += OR_MVCCID_SIZE;
     }
-
-  {
-    mvcc_header_size += OR_INT_SIZE;
-  }
+  mvcc_header_size += OR_INT_SIZE;	/* chn */
 
   if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
     {
