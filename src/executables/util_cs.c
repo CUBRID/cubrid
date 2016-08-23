@@ -2697,7 +2697,10 @@ statdump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  histo_start (true);
+  if (histo_start (true) != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   if (interval > 0)
     {
@@ -2714,6 +2717,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
       print_timestamp (outfp);
       if (histo_print_global_stats (outfp, cumulative, substr) != NO_ERROR)
 	{
+	  histo_stop ();
 	  goto error_exit;
 	}
       fflush (outfp);
