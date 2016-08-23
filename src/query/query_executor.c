@@ -2799,10 +2799,10 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
 
       if (xasl->orderby_stats.orderby_filesort)
 	{
-	  xasl->orderby_stats.orderby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) -
-	    old_sort_pages;
-	  xasl->orderby_stats.orderby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) -
-	    old_sort_ioreads;
+	  xasl->orderby_stats.orderby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES)
+					      - old_sort_pages;
+	  xasl->orderby_stats.orderby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES)
+						- old_sort_ioreads;
 	}
     }
 
@@ -4381,10 +4381,10 @@ wrapup:
 
 	if (xasl->groupby_stats.groupby_sort == true)
 	  {
-	    xasl->groupby_stats.groupby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) -
-	      old_sort_pages;
-	    xasl->groupby_stats.groupby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) -
-	      old_sort_ioreads;
+	    xasl->groupby_stats.groupby_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES)
+						- old_sort_pages;
+	    xasl->groupby_stats.groupby_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES)
+						  - old_sort_ioreads;
 	  }
       }
 
@@ -15730,10 +15730,10 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID
 
 	      xasl->orderby_stats.orderby_filesort = true;
 
-	      xasl->orderby_stats.orderby_pages += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) -
-		old_sort_pages;
-	      xasl->orderby_stats.orderby_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) -
-		old_sort_ioreads;
+	      xasl->orderby_stats.orderby_pages += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES)
+						   - old_sort_pages;
+	      xasl->orderby_stats.orderby_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES)
+						     - old_sort_ioreads;
 	    }
 	}
     }
