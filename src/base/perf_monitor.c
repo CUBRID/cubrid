@@ -508,7 +508,7 @@ PSTAT_METADATA pstat_Metadata[] = {
 #define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
 
 static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, int offset);
-static void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int offset, PERF_STAT_ID psid);
+static void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount);
 static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset);
 static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset);
 
@@ -1978,7 +1978,7 @@ perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT6
 
       assert (lock_mode >= NA_LOCK && lock_mode <= SCH_M_LOCK);
 
-      perfmon_add_stat_at_offset (thread_p, amount, lock_mode, PSTAT_OBJ_LOCK_TIME_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_OBJ_LOCK_TIME_COUNTERS, lock_mode, amount);
     }
 }
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
@@ -2050,7 +2050,7 @@ perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, in
       offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
       assert (offset < PERF_PAGE_FIX_COUNTERS);
 
-      perfmon_add_stat_at_offset (thread_p, 1, offset, PSTAT_PBX_FIX_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_FIX_COUNTERS, offset, 1);
     }
 }
 
@@ -2080,8 +2080,8 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
       offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
       assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
 
-      perfmon_add_stat_at_offset (thread_p, 1, offset, PSTAT_PBX_PROMOTE_COUNTERS);
-      perfmon_add_stat_at_offset (thread_p, amount, offset, PSTAT_PBX_PROMOTE_TIME_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_PROMOTE_COUNTERS, offset, 1);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_PROMOTE_TIME_COUNTERS, offset, amount);
     }
 }
 
@@ -2110,7 +2110,7 @@ perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int di
       offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, dirtied_by_holder, holder_latch);
       assert (offset < PERF_PAGE_UNFIX_COUNTERS);
 
-      perfmon_add_stat_at_offset (thread_p, 1, offset, PSTAT_PBX_UNFIX_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_UNFIX_COUNTERS, offset, 1);
     }
 }
 
@@ -2141,7 +2141,7 @@ perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
       offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
       assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
 
-      perfmon_add_stat_at_offset (thread_p, amount, offset, PSTAT_PBX_LOCK_TIME_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_LOCK_TIME_COUNTERS, offset, amount);
     }
 }
 
@@ -2171,7 +2171,7 @@ perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
       offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode, latch_mode);
       assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
 
-      perfmon_add_stat_at_offset (thread_p, amount, offset, PSTAT_PBX_HOLD_TIME_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_HOLD_TIME_COUNTERS, offset, amount);
     }
 }
 
@@ -2202,7 +2202,7 @@ perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_f
       offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
       assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
 
-      perfmon_add_stat_at_offset (thread_p, amount, offset, PSTAT_PBX_FIX_TIME_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_FIX_TIME_COUNTERS, offset, amount);
     }
 }
 
@@ -2226,7 +2226,7 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
       offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
       assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
 
-      perfmon_add_stat_at_offset (thread_p, 1, offset, PSTAT_MVCC_SNAPSHOT_COUNTERS);
+      perfmon_add_stat_at_offset (thread_p, PSTAT_MVCC_SNAPSHOT_COUNTERS, offset, 1);
     }
 }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
@@ -4064,8 +4064,8 @@ perfmon_is_perf_tracking (void)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * amount (in)	 : Amount to add.
- * psid (in)	 : Statistic ID.
+ * psid (in)	 : Amount to add.
+ * amount (in)	 : Statistic ID.
  */
 void
 perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
@@ -4093,12 +4093,12 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * amount (in)	 : Amount to add.
+ * psid (in)	 : Amount to add.
  * offset (in): offset at which to add the amount
- * psid (in)	 : Statistic ID.
+ * amount (in)	 : Statistic ID.
  */
 void
-perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int offset, PERF_STAT_ID psid)
+perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
 {
   PSTAT_METADATA *metadata = NULL;
 
