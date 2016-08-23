@@ -622,7 +622,7 @@ extern bool perfmon_is_perf_tracking (void);
 extern void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount);
 extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
 extern void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval);
-extern void perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_STAT_ID psid);
+extern void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff);
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
@@ -797,7 +797,7 @@ struct perf_utime_tracker
     { \
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
-      perfmon_time_stat (thread_p, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
+      perfmon_time_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
     } \
   while (false)
 #define PERF_UTIME_TRACKER_TIME_AND_RESTART(thread_p, track, psid) \
@@ -805,7 +805,7 @@ struct perf_utime_tracker
     { \
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
-      perfmon_time_stat (thread_p, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
+      perfmon_time_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
@@ -816,7 +816,7 @@ struct perf_utime_tracker
     { \
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
-      perfmon_time_stat (thread_p, (int) tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
+      perfmon_time_stat (thread_p, psid, (int) tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
     } \
   while (false)
 #define PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART(thread_p, track, psid) \
@@ -824,7 +824,7 @@ struct perf_utime_tracker
     { \
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
-      perfmon_time_stat (thread_p, (int) tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
+      perfmon_time_stat (thread_p, psid, (int) tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)

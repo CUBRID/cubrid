@@ -4233,11 +4233,11 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * timediff (in) : Time difference to register.
- * psid (in)	 : Statistic ID.
+ * psid (in)	 : Time difference to register.
+ * timediff (in) : Statistic ID.
  */
 void
-perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_STAT_ID psid)
+perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
 {
   PSTAT_METADATA *metadata = NULL;
 
