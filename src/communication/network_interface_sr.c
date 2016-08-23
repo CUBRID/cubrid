@@ -73,6 +73,7 @@
 #include "event_log.h"
 #include "tsc_timer.h"
 #include "vacuum.h"
+#include "sha1.h"
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
@@ -5103,7 +5104,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
-  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false };
+  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false, false, SHA1_HASH_INITIALIZER };
   XASL_STREAM stream = { NULL, NULL, NULL, 0 };
   bool was_recompile_xasl = false;
   bool force_recompile = false;
