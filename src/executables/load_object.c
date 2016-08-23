@@ -1003,10 +1003,8 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 	  or_advance (buf, OR_MVCCID_SIZE);
 	}
 
-      {
-	/* skip chn */
-	or_advance (buf, OR_INT_SIZE);
-      }
+      /* skip chn */
+      or_advance (buf, OR_INT_SIZE);
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	{

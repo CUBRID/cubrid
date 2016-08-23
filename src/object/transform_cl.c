@@ -1352,9 +1352,7 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 	  or_advance (buf, OR_MVCCID_SIZE);
 	}
 
-      {
-	chn = or_get_int (buf, &rc);
-      }
+      chn = or_get_int (buf, &rc);
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	{

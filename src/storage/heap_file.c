@@ -20444,24 +20444,6 @@ heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, int recor
 {
   assert (header_p != NULL);
 
-  /* put delete MVCCID *
-     if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_DELID))
-     {
-     if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_LONG_CHN))
-     {
-     /* the record contains short CHN, we need to extend to bigint *
-     record_size += OR_INT_SIZE;
-     }
-     else
-     {
-     /* we already have long CHN *
-     MVCC_CLEAR_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_LONG_CHN);
-     }
-     }
-     else
-     {
-     assert (!MVCCID_IS_VALID (MVCC_GET_DELID (header_p)));
-     } */
   MVCC_SET_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_DELID (header_p, mvcc_id);
 
