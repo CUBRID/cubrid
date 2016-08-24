@@ -2688,7 +2688,6 @@ restart:
 			 "VACUUM: Could not produce job for blockid = %lld. Set it as available.\n",
 			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
 
-	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  break;
 	}
