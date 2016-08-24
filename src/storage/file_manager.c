@@ -5282,6 +5282,12 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID
   DISK_ISVALID isfound = DISK_INVALID;
   DISK_ISVALID valid;
 
+  /* todo: update for new design */
+  if (true)
+    {
+      return DISK_VALID;
+    }
+
   if (VPID_ISNULL (vpid))
     {
       return DISK_INVALID;
@@ -14170,6 +14176,8 @@ end:
  *    So, file_alloc_page and file_dealloc_page will output the file header page. The caller has the responsibility to
  *    keep the file header fixed until the system operation si committed and release it afterwards.
  * 3. improve merging extdata.
+ * 4. make sure first page and vfid are in the same volume.
+ * 5. implement multi-page alloc.
  */
 
 /************************************************************************/
@@ -16241,6 +16249,28 @@ flre_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npage
   FILE_TABLESPACE_FOR_PERM_NPAGES (&tablespace, npages);
 
   return flre_create (thread_p, file_type, &tablespace, des, false, false, vfid);
+}
+
+/*
+ * file_create_heap () - Create heap file (permanent, not numerable)
+ *
+ * return	  : Error code
+ * thread_p (in)  : Thread entry
+ * npages (in)	  : Number of pages
+ * des_heap (in)  : Heap file descriptor
+ * reuse_oid (in) : Reuse slots true or false
+ * vfid (out)	  : File identifier
+ *
+ * todo: add tablespace.
+ */
+int
+file_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_oid, VFID * vfid)
+{
+  FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
+
+  assert (des_heap != NULL);
+
+  return flre_create_with_npages (thread_p, file_type, 1, (FILE_DESCRIPTORS *) des_heap, vfid);
 }
 
 /*

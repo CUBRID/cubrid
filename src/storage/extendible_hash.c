@@ -612,18 +612,6 @@ ehash_compose_overflow (THREAD_ENTRY * thread_p, RECDES * recdes_p)
 }
 #endif
 
-static int
-ehash_init_bucket_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
-{
-  char alignment;
-  char depth;
-
-  alignment = *(char *) args;
-  depth = *((char *) args + 1);
-
-  (void) pgbuf_set_page_ptype (thread_p, page, PAGE_EHASH);
-}
-
 /*
  * ehash_initialize_bucket_new_page () - Initialize a newly allocated page
  *
@@ -654,7 +642,7 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void
    * during insertions and deletions.
    */
 
-  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
 
   /* 
    * Initialize the bucket to contain variable-length records
@@ -710,7 +698,7 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void
 static int
 ehash_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *ignore_args)
 {
-  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
   log_append_redo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, NULL, page_p, -1, 0, NULL);
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
   return NO_ERROR;
@@ -727,7 +715,7 @@ ehash_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *i
 int
 ehash_rv_init_dir_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_EHASH);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
@@ -1106,7 +1094,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
       goto exit_on_error;
     }
 
-  (void) pgbuf_set_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
@@ -5289,7 +5277,7 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   record_p += sizeof (char);
   bucket_header.local_depth = *(char *) record_p;
 
-  (void) pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
 
   /* 
    * Initilize the bucket to contain variable-length records
@@ -5325,7 +5313,7 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 int
 ehash_rv_init_dir_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 {
-  (void) pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
 
   return log_rv_copy_char (thread_p, recv_p);
 }

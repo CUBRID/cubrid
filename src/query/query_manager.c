@@ -2490,7 +2490,7 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
       VPID_SET_NULL (vpid_p);
       return NULL;
     }
-  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
+  pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
   qmgr_put_page_header (page_p, &page_header);
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
   return page_p;

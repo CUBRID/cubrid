@@ -226,7 +226,7 @@ struct heap_hdr_stats
     int tail_second_best;	/* Index of tail of second best hints. A new second best hint will be stored on this
 				 * index. */
     int head;			/* Head of best circular array */
-    VPID last_vpid;
+    VPID last_vpid;		/* todo: move out of estimates */
     VPID full_search_vpid;
     VPID second_best[HEAP_NUM_BEST_SPACESTATS];
     HEAP_BESTSPACE best[HEAP_NUM_BEST_SPACESTATS];
@@ -287,14 +287,6 @@ struct heap_chain
   VPID next_vpid;		/* Next page */
   MVCCID max_mvccid;		/* Max MVCCID of any MVCC operations in page. */
   INT32 flags;			/* Flags for heap page. 2 bits are used for vacuum state. */
-};
-
-typedef struct heap_chain_tolast HEAP_CHAIN_TOLAST;
-struct heap_chain_tolast
-{
-  PAGE_PTR hdr_pgptr;
-  PAGE_PTR last_pgptr;
-  HEAP_HDR_STATS *heap_hdr;
 };
 
 #define HEAP_CHK_ADD_UNFOUND_RELOCOIDS 100
@@ -660,20 +652,15 @@ static PAGE_PTR heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID *
 static int heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
 				      VPID * hdr_vpid, bool scan_all, bool can_cycle);
 
-static PAGE_PTR heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
-				    HEAP_SCANCACHE * scan_cache, VPID * last_vpid, PGBUF_WATCHER * pg_watcher);
-static bool heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * new_vpid,
-			      HEAP_CHAIN_TOLAST * link);
+static int heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
+			       HEAP_SCANCACHE * scan_cache, VPID * last_vpid, PGBUF_WATCHER * pg_watcher);
 
-static bool heap_vpid_init_new (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type,
-				const VPID * vpid, INT32 ignore_npages, void *xchain);
-static PAGE_PTR heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
-				 HEAP_HDR_STATS * heap_hdr, int needed_space, HEAP_SCANCACHE * scan_cache,
-				 PGBUF_WATCHER * new_pg_watcher);
+static int heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+static int heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr, HEAP_HDR_STATS * heap_hdr,
+			    HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * new_pg_watcher);
 static VPID *heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid);
 
-static HFID *heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const OID * class_oid,
-				   const bool reuse_oid);
+static int heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid);
 static const HFID *heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool reuse_oid);
 static bool heap_delete_all_page_records (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR pgptr);
 static int heap_reinitialize_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const bool is_header_page);
@@ -760,7 +747,6 @@ static int heap_stats_bestspace_finalize (void);
 
 static int heap_get_spage_type (void);
 static bool heap_is_reusable_oid (const FILE_TYPE file_type);
-static int heap_rv_redo_newpage_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, const bool reuse_oid);
 
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, RECDES * new_recdes,
@@ -790,9 +776,9 @@ static char *heap_bestspace_to_string (char *buf, int buf_size, const HEAP_BESTS
 
 static int fill_string_to_buffer (char **start, char *end, const char *str);
 
-static int heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
-				 PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				 DB_VALUE ** record_info);
+static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
+				       PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, int ispeeking,
+				       DB_VALUE ** record_info);
 static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 				     bool reversed_direction, DB_VALUE ** cache_recordinfo);
@@ -898,6 +884,14 @@ static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oi
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
 static int heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p,
 						 RECDES * recdes_p, int size);
+
+STATIC_INLINE HEAP_HDR_STATS *heap_get_header_stats_ptr (PAGE_PTR page_header) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int heap_copy_header_stats (PAGE_PTR page_header, HEAP_HDR_STATS * header_stats)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE HEAP_CHAIN *heap_get_chain_ptr (PAGE_PTR page_heap) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int heap_copy_chain (PAGE_PTR page_heap, HEAP_CHAIN * chain) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int heap_get_last_vpid (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * last_vpid)
+  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -2571,7 +2565,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   HEAP_SCANCACHE scan_cache;
 
   /* 
-   * The class is feteched to print the attribute names.
+   * The class is fetched to print the attribute names.
    *
    * This is needed since the name of the attributes is not contained
    * in the class representation structure.
@@ -3527,8 +3521,11 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
        * Set the head to the index with the smallest free space, which may not
        * be accurate.
        */
-      pg_watcher->pgptr =
-	heap_vpid_alloc (thread_p, hfid, hdr_page_watcher.pgptr, heap_hdr, total_space, scan_cache, pg_watcher);
+      if (heap_vpid_alloc (thread_p, hfid, hdr_page_watcher.pgptr, heap_hdr, scan_cache, pg_watcher) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return NULL;
+	}
       assert (pg_watcher->pgptr != NULL || er_errid () == ER_INTERRUPTED
 	      || er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE);
     }
@@ -3875,245 +3872,202 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
 /*
  * heap_get_last_page () - Get the last page pointer.
- *   return: PAGE_PTR
+ *   return: error code
  *   hfid(in): Object heap file identifier
  *   heap_hdr(in): The heap header structure
  *   scan_cache(in): Scan cache
  *   last_vpid(out): VPID of the last page
  *
- * Note: The last vpid is saved on heap header. But we do not write log
- *       related to it. So, if the server stops unintentionally, heap header
- *       may have a wrong value of last vpid. This function will protect it.
- *
- *       The page pointer should be unfixed by the caller.
- *
+ * Note: The last vpid is saved on heap header. We log it and should be the right VPID.
  */
-static PAGE_PTR
+static int
 heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr, HEAP_SCANCACHE * scan_cache,
 		    VPID * last_vpid, PGBUF_WATCHER * pg_watcher)
 {
-  RECDES recdes;
-  HEAP_CHAIN *chain;
+  int error_code = NO_ERROR;
 
   assert (pg_watcher != NULL);
   assert (last_vpid != NULL);
   assert (!VPID_ISNULL (&heap_hdr->estimates.last_vpid));
 
   *last_vpid = heap_hdr->estimates.last_vpid;
-
   pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, X_LOCK, scan_cache, pg_watcher);
   if (pg_watcher->pgptr == NULL)
     {
-      goto exit_on_error;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
-  if (spage_get_record (pg_watcher->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
-    {
-      assert (false);
-      goto exit_on_error;
-    }
+#if !defined (NDEBUG)
+  {
+    RECDES recdes;
+    HEAP_CHAIN *chain;
+    if (spage_get_record (pg_watcher->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+      {
+	assert (false);
+	pgbuf_ordered_unfix (thread_p, pg_watcher);
+	return ER_FAILED;
+      }
+    chain = (HEAP_CHAIN *) recdes.data;
+    assert (VPID_ISNULL (&chain->next_vpid));
+  }
+#endif /* !NDEBUG */
 
-  chain = (HEAP_CHAIN *) recdes.data;
-  if (!VPID_ISNULL (&chain->next_vpid))
-    {
-      /* 
-       * Hint is wrong! We should update last_vpid on heap header.
-       */
-      pgbuf_ordered_unfix (thread_p, pg_watcher);
+  return NO_ERROR;
+}
 
-      if (file_find_last_page (thread_p, &hfid->vfid, last_vpid) == NULL)
-	{
-	  goto exit_on_error;
-	}
+/*
+ * heap_get_last_vpid () - Get last heap page VPID from heap file header
+ *
+ * return	   : Error code
+ * thread_p (in)   : Thread entry
+ * hfid (in)	   : Heap file identifier
+ * last_vpid (out) : Last heap page VPID
+ */
+STATIC_INLINE int
+heap_get_last_vpid (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * last_vpid)
+{
+  PGBUF_WATCHER watcher_heap_header;
+  VPID vpid_heap_header;
+  HEAP_HDR_STATS *hdr_stats = NULL;
 
-      er_log_debug (ARG_FILE_LINE, "heap_get_last_page: update last vpid from %d|%d to %d|%d\n",
-		    heap_hdr->estimates.last_vpid.volid, heap_hdr->estimates.last_vpid.pageid, last_vpid->volid,
-		    last_vpid->pageid);
+  int error_code = NO_ERROR;
 
-      heap_hdr->estimates.last_vpid = *last_vpid;
-
-      /* 
-       * Fix a real last page.
-       */
-      pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, X_LOCK, scan_cache, pg_watcher);
-      if (pg_watcher->pgptr == NULL)
-	{
-	  goto exit_on_error;
-	}
-    }
-
-  assert (!VPID_ISNULL (last_vpid));
-  assert (pg_watcher->pgptr != NULL);
-
-  return pg_watcher->pgptr;
-
-exit_on_error:
-
-  if (pg_watcher->pgptr != NULL)
-    {
-      pgbuf_ordered_unfix (thread_p, pg_watcher);
-    }
+  PGBUF_INIT_WATCHER (&watcher_heap_header, PGBUF_ORDERED_HEAP_HDR, hfid);
 
   VPID_SET_NULL (last_vpid);
 
-  return NULL;
+  vpid_heap_header.volid = hfid->vfid.volid;
+  vpid_heap_header.pageid = hfid->hpgid;
+  error_code = pgbuf_ordered_fix (thread_p, &vpid_heap_header, OLD_PAGE, PGBUF_LATCH_READ, &watcher_heap_header);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  hdr_stats = heap_get_header_stats_ptr (watcher_heap_header.pgptr);
+  if (hdr_stats == NULL)
+    {
+      assert_release (false);
+      pgbuf_ordered_unfix (thread_p, &watcher_heap_header);
+      return ER_FAILED;
+    }
+  *last_vpid = hdr_stats->estimates.last_vpid;
+  pgbuf_ordered_unfix (thread_p, &watcher_heap_header);
+  return NO_ERROR;
 }
 
 /*
- * heap_link_to_new () - Chain previous last page to new page
- *   return: bool
- *   vfid(in): File where the new page belongs
- *   new_vpid(in): The new page
- *   link(in): Specifications of previous and header page
+ * heap_get_header_stats_ptr () - Get pointer to heap header statistics.
  *
- * Note: Link previous page with newly created page.
+ * return	    : Pointer to heap header statistics
+ * page_header (in) : Heap header page
  */
-static bool
-heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * new_vpid, HEAP_CHAIN_TOLAST * link)
+STATIC_INLINE HEAP_HDR_STATS *
+heap_get_header_stats_ptr (PAGE_PTR page_header)
 {
-  LOG_DATA_ADDR addr;
-  HEAP_CHAIN chain;
   RECDES recdes;
-  int sp_success;
 
-  /* 
-   * Now, Previous page should point to newly allocated page
-   */
-
-  /* 
-   * Update chain next field of previous last page
-   * If previous best1 space page is the heap header page, it contains a heap
-   * header instead of a chain.
-   */
-
-  addr.vfid = vfid;
-  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-
-  if (link->hdr_pgptr == link->last_pgptr)
+  if (spage_get_record (page_header, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
     {
-      /* 
-       * Previous last page is the heap header page. Update the next_pageid
-       * field.
-       */
-
-      addr.pgptr = link->hdr_pgptr;
-
-
-      if (log_is_tran_in_system_op (thread_p) == true)
-	{
-	  log_append_undo_data (thread_p, RVHF_STATS, &addr, sizeof (*(link->heap_hdr)), link->heap_hdr);
-	}
-
-      link->heap_hdr->next_vpid = *new_vpid;
-
-      log_append_redo_data (thread_p, RVHF_STATS, &addr, sizeof (*(link->heap_hdr)), link->heap_hdr);
-
-      pgbuf_set_dirty (thread_p, link->hdr_pgptr, DONT_FREE);
+      assert_release (false);
+      return NULL;
     }
-  else
-    {
-      /* 
-       * Chain the old page to the newly allocated last page.
-       */
-
-      addr.pgptr = link->last_pgptr;
-
-      recdes.area_size = recdes.length = sizeof (chain);
-      recdes.type = REC_HOME;
-      recdes.data = (char *) &chain;
-
-      /* Get the chain record and put it in recdes...which points to chain */
-
-      if (spage_get_record (addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, COPY) != S_SUCCESS)
-	{
-	  /* Unable to obtain chain record */
-	  return false;		/* Initialization has failed */
-	}
-
-
-      if (log_is_tran_in_system_op (thread_p) == true)
-	{
-	  log_append_undo_data (thread_p, RVHF_CHAIN, &addr, recdes.length, recdes.data);
-	}
-
-      chain.next_vpid = *new_vpid;
-      sp_success = spage_update (thread_p, addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
-      if (sp_success != SP_SUCCESS)
-	{
-	  /* 
-	   * This looks like a system error: size did not change, so why did
-	   * it fail?
-	   */
-	  if (sp_success != SP_ERROR)
-	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_CANNOT_UPDATE_CHAIN_HDR, 4,
-		      pgbuf_get_volume_id (addr.pgptr), pgbuf_get_page_id (addr.pgptr), vfid->fileid,
-		      pgbuf_get_volume_label (addr.pgptr));
-	    }
-	  return false;		/* Initialization has failed */
-	}
-
-      log_append_redo_data (thread_p, RVHF_CHAIN, &addr, recdes.length, recdes.data);
-      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-    }
-
-  return true;
+  return (HEAP_HDR_STATS *) recdes.data;
 }
 
 /*
- * heap_vpid_init_new () - Initialize a newly allocated heap page
- *   return: bool
- *   vfid(in): File where the new page belongs
- *   file_type(in):
- *   new_vpid(in): The new page
- *   ignore_npages(in): Number of contiguous allocated pages
- *                      (Ignored in this function. We allocate only one page)
- *   xlink(in): Chain to next and previous page
+ * heap_copy_header_stats () - Copy heap header statistics
+ *
+ * return	      : Error code
+ * page_header (in)   : Heap header page
+ * header_stats (out) : Heap header statistics
  */
-static bool
-heap_vpid_init_new (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type, const VPID * new_vpid,
-		    INT32 ignore_npages, void *xlink)
+STATIC_INLINE int
+heap_copy_header_stats (PAGE_PTR page_header, HEAP_HDR_STATS * header_stats)
 {
-  LOG_DATA_ADDR addr;
-  HEAP_CHAIN_TOLAST *link;
+  RECDES recdes;
+
+  recdes.data = (char *) header_stats;
+  recdes.area_size = sizeof (*header_stats);
+  if (spage_get_record (page_header, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * heap_get_chain_ptr () - Get pointer to chain in heap page
+ *
+ * return	  : Pointer to chain in heap page
+ * page_heap (in) : Heap page
+ */
+STATIC_INLINE HEAP_CHAIN *
+heap_get_chain_ptr (PAGE_PTR page_heap)
+{
+  RECDES recdes;
+
+  if (spage_get_record (page_heap, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return NULL;
+    }
+  return (HEAP_CHAIN *) recdes.data;
+}
+
+/*
+ * heap_copy_chain () - Copy chain from heap page
+ *
+ * return	  : Error code
+ * page_heap (in) : Heap page
+ * chain (out)	  : Heap chain
+ */
+STATIC_INLINE int
+heap_copy_chain (PAGE_PTR page_heap, HEAP_CHAIN * chain)
+{
+  RECDES recdes;
+
+  if (spage_get_record (page_heap, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  assert (recdes.length >= sizeof (*chain));
+  memcpy (chain, recdes.data, sizeof (*chain));
+  return NO_ERROR;
+}
+
+/*
+ * heap_vpid_init_new () - FILE_INIT_PAGE_FUNC for heap non-header pages
+ *
+ * return	 : Error code
+ * thread_p (in) : Thread entry
+ * page (in)	 : New heap file page
+ * args (in)	 : HEAP_CHAIN *
+ */
+static int
+heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
+{
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   HEAP_CHAIN chain;
   RECDES recdes;
   INT16 slotid;
   int sp_success;
 
-  link = (HEAP_CHAIN_TOLAST *) xlink;
+  assert (page != NULL);
+  assert (args != NULL);
 
-  assert (link->heap_hdr != NULL);
+  chain = *(HEAP_CHAIN *) args;	/* get chain from args. it is already initialized */
 
-  addr.vfid = vfid;
-  addr.offset = -1;		/* No header slot is initialized */
+  /* initialize new page. */
+  addr.pgptr = page;
+  pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
 
-  /* 
-   * fetch and initialize the new page. This page should point to previous
-   * page.
-   */
-
-  addr.pgptr = pgbuf_fix (thread_p, new_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (addr.pgptr == NULL)
-    {
-      return false;		/* Initialization has failed */
-    }
-
-  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_HEAP);
-
-  /* Initialize the page and chain it with the previous last allocated page */
+  /* initialize the page and chain it with the previous last allocated page */
   spage_initialize (thread_p, addr.pgptr, heap_get_spage_type (), HEAP_MAX_ALIGN, SAFEGUARD_RVSPACE);
-
-  /* 
-   * Add a chain record.
-   * Next to NULL and Prev to last allocated page
-   */
-  COPY_OID (&chain.class_oid, &(link->heap_hdr->class_oid));
-  pgbuf_get_vpid (link->last_pgptr, &chain.prev_vpid);
-  VPID_SET_NULL (&chain.next_vpid);
-  chain.max_mvccid = MVCCID_NULL;
-  chain.flags = 0;
-  HEAP_PAGE_SET_VACUUM_STATUS (&chain, HEAP_PAGE_VACUUM_NONE);
 
   recdes.area_size = recdes.length = sizeof (chain);
   recdes.type = REC_HOME;
@@ -4122,62 +4076,48 @@ heap_vpid_init_new (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE 
   sp_success = spage_insert (thread_p, addr.pgptr, &recdes, &slotid);
   if (sp_success != SP_SUCCESS || slotid != HEAP_HEADER_AND_CHAIN_SLOTID)
     {
-      /* 
-       * Initialization has failed !!
-       */
+      assert (false);
+
+      /* initialization has failed !! */
       if (sp_success != SP_SUCCESS)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-      return false;		/* Initialization has failed */
+      return ER_FAILED;
     }
 
-  /* 
-   * We don't need to log before images for undos since allocation of pages is
-   * an operation-destiny which does not depend on the transaction except for
-   * newly created files. Pages may be shared by multiple concurrent
-   * transactions, thus the deallocation cannot be undone. Note that new files
-   * and their pages are deallocated when the transactions that create the
-   * files are aborted.
-   */
-
-  log_append_redo_data (thread_p, heap_is_reusable_oid (file_type) ? RVHF_NEWPAGE_REUSE_OID : RVHF_NEWPAGE, &addr,
-			recdes.length, recdes.data);
-  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
-  addr.pgptr = NULL;
-
-  /* 
-   * Now, link previous page to newly allocated page
-   */
-  return heap_link_to_new (thread_p, vfid, new_vpid, link);
+  log_append_redo_data (thread_p, RVHF_NEWPAGE, &addr, recdes.length, recdes.data);
+  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+  return NO_ERROR;
 }
 
 /*
  * heap_vpid_alloc () - allocate, fetch, and initialize a new page
- *   return: ponter to newly allocated page or NULL
+ *   return: error code
  *   hfid(in): Object heap file identifier
  *   hdr_pgptr(in): The heap page header
  *   heap_hdr(in): The heap header structure
- *   needed_space(in): The minimal space needed on new page
  *   scan_cache(in): Scan cache
+ *   new_pg_watcher(out): watcher for new page.
  *
  * Note: Allocate and initialize a new heap page. The heap header is
  * updated to reflect a newly allocated best space page and
  * the set of best space pages information may be updated to
  * include the previous best1 space page.
  */
-static PAGE_PTR
+static int
 heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr, HEAP_HDR_STATS * heap_hdr,
-		 int needed_space, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * new_pg_watcher)
+		 HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * new_pg_watcher)
 {
   VPID vpid;			/* Volume and page identifiers */
-  LOG_DATA_ADDR addr;		/* Address of logging data */
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;	/* Address of logging data */
   int best;
-  HEAP_CHAIN_TOLAST tolast;
   VPID last_vpid;
   PGBUF_WATCHER last_pg_watcher;
-  FILE_TYPE file_type;
+  HEAP_CHAIN new_page_chain;
+  HEAP_HDR_STATS heap_hdr_prev = *heap_hdr;
+
+  int error_code = NO_ERROR;
 
   assert (PGBUF_IS_CLEAN_WATCHER (new_pg_watcher));
 
@@ -4185,61 +4125,72 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-  if (log_start_system_op (thread_p) == NULL)
+  error_code = heap_get_last_page (thread_p, hfid, heap_hdr, scan_cache, &last_vpid, &last_pg_watcher);
+  if (error_code != NO_ERROR)
     {
-      return NULL;
+      ASSERT_ERROR ();
+      return error_code;
     }
-
-  last_pg_watcher.pgptr = heap_get_last_page (thread_p, hfid, heap_hdr, scan_cache, &last_vpid, &last_pg_watcher);
   if (last_pg_watcher.pgptr == NULL)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-
       /* something went wrong, return error */
-      return NULL;
+      assert_release (false);
+      return ER_FAILED;
     }
   assert (!VPID_ISNULL (&last_vpid));
 
-  /* 
-   * Now allocate a new page as close as possible to the last allocated page.
-   * Note that a new page is allocated when the best1 space page in the
-   * statistics is the actual last page on the heap.
-   */
+  log_sysop_start (thread_p);
 
-  /* 
-   * Prepare initialization fields, so that current page will point to
-   * previous page.
-   */
+  /* init chain for new page */
+  new_page_chain.class_oid = heap_hdr->class_oid;
+  new_page_chain.prev_vpid = last_vpid;
+  VPID_SET_NULL (&new_page_chain.next_vpid);
+  new_page_chain.max_mvccid = MVCCID_NULL;
+  new_page_chain.flags = 0;
+  HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
-  tolast.hdr_pgptr = hdr_pgptr;
-  tolast.last_pgptr = last_pg_watcher.pgptr;
-  tolast.heap_hdr = heap_hdr;
-
-  if (file_alloc_pages_with_outer_sys_op (thread_p, &hfid->vfid, &vpid, 1, &last_vpid, &file_type, heap_vpid_init_new,
-					  &tolast) == NULL)
+  /* allocate new page and initialize it */
+  error_code = file_alloc_and_init (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, &vpid);
+  if (error_code != NO_ERROR)
     {
-      /* Unable to allocate a new page */
-      if (last_pg_watcher.pgptr != NULL)
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  /* add link from previous last page */
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+
+  if (last_pg_watcher.pgptr == hdr_pgptr)
+    {
+      heap_hdr->next_vpid = vpid;
+      /* will be logged later */
+    }
+  else
+    {
+      HEAP_CHAIN *chain, chain_prev;
+
+      /* get chain */
+      chain = heap_get_chain_ptr (last_pg_watcher.pgptr);
+      if (chain == NULL)
 	{
-	  pgbuf_ordered_unfix (thread_p, &last_pg_watcher);
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
 	}
+      /* update chain */
+      /* save old chain for logging */
+      chain_prev = *chain;
+      /* change next link */
+      chain->next_vpid = vpid;
 
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-
-      return NULL;
+      /* log change */
+      addr.pgptr = last_pg_watcher.pgptr;
+      log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (HEAP_CHAIN), sizeof (HEAP_CHAIN), &chain_prev,
+				chain);
+      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
     }
 
-  if (last_pg_watcher.pgptr != NULL)
-    {
-      pgbuf_ordered_unfix (thread_p, &last_pg_watcher);
-    }
-
-  /* 
-   * Now update header statistics for best1 space page.
-   * The changes to the statistics are not logged.
-   * They are fixed automatically sooner or later.
-   */
-
+  /* now update header statistics for best1 space page. the changes to the statistics are not logged. */
   /* last page hint */
   heap_hdr->estimates.last_vpid = vpid;
   heap_hdr->estimates.num_pages++;
@@ -4268,26 +4219,32 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
       (void) heap_stats_add_bestspace (thread_p, hfid, &vpid, heap_hdr->estimates.best[best].freespace);
     }
 
+  /* we really have nothing to lose from logging stats here and also it is good to have a certain last VPID. */
   addr.pgptr = hdr_pgptr;
-  log_skip_logging_set_lsa (thread_p, &addr);
+  log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof (HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS),
+			    &heap_hdr_prev, heap_hdr);
+  log_sysop_commit (thread_p);
 
-  /* 
-   * Note: we fetch the page as old since it was initialized during the
-   * allocation by heap_vpid_init_new, therefore, we care about the current
-   * content of the page.
-   */
+  /* fix new page */
   new_pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK, scan_cache, new_pg_watcher);
-  /* 
-   * Even though an error is returned from heap_scan_pb_lock_and_fetch,
-   * we will just return new_pgptr (maybe NULL)
-   * and do not deallocate the newly added page.
-   * Because file_alloc_page was committed with top operation.
-   * The added page will be used later by other insert operation.
-   */
+  if (new_pg_watcher->pgptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  return NO_ERROR;
 
-  return new_pg_watcher->pgptr;	/* new_pgptr is lock and fetch */
+error:
+  assert (error_code != NO_ERROR);
+
+  if (last_pg_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &last_pg_watcher);
+    }
+  log_sysop_abort (thread_p);
+
+  return error_code;
 }
 
 /*
@@ -4527,8 +4484,9 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
   /* Free the page to be deallocated and deallocate the page */
   pgbuf_ordered_unfix (thread_p, &rm_pg_watcher);
 
-  if (file_dealloc_page (thread_p, &hfid->vfid, rm_vpid, FILE_HEAP) != NO_ERROR)
+  if (file_dealloc (thread_p, &hfid->vfid, rm_vpid, FILE_HEAP) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -4815,7 +4773,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
   /* Deallocate current page. */
-  if (file_dealloc_page (thread_p, &hfid->vfid, &page_vpid, FILE_HEAP) != NO_ERROR)
+  if (file_dealloc (thread_p, &hfid->vfid, &page_vpid, FILE_HEAP) != NO_ERROR)
     {
       ASSERT_ERROR ();
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
@@ -5064,8 +5022,8 @@ heap_manager_finalize (void)
  * number of expected pages are not allocated at this moment,
  * they are allocated as needs arrives.
  */
-static HFID *
-heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const OID * class_oid, const bool reuse_oid)
+static int
+heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid)
 {
   HEAP_HDR_STATS heap_hdr;	/* Heap file header */
   VPID vpid;			/* Volume and page identifiers */
@@ -5076,13 +5034,12 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const 
   int i;
   FILE_HEAP_DES hfdes;
   const FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
-  int file_created = 0;
+
+  int error_code = NO_ERROR;
 
   addr_hdr.pgptr = NULL;
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return NULL;
-    }
+  log_sysop_start (thread_p);
+
   /* create a file descriptor */
   if (class_oid != NULL)
     {
@@ -5113,17 +5070,13 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const 
 		  /* Failed to cache HFID. */
 		  assert_release (false);
 		}
+	      /* todo: remove me */
 	      vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 	      goto end;
 	    }
 	}
 
       hfid->vfid.volid = vpid.volid;
-    }
-
-  if (exp_npgs < 3)
-    {
-      exp_npgs = 3;
     }
 
   /* 
@@ -5135,19 +5088,34 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const 
    * new, and the file is going to be removed in the event of a crash.
    */
 
-  if (file_create_check_not_dropped (thread_p, &hfid->vfid, exp_npgs, file_type, &hfdes, &vpid, 1) == NULL)
+  error_code = file_create_heap (thread_p, &hfdes, reuse_oid, &hfid->vfid);
+  if (error_code != NO_ERROR)
     {
-      /* Unable to create the heap file */
+      ASSERT_ERROR ();
       goto error;
     }
-  file_created = 1;
+  error_code = file_alloc (thread_p, &hfid->vfid, &vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+  if (vpid.volid != hfid->vfid.volid)
+    {
+      /* we got problems */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
+    }
 
+  /* todo: remove me from here */
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (addr_hdr.pgptr == NULL)
     {
       /* something went wrong, destroy the file, and return */
+      ASSERT_ERROR_AND_SET (error_code);
       goto error;
     }
 
@@ -5161,7 +5129,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const 
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
 
-  (void) pgbuf_set_page_ptype (thread_p, addr_hdr.pgptr, PAGE_HEAP);
+  pgbuf_set_page_ptype (thread_p, addr_hdr.pgptr, PAGE_HEAP);
 
   /* Initialize header page */
   spage_initialize (thread_p, addr_hdr.pgptr, heap_get_spage_type (), HEAP_MAX_ALIGN, SAFEGUARD_RVSPACE);
@@ -5214,6 +5182,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const 
   sp_success = spage_insert (thread_p, addr_hdr.pgptr, &recdes, &slotid);
   if (sp_success != SP_SUCCESS || slotid != HEAP_HEADER_AND_CHAIN_SLOTID)
     {
+      assert (false);
       /* something went wrong, destroy file and return error */
       if (sp_success != SP_SUCCESS)
 	{
@@ -5222,6 +5191,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const 
 	}
 
       /* Free the page and release the lock */
+      error_code = ER_HEAP_UNABLE_TO_CREATE_HEAP;
       goto error;
     }
   else
@@ -5232,22 +5202,16 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, const 
        */
       addr_hdr.vfid = &hfid->vfid;
       addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-      log_append_redo_data (thread_p, reuse_oid ? RVHF_CREATE_HEADER_REUSE_OID : RVHF_CREATE_HEADER, &addr_hdr,
-			    sizeof (heap_hdr), &heap_hdr);
+      log_append_redo_data (thread_p, RVHF_CREATE_HEADER, &addr_hdr, sizeof (heap_hdr), &heap_hdr);
       pgbuf_set_dirty (thread_p, addr_hdr.pgptr, FREE);
       addr_hdr.pgptr = NULL;
     }
 
 end:
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  assert (error_code == NO_ERROR);
 
-  file_new_declare_as_old (thread_p, &hfid->vfid);
-
-  addr_hdr.vfid = NULL;
-  addr_hdr.pgptr = NULL;
-  addr_hdr.offset = 0;
-  log_append_undo_data (thread_p, RVHF_CREATE, &addr_hdr, sizeof (HFID), hfid);
-
+  /* todo: replace with commit & undo (undo notifies vacuum) */
+  log_sysop_commit (thread_p);
   /* Already append a vacuum undo logging when file was created, but since that was included in the system operation
    * which just got committed, we need to do it again in case of rollback. */
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
@@ -5256,28 +5220,21 @@ end:
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
 
-  return hfid;
+  return NO_ERROR;
 
 error:
+  assert (error_code != NO_ERROR);
 
   if (addr_hdr.pgptr != NULL)
     {
       pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
     }
 
-  if (file_created)
-    {
-      (void) file_destroy (thread_p, &hfid->vfid);
-      /* remove the file from new file cache. Since we are in a top operation, file_destroy didn't change the file as
-       * OLD_FILE. */
-      file_new_declare_as_old (thread_p, &hfid->vfid);
-    }
-
   hfid->vfid.fileid = NULL_FILEID;
   hfid->hpgid = NULL_PAGEID;
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-  return NULL;
+  log_sysop_abort (thread_p);
+  return error_code;
 }
 
 /*
@@ -5541,7 +5498,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
    */
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      (void) file_destroy (thread_p, &vfid);
+      file_postpone_destroy (thread_p, &vfid);
     }
 
   /* 
@@ -5663,15 +5620,7 @@ heap_scanrange_isvalid (HEAP_SCANRANGE * scan_range)
 int
 xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid)
 {
-  if (heap_create_internal (thread_p, hfid, -1, class_oid, reuse_oid) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-  else
-    {
-      return NO_ERROR;
-    }
+  return heap_create_internal (thread_p, hfid, class_oid, reuse_oid);
 }
 
 /*
@@ -6017,11 +5966,11 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   hdr_recdes.data = (char *) &heap_hdr;
   hdr_recdes.area_size = sizeof (heap_hdr);
 
-  if (spage_get_record (hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, COPY) != S_SUCCESS
-      || file_find_last_page (thread_p, &hfid->vfid, &prv_vpid) == NULL)
+  if (spage_get_record (hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, COPY) != S_SUCCESS)
     {
       goto exit_on_error;
     }
+  prv_vpid = heap_hdr.estimates.last_vpid;
 
   /* Copy the header to memory.. so we can log the changes */
   memcpy (&initial_heap_hdr, hdr_recdes.data, sizeof (initial_heap_hdr));
@@ -6218,7 +6167,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
   VPID vpid;			/* Page-volume identifier */
   RECDES hdr_recdes;		/* Header record descriptor */
-  int mode;
+  PGBUF_LATCH_MODE mode;
 
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
@@ -6251,33 +6200,15 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
       if (docreate == true)
 	{
 	  FILE_OVF_HEAP_DES hfdes_ovf;
-	  /* 
-	   * Create the overflow file. Try to create the overflow file in the
-	   * same volume where the heap was defined
-	   */
+	  /* Create the overflow file. Try to create the overflow file in the same volume where the heap was defined */
 
-	  /* 
-	   * START A TOP SYSTEM OPERATION
-	   */
-
-	  if (log_start_system_op (thread_p) == NULL)
-	    {
-	      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
-	      return NULL;
-	    }
-
-
-	  ovf_vfid->volid = hfid->vfid.volid;
-	  /* 
-	   * At least three pages since a multipage object will take at least
-	   * two pages
-	   */
-
+	  /* START A TOP SYSTEM OPERATION */
+	  log_sysop_start (thread_p);
 
 	  /* Initialize description of overflow heap file */
 	  HFID_COPY (&hfdes_ovf.hfid, hfid);
-
-	  if (file_create (thread_p, ovf_vfid, 3, FILE_MULTIPAGE_OBJECT_HEAP, &hfdes_ovf, NULL, 0) != NULL)
+	  if (flre_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, (FILE_DESCRIPTORS *) & hfdes_ovf,
+				       ovf_vfid) == NO_ERROR)
 	    {
 	      /* Log undo, then redo */
 	      log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
@@ -6285,12 +6216,11 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	      log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
 	      pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
 
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-	      (void) file_new_declare_as_old (thread_p, ovf_vfid);
+	      log_sysop_commit (thread_p);
 	    }
 	  else
 	    {
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	      log_sysop_abort (thread_p);
 	      ovf_vfid = NULL;
 	    }
 	}
@@ -7527,7 +7457,7 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
   RECDES peek_recdes;
   SCAN_CODE scan_code;
   PAGE_PTR home_page, forward_page;
-  OID *oid;
+  const OID *oid;
 
   assert (context != NULL && context->oid_p != NULL);
 
@@ -7731,16 +7661,13 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       if (reversed_direction)
 	{
 	  /* Retrieve the last record of the file. */
-	  if (file_find_last_page (thread_p, &hfid->vfid, &vpid) != NULL)
+	  if (heap_get_last_vpid (thread_p, hfid, &vpid) != NO_ERROR)
 	    {
-	      oid.volid = vpid.volid;
-	      oid.pageid = vpid.pageid;
+	      ASSERT_ERROR ();
+	      return S_ERROR;
 	    }
-	  else
-	    {
-	      oid.volid = NULL_VOLID;
-	      oid.pageid = NULL_PAGEID;
-	    }
+	  oid.volid = vpid.volid;
+	  oid.pageid = vpid.pageid;
 	  oid.slotid = NULL_SLOTID;
 	}
       else
@@ -10226,7 +10153,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	   * case, return the default value of the attribute if it exists. */
 	  if (att->default_value.val_length > 0)
 	    {
-	      disk_data = att->default_value.value;
+	      disk_data = (char *) att->default_value.value;
 	    }
 	}
       else
@@ -10699,7 +10626,6 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
   int error = NO_ERROR;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
-  OID root_oid;
 
   assert (class_oid != NULL);
 
@@ -12489,7 +12415,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	{
 	  if (!db_value_is_null (func_res))
 	    {
-	      TP_DOMAIN *domain = tp_domain_resolve_default (func_res->domain.general_info.type);
+	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
 	      (*(domain->type->index_writeval)) (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
@@ -12598,7 +12524,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       /* Allocate storage for the buf of midxkey */
       if (midxkey_size > DBVAL_BUFSIZE)
 	{
-	  midxkey.buf = db_private_alloc (thread_p, midxkey_size);
+	  midxkey.buf = (char *) db_private_alloc (thread_p, midxkey_size);
 	  if (midxkey.buf == NULL)
 	    {
 	      return NULL;
@@ -12760,7 +12686,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       /* Allocate storage for the buf of midxkey */
       if (midxkey_size > DBVAL_BUFSIZE)
 	{
-	  midxkey.buf = db_private_alloc (thread_p, midxkey_size);
+	  midxkey.buf = (char *) db_private_alloc (thread_p, midxkey_size);
 	  if (midxkey.buf == NULL)
 	    {
 	      return NULL;
@@ -13604,6 +13530,12 @@ heap_check_all_pages_by_allocset (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_CHK
   FILE_ALLOC_ITERATOR iter;
   FILE_ALLOC_ITERATOR *iter_p = &iter;
 
+  /* todo: file iterator */
+  if (true)
+    {
+      return DISK_VALID;
+    }
+
   /* create the iterator of heap pages */
   if (file_alloc_iterator_init (thread_p, &hfid->vfid, iter_p) == NULL)
     {
@@ -13686,6 +13618,11 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
   HEAP_CHKALL_RELOCOIDS chk;
   HEAP_CHKALL_RELOCOIDS *chk_objs = &chk;
 
+  /* todo: update for new design */
+  if (true)
+    {
+      return DISK_VALID;
+    }
 
   valid_pg = heap_chkreloc_start (chk_objs);
   if (valid_pg != DISK_VALID)
@@ -15522,14 +15459,13 @@ heap_chnguess_clear (THREAD_ENTRY * thread_p, int tran_index)
  */
 
 /*
- * heap_rv_redo_newpage_internal () - Redo the statistics or a new page
- *                                    allocation for a heap file
+ * heap_rv_redo_newpage () - Redo the statistics or a new page allocation for
+ *                           a heap file
  *   return: int
  *   rcv(in): Recovery structure
- *   reuse_oid(in): whether the heap is OID reusable
  */
-static int
-heap_rv_redo_newpage_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, const bool reuse_oid)
+int
+heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   RECDES recdes;
   INT16 slotid;
@@ -15559,31 +15495,6 @@ heap_rv_redo_newpage_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, const boo
     }
 
   return NO_ERROR;
-}
-
-/*
- * heap_rv_redo_newpage () - Redo the statistics or a new page allocation for
- *                           a heap file
- *   return: int
- *   rcv(in): Recovery structure
- */
-int
-heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  return heap_rv_redo_newpage_internal (thread_p, rcv, false);
-}
-
-/*
- * heap_rv_redo_newpage_reuse_oid () - Redo the statistics or a new page
- *                                     allocation for a heap file with
- *                                     reusable OIDs
- *   return: int
- *   rcv(in): Recovery structure
- */
-int
-heap_rv_redo_newpage_reuse_oid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  return heap_rv_redo_newpage_internal (thread_p, rcv, true);
 }
 
 /*
@@ -16465,45 +16376,6 @@ heap_rv_dump_reuse_page (FILE * fp, int ignore_length, void *ignore_data)
 }
 
 /*
- * heap_rv_undo_create () - Undo the creation of an heap file
- *   return: int
- *   rcv(in): Recovery structure
- *
- * Note: The heap file is destroyed completely.
- */
-int
-heap_rv_undo_create (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  HFID *hfid;
-  int ret;
-
-  hfid = (HFID *) rcv->data;
-
-  ret = file_destroy (thread_p, &hfid->vfid);
-
-  assert (ret == NO_ERROR);
-
-  return ((ret == NO_ERROR) ? NO_ERROR : er_errid ());
-}
-
-/*
- * heap_rv_dump_create () -
- *   return: int
- *   length_ignore(in): Length of Recovery Data
- *   data(in): The data being logged
- *
- * Note: Dump the information to undo the creation of an heap file
- */
-void
-heap_rv_dump_create (FILE * fp, int length_ignore, void *data)
-{
-  VFID *vfid;
-
-  vfid = &((HFID *) data)->vfid;
-  (void) fprintf (fp, "Undo creation of Heap vfid: %d|%d\n", vfid->volid, vfid->fileid);
-}
-
-/*
  * xheap_get_class_num_objects_pages () -
  *   return: NO_ERROR
  *   hfid(in):
@@ -16738,11 +16610,11 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 	      if (classrep->indexes)
 		{
-		  BTREE_SEARCH ret;
+		  BTREE_SEARCH search_result;
 		  OID serial_oid;
 
 		  BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
-		  ret =
+		  search_result =
 		    xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid, &serial_oid,
 					false);
 		  if (heap_classrepr_free (classrep, &idx_in_cache) != NO_ERROR)
@@ -16750,7 +16622,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		      ret = ER_FAILED;
 		      goto exit_on_error;
 		    }
-		  if (ret != BTREE_KEY_FOUND)
+		  if (search_result != BTREE_KEY_FOUND)
 		    {
 		      ret = ER_FAILED;
 		      goto exit_on_error;
@@ -17476,7 +17348,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       index = &(attr_info->last_classrepr->indexes[btid_index]);
       if (func_pred_cache)
 	{
-	  func_pred = func_pred_cache->func_pred;
+	  func_pred = (FUNC_PRED *) func_pred_cache->func_pred;
 	  cache_attr_info = func_pred->cache_attrinfo;
 	  nr_atts = index->n_atts;
 	}
@@ -18489,9 +18361,10 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
   if (VPID_ISNULL (prev_vpid))
     {
       /* set to last page */
-      if (file_find_last_page (thread_p, &hfid->vfid, prev_vpid) == NULL)
+      if (heap_get_last_vpid (thread_p, hfid, prev_vpid) != NO_ERROR)
 	{
-	  return S_END;
+	  ASSERT_ERROR ();
+	  return S_ERROR;
 	}
     }
   else
@@ -18546,7 +18419,7 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
  * ispeeking (in)      : PEEK/COPY.
  * record_info (out)   : Stores record information.
  */
-static int
+static SCAN_CODE
 heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
 		      PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** record_info)
 {
@@ -19657,7 +19530,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   context->home_recdes.type = REC_UNKNOWN;
 
   context->record_type = REC_UNKNOWN;
-  context->file_type = -1;
+  context->file_type = FILE_UNKNOWN_TYPE;
   OID_SET_NULL (&context->res_oid);
   context->is_logical_old = false;
   context->is_redistribute_insert_with_delid = false;
@@ -20176,7 +20049,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 static int
 heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
-  SCAN_CODE sp_success;
+  int sp_success;
   int error_code = NO_ERROR;
 
   /* check input */
@@ -22083,7 +21956,7 @@ exit:
 static int
 heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p)
 {
-  SCAN_CODE scancode;
+  int scancode;
   INT16 old_record_type;
   int error_code = NO_ERROR;
 
@@ -24510,7 +24383,7 @@ heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
  * ispeeking (in)  : PEEK or COPY
  */
 SCAN_CODE
-heap_get_class_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes_p, HEAP_SCANCACHE * scan_cache,
+heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p, HEAP_SCANCACHE * scan_cache,
 		       int ispeeking)
 {
   HEAP_GET_CONTEXT context;

@@ -8303,7 +8303,6 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 		     VPID * rcv_vpid, LOG_RCV * rcv, LOG_TDES * tdes, LOG_ZIP * log_unzip_ptr)
 {
   char *area = NULL;
-  LOG_LSA logical_undo_nxlsa;
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   int rv_err;
   bool is_zipped = false;

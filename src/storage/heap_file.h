@@ -364,7 +364,7 @@ struct heap_get_context
   INT16 record_type;		/* record type */
 
   /* input */
-  OID *oid_p;			/* required object identifer */
+  const OID *oid_p;		/* required object identifier */
   OID forward_oid;		/* forward oid of REC_RELOCATION or REC_BIGONE */
   OID *class_oid_p;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
@@ -571,8 +571,6 @@ extern int heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length, void *data);
-extern int heap_rv_undo_create (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void heap_rv_dump_create (FILE * fp, int length_ignore, void *data);
 
 extern int heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
 extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
@@ -663,7 +661,7 @@ extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CON
 extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						    bool is_heap_scan);
-extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes_p,
+extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p,
 					HEAP_SCANCACHE * scan_cache, int ispeeking);
 
 #endif /* _HEAP_FILE_H_ */
