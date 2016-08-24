@@ -20780,7 +20780,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       if (!MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_DELID))
 	{
-	  adjusted_size += OR_MVCCID_SIZE;
+	  adjusted_size += OR_MVCCID_SIZE;	/* delid size */
 	}
 
       if (heap_is_big_length (adjusted_size))
