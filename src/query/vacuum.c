@@ -4956,6 +4956,11 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 			     "VACUUM: Block %lld has no MVCC ops and is skipped (marked as vacuumed).\n", next_blockid);
+
+	      if (vacuum_Data.blockid_job_cursor == next_blockid)
+		{
+		  vacuum_Data.blockid_job_cursor++;
+		}
 	    }
 	  vacuum_Data.last_blockid = next_blockid;
 	  /* Move to next free data */
