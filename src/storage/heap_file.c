@@ -18616,11 +18616,11 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
 	}
       else
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
 	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
@@ -18694,15 +18694,22 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
 	}
       else
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
 	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 1);
+      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
+	{
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 1);
+	}
+      else
+	{
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
+	}
       break;
     case REC_RELOCATION:
     case REC_MARKDELETED:

@@ -90,7 +90,7 @@ static void or_mvcc_set_flag (RECDES * record, char flags);
 static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
 static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_get_chn (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_get_chn (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
@@ -480,50 +480,7 @@ or_chn (RECDES * record)
 
   mvcc_flag = OR_GET_MVCC_FLAG (record->data);
 
-  {
-    if (mvcc_flag & OR_MVCC_FLAG_VALID_INSID)
-      {
-	/* CHN is positioned after representation id and insert MVCC id */
-	return OR_GET_INT (record->data + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE);
-      }
-    else
-      {
-	/* CHN is positioned after representation id */
-	return OR_GET_INT (record->data + OR_MVCC_REP_SIZE);
-      }
-  }
-
-  return OR_GET_NON_MVCC_CHN (record->data);
-}
-
-/*
- * or_mvcc_chn - extracts cache coherency number from the disk representation
- *		in MVCC
- * object
- *    return: cache coherency number (chn), or -1 for error
- *    buf(in/out): or buffer
- *    mvcc_falgs(in): MVCC flags
- *    error(out): NO_ERROR or error code
- */
-int
-or_mvcc_chn (OR_BUF * buf, int mvcc_flags, int *error)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return NULL_CHN;
-    }
-  else
-    {
-      int chn = -1;
-      chn = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-      *error = NO_ERROR;
-      return chn;
-    }
+  return OR_GET_MVCC_CHN (record->data, mvcc_flag);
 }
 
 /*
@@ -548,25 +505,10 @@ or_replace_chn (RECDES * record, int chn)
   buf = &orep;
 
   mvcc_flag = or_mvcc_get_flag (record);
-  if (mvcc_flag == 0)
-    {
-      /* non-MVCC record */
-      offset = OR_NON_MVCC_CHN_OFFSET;
-    }
-  else
-    {
-      /* MVCC record */
-
-
-      offset = OR_GET_MVCC_CHN_OFFSET (mvcc_flag);
-      assert (offset > 0);
-    }
-
+  offset = OR_GET_MVCC_CHN_OFFSET (mvcc_flag);
   buf->ptr = buf->buffer + offset;
 
   error = or_put_int (buf, chn);
-
-
 
   return error;
 }
@@ -757,7 +699,7 @@ or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
 }
 
 STATIC_INLINE int
-or_mvcc_get_chn (OR_BUF * buf, int mvcc_flags, int *error)
+or_mvcc_get_chn (OR_BUF * buf, int *error)
 {
   int chn = NULL_CHN;
 
@@ -775,10 +717,7 @@ or_mvcc_get_chn (OR_BUF * buf, int mvcc_flags, int *error)
     {
       chn = OR_GET_INT (buf->ptr);
       buf->ptr += OR_INT_SIZE;
-
-
     }
-
 
   return chn;
 }
@@ -793,28 +732,25 @@ or_mvcc_get_chn (OR_BUF * buf, int mvcc_flags, int *error)
 STATIC_INLINE int
 or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
-  int error_code = NO_ERROR;
   assert (buf != NULL);
-
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  /* MVCC DELID is active */
-  return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
 
+  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID))
+    {
+      return NO_ERROR;
+    }
+
+  return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
 
 }
 STATIC_INLINE int
 or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
-  /* CHN is active */
-
-  int error_code = NO_ERROR;
   assert (buf != NULL);
-
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
-  error_code = or_put_int (buf, mvcc_rec_header->chn);
+  return or_put_int (buf, mvcc_rec_header->chn);
 
-  return error_code;
 }
 
 /*
@@ -849,13 +785,13 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
       goto exit_on_error;
     }
 
-  if (mvcc_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
+  if (rc != NO_ERROR)
     {
-      mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
+      goto exit_on_error;
     }
 
-  mvcc_header->chn = or_mvcc_get_chn (&buf, mvcc_header->mvcc_flag, &rc);
-
+  mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -936,9 +872,8 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
       error = or_mvcc_set_delid (buf, mvcc_rec_header);
     }
 
-  {
-    error = or_mvcc_set_chn (buf, mvcc_rec_header);
-  }
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -1004,19 +939,19 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
       goto exit_on_error;
     }
 
-  if (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
-    {
-      error = or_mvcc_set_delid (buf, mvcc_rec_header);
-    }
+  error = or_mvcc_set_delid (buf, mvcc_rec_header);
 
-  {
-    error = or_mvcc_set_chn (buf, mvcc_rec_header);
-  }
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
 
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
   if (error != NO_ERROR)
@@ -8351,9 +8286,9 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
       return ER_FAILED;
     }
 
-  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : OR_INT_SIZE));
+  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE +
+		+(((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
 
   memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
 
