@@ -2597,6 +2597,12 @@ restart:
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
   /* Choose starting point */
+  if (vacuum_Data.blockid_job_cursor > vacuum_Data.last_blockid)
+    {
+      assert (vacuum_Data.blockid_job_cursor == (vacuum_Data.last_blockid + 1));
+      /* Early out, no new jobs to generate */
+      return;
+    }
   data_page = vacuum_fix_data_page (thread_p, &vacuum_Data.vpid_job_cursor);
   if (data_page == NULL)
     {
@@ -2607,12 +2613,17 @@ restart:
     (int) (data_page->index_unvacuumed
 	   + (INT16) (vacuum_Data.blockid_job_cursor
 		      - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid)));
+
+  vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.\n",
+		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
+
   while (true)
     {
       assert (data_index >= 0);
-      if (data_index == data_page->index_free)
+      if (data_index >= data_page->index_free)
 	{
 	  /* Move to next page. */
+	  assert (data_index == data_page->index_free);
 	  VPID_COPY (&next_vpid, &data_page->next_page);
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  if (VPID_ISNULL (&next_vpid))
@@ -4960,7 +4971,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	    }
 	  vacuum_Data.last_blockid = next_blockid;
 
-	  if (data_page == vacuum_Data.first_page == data_page->index_free == 0)
+	  if (data_page == vacuum_Data.first_page && data_page->index_free == 0)
 	    {
 	      /* Empty vacuum data. We need to reset job cursor. */
 	      VPID_COPY (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page));
