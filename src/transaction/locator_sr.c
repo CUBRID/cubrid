@@ -5798,7 +5798,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  MVCC_CLEAR_FLAG_BITS (&new_rec_header, OR_MVCC_FLAG_VALID_INSID);
 		}
 
-	      if (MVCC_IS_FLAG_SET (&old_rec_header, OR_MVCC_FLAG_VALID_DELID))
+	      if (MVCC_IS_HEADER_DELID_VALID (&old_rec_header))
 		{
 		  MVCC_SET_FLAG_BITS (&new_rec_header, OR_MVCC_FLAG_VALID_DELID);
 		  MVCC_SET_DELID (&new_rec_header, MVCC_GET_DELID (&old_rec_header));

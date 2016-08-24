@@ -251,7 +251,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 {
   assert (rec_header != NULL && snapshot != NULL);
 
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       /* The record is not deleted */
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
@@ -366,7 +366,7 @@ mvcc_is_not_deleted_for_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec
 {
   assert (rec_header != NULL && snapshot != NULL);
 
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       /* The record is not deleted */
       return SNAPSHOT_SATISFIED;
@@ -471,7 +471,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 {
   assert (rec_header != NULL);
 
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       /* Record was not deleted */
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
@@ -591,7 +591,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
   snapshot->lowest_active_mvccid = MVCCID_NULL;
   snapshot->highest_completed_mvccid = MVCCID_NULL;
 
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       /* Record was not deleted */
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))

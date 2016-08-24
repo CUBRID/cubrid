@@ -155,7 +155,8 @@ static int rv;
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID \
 			     | OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)) \
 	{ \
-	   MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE); \
+	   MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID); \
+            MVCC_SET_DELID (mvcc_rec_header_p, MVCCID_NULL); \
 	} \
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_PREV_VERSION)) \
 	{ \
@@ -18613,7 +18614,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
       or_mvcc_get_header (recdes, &mvcc_header);
       DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
-      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
+      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
 	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
@@ -18691,7 +18692,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 
       or_mvcc_get_header (recdes, &mvcc_header);
       DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
-      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
+      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
 	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
@@ -18951,7 +18952,8 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
       && !MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE))
     {
       /* Set 8 bytes for CHN */
-      MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE);
+      MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_DELID);
+      MVCC_SET_DELID (mvcc_header, MVCCID_NULL);
     }
   /* Safe guard */
   assert (or_mvcc_header_size_from_flags (MVCC_GET_FLAG (mvcc_header)) == OR_MVCC_MAX_HEADER_SIZE);
@@ -19929,7 +19931,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   insert_from_reorganize = (context->type == HEAP_OPERATION_INSERT
 			    && context->update_in_place == UPDATE_INPLACE_OLD_MVCCID);
 
-  if (insert_from_reorganize == true && MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (insert_from_reorganize == true && MVCC_IS_HEADER_DELID_VALID (&mvcc_rec_header))
     {
       context->is_redistribute_insert_with_delid = true;
     }
