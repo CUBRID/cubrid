@@ -20778,11 +20778,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       forward_rec_header_size = or_mvcc_header_size_from_flags (forward_rec_header.mvcc_flag);
       adjusted_size = forward_recdes.length;
 
-      if (!MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_DELID))
-	{
-	  adjusted_size += OR_MVCCID_SIZE;
-	}
-
       if (heap_is_big_length (adjusted_size))
 	{
 	  /* not exactly necessary, but we'll be able to compare sizes */
