@@ -3738,6 +3738,21 @@ fetch_peek_arith_end:
   assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
 	  || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
 
+  if (peek_left != NULL && peek_left->need_clear == true)
+    {
+      pr_clear_value (peek_left);
+    }
+
+  if (peek_right != NULL && peek_right->need_clear == true)
+    {
+      pr_clear_value (peek_right);
+    }
+
+  if (peek_third != NULL && peek_third->need_clear == true)
+    {
+      pr_clear_value (peek_third);
+    }
+
 #if !defined(NDEBUG)
   switch (arithptr->opcode)
     {
@@ -4074,6 +4089,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 			assert (false);	/* is impossible */
 			error = ER_QPROC_INVALID_DATATYPE;
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+			if (index != NULL && index->need_clear == true)
+			  {
+			    pr_clear_value (index);
+			  }
 			goto exit_on_error;
 		      }
 
@@ -4468,6 +4487,11 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       *dbval = *tmp;
     }
 
+  if (readonly_val != NULL && readonly_val->need_clear == true)
+    {
+      pr_clear_value (readonly_val);
+    }
+
   return result;
 }
 
@@ -4528,7 +4552,17 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	      pr_clear_value (regup->value.vfetch_to);
 	      return ER_FAILED;
 	    }
-	  PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
+
+	  if (tmp->need_clear == true)
+	    {
+	      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tmp)));
+	      *regup->value.vfetch_to = *tmp;
+	      /* keep clear flag on vfetch_to, value is cleared with regu var clear */
+	    }
+	  else
+	    {
+  	      PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
+	    }
 	}
     }
   else

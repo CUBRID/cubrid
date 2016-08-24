@@ -1452,9 +1452,13 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
     case TYPE_REGU_VAR_LIST:
       qexec_clear_regu_variable_list (xasl_p, regu_var->value.regu_var_list, final);
       break;
+    case TYPE_POSITION:
+      if (regu_var->vfetch_to != NULL)
+	{
+	  pr_clear_value (regu_var->vfetch_to);
+	}
 #if 0				/* TODO - */
     case TYPE_LIST_ID:
-    case TYPE_POSITION:
 #endif
     default:
       break;
