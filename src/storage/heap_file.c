@@ -16225,8 +16225,7 @@ heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID));
 
-  /* Set delete MVCCID. */
-  MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
+  assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID));
   MVCC_SET_DELID (&mvcc_header, mvccid);
 
   /* Update MVCC header. */
@@ -18941,6 +18940,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 
   assert (ovf_page != NULL);
   assert (mvcc_header != NULL);
+  assert (MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID));
 
   ovf_recdes.data = overflow_get_first_page_data (ovf_page);
   ovf_recdes.area_size = ovf_recdes.length = OR_HEADER_SIZE (ovf_recdes.data);
@@ -18954,12 +18954,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
       MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_INSID);
       MVCC_SET_INSID (mvcc_header, MVCCID_ALL_VISIBLE);
     }
-  if (!MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID))
-    {
-      /* Set 8 bytes for CHN */
-      MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_DELID);
-      MVCC_SET_DELID (mvcc_header, MVCCID_NULL);
-    }
+
   /* Safe guard */
   assert (or_mvcc_header_size_from_flags (MVCC_GET_FLAG (mvcc_header)) == OR_MVCC_MAX_HEADER_SIZE);
   return or_mvcc_set_header (&ovf_recdes, mvcc_header);
