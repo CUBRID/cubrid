@@ -647,7 +647,6 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
   bool is_prefetch;
   LOCK class_lock;
 
-  mop = ws_mvcc_latest_version (mop);
   oid = ws_oid (mop);
 
   if (WS_ISVID (mop))
@@ -1645,7 +1644,6 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 	{
 	  if (!OID_ISNULL (&lockset->objects[i].oid) && (xmop = ws_mop (&lockset->objects[i].oid, NULL)) != NULL)
 	    {
-	      xmop = ws_mvcc_latest_version (xmop);
 	      locator_cache_lock_set (xmop, NULL, lockset);
 	      /* 
 	       * Indicate that the object was fetched as a composite object
@@ -4325,9 +4323,6 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 			      ws_decache (cached_mop_of_new);
 			    }
 
-			  cached_mop_of_new->mvcc_link = NULL;
-			  cached_mop_of_new->permanent_mvcc_link = 0;
-
 			  /* ws_mop will remove the old class_mop link and link to the new one and reset mop->decached
 			   * to reuse it. */
 			  new_mop = ws_mop (new_oid, new_class_mop);
@@ -4355,12 +4350,6 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 
 			  /* preserve pruning type */
 			  new_mop->pruning_type = mop_toid->mop->pruning_type;
-
-			  /* Set MVCC link */
-			  assert (new_mop->mvcc_link == NULL && new_mop->permanent_mvcc_link == 0);
-			  mop_toid->mop->mvcc_link = new_mop;
-			  /* Mvcc is link is not yet permanent */
-			  mop_toid->mop->permanent_mvcc_link = 0;
 
 			  ws_move_label_value_list (new_mop, mop_toid->mop);
 
@@ -4703,7 +4692,7 @@ locator_mflush (MOP mop, void *mf)
   mflush = (LOCATOR_MFLUSH_CACHE *) mf;
 
   /* Flush the instance only if it is dirty */
-  if (!WS_ISDIRTY (mop) || mop->mvcc_link != NULL)
+  if (!WS_ISDIRTY (mop))	// || mop->mvcc_link != NULL)
     {
       if (mflush->decache)
 	{
@@ -5325,7 +5314,6 @@ locator_internal_flush_instance (MOP inst_mop, bool decache)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  inst_mop = ws_mvcc_latest_version (inst_mop);
 retry:
   if (WS_ISDIRTY (inst_mop) && (ws_find (inst_mop, &inst) == WS_FIND_MOP_DELETED || inst != NULL))
     {
@@ -6753,7 +6741,6 @@ locator_check_object_and_get_class (MOP obj_mop, MOP * out_class_mop)
   int error_code = NO_ERROR;
   MOP class_mop;
 
-  obj_mop = ws_mvcc_latest_version (obj_mop);
   if (obj_mop == NULL || obj_mop->object == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -6811,7 +6798,6 @@ locator_add_oidset_object (LC_OIDSET * oidset, MOP obj_mop)
   MOP class_mop;
   LC_OIDMAP *oid_map_p;
 
-  obj_mop = ws_mvcc_latest_version (obj_mop);
   if (locator_check_object_and_get_class (obj_mop, &class_mop) != NO_ERROR)
     {
       return NULL;

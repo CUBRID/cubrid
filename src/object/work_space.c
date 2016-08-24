@@ -185,9 +185,6 @@ static int ws_check_hash_link (int slot);
 static void ws_insert_mop_on_hash_link (MOP mop, int slot);
 static void ws_insert_mop_on_hash_link_with_position (MOP mop, int slot, MOP prev);
 
-static MOP ws_mvcc_latest_permanent_version (MOP mop);
-static MOP ws_mvcc_latest_temporary_version (MOP mop);
-
 #if !defined (NDEBUG)
 static void ws_examine_no_mop_has_cached_lock (void);
 #endif /* !NDEBUG */
@@ -255,7 +252,6 @@ ws_make_mop (OID * oid)
       op->pruning_type = DB_NOT_PARTITIONED_CLASS;
       op->hash_link = NULL;
       op->commit_link = NULL;
-      op->mvcc_link = NULL;
       op->oid_info.oid.volid = 0;
       op->oid_info.oid.pageid = 0;
       op->oid_info.oid.slotid = 0;
@@ -263,7 +259,6 @@ ws_make_mop (OID * oid)
       op->is_temp = 0;
       op->released = 0;
       op->decached = 0;
-      op->permanent_mvcc_link = 0;
       op->label_value_list = NULL;
       /* Initialize mvcc snapshot version to be sure it doesn't match with current mvcc snapshot version. */
       op->mvcc_snapshot_version = ws_get_mvcc_snapshot_version () - 1;
@@ -1638,7 +1633,7 @@ ws_dirty (MOP op)
     {
       return;
     }
-  op = ws_mvcc_latest_version (op);
+
   WS_SET_DIRTY (op);
   /* 
    * add_class_object makes sure each class' dirty list (even an empty one)
@@ -2510,12 +2505,6 @@ ws_clear_internal (bool clear_vmop_keys)
 
 	  mop->lock = NULL_LOCK;
 	  mop->deleted = 0;
-
-	  if (mop->mvcc_link != NULL && !mop->permanent_mvcc_link)
-	    {
-	      ws_move_label_value_list (mop, mop->mvcc_link);
-	      mop->mvcc_link = NULL;
-	    }
 	}
     }
   ws_Commit_mops = NULL;
@@ -2911,7 +2900,6 @@ ws_oid (MOP mop)
 MOP
 ws_class_mop (MOP mop)
 {
-  mop = ws_mvcc_latest_version (mop);
   return (mop->class_mop);
 }
 
@@ -2947,7 +2935,6 @@ ws_chn (MOBJ obj)
 LOCK
 ws_get_lock (MOP mop)
 {
-  mop = ws_mvcc_latest_version (mop);
   return (mop->lock);
 }
 
@@ -2967,7 +2954,6 @@ ws_set_lock (MOP mop, LOCK lock)
 			  sm_ch_name (mop->object), ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid,
 			  mop->lock, lock);
     }
-  mop = ws_mvcc_latest_version (mop);
   if (mop != NULL)
     {
       WS_SET_LOCK (mop, lock);
@@ -3088,7 +3074,6 @@ ws_restore_pin (MOP obj, int opin, int cpin)
 void
 ws_mark_deleted (MOP mop)
 {
-  mop = ws_mvcc_latest_version (mop);
   ws_dirty (mop);
 
   WS_SET_DELETED (mop);
@@ -3121,8 +3106,6 @@ int
 ws_find (MOP mop, MOBJ * obj)
 {
   int status;
-
-  mop = ws_mvcc_latest_version (mop);
 
   *obj = NULL;
   if (mop && !WS_IS_DELETED (mop))
@@ -3325,43 +3308,12 @@ ws_clear_all_hints (bool retain_lock)
 
   au_reset_authorization_caches ();
 
-  /* 
-   * When there are two or more MVCC version of the same mop in ws_Commit_mops 
-   * link, the permanent_mvcc_link can't be changed in the meanwhile doing 
-   * clearing hints (ws_mvcc_latest_temporary_version depend on it), 
-   * it means that the clearing hints and changing permanent_mvcc_link should 
-   * be separated in two traversals. 
-   */
-
   /* clear hints */
   mop = ws_Commit_mops;
   while (mop)
     {
       ws_clear_hints (mop, false);
       next = mop->commit_link;
-      if (next == mop)
-	{
-	  mop = NULL;
-	}
-      else
-	{
-	  mop = next;
-	}
-    }
-
-  /* make mvcc links permanent and break the link */
-  mop = ws_Commit_mops;
-  while (mop)
-    {
-      next = mop->commit_link;
-      mop->commit_link = NULL;	/* remove mop from commit link (it's done) */
-
-      if (mop->mvcc_link != NULL && !mop->permanent_mvcc_link)
-	{
-	  /* Make mvcc links permanent when committed */
-	  mop->permanent_mvcc_link = 1;
-	}
-
       if (next == mop)
 	{
 	  mop = NULL;
@@ -3427,16 +3379,6 @@ ws_abort_mops (bool only_unpinned)
 
       /* clear all hint fields including the lock */
       ws_clear_hints (mop, only_unpinned);
-
-      /* Remove MVCC link if it is not permanent */
-      if (mop->mvcc_link != NULL && !mop->permanent_mvcc_link)
-	{
-	  ws_move_label_value_list (mop, mop->mvcc_link);
-	  /* Decache temporary version */
-	  ws_decache (mop->mvcc_link);
-	  /* Remove mvcc link */
-	  mop->mvcc_link = NULL;
-	}
 
       if (next == mop)
 	{
@@ -5072,82 +5014,6 @@ ws_set_mop_fetched_with_current_snapshot (MOP mop)
 }
 
 /*
- * ws_mvcc_latest_version () - If the current mop is a duplicate for an object
- *			       a link is created for the newer mop. Follow
- *			       the link to find the newest mop for current
- *			       object.
- *
- * return   : Newest mop.
- * mop (in) : Initial mop.
- */
-MOP
-ws_mvcc_latest_version (MOP mop)
-{
-  if (mop == NULL)
-    {
-      return mop;
-    }
-  if (mop->mvcc_link != NULL)
-    {
-      mop->mvcc_link = ws_mvcc_latest_permanent_version (mop->mvcc_link);
-      return ws_mvcc_latest_temporary_version (mop->mvcc_link);
-    }
-  return mop;
-}
-
-/*
- * ws_mvcc_latest_permanent_version () - Walk through mvcc link list as long
- *				         as links are permanent and update
- *					 all intermediate mvcc_links to latest
- *					 permanent version.
- *
- * return   : Latest permanent mop.
- * mop (in) : Current mop.
- */
-static MOP
-ws_mvcc_latest_permanent_version (MOP mop)
-{
-  MOP mop_latest = mop, mvcc_link;
-
-  assert (mop != NULL);
-
-  while (mop_latest->mvcc_link != NULL && mop_latest->permanent_mvcc_link)
-    {
-      mop_latest = mop_latest->mvcc_link;
-    }
-  while (mop != mop_latest)
-    {
-      mvcc_link = mop->mvcc_link;
-      mop->mvcc_link = mop_latest;
-      mop = mvcc_link;
-    }
-  return mop;
-}
-
-/*
- * ws_mvcc_latest_temporary_version () - Get latest temporary mvcc version.
- *					 Temporary versions are created
- *					 by current transaction and become
- *					 permanent with commit.
- *
- * return   : Latest temporary version.
- * mop (in) : Current mop.
- *
- * NOTE: This is called only after ws_mvcc_latest_permanent_version. This
- *	 function assumes that it will find only temporary mvcc links.
- */
-static MOP
-ws_mvcc_latest_temporary_version (MOP mop)
-{
-  while (mop->mvcc_link != NULL)
-    {
-      assert (!mop->permanent_mvcc_link);
-      mop = mop->mvcc_link;
-    }
-  return mop;
-}
-
-/*
  * ws_is_dirty () - Is object dirty.
  *
  * return   : True/false.
@@ -5156,7 +5022,6 @@ ws_mvcc_latest_temporary_version (MOP mop)
 int
 ws_is_dirty (MOP mop)
 {
-  mop = ws_mvcc_latest_version (mop);
   return mop->dirty;
 }
 
@@ -5169,7 +5034,6 @@ ws_is_dirty (MOP mop)
 int
 ws_is_deleted (MOP mop)
 {
-  mop = ws_mvcc_latest_version (mop);
   return mop->deleted;
 }
 
@@ -5184,13 +5048,12 @@ ws_is_deleted (MOP mop)
 void
 ws_set_deleted (MOP mop)
 {
-  mop = ws_mvcc_latest_version (mop);
   mop->deleted = 1;
   WS_PUT_COMMIT_MOP (mop);
 }
 
 /*
- * ws_is_same_object () - Check if the mops belong to the same object.
+ * ws_is_same_object () - Check if the mops are the same
  *
  * return    : True if the same object.
  * mop1 (in) : First mop.
@@ -5199,8 +5062,6 @@ ws_set_deleted (MOP mop)
 bool
 ws_is_same_object (MOP mop1, MOP mop2)
 {
-  mop1 = ws_mvcc_latest_version (mop1);
-  mop2 = ws_mvcc_latest_version (mop2);
   return (mop1 == mop2);
 }
 

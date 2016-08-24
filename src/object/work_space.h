@@ -666,7 +666,6 @@ extern int ws_get_mvcc_snapshot_version (void);
 extern void ws_increment_mvcc_snapshot_version (void);
 extern bool ws_is_mop_fetched_with_current_snapshot (MOP mop);
 extern void ws_set_mop_fetched_with_current_snapshot (MOP mop);
-extern MOP ws_mvcc_latest_version (MOP mop);
 
 extern bool ws_is_same_object (MOP mop1, MOP mop2);
 extern void ws_move_label_value_list (MOP dest_mop, MOP src_mop);
