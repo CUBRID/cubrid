@@ -152,8 +152,7 @@ static int rv;
 	  MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_INSID); \
 	  MVCC_SET_INSID (mvcc_rec_header_p, MVCCID_ALL_VISIBLE); \
 	} \
-      if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID \
-			     | OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)) \
+      if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID)) \
 	{ \
 	   MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID); \
             MVCC_SET_DELID (mvcc_rec_header_p, MVCCID_NULL); \
@@ -15829,7 +15828,7 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       mvcc_flag = (char) ((repid_and_flags >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
-      assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)));
+      assert (!(mvcc_flag & OR_MVCC_FLAG_VALID_DELID));
 
       if ((repid_and_flags & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE)
 	{
@@ -18948,8 +18947,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
       MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_INSID);
       MVCC_SET_INSID (mvcc_header, MVCCID_ALL_VISIBLE);
     }
-  if (!MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID)
-      && !MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE))
+  if (!MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID))
     {
       /* Set 8 bytes for CHN */
       MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_DELID);
@@ -20778,8 +20776,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	}
       forward_rec_header_size = or_mvcc_header_size_from_flags (forward_rec_header.mvcc_flag);
       adjusted_size = forward_recdes.length;
-      if (!MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_DELID)
-	  && !MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE))
+      if (!MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_DELID))
 	{
 	  adjusted_size += OR_MVCCID_SIZE;
 	}
@@ -23751,8 +23748,6 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       offset += OR_MVCCID_SIZE;
 
       mvcc_flag = (char) ((repid_and_flags >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-
-      assert (!(mvcc_flag & (OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)));
 
       if ((repid_and_flags & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE)
 	{

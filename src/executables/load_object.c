@@ -997,7 +997,7 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 	  or_advance (buf, OR_MVCCID_SIZE);
 	}
 
-      if (mvcc_flags & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE))
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
 	  /* skip delete id */
 	  or_advance (buf, OR_MVCCID_SIZE);

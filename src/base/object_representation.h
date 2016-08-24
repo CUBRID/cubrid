@@ -641,9 +641,6 @@
 /* The record have an LSA with the location of the previous version */
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
 
-/* The record contains 8 bytes CHN */
-#define OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE	  0x08
-
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
 /* OBJECT HEADER ACCESS MACROS */

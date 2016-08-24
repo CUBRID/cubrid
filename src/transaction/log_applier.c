@@ -3693,7 +3693,7 @@ la_make_room_for_mvcc_insid (RECDES * recdes)
   mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
   assert (mvcc_flag != 0);
-  assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)));
+  assert (!(mvcc_flag & OR_MVCC_FLAG_VALID_DELID));
 
   assert (recdes->area_size >= recdes->length + OR_MVCCID_SIZE);
 
@@ -3760,16 +3760,9 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 	      /* skip delete id */
 	      (void) or_advance (buf, OR_MVCCID_SIZE);
 	    }
-	  else
-	    {
-	      /* skip chn */
-	      (void) or_advance (buf, OR_INT_SIZE);
-	      if (mvcc_flags & OR_MVCC_FLAG_MAXIMUM_HEADER_SIZE)
-		{
-		  /* skip 4 bytes - fixed MVCC header size */
-		  (void) or_advance (buf, OR_INT_SIZE);
-		}
-	    }
+
+	  /* skip chn */
+	  (void) or_advance (buf, OR_INT_SIZE);
 
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	    {
