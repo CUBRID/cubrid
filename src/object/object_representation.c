@@ -873,12 +873,6 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
     }
 
   error = or_mvcc_set_chn (buf, mvcc_rec_header);
-
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
   if (error != NO_ERROR)
     {
       goto exit_on_error;

@@ -16042,10 +16042,7 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  INT32 chn;
   MVCC_REC_HEADER mvcc_header;
-
-  chn = (INT32) OR_GET_INT (rcv->data);
 
   if (heap_get_mvcc_rec_header_from_overflow (rcv->pgptr, &mvcc_header, NULL) != NO_ERROR)
     {
@@ -16057,10 +16054,7 @@ heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID));
   assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION));
 
-  /* Fixed size header. Remove flag for delete MVCCID, and set long chn. */
-  MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
-
-  MVCC_SET_CHN (&mvcc_header, chn);
+  MVCC_SET_DELID (&mvcc_header, MVCCID_NULL);
 
   /* Change header. */
   if (heap_set_mvcc_rec_header_on_overflow (rcv->pgptr, &mvcc_header) != NO_ERROR)
@@ -20446,6 +20440,11 @@ heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, int recor
 {
   assert (header_p != NULL);
 
+  if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_DELID))
+    {
+      record_size += OR_MVCCID_SIZE;
+    }
+
   MVCC_SET_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_DELID (header_p, mvcc_id);
 
@@ -20778,6 +20777,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	}
       forward_rec_header_size = or_mvcc_header_size_from_flags (forward_rec_header.mvcc_flag);
       adjusted_size = forward_recdes.length;
+
       if (!MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_DELID))
 	{
 	  adjusted_size += OR_MVCCID_SIZE;
