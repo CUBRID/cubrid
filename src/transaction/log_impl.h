@@ -993,7 +993,7 @@ struct mvcc_trans_status
 };
 
 #define MVCC_STATUS_INITIALIZER \
-  { NULL, MVCCID_FIRST, 0, NULL, 0, 0 }
+  { NULL, MVCCID_FIRST, 0, NULL, 0, 0, MVCCID_FIRST }
 
 typedef struct mvcctable MVCCTABLE;
 struct mvcctable
@@ -1215,6 +1215,8 @@ struct log_header
      MVCCID_NULL,				 \
      /* last_block_newest_mvccid */		 \
      MVCCID_NULL,				 \
+     /* vacuum_data_first_vpid */		 \
+     VPID_INITIALIZER,				 \
      /* ha_promotion_time */ 			 \
      0, 					 \
      /* db_restore_time */			 \
