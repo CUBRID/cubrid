@@ -382,19 +382,18 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_REMOVE_VACUUMS, "Num_heap_remove_vacuums"),
 
   /* Track heap modify timers. */
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_INSERT_PREPARE, "Time_heap_insert_prepare"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_INSERT_EXECUTE, "Time_heap_insert_execute"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_INSERT_LOG, "Time_heap_insert_log"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_DELETE_PREPARE, "Time_heap_delete_prepare"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_DELETE_EXECUTE, "Time_heap_delete_execute"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_DELETE_LOG, "Time_heap_delete_log"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_UPDATE_PREPARE, "Time_heap_update_prepare"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_UPDATE_EXECUTE, "Time_heap_update_execute"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_UPDATE_LOG, "Time_heap_update_log"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_VACUUM_PREPARE, "Time_heap_vacuum_prepare"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_VACUUM_EXECUTE, "Time_heap_vacuum_execute"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_VACUUM_LOG, "Time_heap_vacuum_log"),
-  /* TODO: All above in a complex entry */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_INSERT_PREPARE, "Time_heap_insert_prepare"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_INSERT_EXECUTE, "Time_heap_insert_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_INSERT_LOG, "Time_heap_insert_log"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_DELETE_PREPARE, "Time_heap_delete_prepare"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_DELETE_EXECUTE, "Time_heap_delete_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_DELETE_LOG, "Time_heap_delete_log"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_UPDATE_PREPARE, "Time_heap_update_prepare"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_UPDATE_EXECUTE, "Time_heap_update_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_UPDATE_LOG, "Time_heap_update_log"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_PREPARE, "Time_heap_vacuum_prepare"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_EXECUTE, "Time_heap_vacuum_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_LOG, "Time_heap_vacuum_log"),
 
   /* B-tree detailed statistics. */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_FIX_OVF_OIDS, "bt_fix_ovf_oids"),
@@ -450,7 +449,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, "Count_get_oldest_mvcc_retry"),
 
   /* computed statistics */
-  /* TODO: add callback functions. */
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_HIT_RATIO, "Data_page_buffer_hit_ratio"),
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_LOG_HIT_RATIO, "Log_page_buffer_hit_ratio"),
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_VACUUM_DATA_HIT_RATIO, "Vacuum_data_page_buffer_hit_ratio"),
@@ -467,8 +465,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC, "Data_page_total_promote_time_msec"),
 
   /* Array type statistics */
-  /* TODO: add callback functions. */
-  /* TODO: I don't think all that follows is array type... */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,
 			       &f_dump_in_buffer_Num_data_page_fix_ext, &f_load_Num_data_page_fix_ext),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_COUNTERS, "Num_data_page_promote_ext",
