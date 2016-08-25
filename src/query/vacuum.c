@@ -4524,7 +4524,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
   /* We can have three expected cases here:
    * 1. This is the last page. We won't deallocate, just reset the page (even if it is also first page).
    * 2. This is the first page and there are other pages too (case #1 covers first page = last page case).
-   *	We will deallocate the page and update the first page.
+   *    We will deallocate the page and update the first page.
    * 3. Page is not first and is not last. It must be deallocated.
    */
   assert (data_page != NULL && *data_page != NULL);
