@@ -4692,7 +4692,7 @@ locator_mflush (MOP mop, void *mf)
   mflush = (LOCATOR_MFLUSH_CACHE *) mf;
 
   /* Flush the instance only if it is dirty */
-  if (!WS_ISDIRTY (mop))	// || mop->mvcc_link != NULL)
+  if (!WS_ISDIRTY (mop))
     {
       if (mflush->decache)
 	{
