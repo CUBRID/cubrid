@@ -6735,7 +6735,6 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	  break;
 #endif
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	case DB_TYPE_ERROR:
@@ -6910,7 +6909,6 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
       error = db_bit_string (value, format, string, max_size);
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_ERROR:
@@ -8635,7 +8633,6 @@ db_validate_format (const char *format, DB_TYPE type)
       error = fmt_validate (format, FL_VALIDATE_BIT_STRING_FORMAT, FT_BIT_STRING_FORMAT, DB_TYPE_BIT);
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_ERROR:

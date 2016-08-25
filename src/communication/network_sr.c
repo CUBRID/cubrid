@@ -424,57 +424,6 @@ net_server_init (void)
   req_p->processing_function = shf_heap_reclaim_addresses;
   req_p->name = "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
 
-  /* large object manager */
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_CREATE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_create;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_CREATE";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_READ];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slargeobjmgr_read;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_READ";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_WRITE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_write;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_WRITE";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_INSERT];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_insert;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_INSERT";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_DESTROY];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_destroy;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_DESTROY";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_DELETE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_delete;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_DELETE";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_APPEND];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_append;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_APPEND";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_TRUNCATE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_truncate;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_TRUNCATE";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_COMPRESS];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_compress;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_COMPRESS";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_LENGTH];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slargeobjmgr_length;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_LENGTH";
-
   /* log */
   req_p = &net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS];
   req_p->processing_function = slogtb_reset_wait_msecs;

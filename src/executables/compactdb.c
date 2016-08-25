@@ -494,7 +494,6 @@ process_value (DB_VALUE * value)
       }
 
     case DB_TYPE_NULL:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     default:

@@ -201,7 +201,6 @@ typedef enum
   PAGE_VOLBITMAP,		/* volume bitmap page */
   PAGE_QRESULT,			/* query result page */
   PAGE_EHASH,			/* ehash bucket/dir page */
-  PAGE_LARGEOBJ,		/* large object/dir page */
   PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
   PAGE_AREA,			/* area page */
   PAGE_CATALOG,			/* catalog page */
@@ -433,14 +432,6 @@ struct lorecdes
 #define BTID_IS_EQUAL(b1,b2) \
   (((b1)->vfid.fileid == (b2)->vfid.fileid) && \
    ((b1)->vfid.volid == (b2)->vfid.volid))
-
-#define LOID_SET_NULL(loid) \
-  do { \
-    (loid)->vpid.pageid = NULL_PAGEID; \
-    (loid)->vfid.fileid = NULL_FILEID; \
-  } while (0)
-
-#define LOID_IS_NULL(loid)  (((loid)->vpid.pageid == NULL_PAGEID) ? 1 : 0)
 
 #define DISK_VOLPURPOSE DB_VOLPURPOSE
 

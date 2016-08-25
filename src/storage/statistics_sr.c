@@ -1132,10 +1132,6 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "DB_TYPE_DATE \n");
 	  break;
 
-	case DB_TYPE_ELO:
-	  fprintf (fpp, "DB_TYPE_ELO \n");
-	  break;
-
 	case DB_TYPE_BLOB:
 	  fprintf (fpp, "DB_TYPE_BLOB \n");
 	  break;

@@ -4741,9 +4741,6 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
     case DB_TYPE_DATE:
       fprintf (stdout, "DB_TYPE_DATE \n");
       break;
-    case DB_TYPE_ELO:
-      fprintf (stdout, "DB_TYPE_ELO \n");
-      break;
     case DB_TYPE_BLOB:
       fprintf (stdout, "DB_TYPE_BLOB \n");
       break;

@@ -5589,14 +5589,10 @@ perf_stat_page_type_name (const int page_type)
       return "PAGE_VOLHEADER";
     case PERF_PAGE_VOLBITMAP:
       return "PAGE_VOLBITMAP";
-    case PERF_PAGE_XASL:
-      return "PAGE_XASL";
     case PERF_PAGE_QRESULT:
       return "PAGE_QRESULT";
     case PERF_PAGE_EHASH:
       return "PAGE_EHASH";
-    case PERF_PAGE_LARGEOBJ:
-      return "PAGE_LARGEOBJ";
     case PERF_PAGE_OVERFLOW:
       return "PAGE_OVERFLOW";
     case PERF_PAGE_AREA:
@@ -5609,6 +5605,8 @@ perf_stat_page_type_name (const int page_type)
       return "PAGE_LOG";
     case PERF_PAGE_DROPPED_FILES:
       return "PAGE_DROPPED";
+    case PERF_PAGE_VACUUM_DATA:
+      return "PAGE_VACUUM_DATA";
 #if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
     case PERF_PAGE_BTREE_ROOT:
       return "PAGE_BTREE_R";

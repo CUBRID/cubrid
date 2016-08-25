@@ -10017,7 +10017,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	      disk_bound = true;
 	      switch (TP_DOMAIN_TYPE (attrepr->domain))
 		{
-		case DB_TYPE_ELO:	/* need real length */
 		case DB_TYPE_BLOB:
 		case DB_TYPE_CLOB:
 		case DB_TYPE_SET:	/* it may be just a little bit fast */

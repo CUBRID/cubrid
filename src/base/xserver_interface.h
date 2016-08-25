@@ -147,19 +147,6 @@ extern int xtran_server_is_active_and_has_updated (THREAD_ENTRY * thread_p);
 extern int xtran_wait_server_active_trans (THREAD_ENTRY * thrd);
 extern int xtran_lock_rep_read (THREAD_ENTRY * thread_p, LOCK lock_rr_tran);
 
-
-extern LOID *xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid, int length, char *buffer, int est_lo_len,
-				  OID * oid);
-extern int xlargeobjmgr_destroy (THREAD_ENTRY * thread_p, LOID * loid);
-extern int xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer);
-extern int xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer);
-extern int xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer);
-extern INT64 xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, INT64 length);
-extern int xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid, int length, char *buffer);
-extern INT64 xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset);
-extern int xlargeobjmgr_compress (THREAD_ENTRY * thread_p, LOID * loid);
-extern INT64 xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
-
 extern void xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set);
 extern void xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set);
 

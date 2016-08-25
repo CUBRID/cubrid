@@ -36,8 +36,6 @@
 #include "disk_manager.h"
 #include "extendible_hash.h"
 #include "file_manager.h"
-#include "large_object_directory.h"
-#include "large_object.h"
 #include "overflow_file.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
@@ -733,72 +731,39 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL},
 
-  {RVLOM_INSERT,
+  {RVLOM_INSERT,		/* Obsolete */
    "RVLOM_INSERT",
-   largeobjmgr_rv_delete,
-   largeobjmgr_rv_insert,
-   log_rv_dump_char,
-   log_rv_dump_char},
-  {RVLOM_DELETE,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_DELETE,		/* Obsolete */
    "RVLOM_DELETE",
-   largeobjmgr_rv_insert,
-   largeobjmgr_rv_delete,
-   log_rv_dump_char,
-   log_rv_dump_char},
-  {RVLOM_OVERWRITE,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_OVERWRITE,		/* Obsolete */
    "RVLOM_OVERWRITE",
-   largeobjmgr_rv_overwrite,
-   largeobjmgr_rv_overwrite,
-   largeobjmgr_rv_overwrite_dump,
-   largeobjmgr_rv_overwrite_dump},
-  {RVLOM_TAKEOUT,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_TAKEOUT,		/* Obsolete */
    "RVLOM_TAKEOUT",
-   largeobjmgr_rv_putin,
-   largeobjmgr_rv_takeout,
-   largeobjmgr_rv_putin_dump,
-   largeobjmgr_rv_takeout_dump},
-  {RVLOM_PUTIN,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_PUTIN,			/* Obsolete */
    "RVLOM_PUTIN",
-   largeobjmgr_rv_takeout,
-   largeobjmgr_rv_putin,
-   largeobjmgr_rv_takeout_dump,
-   largeobjmgr_rv_putin_dump},
-  {RVLOM_APPEND,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_APPEND,		/* Obsolete */
    "RVLOM_APPEND",
-   largeobjmgr_rv_append_undo,
-   largeobjmgr_rv_append_redo,
-   largeobjmgr_rv_append_dump_undo,
-   log_rv_dump_char},
-  {RVLOM_SPLIT,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_SPLIT,			/* Obsolete */
    "RVLOM_SPLIT",
-   largeobjmgr_rv_split_undo,
-   largeobjmgr_rv_split_redo,
-   largeobjmgr_rv_split_dump,
-   largeobjmgr_rv_split_dump},
-  {RVLOM_GET_NEWPAGE,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_GET_NEWPAGE,		/* Obsolete */
    "RVLOM_GET_NEWPAGE",
-   largeobjmgr_rv_get_newpage_undo,
-   largeobjmgr_rv_get_newpage_redo,
-   NULL,
-   NULL},
-  {RVLOM_DIR_RCV_STATE,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_DIR_RCV_STATE,		/* Obsolete */
    "RVLOM_DIR_RCV_STATE",
-   largeobjmgr_rv_dir_rcv_state_undoredo,
-   largeobjmgr_rv_dir_rcv_state_undoredo,
-   largeobjmgr_rv_dir_rcv_state_dump,
-   largeobjmgr_rv_dir_rcv_state_dump},
-  {RVLOM_DIR_PG_REGION,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_DIR_PG_REGION,		/* Obsolete */
    "RVLOM_DIR_PG_REGION",
-   largeobjmgr_rv_dir_page_region_undoredo,
-   largeobjmgr_rv_dir_page_region_undoredo,
-   NULL,
-   NULL},
-  {RVLOM_DIR_NEW_PG,
+   NULL, NULL, NULL, NULL},
+  {RVLOM_DIR_NEW_PG,		/* Obsolete */
    "RVLOM_DIR_NEW_PG",
-   largeobjmgr_rv_dir_new_page_undo,
-   largeobjmgr_rv_dir_new_page_redo,
-   NULL,
-   NULL},
+   NULL, NULL, NULL, NULL},
 
   {RVLOG_OUTSIDE_LOGICAL_REDO_NOOP,
    "RVLOG_OUTSIDE_LOGICAL_REDO_NOOP",

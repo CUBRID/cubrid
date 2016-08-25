@@ -188,16 +188,6 @@ extern int boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGE
 				 FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout);
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
-extern LOID *largeobjmgr_create (LOID * loid, int length, char *buffer, int est_lo_length, OID * oid);
-extern int largeobjmgr_destroy (LOID * loid);
-extern int largeobjmgr_read (LOID * loid, INT64 offset, int length, char *buffer);
-extern int largeobjmgr_write (LOID * loid, INT64 offset, int length, char *buffer);
-extern int largeobjmgr_insert (LOID * loid, INT64 offset, int length, char *buffer);
-extern INT64 largeobjmgr_delete (LOID * loid, INT64 offset, INT64 length);
-extern int largeobjmgr_append (LOID * loid, int length, char *buffer);
-extern INT64 largeobjmgr_truncate (LOID * loid, INT64 offset);
-extern int largeobjmgr_compress (LOID * loid);
-extern INT64 largeobjmgr_length (LOID * loid);
 extern char *stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr);
 extern int stats_update_statistics (OID * classoid, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);

@@ -2501,10 +2501,6 @@ _op_get_set_value (DB_VALUE * val)
       snprintf (result, result_size, "%s%s%s", "X'", return_result, "'");
       break;
 
-    case DB_TYPE_ELO:
-      snprintf (result, result_size, "%s%s%s", "ELO'", return_result, "'");
-      break;
-
     case DB_TYPE_BLOB:
       snprintf (result, result_size, "%s%s%s", "BLOB'", return_result, "'");
       break;

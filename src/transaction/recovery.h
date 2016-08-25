@@ -162,6 +162,7 @@ typedef enum
   RVCT_UPDATE = 113,
   RVCT_NEW_OVFPAGE_LOGICAL_UNDO = 114,
 
+  /* all RVLOM are obsolete */
   RVLOM_INSERT = 115,
   RVLOM_DELETE = 116,
   RVLOM_OVERWRITE = 117,
