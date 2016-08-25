@@ -21117,7 +21117,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
       int header_size;
-      INT32 chn;
 
       /* get home record header size */
       error_code = or_mvcc_get_header (&context->home_recdes, &record_header);
@@ -21127,7 +21126,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  return error_code;
 	}
       header_size = or_mvcc_header_size_from_flags (record_header.mvcc_flag);
-      chn = MVCC_GET_CHN (&record_header);
 
       /* build an adjusted record header */
       built_rec_header = heap_delete_adjust_recdes_header (&context->home_recdes, mvcc_id);
