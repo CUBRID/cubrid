@@ -151,22 +151,22 @@ define log_sizeof_rectype_data
   set $rectype = $arg0
   set $sizeof = -1
   if $rectype == LOG_REDO_DATA
-    set $sizeof = sizeof (struct log_redo)
+    set $sizeof = sizeof (LOG_REC_REDO)
     end
   if $rectype == LOG_UNDO_DATA
-    set $sizeof = sizeof (struct log_undo)
+    set $sizeof = sizeof (LOG_REC_UNDO)
     end
   if $rectype == LOG_UNDOREDO_DATA || $rectype == LOG_DIFF_UNDOREDO_DATA
-    set $sizeof = sizeof (struct log_undoredo)
+    set $sizeof = sizeof (LOG_REC_UNDOREDO)
     end
   if $rectype == LOG_MVCC_REDO_DATA
-    set $sizeof = sizeof (struct log_mvcc_redo)
+    set $sizeof = sizeof (LOG_REC_MVCC_REDO)
     end
   if $rectype == LOG_MVCC_UNDO_DATA
-    set $sizeof = sizeof (struct log_mvcc_undo)
+    set $sizeof = sizeof (LOG_REC_MVCC_UNDO)
     end
   if $rectype == LOG_MVCC_UNDOREDO_DATA || $rectype == LOG_DIFF_UNDOREDO_DATA
-    set $sizeof = sizeof (struct log_mvcc_undoredo)
+    set $sizeof = sizeof (LOG_REC_MVCC_UNDOREDO)
     end
     
   if $sizeof == -1

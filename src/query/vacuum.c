@@ -250,6 +250,10 @@ struct vacuum_data
 				 * new jobs.
 				 */
 
+  /* Job cursor for vacuum master to avoid going again through jobs already generated */
+  VPID vpid_job_cursor;
+  VACUUM_LOG_BLOCKID blockid_job_cursor;
+
   LOG_LSA recovery_lsa;		/* This is the LSA where recovery starts. It will be used to go backward in the log
 				 * if data on log blocks must be recovered.
 				 */
@@ -270,6 +274,8 @@ static VACUUM_DATA vacuum_Data = {
   0,				/* flush_vacuum_data */
   false,			/* is_loaded */
   false,			/* shutdown_requested */
+  VPID_INITIALIZER,		/* vpid_job_cursor */
+  0,				/* blockid_job_cursor */
   LSA_INITIALIZER		/* recovery_lsa */
 #if defined (SA_MODE)
     , false			/* is_vacuum_complete. */
@@ -2506,6 +2512,10 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 	  assert (false);
 	  return;
 	}
+
+      /* Initialize job cursor */
+      VPID_COPY (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page));
+      vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.first_page->data[0].blockid);
     }
 
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
@@ -2586,14 +2596,34 @@ restart:
 
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
-  data_page = vacuum_Data.first_page;
-  data_index = data_page->index_unvacuumed;
+  /* Choose starting point */
+  if (vacuum_Data.blockid_job_cursor > vacuum_Data.last_blockid)
+    {
+      assert (vacuum_Data.blockid_job_cursor == (vacuum_Data.last_blockid + 1));
+      /* Early out, no new jobs to generate */
+      return;
+    }
+  data_page = vacuum_fix_data_page (thread_p, &vacuum_Data.vpid_job_cursor);
+  if (data_page == NULL)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+  data_index =
+    (int) (data_page->index_unvacuumed
+	   + (INT16) (vacuum_Data.blockid_job_cursor
+		      - VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid)));
+
+  vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.\n",
+		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
+
   while (true)
     {
       assert (data_index >= 0);
-      if (data_index == data_page->index_free)
+      if (data_index >= data_page->index_free)
 	{
 	  /* Move to next page. */
+	  assert (data_index == data_page->index_free);
 	  VPID_COPY (&next_vpid, &data_page->next_page);
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  if (VPID_ISNULL (&next_vpid))
@@ -2603,6 +2633,11 @@ restart:
 	    }
 	  data_page = vacuum_fix_data_page (thread_p, &next_vpid);
 	  data_index = data_page->index_unvacuumed;
+
+	  /* Update job cursor */
+	  vacuum_Data.vpid_job_cursor = next_vpid;
+	  vacuum_Data.blockid_job_cursor =
+	    VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid);
 	  continue;
 	}
       entry = data_page->data + data_index;
@@ -2612,6 +2647,7 @@ restart:
 	{
 	  /* Already vacuumed. */
 	  data_index++;
+	  vacuum_Data.blockid_job_cursor++;
 	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
 			 "VACUUM: Job for %lld was already executed. Skip.\n",
 			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
@@ -2641,6 +2677,8 @@ restart:
 			 (long long int) entry->start_lsa.pageid, (int) entry->start_lsa.offset,
 			 (long long int) vacuum_Global_oldest_active_mvccid,
 			 (long long int) log_Gl.append.prev_lsa.pageid);
+
+	  /* todo: remember this as starting point for next iteration of generating jobs */
 	  break;
 	}
       if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
@@ -2649,6 +2687,7 @@ restart:
 		  || VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
 	  /* Continue to other blocks. */
 	  data_index++;
+	  vacuum_Data.blockid_job_cursor++;
 	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
 			 "VACUUM: Job for blockid = %lld %s. Skip.\n",
 			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
@@ -2760,6 +2799,7 @@ restart:
 
       /* Increment block index. */
       data_index++;
+      vacuum_Data.blockid_job_cursor++;
     }
 
   assert (data_page == NULL);
@@ -4414,7 +4454,6 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 			       (data_page->index_free - data_page->index_unvacuumed) * sizeof (VACUUM_DATA_ENTRY));
 		      data_page->index_free -= data_page->index_unvacuumed;
 		      data_page->index_unvacuumed = 0;
-		      /* Log changes. */
 		    }
 		}
 
@@ -4485,15 +4524,15 @@ static void
 vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_page, VACUUM_DATA_PAGE ** data_page)
 {
   /* We can have three expected cases here:
-   * 1. This is the first and only page. We won't deallocate, just reset the page.
-   * 2. This is the first page, but there are other pages too. We will deallocate the page and update the first page.
-   * 3. Page is not first and must be deallocated. If the page is last in vacuum data, vacuum_Data.last_page must be
-   *    changed to prev_data_page. Link in prev_data_page must be update.
+   * 1. This is the last page. We won't deallocate, just reset the page (even if it is also first page).
+   * 2. This is the first page and there are other pages too (case #1 covers first page = last page case).
+   *	We will deallocate the page and update the first page.
+   * 3. Page is not first and is not last. It must be deallocated.
    */
   assert (data_page != NULL && *data_page != NULL);
   assert ((*data_page)->index_unvacuumed == (*data_page)->index_free);
 
-  if (*data_page == vacuum_Data.first_page && VPID_ISNULL (&(*data_page)->next_page))
+  if (*data_page == vacuum_Data.last_page)
     {
       /* Case 1. */
       /* Reset page. */
@@ -4506,9 +4545,11 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       vacuum_set_dirty_data_page (thread_p, *data_page, DONT_FREE);
 
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: First and only page, vpid = %d|%d, is empty and was reset.\n",
+		     "VACUUM: Last page, vpid = %d|%d, is empty and was reset. %s\n",
 		     pgbuf_get_vpid_ptr ((PAGE_PTR) (*data_page))->volid,
-		     pgbuf_get_vpid_ptr ((PAGE_PTR) (*data_page))->pageid);
+		     pgbuf_get_vpid_ptr ((PAGE_PTR) (*data_page))->pageid,
+		     vacuum_Data.first_page == vacuum_Data.last_page ?
+		     "This is also first page." : "This is different from first page.");
 
       /* No next page */
       *data_page = NULL;
@@ -4575,9 +4616,10 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
   else
     {
       /* Case 3 */
-      VACUUM_DATA_PAGE *save_last_page = NULL;
       VPID save_page_vpid = VPID_INITIALIZER;
       VPID save_next_vpid = VPID_INITIALIZER;
+
+      assert (*data_page != vacuum_Data.first_page && *data_page != vacuum_Data.last_page);
 
       /* We must have prev_data_page. */
       if (prev_data_page == NULL)
@@ -4591,19 +4633,8 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 
       (void) log_start_system_op (thread_p);
 
-      /* We need to unfix page before deallocating. But if it is last vacuum data page, we must first change
-       * vacuum_Data.last_page.
-       */
-      if (vacuum_Data.last_page == *data_page)
-	{
-	  save_last_page = *data_page;
-	  vacuum_Data.last_page = prev_data_page;
-	}
-      else
-	{
-	  /* Save link to next page. */
-	  VPID_COPY (&save_next_vpid, &(*data_page)->next_page);
-	}
+      /* Save link to next page. */
+      VPID_COPY (&save_next_vpid, &(*data_page)->next_page);
       /* Save data page VPID. */
       pgbuf_get_vpid ((PAGE_PTR) (*data_page), &save_page_vpid);
       /* Unfix data page. */
@@ -4613,40 +4644,19 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	{
 	  assert_release (false);
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
-			 "VACUUM ERROR: Failed to deallocate second (and last) page from vacuum data - %d|%d!!!\n",
+			 "VACUUM ERROR: Failed to deallocate page from vacuum data - %d|%d!!!\n",
 			 save_page_vpid.volid, save_page_vpid.pageid);
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-
-	  if (save_last_page)
-	    {
-	      /* Revert vacuum_Data.last_page change. */
-	      vacuum_Data.last_page = save_last_page;
-	    }
 	  return;
 	}
+
       /* Update link in previous page. */
       log_append_undoredo_data2 (thread_p, RVVAC_DATA_SET_LINK, NULL, (PAGE_PTR) prev_data_page, 0, sizeof (VPID),
 				 sizeof (VPID), &prev_data_page->next_page, &save_next_vpid);
       VPID_COPY (&prev_data_page->next_page, &save_next_vpid);
+      vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
 
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-
-      if (prev_data_page == vacuum_Data.last_page && prev_data_page->index_unvacuumed > 0)
-	{
-	  /* Move data at the beginning. */
-	  assert (prev_data_page->index_free > prev_data_page->index_unvacuumed);
-
-	  memmove (prev_data_page->data, prev_data_page->data + prev_data_page->index_unvacuumed,
-		   (prev_data_page->index_free - prev_data_page->index_unvacuumed) * sizeof (VACUUM_DATA_ENTRY));
-	  prev_data_page->index_free -= prev_data_page->index_unvacuumed;
-	  prev_data_page->index_unvacuumed = 0;
-
-	  /* Log changes. No data is actually removed, just relocated (so redo data is NULL). */
-	  log_append_redo_data2 (thread_p, RVVAC_DATA_FINISHED_BLOCKS, NULL, (PAGE_PTR) prev_data_page, 0, 0, NULL);
-	}
-      vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
-
-      vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
 
       assert (*data_page == NULL);
       /* Move *data_page to next page. */
@@ -4962,6 +4972,13 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 			     "VACUUM: Block %lld has no MVCC ops and is skipped (marked as vacuumed).\n", next_blockid);
 	    }
 	  vacuum_Data.last_blockid = next_blockid;
+
+	  if (data_page == vacuum_Data.first_page && data_page->index_free == 0)
+	    {
+	      /* Empty vacuum data. We need to reset job cursor. */
+	      VPID_COPY (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page));
+	      vacuum_Data.blockid_job_cursor = next_blockid;
+	    }
 	  /* Move to next free data */
 	  page_free_data++;
 	  data_page->index_free++;
