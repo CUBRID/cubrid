@@ -4553,7 +4553,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	      return ER_FAILED;
 	    }
 
-	  if (tmp->need_clear == true)
+	  if (regup->value.vfetch_to != tmp && tmp->need_clear == true)
 	    {
 	      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tmp)));
 	      *regup->value.vfetch_to = *tmp;
