@@ -3314,6 +3314,7 @@ ws_clear_all_hints (bool retain_lock)
     {
       ws_clear_hints (mop, false);
       next = mop->commit_link;
+      mop->commit_link = NULL;	/* remove mop from commit link (it's done) */
       if (next == mop)
 	{
 	  mop = NULL;
