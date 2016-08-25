@@ -1148,7 +1148,7 @@ exit_on_error:
 	}
       else
 	{
-	  (void) file_postpone_destroy (thread_p, &bucket_vfid);
+	  (void) flre_postpone_destroy (thread_p, &bucket_vfid);
 	}
     }
   if (!VFID_ISNULL (&dir_vfid))
@@ -1159,7 +1159,7 @@ exit_on_error:
 	}
       else
 	{
-	  (void) file_postpone_destroy (thread_p, &dir_vfid);
+	  (void) flre_postpone_destroy (thread_p, &dir_vfid);
 	}
     }
   return NULL;
@@ -1223,7 +1223,7 @@ ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, PG
 {
   VPID vpid;
 
-  if (file_numerable_find_nth (thread_p, vfid_p, offset, false, &vpid) != NO_ERROR)
+  if (flre_numerable_find_nth (thread_p, vfid_p, offset, false, &vpid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;

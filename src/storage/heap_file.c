@@ -5086,7 +5086,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
    * new, and the file is going to be removed in the event of a crash.
    */
 
-  error_code = file_create_heap (thread_p, &hfdes, reuse_oid, &hfid->vfid);
+  error_code = flre_create_heap (thread_p, &hfdes, reuse_oid, &hfid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5490,7 +5490,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
    */
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      file_postpone_destroy (thread_p, &vfid);
+      flre_postpone_destroy (thread_p, &vfid);
     }
 
   /* 

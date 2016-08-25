@@ -4539,7 +4539,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   for (i = 0; i < num_pages; i++)
     {
       /* file is automatically expanded if page is not allocated (as long as it is missing only one page) */
-      ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, &vpid);
+      ret = flre_numerable_find_nth (thread_p, vfid, page_no++, true, &vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4587,7 +4587,7 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_
 
   for (i = 0; i < num_pages; i++)
     {
-      ret = file_numerable_find_nth (thread_p, vfid, page_no++, false, &vpid);
+      ret = flre_numerable_find_nth (thread_p, vfid, page_no++, false, &vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

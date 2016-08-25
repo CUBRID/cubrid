@@ -16268,7 +16268,7 @@ flre_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npage
  * todo: add tablespace.
  */
 int
-file_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_oid, VFID * vfid)
+flre_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_oid, VFID * vfid)
 {
   FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
 
@@ -17077,7 +17077,7 @@ file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * vfid (in)	 : File identifier
  */
 void
-file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
+flre_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
@@ -18957,7 +18957,7 @@ file_extdata_find_nth_vpid_and_skip_marked (THREAD_ENTRY * thread_p, const void 
  * vpid_nth (out)  : VPID at index
  */
 int
-file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc, VPID * vpid_nth)
+flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc, VPID * vpid_nth)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
