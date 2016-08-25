@@ -110,14 +110,11 @@
 
 /* Check if given CHN is up-to-date according to MVCC header:
  * 1. Given CHN must be non-NULL.
- * 2. DELID flag is not set (currently this means that header have CHN info)
  * 2. header CHN matches given CHN.
- *  TODO: change this macro after delid and chn are splitted.
  */
 #define MVCC_IS_CHN_UPTODATE(rec_header_p, chn) \
   (chn != NULL_CHN \
-   && (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_DELID) \
-   && (chn == MVCC_GET_CHN (rec_header_p))))
+   && (chn == MVCC_GET_CHN (rec_header_p)))
 
 #define MVCC_GET_BITAREA_ELEMENT_PTR(bitareaptr, position) \
   ((UINT64 *)(bitareaptr) + ((position) >> 6))
