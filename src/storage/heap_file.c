@@ -11543,7 +11543,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
 	  or_put_int (buf, repid_bits);
 	  or_put_bigint (buf, 0);	/* MVCC insert id */
-	  or_put_int (buf, 0);	/* CHN, short size */
+	  or_put_int (buf, 0);	/* CHN */
 	  header_size = OR_MVCC_INSERT_HEADER_SIZE;
 	}
       else
@@ -20928,13 +20928,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (update_old_forward)
 	{
 	  LOG_DATA_ADDR forward_addr;
-	  INT32 chn;
 
 	  /* log operation */
 	  forward_addr.vfid = &context->hfid.vfid;
 	  forward_addr.pgptr = context->forward_page_watcher_p->pgptr;
 	  forward_addr.offset = forward_oid.slotid;
-	  chn = MVCC_GET_CHN (&forward_rec_header);
 	  heap_mvcc_log_delete (thread_p, &forward_addr, RVHF_MVCC_DELETE_REC_NEWHOME);
 
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
