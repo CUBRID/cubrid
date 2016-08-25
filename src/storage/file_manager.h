@@ -397,10 +397,13 @@ extern int flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_t
 extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int flre_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 
-extern int file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
-extern int file_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
+extern int flre_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
+extern int flre_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
 				void *f_init_args, VPID * vpid_alloc);
-extern int file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid, FILE_TYPE file_type_hint);
+extern int flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FILE_TYPE file_type_hint);
+
+extern int flre_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user_pages_out);
+extern DISK_ISVALID flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
 
 extern int file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    VPID * vpid_nth);

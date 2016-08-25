@@ -262,8 +262,8 @@ extern void btree_rv_mvcc_save_increments (BTID * btid, int key_delta, int oid_d
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid);
 extern int btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVERFLOW_HEADER * ovf_header);
-extern int btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, BTREE_NODE_HEADER * header,
-				   bool redo);
+extern int btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR page_ptr,
+				   BTREE_NODE_HEADER * header, bool redo);
 extern int btree_init_root_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
 				   BTREE_ROOT_HEADER * root_header, TP_DOMAIN * key_type);
 extern BTREE_NODE_HEADER *btree_get_node_header (PAGE_PTR page_ptr);

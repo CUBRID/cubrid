@@ -4491,7 +4491,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: we don't have multiple page allocation, but allocation should be fast enough */
   while (file_pg_cnt_est > 0)
     {
-      ret = file_alloc (thread_p, vfid, &new_vpid);
+      ret = flre_alloc (thread_p, vfid, &new_vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

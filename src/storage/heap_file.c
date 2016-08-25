@@ -4150,7 +4150,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
   /* allocate new page and initialize it */
-  error_code = file_alloc_and_init (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, &vpid);
+  error_code = flre_alloc_and_init (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, &vpid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4484,7 +4484,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
   /* Free the page to be deallocated and deallocate the page */
   pgbuf_ordered_unfix (thread_p, &rm_pg_watcher);
 
-  if (file_dealloc (thread_p, &hfid->vfid, rm_vpid, FILE_HEAP) != NO_ERROR)
+  if (flre_dealloc (thread_p, &hfid->vfid, rm_vpid, FILE_HEAP) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
@@ -4773,7 +4773,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
   /* Deallocate current page. */
-  if (file_dealloc (thread_p, &hfid->vfid, &page_vpid, FILE_HEAP) != NO_ERROR)
+  if (flre_dealloc (thread_p, &hfid->vfid, &page_vpid, FILE_HEAP) != NO_ERROR)
     {
       ASSERT_ERROR ();
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
@@ -5070,8 +5070,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 		  /* Failed to cache HFID. */
 		  assert_release (false);
 		}
-	      /* todo: remove me */
-	      vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 	      goto end;
 	    }
 	}
@@ -5094,7 +5092,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       ASSERT_ERROR ();
       goto error;
     }
-  error_code = file_alloc (thread_p, &hfid->vfid, &vpid);
+  error_code = flre_alloc (thread_p, &hfid->vfid, &vpid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5107,9 +5105,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       error_code = ER_FAILED;
       goto error;
     }
-
-  /* todo: remove me from here */
-  vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (addr_hdr.pgptr == NULL)
@@ -5210,10 +5205,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 end:
   assert (error_code == NO_ERROR);
 
-  /* todo: replace with commit & undo (undo notifies vacuum) */
-  log_sysop_commit (thread_p);
-  /* Already append a vacuum undo logging when file was created, but since that was included in the system operation
-   * which just got committed, we need to do it again in case of rollback. */
+  log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   LOG_CS_ENTER (thread_p);
@@ -23689,7 +23681,7 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 /*
  * heap_get_visible_version_from_log () - Iterate through old versions of object until a visible object is found
  *				    
- *   return: SCAN_CODE. Posible values: 
+ *   return: SCAN_CODE. Possible values: 
  *	     - S_SUCCESS: for successful case when record was obtained.
  *	     - S_DOESNT_EXIT: NULL LSA was provided, otherwise a visible version should exist
  *	     - S_DOESNT_FIT: the record doesn't fit in allocated area

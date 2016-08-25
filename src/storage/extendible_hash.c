@@ -1040,7 +1040,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   init_bucket_data[0] = alignment;
   init_bucket_data[1] = 0;
 
-  if (file_alloc_and_init (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, &bucket_vpid)
+  if (flre_alloc_and_init (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, &bucket_vpid)
       != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1081,7 +1081,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
       ASSERT_ERROR ();
       goto exit_on_error;
     }
-  if (file_alloc (thread_p, &dir_vfid, &dir_vpid) != NO_ERROR)
+  if (flre_alloc (thread_p, &dir_vfid, &dir_vpid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit_on_error;
@@ -1522,7 +1522,7 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
     }
 
   error_code =
-    file_alloc_and_init (thread_p, &dir_header_p->bucket_file, ehash_initialize_bucket_new_page, init_bucket_data,
+    flre_alloc_and_init (thread_p, &dir_header_p->bucket_file, ehash_initialize_bucket_new_page, init_bucket_data,
 			 bucket_vpid_p);
   if (error_code != NO_ERROR)
     {
@@ -2718,7 +2718,7 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
   init_bucket_data[1] = *out_new_local_depth_p;
 
   error_code =
-    file_alloc_and_init (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, sibling_vpid_p);
+    flre_alloc_and_init (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, sibling_vpid_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2837,7 +2837,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 
   for (; needed_pages > 0; needed_pages--)
     {
-      error_code = file_alloc_and_init (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, NULL, &expand_vpid);
+      error_code = flre_alloc_and_init (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, NULL, &expand_vpid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

@@ -2477,7 +2477,7 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
   QFILE_PAGE_HEADER page_header = QFILE_PAGE_HEADER_INITIALIZER;
 
   VPID_SET_NULL (vpid_p);
-  if (file_alloc (thread_p, &tmp_vfid_p->temp_vfid, vpid_p) != NO_ERROR)
+  if (flre_alloc (thread_p, &tmp_vfid_p->temp_vfid, vpid_p) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;

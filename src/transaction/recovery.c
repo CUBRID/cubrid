@@ -573,12 +573,9 @@ struct rvfun RV_fun[] = {
    btree_rv_newpage_redo_init,
    NULL,
    NULL},
-  {RVBT_NEW_PGALLOC,
+  {RVBT_NEW_PGALLOC,		/* Obsolete */
    "RVBT_NEW_PGALLOC",
-   btree_rv_newpage_undo_alloc,
-   NULL,
-   btree_rv_newpage_dump_undo_alloc,
-   NULL},
+   NULL, NULL, NULL, NULL},
   {RVBT_COPYPAGE,
    "RVBT_COPYPAGE",
    btree_rv_undoredo_copy_page,
@@ -603,7 +600,7 @@ struct rvfun RV_fun[] = {
    btree_rv_pagerec_insert,
    NULL,
    NULL},
-  {RVBT_CREATE_INDEX,
+  {RVBT_CREATE_INDEX,		/* Obsolete */
    "RVBT_CREATE_INDEX",
    btree_rv_undo_create_index,
    NULL,

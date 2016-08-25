@@ -296,16 +296,6 @@
    && spage_get_slot (page, HEADER)->record_length == sizeof (BTREE_NODE_HEADER) \
    && (btree_get_node_header (page))->node_level == 1)
 
-/*
- * Recovery structures
- */
-typedef struct pageid_struct PAGEID_STRUCT;
-struct pageid_struct
-{				/* Recovery pageid structure */
-  VFID vfid;			/* Volume id in which page resides */
-  VPID vpid;			/* Virtual page identifier */
-};
-
 typedef struct recset_header RECSET_HEADER;
 struct recset_header
 {				/* Recovery set of recdes structure */
@@ -1194,9 +1184,7 @@ static int btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTI
 						    DB_VALUE * key, void *rec_header, int node_type, bool * clear_key,
 						    int *offset, int copy);
 static PAGE_PTR btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID * near_vpid);
-static int btree_dealloc_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid);
-static bool btree_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type,
-				       const VPID * vpid, INT32 ignore_npages, void *args);
+static int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 static int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 				      INT16 * slot_id, VPID * child_vpid);
 static int btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
@@ -1772,35 +1760,24 @@ btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
 }
 
 /*
- * btree_create_overflow_key_file () -
- *   return: NO_ERROR
- *   btid(in):
+ * btree_create_overflow_key_file () - Create file for overflow keyes
  *
- * Note: An overflow key file is created (permanently) and the VFID
- * is written to the root header for the btree.
+ * return   : Error code
+ * btid (in): B-tree info
+ *
+ * Note: An overflow key file is created (permanently) and the VFID is written to the root header for the btree.
  */
 int
 btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 {
   FILE_OVF_BTREE_DES btdes_ovf;
 
-  /* 
-   * Create the overflow file. Try to create the overflow file in the
-   * same volume where the btree was defined
-   */
+  VFID_SET_NULL (&btid->ovfid);
 
-  btid->ovfid.volid = btid->sys_btid->vfid.volid;
-
-  /* Initialize description of overflow heap file */
+  /* initialize description of overflow heap file */
   btdes_ovf.btid = *btid->sys_btid;	/* structure copy */
-
-  if (file_create (thread_p, &btid->ovfid, 3, FILE_BTREE_OVERFLOW_KEY, &btdes_ovf, NULL, 0) == NULL)
-    {
-      VFID_SET_NULL (&btid->ovfid);
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
+  /* create file with at least 3 pages */
+  return flre_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, (FILE_DESCRIPTORS *) & btdes_ovf, &btid->ovfid);
 }
 
 /*
@@ -4784,9 +4761,11 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
   unsigned short alignment;
 
   alignment = BTREE_MAX_ALIGN;
-  if (file_alloc_pages (thread_p, &(btid->sys_btid->vfid), vpid, 1, near_vpid, btree_initialize_new_page,
-			(void *) (&alignment)) == NULL)
+
+  if (flre_alloc_and_init (thread_p, &btid->sys_btid->vfid, btree_initialize_new_page, (void *) (&alignment), vpid)
+      != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return NULL;
     }
 
@@ -4798,37 +4777,12 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
   page_ptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
-      (void) btree_dealloc_page (thread_p, btid, vpid);
+      ASSERT_ERROR ();
       return NULL;
     }
-
-  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 
   return page_ptr;
-}
-
-/*
- * btree_dealloc_page () -
- *   return: NO_ERROR or error code
- *
- *   btid(in):
- *   vpid(in):
- */
-static int
-btree_dealloc_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid)
-{
-  int error = NO_ERROR;
-
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  error = file_dealloc_page (thread_p, &btid->sys_btid->vfid, vpid, FILE_BTREE);
-
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-
-  return error;
 }
 
 /*
@@ -4844,33 +4798,19 @@ btree_dealloc_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid)
  *
  * Note: Initialize a newly allocated btree page.
  */
-static bool
-btree_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type, const VPID * vpid,
-			   INT32 ignore_npages, void *args)
+static int
+btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 {
-  PAGE_PTR pgptr;
   unsigned short alignment;
 
-  /* 
-   * fetch and initialize the new page. The parameter UNANCHORED_KEEP_
-   * SEQUENCE indicates that the order of records will be preserved
-   * during insertions and deletions.
-   */
-
-  pgptr = pgbuf_fix (thread_p, vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (pgptr == NULL)
-    {
-      return false;
-    }
-
-  (void) pgbuf_set_page_ptype (thread_p, pgptr, PAGE_BTREE);
+  pgbuf_set_page_ptype (thread_p, page, PAGE_BTREE);
 
   alignment = *((unsigned short *) args);
-  spage_initialize (thread_p, pgptr, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
-  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, vfid, pgptr, -1, sizeof (alignment), &alignment);
-  pgbuf_set_dirty (thread_p, pgptr, FREE);
+  spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
+  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, sizeof (alignment), &alignment);
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
@@ -5436,13 +5376,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 		  int unique_pk, int num_oids, int num_nulls, int num_keys)
 {
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
-  VPID first_page_vpid, root_vpid;
+  VPID root_vpid;
   PAGE_PTR page_ptr = NULL;
-  FILE_BTREE_DES btree_descriptor;
-  bool is_file_created = false;
   unsigned short alignment;
-  LOG_DATA_ADDR addr;
-  bool btree_id_complete = false;
 
   root_header = &root_header_info;
 
@@ -5451,51 +5387,30 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
       return NULL;
     }
 
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return NULL;
-    }
-
-  /* create a file descriptor */
-  COPY_OID (&btree_descriptor.class_oid, class_oid);
-  btree_descriptor.attr_id = attr_id;
+  log_sysop_start (thread_p);
 
   /* create a file descriptor, allocate and initialize the root page */
-  if (file_create_check_not_dropped (thread_p, &btid->vfid, 2, FILE_BTREE, &btree_descriptor, &first_page_vpid, 1) ==
-      NULL)
+  if (btree_create_file (thread_p, class_oid, attr_id, 2, btid) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
+  btree_get_root_page (thread_p, btid, &root_vpid);
 
-  is_file_created = true;
-
-  if (btree_get_root_page (thread_p, btid, &root_vpid) == NULL)
-    {
-      goto error;
-    }
-
-  assert (VPID_EQ (&first_page_vpid, &root_vpid));
-
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-
-  alignment = BTREE_MAX_ALIGN;
-  if (btree_initialize_new_page (thread_p, &btid->vfid, FILE_BTREE, &root_vpid, 1, (void *) &alignment) == false)
-    {
-      goto error;
-    }
-
-  /* 
-   * Note: we fetch the page as old since it was initialized by
-   * btree_initialize_new_page; we want the current contents of
-   * the page.
-   */
-  page_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  page_ptr = pgbuf_fix (thread_p, &root_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
+      ASSERT_ERROR ();
+      goto error;
+    }
+  alignment = BTREE_MAX_ALIGN;
+  if (btree_initialize_new_page (thread_p, page_ptr, (void *) &alignment) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto error;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 
   /* form the root header information */
   root_header->node.split_info.pivot = 0.0f;
@@ -5544,22 +5459,10 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   pgbuf_set_dirty (thread_p, page_ptr, FREE);
   page_ptr = NULL;
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-
-  file_new_declare_as_old (thread_p, &btid->vfid);
-
-  /* set the B+tree index identifier */
-  btid->root_pageid = root_vpid.pageid;
-  btree_id_complete = true;
-
-  addr.vfid = NULL;
-  addr.pgptr = NULL;
-  addr.offset = 0;
-  log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (BTID), btid);
-
-  /* Already append a vacuum undo logging when file was created, but since that was included in the system operation
-   * which just got committed, we need to do it again in case of rollback. */
+  log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+  /* log create index to drop statistics if aborted */
+  log_append_undo_data2 (thread_p, RVBT_CREATE_INDEX, NULL, NULL, 0, sizeof (BTID), btid);
 
   return btid;
 
@@ -5569,23 +5472,10 @@ error:
       pgbuf_unfix_and_init (thread_p, page_ptr);
     }
 
-  if (btree_id_complete)
-    {
-      logtb_delete_global_unique_stats (thread_p, btid);
-    }
-
-  if (is_file_created)
-    {
-      (void) file_destroy (thread_p, &btid->vfid);
-      /* remove the file from new file cache. Since we are in a top operation, file_destroy didn't change the file as
-       * OLD_FILE. */
-      file_new_declare_as_old (thread_p, &btid->vfid);
-    }
-
   VFID_SET_NULL (&btid->vfid);
   btid->root_pageid = NULL_PAGEID;
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+  log_sysop_abort (thread_p);
 
   return NULL;
 }
@@ -6968,18 +6858,14 @@ exit_on_error:
  *
  * Note: get the page identifier of the first allocated page of the given file.
  */
-VPID *
+void
 btree_get_root_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid)
 {
-  VPID *vpid;
-
+  assert (btid != NULL);
+  assert (root_vpid != NULL);
   assert (!VFID_ISNULL (&btid->vfid));
-
-  vpid = file_get_first_alloc_vpid (thread_p, &btid->vfid, root_vpid);
-
-  assert (!VPID_ISNULL (root_vpid));
-
-  return vpid;
+  root_vpid->volid = btid->vfid.volid;
+  root_vpid->pageid = btid->root_pageid;
 }
 
 /*
@@ -7008,10 +6894,11 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
   assert_release (stat_info_p != NULL);
   assert_release (!BTID_IS_NULL (&stat_info_p->btid));
 
-  npages = file_get_numpages (thread_p, &(stat_info_p->btid.vfid));
-  if (npages < 0)
+  ret = flre_get_num_user_pages (thread_p, &(stat_info_p->btid.vfid), &npages);
+  if (ret != NO_ERROR)
     {
-      npages = INT_MAX;
+      ASSERT_ERROR ();
+      return ret;
     }
   assert_release (npages >= 1);
 
@@ -7652,7 +7539,7 @@ btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, VP
   BTREE_NODE_TYPE node_type;
 
   /* Verify the given page */
-  vld = file_isvalid_page_partof (thread_p, pg_vpid, &btid->sys_btid->vfid);
+  vld = flre_check_vpid (thread_p, &btid->sys_btid->vfid, pg_vpid);
   if (vld != DISK_VALID)
     {
       goto error;
@@ -7824,10 +7711,7 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
       goto exit_on_end;
     }
 
-  if (btree_get_root_page (thread_p, btid, &vpid) == NULL)
-    {
-      goto exit_on_end;
-    }
+  btree_get_root_page (thread_p, btid, &vpid);
 
   btid->root_pageid = vpid.pageid;
 
@@ -8225,6 +8109,12 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
   char *index_name;
   VPID vpid;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return DISK_VALID;
+    }
+
   if (oid != NULL && !OID_ISNULL (oid))
     {
       return btree_repair_prev_link_by_class_oid (thread_p, oid, index_btid, repair);
@@ -8298,20 +8188,7 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
 	    }
 	  return DISK_ERROR;
 	}
-
-      if (btree_get_root_page (thread_p, &btid, &vpid) == NULL)
-	{
-	  lock_unlock_object (thread_p, &btree_des->class_oid, oid_Root_class_oid, IS_LOCK, true);
-	  if (fd != area)
-	    {
-	      free_and_init (fd);
-	    }
-	  if (index_name)
-	    {
-	      free_and_init (index_name);
-	    }
-	  return DISK_ERROR;
-	}
+      btree_get_root_page (thread_p, &btid, &vpid);
 
       btid.root_pageid = vpid.pageid;
       valid = btree_repair_prev_link_by_btid (thread_p, &btid, repair, index_name);
@@ -8353,6 +8230,12 @@ btree_check_all (THREAD_ENTRY * thread_p)
   PAGE_PTR trk_fhdr_pgptr = NULL;
   HEAP_SCANCACHE scan_cache;
   RECDES peek_recdes;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return DISK_VALID;
+    }
 
   trk_vfid = file_get_tracker_vfid ();
 
@@ -8631,168 +8514,6 @@ btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
 /*
  *       		     b+tree space routines
  */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * btree_estimate_total_numpages () -
- *   return: int
- *   dis_key_cnt(in): Distinct number of key values
- *   avg_key_len(in): Average key length
- *   tot_val_cnt(in): Total value count
- *   blt_pgcnt_est(out): Set to index built(not-loaded) total page cnt estimate
- *   blt_wrs_pgcnt_est(out): Set to index built(not-loaded) worst case pgcnt
- *                           estimate
- *
- * Note: Estimate and return total number of pages for the B+tree to
- * be constructed.
- */
-int
-btree_estimate_total_numpages (THREAD_ENTRY * thread_p, int dis_key_cnt, int avg_key_len, int tot_val_cnt,
-			       int *blt_pgcnt_est, int *blt_wrs_pgcnt_est)
-{
-  int load_pgcnt_est;
-  int rec_oid_cnt;
-  int avg_rec_len;
-  int avg_nrec_len;
-  int page_size;
-  int ovfl_page_size;
-  int nrecs_leaf_page;
-  int nrecs_nleaf_page;
-  int num_leaf_pages;
-  int num_ovfl_pages;
-  int num_nleaf_pages;
-  int order;
-  int nlevel_cnt;
-  int nlevel_pg_cnt;
-  int num_pages;
-  int k, s;
-  float unfill_factor;
-
-  /* initializations */
-  load_pgcnt_est = -1;
-  *blt_pgcnt_est = -1;
-  *blt_wrs_pgcnt_est = -1;
-
-  /* check for passed parameters */
-  if (dis_key_cnt == 0)
-    {
-      dis_key_cnt++;
-    }
-  if (tot_val_cnt < dis_key_cnt)
-    {
-      tot_val_cnt = dis_key_cnt;
-    }
-
-  /* find average leaf record length */
-  /* LEAF RECORD: Key-Length : Ovfl_vpid : key : oid1 : oid2 ... */
-  rec_oid_cnt = CEIL_PTVDIV (tot_val_cnt, dis_key_cnt);
-  rec_oid_cnt = MAX (1, rec_oid_cnt);
-  avg_rec_len = LEAF_RECORD_SIZE;
-  avg_rec_len += avg_key_len;
-  avg_rec_len = DB_ALIGN (avg_rec_len, OR_INT_SIZE);	/* OK */
-  avg_rec_len += (rec_oid_cnt * OR_OID_SIZE);
-
-  /* find average non-leaf record length */
-  /* NLEAF RECORD: Child_vpid : key_len : key */
-  avg_nrec_len = NON_LEAF_RECORD_SIZE;
-  avg_nrec_len += avg_key_len;
-
-  /* find actually available page size for index records: The index pages are usually 80% full and each one contains a
-   * node header (sizeof (BTREE_NODE_HEADER)). Reserved space: page-header-overhead + header record + one record size
-   * (the one not to be inserted) + free area reserved in the page */
-
-  /* Do the estimations for three cases. Regular index loading, use index unfill factor, Regular index built (one at a
-   * time), assume 30% free in pages, Worst case index built, assume 50% free space in pages. */
-  for (s = 0; s < 3; s++)
-    {
-      if (s == 0)
-	{
-	  unfill_factor = (float) (prm_get_float_value (PRM_ID_BT_UNFILL_FACTOR) + 0.05);
-	}
-      else if (s == 1)
-	{
-	  unfill_factor = (float) (0.30 + 0.05);
-	}
-      else
-	{
-	  unfill_factor = (float) (0.50 + 0.05);
-	}
-      page_size = (int) (DB_PAGESIZE - (spage_header_size () + (sizeof (BTREE_NODE_HEADER) + spage_slot_size ())
-					+ (DB_PAGESIZE * unfill_factor)));
-
-      /* find the number of records per index page */
-      if (avg_rec_len >= page_size)
-	{
-	  /* records will use overflow pages, so each leaf page will get one record, plus number overflow pages */
-	  nrecs_leaf_page = 1;
-	  ovfl_page_size = DB_PAGESIZE - (spage_header_size () + (DISK_VPID_SIZE + spage_slot_size ())
-					  + spage_slot_size ());
-	  num_ovfl_pages = dis_key_cnt * (CEIL_PTVDIV (avg_rec_len - page_size, ovfl_page_size));
-	}
-      else
-	{
-	  /* consider the last record size not to be put in page */
-	  page_size -= (avg_rec_len + spage_slot_size ());
-	  nrecs_leaf_page = page_size / (avg_rec_len + spage_slot_size ());
-	  nrecs_leaf_page = MAX (1, nrecs_leaf_page);
-	  num_ovfl_pages = 0;
-	}
-      nrecs_nleaf_page = page_size / (avg_nrec_len + spage_slot_size ());
-      nrecs_nleaf_page = MAX (2, nrecs_nleaf_page);
-
-      /* find the number of leaf pages */
-      num_leaf_pages = CEIL_PTVDIV (dis_key_cnt, nrecs_leaf_page);
-      num_leaf_pages = MAX (1, num_leaf_pages);
-
-      /* find the number of nleaf pages */
-      num_nleaf_pages = 1;
-      order = 1;
-      do
-	{
-	  nlevel_cnt = 1;
-	  for (k = 0; k < order; k++)
-	    {
-	      nlevel_cnt *= ((int) nrecs_nleaf_page);
-	    }
-	  nlevel_pg_cnt = (num_leaf_pages / nlevel_cnt);
-	  num_nleaf_pages += nlevel_pg_cnt;
-	  order++;
-	}
-      while (nlevel_pg_cnt > 1);
-
-      /* find total number of index tree pages, one page is added for the file manager overhead. */
-      num_pages = num_leaf_pages + num_ovfl_pages + num_nleaf_pages;
-      num_pages += file_guess_numpages_overhead (thread_p, NULL, num_pages);
-
-      /* record corresponding estimation */
-      if (s == 0)
-	{
-	  load_pgcnt_est = num_pages;
-	}
-      else if (s == 1)
-	{
-	  *blt_pgcnt_est = num_pages;
-	}
-      else
-	{
-	  *blt_wrs_pgcnt_est = num_pages;
-	}
-
-    }				/* for */
-
-  /* make sure that built tree estimations are not lower than loaded tree estimations. */
-  if (*blt_pgcnt_est < load_pgcnt_est)
-    {
-      *blt_pgcnt_est = load_pgcnt_est;
-    }
-  if (*blt_wrs_pgcnt_est < *blt_pgcnt_est)
-    {
-      *blt_wrs_pgcnt_est = *blt_pgcnt_est;
-    }
-
-  return load_pgcnt_est;
-}
-#endif
 
 /*
  * btree_get_subtree_capacity () -
@@ -9169,6 +8890,12 @@ btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp)
   int i;			/* Loop counter */
   int ret = NO_ERROR;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
+
   /* Find number of files */
   num_files = file_get_numfiles (thread_p);
   if (num_files < 0)
@@ -9189,10 +8916,7 @@ btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp)
 	  continue;
 	}
 
-      if (btree_get_root_page (thread_p, &btid, &vpid) == NULL)
-	{
-	  goto exit_on_error;
-	}
+      btree_get_root_page (thread_p, &btid, &vpid);
 
       btid.root_pageid = vpid.pageid;
 
@@ -13925,6 +13649,8 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID
   OID dummy_oid = { NULL_PAGEID, 0, 0 };
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
 
+  log_sysop_start (thread_p);
+
   header = &header_info;
 
   rec.area_size = DB_PAGESIZE;
@@ -14067,15 +13793,8 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID
   pgbuf_unfix_and_init (thread_p, L_page);
   pgbuf_unfix_and_init (thread_p, R_page);
 
-  if (file_dealloc_page (thread_p, &btid->sys_btid->vfid, &L_vpid, FILE_BTREE) != NO_ERROR)
-    {
-      assert (false);
-    }
-
-  if (file_dealloc_page (thread_p, &btid->sys_btid->vfid, &R_vpid, FILE_BTREE) != NO_ERROR)
-    {
-      assert (false);
-    }
+  /* this was just a test, abort all changes */
+  log_sysop_abort (thread_p);
 }
 #endif
 
@@ -18121,45 +17840,6 @@ btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 }
 
 /*
- * btree_rv_newpage_undo_alloc () -
- *   return: int
- *   recv(in): Recovery structure
- *
- * Note: Undo a new page allocation
- */
-int
-btree_rv_newpage_undo_alloc (THREAD_ENTRY * thread_p, LOG_RCV * recv)
-{
-  PAGEID_STRUCT *pageid_struct;
-  int ret = NO_ERROR;
-
-  pageid_struct = (PAGEID_STRUCT *) recv->data;
-
-  ret = file_dealloc_page (thread_p, &pageid_struct->vfid, &pageid_struct->vpid, FILE_BTREE);
-
-  assert (ret == NO_ERROR);
-
-  return NO_ERROR;
-}
-
-/*
- * btree_rv_newpage_dump_undo_alloc () -
- *   return: int
- *   length(in): Length of Recovery Data
- *   data(in): The data being logged
- *
- * Note: Dump undo information of new page creation
- */
-void
-btree_rv_newpage_dump_undo_alloc (FILE * fp, int length, void *data)
-{
-  PAGEID_STRUCT *pageid_struct = (PAGEID_STRUCT *) data;
-
-  fprintf (fp, "Deallocating page from Volid = %d, Fileid = %d\n", pageid_struct->vfid.volid,
-	   pageid_struct->vfid.fileid);
-}
-
-/*
  * btree_rv_read_keyval_info_nocopy () - Recover key value and other
  *					 information on b-tree operation.
  *
@@ -19837,6 +19517,12 @@ btree_fix_overflow_oid_page_all_btrees (void)
   FILE_TYPE file_type;
   THREAD_ENTRY *thread_p;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
+
   printf ("Start to fix BTREE Overflow OID pages\n\n");
 
   thread_p = thread_get_thread_entry_info ();
@@ -19882,8 +19568,10 @@ btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   int fd_size = FILE_DUMP_DES_AREA_SIZE, size;
   FILE_BTREE_DES *btree_des;
   char *btname;
-  VPID vpid;
   int ret = NO_ERROR;
+
+  assert (!BTID_IS_NULL (btid));
+  assert (btid->root_pageid != NULL_PAGEID);
 
   size = file_get_descriptor (thread_p, &btid->vfid, fd, fd_size);
   if (size < 0)
@@ -19909,14 +19597,6 @@ btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
     {
       goto exit_on_end;
     }
-
-  if (btree_get_root_page (thread_p, btid, &vpid) == NULL)
-    {
-      ret = ER_FAILED;
-      goto exit_on_end;
-    }
-
-  btid->root_pageid = vpid.pageid;
   ret = btree_fix_ovfl_oid_pages_tree (thread_p, btid, btname);
 
 exit_on_end:
@@ -26643,7 +26323,6 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   /* Assert class OID is valid or not required. */
   assert ((purpose != BTREE_OP_INSERT_NEW_OBJECT && purpose != BTREE_OP_INSERT_MVCC_DELID
 	   && purpose != BTREE_OP_INSERT_MARK_DELETED) || (class_oid != NULL && !OID_ISNULL (class_oid)));
-  assert (file_is_new_file (thread_p, &btid->vfid) == FILE_OLD_FILE);
 
   PERF_UTIME_TRACKER_START (thread_p, &insert_helper.time_track);
 
@@ -27028,19 +26707,14 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	  /* Create overflow key file. */
 
 	  /* Start a system operation. */
-	  if (log_start_system_op (thread_p) == NULL)
-	    {
-	      assert_release (false);
-	      error_code = ER_FAILED;
-	      goto error;
-	    }
+	  log_sysop_start (thread_p);
 
 	  /* Create file. */
 	  error_code = btree_create_overflow_key_file (thread_p, btid_int);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	      log_sysop_abort (thread_p);
 	      goto error;
 	    }
 
@@ -27063,8 +26737,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	  pgbuf_set_dirty (thread_p, *root_page, DONT_FREE);
 
 	  /* Finish system operation. */
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-	  file_new_declare_as_old (thread_p, &btid_int->ovfid);
+	  log_sysop_commit (thread_p);
 	}
     }
 
@@ -27186,7 +26859,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   PAGE_PTR child_page = NULL;	/* Page pointer of child node. */
   PAGE_PTR new_page1 = NULL, new_page2 = NULL;	/* Page pointers to newly allocated pages. Both can be used if root is
 						 * split, only first is used if non-root node is split. */
-  PAGEID_STRUCT pageid_struct;	/* Recovery structure used by split. */
   PGSLOTID child_slotid;	/* Slot ID that points to child node. */
   bool is_new_key_possible = false;	/* Set to true if insert operation can add new keys to b-tree (and not just
 					 * data in existing keys). */
@@ -27363,12 +27035,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
 	    }
-	  /* Log the newly allocated pageid for deallocation for undo purposes. */
-	  pageid_struct.vpid = new_page_vpid1;
-	  pageid_struct.vfid.fileid = btid_int->sys_btid->vfid.fileid;
-	  pageid_struct.vfid.volid = btid_int->sys_btid->vfid.volid;
-	  log_append_undo_data2 (thread_p, RVBT_NEW_PGALLOC, &btid_int->sys_btid->vfid, NULL, -1,
-				 sizeof (PAGEID_STRUCT), &pageid_struct);
 	  /* Second page. */
 	  new_page2 = btree_get_new_page (thread_p, btid_int, &new_page_vpid2, crt_vpid);
 	  if (new_page2 == NULL)
@@ -27376,12 +27042,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
 	    }
-	  /* Log the newly allocated pageid for deallocation for undo purposes. */
-	  pageid_struct.vpid = new_page_vpid2;
-	  assert (pageid_struct.vfid.fileid == btid_int->sys_btid->vfid.fileid);
-	  assert (pageid_struct.vfid.volid == btid_int->sys_btid->vfid.volid);
-	  log_append_undo_data2 (thread_p, RVBT_NEW_PGALLOC, &btid_int->sys_btid->vfid, NULL, -1,
-				 sizeof (PAGEID_STRUCT), &pageid_struct);
 
 	  /* Split the root. */
 	  error_code =
@@ -27671,12 +27331,6 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto error;
 	}
-      /* Log the newly allocated pageid for deallocation for undo purposes */
-      pageid_struct.vpid = new_page_vpid1;
-      pageid_struct.vfid.fileid = btid_int->sys_btid->vfid.fileid;
-      pageid_struct.vfid.volid = btid_int->sys_btid->vfid.volid;
-      log_append_undo_data2 (thread_p, RVBT_NEW_PGALLOC, &btid_int->sys_btid->vfid, NULL, -1, sizeof (PAGEID_STRUCT),
-			     &pageid_struct);
 
       /* Split the node. */
       error_code =
@@ -30348,7 +30002,6 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
   assert (btid != NULL && !BTREE_INVALID_INDEX_ID (btid));
   assert ((key == NULL && buffered_key != NULL) || (key != NULL && buffered_key == NULL));
   assert (oid != NULL);
-  assert (file_is_new_file (thread_p, &btid->vfid) == FILE_OLD_FILE);
   assert (op_type == SINGLE_ROW_DELETE || op_type == MULTI_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	  || op_type == MULTI_ROW_UPDATE || op_type == SINGLE_ROW_MODIFY);
 
@@ -30978,7 +30631,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      is_system_op_started = false;
 
 	      pgbuf_unfix_and_init (thread_p, left_page);
-	      error_code = btree_dealloc_page (thread_p, btid_int, &left_vpid);
+	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &left_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
 		  /* Is this acceptable? Pages are "leaked" if it happens. */
@@ -30986,7 +30639,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		  goto error;
 		}
 	      pgbuf_unfix_and_init (thread_p, right_page);
-	      error_code = btree_dealloc_page (thread_p, btid_int, &right_vpid);
+	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
 		  /* Is this acceptable? Pages are "leaked" if it happens. */
@@ -31204,7 +30857,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 	      /* Deallocate right page. */
 	      pgbuf_unfix_and_init (thread_p, right_page);
-	      error_code = btree_dealloc_page (thread_p, btid_int, &right_vpid);
+	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
 		  /* Is this acceptable? Pages are "leaked" if it happens. */
@@ -31364,7 +31017,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 	      /* Deallocate child page. */
 	      pgbuf_unfix_and_init (thread_p, child_page);
-	      error_code = btree_dealloc_page (thread_p, btid_int, &child_vpid);
+	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &child_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
 		  /* Is this acceptable? Pages are "leaked" if it happens. */
@@ -32517,7 +32170,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 	}
 
       /* Deallocate page. */
-      error_code = file_dealloc_page (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
+      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -34092,4 +33745,49 @@ unsigned int
 btree_hash_btid (void *btid, int hash_size)
 {
   return ((BTID *) btid)->vfid.fileid % hash_size;
+}
+
+/*
+ * btree_create_file () - Create a b-tree file and allocate its root.
+ *
+ * return	  : Error code
+ * thread_p (in)  : Thread entry
+ * class_oid (in) : Top class OID
+ * attrid (in)	  : Attribute identifier
+ * npages (in)	  : Number of pages
+ * btid (out)	  : B-tree identifier
+ *
+ * todo: use table space.
+ */
+int
+btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, int npages, BTID * btid)
+{
+  FILE_BTREE_DES des;
+  VPID vpid_root;
+
+  int error_code = NO_ERROR;
+
+  des.class_oid = *class_oid;
+  des.attr_id = attrid;
+
+  error_code = flre_create_with_npages (thread_p, FILE_BTREE, npages, (FILE_DESCRIPTORS *) & des, &btid->vfid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  error_code = flre_alloc (thread_p, &btid->vfid, &vpid_root);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (vpid_root.volid != btid->vfid.volid)
+    {
+      /* should not happen */
+      assert_release (false);
+      return ER_FAILED;
+    }
+  btid->root_pageid = vpid_root.pageid;
+  return NO_ERROR;
 }

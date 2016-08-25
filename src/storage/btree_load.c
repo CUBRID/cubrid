@@ -128,6 +128,8 @@ struct load_args
   int curr_rec_obj_count;	/* Current number of record objects. */
 
   PGSLOTID last_leaf_insert_slotid;	/* Slotid of last inserted leaf record. */
+
+  VPID vpid_first_leaf;
 };
 
 /* While loading an index, BTREE_NUM_ALLOC_PAGES number of pages will be
@@ -142,8 +144,8 @@ static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int
 static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls, int n_oids, int n_keys);
 
 static void btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
-static PAGE_PTR btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id, VPID * nearpg,
-				BTREE_NODE_HEADER * header, int node_level, int *allocated_pgcnt, int *used_pgcnt);
+static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
+				VPID * vpid_new, PAGE_PTR * page_new);
 static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static int btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, OID * first_oid,
 			    MVCC_REC_HEADER * p_mvcc_rec_header, LOAD_ARGS * load_args);
@@ -269,7 +271,8 @@ btree_get_overflow_header (PAGE_PTR page_ptr)
  *
  */
 int
-btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, BTREE_NODE_HEADER * header, bool redo)
+btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR page_ptr, BTREE_NODE_HEADER * header,
+			bool redo)
 {
   RECDES rec;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -622,18 +625,14 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   LOG_TDES *tdes = NULL;
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
-  int init_pgcnt, i, first_alloc_nthpage;
-  int file_created = 0, cur_class, attr_offset;
-  VPID first_page_vpid, root_vpid;
-  INT16 save_volid;
-  FILE_BTREE_DES btdes;
+  int init_pgcnt;
+  int cur_class, attr_offset;
+  VPID root_vpid;
   BTID_INT btid_int;
-  LOG_DATA_ADDR addr;
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
   void *func_unpack_info = NULL;
-  VPID *ret_vpid;
   bool btree_id_complete = false, has_fk;
   OID *notification_class_oid;
 #if !defined(NDEBUG)
@@ -665,10 +664,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
    * us to make use of un-used pages in the case of a bad init_pgcnt guess.
    */
 
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return NULL;
-    }
+  log_sysop_start (thread_p);
 
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
@@ -699,12 +695,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   btid_int.copy_buf_len = 0;
 
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
-
-  /* create a file descriptor */
-  COPY_OID (&btdes.class_oid, &class_oids[0]);
-  /* This needs to change to list all the attr_ids for multi-column */
-  btdes.attr_id = attr_ids[0];
-  save_volid = btid->vfid.volid;
 
   /* Initialize the fields of sorting argument structures */
   sort_args->lowest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
@@ -808,56 +798,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /* There is no estimation for the number of pages to be used. We will allocate pages on demand. */
   init_pgcnt = BTREE_NUM_ALLOC_PAGES;
 
-  if (file_create_check_not_dropped (thread_p, &btid->vfid, init_pgcnt, FILE_BTREE, &btdes, &first_page_vpid, 1) ==
-      NULL)
+  if (btree_create_file (thread_p, &class_oids[0], attr_ids[0], init_pgcnt, btid) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
-
-  file_created = 1;
-
-  if (btree_get_root_page (thread_p, btid, &root_vpid) == NULL)
-    {
-      goto error;
-    }
-
-  assert (VPID_EQ (&first_page_vpid, &root_vpid));
-
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-
-  /* 
-   * Note: We do not initialize the allocated pages during the allocation
-   *       since they belong to a new file and we do not perform any undo
-   *       logging on it. In fact some of the pages may be returned to the
-   *       file manager at a later point. We should not waste time and
-   *       storage to initialize those pages at this moment. This is safe
-   *       since this is a new file.
-   *       The pages are initialized in btree_get_page
-   */
-
-  ret_vpid =
-    file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, &root_vpid, &first_alloc_nthpage, init_pgcnt, NULL, NULL,
-				       NULL, NULL);
-
-  if (ret_vpid == NULL && er_errid () != ER_INTERRUPTED)
-    {
-      /* try to allocate pages as many as possible */
-      for (i = 0; i < init_pgcnt; i++)
-	{
-	  if (file_alloc_pages (thread_p, &btid->vfid, &root_vpid, 1, NULL, NULL, NULL) == NULL)
-	    {
-	      break;
-	    }
-	}
-      init_pgcnt = i;
-    }
-
-  if (init_pgcnt == 0 || er_errid () == ER_INTERRUPTED)
-    {
-      goto error;
-    }
-
-  init_pgcnt++;			/* increment for the root page allocated */
+  btree_get_root_page (thread_p, btid, &root_vpid);
 
     /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
@@ -895,11 +841,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->out_recdes = NULL;
 
   /* Allocate a root page and save the page_id */
-  if (btree_get_root_page (thread_p, load_args->btid->sys_btid, &root_vpid) == NULL)
-    {
-      goto error;
-    }
-  load_args->btid->sys_btid->root_pageid = root_vpid.pageid;
+  *load_args->btid->sys_btid = *btid;
   btree_id_complete = true;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
@@ -973,13 +915,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       os_free_and_init (load_args->ovf_recdes.data);
       pr_clear_value (&load_args->current_key);
 
-      /* deallocate unused pages from the index file */
-      if (load_args->used_pgcnt < load_args->allocated_pgcnt
-	  && file_truncate_to_numpages (thread_p, &btid->vfid, load_args->used_pgcnt) != NO_ERROR)
-	{
-	  goto error;
-	}
-
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load built index btid (%d, (%d, %d)).",
@@ -988,7 +923,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 	}
 
 #if !defined(NDEBUG)
-      (void) btree_verify_tree (thread_p, &btdes.class_oid, &btid_int, bt_name);
+      (void) btree_verify_tree (thread_p, &class_oids[0], &btid_int, bt_name);
 #endif
 
     }
@@ -1001,25 +936,20 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 			 load_args->btid->sys_btid->vfid.fileid);
 	}
       /* there are no index entries, destroy index file and call index creation */
-      if (file_destroy (thread_p, &btid->vfid) != NO_ERROR)
+      if (flre_destroy (thread_p, &btid->vfid) != NO_ERROR)
 	{
 	  goto error;
 	}
-      file_created = 0;
-      /* remove the file from new file cache */
-      file_new_declare_as_old (thread_p, &btid->vfid);
-
       os_free_and_init (load_args->leaf_nleaf_recdes.data);
       os_free_and_init (load_args->ovf_recdes.data);
       pr_clear_value (&load_args->current_key);
 
-      btid->vfid.volid = save_volid;
+      BTID_SET_NULL (btid);
       if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, sort_args->n_oids,
 			    sort_args->n_nulls, load_args->n_keys) == NULL)
 	{
 	  goto error;
 	}
-      file_created = 1;
     }
 
   if (!VFID_ISNULL (&load_args->btid->ovfid))
@@ -1049,7 +979,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   if (sort_args->func_index_info && sort_args->func_index_info->expr)
     {
-      (void) qexec_clear_func_pred (thread_p, sort_args->func_index_info->expr);
+      (void) qexec_clear_func_pred (thread_p, (FUNC_PRED *) sort_args->func_index_info->expr);
     }
   if (func_unpack_info)
     {
@@ -1065,18 +995,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
 #endif
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-
-  file_new_declare_as_old (thread_p, &btid->vfid);
-
-  addr.vfid = NULL;
-  addr.pgptr = NULL;
-  addr.offset = 0;
-  log_append_undo_data (thread_p, RVBT_CREATE_INDEX, &addr, sizeof (BTID), btid);
-
-  /* Already append a vacuum undo logging when file was created, but since that was included in the system operation
-   * which just got committed, we need to do it again in case of rollback. */
+  /* todo: we have the option to commit & undo here. on undo, we can destroy the file directly. */
+  log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+  /* log create index to drop statistics if aborted */
+  log_append_undo_data2 (thread_p, RVBT_CREATE_INDEX, NULL, NULL, 0, sizeof (BTID), btid);
 
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
@@ -1113,13 +1036,6 @@ error:
 	{
 	  heap_attrinfo_end (thread_p, ((FUNC_PRED *) sort_args->func_index_info->expr)->cache_attrinfo);
 	}
-    }
-  if (file_created)
-    {
-      (void) file_destroy (thread_p, &btid->vfid);
-      /* remove the file from new file cache. Since we are in a top operation, file_destroy didn't change the file as
-       * OLD_FILE. */
-      file_new_declare_as_old (thread_p, &btid->vfid);
     }
   VFID_SET_NULL (&btid->vfid);
   btid->root_pageid = NULL_PAGEID;
@@ -1174,7 +1090,7 @@ error:
     }
 #endif
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+  log_sysop_abort (thread_p);
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -1376,11 +1292,15 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VP
 	}
 
       /* get a new non-leaf page */
-      load_args->nleaf.pgptr =
-	btree_get_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.vpid, &load_args->nleaf.vpid,
-			&load_args->nleaf.hdr, node_level, &load_args->allocated_pgcnt, &load_args->used_pgcnt);
+      if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level,
+			       &load_args->nleaf.vpid, &load_args->nleaf.pgptr) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return NULL;
+	}
       if (load_args->nleaf.pgptr == NULL)
 	{
+	  assert_release (false);
 	  return NULL;
 	}
     }				/* get a new leaf */
@@ -1462,7 +1382,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   temp_data = (char *) os_malloc (DB_PAGESIZE);
   if (temp_data == NULL)
     {
-      goto exit_on_error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_PAGESIZE);
+      ret = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
     }
 
   /*****************************************************
@@ -1472,38 +1394,36 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   assert (node_level == 2);
 
   /* Initialize the first non-leaf page */
-  load_args->nleaf.pgptr =
-    btree_get_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.vpid, &load_args->nleaf.vpid,
-		    &load_args->nleaf.hdr, node_level, &load_args->allocated_pgcnt, &load_args->used_pgcnt);
+  ret =
+    btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level, &load_args->nleaf.vpid,
+			 &load_args->nleaf.pgptr);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
   if (load_args->nleaf.pgptr == NULL)
     {
-      goto exit_on_error;
+      assert_release (false);
+      ret = ER_FAILED;
+      goto end;
     }
 
   load_args->push_list = NULL;
   load_args->pop_list = NULL;
 
-  /* Access to the first leaf page of the btree */
-
-  /* Initialize current_page to the first leaf page Note: The first page is actually the second page, since first page
-   * is reserved for the root page. */
-
-  /* Fetch the current page and obtain the header information */
-  if (file_find_nthpages (thread_p, &load_args->btid->sys_btid->vfid, &load_args->leaf.vpid, 1, 1) == -1)
-    {
-      goto exit_on_error;
-    }
-
   DB_MAKE_NULL (&last_key);
 
   /* While there are some leaf pages do */
+  load_args->leaf.vpid = load_args->vpid_first_leaf;
   while (!VPID_ISNULL (&(load_args->leaf.vpid)))
     {
       load_args->leaf.pgptr =
 	pgbuf_fix (thread_p, &load_args->leaf.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (load_args->leaf.pgptr == NULL)
 	{
-	  goto exit_on_error;
+	  ASSERT_ERROR_AND_SET (ret);
+	  goto end;
 	}
 
       (void) pgbuf_check_page_ptype (thread_p, load_args->leaf.pgptr, PAGE_BTREE);
@@ -1515,7 +1435,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       header = btree_get_node_header (load_args->leaf.pgptr);
       if (header == NULL)
 	{
-	  goto exit_on_error;
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto end;
 	}
 
       /* get the maximum key length on this leaf page */
@@ -1529,7 +1451,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       if (spage_get_record (load_args->leaf.pgptr, 1, &temp_recdes, PEEK) != S_SUCCESS)
 
 	{
-	  goto exit_on_error;
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto end;
 	}
 
       ret =
@@ -1537,7 +1461,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 			   BTREE_LEAF_NODE, &clear_first_key, &first_key_offset, PEEK_KEY_VALUE, NULL);
       if (ret != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  ASSERT_ERROR ();
+	  goto end;
 	}
 
       if (pr_is_prefix_key_type (TP_DOMAIN_TYPE (load_args->btid->key_type)))
@@ -1555,7 +1480,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	      if (ret != NO_ERROR)
 		{
 		  assert (!"setval error");
-		  goto exit_on_error;
+		  goto end;
 		}
 	    }
 	  else
@@ -1564,7 +1489,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	      ret = btree_get_prefix_separator (&last_key, &first_key, &prefix_key, load_args->btid->key_type);
 	      if (ret != NO_ERROR)
 		{
-		  goto exit_on_error;
+		  ASSERT_ERROR ();
+		  goto end;
 		}
 	    }
 
@@ -1582,8 +1508,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  if (btree_connect_page (thread_p, &prefix_key, max_key_len, &load_args->leaf.vpid, load_args, node_level) ==
 	      NULL)
 	    {
+	      ASSERT_ERROR_AND_SET (ret);
 	      pr_clear_value (&prefix_key);
-	      goto exit_on_error;
+	      goto end;
 	    }
 
 	  /* We always need to clear the prefix key. It is always a copy. */
@@ -1595,7 +1522,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  assert (key_cnt > 0);
 	  if (spage_get_record (load_args->leaf.pgptr, key_cnt, &temp_recdes, PEEK) != S_SUCCESS)
 	    {
-	      goto exit_on_error;
+	      assert_release (false);
+	      ret = ER_FAILED;
+	      goto end;
 	    }
 
 	  ret =
@@ -1603,7 +1532,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 			       BTREE_LEAF_NODE, &clear_last_key, &last_key_offset, PEEK_KEY_VALUE, NULL);
 	  if (ret != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      ASSERT_ERROR ();
+	      goto end;
 	    }
 	}
       else
@@ -1615,7 +1545,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  if (btree_connect_page (thread_p, &first_key, max_key_len, &load_args->leaf.vpid, load_args, node_level) ==
 	      NULL)
 	    {
-	      goto exit_on_error;
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto end;
 	    }
 	}
 
@@ -1634,7 +1565,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   header = btree_get_node_header (load_args->nleaf.pgptr);
   if (header == NULL)
     {
-      goto exit_on_error;
+      assert_release (false);
+      ret = ER_FAILED;
+      goto end;
     }
 
   *header = load_args->nleaf.hdr;
@@ -1647,7 +1580,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   ret = add_list (&load_args->push_list, &load_args->nleaf.vpid);
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      goto end;
     }
 
   btree_clear_key_value (&clear_last_key, &last_key);
@@ -1668,13 +1602,20 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 
       /* while there are more than one page at the previous level do construct the next level */
 
-      /* Initiliaze the first non-leaf page of current level */
-      load_args->nleaf.pgptr =
-	btree_get_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.vpid, &load_args->nleaf.vpid,
-			&load_args->nleaf.hdr, node_level, &load_args->allocated_pgcnt, &load_args->used_pgcnt);
+      /* Initialize the first non-leaf page of current level */
+      ret =
+	btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level,
+			     &load_args->nleaf.vpid, &load_args->nleaf.pgptr);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
       if (load_args->nleaf.pgptr == NULL)
 	{
-	  goto exit_on_error;
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto end;
 	}
 
       do
@@ -1686,7 +1627,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  cur_nleafpgptr = pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (cur_nleafpgptr == NULL)
 	    {
-	      goto exit_on_error;
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto end;
 	    }
 
 	  (void) pgbuf_check_page_ptype (thread_p, cur_nleafpgptr, PAGE_BTREE);
@@ -1695,7 +1637,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  header = btree_get_node_header (cur_nleafpgptr);
 	  if (header == NULL)
 	    {
-	      goto exit_on_error;
+	      assert_release (false);
+	      ret = ER_FAILED;
+	      goto end;
 	    }
 
 	  /* get the maximum key length on this leaf page */
@@ -1705,7 +1649,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  /* Notice that since this is a non-leaf node */
 	  if (spage_get_record (cur_nleafpgptr, 1, &temp_recdes, PEEK) != S_SUCCESS)
 	    {
-	      goto exit_on_error;
+	      assert_release (false);
+	      ret = ER_FAILED;
+	      goto end;
 	    }
 
 	  ret =
@@ -1713,7 +1659,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 			       BTREE_NON_LEAF_NODE, &clear_first_key, &first_key_offset, PEEK_KEY_VALUE, NULL);
 	  if (ret != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      ASSERT_ERROR ();
+	      goto end;
 	    }
 
 	  max_key_len = BTREE_GET_KEY_LEN_IN_PAGE (max_key_len);
@@ -1727,7 +1674,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  /* Insert this key to the parent level */
 	  if (btree_connect_page (thread_p, &first_key, max_key_len, &cur_nleafpgid, load_args, node_level) == NULL)
 	    {
-	      goto exit_on_error;
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto end;
 	    }
 
 	  pgbuf_unfix_and_init (thread_p, cur_nleafpgptr);
@@ -1745,7 +1693,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       header = btree_get_node_header (load_args->nleaf.pgptr);
       if (header == NULL)
 	{
-	  goto exit_on_error;
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto end;
 	}
 
       *header = load_args->nleaf.hdr;
@@ -1758,7 +1708,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       ret = add_list (&load_args->push_list, &load_args->nleaf.vpid);
       if (ret != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  ASSERT_ERROR ();
+	  goto end;
 	}
 
       /* Switch push and pop lists */
@@ -1780,10 +1731,10 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
     pgbuf_fix (thread_p, &load_args->nleaf.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (load_args->nleaf.pgptr == NULL)
     {
-      goto exit_on_error;
+      ASSERT_ERROR_AND_SET (ret);
+      goto end;
     }
-
-  (void) pgbuf_check_page_ptype (thread_p, load_args->nleaf.pgptr, PAGE_BTREE);
+  pgbuf_check_page_ptype (thread_p, load_args->nleaf.pgptr, PAGE_BTREE);
 
   /* Prepare the root header by using the last leaf node header */
   root_header->node.max_key_len = load_args->nleaf.hdr.max_key_len;
@@ -1823,43 +1774,32 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 #endif /* SA_MODE */
 
   /* change node header as root header */
-  if (btree_pack_root_header (&rec, root_header, load_args->btid->key_type) != NO_ERROR)
+  ret = btree_pack_root_header (&rec, root_header, load_args->btid->key_type);
+  if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      goto end;
     }
 
   if (spage_update (thread_p, load_args->nleaf.pgptr, HEADER, &rec) != SP_SUCCESS)
     {
-      goto exit_on_error;
+      assert_release (false);
+      ret = ER_FAILED;
+      goto end;
     }
 
   /* move current ROOT page content to the first page allocated */
-  if (btree_get_root_page (thread_p, load_args->btid->sys_btid, &cur_nleafpgid) == NULL)
-    {
-      goto exit_on_error;
-    }
+  btree_get_root_page (thread_p, load_args->btid->sys_btid, &cur_nleafpgid);
   next_pageptr = pgbuf_fix (thread_p, &cur_nleafpgid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (next_pageptr == NULL)
     {
-      goto exit_on_error;
+      ASSERT_ERROR_AND_SET (ret);
+      goto end;
     }
-
-  (void) pgbuf_set_page_ptype (thread_p, next_pageptr, PAGE_BTREE);
+  pgbuf_set_page_ptype (thread_p, next_pageptr, PAGE_BTREE);
 
   memcpy (next_pageptr, load_args->nleaf.pgptr, DB_PAGESIZE);
   pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
-
-  if (load_args->used_pgcnt > load_args->allocated_pgcnt)
-    {
-      /* deallocate this last page of index file Note: If used_pgcnt is less than init_pgcnt, this last page will be
-       * deleted on page resource release at the end. */
-      ret = file_dealloc_page (thread_p, &load_args->btid->sys_btid->vfid, &load_args->nleaf.vpid, FILE_BTREE);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }
-  load_args->used_pgcnt--;
 
   load_args->nleaf.pgptr = next_pageptr;
   next_pageptr = NULL;
@@ -1872,6 +1812,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr);
   /* Root was unfixed */
   load_args->nleaf.pgptr = NULL;
+
+  assert (ret == NO_ERROR);
 
 end:
 
@@ -1901,12 +1843,6 @@ end:
   btree_clear_key_value (&clear_first_key, &first_key);
 
   return ret;
-
-/* error handling */
-exit_on_error:
-
-  ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-  goto end;
 }
 
 /*
@@ -1934,89 +1870,46 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
 }
 
 /*
- * btree_get_page () - Get a new page for the b+tree index
- *   return: PAGE_PTR
- *   btid(in): Identifier of the B+Tree index
- *   page_id(in): Set to the page identifier for the newly allocated page
- *   nearpg(in): A page identifier that may be used in a nearby page.
- *               allocation. (It may be ignored.)
- *   header(in): header to be initialized and inserted into the new page
- *               (must be NULL if the new page is going to be an overflow page)
- *   node_type(in): type of the node the page will be used as (either 1,
- *                  or 0)
- *   allocated_pgcnt(in): The number of pages already allocated
- *   used_pgcnt(in): The number of in use pages that has been allocated
+ * btree_load_new_page () - document me!
  *
- * Note: This function allocates a new page for the B+Tree index.
- * The page is initialized and the node header is inserted before
- * returning the page for further usage.
+ * return          : Error code
+ * thread_p (in)   : Thread entry
+ * btid (in)       : B-tree identifier
+ * header (in)     : Node header for leaf/non-leaf nodes or NULL for overflow OID nodes
+ * node_level (in) : Node level for leaf/non-leaf nodes or -1 for overflow OID nodes
+ * vpid_new (out)  : Output new page VPID
+ * page_new (out)  : Output new page
  */
-static PAGE_PTR
-btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id, VPID * nearpg, BTREE_NODE_HEADER * header,
-		int node_level, int *allocated_pgcnt, int *used_pgcnt)
+static int
+btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
+		     VPID * vpid_new, PAGE_PTR * page_new)
 {
   PAGE_PTR page_ptr = NULL;
-  VPID ovf_vpid = { NULL_PAGEID, NULL_VOLID };
-  RECDES temp_recdes;		/* Temporary record descriptor; */
-  VPID vpid;
   LOG_DATA_ADDR addr;
-  int nthpage;
-  OR_ALIGNED_BUF (sizeof (BTREE_NODE_HEADER)) a_temp_data;
   unsigned short alignment;
 
-  assert ((header != NULL && node_level >= 1) || (header == NULL && node_level == -1));
+  int error_code = NO_ERROR;
 
-  temp_recdes.data = OR_ALIGNED_BUF_START (a_temp_data);
-  temp_recdes.area_size = sizeof (BTREE_NODE_HEADER);
+  assert ((header != NULL && node_level >= 1)	/* leaf, non-leaf */
+	  || (header == NULL && node_level == -1));	/* overflow */
+  assert (log_check_system_op_is_started (thread_p));	/* need system operation */
 
-  if (*used_pgcnt < *allocated_pgcnt)
-    {				/* index has still unused pages */
-      if (file_find_nthpages (thread_p, &btid->vfid, page_id, *used_pgcnt, 1) <= 0)
-	{
-	  return NULL;
-	}
-    }
-  else
+  /* allocate new page */
+  error_code = flre_alloc (thread_p, &btid->vfid, vpid_new);
+  if (error_code != NO_ERROR)
     {
-      /* 
-       * Note: We do not initialize the allocated pages during the allocation
-       *       since they belong to a new file and we do not perform any undo
-       *       logging on it. In fact some of the pages may be returned to the
-       *       file manager at a later point. We should not waste time and
-       *       storage to initialize those pages at this moment. This is safe
-       *       since this is a new file.
-       */
-
-      if (file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, page_id, &nthpage, BTREE_NUM_ALLOC_PAGES, nearpg,
-					     NULL, NULL, NULL) != NULL)
-	{
-	  *allocated_pgcnt += BTREE_NUM_ALLOC_PAGES;
-	}
-      else
-	{
-	  if (file_alloc_pages (thread_p, &btid->vfid, page_id, 1, nearpg, NULL, NULL) == NULL)
-	    {
-	      return NULL;
-	    }
-	  else
-	    {
-	      *allocated_pgcnt += 1;
-	    }
-	}
+      ASSERT_ERROR ();
+      return error_code;
     }
-  vpid = *page_id;
-
-  page_ptr = pgbuf_fix (thread_p, &vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == NULL)
+  *page_new = pgbuf_fix (thread_p, vpid_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (*page_new == NULL)
     {
-      (void) file_dealloc_page (thread_p, &btid->vfid, page_id, FILE_BTREE);
-      return NULL;
-    }				/* if */
-  (*used_pgcnt)++;
-
-  (void) pgbuf_set_page_ptype (thread_p, page_ptr, PAGE_BTREE);
-
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  pgbuf_set_page_ptype (thread_p, page_ptr, PAGE_BTREE);
   alignment = BTREE_MAX_ALIGN;
+
   spage_initialize (thread_p, page_ptr, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
 
   addr.vfid = &btid->vfid;
@@ -2026,7 +1919,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id, VPID * nea
   log_append_redo_data (thread_p, RVBT_GET_NEWPAGE, &addr, sizeof (alignment), &alignment);
 
   if (header)
-    {				/* This is going to be a leaf page */
+    {				/* This is going to be a leaf or non-leaf page */
       /* Insert the node header (with initial values) to the leaf node */
       header->node_level = node_level;
       header->max_key_len = 0;
@@ -2035,27 +1928,32 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id, VPID * nea
       header->split_info.pivot = 0.0f;
       header->split_info.index = 0;
 
-      if (btree_init_node_header (thread_p, &btid->vfid, page_ptr, header, false) != NO_ERROR)
+      error_code = btree_init_node_header (thread_p, &btid->vfid, page_ptr, header, false);
+      if (error_code != NO_ERROR)
 	{
-	  return NULL;
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, *page_new);
+	  return error_code;
 	}
     }
   else
     {				/* This is going to be an overflow page */
-      BTREE_OVERFLOW_HEADER ovf_header_info, *ovf_header = NULL;
-
-      ovf_header = &ovf_header_info;
+      BTREE_OVERFLOW_HEADER ovf_header_info;
 
       assert (node_level == -1);
-      ovf_header->next_vpid = ovf_vpid;
+      VPID_SET_NULL (&ovf_header_info.next_vpid);
 
-      if (btree_init_overflow_header (thread_p, page_ptr, ovf_header) != NO_ERROR)
+      error_code = btree_init_overflow_header (thread_p, page_ptr, &ovf_header_info);
+      if (error_code != NO_ERROR)
 	{
-	  return NULL;
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, *page_new);
+	  return error_code;
 	}
     }
 
-  return page_ptr;
+  /* success */
+  return NO_ERROR;
 }
 
 /*
@@ -2084,11 +1982,15 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   temp_recdes.area_size = sizeof (BTREE_NODE_HEADER);
 
   /* Allocate the new leaf page */
-  new_leafpgptr =
-    btree_get_page (thread_p, load_args->btid->sys_btid, &new_leafpgid, &load_args->leaf.vpid, &new_leafhdr, 1,
-		    &load_args->allocated_pgcnt, &load_args->used_pgcnt);
+  if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &new_leafhdr, 1, &new_leafpgid, &new_leafpgptr)
+      != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
   if (new_leafpgptr == NULL)
     {
+      assert_release (false);
       return NULL;
     }
 
@@ -2368,13 +2270,21 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	  /* This is the first call to this function; so, initialize some fields in the LOAD_ARGS structure */
 
 	  /* Allocate the first page for the index */
-	  load_args->leaf.pgptr =
-	    btree_get_page (thread_p, load_args->btid->sys_btid, &load_args->leaf.vpid, &load_args->leaf.vpid,
-			    &load_args->leaf.hdr, 1, &load_args->allocated_pgcnt, &load_args->used_pgcnt);
-	  if (load_args->leaf.pgptr == NULL)
+	  ret =
+	    btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->leaf.hdr, 1, &load_args->leaf.vpid,
+				 &load_args->leaf.pgptr);
+	  if (ret != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto error;
 	    }
+	  if (load_args->leaf.pgptr == NULL || VPID_ISNULL (&load_args->leaf.vpid))
+	    {
+	      assert_release (false);
+	      goto error;
+	    }
+	  /* Save first leaf VPID. */
+	  load_args->vpid_first_leaf = load_args->leaf.vpid;
 
 #if 0				/* TODO: currently not used */
 	  load_args->first_leafpgid = load_args->leaf.vpid;
@@ -2519,11 +2429,18 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 		      assert (slotid > 0);
 
 		      /* Allocate the new overflow page */
-		      new_ovfpgptr =
-			btree_get_page (thread_p, load_args->btid->sys_btid, &new_ovfpgid, &load_args->ovf.vpid, NULL,
-					-1, &load_args->allocated_pgcnt, &load_args->used_pgcnt);
+		      ret =
+			btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &new_ovfpgid,
+					     &new_ovfpgptr);
+		      if (ret != NO_ERROR)
+			{
+			  ASSERT_ERROR ();
+			  goto error;
+			}
 		      if (new_ovfpgptr == NULL)
 			{
+			  assert_release (false);
+			  ret = ER_FAILED;
 			  goto error;
 			}
 
@@ -2549,11 +2466,17 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 		    {		/* Current page is a leaf page */
 		      assert (load_args->out_recdes == &load_args->leaf_nleaf_recdes);
 		      /* Allocate the new overflow page */
-		      load_args->ovf.pgptr =
-			btree_get_page (thread_p, load_args->btid->sys_btid, &load_args->ovf.vpid, &load_args->ovf.vpid,
-					NULL, -1, &load_args->allocated_pgcnt, &load_args->used_pgcnt);
+		      ret =
+			btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &load_args->ovf.vpid,
+					     &load_args->ovf.pgptr);
+		      if (ret != NO_ERROR)
+			{
+			  ASSERT_ERROR ();
+			  goto error;
+			}
 		      if (load_args->ovf.pgptr == NULL)
 			{
+			  assert_release (false);
 			  goto error;
 			}
 
@@ -3821,12 +3744,12 @@ btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  unique_stats->deleted = true;
 	}
-
-      ret = file_destroy (thread_p, &btid->vfid);
     }
-  assert (ret == NO_ERROR);
-
-  return ((ret == NO_ERROR) ? NO_ERROR : er_errid ());
+  else
+    {
+      assert (false);
+    }
+  return ret;
 }
 
 /*
