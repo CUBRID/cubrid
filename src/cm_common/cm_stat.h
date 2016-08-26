@@ -286,7 +286,6 @@ extern "C"
 
     /* Execution statistics for the log manager */
     unsigned int log_num_fetches;
-    unsigned int log_num_fetch_ioreads;
     unsigned int log_num_ioreads;
     unsigned int log_num_iowrites;
     unsigned int log_num_appendrecs;
