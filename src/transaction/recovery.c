@@ -437,12 +437,9 @@ struct rvfun RV_fun[] = {
    log_rv_dump_hexa,
    log_rv_dump_hexa},
 
-  {RVOVF_NEWPAGE_LOGICAL_UNDO,
+  {RVOVF_NEWPAGE_LOGICAL_UNDO,	/* Obsolete */
    "RVOVF_NEWPAGE_LOGICAL_UNDO",
-   overflow_rv_newpage_logical_undo,
-   NULL,
-   overflow_rv_newpage_logical_dump_undo,
-   NULL},
+   NULL, NULL, NULL, NULL},
   {RVOVF_NEWPAGE_INSERT,
    "RVOVF_NEWPAGE_INSERT",
    NULL,

@@ -46,7 +46,6 @@ typedef enum
   FILE_BTREE_OVERFLOW_KEY,
   FILE_EXTENDIBLE_HASH,
   FILE_EXTENDIBLE_HASH_DIRECTORY,
-  FILE_LONGDATA,
   FILE_CATALOG,
   FILE_DROPPED_FILES,
   FILE_VACUUM_DATA,
@@ -127,13 +126,6 @@ struct file_ehash_des
 {
   OID class_oid;
   int attr_id;
-};
-
-/* LO file descriptor */
-typedef struct file_lo_des FILE_LO_DES;
-struct file_lo_des
-{
-  OID oid;
 };
 
 /*
@@ -400,6 +392,8 @@ extern int flre_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int flre_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
 extern int flre_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
 				void *f_init_args, VPID * vpid_alloc);
+extern int flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
+				void *f_init_args, int npages, VPID * vpids_out);
 extern int flre_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
 extern int flre_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
 extern int flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FILE_TYPE file_type_hint);

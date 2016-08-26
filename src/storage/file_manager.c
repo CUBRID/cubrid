@@ -275,7 +275,6 @@ static FILE_TRACKER_CACHE file_Tracker_cache = {
    -1,				/* FILE_BTREE_OVERFLOW_KEY */
    -1,				/* FILE_EXTENDIBLE_HASH */
    -1,				/* FILE_EXTENDIBLE_HASH_DIRECTORY */
-   -1,				/* FILE_LONGDATA */
    -1,				/* FILE_CATALOG */
    -1,				/* FILE_DROPPED_FILES */
    -1,				/* FILE_VACUUM_DATA */
@@ -290,7 +289,6 @@ static FILE_TRACKER_CACHE file_Tracker_cache = {
    NULL,			/* FILE_BTREE_OVERFLOW_KEY */
    NULL,			/* FILE_EXTENDIBLE_HASH */
    NULL,			/* FILE_EXTENDIBLE_HASH_DIRECTORY */
-   NULL,			/* FILE_LONGDATA */
    NULL,			/* FILE_CATALOG */
    NULL,			/* FILE_DROPPED_FILES */
    NULL,			/* FILE_VACUUM_DATA */
@@ -445,7 +443,6 @@ static void file_descriptor_dump_btree (THREAD_ENTRY * thread_p, FILE * fp, cons
 static void file_descriptor_dump_btree_overflow_key (FILE * fp, const FILE_OVF_BTREE_DES * btree_ovf_des_p);
 static void file_descriptor_dump_extendible_hash (THREAD_ENTRY * thread_p, FILE * fp,
 						  const FILE_EHASH_DES * ext_hash_des_p);
-static void file_descriptor_dump_long_data (THREAD_ENTRY * thread_p, FILE * fp, const FILE_LO_DES * lo_des_p);
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p);
 static void file_print_class_name_of_instance (THREAD_ENTRY * thread_p, FILE * fp, const OID * inst_oid_p);
 static void file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p,
@@ -1183,8 +1180,6 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "HASH";
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
       return "HASH_DIRECTORY";
-    case FILE_LONGDATA:
-      return "LONGDATA";
     case FILE_CATALOG:
       return "CATALOG";
     case FILE_DROPPED_FILES:
@@ -1222,7 +1217,6 @@ file_get_primary_vol_purpose (FILE_TYPE ftype)
     case FILE_CATALOG:
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
-    case FILE_LONGDATA:
     case FILE_DROPPED_FILES:
     case FILE_VACUUM_DATA:
       purpose = DISK_PERMVOL_DATA_PURPOSE;
@@ -1268,7 +1262,6 @@ file_get_disk_page_type (FILE_TYPE ftype)
     case FILE_CATALOG:
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
-    case FILE_LONGDATA:
     case FILE_DROPPED_FILES:
     case FILE_VACUUM_DATA:
       page_type = DISK_PAGE_DATA_TYPE;
@@ -1344,7 +1337,6 @@ file_find_good_maxpages (THREAD_ENTRY * thread_p, FILE_TYPE file_type)
     case FILE_CATALOG:
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
-    case FILE_LONGDATA:
     case FILE_DROPPED_FILES:
     case FILE_VACUUM_DATA:
       return disk_get_max_numpages (thread_p, DISK_PERMVOL_DATA_PURPOSE);
@@ -2246,8 +2238,6 @@ file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HE
 	case FILE_BTREE_OVERFLOW_KEY:
 	case FILE_EXTENDIBLE_HASH:
 	case FILE_EXTENDIBLE_HASH_DIRECTORY:
-	case FILE_LONGDATA:
-	  file_descriptor_dump (thread_p, fp, fhdr->type, file_des);
 	  break;
 
 	case FILE_CATALOG:
@@ -13609,8 +13599,6 @@ file_descriptor_get_length (const FILE_TYPE file_type)
     case FILE_EXTENDIBLE_HASH:
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
       return sizeof (FILE_EHASH_DES);
-    case FILE_LONGDATA:
-      return sizeof (FILE_LO_DES);
     case FILE_DROPPED_FILES:
     case FILE_VACUUM_DATA:
     case FILE_TRACKER:
@@ -13668,9 +13656,6 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp, const FILE_TYPE file_t
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
       file_descriptor_dump_extendible_hash (thread_p, fp, (const FILE_EHASH_DES *) file_des_p);
       break;
-    case FILE_LONGDATA:
-      file_descriptor_dump_long_data (thread_p, fp, (const FILE_LO_DES *) file_des_p);
-      break;
     case FILE_CATALOG:
     case FILE_QUERY_AREA:
     case FILE_TEMP:
@@ -13714,13 +13699,6 @@ file_descriptor_dump_extendible_hash (THREAD_ENTRY * thread_p, FILE * fp, const 
 {
   file_print_name_of_class_with_attrid (thread_p, fp, &ext_hash_des_p->class_oid, ext_hash_des_p->attr_id);
 }
-
-static void
-file_descriptor_dump_long_data (THREAD_ENTRY * thread_p, FILE * fp, const FILE_LO_DES * lo_des_p)
-{
-  file_print_class_name_of_instance (thread_p, fp, &lo_des_p->oid);
-}
-
 static void
 file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p)
 {
@@ -14151,8 +14129,7 @@ end:
 /************************************************************************/
 
 /* TODO:
- * 1. Remove large object files. Remove FILE_LONGDATA and FILE_LO_DES.
- * 2. Currently, we had some issue with vacuum workers and nested system operations that could be committed.
+ * x. Currently, we had some issue with vacuum workers and nested system operations that could be committed.
  *    We fixed it by forcing all nested system operations open by vacuum workers to be attached to outer. Then top
  *    system operation was committed. However, with the new file manager design, this can become a problem.
  *    Allocate, deallocate routines can change the partial and full sector tables. If the file header page is released
@@ -14175,9 +14152,7 @@ end:
  *
  *    So, file_alloc_page and file_dealloc_page will output the file header page. The caller has the responsibility to
  *    keep the file header fixed until the system operation si committed and release it afterwards.
- * 3. improve merging extdata.
- * 4. make sure first page and vfid are in the same volume.
- * 5. implement multi-page alloc.
+ * x. improve merging extdata.
  */
 
 /************************************************************************/
@@ -17873,6 +17848,80 @@ flre_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+    }
+  return error_code;
+}
+
+/*
+ * flre_alloc_multiple () - Allocate multiple pages at once.
+ *
+ * return           : Error code.
+ * thread_p (in)    : Thread entry.
+ * vfid (in)        : File identifier.
+ * f_init (in)      : New page init function.
+ * f_init_args (in) : Arguments for init function.
+ * npages (in)      : Number of pages to allocate.
+ * vpids_out (out)  : VPIDS for allocated pages.
+ */
+int
+flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
+		     int npages, VPID * vpids_out)
+{
+  VPID *vpid_iter;
+
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  int error_code = NO_ERROR;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+  assert (npages >= 1);
+  assert (vpids_out != NULL);
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  /* keep header while allocating all pages. we have a great chance to allocate all pages in the same sectors */
+
+  /* start a system op. we may abort page allocations if an error occurs. */
+  log_sysop_start (thread_p);
+
+  for (vpid_iter = vpids_out; vpid_iter < vpids_out + npages; vpid_iter++)
+    {
+      error_code = flre_alloc_and_init (thread_p, vfid, f_init, f_init_args, vpid_iter);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+  /* done */
+  assert (error_code == NO_ERROR);
+
+exit:
+
+  if (error_code == NO_ERROR)
+    {
+      /* caller will decide what happens with allocated pages */
+      log_sysop_attach_to_outer (thread_p);
+    }
+  else
+    {
+      /* undo allocations */
+      log_sysop_abort (thread_p);
+    }
+
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
     }
   return error_code;
 }

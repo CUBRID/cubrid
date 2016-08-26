@@ -177,9 +177,6 @@ struct sort_param
   /* Details about the "limit" clause */
   int limit;
 
-  /* multipage number of pages */
-  int multipage_npages;
-
   /* support parallelism */
 #if defined(SERVER_MODE)
   pthread_mutex_t px_mtx;	/* px_node status mutex */
@@ -1409,7 +1406,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
    * records are encountered. */
   sort_param->multipage_file.volid = NULL_VOLID;
   sort_param->multipage_file.fileid = NULL_FILEID;
-  sort_param->multipage_npages = 0;
 
   /* NOTE: This volume list will not be used any more. */
   /* initialize temporary volume list */
@@ -2463,12 +2459,10 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 
 	      /* Create a multipage record for this long record : insert to multipage_file and put the pointer as the
 	       * first record in this run */
-	      if (overflow_insert (thread_p, &sort_param->multipage_file, (VPID *) item_ptr, &long_recdes,
-				   &sort_param->multipage_npages) == NULL)
+	      if (overflow_insert (thread_p, &sort_param->multipage_file, (VPID *) item_ptr, &long_recdes, FILE_TEMP)
+		  != NO_ERROR)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
-		  assert (error != NO_ERROR);
+		  ASSERT_ERROR_AND_SET (error);
 		  goto exit_on_error;
 		}
 
@@ -4421,13 +4415,13 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     {
       if (sort_param->temp[k].volid != NULL_VOLID)
 	{
-	  (void) file_destroy (thread_p, &sort_param->temp[k]);
+	  (void) flre_destroy (thread_p, &sort_param->temp[k]);
 	}
     }
 
   if (sort_param->multipage_file.volid != NULL_VOLID)
     {
-      (void) file_destroy (thread_p, &(sort_param->multipage_file));
+      (void) flre_destroy (thread_p, &(sort_param->multipage_file));
     }
 
   for (k = 0; k < sort_param->tot_tempfiles; k++)
@@ -4727,12 +4721,21 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
       if (needed_pages[i] > 0)
 	{
 	  assert (!VFID_ISNULL (&sort_param->temp[i]));
-	  contains = file_get_numpages (thread_p, &sort_param->temp[i]);
+	  if (flre_get_num_user_pages (thread_p, &sort_param->temp[i], &contains) != NO_ERROR)
+	    {
+	      /* what happened? */
+	      assert (false);
+	      return;
+	    }
 	  alloc_pages = (needed_pages[i] - contains);
 	  if (alloc_pages > 0)
 	    {
-	      (void) file_alloc_pages_as_noncontiguous (thread_p, &sort_param->temp[i], &new_vpid, &nthpg, alloc_pages,
-							NULL, NULL, NULL, NULL);
+	      if (flre_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL) != NO_ERROR)
+		{
+		  /* shouldn't we make this safe? */
+		  assert (false);
+		  return;
+		}
 	    }
 	}
       else
@@ -4740,7 +4743,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      if (file_destroy (thread_p, &sort_param->temp[i]) == NO_ERROR)
+	      if (flre_destroy (thread_p, &sort_param->temp[i]) == NO_ERROR)
 		{
 		  VFID_SET_NULL (&sort_param->temp[i]);
 		}

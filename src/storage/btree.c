@@ -1858,10 +1858,10 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * k
 
   rec.length = (int) (buf.ptr - buf.buffer);
 
-  /* don't need undo log because undo log of btree insert/delete is logical log */
-  if (overflow_insert_without_undo_logging (thread_p, &overflow_file_vfid, first_overflow_page_vpid, &rec, NULL) ==
-      NULL)
+  if (overflow_insert (thread_p, &overflow_file_vfid, first_overflow_page_vpid, &rec, FILE_BTREE_OVERFLOW_KEY)
+      != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto exit_on_error;
     }
 

@@ -6249,7 +6249,7 @@ heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECD
   VPID ovf_vpid;		/* Address of overflow insertion */
 
   if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, true, PGBUF_UNCONDITIONAL_LATCH) == NULL
-      || overflow_insert (thread_p, &ovf_vfid, &ovf_vpid, recdes, NULL) == NULL)
+      || overflow_insert (thread_p, &ovf_vfid, &ovf_vpid, recdes, FILE_MULTIPAGE_OBJECT_HEAP) != NO_ERROR)
     {
       return NULL;
     }
@@ -6284,8 +6284,9 @@ heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid
   ovf_vpid.pageid = ovf_oid->pageid;
   ovf_vpid.volid = ovf_oid->volid;
 
-  if (overflow_update (thread_p, &ovf_vfid, &ovf_vpid, recdes) == NULL)
+  if (overflow_update (thread_p, &ovf_vfid, &ovf_vpid, recdes, FILE_MULTIPAGE_OBJECT_HEAP) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return NULL;
     }
   else
