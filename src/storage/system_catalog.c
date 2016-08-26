@@ -284,8 +284,7 @@ static bool catalog_is_header_initialized = false;
 static void catalog_initialize_max_space (CATALOG_MAX_SPACE * header_p);
 static void catalog_update_max_space (VPID * page_id, PGLENGTH space);
 
-static bool catalog_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type,
-					 const VPID * vpid, DKNPAGES ignore_npages, void *is_overflow_page);
+static int catalog_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 static PAGE_PTR catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id, VPID * nearpg, bool is_overflow_page);
 static PAGE_PTR catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size, VPID * page_id);
 static int catalog_get_key_list (THREAD_ENTRY * thread_p, void *key, void *val, void *args);
@@ -559,11 +558,17 @@ catalog_update_max_space (VPID * page_id_p, PGLENGTH space)
  *   ignore_npages(in):
  *   pg_ovfl(in):
  */
-static bool
-catalog_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const FILE_TYPE file_type,
-			     const VPID * vpid_p, DKNPAGES ignore_npages, void *is_overflow_page)
+/*
+ * catalog_initialize_new_page () - document me!
+ *
+ * return        : Error code
+ * thread_p (in) : Thread entry
+ * page (in)     : New catalog page
+ * args (in)     : bool * (is_overflow_page)
+ */
+static int
+catalog_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 {
-  PAGE_PTR page_p;
   CATALOG_PAGE_HEADER page_header;
   PGSLOTID slot_id;
   int success;
@@ -571,42 +576,35 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const
     CATALOG_PAGE_HEADER_SIZE, CATALOG_PAGE_HEADER_SIZE, REC_HOME, NULL
   };
   char data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT], *aligned_data;
+  bool is_overflow_page = *(bool *) args;
 
   aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
-  page_p = pgbuf_fix (thread_p, vpid_p, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_p == NULL)
-    {
-      return false;
-    }
-
-  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_CATALOG);
-
-  spage_initialize (thread_p, page_p, ANCHORED_DONT_REUSE_SLOTS, MAX_ALIGNMENT, SAFEGUARD_RVSPACE);
+  pgbuf_set_page_ptype (thread_p, page, PAGE_CATALOG);
+  spage_initialize (thread_p, page, ANCHORED_DONT_REUSE_SLOTS, MAX_ALIGNMENT, SAFEGUARD_RVSPACE);
 
   VPID_SET_NULL (&page_header.overflow_page_id);
   page_header.dir_count = 0;
-  page_header.is_overflow_page = (bool) is_overflow_page;
+  page_header.is_overflow_page = is_overflow_page;
 
   recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
   catalog_put_page_header (record.data, &page_header);
 
-  success = spage_insert (thread_p, page_p, &record, &slot_id);
+  success = spage_insert (thread_p, page, &record, &slot_id);
   if (success != SP_SUCCESS || slot_id != CATALOG_HEADER_SLOT)
     {
+      assert (false);
       if (success != SP_SUCCESS)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
-
-      pgbuf_unfix_and_init (thread_p, page_p);
-      return false;
+      return ER_FAILED;
     }
 
-  log_append_redo_data2 (thread_p, RVCT_NEWPAGE, vfid_p, page_p, -1, sizeof (CATALOG_PAGE_HEADER), &page_header);
+  log_append_redo_data2 (thread_p, RVCT_NEWPAGE, NULL, page, -1, sizeof (CATALOG_PAGE_HEADER), &page_header);
 
-  pgbuf_set_dirty (thread_p, page_p, FREE);
-  return true;
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
+  return NO_ERROR;
 }
 
 /*
@@ -626,8 +624,8 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, VPID * near_pag
 {
   PAGE_PTR page_p;
 
-  if (file_alloc_pages (thread_p, &catalog_Id.vfid, page_id_p, 1, near_page_p, catalog_initialize_new_page,
-			(void *) is_overflow_page) == NULL)
+  if (flre_alloc_and_init (thread_p, &catalog_Id.vfid, catalog_initialize_new_page, &is_overflow_page, page_id_p)
+      != NO_ERROR)
     {
       return NULL;
     }
@@ -641,7 +639,11 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, VPID * near_pag
   page_p = pgbuf_fix (thread_p, page_id_p, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_p == NULL)
     {
-      (void) file_dealloc_page (thread_p, &catalog_Id.vfid, page_id_p, FILE_CATALOG);
+      ASSERT_ERROR ();
+      if (flre_dealloc (thread_p, &catalog_Id.vfid, page_id_p, FILE_CATALOG) != NO_ERROR)
+	{
+	  assert (false);
+	}
       return NULL;
     }
 
@@ -682,7 +684,7 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size, VPID * page_id_p)
   rv = pthread_mutex_lock (&catalog_Max_space_lock);
   recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
 
-  if (catalog_Max_space.max_page_id.pageid == NULL_PAGEID)
+  if (catalog_Max_space.max_page_id.pageid == NULL_PAGEID && false)	/* todo: fix me */
     {
       /* if catalog has pages, make hinted space information point to the last catalog page, this way, during restarts
        * the last page of the previous run will not be left around empty. */
@@ -1610,7 +1612,10 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
       new_overflow_vpid.volid = CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
 
       pgbuf_unfix_and_init (thread_p, overflow_page_p);
-      file_dealloc_page (thread_p, &catalog_Id.vfid, &overflow_vpid, FILE_CATALOG);
+      if (flre_dealloc (thread_p, &catalog_Id.vfid, &overflow_vpid, FILE_CATALOG) != NO_ERROR)
+	{
+	  assert (false);
+	}
       overflow_vpid = new_overflow_vpid;
     }
 
@@ -2569,35 +2574,39 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p, DKNPAGES expected_
       return NULL;
     }
 
-  if (file_create (thread_p, &catalog_id_p->vfid, expected_pages, FILE_CATALOG, NULL, &first_page_vpid, 1) == NULL)
+  if (flre_create_with_npages (thread_p, FILE_CATALOG, expected_pages, NULL, &catalog_id_p->vfid) != NO_ERROR)
     {
       (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
       return NULL;
     }
 
-  if (catalog_initialize_new_page (thread_p, &catalog_id_p->vfid, FILE_CATALOG, &first_page_vpid, 1,
-				   (void *) is_overflow_page) == false)
+  if (flre_alloc_sticky_first_page (thread_p, &catalog_id_p->vfid, &first_page_vpid) != NO_ERROR)
     {
       (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
-      (void) file_destroy (thread_p, &catalog_id_p->vfid);
+      (void) flre_destroy (thread_p, &catalog_id_p->vfid);
       return NULL;
     }
-
-  catalog_id_p->hpgid = first_page_vpid.pageid;
-
-  /* 
-   * Note: we fetch the page as old since it was initialized during the
-   * allocation by catalog_initialize_new_page, we want the current
-   * contents of the page.
-   */
-
-  page_p = pgbuf_fix (thread_p, &first_page_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (first_page_vpid.volid != catalog_id_p->vfid.volid)
+    {
+      assert_release (false);
+      (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
+      (void) flre_destroy (thread_p, &catalog_id_p->vfid);
+      return NULL;
+    }
+  page_p = pgbuf_fix (thread_p, &first_page_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_p == NULL)
     {
       (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
-      (void) file_destroy (thread_p, &catalog_id_p->vfid);
+      (void) flre_destroy (thread_p, &catalog_id_p->vfid);
       return NULL;
     }
+  if (catalog_initialize_new_page (thread_p, page_p, &is_overflow_page) != NO_ERROR)
+    {
+      (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
+      (void) flre_destroy (thread_p, &catalog_id_p->vfid);
+      return NULL;
+    }
+  catalog_id_p->hpgid = first_page_vpid.pageid;
 
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
 
@@ -2614,31 +2623,6 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p, DKNPAGES expected_
   return catalog_id_p;
 }
 
-/*TODO: check not use */
-#if 0
-/*
- * catalog_destroy () -
- *   return: NO_ERROR or ER_FAILED
- *
- * Note: Destroys the catalog and its associated index. After the
- * routine is called, the catalog volume identifier and catalog
- * index identifier are not valid any more.
- */
-int
-catalog_destroy (void)
-{
-  /* destroy catalog index and catalog */
-  if (xehash_destroy (&catalog_Id.xhid) != NO_ERROR || file_destroy (&catalog_Id.vfid) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  mht_destroy (catalog_Hash_table);
-
-  return NO_ERROR;
-}
-#endif
-
 /*
  * catalog_reclaim_space () - Reclaim catalog space by deallocating all the empty
  *                       pages.
@@ -2653,6 +2637,12 @@ catalog_reclaim_space (THREAD_ENTRY * thread_p)
   VPID vpid;
   int page_count;
   int i;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return true;
+    }
 
   /* reinitialize catalog hinted page information, this is needed since the page pointed by this header may be
    * deallocated by this routine and the hinted page structure may have a dangling page pointer. */
@@ -4538,7 +4528,7 @@ catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid_p)
 
   vpid.volid = rep_dir.volid;
   vpid.pageid = rep_dir.pageid;
-  valid = file_isvalid_page_partof (thread_p, &vpid, &catalog_Id.vfid);
+  valid = flre_check_vpid (thread_p, &catalog_Id.vfid, &vpid);
 
   if (valid != DISK_VALID)
     {
@@ -4567,7 +4557,7 @@ catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid_p)
       repr_item.slot_id = CATALOG_GET_REPR_ITEM_SLOTID (repr_p);
       repr_item.repr_id = CATALOG_GET_REPR_ITEM_REPRID (repr_p);
 
-      valid = file_isvalid_page_partof (thread_p, &repr_item.page_id, &catalog_Id.vfid);
+      valid = flre_check_vpid (thread_p, &catalog_Id.vfid, &repr_item.page_id);
       if (valid != DISK_VALID)
 	{
 	  pgbuf_unfix_and_init (thread_p, page_p);
@@ -4974,7 +4964,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
       return;
     }
 
-  if (dump_flag == 1)
+  if (dump_flag == 1 && false)	/* todo: fix me */
     {
       /* slotted page dump */
       fprintf (fp, "\n Catalog Directory Dump: \n\n");
@@ -5619,9 +5609,7 @@ catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv
   catalog_clear_hash_table ();
 
   vpid_p = (VPID *) recv_p->data;
-  (void) file_dealloc_page (thread_p, &catalog_Id.vfid, vpid_p, FILE_CATALOG);
-
-  return NO_ERROR;
+  return flre_dealloc (thread_p, &catalog_Id.vfid, vpid_p, FILE_CATALOG);
 }
 
 /*

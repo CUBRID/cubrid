@@ -14227,6 +14227,8 @@ struct flre_header
   INT16 offset_to_full_ftab;	/* Offset to full sectors table. */
   INT16 offset_to_user_page_ftab;	/* Offset to user pages table. */
 
+  VPID vpid_sticky_first;	/* VPID of first page (if it is sticky). This page should never be deallocated. */
+
   /* Temporary files. */
   /* Temporary files are handled differently than permanent files for simplicity. Temporary file pages are never
    * deallocated, they are deallocated when the file is destroyed or reclaimed when file is reset (but kept in cache).
@@ -16593,6 +16595,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
   VPID_SET_NULL (&fhead->vpid_last_temp_alloc);
   fhead->offset_to_last_temp_alloc = NULL_OFFSET;
   VPID_SET_NULL (&fhead->vpid_last_user_page_ftab);
+  VPID_SET_NULL (&fhead->vpid_sticky_first);
 
   fhead->n_page_total = 0;
   fhead->n_page_user = 0;
@@ -17875,6 +17878,124 @@ flre_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_
 }
 
 /*
+ * flre_alloc_sticky_first_page () - Allocate first file page and make it sticky. It is usually used as special headers
+ *                                   and should never be deallocated.
+ *
+ * return         : Error code
+ * thread_p (in)  : Thread entry
+ * vfid (in)      : File identifier
+ * vpid_out (out) : Allocated page VPID
+ */
+int
+flre_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  int error_code = NO_ERROR;
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  assert (fhead->n_page_user == 0);
+  assert (VPID_ISNULL (&fhead->vpid_sticky_first));
+
+  error_code = flre_alloc (thread_p, vfid, vpid_out);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  /* save VPID */
+  log_append_undoredo_data2 (thread_p, RVFL_FHEAD_STICKY_PAGE, NULL, page_fhead, 0, sizeof (VPID), sizeof (VPID),
+			     &fhead->vpid_sticky_first, vpid_out);
+  fhead->vpid_sticky_first = *vpid_out;
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+
+  /* done */
+  file_header_sanity_check (fhead);
+  assert (error_code == NO_ERROR);
+
+exit:
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+  return error_code;
+}
+
+/*
+ * file_rv_fhead_sticky_page () - Recovery sticky page VPID in file header.
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : Thread entry
+ * rcv (in)      : Recovery data
+ */
+int
+file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_PTR page_fhead = rcv->pgptr;
+  FLRE_HEADER *fhead = (FLRE_HEADER *) page_fhead;
+  VPID *vpid = (VPID *) rcv->data;
+
+  assert (rcv->length == sizeof (*vpid));
+
+  fhead->vpid_sticky_first = *vpid;
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * flre_get_sticky_first_page () - Get VPID of first page. It should be a sticky page.
+ *
+ * return         : Error code
+ * thread_p (in)  : Thread entry
+ * vfid (in)      : File identifier
+ * vpid_out (out) : VPID of sticky first page
+ */
+int
+flre_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  int error_code = NO_ERROR;
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  *vpid_out = fhead->vpid_sticky_first;
+  if (VPID_ISNULL (vpid_out))
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  pgbuf_unfix (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
  * file_dealloc () - Deallocate a file page.
  *
  * return	       : Error code
@@ -17936,6 +18057,8 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
       fhead = (FLRE_HEADER *) page_fhead;
       assert (file_type_hint == FILE_UNKNOWN_TYPE || file_type_hint == fhead->type);
       file_type_hint = fhead->type;
+
+      assert (!VPID_EQ (&fhead->vpid_sticky_first, vpid));
     }
 
   if (file_type_hint != FILE_TEMP || (fhead != NULL && !FILE_IS_TEMPORARY (fhead)))
@@ -17967,6 +18090,7 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
     }
   assert (page_fhead != NULL);
   assert (fhead != NULL);
+  assert (!VPID_EQ (&fhead->vpid_sticky_first, vpid));
   if (!FILE_IS_NUMERABLE (fhead))
     {
       /* we don't need to do anything now. the actual deallocation is postponed (or skipped altogether). */
@@ -18156,6 +18280,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 
   fhead = (FLRE_HEADER *) page_fhead;
   assert (!FILE_IS_TEMPORARY (fhead));
+  assert (!VPID_EQ (&fhead->vpid_sticky_first, vpid_dealloc));
 
   /* find page sector in one of the partial or full tables */
   vsid_dealloc.volid = vpid_dealloc->volid;

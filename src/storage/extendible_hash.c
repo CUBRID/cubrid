@@ -1415,52 +1415,6 @@ end:
   return result;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-static int
-ehash_create_overflow_file (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
-			    EHASH_DIR_HEADER * dir_header_p, FILE_TYPE file_type)
-{
-  int offset;
-
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /* Log the directory header for undo */
-  offset = CAST_BUFLEN ((char *) &dir_header_p->overflow_file - (char *) dir_root_page_p);
-  log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, dir_root_page_p, offset, sizeof (VFID),
-			 &dir_header_p->overflow_file);
-
-  /* Create the overflow file */
-  dir_header_p->overflow_file.volid = ehid_p->vfid.volid;
-  if (file_create (thread_p, &dir_header_p->overflow_file, -1, file_type, NULL, NULL, 0) == NULL)
-    {
-      VFID_SET_NULL (&dir_header_p->overflow_file);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-      return ER_FAILED;
-    }
-
-  pgbuf_set_dirty (thread_p, dir_root_page_p, DONT_FREE);
-
-  /* Log this change on the directory header for redo */
-  log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, dir_root_page_p, offset, sizeof (VFID),
-			 &dir_header_p->overflow_file);
-
-  if (file_is_new_file (thread_p, &(ehid_p->vfid)) == FILE_NEW_FILE)
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-    }
-  else
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-      file_new_declare_as_old (thread_p, &dir_header_p->overflow_file);
-    }
-
-  return NO_ERROR;
-}
-#endif
-
 /*
  * ehash_insert () - Insert (key, assoc_value) pair to ext. hashing
  *   return: void * (NULL is returned in case of error)
