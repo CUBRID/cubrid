@@ -583,7 +583,7 @@
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
-/* representation id, MVCC insert id, MVCC delete id and CHN = 32 */
+/* representation id, MVCC insert id, MVCC delete id, CHN and prev_version_lsa = 32 */
 #define OR_MVCC_MAX_HEADER_SIZE  32
 
 /* representation id and CHN */
