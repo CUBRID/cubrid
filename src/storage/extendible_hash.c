@@ -2690,7 +2690,10 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
   sibling_page_p = ehash_fix_old_page (thread_p, &bucket_vfid, sibling_vpid_p, PGBUF_LATCH_WRITE);
   if (sibling_page_p == NULL)
     {
-      (void) file_dealloc_page (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH);
+      if (flre_dealloc (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
       VPID_SET_NULL (sibling_vpid_p);
       return NULL;
     }
@@ -2699,7 +2702,10 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
 						first_slot_id, sibling_page_p) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
-      (void) file_dealloc_page (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH);
+      if (flre_dealloc (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
       VPID_SET_NULL (sibling_vpid_p);
       return NULL;
     }
@@ -3759,7 +3765,11 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 		{
 		  log_start_system_op (thread_p);
 
-		  (void) file_dealloc_page (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH);
+		  if (flre_dealloc (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH)
+		      != NO_ERROR)
+		    {
+		      assert_release (false);
+		    }
 
 		  /* Set all pointers to the bucket to NULL */
 		  if (ehash_connect_bucket (thread_p, ehid_p, old_local_depth, hash_key, &null_vpid) != NO_ERROR)
@@ -3799,7 +3809,10 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	      pgbuf_unfix_and_init (thread_p, sibling_page_p);
 	      pgbuf_unfix_and_init (thread_p, bucket_page_p);
 
-	      (void) file_dealloc_page (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH);
+	      if (flre_dealloc (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH) != NO_ERROR)
+		{
+		  assert_release (false);
+		}
 
 	      ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -2);
 	      ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, new_local_depth, 1);

@@ -2679,8 +2679,9 @@ catalog_reclaim_space (THREAD_ENTRY * thread_p)
 	      /* page is empty: has only header record; so deallocate it */
 	      pgbuf_unfix_and_init (thread_p, page_p);
 
-	      if (file_dealloc_page (thread_p, &catalog_Id.vfid, &vpid, FILE_CATALOG) != NO_ERROR)
+	      if (flre_dealloc (thread_p, &catalog_Id.vfid, &vpid, FILE_CATALOG) != NO_ERROR)
 		{
+		  assert_release (false);
 		  return ER_FAILED;
 		}
 
