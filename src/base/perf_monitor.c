@@ -170,7 +170,6 @@ static int rv;
     PUT_STAT (RES, NEW, pb_victim_cand_cnt);				\
                                                                         \
     DIFF_METHOD (RES, NEW, OLD, log_num_fetches);                       \
-    DIFF_METHOD (RES, NEW, OLD, log_num_fetch_ioreads);                 \
     DIFF_METHOD (RES, NEW, OLD, log_num_ioreads);                       \
     DIFF_METHOD (RES, NEW, OLD, log_num_iowrites);                      \
     DIFF_METHOD (RES, NEW, OLD, log_num_appendrecs);                    \
@@ -1738,7 +1737,6 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_data_page_avoid_victim",
   "Num_data_page_victim_cand",
   "Num_log_page_fetches",
-  "Num_log_page_fetch_ioreads",
   "Num_log_page_ioreads",
   "Num_log_page_iowrites",
   "Num_log_append_records",
@@ -2603,22 +2601,6 @@ mnt_x_log_fetches (THREAD_ENTRY * thread_p)
     }
 }
 
-/*
- * mnt_x_log_fetch_ioreads - Increase log_num_fetch_ioreads counter of the
- *			     current transaction index
- *   return: none
- */
-void
-mnt_x_log_fetch_ioreads (THREAD_ENTRY * thread_p)
-{
-  MNT_SERVER_EXEC_STATS *stats;
-
-  stats = mnt_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      ADD_STATS (stats, log_num_fetch_ioreads, 1);
-    }
-}
 
 /*
  * mnt_x_log_ioreads - Increase pb_num_ioreads counter of the current
@@ -5442,7 +5424,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 
   stats->log_hit_ratio =
     (stats->log_num_fetches ==
-     0) ? 0 : (stats->log_num_fetches - stats->log_num_fetch_ioreads) * 100 * 100 / stats->log_num_fetches;
+     0) ? 0 : (stats->log_num_fetches - stats->log_num_ioreads) * 100 * 100 / stats->log_num_fetches;
 
   stats->pb_page_lock_acquire_time_10usec = 100 * lock_time_usec / 1000;
   stats->pb_page_hold_acquire_time_10usec = 100 * hold_time_usec / 1000;

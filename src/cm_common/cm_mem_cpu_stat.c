@@ -1080,8 +1080,6 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_data_page_victim_cand",
    offsetof (T_CM_DB_EXEC_STAT, pb_victim_cand_cnt)},
   {"Num_log_page_fetches", offsetof (T_CM_DB_EXEC_STAT, log_num_fetches)},
-  {"Num_log_page_fetch_ioreads",
-   offsetof (T_CM_DB_EXEC_STAT, log_num_fetch_ioreads)},
   {"Num_log_page_ioreads", offsetof (T_CM_DB_EXEC_STAT, log_num_ioreads)},
   {"Num_log_page_iowrites", offsetof (T_CM_DB_EXEC_STAT, log_num_iowrites)},
   {"Num_log_append_records",

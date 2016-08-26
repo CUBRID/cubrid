@@ -4589,7 +4589,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 #if !defined (NDEBUG)
   {
     /* Safe guard: vacuum_Global_oldest_active_mvccid can never become smaller. */
-    VACUUM_LOG_BLOCKID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
+    MVCCID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
     assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
   }
 #endif /* !NDEBUG */
