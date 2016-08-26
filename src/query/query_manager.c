@@ -2723,7 +2723,7 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
       fd_ret = NO_ERROR;
       if ((tfile_vfid_p->temp_file_type != FILE_QUERY_AREA || is_error) && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  fd_ret = file_destroy (thread_p, &tfile_vfid_p->temp_vfid);
+	  fd_ret = flre_destroy (thread_p, &tfile_vfid_p->temp_vfid);
 	  if (fd_ret != NO_ERROR)
 	    {
 	      /* set error but continue with the destroy process */
@@ -2850,7 +2850,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
     {
       if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  if (file_destroy (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+	  if (flre_destroy (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	    {
 	      /* stop; return error */
 	      rc = ER_FAILED;

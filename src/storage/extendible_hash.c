@@ -1258,12 +1258,20 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
       return ER_FAILED;
     }
 
+  log_sysop_start (thread_p);
+
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
-  (void) file_destroy (thread_p, &(dir_header_p->bucket_file));
+  if (flre_destroy (thread_p, &(dir_header_p->bucket_file)) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+  if (flre_destroy (thread_p, &ehid_p->vfid) != NO_ERROR)
+    {
+      assert_release (false);
+    }
 
-  pgbuf_unfix_and_init (thread_p, dir_page_p);
-  (void) file_destroy (thread_p, &ehid_p->vfid);
+  log_sysop_commit (thread_p);
 
   return NO_ERROR;
 }

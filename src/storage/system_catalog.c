@@ -2568,43 +2568,41 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p, DKNPAGES expected_
   int new_space;
   bool is_overflow_page = false;
 
+  log_sysop_start (thread_p);
+
   if (xehash_create (thread_p, &catalog_id_p->xhid, DB_TYPE_OBJECT, expected_index_entries, oid_Root_class_oid, -1,
 		     false) == NULL)
     {
-      return NULL;
+      ASSERT_ERROR ();
+      goto error;
     }
 
   if (flre_create_with_npages (thread_p, FILE_CATALOG, expected_pages, NULL, &catalog_id_p->vfid) != NO_ERROR)
     {
-      (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
-      return NULL;
+      ASSERT_ERROR ();
+      goto error;
     }
 
   if (flre_alloc_sticky_first_page (thread_p, &catalog_id_p->vfid, &first_page_vpid) != NO_ERROR)
     {
-      (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
-      (void) flre_destroy (thread_p, &catalog_id_p->vfid);
-      return NULL;
+      ASSERT_ERROR ();
+      goto error;
     }
   if (first_page_vpid.volid != catalog_id_p->vfid.volid)
     {
       assert_release (false);
-      (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
-      (void) flre_destroy (thread_p, &catalog_id_p->vfid);
-      return NULL;
+      goto error;
     }
   page_p = pgbuf_fix (thread_p, &first_page_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_p == NULL)
     {
-      (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
-      (void) flre_destroy (thread_p, &catalog_id_p->vfid);
-      return NULL;
+      ASSERT_ERROR ();
+      goto error;
     }
   if (catalog_initialize_new_page (thread_p, page_p, &is_overflow_page) != NO_ERROR)
     {
-      (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
-      (void) flre_destroy (thread_p, &catalog_id_p->vfid);
-      return NULL;
+      ASSERT_ERROR ();
+      goto error;
     }
   catalog_id_p->hpgid = first_page_vpid.pageid;
 
@@ -2620,7 +2618,15 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p, DKNPAGES expected_
   catalog_update_max_space (&first_page_vpid, new_space);
   pgbuf_unfix_and_init (thread_p, page_p);
 
+  /* success */
+  log_sysop_attach_to_outer (thread_p);
+
   return catalog_id_p;
+
+error:
+  log_sysop_abort (thread_p);
+
+  return NULL;
 }
 
 /*

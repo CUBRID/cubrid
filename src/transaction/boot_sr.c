@@ -3705,7 +3705,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       HEAP_OPERATION_CONTEXT update_context;
 
-      (void) file_destroy (thread_p, &boot_Db_parm->query_vfid);
+      (void) flre_destroy (thread_p, &boot_Db_parm->query_vfid);
       boot_Db_parm->query_vfid.fileid = NULL_FILEID;
       boot_Db_parm->query_vfid.volid = NULL_VOLID;
 
