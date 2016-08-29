@@ -263,8 +263,6 @@ static int log_data_length = 0;
 
 LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
 
-static int log_Zip_min_size_to_compress = 255;
-
 /*
  * Functions
  */
@@ -2721,7 +2719,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       can_zip = log_zip_support && zip_undo;
     }
 
-  if (can_zip == true && (ulength >= log_Zip_min_size_to_compress || rlength >= log_Zip_min_size_to_compress))
+  if (can_zip == true)
     {
       /* Try to zip undo and/or redo data */
       total_length = 0;
@@ -2743,7 +2741,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	{
 	  tmp_ptr = data_ptr;
 
-	  if (ulength >= log_Zip_min_size_to_compress)
+	  if (ulength > 0)
 	    {
 	      assert (has_undo == true);
 
@@ -2758,7 +2756,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	      assert (CAST_BUFLEN (tmp_ptr - undo_data) == ulength);
 	    }
 
-	  if (rlength >= log_Zip_min_size_to_compress)
+	  if (rlength > 0)
 	    {
 	      assert (has_redo == true);
 
@@ -2773,10 +2771,9 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	      assert (CAST_BUFLEN (tmp_ptr - redo_data) == rlength);
 	    }
 
-	  assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length
-		  || ulength < log_Zip_min_size_to_compress || rlength < log_Zip_min_size_to_compress);
+	  assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length);
 
-	  if (ulength >= log_Zip_min_size_to_compress && rlength >= log_Zip_min_size_to_compress)
+	  if (ulength > 0 && rlength > 0)
 	    {
 	      (void) log_diff (ulength, undo_data, rlength, redo_data);
 
@@ -2790,11 +2787,11 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 	    }
 	  else
 	    {
-	      if (ulength >= log_Zip_min_size_to_compress)
+	      if (ulength > 0)
 		{
 		  is_undo_zip = log_zip (zip_undo, ulength, undo_data);
 		}
-	      if (rlength >= log_Zip_min_size_to_compress)
+	      if (rlength > 0)
 		{
 		  is_redo_zip = log_zip (zip_redo, rlength, redo_data);
 		}
@@ -3841,7 +3838,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   int last_idxflush;		/* The smallest dirty append log page to flush. This is the last one to flush. */
   int idxflush;			/* An index into the first log page buffer to flush */
   bool need_sync;		/* How we flush anything ? */
-
+  int pageid_for_flush;
   int i;
   bool need_flush = true;
   int error_code = NO_ERROR;
@@ -3858,6 +3855,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
   LOG_PAGE *first_append_log_page = NULL;
+  LOG_PAGE copy_for_first_append;
 
   LOG_RECORD_HEADER save_record = {
     {NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
@@ -3983,17 +3981,22 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        */
 
       first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
+      pageid_for_flush = log_Gl.append.prev_lsa.pageid;
       if (first_append_log_page == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      tmp_eof = (LOG_RECORD_HEADER *) ((char *) first_append_log_page->area + log_Gl.append.prev_lsa.offset);
+
+      memcpy (&copy_for_first_append, first_append_log_page, LOG_PAGESIZE);
+      tmp_eof = (LOG_RECORD_HEADER *) ((char *) copy_for_first_append.area + log_Gl.append.prev_lsa.offset);
       save_record = *tmp_eof;
 
       /* Overwrite it with an end of log marker */
       LSA_SET_NULL (&tmp_eof->forw_lsa);
       tmp_eof->type = LOG_END_OF_LOG;
+      logpb_write_page_to_disk (thread_p, &copy_for_first_append, pageid_for_flush);
+      logpb_set_dirty (thread_p, first_append_log_page);
       LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.append.prev_lsa);
     }
   else
@@ -4296,11 +4299,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       /* 
        * Restore the log append record
        */
-      assert (tmp_eof != NULL);
 
       *tmp_eof = save_record;
 
-      if (logpb_writev_append_pages (thread_p, &first_append_log_page, 1) == NULL)
+      if (logpb_write_page_to_disk (thread_p, &copy_for_first_append, pageid_for_flush) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
