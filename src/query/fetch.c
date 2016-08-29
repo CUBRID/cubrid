@@ -4557,6 +4557,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	    {
 	      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tmp)));
 	      *regup->value.vfetch_to = *tmp;
+	      tmp->need_clear = false;
 	      /* keep clear flag on vfetch_to, value is cleared with regu var clear */
 	    }
 	  else
