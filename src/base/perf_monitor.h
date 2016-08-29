@@ -638,7 +638,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 203
+#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 202
 
 /* number of array stats of MNT_SERVER_EXEC_STATS structure */
 #define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 14
