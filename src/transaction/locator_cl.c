@@ -4276,9 +4276,8 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	{
 	  if (mop_toid->mop != NULL)
 	    {
-	      assert (obj->operation == LC_FLUSH_UPDATE_PRUNE);
-
 	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
+	      assert (obj->operation == LC_FLUSH_UPDATE_PRUNE);
 
 	      /* Check if object OID has changed */
 	      if (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid)
