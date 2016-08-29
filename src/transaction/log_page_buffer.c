@@ -3994,13 +3994,16 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 
       log_bufptr = logpb_get_log_buffer (first_append_log_page);
+
+      /* if the page is in the buffer, we clear the dirty flag to avoid to flush it again until the end of flush */
       if (log_bufptr->pageid == log_Gl.append.prev_lsa.pageid)
 	{
 	  log_bufptr->dirty = false;
 	}
 
-      copy_to_first_append = (LOG_PAGE *) malloc (LOG_PAGESIZE);
+      /* we don't want to overwrite the log page buffer, so we use a copy */
       memcpy (copy_to_first_append, first_append_log_page, LOG_PAGESIZE);
+
       first_append_pageid = log_Gl.append.prev_lsa.pageid;
       tmp_eof = (LOG_RECORD_HEADER *) ((char *) copy_to_first_append->area + log_Gl.append.prev_lsa.offset);
       save_record = *tmp_eof;
