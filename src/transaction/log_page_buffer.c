@@ -3842,7 +3842,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   int idxflush;			/* An index into the first log page buffer to flush */
   bool need_sync;		/* How we flush anything ? */
 
-  int i, pageid_for_flush;
+  int i, first_append_pageid;
   bool need_flush = true;
   int error_code = NO_ERROR;
   int flush_page_count = 0;
@@ -3858,7 +3858,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
   LOG_PAGE *first_append_log_page = NULL;
-  LOG_PAGE copy_for_first_append;
+  LOG_PAGE *copy_to_first_append = NULL;
 
   LOG_RECORD_HEADER save_record = {
     {NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
@@ -3984,21 +3984,22 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        */
 
       first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
-      pageid_for_flush = log_Gl.append.prev_lsa.pageid;
       if (first_append_log_page == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
 	}
 
-      memcpy (&copy_for_first_append, first_append_log_page, LOG_PAGESIZE);
-      tmp_eof = (LOG_RECORD_HEADER *) ((char *) copy_for_first_append.area + log_Gl.append.prev_lsa.offset);
+      copy_to_first_append = (LOG_PAGE *) malloc (LOG_PAGESIZE);
+      memcpy (copy_to_first_append, first_append_log_page, LOG_PAGESIZE);
+      first_append_pageid = log_Gl.append.prev_lsa.pageid;
+      tmp_eof = (LOG_RECORD_HEADER *) ((char *) copy_to_first_append->area + log_Gl.append.prev_lsa.offset);
       save_record = *tmp_eof;
 
       /* Overwrite it with an end of log marker */
       LSA_SET_NULL (&tmp_eof->forw_lsa);
       tmp_eof->type = LOG_END_OF_LOG;
-      if (logpb_write_page_to_disk (thread_p, &copy_for_first_append, pageid_for_flush) != NO_ERROR)
+      if (logpb_write_page_to_disk (thread_p, copy_to_first_append, first_append_pageid) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -4310,7 +4311,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       *tmp_eof = save_record;
 
-      if (logpb_write_page_to_disk (thread_p, &copy_for_first_append, pageid_for_flush) != NO_ERROR)
+      if (logpb_write_page_to_disk (thread_p, copy_to_first_append, first_append_pageid) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -4318,6 +4319,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       ++flush_page_count;
       first_append_log_page = NULL;
+      copy_to_first_append = NULL;
     }
 
   flush_info->num_toflush = 0;
