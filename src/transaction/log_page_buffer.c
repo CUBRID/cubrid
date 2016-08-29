@@ -3998,7 +3998,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       /* Overwrite it with an end of log marker */
       LSA_SET_NULL (&tmp_eof->forw_lsa);
       tmp_eof->type = LOG_END_OF_LOG;
-      logpb_write_page_to_disk (thread_p, &copy_for_first_append, pageid_for_flush);
+      if (logpb_write_page_to_disk (thread_p, &copy_for_first_append, pageid_for_flush) != NO_ERROR)
+	{
+	  error_code = ER_FAILED;
+	  goto error;
+	}
       logpb_set_dirty (thread_p, first_append_log_page);
       LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.append.prev_lsa);
     }
