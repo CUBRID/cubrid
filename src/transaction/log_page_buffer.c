@@ -3985,7 +3985,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        * the current append log sequence address
        */
 
-
       first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
       if (first_append_log_page == NULL)
 	{
