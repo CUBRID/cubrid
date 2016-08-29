@@ -4276,93 +4276,15 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	{
 	  if (mop_toid->mop != NULL)
 	    {
-	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
-	      /* There IS ONE case when OID can change after update:
-	       * 1. when operation is LC_FLUSH_UPDATE_PRUNE.
-	       */
-
 	      assert (obj->operation == LC_FLUSH_UPDATE_PRUNE);
 
+	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
+
 	      /* Check if object OID has changed */
-	      if (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid))
+	      if (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid)
+		  && error_code == NO_ERROR)
 		{
-		  MOP new_mop;
-		  MOP cached_mop_of_new;
-		  OID *new_oid;
-
-		  MOP new_class_mop = ws_mop (&obj->class_oid, sm_Root_class_mop);
-
-		  if (new_class_mop == NULL)
-		    {
-		      /* Error */
-		      error_code = ER_FAILED;
-		    }
-		  else
-		    {
-		      /* Make sure that we have the new class in workspace */
-		      if (new_class_mop->object == NULL)
-			{
-			  SM_CLASS *smclass = NULL;
-
-			  /* No need to check authorization here */
-			  error_code = au_fetch_class_force (new_class_mop, &smclass, AU_FETCH_READ);
-			}
-
-		      new_oid = &obj->oid;
-		      cached_mop_of_new = ws_mop_if_exists (new_oid);
-		      if (cached_mop_of_new == NULL)
-			{
-			  /* new_oid has not been cached. Cache as a new object. */
-			  new_mop = ws_new_mop (new_oid, new_class_mop);
-			}
-		      else
-			{
-			  if (!cached_mop_of_new->decached)
-			    {
-			      assert (!cached_mop_of_new->dirty);
-			      ws_decache (cached_mop_of_new);
-			    }
-
-			  /* ws_mop will remove the old class_mop link and link to the new one and reset mop->decached
-			   * to reuse it. */
-			  new_mop = ws_mop (new_oid, new_class_mop);
-			}
-
-		      if (new_mop == NULL)
-			{
-			  error_code = ER_FAILED;
-			}
-		      else
-			{
-			  if (!mop_toid->mop->decached && mop_toid->mop->object != NULL)
-			    {
-			      /* Move buffered object to new mop */
-			      new_mop->object = mop_toid->mop->object;
-			      mop_toid->mop->object = NULL;
-			    }
-
-			  if (WS_ISDIRTY (mop_toid->mop))
-			    {
-			      /* Reset dirty flag in old mop and set it in the new mop. */
-			      WS_RESET_DIRTY (mop_toid->mop);
-			      ws_dirty (new_mop);
-			    }
-
-			  /* preserve pruning type */
-			  new_mop->pruning_type = mop_toid->mop->pruning_type;
-
-			  ws_move_label_value_list (new_mop, mop_toid->mop);
-
-			  /* Add object to class */
-			  ws_set_class (new_mop, new_class_mop);
-
-			  /* Update MVCC snapshot version */
-			  ws_set_mop_fetched_with_current_snapshot (new_mop);
-
-			  /* WARNING: The caller must be warned that the object OID has changed!! As the mvcc_link 
-			   * is gone, the new OID is no longer linked to the old mop */
-			}
-		    }
+		  error_code = ws_update_oid_and_class (mop_toid->mop, &obj->oid, &obj->class_oid);
 		}
 
 	      /* Do not return in case of error. Allow the allocated memory to be freed first */

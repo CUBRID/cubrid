@@ -1088,7 +1088,6 @@ ws_new_mop (OID * oid, MOP class_mop)
  *    This is called in three cases:
  *    1. Newly created objects are flushed and are given a permanent OID.
  *    2. An object changes partition after update.
- *    3. MVCC is enabled and object changes OID after update.
  *
  *    If the object belongs to a partitioned class, it will
  *    have a different class oid here (i.e. the partition in
