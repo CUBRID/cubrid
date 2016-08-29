@@ -391,7 +391,7 @@ extern LC_COPYAREA *locator_allocate_copy_area_by_length (int length);
 extern LC_COPYAREA *locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area, int new_length);
 
 extern void locator_free_copy_area (LC_COPYAREA * copyarea);
-extern char *locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc);
+extern char *locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc, int desc_len);
 extern char *locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc);
 extern int locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *contents_length, char **desc_ptr,
 				   int *desc_length);

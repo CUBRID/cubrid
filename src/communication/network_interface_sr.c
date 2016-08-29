@@ -985,7 +985,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
   char *content_ptr = NULL, *new_content_ptr = NULL;
   int num_objs;
   char *packed_desc = NULL;
-  int packed_desc_size;
+  int packed_desc_size, packed_desc_len;
   int start_multi_update;
   int end_multi_update;
   LC_COPYAREA_MANYOBJS *mobjs;
@@ -1012,6 +1012,8 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
       if (num_objs > 0)
 	{
 	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &packed_desc, &size);
+	  packed_desc_len = size;
+	  assert (packed_desc_size == packed_desc_len);
 	}
 
       if (csserror)
@@ -1053,7 +1055,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	   * Don't need to send the content since it is not updated.
 	   */
 
-	  locator_pack_copy_area_descriptor (num_objs, copy_area, packed_desc);
+	  locator_pack_copy_area_descriptor (num_objs, copy_area, packed_desc, packed_desc_len);
 	  ptr = or_pack_int (reply, success);
 	  ptr = or_pack_int (ptr, packed_desc_size);
 	  ptr = or_pack_int (ptr, 0);
