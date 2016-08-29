@@ -4358,6 +4358,9 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 
 			  /* Update MVCC snapshot version */
 			  ws_set_mop_fetched_with_current_snapshot (new_mop);
+
+			  /* WARNING: The caller must be warned that the object OID has changed!! As the mvcc_link 
+			   * is gone, the new OID is no longer linked to the old mop */
 			}
 		    }
 		}
