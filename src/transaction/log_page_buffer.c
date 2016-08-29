@@ -4327,7 +4327,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       ++flush_page_count;
       first_append_log_page = NULL;
-      copy_to_first_append = NULL;
     }
 
   flush_info->num_toflush = 0;
