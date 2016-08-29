@@ -3858,7 +3858,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
   LOG_PAGE *first_append_log_page = NULL;
-  LOG_PAGE *copy_to_first_append = NULL;
+  char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *copy_to_first_append = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
+  LOG_BUFFER *log_bufptr;
 
   LOG_RECORD_HEADER save_record = {
     {NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
@@ -3983,11 +3985,18 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        * the current append log sequence address
        */
 
+
       first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
       if (first_append_log_page == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
+	}
+
+      log_bufptr = logpb_get_log_buffer (first_append_log_page);
+      if (log_bufptr->pageid == log_Gl.append.prev_lsa.pageid)
+	{
+	  log_bufptr->dirty = false;
 	}
 
       copy_to_first_append = (LOG_PAGE *) malloc (LOG_PAGESIZE);
@@ -4004,7 +4013,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      logpb_set_dirty (thread_p, first_append_log_page);
       LSA_COPY (&log_Gl.hdr.eof_lsa, &log_Gl.append.prev_lsa);
     }
   else
