@@ -6990,7 +6990,6 @@ update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * assigns, int 
       /* handle delete only after update to give a chance to triggers */
       if (should_delete && error == NO_ERROR)
 	{
-	  object = ws_mvcc_latest_version (object);
 	  error = locator_flush_instance (object);
 	  if (error != NO_ERROR)
 	    {

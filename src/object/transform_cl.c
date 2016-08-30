@@ -1672,7 +1672,7 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
 	{
 	  continue;
 	}
-      pr_write_mop (buf, ws_mvcc_latest_version (l->op));
+      pr_write_mop (buf, l->op);
     }
 
   return NO_ERROR;

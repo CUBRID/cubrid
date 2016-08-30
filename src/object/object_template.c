@@ -2071,7 +2071,6 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
     }
   else
     {
-      mop = ws_mvcc_latest_version (mop);
       mop->pruning_type = template_ptr->pruning_type;
       *object = mop;
       *objptr = obj;
@@ -2527,8 +2526,6 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		    {
 		      trstate = NULL;
 		    }
-
-		  object = ws_mvcc_latest_version (object);
 		}
 
 	      /* in some cases, the object has been decached in before trigger. we need fetch it again. */
