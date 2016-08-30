@@ -405,7 +405,7 @@ logpb_get_log_buffer (LOG_PAGE * log_pg)
   assert (index >= 0 && index < log_Pb.num_buffers);
 
   /* Safe guard: log_pg is correctly aligned. */
-  assert ((char *) log_Pb.pages_area + LOG_PAGESIZE * index == (char *) log_pg);
+  assert ((char *) log_Pb.pages_area + (UINT64) LOG_PAGESIZE * index == (char *) log_pg);
 
   return &log_Pb.buffers[index];
 }
@@ -534,7 +534,8 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   MEM_REGION_INIT (log_Pb.pages_area, (size_t) log_Pb.num_buffers * LOG_PAGESIZE);
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
-      logpb_initialize_log_buffer (&log_Pb.buffers[i], (LOG_PAGE *) ((char *) log_Pb.pages_area + i * (LOG_PAGESIZE)));
+      logpb_initialize_log_buffer (&log_Pb.buffers[i],
+				   (LOG_PAGE *) ((char *) log_Pb.pages_area + (UINT64) i * (LOG_PAGESIZE)));
     }
 
   log_Pb.header_page = (LOG_PAGE *) malloc (LOG_PAGESIZE);
@@ -3894,13 +3895,12 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     {
       need_flush = false;
     }
-  if (flush_info->num_toflush == 1)
+  else if (flush_info->num_toflush == 1)
     {
       /* 
        * Don't need to do anything if the page is not dirty.
        *
-       * This block is used to avoid updating the last page with an
-       * end of file log when it is not needed at all.
+       * This block is used to avoid updating the last page with an end of file log when it is not needed at all.
        */
 
       bufptr = logpb_get_log_buffer (flush_info->toflush[0]);
@@ -3968,23 +3968,19 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   /* 
    * Add an end of log marker to detect the end of the log.
-   * The marker should be added at the end of the log if there is only
-   * one page to be flushed. That is, if we are not in the middle of appending
-   * a new log record. Otherwise, we need to change the label of the last
-   * append record as log end record. Flush and then check it back.
+   * The marker should be added at the end of the log if there is only one page to be flushed.
+   * That is, if we are not in the middle of appending a new log record. Otherwise, we need to change the label of
+   * the last append record as log end record. Flush and then check it back.
    */
 
   if (log_Gl.append.prev_lsa.pageid != NULL_PAGEID && log_Gl.hdr.append_lsa.pageid != NULL_PAGEID
       && log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
     {
       /* 
-       * Flush all log append records on such page except the current log
-       * record which has not been finished. Save the log record type of
-       * this record, overwrite an eof record on such position, and flush
-       * the page. Then, restore the record back on the page and change
-       * the current append log sequence address
+       * Flush all log append records on such page except the current log record which has not been finished.
+       * Save the log record type of this record, overwrite an eof record on such position, and flush the page.
+       * Then, restore the record back on the page and change the current append log sequence address.
        */
-
       first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
       if (first_append_log_page == NULL)
 	{
@@ -4020,8 +4016,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   else
     {
       /* 
-       * Add an end of log marker to detect the end of the log. Don't advance the
-       * log address, the log end of file is overwritten at a later point.
+       * Add an end of log marker to detect the end of the log.
+       * Don't advance the log address, the log end of file is overwritten at a later point.
        */
       LOG_RECORD_HEADER eof;
 
@@ -4036,9 +4032,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 
   /* 
-   * Now flush all contiguous log append dirty pages. The first log append
-   * dirty page is flushed at the end, so we can synchronize it with the
-   * rest.
+   * Now flush all contiguous log append dirty pages. The first log append dirty page is flushed at the end,
+   * so we can synchronize it with the rest.
    */
 
 #if defined(SERVER_MODE)
@@ -4090,7 +4085,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   rv = pthread_mutex_lock (&flush_info->flush_mutex);
   hold_flush_mutex = true;
 
-
 #if defined(CUBRID_DEBUG)
   log_scan_flush_info (log_dump_pageid);
   er_log_debug (ARG_FILE_LINE, "\n");
@@ -4104,8 +4098,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
 
       /* 
-       * Make sure that we have found the smallest dirty append page to flush
-       * which should be flushed at the end.
+       * Make sure that we have found the smallest dirty append page to flush which should be flushed at the end.
        */
       if (last_idxflush == -1)
 	{
@@ -4121,19 +4114,15 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       if (idxflush != -1 && prv_bufptr != NULL)
 	{
 	  /* 
-	   * This append log page should be dirty and contiguous to previous
-	   * append page. If it is not, we need to flush the accumulated pages
-	   * up to this point, and then start accumulating pages again.
+	   * This append log page should be dirty and contiguous to previous append page. If it is not, we need to
+	   * flush the accumulated pages up to this point, and then start accumulating pages again.
 	   */
 	  if ((bufptr->dirty == false) || (bufptr->pageid != (prv_bufptr->pageid + 1))
 	      || (bufptr->phy_pageid != (prv_bufptr->phy_pageid + 1)))
 	    {
 	      /* 
-	       * This page is not contiguous or it is not dirty.
-	       *
-	       * Flush the accumulated contiguous pages
+	       * This page is not contiguous or it is not dirty. Flush the accumulated contiguous pages.
 	       */
-
 	      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), i - idxflush) == NULL)
 		{
 		  error_code = ER_FAILED;
@@ -4166,28 +4155,26 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if ((idxflush == -1) && (bufptr->dirty == true))
 	{
-
 	  /* 
 	   * This page should be included in the flush
 	   */
 	  idxflush = i;
 	}
 
-      /* prv_bufptr was not bufptr's previous buffer. prv_bufptr was the first buffer to flush, so only 2 continous
+      /* prv_bufptr was not bufptr's previous buffer. prv_bufptr was the first buffer to flush, so only 2 contiguous
        * pages always were flushed together. */
       prv_bufptr = bufptr;
-
     }
+
   /* 
    * If there are any accumulated pages, flush them at this point
    */
-
   if (idxflush != -1)
     {
-      int pageToFlush = flush_info->num_toflush - idxflush;
+      int page_to_flush = flush_info->num_toflush - idxflush;
 
-      /* last countious pages */
-      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), pageToFlush) == NULL)
+      /* last countiguous pages */
+      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), page_to_flush) == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -4198,7 +4185,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  {
 	    int j;
 
-	    for (j = 0; j != pageToFlush; ++j)
+	    for (j = 0; j != page_to_flush; ++j)
 	      {
 		er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: flush2 pageid(%lld)\n",
 			      (flush_info->toflush[idxflush])->hdr.logical_pageid + j);
@@ -4206,18 +4193,16 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  }
 #endif /* CUBRID_DEBUG */
 	  need_sync = true;
-	  flush_page_count += pageToFlush;
+	  flush_page_count += page_to_flush;
 	}
     }
 
   /* 
-   * Make sure that all of the above log writes are synchronized with any
-   * future log writes. That is, the pages should be stored on physical disk.
+   * Make sure that all of the above log writes are synchronized with any future log writes.
+   * That is, the pages should be stored on physical disk.
    */
-
   if (need_sync == true)
     {
-      log_Stat.total_sync_count++;
       if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
@@ -4226,9 +4211,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      error_code = ER_FAILED;
 	      goto error;
 	    }
+	  log_Stat.total_sync_count++;
 	}
     }
-  assert (last_idxflush != -1);
+
   if (last_idxflush != -1)
     {
       /* 
@@ -4239,14 +4225,13 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 		    (flush_info->toflush[last_idxflush])->hdr.logical_pageid);
 #endif /* CUBRID_DEBUG */
 
-      ++flush_page_count;
       if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[last_idxflush]), 1) == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+      ++flush_page_count;
 
-      log_Stat.total_sync_count++;
       if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
@@ -4255,6 +4240,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      error_code = ER_FAILED;
 	      goto error;
 	    }
+	  log_Stat.total_sync_count++;
 	}
     }
 
@@ -4265,10 +4251,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
 
   /* 
-   * Now indicate that buffers of the append log pages are not dirty
-   * any more.
+   * Now indicate that buffers of the append log pages are not dirty any more.
    */
-
   for (i = 0; i < flush_info->num_toflush; i++)
     {
       bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
@@ -4306,12 +4290,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   curr_flush_count = flush_info->num_toflush;
 #endif /* CUBRID_DEBUG */
 
-
   /* 
-   * Change the log sequence address to indicate the next append address to
-   * flush and synchronize
+   * Change the log sequence address to indicate the next append address to flush and synchronize
    */
-
   if (first_append_log_page != NULL)
     {
       /* 
@@ -4394,7 +4375,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       while (entry != NULL)
 	{
 	  if (entry->status == LOGWR_STATUS_FETCH)
-	    break;
+	    {
+	      break;
+	    }
 	  entry = entry->next;
 	}
       pthread_mutex_unlock (&writer_info->wr_list_mutex);
@@ -4440,7 +4423,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   return 1;
 
 error:
-
   if (hold_flush_mutex)
     {
       pthread_mutex_unlock (&flush_info->flush_mutex);
