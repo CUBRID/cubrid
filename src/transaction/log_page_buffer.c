@@ -798,6 +798,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	      return NULL;
 	    }
 	  log_bufptr->dirty = false;
+	  mnt_log_replacements_iowrites (thread_p);
 	}
       log_bufptr->pageid = NULL_PAGEID;	/* invalidate buffer */
       mnt_log_replacements (thread_p);
