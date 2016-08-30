@@ -5108,8 +5108,7 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
    */
   assert (LSA_EQ (&header->forw_lsa, &log_Gl.hdr.append_lsa));
 
-  if (log_Gl.append.prev_lsa.pageid == NULL_PAGEID || log_Gl.hdr.append_lsa.pageid == NULL_PAGEID
-      || log_Gl.append.prev_lsa.pageid == log_Gl.hdr.append_lsa.pageid)
+  if (!LSA_EQ (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa))
     {
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
     }
