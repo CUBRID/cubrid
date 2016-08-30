@@ -35,7 +35,7 @@
 
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \
-                                    OR_OID_SIZE * 3)
+                                    OR_OID_SIZE * 2)
 
 #define LC_MANYOBJS_PTR_IN_COPYAREA(copy_areaptr) \
   ((LC_COPYAREA_MANYOBJS *) ((char *)(copy_areaptr)->mem + \
