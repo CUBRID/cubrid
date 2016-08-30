@@ -8182,6 +8182,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		      chkpt_topone->trid = act_tdes->trid;
 		      LSA_COPY (&chkpt_topone->lastparent_lsa, &act_tdes->topops.stack[j].lastparent_lsa);
 		      LSA_COPY (&chkpt_topone->posp_lsa, &act_tdes->topops.stack[j].posp_lsa);
+		      chkpt_topone->save_prev_state = tdes->rcv.save_prev_state;
 		      ntops++;
 		      break;
 		    default:
@@ -8492,9 +8493,11 @@ logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
   for (i = 0; i < ntops; i++)
     {
       chkpt_topone = &chkpt_topops[i];
-      fprintf (out_fp, "     Trid = %d, Lastparent_lsa = %lld|%d, Postpone_lsa = %lld|%d\n", chkpt_topone->trid,
+      fprintf (out_fp, "     Trid = %d, Lastparent_lsa = %lld|%d, Postpone_lsa = %lld|%d, Rcv prev state: %d\n",
+	       chkpt_topone->trid,
 	       (long long int) chkpt_topone->lastparent_lsa.pageid, chkpt_topone->lastparent_lsa.offset,
-	       (long long int) chkpt_topone->posp_lsa.pageid, chkpt_topone->posp_lsa.offset);
+	       (long long int) chkpt_topone->posp_lsa.pageid, chkpt_topone->posp_lsa.offset,
+	       chkpt_topone->save_prev_state);
     }
   (void) fprintf (out_fp, "\n");
 }

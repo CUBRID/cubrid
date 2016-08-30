@@ -849,6 +849,20 @@ struct log_tran_update_stats
   MHT_TABLE *unique_stats_hash;	/* hash of unique statistics for indexes used during transaction. */
 };
 
+typedef struct log_rcv_tdes LOG_RCV_TDES;
+struct log_rcv_tdes
+{
+  /* this requires an explanation: we have quite a strange system to handle recovery of system operations in the state
+   * of TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. Long story short, we have to finish the postpone for such system
+   * ops. However, we can have such system ops in TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE state. Which means we also have
+   * to finish the transaction postpone phase (so double do_postpone).
+   * well, we need to save the state previous to TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. once we finish the
+   * system op do postpone, we restore the state. If necessary, we also run the transaction do postpone (other cases
+   * are considered aborted).
+   */
+  TRAN_STATE save_prev_state;
+};
+
 typedef struct log_tdes LOG_TDES;
 struct log_tdes
 {
@@ -932,6 +946,8 @@ struct log_tdes
   bool has_deadlock_priority;
 
   bool block_global_oldest_active_until_commit;
+
+  LOG_RCV_TDES rcv;
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -1592,6 +1608,7 @@ struct log_info_chkpt_topops_commit_posp
 				 * system action */
   LOG_LSA posp_lsa;		/* The first address of a postpone log record for top system operation. We add this
 				 * since it is reset during recovery to the last reference postpone address. */
+  TRAN_STATE save_prev_state;	/* Previous transaction state */
 };
 
 typedef struct log_rec_savept LOG_REC_SAVEPT;

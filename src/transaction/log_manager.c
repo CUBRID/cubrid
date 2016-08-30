@@ -346,6 +346,9 @@ STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index
 STATIC_INLINE void log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
 static void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_SYSOP_COMMIT_RECORD * log_record);
+STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
+						      LOG_TDES ** tdes_out) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * log_rectype_string - RETURN TYPE OF LOG RECORD IN STRING FORMAT
@@ -3865,6 +3868,10 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	}
     }
 
+  /* NOTE: we should not start new system operations in this state, unless it is recovery and we want to abort a system
+   *       operation */
+  assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || !LOG_ISRESTARTED ());
+
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
@@ -3903,22 +3910,8 @@ log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** t
 {
   log_sysop_end_random_exit (thread_p);
 
-  *tran_index_out = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      *tdes_out = VACUUM_GET_WORKER_TDES (thread_p);
-    }
-  else
-    {
-      *tdes_out = LOG_FIND_TDES (*tran_index_out);
-    }
-  if (*tdes_out == NULL)
-    {
-      assert_release (false);
-      return;
-    }
-  if ((*tdes_out)->topops.last < 0)
+  log_sysop_get_tran_index_and_tdes (thread_p, tran_index_out, tdes_out);
+  if ((*tdes_out) != NULL && (*tdes_out)->topops.last < 0)
     {
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_NOTACTIVE_TOPOPS, 0);
@@ -4074,6 +4067,23 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_SYSOP_COMMIT_RECORD * lo
 	{
 	  /* The top system operation may have some commit postpone operations to do. If it does, we need to execute
 	   * them at this point. We need to remove postpone operations of nested top system operations. */
+	  if (!LSA_ISNULL (&LOG_TDES_LAST_SYSOP (tdes)->posp_lsa))
+	    {
+	      /* we need to save previous state for recovery. this is just in case checkpoint needs to save the state
+	       * of this transaction. if the state is TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE, then recovery will have
+	       * to do the do_postpone twice: once for the system op, and once for the transaction.
+	       */
+	      switch (save_state)
+		{
+		case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
+		  tdes->rcv.save_prev_state = save_state;
+		  break;
+		default:
+		  /* all other cases will be treated as aborted transaction */
+		  tdes->rcv.save_prev_state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+		  break;
+		}
+	    }
 	  log_do_postpone (thread_p, tdes, &LOG_TDES_LAST_SYSOP (tdes)->posp_lsa, LOG_COMMIT_TOPOPE_WITH_POSTPONE,
 			   true);
 
@@ -4217,7 +4227,27 @@ log_sysop_commit_and_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvinde
   log_record.data = NULL;
   log_record.data_size = 0;
 
+  /* NOTE: we have several limitations on how run postpone logical operations can be used
+   *       1. since they have similar functionality to run postpone log records, they are destined for (and only for)
+   *          TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE. No other states.
+   *       2. this cannot be nested. it makes no sense to have run postpone as a nested system operation. its only
+   *          purpose is to be used in TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE state.
+   *       3. yes, banned states include TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE too. actually no system ops can be
+   *          used in this state (recovery for such cases becomes a nuisance).
+   *
+   * NOTE: we do allow postpones in this system operation (this is like postpone in run postpone in do postpone).
+   *       recovery (now) knows how to handle these postpones.
+   */
+
+  /* vacuum is not allowed */
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+
   log_sysop_commit_internal (thread_p, &log_record);
+
+  /* should have been be top */
+  assert (log_sysop_get_level (thread_p) == -1);
+  /* state should be TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE */
+  assert (LOG_FIND_CURRENT_TDES (thread_p)->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 }
 
 /*
@@ -4339,6 +4369,56 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
     }
 
   log_sysop_end_final (thread_p, tdes);
+}
+
+/*
+ * log_sysop_get_level () - Get current system operation level. If no system operation is started, it returns -1.
+ *
+ * return        : System op level
+ * thread_p (in) : Thread entry
+ */
+STATIC_INLINE int
+log_sysop_get_level (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+  LOG_TDES *tdes = NULL;
+
+  log_sysop_get_tran_index_and_tdes (thread_p, &tran_index, &tdes);
+  if (tdes == NULL)
+    {
+      assert_release (false);
+      return -1;
+    }
+  return tdes->topops.last;
+}
+
+/*
+ * log_sysop_get_tran_index_and_tdes () - Get transaction descriptor for system operations (in case of VACUUM, it will
+ *                                        return the thread special tdes instead of system tdes).
+ *
+ * return               : Void
+ * thread_p (in)        : Thread entry
+ * tran_index_out (out) : Transaction index
+ * tdes_out (out)       : Transaction descriptor
+ */
+STATIC_INLINE void
+log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
+{
+  *tran_index_out = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      *tdes_out = VACUUM_GET_WORKER_TDES (thread_p);
+    }
+  else
+    {
+      *tdes_out = LOG_FIND_TDES (*tran_index_out);
+    }
+  if (*tdes_out == NULL)
+    {
+      assert_release (false);
+      return;
+    }
 }
 
 /*

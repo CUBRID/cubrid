@@ -1241,6 +1241,8 @@ log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p, int tran_i
 		     "VACUUM: Found commit_topope_with_postpone. tdes->trid=%d. ", tdes->trid);
     }
 
+  /* todo: we need to save this state... what about checkpoint */
+  tdes->rcv.save_prev_state = tdes->state;
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
 
   LSA_COPY (&tdes->tail_lsa, log_lsa);
@@ -1274,6 +1276,11 @@ log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p, int tran_i
   if (tdes->topops.last == -1)
     {
       tdes->topops.last++;
+    }
+  else
+    {
+      /* not expected */
+      assert (false);
     }
 
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &top_start_posp->lastparent_lsa);
@@ -1458,8 +1465,8 @@ log_rv_analysis_sysop_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
       assert (tdes->topops.last == 0);
-      /* Change state to recovery default: TRAN_UNACTIVE_UNILATERALLY_ABORTED. */
-      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+      /* change state to previous state */
+      tdes->state = tdes->rcv.save_prev_state;
     }
   else
     {
@@ -1621,12 +1628,22 @@ log_rv_analysis_sysop_commit_and_run_postpone (THREAD_ENTRY * thread_p, int tran
     {
       assert (tdes->topops.last == 0);
       LSA_COPY (&tdes->topops.stack[tdes->topops.last].posp_lsa, &sysop_commit_and_run_postpone->run_postpone.ref_lsa);
+
+      tdes->state = tdes->rcv.save_prev_state;
     }
   else
     {
       assert (tdes->topops.last == -1);
       LSA_COPY (&tdes->posp_nxlsa, &sysop_commit_and_run_postpone->run_postpone.ref_lsa);
+
+      /* state remains TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE */
     }
+
+  /* reset undo_nxlsa... nothing should be undone anymore */
+  /* any existing undo records should be inside this system operation! */
+  assert (LSA_ISNULL (&tdes->undo_nxlsa)
+	  || LSA_LT (&sysop_commit_and_run_postpone->sysop_commit.lastparent_lsa, &tdes->undo_nxlsa));
+  LSA_SET_NULL (&tdes->undo_nxlsa);
 
   return NO_ERROR;
 }
@@ -1930,6 +1947,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 	  tdes->topops.last++;
 	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &chkpt_topone->lastparent_lsa);
 	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].posp_lsa, &chkpt_topone->posp_lsa);
+	  tdes->rcv.save_prev_state = chkpt_topone->save_prev_state;
 	}
     }
 
@@ -3814,18 +3832,57 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* Nothing to do */
       return;
     }
-  if (tdes->state != TRAN_UNACTIVE_WILL_COMMIT && tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
-      && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && tdes->state != TRAN_UNACTIVE_COMMITTED)
+
+  if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
-      /* Nothing to finish */
-      return;
+      LSA_SET_NULL (&first_postpone_to_apply);
+      LSA_SET_NULL (&partial_dealloc_vol_page_lsa);
+      log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
+					&tdes->topops.stack[tdes->topops.last].posp_lsa, &start_postpone_run_lsa,
+					&partial_dealloc_vol_page_lsa, tdes);
+
+      if (!LSA_ISNULL (&partial_dealloc_vol_page_lsa))
+	{
+	  /* todo: this could be solved with logical run postpone */
+	  (void) log_recovery_complete_partial_page_deallocation (thread_p, &partial_dealloc_vol_page_lsa);
+	}
+
+      log_do_postpone (thread_p, tdes, &first_postpone_to_apply, LOG_COMMIT_TOPOPE_WITH_POSTPONE, false);
+      LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
+
+      /* simulate system op commit */
+      log_sysop_commit (thread_p);
+
+      if (tdes->topops.last >= 0)
+	{
+	  assert_release (false);
+	  tdes->topops.last = -1;
+	}
+
+      /* now set transaction state previous to system op commit with postpone */
+      tdes->state = tdes->rcv.save_prev_state;
+
+      if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+	{
+	  /* nothing to undo */
+	  LSA_SET_NULL (&tdes->undo_nxlsa);
+	}
+      else
+	{
+	  /* set undo_nxlsa to last LSA */
+	  LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
+	}
     }
+  assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
 
   LSA_SET_NULL (&first_postpone_to_apply);
   LSA_SET_NULL (&partial_dealloc_vol_page_lsa);
 
   if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
     {
+      LSA_SET_NULL (&first_postpone_to_apply);
+      LSA_SET_NULL (&partial_dealloc_vol_page_lsa);
+
       /* 
        * The transaction was the one that was committing
        */
@@ -3833,6 +3890,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	{
 	  /* Transaction stopped in the middle of a logical postpone. We must rollback it. */
 	  assert (tdes->topops.last == -1);
+	  log_sysop_start (thread_p);
 	  if (log_start_system_op (thread_p) == NULL)
 	    {
 	      assert_release (false);
@@ -3851,6 +3909,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       if (!LSA_ISNULL (&partial_dealloc_vol_page_lsa))
 	{
+	  /* todo: we can solve this with logical run postpone */
 	  (void) log_recovery_complete_partial_page_deallocation (thread_p, &partial_dealloc_vol_page_lsa);
 	}
 
@@ -3869,51 +3928,6 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
-    }
-  else
-    {
-      /* 
-       * A top system operation of the transaction was the one that was
-       * committing
-       */
-      assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
-
-      log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
-					&tdes->topops.stack[tdes->topops.last].posp_lsa, &start_postpone_run_lsa,
-					&partial_dealloc_vol_page_lsa, tdes);
-
-      if (!LSA_ISNULL (&start_postpone_run_lsa) && LSA_GT (&tdes->undo_nxlsa, &start_postpone_run_lsa))
-	{
-	  /* Transaction stopped in the middle of a logical postpone. We must rollback it. */
-	  assert (tdes->topops.last >= 0);
-	  if (log_start_system_op (thread_p) == NULL)
-	    {
-	      assert_release (false);
-	      return;
-	    }
-	  /* We need to rollback up to start postpone run lsa before doing remaining postpone. */
-	  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &start_postpone_run_lsa);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-	}
-
-      if (!LSA_ISNULL (&partial_dealloc_vol_page_lsa))
-	{
-	  (void) log_recovery_complete_partial_page_deallocation (thread_p, &partial_dealloc_vol_page_lsa);
-	}
-
-      log_do_postpone (thread_p, tdes, &first_postpone_to_apply, LOG_COMMIT_TOPOPE_WITH_POSTPONE, false);
-      LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-      LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
-      if (tdes->topops.last < 0)
-	{
-	  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-	}
-
-      /* 
-       * The rest of the transaction will be aborted using the recovery undo
-       * process.
-       */
     }
 }
 
