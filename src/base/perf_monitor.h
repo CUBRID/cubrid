@@ -390,7 +390,7 @@ struct mnt_server_exec_stats
   UINT64 log_num_end_checkpoints;
   UINT64 log_num_wals;
   UINT64 log_num_replacements;
-  UINT64 log_num_replacements_iowrites;
+  UINT64 log_num_iowrites_for_replacement;
 
   /* Execution statistics for the lock manager */
   UINT64 lk_num_acquired_on_pages;
@@ -958,8 +958,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_wals(thread_p)
 #define mnt_log_replacements(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_replacements(thread_p)
-#define mnt_log_replacements_iowrites(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_replacements_iowrites(thread_p)
+#define mnt_log_iowrites_for_replacement(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_iowrites_for_replacement(thread_p)
 
 /*
  * Statistics at lock level
@@ -1391,7 +1391,7 @@ extern void mnt_x_log_start_checkpoints (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_end_checkpoints (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_wals (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_replacements (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_replacements_iowrites (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_iowrites_for_replacement (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p);
@@ -1598,7 +1598,7 @@ extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p, UINT64 amoun
 #define mnt_log_end_checkpoints(thread_p)
 #define mnt_log_wals(thread_p)
 #define mnt_log_replacements(thread_p)
-#define mnt_log_replacements_iowrites(thread_p)
+#define mnt_log_iowrites_for_replacement(thread_p)
 
 #define mnt_lk_acquired_on_pages(thread_p)
 #define mnt_lk_acquired_on_objects(thread_p)

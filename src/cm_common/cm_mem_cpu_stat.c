@@ -1075,7 +1075,7 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_log_end_checkpoints", offsetof (T_CM_DB_EXEC_STAT, log_num_end_checkpoints)},
   {"Num_log_wals", offsetof (T_CM_DB_EXEC_STAT, log_num_wals)},
   {"Num_log_page_replacement", offsetof (T_CM_DB_EXEC_STAT, log_num_replacements)},
-  {"Num_log_page_iowrites_for_replacement", offsetof (T_CM_DB_EXEC_STAT, log_num_replacements_iowrites)},
+  {"Num_log_page_iowrites_for_replacement", offsetof (T_CM_DB_EXEC_STAT, log_num_iowrites_for_replacement)},
   {"Num_page_locks_acquired", offsetof (T_CM_DB_EXEC_STAT, lk_num_acquired_on_pages)},
   {"Num_object_locks_acquired", offsetof (T_CM_DB_EXEC_STAT, lk_num_acquired_on_objects)},
   {"Num_page_locks_converted", offsetof (T_CM_DB_EXEC_STAT, lk_num_converted_on_pages)},
