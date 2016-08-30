@@ -405,7 +405,7 @@ logpb_get_log_buffer (LOG_PAGE * log_pg)
   assert (index >= 0 && index < log_Pb.num_buffers);
 
   /* Safe guard: log_pg is correctly aligned. */
-  assert ((char *) log_Pb.pages_area + LOG_PAGESIZE * index == (char *) log_pg);
+  assert ((char *) log_Pb.pages_area + (UINT64) LOG_PAGESIZE * index == (char *) log_pg);
 
   return &log_Pb.buffers[index];
 }
@@ -534,7 +534,8 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   MEM_REGION_INIT (log_Pb.pages_area, (size_t) log_Pb.num_buffers * LOG_PAGESIZE);
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
-      logpb_initialize_log_buffer (&log_Pb.buffers[i], (LOG_PAGE *) ((char *) log_Pb.pages_area + i * (LOG_PAGESIZE)));
+      logpb_initialize_log_buffer (&log_Pb.buffers[i],
+				   (LOG_PAGE *) ((char *) log_Pb.pages_area + (UINT64) i * (LOG_PAGESIZE)));
     }
 
   log_Pb.header_page = (LOG_PAGE *) malloc (LOG_PAGESIZE);
