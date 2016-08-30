@@ -32,6 +32,21 @@ define logpb_get_page
 end
 
 
+# logpb_get_log_buffer
+# $arg0 (in) : LOG_PAGE *
+# $arg1 (out) : LOG_BUFFER *
+#
+# Get LOG_BUFFER for the given LOG_PAGE *
+#
+define logpb_get_log_buffer
+  if $arg0 == log_Pb.header_page
+    set $arg1 = &log_Pb.header_buffer
+  else
+    set $idx = (int) ((char *) $arg0 - (char *) log_Pb.pages_area) / db_Log_page_size
+    set $arg1 = &log_Pb.buffers[$idx]
+  end
+end
+
 #
 # Log records section
 #

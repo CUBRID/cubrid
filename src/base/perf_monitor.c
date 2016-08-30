@@ -178,6 +178,7 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, log_num_end_checkpoints);               \
     DIFF_METHOD (RES, NEW, OLD, log_num_wals);                          \
     DIFF_METHOD (RES, NEW, OLD, log_num_replacements);                  \
+    DIFF_METHOD (RES, NEW, OLD, log_num_iowrites_for_replacement);      \
                                                                         \
     DIFF_METHOD (RES, NEW, OLD, lk_num_acquired_on_pages);              \
     DIFF_METHOD (RES, NEW, OLD, lk_num_acquired_on_objects);            \
@@ -1744,6 +1745,7 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_log_start_checkpoints",
   "Num_log_end_checkpoints",
   "Num_log_wals",
+  "Num_log_page_replacements",
   "Num_log_page_iowrites_for_replacement",
   "Num_page_locks_acquired",
   "Num_object_locks_acquired",
@@ -2724,8 +2726,7 @@ mnt_x_log_wals (THREAD_ENTRY * thread_p)
 }
 
 /*
- * mnt_x_log_replacements - Increase log flush for replacement counter of the
- *			    current transaction index
+ * mnt_x_log_replacements - Increase log page replacement counter of the current transaction index
  *   return: none
  */
 void
@@ -2740,6 +2741,21 @@ mnt_x_log_replacements (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ * mnt_x_log_iowrites_for_replacement - Increase log flush for replacement counter of the current transaction index
+ *   return: none
+ */
+void
+mnt_x_log_iowrites_for_replacement (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, log_num_iowrites_for_replacement, 1);
+    }
+}
 
 /*
  * mnt_x_lk_acquired_on_pages - Increase lk_num_acquired_on_pages counter
