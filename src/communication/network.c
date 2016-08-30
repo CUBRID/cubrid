@@ -112,6 +112,8 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->log_num_replacements));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->log_num_iowrites_for_replacement));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->lk_num_acquired_on_pages));
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->lk_num_acquired_on_objects));
@@ -633,6 +635,8 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->log_num_wals));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->log_num_replacements));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->log_num_iowrites_for_replacement));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->lk_num_acquired_on_pages));
   ptr += OR_INT64_SIZE;
