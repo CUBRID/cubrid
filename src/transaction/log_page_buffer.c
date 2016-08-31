@@ -4057,6 +4057,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 
       /* Overwrite it with an end of log marker */
+      tmp_eof = (LOG_RECORD_HEADER *) ((char *) copy_to_first_append->area + log_Gl.append.prev_lsa.offset);
+      save_record = *tmp_eof;
       LSA_SET_NULL (&tmp_eof->forw_lsa);
       tmp_eof->type = LOG_END_OF_LOG;
       if (logpb_write_page_to_disk (thread_p, copy_to_first_append, first_append_pageid) != NO_ERROR)
