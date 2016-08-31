@@ -1911,11 +1911,11 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
   assert (log_pgptr != NULL);
   assert (log_pgptr->hdr.logical_pageid == logical_pageid);
-  /* if (logical_pageid != LOGPB_HEADER_PAGE_ID)
-     {
-     assert (logical_pageid >= LOGPB_FIRST_ACTIVE_PAGE_ID);
-     assert (logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID);
-     } */
+  if (logical_pageid != LOGPB_HEADER_PAGE_ID)
+    {
+      assert (logical_pageid >= LOGPB_FIRST_ACTIVE_PAGE_ID);
+      assert (logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID);
+    }
   phy_pageid = logpb_to_physical_pageid (logical_pageid);
   logpb_log ("phy_pageid in logpb_write_page_to_disk is %lld\n", (long long int) phy_pageid);
 
@@ -2403,14 +2403,13 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
   LOG_BUFFER *bufptr;
   LOG_PHY_PAGEID phy_pageid;
 
-  logpb_log ("called logpb_writev_append_pages, with npages = %d\n", npages);
   /* In this point, flush buffer cannot be replaced by trans. So, bufptr's pageid and phy_pageid are not changed. */
 
   if (npages > 0)
     {
       bufptr = logpb_get_log_buffer (to_flush[0]);
       phy_pageid = bufptr->phy_pageid;
-      logpb_log ("first pageid in logpb_writev_append_pages is %lld, with phy_pageid = %lld\n",
+      logpb_log ("logpb_writev_append_pages: started with pageid = %lld and phy_pageid = %lld\n",
 		 (long long int) bufptr->pageid, (long long int) phy_pageid);
 
       if (fileio_writev (thread_p, log_Gl.append.vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
@@ -4216,7 +4215,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 		     (long long int) flush_info->toflush[idxflush]->hdr.logical_pageid + i - idxflush - 1);
 
 	  /* set not dirty what we have flushed */
-	  for (buf_iter = idxflush; buf_iter < i - 1; buf_iter++)
+	  for (buf_iter = idxflush; buf_iter < i; buf_iter++)
 	    {
 	      bufptr = logpb_get_log_buffer (flush_info->toflush[buf_iter]);
 	      bufptr->dirty = false;
