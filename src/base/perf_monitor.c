@@ -2647,8 +2647,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 					stats[PSTAT_PB_NUM_FETCHES]);
 
   stats[PSTAT_LOG_HIT_RATIO] =
-    SAFE_DIV ((stats[PSTAT_LOG_NUM_FETCHES] - stats[PSTAT_LOG_NUM_IOREADS]) * 100 * 100,
-	      stats[PSTAT_PB_NUM_FETCHES]);
+    SAFE_DIV ((stats[PSTAT_LOG_NUM_FETCHES] - stats[PSTAT_LOG_NUM_IOREADS]) * 100 * 100, stats[PSTAT_PB_NUM_FETCHES]);
 
   stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC] = 100 * lock_time_usec / 1000;
   stats[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] = 100 * hold_time_usec / 1000;
