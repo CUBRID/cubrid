@@ -762,7 +762,8 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
   int index;
 
-  logpb_log ("called logpb_locate_page for pageid %d\n", pageid);
+  logpb_log ("called logpb_locate_page for pageid %lld, fetch_mode=%s", (long long int) pageid,
+	     fetch_mode == NEW_PAGE ? "new_page" : "old_page\n");
   is_perf_tracking = mnt_is_perf_tracking (thread_p);
   if (is_perf_tracking)
     {
@@ -833,6 +834,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
     {
       assert (fetch_mode == OLD_PAGE);
       assert (log_bufptr->pageid == pageid);
+      logpb_log ("logpb_locate_page using log buffer entry for pageid = %lld", pageid);
     }
 
   mnt_log_fetches (thread_p);
@@ -869,7 +871,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   /* Get the address of the buffer from the page. */
   bufptr = logpb_get_log_buffer (log_pgptr);
-  logpb_log ("dirty flag set for pageid = %d\n", bufptr->pageid);
+  logpb_log ("dirty flag set for pageid = %lld\n", (long long int) bufptr->pageid);
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
       && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
@@ -987,7 +989,7 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   /* Get the address of the buffer from the page. */
   bufptr = logpb_get_log_buffer (log_pgptr);
-  logpb_log ("called logpb_flush_page for pageid = %d\n", bufptr->pageid);
+  logpb_log ("called logpb_flush_page for pageid = %lld\n", (long long int) bufptr->pageid);
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
 #if defined(CUBRID_DEBUG)
@@ -1499,7 +1501,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
   LOG_LSA append_lsa, append_prev_lsa;
   int rv;
 
-  logpb_log ("called logpb_fetch_page with pageid = %d\n", req_lsa->pageid);
+  logpb_log ("called logpb_fetch_page with pageid = %lld\n", (long long int) req_lsa->pageid);
   assert (log_pgptr != NULL);
   assert (req_lsa != NULL);
   assert (req_lsa->pageid != NULL_PAGEID);
@@ -1564,7 +1566,7 @@ logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG
 {
   int rv;
 
-  logpb_log ("called logpb_copy_page_from_log_buffer with pageid = %d\n", pageid);
+  logpb_log ("called logpb_copy_page_from_log_buffer with pageid = %lld\n", (long long int) pageid);
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
   assert (pageid <= log_Gl.hdr.append_lsa.pageid);
@@ -1590,7 +1592,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
 {
   int rv;
 
-  logpb_log ("called logpb_copy_page_from_file with pageid = %d\n", pageid);
+  logpb_log ("called logpb_copy_page_from_file with pageid = %lld\n", (long long int) pageid);
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
   assert (pageid <= log_Gl.hdr.append_lsa.pageid);
@@ -1636,7 +1638,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   bool log_csect_entered = false;
   int rv = NO_ERROR, index;
 
-  logpb_log ("called logpb_copy_page with pageid = %d\n", pageid);
+  logpb_log ("called logpb_copy_page with pageid = %lld\n", (long long int) pageid);
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
@@ -1746,8 +1748,9 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 {
   bool log_csect_entered = false;
 
-  logpb_log ("called logpb_read_page_from_file with pageid = %d, hdr.logical_pageid = %d, "
-	     "LOGPB_ACTIVE_NPAGES = %d\n", pageid, log_pgptr->hdr.logical_pageid, LOGPB_ACTIVE_NPAGES);
+  logpb_log ("called logpb_read_page_from_file with pageid = %lld, hdr.logical_pageid = %lld, "
+	     "LOGPB_ACTIVE_NPAGES = %d\n", (long long int) pageid, (long long int) log_pgptr->hdr.logical_pageid,
+	     LOGPB_ACTIVE_NPAGES);
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
@@ -1789,7 +1792,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
        * Find the corresponding physical page and read the page form disk.
        */
       phy_pageid = logpb_to_physical_pageid (pageid);
-      logpb_log ("phy_pageid in logpb_read_page_from_file is %d\n", phy_pageid);
+      logpb_log ("phy_pageid in logpb_read_page_from_file is %lld\n", (long long int) phy_pageid);
 
       mnt_log_ioreads (thread_p);
 
@@ -1857,7 +1860,8 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 {
   LOG_PHY_PAGEID phy_start_pageid;
 
-  logpb_log ("called logpb_read_page_from_active_log with pageid = %d and num_pages = %d\n", pageid, num_pages);
+  logpb_log ("called logpb_read_page_from_active_log with pageid = %lld and num_pages = %d\n", (long long int) pageid,
+	     num_pages);
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
   assert (num_pages > 0);
@@ -1904,11 +1908,14 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   int nbytes;
   LOG_PHY_PAGEID phy_pageid;
 
-  logpb_log ("called logpb_write_page_to_disk for logical_pageid = %d\n", logical_pageid);
+  logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
   assert (log_pgptr != NULL);
+  assert (log_pgptr->hdr.logical_pageid == logical_pageid);
+  assert (logical_pageid >= LOGPB_FIRST_ACTIVE_PAGE_ID);
+  assert (logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID);
 
   phy_pageid = logpb_to_physical_pageid (logical_pageid);
-  logpb_log ("phy_pageid in logpb_write_page_to_disk is %d\n", phy_pageid);
+  logpb_log ("phy_pageid in logpb_write_page_to_disk is %lld\n", (long long int) phy_pageid);
 
   /* log_Gl.append.vdes is only changed while starting or finishing or recovering server. So, log cs is not needed. */
 #if 1				/* yaw */
@@ -2401,7 +2408,8 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
     {
       bufptr = logpb_get_log_buffer (to_flush[0]);
       phy_pageid = bufptr->phy_pageid;
-      logpb_log ("first pageid in logpb_writev_append_pages is %d, with phy_pageid = %d\n", bufptr->pageid, phy_pageid);
+      logpb_log ("first pageid in logpb_writev_append_pages is %lld, with phy_pageid = %lld\n",
+		 (long long int) bufptr->pageid, (long long int) phy_pageid);
 
       if (fileio_writev (thread_p, log_Gl.append.vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
 	{
@@ -4010,9 +4018,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      logpb_log ("first_append_log_page has pageid = %d\n", first_append_log_page);
       log_bufptr = logpb_get_log_buffer (first_append_log_page);
-      logpb_log ("first_append_log_page has pageid = %d\n", log_bufptr->pageid);
+      logpb_log ("first_append_log_page has pageid = %lld\n", (long long int) log_bufptr->pageid);
       /* if the page is in the buffer, we clear the dirty flag to avoid to flush it again until the end of flush */
       if (log_bufptr->pageid == log_Gl.append.prev_lsa.pageid)
 	{
@@ -4289,7 +4296,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       flush_info->toflush[i] = NULL;
 #endif /* CUBRID_DEBUG */
       bufptr->dirty = false;
-      logpb_log ("cleared dirty flag after flush for pageid %d\n", bufptr->pageid);
+      logpb_log ("cleared dirty flag after flush for pageid %lld\n", (long long int) bufptr->pageid);
     }
 #if defined(CUBRID_DEBUG)
   assert (flush_page_count == dirty_page_count);
@@ -4333,7 +4340,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      logpb_log ("written copy_to_first_append to disk, pageid = %d\n", first_append_pageid);
+      logpb_log ("written copy_to_first_append to disk, pageid = %lld\n", (long long int) first_append_pageid);
       ++flush_page_count;
       first_append_log_page = NULL;
     }
@@ -5818,7 +5825,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
   int error_code = NO_ERROR;
   char format_string[64];
 
-  logpb_log ("called logpb_fetch_from_archive for pageid = %d\n", pageid);
+  logpb_log ("called logpb_fetch_from_archive for pageid = %lld\n", (long long int) pageid);
   assert (LOG_CS_OWN (thread_p));
 
   LOG_ARCHIVE_CS_ENTER (thread_p);
