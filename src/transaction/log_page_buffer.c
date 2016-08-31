@@ -1911,9 +1911,11 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
   assert (log_pgptr != NULL);
   assert (log_pgptr->hdr.logical_pageid == logical_pageid);
-  assert (logical_pageid >= LOGPB_FIRST_ACTIVE_PAGE_ID);
-  assert (logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID);
-
+  if (logical_pageid != LOGPB_HEADER_PAGE_ID)
+    {
+      assert (logical_pageid >= LOGPB_FIRST_ACTIVE_PAGE_ID);
+      assert (logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID);
+    }
   phy_pageid = logpb_to_physical_pageid (logical_pageid);
   logpb_log ("phy_pageid in logpb_write_page_to_disk is %lld\n", (long long int) phy_pageid);
 
@@ -4209,10 +4211,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  logpb_log ("logpb_flush_all_append_pages: flushed all pages in range [%lld, %lld].\n",
 		     (long long int) flush_info->toflush[idxflush]->hdr.logical_pageid,
-		     (long long int) flush_info->toflush[idxflush]->hdr.logical_pageid + i - 1);
+		     (long long int) flush_info->toflush[idxflush]->hdr.logical_pageid + i - idxflush - 1);
 
 	  /* set not dirty what we have flushed */
-	  for (buf_iter = idxflush; buf_iter < idxflush + i; buf_iter++)
+	  for (buf_iter = idxflush; buf_iter < i - 1; buf_iter++)
 	    {
 	      bufptr = logpb_get_log_buffer (flush_info->toflush[buf_iter]);
 	      bufptr->dirty = false;
@@ -4252,7 +4254,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       logpb_write_toflush_pages_to_archive (thread_p);
     }
 
-  assert (!logpb_is_any_dirty (thread_p));
+  // assert (!logpb_is_any_dirty (thread_p));
 
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && logpb_is_any_dirty (thread_p) == true)
