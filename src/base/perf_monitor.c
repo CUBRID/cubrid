@@ -3907,10 +3907,10 @@ perfmon_initialize (int num_trans)
 	  goto error;
 	}
       memset (pstat_Global.tran_stats[0], 0, memsize);
-      memsize = PERFMON_VALUES_MEMSIZE;
+
       for (idx = 1; idx < pstat_Global.n_trans; idx++)
 	{
-	  pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + memsize * idx;
+	  pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + pstat_Global.n_stat_values * idx;
 	}
 
       memsize = pstat_Global.n_trans * sizeof (bool);
