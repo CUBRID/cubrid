@@ -6778,20 +6778,21 @@ locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, L
   int packed_length = 0, round_length;
   int prev_offset, prev_length;
 
-  reply_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (*copy_area);
-
-  reply_obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (reply_mobjs, reply_mobjs->num_objs);
-
   packed_length += OR_VALUE_ALIGNED_SIZE (key_value);
   packed_length += OR_INT_SIZE;
   packed_length += or_packed_string_length (err_msg, NULL);
 
   if (packed_length > recdes->area_size)
     {
+      int new_length, nw_pagesize;
+
       prev_offset = CAST_BUFLEN (recdes->data - (*copy_area)->mem);
       prev_length = (*copy_area)->length;
 
-      new_copy_area = locator_reallocate_copy_area_by_length (*copy_area, (*copy_area)->length + DB_PAGESIZE);
+      nw_pagesize = db_network_page_size ();
+      new_length = prev_length + CEIL_PTVDIV (packed_length - recdes->area_size, nw_pagesize) * nw_pagesize;
+
+      new_copy_area = locator_reallocate_copy_area_by_length (*copy_area, new_length);
       if (new_copy_area == NULL)
 	{
 	  /* failed to reallocate copy area. skip the current error */
@@ -6802,11 +6803,11 @@ locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, L
 	  recdes->data = new_copy_area->mem + prev_offset;
 	  recdes->area_size += CAST_BUFLEN (new_copy_area->length - prev_length);
 	  *copy_area = new_copy_area;
-
-	  reply_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (*copy_area);
-	  reply_obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (reply_mobjs, reply_mobjs->num_objs);
 	}
     }
+
+  reply_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (*copy_area);
+  reply_obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (reply_mobjs, reply_mobjs->num_objs);
 
   ptr = recdes->data;
   ptr = or_pack_mem_value (ptr, key_value);
@@ -6828,8 +6829,6 @@ locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, L
 #endif
   recdes->data += round_length;
   recdes->area_size -= round_length + sizeof (*reply_obj);
-
-  return;
 }
 
 /*
