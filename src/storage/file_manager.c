@@ -535,6 +535,12 @@ file_manager_initialize (THREAD_ENTRY * thread_p)
 {
   int ret = NO_ERROR;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
+
   if (file_Tracker->newfiles.mht != NULL || file_Tracker->newfiles.head != NULL)
     {
       (void) file_manager_finalize (thread_p);
@@ -658,6 +664,12 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_t
   int tran_index;
   LOG_TDES *tdes;
 
+  /* todo: remove me */
+  if (true)
+    {
+      return vfid;
+    }
+
   /* If the entry already exists (page reused), then remove it from the list and allocate a new entry. */
   VFID_COPY (&key.vfid, vfid);
   key.tran_index = tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -739,6 +751,12 @@ file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid, in
   FILE_NEW_FILES_HASH_KEY key;
   int success = ER_FAILED;
   LOG_TDES *tdes = NULL;
+
+  /* todo: remove me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   if (hold_csect == false && csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
     {
@@ -882,6 +900,12 @@ file_is_new_file_ext (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * fi
   FILE_NEW_FILES_HASH_KEY key;
   FILE_IS_NEW_FILE newfile = FILE_OLD_FILE;
 
+  /* todo: remove me */
+  if (true)
+    {
+      return FILE_OLD_FILE;
+    }
+
   *file_type = FILE_UNKNOWN_TYPE;
   *has_undolog = false;
 
@@ -919,6 +943,12 @@ file_new_set_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid)
   FILE_NEWFILE *entry;
   FILE_NEW_FILES_HASH_KEY key;
   int ret = NO_ERROR;
+
+  /* todo: remove me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   VFID_COPY (&key.vfid, vfid);
   key.tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -960,6 +990,12 @@ file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
   int ret = NO_ERROR;
 
   delete_list = NULL;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
     {
@@ -1025,6 +1061,12 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
   FILE_NEWFILE *entry = NULL;
   int tran_index = NULL_TRAN_INDEX;
   LOG_TDES *tdes = NULL;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1122,6 +1164,12 @@ file_dump_all_newfiles (THREAD_ENTRY * thread_p, FILE * fp, bool tmptmp_only)
 {
   FILE_NEWFILE *entry;
   int ret = NO_ERROR;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
     {
@@ -10867,6 +10915,15 @@ file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid)
 
   file_Tracker->vfid = NULL;
 
+  if (flre_create_with_npages (thread_p, FILE_TRACKER, 1, NULL, vfid) != NO_ERROR)
+    {
+      return NULL;
+    }
+  else
+    {
+      return vfid;
+    }
+
   if (file_create (thread_p, vfid, 0, FILE_TRACKER, NULL, NULL, 0) == NULL)
     {
       goto exit_on_error;
@@ -10932,6 +10989,12 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid)
   VPID vpid;
   DISK_VOLPURPOSE vol_purpose;
   LOG_DATA_ADDR addr;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return vfid;
+    }
 
   /* Store the file identifier in the array of pageids */
   if (file_Tracker->vfid == NULL || VFID_ISNULL (vfid) || vfid->fileid == DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES)
@@ -11050,6 +11113,12 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
   DISK_ISVALID isfound = DISK_INVALID;
   int ignore;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return vfid;
+    }
+
   if (file_Tracker->vfid == NULL || VFID_ISNULL (vfid) || vfid->fileid == DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES)
     {
       return NULL;
@@ -11165,6 +11234,12 @@ file_get_numfiles (THREAD_ENTRY * thread_p)
       return -1;
     }
 
+  /* todo: fix me */
+  if (true)
+    {
+      return 0;
+    }
+
   return file_get_numpages (thread_p, file_Tracker->vfid);
 }
 
@@ -11183,6 +11258,13 @@ file_find_nthfile (THREAD_ENTRY * thread_p, VFID * vfid, int nthfile)
 {
   VPID vpid;
   int count;
+
+  /* todo: fix me */
+  if (true)
+    {
+      VFID_SET_NULL (vfid);
+      return NO_ERROR;
+    }
 
   if (file_Tracker->vfid == NULL)
     {
@@ -11271,6 +11353,12 @@ file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p)
   VFID vfid;
   int i, j, last_perm_vol;
   char **vol_ids_map = NULL;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return DISK_VALID;
+    }
 
   if (file_Tracker->vfid == NULL)
     {
@@ -11708,6 +11796,12 @@ file_tracker_check (THREAD_ENTRY * thread_p)
   DISK_ISVALID allvalid = DISK_VALID;
   int i, j;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return DISK_VALID;
+    }
+
   if (file_Tracker->vfid == NULL)
     {
       return DISK_ERROR;
@@ -11781,6 +11875,12 @@ file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp)
   int num_found;		/* Number of files in each cycle */
   VFID vfid;			/* Identifier of a found file */
   int i, j;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   if (file_Tracker->vfid == NULL)
     {
@@ -11859,6 +11959,12 @@ file_tracker_compress (THREAD_ENTRY * thread_p)
   int i, j;
   int ret = NO_ERROR;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
+
   if (file_Tracker->vfid == NULL)
     {
       return ER_FAILED;
@@ -11934,6 +12040,12 @@ file_mark_deleted_file_list_add (VFID * vfid, const FILE_TYPE file_type)
 {
   FILE_MARK_DEL_LIST *node;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
+
   assert (file_type != FILE_HEAP_REUSE_SLOTS);
   assert (file_Tracker->hint_num_mark_deleted[file_type] >= 0);
 
@@ -11962,6 +12074,12 @@ static int
 file_mark_deleted_file_list_remove (VFID * vfid, const FILE_TYPE file_type)
 {
   FILE_MARK_DEL_LIST *node;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   assert (file_type != FILE_HEAP_REUSE_SLOTS);
 
@@ -12008,6 +12126,12 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type, c
     NULL_FILEID, NULL_VOLID
   };
   VPID tmp_vpid;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return NULL;
+    }
 
   assert (file_type != FILE_HEAP_REUSE_SLOTS);
   assert (file_type <= FILE_LAST);
@@ -12177,6 +12301,12 @@ file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
   int i, nth;
   int ret;
   bool latch_promoted = false;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   if (file_Tracker->vfid == NULL)
     {
@@ -13845,6 +13975,12 @@ file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
   int i, j, last_perm_vol;
   VOL_SPACE_INFO *space_info = NULL;
 
+  /* todo: fix me */
+  if (true)
+    {
+      return DISK_VALID;
+    }
+
   if (file_Tracker->vfid == NULL)
     {
       return DISK_ERROR;
@@ -14002,6 +14138,12 @@ file_construct_space_info (THREAD_ENTRY * thread_p, VOL_SPACE_INFO * space_info,
   VPID next_ftable_vpid;
   int num_user_pages;
   DISK_PAGE_TYPE page_type;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return DISK_VALID;
+    }
 
   if (space_info == NULL)
     {
