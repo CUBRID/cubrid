@@ -6802,6 +6802,9 @@ locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, L
 	  recdes->data = new_copy_area->mem + prev_offset;
 	  recdes->area_size += CAST_BUFLEN (new_copy_area->length - prev_length);
 	  *copy_area = new_copy_area;
+
+	  reply_mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (*copy_area);
+	  reply_obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (reply_mobjs, reply_mobjs->num_objs);
 	}
     }
 

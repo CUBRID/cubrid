@@ -4819,7 +4819,6 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
     {
       goto end;
     }
-  mop = ws_mvcc_latest_version (mop);
 
   if (!WS_IS_DELETED (mop))
     {
