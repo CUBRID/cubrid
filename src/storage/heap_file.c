@@ -20118,6 +20118,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   for (slot_id = 0; slot_id <= slot_count; slot_id++)
     {
       slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
+      if (slot_id == SP_ERROR)
+	{
+	  break;		/* this will not happen */
+	}
+
       context->res_oid.slotid = slot_id;
 
       /* lock the object to be inserted conditionally */
