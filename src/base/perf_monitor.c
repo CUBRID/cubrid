@@ -249,7 +249,6 @@ PSTAT_METADATA pstat_Metadata[] = {
 
   /* Execution statistics for the log manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_FETCHES, "Num_log_page_fetches"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_FETCH_IOREADS, "Num_log_page_fetch_ioreads"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_IOREADS, "Num_log_page_ioreads"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_IOWRITES, "Num_log_page_iowrites"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_APPENDRECS, "Num_log_append_records"),
@@ -257,6 +256,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_START_CHECKPOINTS, "Num_log_start_checkpoints"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_END_CHECKPOINTS, "Num_log_end_checkpoints"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_WALS, "Num_log_wals"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_REPLACEMENTS_IOWRITES, "Num_log_page_replacement"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_REPLACEMENTS, "Num_log_page_iowrites_for_replacement"),
 
   /* Execution statistics for the lock manager */
@@ -2647,7 +2647,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 					stats[PSTAT_PB_NUM_FETCHES]);
 
   stats[PSTAT_LOG_HIT_RATIO] =
-    SAFE_DIV ((stats[PSTAT_LOG_NUM_FETCHES] - stats[PSTAT_LOG_NUM_FETCH_IOREADS]) * 100 * 100,
+    SAFE_DIV ((stats[PSTAT_LOG_NUM_FETCHES] - stats[PSTAT_LOG_NUM_IOREADS]) * 100 * 100,
 	      stats[PSTAT_PB_NUM_FETCHES]);
 
   stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC] = 100 * lock_time_usec / 1000;

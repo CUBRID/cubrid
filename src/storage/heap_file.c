@@ -18961,7 +18961,7 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, i
   SCAN_CODE scan = S_SUCCESS;
 
   /* Try to reuse the previously allocated area No need to check the snapshot since was already checked */
-  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL))
+  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL || recdes->data == scan_cache->area))
     {
       if (scan_cache->area == NULL)
 	{
@@ -23871,7 +23871,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
       log_page_p->hdr.logical_pageid = NULL_PAGEID;
       log_page_p->hdr.offset = NULL_OFFSET;
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
+      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	{
 	  assert (false);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
@@ -23954,6 +23954,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 		{
 		  return S_SUCCESS_CHN_UPTODATE;
 		}
+
 	      return heap_get_bigone_content (thread_p, scan_cache, COPY, &forward_oid, recdes);
 	    }
 	  else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)

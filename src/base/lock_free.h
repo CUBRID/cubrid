@@ -255,7 +255,6 @@ extern LF_TRAN_SYSTEM catalog_Ts;
 extern LF_TRAN_SYSTEM sessions_Ts;
 extern LF_TRAN_SYSTEM free_sort_list_Ts;
 extern LF_TRAN_SYSTEM global_unique_stats_Ts;
-extern LF_TRAN_SYSTEM partition_link_Ts;
 extern LF_TRAN_SYSTEM hfid_table_Ts;
 extern LF_TRAN_SYSTEM xcache_Ts;
 extern LF_TRAN_SYSTEM fpcache_Ts;

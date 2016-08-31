@@ -6,14 +6,14 @@
 # Log page buffer section
 #
 
-# logpb_hash
+# logpb_index
 # $arg0 (in)  : LOG_PAGEID
 # $arg1 (out) : Hash value
 #
-# Get hash value for LOG_PAGEID in log page buffer hash
+# Get index value for LOG_PAGEID in log page buffer array
 #
-define logpb_hash
-  set $arg1 = $arg0 % log_Pb.ht->size
+define logpb_index
+  set $arg1 = $arg0 % log_Pb.num_buffers
 end
 
 # logpb_get_page
@@ -24,17 +24,28 @@ end
 # If page doesn't exist in cash, it will return 0
 #
 define logpb_get_page
-  set $hash = $arg0 % log_Pb.ht->size
-  set $hte = log_Pb.ht->table[$hash]
+  set $idx = $arg0 % log_Pb.num_buffers
   set $arg1 = 0
-  while $hte != 0
-    if *((LOG_PAGEID *) $hte->key) == $arg0
-      set $arg1 = &(((struct log_buffer *) ($hte->data))->logpage)
-      loop_break
-    end
+  if $idx == $arg0
+	set $arg1 = log_Pb.buffers[$idx]->logpage
   end
 end
 
+
+# logpb_get_log_buffer
+# $arg0 (in) : LOG_PAGE *
+# $arg1 (out) : LOG_BUFFER *
+#
+# Get LOG_BUFFER for the given LOG_PAGE *
+#
+define logpb_get_log_buffer
+  if $arg0 == log_Pb.header_page
+    set $arg1 = &log_Pb.header_buffer
+  else
+    set $idx = (int) ((char *) $arg0 - (char *) log_Pb.pages_area) / db_Log_page_size
+    set $arg1 = &log_Pb.buffers[$idx]
+  end
+end
 
 #
 # Log records section

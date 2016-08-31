@@ -289,7 +289,6 @@ typedef enum
 
   /* Execution statistics for the log manager */
   PSTAT_LOG_NUM_FETCHES,
-  PSTAT_LOG_NUM_FETCH_IOREADS,
   PSTAT_LOG_NUM_IOREADS,
   PSTAT_LOG_NUM_IOWRITES,
   PSTAT_LOG_NUM_APPENDRECS,
@@ -297,6 +296,7 @@ typedef enum
   PSTAT_LOG_NUM_START_CHECKPOINTS,
   PSTAT_LOG_NUM_END_CHECKPOINTS,
   PSTAT_LOG_NUM_WALS,
+  PSTAT_LOG_NUM_REPLACEMENTS_IOWRITES,
   PSTAT_LOG_NUM_REPLACEMENTS,
 
   /* Execution statistics for the lock manager */
@@ -476,7 +476,7 @@ typedef enum
   /* Other statistics (change MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) */
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
   PSTAT_PB_HIT_RATIO,
-  /* ((log_num_fetches - log_num_fetch_ioreads) x 100 / log_num_fetches) x 100 */
+  /* ((log_num_fetches - log_num_ioreads) x 100 / log_num_fetches) x 100 */
   PSTAT_LOG_HIT_RATIO,
   /* ((fetches of vacuum - fetches of vacuum not found in PB) x 100 / fetches of vacuum) x 100 */
   PSTAT_VACUUM_DATA_HIT_RATIO,

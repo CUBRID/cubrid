@@ -5154,8 +5154,10 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	  if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	    {
 	      /* Get log page. */
-	      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
+	      error_code = logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_page_p);
+	      if (error_code != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
 		  return ER_FAILED;
 		}
@@ -5205,8 +5207,10 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	{
 	  if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	    {
-	      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
+	      error_code = logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_page_p);
+	      if (error_code != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
 		  return ER_FAILED;
 		}
@@ -6832,8 +6836,10 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
        i++, log_pageid++)
     {
       req_lsa.pageid = log_pageid;
-      if (logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, (LOG_PAGE *) log_page) == NULL)
+      error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, (LOG_PAGE *) log_page);
+      if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR, "VACUUM ERROR : cannot prefetch log page %d", log_pageid);
 	  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
 	    {
@@ -6908,9 +6914,10 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
 
       req_lsa.pageid = log_pageid;
       req_lsa.offset = LOG_PAGESIZE;
-
-      if (logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
+      error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p);
+      if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_copy_log_page");
 	  error = ER_FAILED;
 	}
@@ -7447,10 +7454,10 @@ vacuum_notify_server_shutdown (void)
  *
  * return : Global oldest active MVCCID.
  */
-VACUUM_LOG_BLOCKID
+MVCCID
 vacuum_get_global_oldest_active_mvccid (void)
 {
-  return ATOMIC_LOAD_64 (&vacuum_Global_oldest_active_mvccid);
+  return vacuum_Global_oldest_active_mvccid;
 }
 
 /*

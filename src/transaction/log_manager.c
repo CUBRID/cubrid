@@ -794,7 +794,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   log_Gl.append.vdes =
     fileio_format (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, npages,
 		   prm_get_bool_value (PRM_ID_LOG_SWEEP_CLEAN), true, false, LOG_PAGESIZE, 0, false);
-  if (log_Gl.append.vdes == NULL_VOLDES || logpb_fetch_start_append_page (thread_p) == NULL || loghdr_pgptr == NULL)
+  if (log_Gl.append.vdes == NULL_VOLDES || logpb_fetch_start_append_page (thread_p) != NO_ERROR || loghdr_pgptr == NULL)
     {
       goto error;
     }
@@ -807,7 +807,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
    * Flush the append page, so that the end of the log mark is written.
    * Then, free the page, same for the header page.
    */
-  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
+  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
   logpb_flush_pages_direct (thread_p);
 
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
@@ -815,7 +815,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   /* Flush the log header */
 
   memcpy (loghdr_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr));
-  logpb_set_dirty (thread_p, loghdr_pgptr, DONT_FREE);
+  logpb_set_dirty (thread_p, loghdr_pgptr);
 
 #if defined(CUBRID_DEBUG)
   {
@@ -831,7 +831,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   }
 #endif /* CUBRID_DEBUG */
 
-  error_code = logpb_flush_page (thread_p, loghdr_pgptr, DONT_FREE);
+  error_code = logpb_flush_page (thread_p, loghdr_pgptr);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -850,14 +850,11 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   }
 #endif /* CUBRID_DEBUG */
 
-  logpb_free_page (thread_p, loghdr_pgptr);
-
   /* logpb_flush_header(); */
 
   /* 
    * Free the append and header page and dismount the lg active volume
    */
-  logpb_free_page (thread_p, log_Gl.append.log_pgptr);
   log_Gl.append.log_pgptr = NULL;
 
   fileio_dismount (thread_p, log_Gl.append.vdes);
@@ -1290,7 +1287,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * The system was shut down. There is nothing to recover.
        * Find the append page and start execution
        */
-      if (logpb_fetch_start_append_page (thread_p) == NULL)
+      if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -3367,7 +3364,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
 
   while (!LSA_ISNULL (&prev_lsa) && found == false)
     {
-      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	{
 	  break;
 	}
@@ -7365,7 +7362,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   /* Start dumping all log records following the given direction */
   while (!LSA_ISNULL (&lsa) && dump_npages-- > 0)
     {
-      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
 	{
 	  fprintf (out_fp, " Error reading page %lld... Quit\n", (long long int) lsa.pageid);
 	  if (log_dump_ptr != NULL)
@@ -7941,7 +7938,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
       LSA_COPY (&log_lsa, &prev_tranlsa);
       log_lsa.offset = LOG_PAGESIZE;
 
-      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) != NO_ERROR)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
@@ -8231,7 +8228,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 
       if (last_fetch_page_id != top_result_lsa.pageid)
 	{
-	  if (logpb_fetch_page (thread_p, &top_result_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &top_result_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      if (nxtop_stack != *out_nxtop_range_stack)
 		{
@@ -8412,7 +8409,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  LSA_COPY (&log_lsa, &forward_lsa);
 	  fetch_lsa.pageid = log_lsa.pageid;
 	  fetch_lsa.offset = LOG_PAGESIZE;
-	  if (logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_do_postpone");
 	      goto end;
@@ -8773,7 +8770,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
       fetch_lsa.offset = LOG_PAGESIZE;
 
       /* Fetch the page */
-      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_find_end_log");
 	  goto error;
