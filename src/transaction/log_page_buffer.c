@@ -3868,11 +3868,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   LOG_RECORD_HEADER *tmp_eof = NULL;	/* End of log record */
   LOG_BUFFER *bufptr;		/* The current buffer log append page scanned */
   LOG_BUFFER *prv_bufptr;	/* The previous buffer log append page scanned */
-  int last_idxflush;		/* The smallest dirty append log page to flush. This is the last one to flush. */
   int idxflush;			/* An index into the first log page buffer to flush */
   bool need_sync;		/* How we flush anything ? */
 
-  int i, first_append_pageid;
+  int i;
+  LOG_PAGEID first_append_pageid = NULL_PAGEID;
   bool need_flush = true;
   int error_code = NO_ERROR;
   int flush_page_count = 0;
@@ -3887,7 +3887,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   bool hold_flush_mutex = false;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
-  LOG_PAGE *first_append_log_page = NULL;
   char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *copy_to_first_append = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
   LOG_BUFFER *log_bufptr;
@@ -4006,36 +4005,55 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   if (log_Gl.append.prev_lsa.pageid != NULL_PAGEID && log_Gl.hdr.append_lsa.pageid != NULL_PAGEID
       && log_Gl.append.prev_lsa.pageid != log_Gl.hdr.append_lsa.pageid)
     {
-      /* 
-       * Flush all log append records on such page except the current log record which has not been finished.
+      /* Flush all log append records on such page except the current log record which has not been finished.
        * Save the log record type of this record, overwrite an eof record on such position, and flush the page.
        * Then, restore the record back on the page and change the current append log sequence address.
        */
-      first_append_log_page = logpb_locate_page (thread_p, log_Gl.append.prev_lsa.pageid, OLD_PAGE);
-      if (first_append_log_page == NULL)
-	{
-	  error_code = ER_FAILED;
-	  goto error;
-	}
+      logpb_log ("logpb_flush_all_append_pages: get page for log_Gl.append.prev_lsa=%lld|%d. we'll overwrite the "
+                 "log record with eof.\n", (long long int) log_Gl.append.prev_lsa.pageid,
+                 (int) log_Gl.append.prev_lsa.offset);
 
-      log_bufptr = logpb_get_log_buffer (first_append_log_page);
-      logpb_log ("first_append_log_page has pageid = %lld\n", (long long int) log_bufptr->pageid);
-      /* if the page is in the buffer, we clear the dirty flag to avoid to flush it again until the end of flush */
-      if (log_bufptr->pageid == log_Gl.append.prev_lsa.pageid)
-	{
-	  logpb_log ("first_append_log_page is in the buffer, we clear dirty flag\n");
-	  log_bufptr->dirty = false;
-	}
-
-      /* we don't want to overwrite the log page buffer, so we use a copy */
-      memcpy (copy_to_first_append, first_append_log_page, LOG_PAGESIZE);
-
+      /* first, let's see if this is page is still in log page buffer */
       first_append_pageid = log_Gl.append.prev_lsa.pageid;
-      tmp_eof = (LOG_RECORD_HEADER *) ((char *) copy_to_first_append->area + log_Gl.append.prev_lsa.offset);
-      save_record = *tmp_eof;
+      log_bufptr = &log_Pb.buffers[logpb_get_log_buffer_index (first_append_pageid)];
 
-      logpb_log ("LSA where is set eof pageid = %lld, offset = %d\n", (long long int) tmp_eof->forw_lsa.pageid,
-		 (int) tmp_eof->forw_lsa.offset);
+      if (log_bufptr->pageid != first_append_pageid)
+        {
+          /* not in log page buffer. copy from disk */
+          /* should be in active log. */
+          
+          if (logpb_is_page_in_archive (first_append_pageid))
+            {
+              /* not acceptable */
+              assert_release (false);
+              error_code = ER_FAILED;
+              goto error;
+            }
+
+          /* read from file */
+          error_code =
+            logpb_read_page_from_file (thread_p, first_append_pageid, LOG_CS_FORCE_USE, copy_to_first_append);
+          if (error_code != NO_ERROR)
+            {
+              assert_release (false);
+              error_code = ER_FAILED;
+              goto error;
+            }
+
+          logpb_log ("logpb_flush_all_append_pages: read prev_lsa page from file.\n")
+        }
+      else
+        {
+          /* copy from log page buffer */
+          memcpy (copy_to_first_append, log_bufptr->logpage, LOG_PAGESIZE);
+
+          /* set entry in log page buffer not dirty. we don't want it to get flushed again */
+          log_bufptr->dirty = false;
+
+          logpb_log ("logpb_flush_all_append_pages: read prev_lsa from log page buffer. log page buffer entry is set "
+                     "not dirty.\n");
+        }
+
       /* Overwrite it with an end of log marker */
       LSA_SET_NULL (&tmp_eof->forw_lsa);
       tmp_eof->type = LOG_END_OF_LOG;
@@ -4062,7 +4080,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       eof.type = LOG_END_OF_LOG;
 
       logpb_start_append (thread_p, &eof);
-      first_append_log_page = NULL;
+      copy_to_first_append = NULL;
     }
 
   /* 
@@ -4112,7 +4130,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
   idxflush = -1;
-  last_idxflush = -1;
   prv_bufptr = NULL;
   need_sync = false;
 
@@ -4127,158 +4144,96 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   /* Record number of writes in statistics */
   mnt_log_iowrites (thread_p, flush_info->num_toflush);
 
-  for (i = 0; i < flush_info->num_toflush; i++)
-    {
-      bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
-
-      /* 
-       * Make sure that we have found the smallest dirty append page to flush which should be flushed at the end.
-       */
-      if (last_idxflush == -1)
-	{
-	  if (bufptr->dirty == true && bufptr->pageid == flush_info->toflush[i]->hdr.logical_pageid)
-	    {
-	      /* We have found the smallest dirty page */
-	      last_idxflush = i;
-	      prv_bufptr = bufptr;
-	    }
-	  else
-	    {
-	      logpb_log ("Skipped bufptr because not dirty or different pageid's. Dirty = %d, bufptr->pageid = %lld, "
-			 "flush_info->toflush[i]->hdr.logical_pageid = %lld\n", bufptr->dirty,
-			 (long long int) bufptr->pageid, (long long int) flush_info->toflush[i]->hdr.logical_pageid);
-	    }
-	  continue;
-	}
-
-      if (idxflush != -1 && prv_bufptr != NULL)
-	{
-	  /* 
-	   * This append log page should be dirty and contiguous to previous append page. If it is not, we need to
-	   * flush the accumulated pages up to this point, and then start accumulating pages again.
-	   */
-	  if ((bufptr->dirty == false) || (bufptr->pageid != (prv_bufptr->pageid + 1))
-	      || (bufptr->phy_pageid != (prv_bufptr->phy_pageid + 1)))
-	    {
-	      /* 
-	       * This page is not contiguous or it is not dirty. Flush the accumulated contiguous pages.
-	       */
-	      logpb_log ("Flushing pages in range %lld -> %lld\n",
-			 (long long int) logpb_get_log_buffer (flush_info->toflush[idxflush])->pageid,
-			 (long long int) logpb_get_log_buffer (flush_info->toflush[idxflush])->pageid + i - idxflush);
-	      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), i - idxflush) == NULL)
-		{
-		  error_code = ER_FAILED;
-		  goto error;
-		}
-	      else
-		{
-		  need_sync = true;
-#if defined(CUBRID_DEBUG)
-		  {
-		    int j;
-
-		    for (j = 0; j != i - idxflush; ++j)
-		      {
-			er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: flush1 pageid(%lld)\n",
-				      (flush_info->toflush[idxflush])->hdr.logical_pageid + j);
-		      }
-		  }
-#endif /* CUBRID_DEBUG */
-
-		  /* 
-		   * Start over the accumulation of pages
-		   */
-
-		  flush_page_count += i - idxflush;
-		  idxflush = -1;
-		}
-	    }
-	}
-
-      if ((idxflush == -1) && (bufptr->dirty == true))
-	{
-	  /* 
-	   * This page should be included in the flush
-	   */
-	  idxflush = i;
-	}
-
-      /* prv_bufptr was not bufptr's previous buffer. prv_bufptr was the first buffer to flush, so only 2 contiguous
-       * pages always were flushed together. */
-      prv_bufptr = bufptr;
-    }
-
-  /* 
-   * If there are any accumulated pages, flush them at this point
+  /* loop through all to flush list. do a two-step process:
+   * 1. skip all pages not dirty.
+   * 2. collect and flush all dirty and successive pages.
    */
-  if (idxflush != -1)
+  int i = 0;
+  while (true)
     {
-      int page_to_flush = flush_info->num_toflush - idxflush;
+      /* skip all not dirty */
+      for (; i < flush_info->num_toflush; i++)
+        {
+          bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
+          assert (bufptr->pageid == flush_info->toflush[i]->hdr.logical_pageid);
+          if (bufptr->dirty)
+            {
+              /* found dirty */
+              break;
+            }
+          logpb_log ("logpb_flush_all_append_pages: skip flushing not dirty page %lld.\n", bufptr->pageid);
+        }
+      if (i == flush_info->num_toflush)
+        {
+          /* nothing left to flush */
+          break;
+        }
 
-      /* last countiguous pages */
-      logpb_log ("Flushing pages in range %lld -> %lld\n",
-		 (long long int) logpb_get_log_buffer (flush_info->toflush[idxflush])->pageid,
-		 (long long int) logpb_get_log_buffer (flush_info->toflush[idxflush])->pageid + page_to_flush);
+      /* we have a dirty record */
+      assert (bufptr->dirty);
+      prv_bufptr = bufptr;
+      idxflush = i;
 
-      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), page_to_flush) == NULL)
-	{
-	  error_code = ER_FAILED;
-	  goto error;
-	}
+      /* advance to next */
+      i++;
+
+      /* collect all consecutive pages that are dirty */
+      for (; i < flush_info->num_toflush; i++)
+        {
+          bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
+          assert (bufptr->pageid == flush_info->toflush[i]->hdr.logical_pageid);
+          if (!bufptr->dirty)
+            {
+              /* not dirty */
+              break;
+            }
+          if (prv_bufptr->pageid + 1 != bufptr->pageid)
+            {
+              /* not successive pages */
+              break;
+            }
+        }
+
+      if (logpb_writev_append_pages (thread_p, &flush_info->toflush[idxflush], i - idxflush) == NULL)
+        {
+          /* is this acceptable? */
+          assert_release (false);
+          error_code = ER_FAILED;
+          goto error;
+        }
       else
-	{
-#if defined(CUBRID_DEBUG)
-	  {
-	    int j;
+        {
+          int buf_iter;
+          need_sync = true;
+          flush_page_count += i - idxflush;
 
-	    for (j = 0; j != page_to_flush; ++j)
-	      {
-		er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: flush2 pageid(%lld)\n",
-			      (flush_info->toflush[idxflush])->hdr.logical_pageid + j);
-	      }
-	  }
+          logpb_log ("logpb_flush_all_append_pages: flushed all pages in range [%lld, %lld].\n",
+                     (long long int) flush_info->toflush[idxflush]->hdr.logical_pageid,
+                     (long long int) flush_info->toflush[idxflush]->hdr.logical_pageid + i -1);
+
+          /* set not dirty what we have flushed */
+          for (buf_iter = idxflush; buf_iter < idxflush + i; buf_iter++)
+            {
+              bufptr = logpb_get_log_buffer (flush_info->toflush[buf_iter]);
+              bufptr->dirty = false;
+            }
+#if defined (CUBRID_DEBUG)
+          dirty_page_count += i - idxflush;
 #endif /* CUBRID_DEBUG */
-	  need_sync = true;
-	  flush_page_count += page_to_flush;
-	}
+        }
+
+      if (i == flush_info->num_toflush)
+        {
+          /* nothing left to flush */
+          break;
+        }
     }
 
-  /* 
-   * Make sure that all of the above log writes are synchronized with any future log writes.
+  /* Make sure that all of the above log writes are synchronized with any future log writes.
    * That is, the pages should be stored on physical disk.
    */
   if (need_sync == true)
     {
-      if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
-	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
-	{
-	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
-	    {
-	      error_code = ER_FAILED;
-	      goto error;
-	    }
-	  log_Stat.total_sync_count++;
-	}
-    }
-
-  if (last_idxflush != -1)
-    {
-      /* 
-       * Now flush and sync the first log append dirty page
-       */
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: flush3 pageid(%lld)\n",
-		    (flush_info->toflush[last_idxflush])->hdr.logical_pageid);
-#endif /* CUBRID_DEBUG */
-
-      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[last_idxflush]), 1) == NULL)
-	{
-	  error_code = ER_FAILED;
-	  goto error;
-	}
-      ++flush_page_count;
-
       if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
@@ -4297,29 +4252,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       logpb_write_toflush_pages_to_archive (thread_p);
     }
 
-  /* 
-   * Now indicate that buffers of the append log pages are not dirty any more.
-   */
-  for (i = 0; i < flush_info->num_toflush; i++)
-    {
-      bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
-#if defined(CUBRID_DEBUG)
-      if (bufptr->dirty)
-	{
-	  ++dirty_page_count;
-	}
-      flush_info->toflush[i] = NULL;
-#endif /* CUBRID_DEBUG */
-      bufptr->dirty = false;
-      logpb_log ("cleared dirty flag after flush for pageid %lld\n", (long long int) bufptr->pageid);
-    }
-#if defined(CUBRID_DEBUG)
-  assert (flush_page_count == dirty_page_count);
-#endif /* CUBRID_DEBUG */
-
-#if defined(CUBRID_DEBUG)
   assert (!logpb_is_any_dirty (thread_p));
-#endif /* CUBRID_DEBUG */
 
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && logpb_is_any_dirty (thread_p) == true)
@@ -4341,12 +4274,13 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   /* 
    * Change the log sequence address to indicate the next append address to flush and synchronize
    */
-  if (first_append_log_page != NULL)
+  if (copy_to_first_append != NULL)
     {
       /* 
        * Restore the log append record
        */
       assert (tmp_eof != NULL);
+      assert (first_append_pageid != NULL_PAGEID);
 
       *tmp_eof = save_record;
 
