@@ -4034,6 +4034,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       tmp_eof = (LOG_RECORD_HEADER *) ((char *) copy_to_first_append->area + log_Gl.append.prev_lsa.offset);
       save_record = *tmp_eof;
 
+      logpb_log ("LSA where is set eof pageid = %lld, offset = %d\n", (long long int) tmp_eof->forw_lsa.pageid,
+		 (int) tmp_eof->forw_lsa.offset);
       /* Overwrite it with an end of log marker */
       LSA_SET_NULL (&tmp_eof->forw_lsa);
       tmp_eof->type = LOG_END_OF_LOG;
@@ -4140,6 +4142,12 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      last_idxflush = i;
 	      prv_bufptr = bufptr;
 	    }
+	  else
+	    {
+	      logpb_log ("Skipped bufptr because not dirty or different pageid's. Dirty = %d, bufptr->pageid = %lld, "
+			 "flush_info->toflush[i]->hdr.logical_pageid = %lld\n", bufptr->dirty,
+			 (long long int) bufptr->pageid, (long long int) flush_info->toflush[i]->hdr.logical_pageid);
+	    }
 	  continue;
 	}
 
@@ -4155,6 +4163,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      /* 
 	       * This page is not contiguous or it is not dirty. Flush the accumulated contiguous pages.
 	       */
+	      logpb_log ("Flushing pages in range %lld -> %lld\n",
+			 (long long int) logpb_get_log_buffer (flush_info->toflush[idxflush])->pageid,
+			 (long long int) logpb_get_log_buffer (flush_info->toflush[idxflush])->pageid + i - idxflush);
 	      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), i - idxflush) == NULL)
 		{
 		  error_code = ER_FAILED;
@@ -4206,6 +4217,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       int page_to_flush = flush_info->num_toflush - idxflush;
 
       /* last countiguous pages */
+      logpb_log ("Flushing pages in range %lld -> %lld\n",
+		 (long long int) logpb_get_log_buffer (flush_info->toflush[idxflush])->pageid,
+		 (long long int) logpb_get_log_buffer (flush_info->toflush[idxflush])->pageid + page_to_flush);
+
       if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), page_to_flush) == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -6277,6 +6292,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   logpb_remove_archive_logs_exceed_limit (thread_p, 0);
 #endif
 
+  logpb_log ("Entered logpb_archive_active_log. log_Gl.hdr.nxarv_phy_pageid = %lld , log_Gl.hdr.nxarv_pageid =%lld\n",
+	     (long long int) log_Gl.hdr.nxarv_phy_pageid, (long long int) log_Gl.hdr.nxarv_pageid);
   if (log_Gl.hdr.nxarv_pageid >= log_Gl.hdr.append_lsa.pageid)
     {
       er_log_debug (ARG_FILE_LINE,
@@ -6408,6 +6425,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   /* Now start dumping the current active pages to archive */
   for (; pageid <= last_pageid; pageid += num_pages, ar_phy_pageid += num_pages)
     {
+      logpb_log ("Dump page %lld in logpb_archive_active_log, num_pages = %d\n", (long long int) pageid, num_pages);
       num_pages = (int) MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
       num_pages = logpb_read_page_from_active_log (thread_p, pageid, num_pages, log_pgptr);
       if (num_pages <= 0)
@@ -6462,6 +6480,9 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   log_Gl.hdr.nxarv_pageid = last_pageid + 1;
   log_Gl.hdr.nxarv_phy_pageid = logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
 
+  logpb_log
+    ("In logpb_archive_active_log, new values from log_Gl.hdr.nxarv_pageid = %lld and log_Gl.hdr.nxarv_phy_pageid = %lld\n",
+     (long long int) log_Gl.hdr.nxarv_pageid, (long long int) log_Gl.hdr.nxarv_phy_pageid);
   /* Flush the log header to reflect the archive */
   logpb_flush_header (thread_p);
 
