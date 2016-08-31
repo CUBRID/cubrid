@@ -8966,6 +8966,8 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
 {
   DISK_ISVALID valid;
 
+  /* todo: fix me */
+
   if (fileio_get_volume_label (vpid->volid, PEEK) == NULL || VPID_ISNULL (vpid))
     {
       assert (no_error);
@@ -8973,7 +8975,8 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
       return DISK_INVALID;
     }
 
-  valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid);
+  /*valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid); */
+  valid = disk_is_page_sector_reserved (thread_p, vpid);
   if (valid != DISK_VALID || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
     {
       if (valid != DISK_ERROR && !no_error)

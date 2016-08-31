@@ -6489,6 +6489,11 @@ struct disk_alloctbl_cursor
 /* Get bit offset in unit for sector ID */
 #define DISK_ALLOCTBL_SECTOR_BIT_OFFSET(sect) (((sect) % DISK_ALLOCTBL_PAGE_BIT_COUNT) % DISK_ALLOCTBL_UNIT_BIT_COUNT)
 
+/************************************************************************/
+/* Static functions section                                             */
+/************************************************************************/
+static DISK_ISVALID disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volheader, SECTID sectid);
+
 /*
  * disk_alloctbl_cursor_set_at_sectid () - Position cursor for allocation table at sector ID.
  *
@@ -7469,6 +7474,107 @@ dkre_find_goodvol (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_
 
   /* Found a volume. */
   return NO_ERROR;
+}
+
+/*
+ * disk_is_page_sector_reserved () - Is sector of page reserved?
+ *
+ * return        : Valid if sector of page is reserved, invalid (or error) otherwise.
+ * thread_p (in) : Thread entry
+ * vpid (in)     : Page identifier
+ */
+DISK_ISVALID
+disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, const VPID * vpid)
+{
+  VPID vpid_volheader;
+  PAGE_PTR page_volheader = NULL;
+  DISK_VAR_HEADER *volheader;
+  DISK_ISVALID isvalid = DISK_VALID;
+  SECTID sectid;
+  bool old_check_interrupt;
+
+  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+
+  if (fileio_get_volume_descriptor (vpid->volid) == NULL_VOLDES || vpid->pageid < 0)
+    {
+      /* invalid */
+      assert (false);
+      isvalid = DISK_INVALID;
+      goto exit;
+    }
+
+  if (vpid->pageid == DISK_VOLHEADER_PAGE)
+    {
+      /* valid */
+      isvalid = DISK_VALID;
+      goto exit;
+    }
+
+  vpid_volheader.volid = vpid->volid;
+  vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
+  page_volheader = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_volheader == NULL)
+    {
+      isvalid = DISK_ERROR;
+      goto exit;
+    }
+  disk_verify_volume_header (thread_p, page_volheader);
+
+  volheader = (DISK_VAR_HEADER *) page_volheader;
+
+  if (vpid->pageid <= volheader->sys_lastpage)
+    {
+      isvalid = DISK_VALID;
+      goto exit;
+    }
+  if (vpid->pageid > volheader->total_pages)
+    {
+      isvalid = DISK_INVALID;
+      goto exit;
+    }
+
+  sectid = SECTOR_FROM_PAGEID (vpid->pageid);
+  isvalid = disk_is_sector_reserved (thread_p, volheader, sectid);
+
+exit:
+  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+
+  if (page_volheader)
+    {
+      pgbuf_unfix (thread_p, page_volheader);
+    }
+
+  return isvalid;
+}
+
+/*
+ * disk_is_sector_reserved () - Return valid if sector is reserved, invalid otherwise.
+ *
+ * return         : Valid if sector is reserved, invalid if it is not reserved or error if table page cannot be fixed.
+ * thread_p (in)  : Thread entry
+ * volheader (in) : Volume header
+ * sectid (in)    : Sector ID
+ */
+static DISK_ISVALID
+disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volheader, SECTID sectid)
+{
+  DISK_ALLOCTBL_CURSOR cursor_sectid;
+
+  disk_alloctbl_cursor_set_at_sectid (volheader, sectid, &cursor_sectid);
+  if (disk_alloctbl_cursor_fix (thread_p, &cursor_sectid, PGBUF_LATCH_READ) != NO_ERROR)
+    {
+      return DISK_ERROR;
+    }
+  if (!disk_alloctbl_cursor_is_bit_set (&cursor_sectid))
+    {
+      disk_alloctbl_cursor_unfix (thread_p, &cursor_sectid);
+      return DISK_INVALID;
+    }
+  else
+    {
+      disk_alloctbl_cursor_unfix (thread_p, &cursor_sectid);
+      return DISK_VALID;
+    }
 }
 
 /*
