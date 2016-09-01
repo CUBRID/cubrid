@@ -16786,7 +16786,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 	{
 	  /* keep only partial table. */
 	  fhead->offset_to_partial_ftab = offset_ftab;
-	  assert (DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_full_ftab);
+	  assert (DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
 	  size = DB_PAGESIZE - offset_ftab;
 	  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), size, extdata_part_ftab);
@@ -16797,7 +16797,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 
 	  /* partial table. */
 	  fhead->offset_to_partial_ftab = offset_ftab;
-	  assert (DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_full_ftab);
+	  assert (DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
 	  size = (DB_PAGESIZE - offset_ftab) / 2;
 	  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), size, extdata_part_ftab);
