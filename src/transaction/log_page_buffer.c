@@ -510,7 +510,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   assert (log_Pb.pages_area == NULL);
   assert (logpb_Initialized == false);
 
-  logpb_Logging = prm_get_bool_value (PRM_ID_LOGPB_LOGGING);
+  logpb_Logging = prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG);
 
   /* 
    * Create an area to keep the number of desired buffers
@@ -4254,8 +4254,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     {
       logpb_write_toflush_pages_to_archive (thread_p);
     }
-
-  // assert (!logpb_is_any_dirty (thread_p));
 
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && logpb_is_any_dirty (thread_p) == true)
