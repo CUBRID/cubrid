@@ -50,8 +50,17 @@ bit8_count_zeroes (UINT8 i)
 int
 bit8_count_trailing_zeroes (UINT8 i)
 {
-  int c = 8;
   /* returns 0 for 1 and 8 for 0 */
+  int c = 7;
+
+  if (!i)
+    {
+      return 8;
+    }
+
+  /* leave last trailing 1 */
+  i &= -i;
+
   if (i & 0x0F)			/* 00001111 */
     {
       c -= 4;
@@ -118,8 +127,17 @@ bit16_count_zeroes (UINT16 i)
 int
 bit16_count_trailing_zeroes (UINT16 i)
 {
-  int c = 16;
   /* returns 0 for 1 and 16 for 0 */
+  int c = 15;
+
+  if (!i)
+    {
+      return 16;
+    }
+
+  /* leave last trailing 1 */
+  i &= -i;
+
   if (i & 0x00FF)		/* 0000000011111111 */
     {
       c -= 8;
@@ -190,8 +208,17 @@ bit32_count_zeroes (UINT32 i)
 int
 bit32_count_trailing_zeroes (UINT32 i)
 {
-  int c = 32;
   /* returns 0 for 1 and 32 for 0 */
+  int c = 31;
+
+  if (!i)
+    {
+      return 32;
+    }
+
+  /* leave last trailing 1 */
+  i &= -i;
+
   if (i & 0x0000FFFF)		/* 00000000000000001111111111111111 */
     {
       c -= 16;
@@ -266,8 +293,17 @@ bit64_count_zeroes (UINT64 i)
 int
 bit64_count_trailing_zeroes (UINT64 i)
 {
-  int c = 64;
   /* returns 0 for 1 and 64 for 0 */
+  int c = 63;
+
+  if (!i)
+    {
+      return 64;
+    }
+
+  /* leave last trailing 1 */
+  i &= -i;
+
   if (i & 0x00000000FFFFFFFF)	/* 0000000000000000000000000000000011111111111111111111111111111111 */
     {
       c -= 32;
