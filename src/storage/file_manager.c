@@ -16168,7 +16168,7 @@ STATIC_INLINE void
 file_partsect_set_bit (FILE_PARTIAL_SECTOR * partsect, int offset)
 {
   assert (!file_partsect_is_bit_set (partsect, offset));
-  bit64_set (partsect->page_bitmap, offset);
+  partsect->page_bitmap = bit64_set (partsect->page_bitmap, offset);
 }
 
 /*
@@ -16182,7 +16182,7 @@ STATIC_INLINE void
 file_partsect_clear_bit (FILE_PARTIAL_SECTOR * partsect, int offset)
 {
   assert (file_partsect_is_bit_set (partsect, offset));
-  bit64_clear (partsect->page_bitmap, offset);
+  partsect->page_bitmap = bit64_clear (partsect->page_bitmap, offset);
 }
 
 /*
@@ -17799,6 +17799,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       error_code = ER_FAILED;
       goto exit;
     }
+  assert (file_partsect_is_bit_set (partsect, offset_to_alloc_bit));
   /* log allocation */
   log_append_undoredo_data2 (thread_p, RVFL_PARTSECT_ALLOC, NULL, page_fhead,
 			     (PGLENGTH) ((char *) partsect - page_fhead), sizeof (offset_to_alloc_bit),

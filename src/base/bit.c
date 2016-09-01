@@ -80,18 +80,20 @@ bit8_is_set (UINT8 i, int off)
   return i & (((UINT8) 1) << off);
 }
 
-void
+UINT8
 bit8_set (UINT8 i, int off)
 {
   assert (off >= 0 && off < 8);
   i |= ((UINT8) 1) << off;
+  return i;
 }
 
-void
+UINT8
 bit8_clear (UINT8 i, int off)
 {
   assert (off >= 0 && off < 8);
   i &= ~(((UINT8) 1) << off);
+  return i;
 }
 
 /*
@@ -150,18 +152,20 @@ bit16_is_set (UINT16 i, int off)
   return i & (((UINT16) 1) << off);
 }
 
-void
+UINT16
 bit16_set (UINT16 i, int off)
 {
   assert (off >= 0 && off < 16);
   i |= ((UINT16) 1) << off;
+  return i;
 }
 
-void
+UINT16
 bit16_clear (UINT16 i, int off)
 {
   assert (off >= 0 && off < 16);
   i &= ~(((UINT16) 1) << off);
+  return i;
 }
 
 /*
@@ -224,18 +228,20 @@ bit32_is_set (UINT32 i, int off)
   return i & (((UINT32) 1) << off);
 }
 
-void
+UINT32
 bit32_set (UINT32 i, int off)
 {
   assert (off >= 0 && off < 32);
   i |= ((UINT32) 1) << off;
+  return i;
 }
 
-void
+UINT32
 bit32_clear (UINT32 i, int off)
 {
   assert (off >= 0 && off < 32);
   i &= ~(((UINT32) 1) << off);
+  return i;
 }
 
 /*
@@ -302,16 +308,18 @@ bit64_is_set (UINT64 i, int off)
   return i & (((UINT64) 1) << off);
 }
 
-void
+UINT64
 bit64_set (UINT64 i, int off)
 {
   assert (off >= 0 && off < 64);
   i |= ((UINT64) 1) << off;
+  return i;
 }
 
-void
+UINT64
 bit64_clear (UINT64 i, int off)
 {
   assert (off >= 0 && off < 64);
   i &= ~(((UINT64) 1) << off);
+  return i;
 }

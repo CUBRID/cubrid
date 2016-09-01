@@ -33,31 +33,31 @@ extern int bit8_count_zeroes (UINT8 i);
 extern int bit8_count_trailing_ones (UINT8 i);
 extern int bit8_count_trailing_zeroes (UINT8 i);
 extern bool bit8_is_set (UINT8 i, int off);
-extern void bit8_set (UINT8 i, int off);
-extern void bit8_clear (UINT8 i, int off);
+extern UINT8 bit8_set (UINT8 i, int off);
+extern UINT8 bit8_clear (UINT8 i, int off);
 
 extern int bit16_count_ones (UINT16 i);
 extern int bit16_count_zeroes (UINT16 i);
 extern int bit16_count_trailing_ones (UINT16 i);
 extern int bit16_count_trailing_zeroes (UINT16 i);
 extern bool bit16_is_set (UINT16 i, int off);
-extern void bit16_set (UINT16 i, int off);
-extern void bit16_clear (UINT16 i, int off);
+extern UINT16 bit16_set (UINT16 i, int off);
+extern UINT16 bit16_clear (UINT16 i, int off);
 
 extern int bit32_count_ones (UINT32 i);
 extern int bit32_count_zeroes (UINT32 i);
 extern int bit32_count_trailing_ones (UINT32 i);
 extern int bit32_count_trailing_zeroes (UINT32 i);
 extern bool bit32_is_set (UINT32 i, int off);
-extern void bit32_set (UINT32 i, int off);
-extern void bit32_clear (UINT32 i, int off);
+extern UINT32 bit32_set (UINT32 i, int off);
+extern UINT32 bit32_clear (UINT32 i, int off);
 
 extern int bit64_count_ones (UINT64 i);
 extern int bit64_count_zeroes (UINT64 i);
 extern int bit64_count_trailing_ones (UINT64 i);
 extern int bit64_count_trailing_zeroes (UINT64 i);
 extern bool bit64_is_set (UINT64 i, int off);
-extern void bit64_set (UINT64 i, int off);
-extern void bit64_clear (UINT64 i, int off);
+extern UINT64 bit64_set (UINT64 i, int off);
+extern UINT64 bit64_clear (UINT64 i, int off);
 
 #endif
