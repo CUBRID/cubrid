@@ -16555,7 +16555,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 
   /* Recovery */
   bool is_sysop_started = false;
-  bool do_logging = is_temp;
+  bool do_logging = !is_temp;
 
   int error_code = NO_ERROR;
 
