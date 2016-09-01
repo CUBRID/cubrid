@@ -19084,6 +19084,8 @@ flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out
 
   *ftype_out = fhead->type;
   assert (*ftype_out != FILE_UNKNOWN_TYPE);
+
+  pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
 
