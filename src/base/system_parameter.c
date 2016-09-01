@@ -612,6 +612,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_UNIQUE_STATS "log_unique_stats"
 
+#define PRM_NAME_LOGPB_LOGGING_DEBUG "logpb_logging_debug"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
 /*
@@ -2009,6 +2011,11 @@ static unsigned int prm_pb_sequential_victim_flush_flag = 0;
 bool PRM_LOG_UNIQUE_STATS = false;
 static bool prm_log_unique_stats_default = false;
 static unsigned int prm_log_unique_stats_flag = 0;
+
+bool PRM_LOGPB_LOGGING_DEBUG = false;
+static bool prm_logpb_logging_debug_default = false;
+static unsigned int prm_logpb_logging_debug_flag = 0;
+
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4870,6 +4877,16 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_log_unique_stats_flag,
    (void *) &prm_log_unique_stats_default,
    (void *) &PRM_LOG_UNIQUE_STATS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_LOGPB_LOGGING_DEBUG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_logpb_logging_debug_flag,
+   (void *) &prm_logpb_logging_debug_default,
+   (void *) &PRM_LOGPB_LOGGING_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
