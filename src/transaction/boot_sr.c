@@ -5902,7 +5902,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  if (catalog_create (thread_p, &boot_Db_parm->ctid, -1, -1) == NULL)
+  if (catalog_create (thread_p, &boot_Db_parm->ctid) == NULL)
     {
       goto error;
     }

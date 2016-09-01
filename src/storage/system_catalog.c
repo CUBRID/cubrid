@@ -2552,8 +2552,6 @@ catalog_finalize (void)
  *               All the fields in the identifier are set except the catalog
  *               and catalog index volume identifiers which should have been
  *               set by the caller.
- *   expected_pages(in): Expected number of pages in the catalog
- *   expected_index_entries(in): Expected number of entries in the catalog index
  *
  * Note: Creates the catalog and an index that will be used for fast
  * catalog search. The index used is an extendible hashing index.
@@ -2561,7 +2559,7 @@ catalog_finalize (void)
  * catalog header information is initialized.
  */
 CTID *
-catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p, DKNPAGES expected_pages, DKNPAGES expected_index_entries)
+catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p)
 {
   PAGE_PTR page_p;
   VPID first_page_vpid;
@@ -2570,14 +2568,13 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p, DKNPAGES expected_
 
   log_sysop_start (thread_p);
 
-  if (xehash_create (thread_p, &catalog_id_p->xhid, DB_TYPE_OBJECT, expected_index_entries, oid_Root_class_oid, -1,
-		     false) == NULL)
+  if (xehash_create (thread_p, &catalog_id_p->xhid, DB_TYPE_OBJECT, 1, oid_Root_class_oid, -1, false) == NULL)
     {
       ASSERT_ERROR ();
       goto error;
     }
 
-  if (flre_create_with_npages (thread_p, FILE_CATALOG, expected_pages, NULL, &catalog_id_p->vfid) != NO_ERROR)
+  if (flre_create_with_npages (thread_p, FILE_CATALOG, 1, NULL, &catalog_id_p->vfid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
