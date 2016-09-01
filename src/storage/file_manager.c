@@ -14483,13 +14483,13 @@ struct file_partial_sector
 #define FILE_TABLESPACE_DEFAULT_MAX_EXPAND (DISK_SECTOR_NPAGES * DB_PAGESIZE * 1024);	/* 1k sectors */
 
 #define FILE_TABLESPACE_FOR_PERM_NPAGES(tabspace, npages) \
-  ((FILE_TABLESPACE *) (tabspace))->initial_size = npages * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = MIN (1, npages) * DB_PAGESIZE; \
   ((FILE_TABLESPACE *) (tabspace))->expand_ratio = FILE_TABLESPACE_DEFAULT_RATIO_EXPAND; \
   ((FILE_TABLESPACE *) (tabspace))->expand_min_size = FILE_TABLESPACE_DEFAULT_MIN_EXPAND; \
   ((FILE_TABLESPACE *) (tabspace))->expand_max_size = FILE_TABLESPACE_DEFAULT_MAX_EXPAND
 
 #define FILE_TABLESPACE_FOR_TEMP_NPAGES(tabspace, npages) \
-  ((FILE_TABLESPACE *) (tabspace))->initial_size = npages * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = MIN (1, npages) * DB_PAGESIZE; \
   ((FILE_TABLESPACE *) (tabspace))->expand_ratio = 0; \
   ((FILE_TABLESPACE *) (tabspace))->expand_min_size = 0; \
   ((FILE_TABLESPACE *) (tabspace))->expand_max_size = 0
@@ -16356,6 +16356,8 @@ flre_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npage
 
   assert (file_type != FILE_TEMP);
 
+  assert (npages > 0);
+
   FILE_TABLESPACE_FOR_PERM_NPAGES (&tablespace, npages);
 
   return flre_create (thread_p, file_type, &tablespace, des, false, false, vfid);
@@ -16396,6 +16398,8 @@ flre_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
   FILE_TABLESPACE tablespace;
 
+  assert (npages > 0);
+
   /* todo: shouldn't we consider the npages? */
   if (file_tmpfile_cache_get (thread_p, vfid, FILE_TEMP) != NULL)
     {
@@ -16420,6 +16424,8 @@ int
 file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
   FILE_TABLESPACE tablespace;
+
+  assert (npages > 0);
 
   FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
 
@@ -16466,6 +16472,8 @@ flre_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_
 {
   FILE_TABLESPACE tablespace;
 
+  assert (npages > 0);
+
   FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
 
   return flre_create (thread_p, FILE_EXTENDIBLE_HASH, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp, true, vfid);
@@ -16487,6 +16495,8 @@ int
 flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash, VFID * vfid)
 {
   FILE_TABLESPACE tablespace;
+
+  assert (npages > 0);
 
   FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
 
