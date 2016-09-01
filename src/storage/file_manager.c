@@ -16158,7 +16158,7 @@ file_partsect_is_bit_set (FILE_PARTIAL_SECTOR * partsect, int offset)
 }
 
 /*
- * file_partsect_set_bit () - Set bit in partial sector bitmap at offset. The bit is expected to be unset.
+ * file_partsect_set_bit () - Set bit flre_allocin partial sector bitmap at offset. The bit is expected to be unset.
  *
  * return	 : Void.
  * partsect (in) : Partial sector.
@@ -17893,9 +17893,6 @@ flre_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out)
     }
   else
     {
-      /* should be part of a system operation */
-      assert (log_check_system_op_is_started (thread_p));
-
       /* start a nested system operation. we will end it with commit & undo */
       log_sysop_start (thread_p);
       is_sysop_started = true;
