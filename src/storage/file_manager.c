@@ -2826,6 +2826,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, FILE_TYP
   DISK_SETPAGE_TYPE setpage_type;
   int ret = NO_ERROR;
 
+  assert (false);
+
   if (exp_numpages <= 0)
     {
       exp_numpages = 1;
@@ -3688,6 +3690,8 @@ file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool pb_invalid_temp_
   int rv;
   DISK_PAGE_TYPE page_type;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  assert (false);
 
   /* 
    * Start a TOP SYSTEM OPERATION.
@@ -6911,6 +6915,8 @@ file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * fi
   bool restore_check_interrupt = false;
   bool rv;
 
+  assert (false);
+
   /* 
    * Start a TOP SYSTEM OPERATION.
    * This top system operation will be either ABORTED (case of failure) or
@@ -7124,6 +7130,8 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid, V
   bool restore_check_interrupt = false;
   bool is_tmp_file;
   bool rv;
+
+  assert (false);
 
   /* 
    * Start a TOP SYSTEM OPERATION.
@@ -8071,6 +8079,8 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * dealloc_vp
   bool retrieve_from_cache;
   bool dummy_has_undo_log;
   bool rv;
+
+  assert (false);
 
   if (FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, 1) != NO_ERROR)
     {
@@ -18688,6 +18698,8 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
   int offset = 0;
   FLRE_HEADER *fhead = NULL;
   bool is_sysop_started = false;
+
+  PAGE_PTR page_dealloc = NULL;
 
   int error_code = NO_ERROR;
 

@@ -135,7 +135,7 @@ struct disk_var_header
   INT32 sect_npgs;		/* Size of sector in pages */
   INT32 total_sects;		/* Total number of sectors */
   INT32 free_sects;		/* Number of free sectors */
-  INT32 hint_allocsect;		/* Hint for next sector to be allocated */
+  SECTID hint_allocsect;	/* Hint for next sector to be allocated */
   INT32 total_pages;		/* Total number of pages (no more that 4G) If page size is 4K, this means about 16
 				 * trillion bytes on the volume. */
   INT32 free_pages;		/* Number of free pages */

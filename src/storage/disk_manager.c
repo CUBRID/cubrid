@@ -54,13 +54,9 @@
 #include "transaction_cl.h"
 #endif
 
-#if !defined(SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(a)	0
-#define pthread_mutex_unlock(a)
-static int rv;
-#endif /* !SERVER_MODE */
+/************************************************************************/
+/* Define structures, globals, and macro's                              */
+/************************************************************************/
 
 #define DISK_MIN_NPAGES_TO_TRUNCATE 100
 
@@ -213,6 +209,53 @@ static DISK_CACHE_VOLINFO disk_Cache_struct = {
 
 static DISK_CACHE_VOLINFO *disk_Cache = &disk_Cache_struct;
 
+/************************************************************************/
+/* Disk allocation table section                                        */
+/************************************************************************/
+
+/* Disk allocation table is a bitmap that keeps track of reserved sectors. When files are created or extended, they
+ * reserve a number of sectors from disk (each sector containing a predefined number of pages). */
+
+/* The default unit used to divide a page of allocation table. Currently it is a char (8 bit).
+ * If we ever want to change the type of unit, this can be modified and should be handled automatically. However, some
+ * other structures may need updating (e.g. DISK_ALLOCTBL_CURSOR).
+ */
+typedef unsigned char DISK_ALLOCTBL_UNIT;
+
+/* Disk allocation table cursor. Used to iterate through table bits. */
+typedef struct disk_alloctbl_cursor DISK_ALLOCTBL_CURSOR;
+struct disk_alloctbl_cursor
+{
+  const DISK_VAR_HEADER *volheader;	/* Volume header */
+
+  PAGEID pageid;		/* Current page ID */
+  int offset_to_unit;		/* Offset to current unit in page. */
+  int offset_to_bit;		/* Offset to current bit in unit. */
+
+  PAGE_PTR page;		/* Fixed table page. */
+  DISK_ALLOCTBL_UNIT *unit;	/* Unit pointer in current page. */
+};
+#define DISK_SECTALLOCTBL_CURSOR_INITIALIZER { NULL, 0, 0, 0, NULL, NULL }
+
+/* Allocation table macro's */
+/* Bit count in a unit */
+#define DISK_ALLOCTBL_UNIT_BIT_COUNT	    (sizeof (DISK_ALLOCTBL_UNIT) * CHAR_BIT)
+/* Unit count in a table page */
+#define DISK_ALLOCTBL_PAGE_UNITS_COUNT	    (DB_PAGESIZE / DISK_ALLOCTBL_UNIT_BIT_COUNT)
+/* Bit count in a table page */
+#define DISK_ALLOCTBL_PAGE_BIT_COUNT	    (DISK_ALLOCTBL_UNIT_BIT_COUNT * DISK_ALLOCTBL_PAGE_UNITS_COUNT)
+
+/* Get page offset for sector ID. Note this is not the real page ID (since table does not start from page 0). */
+#define DISK_ALLOCTBL_SECTOR_PAGE_OFFSET(sect) ((sect) / DISK_ALLOCTBL_PAGE_BIT_COUNT)
+/* Get unit offset in page for sector ID. */
+#define DISK_ALLOCTBL_SECTOR_BYTE_OFFSET(sect) (((sect) % DISK_ALLOCTBL_PAGE_BIT_COUNT) / DISK_ALLOCTBL_UNIT_BIT_COUNT)
+/* Get bit offset in unit for sector ID */
+#define DISK_ALLOCTBL_SECTOR_BIT_OFFSET(sect) (((sect) % DISK_ALLOCTBL_PAGE_BIT_COUNT) % DISK_ALLOCTBL_UNIT_BIT_COUNT)
+
+/************************************************************************/
+/* Declare static functions.                                            */
+/************************************************************************/
+
 static char *disk_vhdr_get_vol_fullname (const DISK_VAR_HEADER * vhdr);
 static char *disk_vhdr_get_next_vol_fullname (const DISK_VAR_HEADER * vhdr);
 static char *disk_vhdr_get_vol_remarks (const DISK_VAR_HEADER * vhdr);
@@ -292,6 +335,57 @@ static void disk_alloctable_bitmap_update (THREAD_ENTRY * thread_p, PAGE_PTR all
 static void disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr,
 					    DISK_RECV_MTAB_BITS_WITH * recv);
 
+/************************************************************************/
+/* Disk allocation table section.                                       */
+/************************************************************************/
+
+STATIC_INLINE void disk_alloctbl_cursor_set_at_sectid (const DISK_VAR_HEADER * volheader, SECTID sectid,
+						       DISK_ALLOCTBL_CURSOR * cursor) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void disk_alloctbl_cursor_set_at_end (const DISK_VAR_HEADER * volheader, DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE void disk_alloctbl_cursor_set_at_start (const DISK_VAR_HEADER * volheader, DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE void disk_alloctbl_cursor_set_for_recovery (const PAGE_PTR page_alloctbl, int bit_index,
+							  DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE bool disk_alloctbl_cursor_next (DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE int disk_alloctbl_cursor_compare (const DISK_ALLOCTBL_CURSOR * first_cursor,
+						const DISK_ALLOCTBL_CURSOR * second_cursor);
+STATIC_INLINE void disk_alloctable_cursor_check_valid (const DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE bool disk_alloctbl_cursor_is_bit_set (const DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE void disk_alloctbl_cursor_set_bit (DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE void disk_alloctbl_cursor_clear_bit (DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE int disk_alloctbl_cursor_get_bit_index_in_page (const DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE SECTID disk_alloctbl_cursor_get_sectid (const DISK_ALLOCTBL_CURSOR * cursor);
+STATIC_INLINE int disk_alloctbl_cursor_fix (THREAD_ENTRY * thread_p, DISK_ALLOCTBL_CURSOR * cursor,
+					    PGBUF_LATCH_MODE latch_mode);
+STATIC_INLINE void disk_alloctbl_cursor_unfix (THREAD_ENTRY * thread_p, DISK_ALLOCTBL_CURSOR * cursor);
+
+/************************************************************************/
+/* Sector reserve section                                               */
+/************************************************************************/
+
+STATIC_INLINE void disk_log_update_sectors (THREAD_ENTRY * thread_p, PAGE_PTR page_alloctbl, int logging_parts_count,
+					    INT32 * logging_parts, bool is_reserve);
+static int disk_rv_update_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_reserve);
+static int disk_reserve_sectors_in_range (THREAD_ENTRY * thread_p, const DISK_ALLOCTBL_CURSOR * start_cursor,
+					  const DISK_ALLOCTBL_CURSOR * end_cursor, int n_sectors, bool do_logging,
+					  int *n_total_reserved, int *n_crt_reserved, VSID * reserved);
+STATIC_INLINE void disk_update_vol_used_sectors (DISK_VAR_HEADER * volheader, DB_VOLPURPOSE volpurpose,
+						 int delta_sectors, SECTID hint);
+STATIC_INLINE void disk_log_update_vol_used_sectors (THREAD_ENTRY * thread_p, PAGE_PTR page_volheader,
+						     DB_VOLPURPOSE purpose, int count_sectors, SECTID hint_undo,
+						     SECTID hint_redo);
+static int disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID volid, int n_sectors,
+					   int *n_reserved_sectors, VSID * reserved_sectors);
+static int dkre_find_goodvol (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_TYPE reserve_type,
+			      VOLID desired_volid, VOLID banned_volid, int n_sectors, INT16 * volid);
+static DISK_ISVALID disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volheader, SECTID sectid);
+
+/************************************************************************/
+/* End of static functions                                              */
+/************************************************************************/
+
+/************************************************************************/
+/* Define functions.                                                    */
+/************************************************************************/
 
 static char *
 disk_vhdr_get_vol_fullname (const DISK_VAR_HEADER * vhdr)
@@ -1472,6 +1566,9 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid, DBDEF_VOL
   DISK_VOLPURPOSE vol_purpose = ext_info->purpose;
   INT32 extend_npages = ext_info->extend_npages;
   INT16 prev_volid;
+  DISK_ALLOCTBL_CURSOR cursor_iter;
+  DISK_ALLOCTBL_CURSOR cursor_end;
+  int count_used_sectors;
 
   if (vol_purpose != DISK_PERMVOL_GENERIC_PURPOSE)
     {
@@ -1598,26 +1695,30 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid, DBDEF_VOL
     }
 
   vhdr->free_pages = vhdr->total_pages - vhdr->sys_lastpage - 1;
-  vhdr->free_sects = (vhdr->total_sects - CEIL_PTVDIV ((vhdr->sys_lastpage + 1), DISK_SECTOR_NPAGES));
 
-  /* 
-   * Start allocating sectors a little bit away from the top of the volume.
-   * This is done to allow system functions which allocate pages from the
-   * special sector to find pages as close as possible. One example, is the
-   * allocation of pages for system file table information. For now, five
-   * sectors are skipped. Note that these sectors are allocated once the
-   * hint of allocated sectors is looped.
-   */
+  count_used_sectors = CEIL_PTVDIV ((vhdr->sys_lastpage + 1), DISK_SECTOR_NPAGES);
+  vhdr->free_sects = (vhdr->total_sects - count_used_sectors);
+  vhdr->hint_allocsect = (SECTID) count_used_sectors;
 
-  if (vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE && vhdr->total_sects > DISK_HINT_START_SECT
-      && (vhdr->total_sects - vhdr->free_sects) < DISK_HINT_START_SECT)
+  /* Reserve sectors used by volume table */
+  disk_alloctbl_cursor_set_at_start (vhdr, &cursor_iter);
+  disk_alloctbl_cursor_set_at_sectid (vhdr, vhdr->hint_allocsect, &cursor_end);
+  disk_alloctbl_cursor_fix (thread_p, &cursor_iter, PGBUF_LATCH_WRITE);
+  while (disk_alloctbl_cursor_compare (&cursor_iter, &cursor_end))
     {
-      vhdr->hint_allocsect = DISK_HINT_START_SECT;
+      disk_alloctbl_cursor_set_bit (&cursor_iter);
+      if (!disk_alloctbl_cursor_next (&cursor_iter))
+	{
+	  /* really? 8 GB table? */
+	  assert_release (false);
+	  disk_alloctbl_cursor_unfix (thread_p, &cursor_iter);
+	  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+	  (void) pgbuf_invalidate_all (thread_p, volid);
+	  return NULL_VOLID;
+	}
     }
-  else
-    {
-      vhdr->hint_allocsect = vhdr->total_sects - 1;
-    }
+  disk_alloctbl_cursor_unfix (thread_p, &cursor_iter);
+  /* todo: log me if necessary */
 
   /* Find the time of the creation of the database and the current LSA checkpoint. */
 
@@ -3321,6 +3422,8 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid, INT32 npage
   int delta;
   bool need_to_add_generic_volume;
 
+  assert (false);		/* never be here */
+
 #if defined(CUBRID_DEBUG)
   if (npages <= 0)
     {
@@ -4197,6 +4300,9 @@ static void
 disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, DISK_RECV_MTAB_BITS_WITH * recv)
 {
   LOG_TDES *tdes;
+
+  assert (false);
+
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       tdes = VACUUM_GET_WORKER_TDES (thread_p);
@@ -5684,6 +5790,8 @@ disk_alloctable_bitmap_update (THREAD_ENTRY * thread_p, PAGE_PTR alloctable_page
   assert (start_bit < 8);
   assert (num_pages > 0);
 
+  assert (false);
+
 #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, alloctable_page, PAGE_VOLBITMAP);
 #endif /* !NDEBUG */
@@ -6449,50 +6557,9 @@ disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  * TODO: Remove DISK_PERMVOL_TEMP_PURPOSE and DISK_EITHER_TEMP_PURPOSE.
  */
 
-/*
- * Disk allocation table section.
- */
-
-/* The default unit used to divide a page of allocation table. Currently it is a char (8 bit).
- * If we ever want to change the type of unit, this can be modified and should be handled automatically. However, some
- * other structures may need updating (e.g. DISK_ALLOCTBL_CURSOR).
- */
-typedef unsigned char DISK_ALLOCTBL_UNIT;
-
-/* Disk allocation table cursor. Used to iterate through table bits. */
-typedef struct disk_alloctbl_cursor DISK_ALLOCTBL_CURSOR;
-struct disk_alloctbl_cursor
-{
-  const DISK_VAR_HEADER *volheader;	/* Volume header */
-
-  PAGEID pageid;		/* Current page ID */
-  int offset_to_unit;		/* Offset to current unit in page. */
-  int offset_to_bit;		/* Offset to current bit in unit. */
-
-  PAGE_PTR page;		/* Fixed table page. */
-  DISK_ALLOCTBL_UNIT *unit;	/* Unit pointer in current page. */
-};
-#define DISK_SECTALLOCTBL_CURSOR_INITIALIZER { NULL, 0, 0, 0, NULL, NULL }
-
-/* Allocation table macro's */
-/* Bit count in a unit */
-#define DISK_ALLOCTBL_UNIT_BIT_COUNT	    (sizeof (DISK_ALLOCTBL_UNIT) * CHAR_BIT)
-/* Unit count in a table page */
-#define DISK_ALLOCTBL_PAGE_UNITS_COUNT	    (DB_PAGESIZE / DISK_ALLOCTBL_UNIT_BIT_COUNT)
-/* Bit count in a table page */
-#define DISK_ALLOCTBL_PAGE_BIT_COUNT	    (DISK_ALLOCTBL_UNIT_BIT_COUNT * DISK_ALLOCTBL_PAGE_UNITS_COUNT)
-
-/* Get page offset for sector ID. Note this is not the real page ID (since table does not start from page 0). */
-#define DISK_ALLOCTBL_SECTOR_PAGE_OFFSET(sect) ((sect) / DISK_ALLOCTBL_PAGE_BIT_COUNT)
-/* Get unit offset in page for sector ID. */
-#define DISK_ALLOCTBL_SECTOR_BYTE_OFFSET(sect) (((sect) % DISK_ALLOCTBL_PAGE_BIT_COUNT) / DISK_ALLOCTBL_UNIT_BIT_COUNT)
-/* Get bit offset in unit for sector ID */
-#define DISK_ALLOCTBL_SECTOR_BIT_OFFSET(sect) (((sect) % DISK_ALLOCTBL_PAGE_BIT_COUNT) % DISK_ALLOCTBL_UNIT_BIT_COUNT)
-
 /************************************************************************/
-/* Static functions section                                             */
+/* Disk allocation table section.                                       */
 /************************************************************************/
-static DISK_ISVALID disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volheader, SECTID sectid);
 
 /*
  * disk_alloctbl_cursor_set_at_sectid () - Position cursor for allocation table at sector ID.
@@ -6564,6 +6631,14 @@ disk_alloctbl_cursor_set_at_start (const DISK_VAR_HEADER * volheader, DISK_ALLOC
   cursor->unit = NULL;
 }
 
+/*
+ * disk_alloctbl_cursor_set_for_recovery () - Set allocation table cursor for recovery (at given bit index in give page)
+ *
+ * return             : Void
+ * page_alloctbl (in) : Allocation table page
+ * bit_index (in)     : Bit index
+ * cursor (out)       : Output cursor
+ */
 STATIC_INLINE void
 disk_alloctbl_cursor_set_for_recovery (const PAGE_PTR page_alloctbl, int bit_index, DISK_ALLOCTBL_CURSOR * cursor)
 {
@@ -6831,6 +6906,10 @@ disk_alloctbl_cursor_unfix (THREAD_ENTRY * thread_p, DISK_ALLOCTBL_CURSOR * curs
   cursor->unit = NULL;
 }
 
+/************************************************************************/
+/* Sector reserve section                                               */
+/************************************************************************/
+
 /*
  * disk_log_update_sectors () - Log reserving/unreserving disk sectors.
  *
@@ -6841,7 +6920,7 @@ disk_alloctbl_cursor_unfix (THREAD_ENTRY * thread_p, DISK_ALLOCTBL_CURSOR * curs
  * logging_parts (in)	    : Logging parts.
  * is_reserve (in)	    : True for reserving sectors, false for unreserving sectors.
  */
-static void
+STATIC_INLINE void
 disk_log_update_sectors (THREAD_ENTRY * thread_p, PAGE_PTR page_alloctbl, int logging_parts_count,
 			 INT32 * logging_parts, bool is_reserve)
 {
@@ -7100,7 +7179,7 @@ disk_update_vol_used_sectors (DISK_VAR_HEADER * volheader, DB_VOLPURPOSE volpurp
     {
       /* TODO: Change this */
     case DISK_PERMVOL_DATA_PURPOSE:
-      volheader->used_index_npages += delta_sectors;
+      volheader->used_data_npages += delta_sectors;
       assert (volheader->used_data_npages + volheader->used_index_npages <= volheader->total_pages);
       break;
     case DISK_PERMVOL_INDEX_PURPOSE:
@@ -7377,6 +7456,11 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
       undo_hint = reserved_sectors[0].sectid;
       /* For redo, set hint to NULL_SECTID if no free sectors or sectid next to last reserved otherwise */
       redo_hint = volheader->free_sects > 0 ? reserved_sectors[(*n_reserved_sectors) - 1].sectid + 1 : NULL_SECTID;
+      if (redo_hint == volheader->total_sects)
+	{
+	  /* end of sectors */
+	  redo_hint = NULL_SECTID;
+	}
 
       disk_update_vol_used_sectors (volheader, purpose, *n_reserved_sectors, redo_hint);
       if (do_logging)
