@@ -8976,7 +8976,7 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
     }
 
   /*valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid); */
-  valid = disk_is_page_sector_reserved (thread_p, vpid);
+  valid = disk_is_page_sector_reserved (thread_p, vpid->volid, vpid->pageid);
   if (valid != DISK_VALID || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
     {
       if (valid != DISK_ERROR && !no_error)

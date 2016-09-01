@@ -7481,10 +7481,11 @@ dkre_find_goodvol (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPAGE_
  *
  * return        : Valid if sector of page is reserved, invalid (or error) otherwise.
  * thread_p (in) : Thread entry
- * vpid (in)     : Page identifier
+ * volid (in)    : Page volid
+ * pageid (in)   : Page pageid
  */
 DISK_ISVALID
-disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, const VPID * vpid)
+disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pageid)
 {
   VPID vpid_volheader;
   PAGE_PTR page_volheader = NULL;
@@ -7495,7 +7496,7 @@ disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, const VPID * vpid)
 
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
-  if (fileio_get_volume_descriptor (vpid->volid) == NULL_VOLDES || vpid->pageid < 0)
+  if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
       /* invalid */
       assert (false);
@@ -7503,14 +7504,14 @@ disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, const VPID * vpid)
       goto exit;
     }
 
-  if (vpid->pageid == DISK_VOLHEADER_PAGE)
+  if (pageid == DISK_VOLHEADER_PAGE)
     {
       /* valid */
       isvalid = DISK_VALID;
       goto exit;
     }
 
-  vpid_volheader.volid = vpid->volid;
+  vpid_volheader.volid = volid;
   vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
   page_volheader = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_volheader == NULL)
@@ -7522,18 +7523,18 @@ disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, const VPID * vpid)
 
   volheader = (DISK_VAR_HEADER *) page_volheader;
 
-  if (vpid->pageid <= volheader->sys_lastpage)
+  if (pageid <= volheader->sys_lastpage)
     {
       isvalid = DISK_VALID;
       goto exit;
     }
-  if (vpid->pageid > volheader->total_pages)
+  if (pageid > volheader->total_pages)
     {
       isvalid = DISK_INVALID;
       goto exit;
     }
 
-  sectid = SECTOR_FROM_PAGEID (vpid->pageid);
+  sectid = SECTOR_FROM_PAGEID (pageid);
   isvalid = disk_is_sector_reserved (thread_p, volheader, sectid);
 
 exit:

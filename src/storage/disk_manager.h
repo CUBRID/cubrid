@@ -287,6 +287,6 @@ extern int disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_update_vol_used_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
-extern DISK_ISVALID disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, const VPID * vpid);
+extern DISK_ISVALID disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pageid);
 
 #endif /* _DISK_MANAGER_H_ */

@@ -5331,7 +5331,7 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID
       return DISK_INVALID;
     }
 
-  valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid);
+  valid = disk_is_page_sector_reserved (thread_p, vpid->volid, vpid->pageid);
   if (valid != DISK_VALID)
     {
       if (valid != DISK_ERROR)
@@ -10223,7 +10223,7 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid, bool validate_
   /* Make sure that all file table pages are consistent */
   while (!VPID_ISNULL (&set_vpids[0]))
     {
-      valid = disk_isvalid_page (thread_p, set_vpids[0].volid, set_vpids[0].pageid);
+      valid = disk_is_page_sector_reserved (thread_p, set_vpids[0].volid, set_vpids[0].pageid);
       if (valid != DISK_VALID)
 	{
 	  if (valid == DISK_INVALID)
@@ -10271,7 +10271,7 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid, bool validate_
 
 	  for (j = 0; j < num_found; j++)
 	    {
-	      valid = disk_isvalid_page (thread_p, set_vpids[j].volid, set_vpids[j].pageid);
+	      valid = disk_is_page_sector_reserved (thread_p, set_vpids[j].volid, set_vpids[j].pageid);
 	      if (valid != DISK_VALID)
 		{
 		  if (valid == DISK_INVALID)
@@ -12627,7 +12627,7 @@ file_rv_undo_create_tmp (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vfid = (VFID *) rcv->data;
 
   if (fileio_get_volume_descriptor (vfid->volid) == NULL_VOLDES
-      || disk_isvalid_page (thread_p, vfid->volid, (INT32) (vfid->fileid)) != DISK_VALID)
+      || disk_is_page_sector_reserved (thread_p, vfid->volid, (INT32) (vfid->fileid)) != DISK_VALID)
     {
       ret = file_rv_tracker_unregister_logical_undo (thread_p, vfid);
     }

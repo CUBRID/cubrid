@@ -70,10 +70,11 @@
    ? DISK_INVALID             \
    : DISK_VALID)
 #else
+/* todo: fix me */
 #define HEAP_ISVALID_OID(oid) \
   (HEAP_ISJUNK_OID(oid)       \
    ? DISK_INVALID             \
-   : disk_isvalid_page (NULL, (oid)->volid, (oid)->pageid))
+   : disk_is_page_sector_reserved (NULL, (oid)->volid, (oid)->pageid))
 #endif
 
 #define HEAP_SCANCACHE_SET_NODE(scan_cache, class_oid_p, hfid_p) \

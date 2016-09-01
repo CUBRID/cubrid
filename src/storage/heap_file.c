@@ -5562,10 +5562,10 @@ heap_hfid_isvalid (HFID * hfid)
       return DISK_INVALID;
     }
 
-  valid_pg = disk_isvalid_page (hfid->vfid.volid, hfid->vfid.fileid);
+  valid_pg = disk_is_page_sector_reserved (hfid->vfid.volid, hfid->vfid.fileid);
   if (valid_pg == DISK_VALID)
     {
-      valid_pg = disk_isvalid_page (hfid->vfid.volid, hfid->hpgid);
+      valid_pg = disk_is_page_sector_reserved (hfid->vfid.volid, hfid->hpgid);
     }
 
   return valid_pg;

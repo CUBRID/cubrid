@@ -8402,7 +8402,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 #endif /* CUBRID_DEBUG */
 
   if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex)
-      || (disk_isvalid_page (thread_p, rcv_vpid->volid, rcv_vpid->pageid) != DISK_VALID))
+      || (disk_is_page_sector_reserved (thread_p, rcv_vpid->volid, rcv_vpid->pageid) != DISK_VALID))
     {
       rcv->pgptr = NULL;
     }
@@ -9514,7 +9514,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   else
     {
       if (rcv_vpid.volid == NULL_VOLID || rcv_vpid.pageid == NULL_PAGEID
-	  || (disk_isvalid_page (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID))
+	  || (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID))
 	{
 	  return NO_ERROR;
 	}

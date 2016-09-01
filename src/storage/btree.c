@@ -2152,7 +2152,8 @@ btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid
 	}
       else
 	{
-	  assert (disk_isvalid_page (thread_p, new_overflow_vpid->volid, new_overflow_vpid->pageid) != DISK_INVALID);
+	  assert (disk_is_page_sector_reserved (thread_p, new_overflow_vpid->volid, new_overflow_vpid->pageid)
+		  != DISK_INVALID);
 
 	  /* Update existing link. */
 	  ovf_link_ptr = leaf_record->data + leaf_record->length - DISK_VPID_ALIGNED_SIZE;
@@ -2180,7 +2181,8 @@ btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid
     {
       /* Leaf record didn't have overflow link. */
       assert (!VPID_ISNULL (new_overflow_vpid));
-      assert (disk_isvalid_page (thread_p, new_overflow_vpid->volid, new_overflow_vpid->pageid) != DISK_INVALID);
+      assert (disk_is_page_sector_reserved (thread_p, new_overflow_vpid->volid, new_overflow_vpid->pageid)
+	      != DISK_INVALID);
 
       /* Undo logging for added link. */
       if (undo_logging)
@@ -22609,7 +22611,7 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
   if (log_Gl.rcv_phase == LOG_RECOVERY_UNDO_PHASE)
     {
       /* Only in recovery this is possible */
-      if (disk_isvalid_page (thread_p, btid.vfid.volid, btid.root_pageid) != DISK_VALID)
+      if (disk_is_page_sector_reserved (thread_p, btid.vfid.volid, btid.root_pageid) != DISK_VALID)
 	{
 	  /* The B-tree was already deleted */
 	  return NO_ERROR;
@@ -22618,7 +22620,7 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
   else
     {
       /* This should not happen */
-      assert (disk_isvalid_page (thread_p, btid.vfid.volid, btid.root_pageid) == DISK_VALID);
+      assert (disk_is_page_sector_reserved (thread_p, btid.vfid.volid, btid.root_pageid) == DISK_VALID);
     }
   if (logtb_update_global_unique_stats_by_delta (thread_p, &btid, -num_oids, -num_nulls, -num_keys, false) != NO_ERROR)
     {
@@ -22675,7 +22677,7 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
 
   /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted 
    * then skip update of unique statistics in global hash. */
-  if (disk_isvalid_page (thread_p, btid.vfid.volid, btid.root_pageid) != DISK_VALID)
+  if (disk_is_page_sector_reserved (thread_p, btid.vfid.volid, btid.root_pageid) != DISK_VALID)
     {
       /* The B-tree was already deleted */
       return NO_ERROR;

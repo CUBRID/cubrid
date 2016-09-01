@@ -206,7 +206,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
    */
 
   if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex)
-      || (disk_isvalid_page (thread_p, rcv_vpid->volid, rcv_vpid->pageid) != DISK_VALID))
+      || (disk_is_page_sector_reserved (thread_p, rcv_vpid->volid, rcv_vpid->pageid) != DISK_VALID))
     {
       rcv->pgptr = NULL;
     }
@@ -3038,7 +3038,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_isvalid_page (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+		  if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
 		    {
 		      break;
 		    }
@@ -3231,7 +3231,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_isvalid_page (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+		  if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
 		    {
 		      break;
 		    }
@@ -3354,7 +3354,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_isvalid_page (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+		  if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
 		    {
 		      break;
 		    }
@@ -3446,7 +3446,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_isvalid_page (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+		  if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
 		    {
 		      break;
 		    }

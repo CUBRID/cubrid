@@ -1114,8 +1114,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   VPID_GET_FROM_OID (&helper.home_vpid, &heap_objects->oid);
   if (was_interrupted)
     {
-      DISK_ISVALID valid = disk_isvalid_page (thread_p, helper.home_vpid.volid,
-					      helper.home_vpid.pageid);
+      DISK_ISVALID valid = disk_is_page_sector_reserved (thread_p, helper.home_vpid.volid, helper.home_vpid.pageid);
       if (valid == DISK_INVALID)
 	{
 	  /* Page was already deallocated in previous job run. */

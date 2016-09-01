@@ -1487,7 +1487,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, L
 	  assert (false);
 	}
 
-      if (disk_isvalid_page (thread_p, class_oid.volid, class_oid.pageid) != DISK_VALID)
+      if (disk_is_page_sector_reserved (thread_p, class_oid.volid, class_oid.pageid) != DISK_VALID)
 	{
 	  assert (false);
 	}
@@ -1539,7 +1539,7 @@ locator_defence_drop_class_name_entry (const void *name, void *ent, void *args)
 	  assert (false);
 	}
 
-      if (disk_isvalid_page (thread_p, class_oid.volid, class_oid.pageid) != DISK_VALID)
+      if (disk_is_page_sector_reserved (thread_p, class_oid.volid, class_oid.pageid) != DISK_VALID)
 	{
 	  assert (false);
 	}
