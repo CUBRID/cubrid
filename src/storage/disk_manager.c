@@ -7480,6 +7480,8 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
       goto exit;
     }
 
+  /* todo: fix disk cache */
+
 exit:
   if (page_volheader != NULL)
     {
