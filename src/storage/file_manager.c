@@ -14753,19 +14753,6 @@ file_header_sanity_check (FLRE_HEADER * fhead)
 	  assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->vpid_next));
 	}
     }
-
-  if (FILE_IS_NUMERABLE (fhead))
-    {
-      FILE_HEADER_GET_USER_PAGE_FTAB (fhead, page_table);
-      if (fhead->n_page_user == 0)
-	{
-	  assert (file_extdata_is_empty (page_table) && VPID_ISNULL (&page_table->vpid_next));
-	}
-      else
-	{
-	  assert (!file_extdata_is_empty (page_table) || !VPID_ISNULL (&page_table->vpid_next));
-	}
-    }
 #endif /* !NDEBUG */
 }
 
@@ -16158,7 +16145,7 @@ file_partsect_is_bit_set (FILE_PARTIAL_SECTOR * partsect, int offset)
 }
 
 /*
- * file_partsect_set_bit () - Set bit flre_allocin partial sector bitmap at offset. The bit is expected to be unset.
+ * file_partsect_set_bit () - Set bit in partial sector bitmap at offset. The bit is expected to be unset.
  *
  * return	 : Void.
  * partsect (in) : Partial sector.
