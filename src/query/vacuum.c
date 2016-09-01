@@ -4972,12 +4972,12 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	  vacuum_Data.last_blockid = next_blockid;
 
 	  if (data_page == vacuum_Data.last_page && data_page->index_free == 0
-              && VPID_EQ (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.last_page)))
+	      && VPID_EQ (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.last_page)))
 	    {
-              /* Empty last page and cursor is in this last page. When last page is reset and new blocks are consumed,
-               * the cursor might be invalid (pointing somewhere behind the first entry).
-               * We need to set the cursor to page new first entry. */
-              vacuum_Data.blockid_job_cursor = next_blockid;
+	      /* Empty last page and cursor is in this last page. When last page is reset and new blocks are consumed,
+	       * the cursor might be invalid (pointing somewhere behind the first entry).
+	       * We need to set the cursor to page new first entry. */
+	      vacuum_Data.blockid_job_cursor = next_blockid;
 	    }
 	  /* Move to next free data */
 	  page_free_data++;
