@@ -19654,6 +19654,7 @@ heap_is_valid_oid (OID * oid_p)
     {
       if (oid_valid != DISK_ERROR)
 	{
+	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid_p->volid, oid_p->pageid,
 		  oid_p->slotid);
 	}
