@@ -749,11 +749,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 Çıktı dosyası '%1$s' açılmaadı \n
 60 \
 diagdb: Bir veritabanı dökümü.\n\
 kullanım: %1$s diagdb [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
+  -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
+      --emergency              emergency restart; default: none\n\
   -d, --dump-type=TYPE         TYPE of dump\n\
                                -1 tüm dökümü\n\
                                 1 dosya tabloları dökümü\n\

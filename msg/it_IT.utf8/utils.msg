@@ -749,11 +749,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 Impossibile aprire il file di output '%1$s'\n
 60 \
 diagdb: Discarica database.\n\
 uso: %1$s diagdb [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
+  -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n\
+      --emergency              emergency restart; default: none\n\
   -d, --dump-type=TIPO         TIPO di dump\n\
                                -1 dump tutto\n\
                                 1 dump file tables\n\
