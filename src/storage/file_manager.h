@@ -400,6 +400,7 @@ extern int flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID 
 
 extern int flre_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user_pages_out);
 extern DISK_ISVALID flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
+extern int flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
 
 extern int flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    VPID * vpid_nth);

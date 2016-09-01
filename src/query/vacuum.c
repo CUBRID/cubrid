@@ -1042,10 +1042,18 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
     {
       if (!VFID_EQ (&vfid, &page_ptr->vfid))
 	{
+	  FILE_TYPE type;
 	  /* Update VFID. */
 	  VFID_COPY (&vfid, &page_ptr->vfid);
 	  /* Update reusable. */
-	  reusable = file_get_type (thread_p, &vfid) == FILE_HEAP_REUSE_SLOTS;
+	  error_code = flre_get_type (thread_p, &vfid, &type);
+	  if (error_code != NO_ERROR)
+	    {
+	      assert_release (false);
+	      er_clear ();
+	      error_code = NO_ERROR;
+	    }
+	  reusable = (type == FILE_HEAP_REUSE_SLOTS);
 	}
 
       /* Find all objects for this page. */
@@ -3048,6 +3056,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	      RECDES ovf_rec;
 	      OID ovf_oid;
 	      VACUUM_HEAP_OBJECT ovf_obj;
+	      FILE_TYPE type;
 	      bool reusable;
 
 	      assert (undo_data != NULL);
@@ -3060,7 +3069,15 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
 	      VFID_COPY (&ovf_obj.vfid, &log_vacuum.vfid);
 	      COPY_OID (&ovf_obj.oid, &ovf_oid);
-	      reusable = file_get_type (thread_p, &ovf_obj.vfid);
+	      error_code = flre_get_type (thread_p, &ovf_obj.vfid, &type);
+	      if (error_code != NO_ERROR)
+		{
+		  assert_release (false);
+		  er_clear ();
+		  error_code = NO_ERROR;
+		  continue;
+		}
+	      reusable = (type == FILE_HEAP_REUSE_SLOTS);
 
 	      error_code = vacuum_heap_ovf (thread_p, &ovf_obj, threshold_mvccid, reusable, was_interrupted);
 	      if (error_code != NO_ERROR)

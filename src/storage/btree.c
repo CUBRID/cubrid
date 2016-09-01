@@ -8144,10 +8144,14 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
 	  break;
 	}
 
-      file_type = file_get_type (thread_p, &btid.vfid);
-      if (file_type == FILE_UNKNOWN_TYPE)
+      if (flre_get_type (thread_p, &btid.vfid, &file_type) != NO_ERROR)
 	{
 	  valid = DISK_ERROR;
+	  break;
+	}
+      if (file_type == FILE_UNKNOWN_TYPE)
+	{
+	  valid = DISK_INVALID;
 	  break;
 	}
 
@@ -8283,7 +8287,10 @@ btree_check_all (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      file_type = file_get_type (thread_p, &btid.vfid);
+      if (flre_get_type (thread_p, &btid.vfid, &file_type) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
       if (file_type == FILE_UNKNOWN_TYPE)
 	{
 	  goto exit_on_error;
@@ -8888,6 +8895,8 @@ btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp)
   BTID btid;			/* Btree index identifier */
   VPID vpid;			/* Index root page identifier */
   int i;			/* Loop counter */
+  FILE_TYPE file_type;
+
   int ret = NO_ERROR;
 
   /* todo: fix me */
@@ -8911,7 +8920,13 @@ btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp)
 	  break;
 	}
 
-      if (file_get_type (thread_p, &btid.vfid) != FILE_BTREE)
+      ret = flre_get_type (thread_p, &btid.vfid, &file_type);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+      if (file_type != FILE_BTREE)
 	{
 	  continue;
 	}
@@ -19540,7 +19555,11 @@ btree_fix_overflow_oid_page_all_btrees (void)
 	  break;
 	}
 
-      file_type = file_get_type (thread_p, &btid.vfid);
+      if (flre_get_type (thread_p, &btid.vfid, &file_type) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return ER_FAILED;
+	}
       if (file_type == FILE_UNKNOWN_TYPE)
 	{
 	  return ER_FAILED;

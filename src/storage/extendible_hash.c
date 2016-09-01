@@ -1691,7 +1691,10 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
   EHASH_RESULT result;
   FILE_TYPE file_type;
 
-  file_type = file_get_type (thread_p, &ehid_p->vfid);
+  if (flre_get_type (thread_p, &ehid_p->vfid, &file_type) != NO_ERROR)
+    {
+      return NULL;
+    }
   if (file_type == FILE_UNKNOWN_TYPE)
     {
       return NULL;
@@ -3380,7 +3383,10 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
       return NULL;
     }
 
-  file_type = file_get_type (thread_p, &ehid_p->vfid);
+  if (flre_get_type (thread_p, &ehid_p->vfid, &file_type) != NO_ERROR)
+    {
+      return NULL;
+    }
   if (file_type == FILE_UNKNOWN_TYPE)
     {
       return NULL;

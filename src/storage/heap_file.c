@@ -5664,7 +5664,12 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
   FILE_TYPE file_type;
   int ret;
 
-  file_type = file_get_type (thread_p, &(hfid->vfid));
+  ret = flre_get_type (thread_p, &hfid->vfid, &file_type);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
   if (file_type == FILE_HEAP_REUSE_SLOTS)
     {
       ret = xheap_destroy (thread_p, hfid, class_oid);
@@ -6565,9 +6570,14 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
       scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
       scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
       scan_cache->node.hfid.hpgid = hfid->hpgid;
-      scan_cache->file_type = file_get_type (thread_p, &hfid->vfid);
+      if (flre_get_type (thread_p, &hfid->vfid, &scan_cache->file_type) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
       if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
 	{
+	  assert_release (false);
 	  goto exit_on_error;
 	}
     }
@@ -6797,11 +6807,16 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
       scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
       scan_cache->node.hfid.hpgid = hfid->hpgid;
 
-      scan_cache->file_type = file_get_type (thread_p, &hfid->vfid);
+      ret = flre_get_type (thread_p, &hfid->vfid, &scan_cache->file_type);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return ret;
+	}
       if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
 	{
-	  ASSERT_ERROR_AND_SET (ret);
-	  return ret;
+	  assert_release (false);
+	  return ER_FAILED;
 	}
     }
 
@@ -13770,10 +13785,14 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
   FILE_HEAP_DES hfdes;
   DISK_ISVALID rv = DISK_VALID;
 
-  file_type = file_get_type (thread_p, &hfid->vfid);
-  if (file_type == FILE_UNKNOWN_TYPE || (file_type != FILE_HEAP && file_type != FILE_HEAP_REUSE_SLOTS))
+  if (flre_get_type (thread_p, &hfid->vfid, &file_type) != NO_ERROR)
     {
       return DISK_ERROR;
+    }
+  if (file_type == FILE_UNKNOWN_TYPE || (file_type != FILE_HEAP && file_type != FILE_HEAP_REUSE_SLOTS))
+    {
+      assert_release (false);
+      return DISK_INVALID;
     }
 
   if (heap_get_header_page (thread_p, hfid, &vpid) == NO_ERROR)
@@ -13862,9 +13881,14 @@ heap_check_all_heaps (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      file_type = file_get_type (thread_p, &hfid.vfid);
+      if (flre_get_type (thread_p, &hfid.vfid, &file_type) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
       if (file_type == FILE_UNKNOWN_TYPE)
 	{
+	  assert_release (false);
 	  goto exit_on_error;
 	}
 
@@ -14172,7 +14196,11 @@ heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records)
 	  break;
 	}
 
-      file_type = file_get_type (thread_p, &hfid.vfid);
+      if (flre_get_type (thread_p, &hfid.vfid, &file_type) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  break;
+	}
       if (file_type != FILE_HEAP && file_type != FILE_HEAP_REUSE_SLOTS)
 	{
 	  continue;
@@ -14228,7 +14256,11 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 	  break;
 	}
 
-      file_type = file_get_type (thread_p, &hfid.vfid);
+      if (flre_get_type (thread_p, &hfid.vfid, &file_type) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  break;
+	}
       if (file_type != FILE_HEAP && file_type != FILE_HEAP_REUSE_SLOTS)
 	{
 	  continue;
@@ -19590,6 +19622,7 @@ heap_mark_class_as_modified (THREAD_ENTRY * thread_p, OID * oid_p, int chn, bool
 static FILE_TYPE
 heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
+  FILE_TYPE file_type;
   if (context->scan_cache_p != NULL)
     {
       assert (HFID_EQ (&context->hfid, &context->scan_cache_p->node.hfid));
@@ -19599,7 +19632,12 @@ heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
   else
     {
-      return file_get_type (thread_p, &context->hfid.vfid);
+      if (flre_get_type (thread_p, &context->hfid.vfid, &file_type) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return FILE_UNKNOWN_TYPE;
+	}
+      return file_type;
     }
 }
 

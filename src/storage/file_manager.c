@@ -7546,16 +7546,19 @@ file_find_maxpages_allocable (THREAD_ENTRY * thread_p, const VFID * vfid)
   FILE_TYPE file_type;
   INT32 num_pages;
 
-  file_type = file_get_type (thread_p, vfid);
+  if (flre_get_type (thread_p, vfid, &file_type) != NO_ERROR)
+    {
+      return -1;
+    }
   if (file_type == FILE_UNKNOWN_TYPE)
     {
+      assert (false);
       return -1;
     }
 
   num_pages = file_find_good_maxpages (thread_p, file_type);
   num_pages -= file_guess_numpages_overhead (thread_p, vfid, num_pages);
   return num_pages;
-
 }
 
 /*
@@ -12443,6 +12446,8 @@ file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
   int size;
   int i;
 
+  int error_code = NO_ERROR;
+
   /* Find number of files */
   num_files = file_get_numfiles (thread_p);
   if (num_files <= 0)
@@ -12463,7 +12468,12 @@ file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 	  break;
 	}
 
-      type = file_get_type (thread_p, &vfid);
+      error_code = flre_get_type (thread_p, &vfid, &type);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
       num_pages = file_get_numpages (thread_p, &vfid);
       size = file_get_descriptor (thread_p, &vfid, file_des, file_des_size);
       if (size < 0)
@@ -14483,13 +14493,13 @@ struct file_partial_sector
 #define FILE_TABLESPACE_DEFAULT_MAX_EXPAND (DISK_SECTOR_NPAGES * DB_PAGESIZE * 1024);	/* 1k sectors */
 
 #define FILE_TABLESPACE_FOR_PERM_NPAGES(tabspace, npages) \
-  ((FILE_TABLESPACE *) (tabspace))->initial_size = MIN (1, npages) * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = MAX (1, npages) * DB_PAGESIZE; \
   ((FILE_TABLESPACE *) (tabspace))->expand_ratio = FILE_TABLESPACE_DEFAULT_RATIO_EXPAND; \
   ((FILE_TABLESPACE *) (tabspace))->expand_min_size = FILE_TABLESPACE_DEFAULT_MIN_EXPAND; \
   ((FILE_TABLESPACE *) (tabspace))->expand_max_size = FILE_TABLESPACE_DEFAULT_MAX_EXPAND
 
 #define FILE_TABLESPACE_FOR_TEMP_NPAGES(tabspace, npages) \
-  ((FILE_TABLESPACE *) (tabspace))->initial_size = MIN (1, npages) * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = MAX (1, npages) * DB_PAGESIZE; \
   ((FILE_TABLESPACE *) (tabspace))->expand_ratio = 0; \
   ((FILE_TABLESPACE *) (tabspace))->expand_min_size = 0; \
   ((FILE_TABLESPACE *) (tabspace))->expand_max_size = 0
@@ -19021,6 +19031,48 @@ exit:
       pgbuf_unfix (thread_p, page_fhead);
     }
   return DISK_ERROR;
+}
+
+/*
+ * flre_get_type () - Get file type for VFID.
+ *
+ * return          : Error code
+ * thread_p (in)   : Thread entry
+ * vfid (in)       : File identifier
+ * ftype_out (out) : Output file type
+ */
+int
+flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+  assert (ftype_out != NULL);
+
+  *ftype_out = file_type_cache_check (vfid);
+  if (*ftype_out != FILE_UNKNOWN_TYPE)
+    {
+      return NO_ERROR;
+    }
+
+  /* read from file header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      int error_code = NO_ERROR;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  *ftype_out = fhead->type;
+  assert (*ftype_out != FILE_UNKNOWN_TYPE);
+  return NO_ERROR;
 }
 
 /************************************************************************/
