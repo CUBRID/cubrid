@@ -1453,15 +1453,16 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       qexec_clear_regu_variable_list (xasl_p, regu_var->value.regu_var_list, final);
       break;
     case TYPE_POSITION:
-      if (regu_var->vfetch_to != NULL)
-	{
-	  pr_clear_value (regu_var->vfetch_to);
-	}
 #if 0				/* TODO - */
     case TYPE_LIST_ID:
 #endif
     default:
       break;
+    }
+
+  if (regu_var->vfetch_to != NULL)
+    {
+      pr_clear_value (regu_var->vfetch_to);
     }
 
   return pg_cnt;
@@ -1661,6 +1662,8 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	case S_CLASS_ATTR_SCAN:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.scan_pred.regu_list, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.rest_regu_list, final);
+
+	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.recordinfo_regu_list, final);
 
 	  hsidp = &p->s_id.s.hsid;
 	  if (hsidp->caches_inited)

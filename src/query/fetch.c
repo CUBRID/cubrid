@@ -4553,12 +4553,15 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	      return ER_FAILED;
 	    }
 
+	  if (regup->value.vfetch_to->need_clear == true)
+	    {
+	      pr_clear_value (regup->value.vfetch_to);
+	    }
+
 	  if (regup->value.vfetch_to != tmp && tmp->need_clear == true)
 	    {
 	      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tmp)));
-	      *regup->value.vfetch_to = *tmp;
-	      tmp->need_clear = false;
-	      /* keep clear flag on vfetch_to, value is cleared with regu var clear */
+	      pr_clone_value (tmp, regup->value.vfetch_to);
 	    }
 	  else
 	    {
