@@ -4184,7 +4184,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       for (; i < flush_info->num_toflush; i++)
 	{
 	  bufptr = logpb_get_log_buffer (flush_info->toflush[i]);
+
 	  assert (bufptr->pageid == flush_info->toflush[i]->hdr.logical_pageid);
+
 	  if (!bufptr->dirty)
 	    {
 	      /* not dirty */
@@ -4200,6 +4202,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      /* not successive pages on disk */
 	      break;
 	    }
+
+	  prv_bufptr = bufptr;
 	}
 
       if (logpb_writev_append_pages (thread_p, &flush_info->toflush[idxflush], i - idxflush) == NULL)
