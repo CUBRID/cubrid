@@ -974,7 +974,7 @@ end:
 void
 slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int size;
+  int received_size;
   int success;
   LC_COPYAREA *copy_area = NULL;
   char *ptr;
@@ -1011,7 +1011,8 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
     {
       if (num_objs > 0)
 	{
-	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &packed_desc, &size);
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &packed_desc, &received_size);
+	  assert (packed_desc_size == received_size);
 	}
 
       if (csserror)
@@ -1029,11 +1030,11 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
 	  if (content_size > 0)
 	    {
-	      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &new_content_ptr, &size);
+	      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &new_content_ptr, &received_size);
 
 	      if (new_content_ptr != NULL)
 		{
-		  memcpy (content_ptr, new_content_ptr, size);
+		  memcpy (content_ptr, new_content_ptr, received_size);
 		  free_and_init (new_content_ptr);
 		}
 
@@ -1053,7 +1054,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	   * Don't need to send the content since it is not updated.
 	   */
 
-	  locator_pack_copy_area_descriptor (num_objs, copy_area, packed_desc);
+	  locator_pack_copy_area_descriptor (num_objs, copy_area, packed_desc, packed_desc_size);
 	  ptr = or_pack_int (reply, success);
 	  ptr = or_pack_int (ptr, packed_desc_size);
 	  ptr = or_pack_int (ptr, 0);

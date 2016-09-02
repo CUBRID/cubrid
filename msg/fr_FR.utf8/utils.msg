@@ -753,10 +753,13 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 60 \
+15 Impossible d'ouvrir le fichier de sortie '%1$s'\n
 diagdb: Dump a database.\n\
 usage: %1$s diagdb [OPTION] database-name\n\
 \n\
 options valids:\n\
+  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n\
+      --emergency              emergency restart; default: none\n\
   -d, --dump-type=TYPE         TYPE de sauvegarde\n\
                                -1 sauvegarde tout\n\
                                 1 sauvegarde les tables\n\

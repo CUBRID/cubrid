@@ -1260,6 +1260,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   logtb_reset_bit_area_start_mvccid ();
 
+  if (prm_get_bool_value (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY))
+    {
+      init_emergency = true;
+    }
+
   /* 
    * Was the database system shut down or was it involved in a crash ?
    */
@@ -6691,7 +6696,7 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
   redo = (LOG_REC_REDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (redo->data.rcvindex));
-  fprintf (stdout, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n", redo->data.volid,
+  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n", redo->data.volid,
 	   redo->data.pageid, redo->data.offset, (int) GET_ZIP_LEN (redo->length));
 
   redo_length = redo->length;
@@ -6699,7 +6704,7 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), log_lsa, log_page_p);
 
   /* Print REDO(AFTER) DATA */
-  fprintf (stdout, "-->> Redo (After) Data:\n");
+  fprintf (out_fp, "-->> Redo (After) Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), log_zip_p);
 
@@ -6802,7 +6807,7 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_redo), log_lsa, log_page_p);
 
   /* Print REDO(AFTER) DATA */
-  fprintf (stdout, "-->> Redo (After) Data:\n");
+  fprintf (out_fp, "-->> Redo (After) Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), log_zip_p);
 
@@ -7181,7 +7186,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       break;
 
     case LOG_WILL_COMMIT:
-      fprintf (stdout, "\n");
+      fprintf (out_fp, "\n");
       break;
 
     case LOG_COMMIT:
@@ -7235,21 +7240,21 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
-      fprintf (stdout, "\n");
+      fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
 
     case LOG_END_OF_LOG:
       if (!logpb_is_page_in_archive (log_lsa->pageid))
 	{
-	  fprintf (stdout, "\n... xxx END OF LOG xxx ...\n");
+	  fprintf (out_fp, "\n... xxx END OF LOG xxx ...\n");
 	}
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
     default:
-      fprintf (stdout, "log_dump: Unknown record type = %d (%s).\n", record_type, log_to_string (record_type));
+      fprintf (out_fp, "log_dump: Unknown record type = %d (%s).\n", record_type, log_to_string (record_type));
       LSA_SET_NULL (log_lsa);
       break;
     }
@@ -7480,8 +7485,8 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	  /* Advance the pointer to dump the type of log record */
 
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
-	  log_pgptr = log_dump_record (thread_p, stdout, type, &log_lsa, log_pgptr, log_dump_ptr);
-	  fflush (stdout);
+	  log_pgptr = log_dump_record (thread_p, out_fp, type, &log_lsa, log_pgptr, log_dump_ptr);
+	  fflush (out_fp);
 	  /* 
 	   * We can fix the lsa.pageid in the case of log_records without forward
 	   * address at this moment.
