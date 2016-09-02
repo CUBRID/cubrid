@@ -4197,6 +4197,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      /* not successive pages */
 	      break;
 	    }
+	  if (prv_bufptr->phy_pageid + 1 != bufptr->phy_pageid)
+	    {
+	      /* not successive pages on disk */
+	      break;
+	    }
 	}
 
       if (logpb_writev_append_pages (thread_p, &flush_info->toflush[idxflush], i - idxflush) == NULL)

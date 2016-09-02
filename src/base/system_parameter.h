@@ -390,8 +390,10 @@ enum param_id
 
   PRM_ID_LOGPB_LOGGING_DEBUG,
 
+  PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_LOGPB_LOGGING_DEBUG
+  PRM_LAST_ID = PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY
 };
 
 /*
