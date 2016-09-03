@@ -1953,7 +1953,8 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   assert (log_pgptr->hdr.logical_pageid == logical_pageid);
   if (logical_pageid != LOGPB_HEADER_PAGE_ID)
     {
-      assert (logical_pageid >= LOGPB_FIRST_ACTIVE_PAGE_ID);
+      /* we allow writing page as long as they do not belong to archive area */
+      assert (logical_pageid >= LOGPB_NEXT_ARCHIVE_PAGE_ID);
       assert (logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID);
     }
   phy_pageid = logpb_to_physical_pageid (logical_pageid);
