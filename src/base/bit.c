@@ -38,7 +38,7 @@ bit8_count_ones (UINT8 i)
   /* Voodoo SWAR algorithm. One explanation found here: http://www.playingwithpointers.com/swar.html */
   i = i - ((i >> 1) & 0x55);
   i = (i & 0x33) + ((i >> 2) & 0x33);
-  return (int) (((i + (i >> 4)) & 0x0F) * 0x01);
+  return (int) ((i + (i >> 4)) & 0x0F);
 }
 
 int
