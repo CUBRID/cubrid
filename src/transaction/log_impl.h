@@ -115,9 +115,6 @@
    || csect_check_own (thread_p, CSECT_LOG) >= 1)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) \
   (csect_check_own (thread_p, CSECT_LOG) == 1)
-#define LOG_CS_OWN_READ_MODE(thread_p) \
-  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
-   || csect_check_own (thread_p, CSECT_LOG) == 2)
 
 #define LOG_ARCHIVE_CS_OWN(thread_p) \
   (csect_check (thread_p, CSECT_LOG_ARCHIVE) >= 1)
@@ -129,7 +126,6 @@
 #else /* SERVER_MODE */
 #define LOG_CS_OWN(thread_p) (true)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) (true)
-#define LOG_CS_OWN_READ_MODE(thread_p) (true)
 
 #define LOG_ARCHIVE_CS_OWN(thread_p) (true)
 #define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) (true)
@@ -176,8 +172,7 @@
         { \
           assert (log_pgptr != NULL); \
           (lsa)->pageid++; \
-          if (logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, (log_pgptr)) == \
-              NULL) \
+          if (logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, (log_pgptr)) != NO_ERROR) \
 	    { \
               logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
                                  "LOG_READ_ALIGN"); \
@@ -203,8 +198,7 @@
         { \
           assert (log_pgptr != NULL); \
           (lsa)->pageid++; \
-          if ((logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, log_pgptr)) == \
-              NULL) \
+          if ((logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, log_pgptr))!= NO_ERROR) \
             { \
               logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
                                  "LOG_READ_ADVANCE_WHEN_DOESNT_FIT"); \
@@ -608,7 +602,6 @@ struct log_append_info
   LOG_LSA nxio_lsa;		/* Lowest log sequence number which has not been written to disk (for WAL). */
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
-  LOG_PAGE *delayed_free_log_pgptr;	/* Delay freeing a log append page */
 
 #if !defined(HAVE_ATOMIC_BUILTINS)
   pthread_mutex_t nxio_lsa_mutex;
@@ -625,8 +618,6 @@ struct log_append_info
     /* prev_lsa */                                            \
     {NULL_PAGEID, NULL_OFFSET},                               \
     /* log_pgptr */                                           \
-    NULL,                                                     \
-    /* delayed_free_log_pgptr */                              \
     NULL}
 #else
 #define LOG_APPEND_INFO_INITIALIZER                           \
@@ -638,8 +629,6 @@ struct log_append_info
     /* prev_lsa */                                            \
     {NULL_PAGEID, NULL_OFFSET},                               \
     /* log_pgptr */                                           \
-    NULL,                                                     \
-    /* delayed_free_log_pgptr */                              \
     NULL,                                                     \
     /* nxio_lsa_mutex */                                      \
     PTHREAD_MUTEX_INITIALIZER}
@@ -993,7 +982,7 @@ struct mvcc_trans_status
 };
 
 #define MVCC_STATUS_INITIALIZER \
-  { NULL, MVCCID_FIRST, 0, NULL, 0, 0 }
+  { NULL, MVCCID_FIRST, 0, NULL, 0, 0, MVCCID_FIRST }
 
 typedef struct mvcctable MVCCTABLE;
 struct mvcctable
@@ -1215,6 +1204,8 @@ struct log_header
      MVCCID_NULL,				 \
      /* last_block_newest_mvccid */		 \
      MVCCID_NULL,				 \
+     /* vacuum_data_first_vpid */		 \
+     VPID_INITIALIZER,				 \
      /* ha_promotion_time */ 			 \
      0, 					 \
      /* db_restore_time */			 \
@@ -1846,15 +1837,8 @@ typedef struct log_logging_stat
   /* time taken to use a page for logging */
   double use_append_page_sec;
 
-  /* total delayed page count */
-  unsigned long total_delayed_page_count;
-  /* last delayed page id */
-  LOG_PAGEID last_delayed_pageid;
-
   /* log buffer full count */
   unsigned long log_buffer_full_count;
-  /* log buffer expand count */
-  unsigned long log_buffer_expand_count;
   /* log buffer flush count by replacement */
   unsigned long log_buffer_flush_count_by_replacement;
 
@@ -1971,32 +1955,29 @@ extern bool logpb_is_pool_initialized (void);
 extern void logpb_invalidate_pool (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
-extern void logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page);
-extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page);
-extern void logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
-extern void logpb_free_without_mutex (LOG_PAGE * log_pgptr);
+extern void logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
+extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern LOG_PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
-extern int logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore);
 extern int logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const char *prefix_logname,
 				    DKNPAGES npages, INT64 * db_creation);
 extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
 extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
 extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
-extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
-				   LOG_PAGE * log_pgptr);
-extern LOG_PAGE *logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
-extern LOG_PAGE *logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
-extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
-					    LOG_PAGE * log_pgptr);
+extern int logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
+			     LOG_PAGE * log_pgptr);
+extern int logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
+extern int logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
+extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
+				      LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
 					    LOG_PAGE * log_pgptr);
-extern LOG_PAGE *logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid);
+extern int logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid);
 extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 					      const char *prefix_logname, PGLENGTH * io_page_size,
 					      PGLENGTH * log_page_size, INT64 * db_creation, float *db_compatibility,
 					      int *db_charset);
-extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
+extern int logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
 extern void logpb_flush_pages_direct (THREAD_ENTRY * thread_p);
 extern void logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa);

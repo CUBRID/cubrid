@@ -11294,17 +11294,24 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	   * expected to reach a deleted object and also it is difficult to propagate the NON_EXISTENT_HANDLING 
 	   * argument through all the callers; this system can currently generate some irrelevant error log that is
 	   * hard to eliminate */
-	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	    {
 	      /* dangling object reference */
 	      dead_end = true;
+	      er_clear ();	/* probably ER_HEAP_UNKNOWN_OBJECT is set */
 	    }
-
 	  else if (er_errid () == ER_HEAP_NODATA_NEWADDRESS)
 	    {
 	      dead_end = true;
 	      unqualified_dead_end = true;
 	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
+	    }
+	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* where is this from? */
+	      assert (false);
+	      dead_end = true;
+	      er_clear ();	/* clear ER_HEAP_UNKOWN_OBJECT */
 	    }
 	  else
 	    {
@@ -14470,6 +14477,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    {
 	      /* not START WITH tuples but a previous generation of children, now parents. They have the index string
 	       * column written. */
+	      if (!DB_IS_NULL (index_valp) && index_valp->need_clear == true)
+		{
+		  pr_clear_value (index_valp);
+		}
 
 	      if (qexec_get_index_pseudocolumn_value_from_tuple (thread_p, xasl, tuple_rec.tpl, &index_valp,
 								 &father_index, &len_father_index) != NO_ERROR)
@@ -17126,7 +17137,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < 0xFF && str_length2 < 0xFF)
+  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+      && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
@@ -17134,11 +17146,12 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       return c;
     }
 
-  assert (str_length1 == 0xFF || str_length2 == 0xFF);
+  assert (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+	  || str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   /* String 1 */
   or_init (&buf1, str1, 0);
-  if (str_length1 == 0xFF)
+  if (str_length1 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
       if (rc != NO_ERROR)
@@ -17156,7 +17169,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 
       alloced_string1 = true;
 
-      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      rc = pr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -17167,7 +17180,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
     }
   else
     {
-      string1 = str1;
+      /* Skip the size byte */
+      string1 = str1 + OR_BYTE_SIZE;
     }
 
   if (rc != NO_ERROR)
@@ -17178,7 +17192,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 
   /* String 2 */
   or_init (&buf2, str2, 0);
-  if (str_length2 == 0xFF)
+  if (str_length2 == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
       if (rc != NO_ERROR)
@@ -17196,7 +17210,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 
       alloced_string2 = true;
 
-      rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      rc = pr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -17207,7 +17221,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
     }
   else
     {
-      string2 = str2;
+      /* Skip the size byte */
+      string2 = str2 + OR_BYTE_SIZE;
     }
 
   if (rc != NO_ERROR)

@@ -3030,8 +3030,6 @@ au_add_member_internal (MOP group, MOP member, int new_user)
   char *member_name;
 
   AU_DISABLE (save);
-  group = ws_mvcc_latest_version (group);
-  member = ws_mvcc_latest_version (member);
   db_make_object (&membervalue, member);
   db_make_object (&groupvalue, group);
 
@@ -5970,8 +5968,6 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
       return ER_FAILED;
     }
 
-  op = ws_mvcc_latest_version (op);
-
   classmop = NULL;
   class_ = NULL;
 
@@ -6144,7 +6140,6 @@ au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, 
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
       return error;
     }
-  op = ws_mvcc_latest_version (op);
 
   if (fetchmode != AU_FETCH_READ	/* not just reading */
       || WS_IS_DELETED (op)	/* marked deleted */
@@ -6344,7 +6339,6 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION
   /* DO NOT PUT ANY RETURNS FROM HERE UNTIL THE AU_ENABLE */
   AU_DISABLE (save);
 
-  op = ws_mvcc_latest_version (op);
   pin = ws_pin (op, 1);
   if (op->is_vid)
     {
@@ -6457,7 +6451,6 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETCH_VERSION_T
       return error;
     }
 
-  op = ws_mvcc_latest_version (op);
   error = fetch_class (op, &classmop, &class_, AU_FETCH_READ, BY_INSTANCE_MOP);
   if (error != NO_ERROR)
     {

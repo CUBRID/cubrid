@@ -703,8 +703,6 @@ static int heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 static int heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state);
 static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 				       int ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
-static SCAN_CODE heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RECDES * recdes,
-				    HEAP_SCANCACHE * scan_cache, int ispeeking, int chn);
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
 			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
@@ -7303,6 +7301,12 @@ try_again:
   ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
   if (ret != NO_ERROR)
     {
+      if (ret == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  /* bad page id, consider the object does not exist and let the caller handle the case */
+	  return S_DOESNT_EXIST;
+	}
+
       goto error;
     }
 
@@ -9202,15 +9206,18 @@ SCAN_CODE
 heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
 {
   PGBUF_WATCHER page_watcher;
+  int err;
 
   PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
   assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
   OID_SET_NULL (class_oid);
 
-  if (heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
+  err = heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ);
+  if (err != NO_ERROR)
     {
-      return S_ERROR;
+      /* for non existent object, return S_DOESNT_EXIST and let the caller handle the case; */
+      return err == ER_HEAP_UNKNOWN_OBJECT ? S_DOESNT_EXIST : S_ERROR;
     }
 
   /* Get class OID from HEAP_CHAIN. */
@@ -12500,6 +12507,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  (*(att->domain->type->index_writeval)) (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
+
+      if (!DB_IS_NULL (&value) && value.need_clear == true)
+	{
+	  pr_clear_value (&value);
+	}
+
       k++;
     }
 
@@ -18963,7 +18976,7 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, i
   SCAN_CODE scan = S_SUCCESS;
 
   /* Try to reuse the previously allocated area No need to check the snapshot since was already checked */
-  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL))
+  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL || recdes->data == scan_cache->area))
     {
       if (scan_cache->area == NULL)
 	{
@@ -20105,6 +20118,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   for (slot_id = 0; slot_id <= slot_count; slot_id++)
     {
       slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
+      if (slot_id == SP_ERROR)
+	{
+	  break;		/* this will not happen */
+	}
+
       context->res_oid.slotid = slot_id;
 
       /* lock the object to be inserted conditionally */
@@ -23874,7 +23892,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
       log_page_p->hdr.logical_pageid = NULL_PAGEID;
       log_page_p->hdr.offset = NULL_OFFSET;
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
+      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	{
 	  assert (false);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
@@ -23957,6 +23975,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 		{
 		  return S_SUCCESS_CHN_UPTODATE;
 		}
+
 	      return heap_get_bigone_content (thread_p, scan_cache, COPY, &forward_oid, recdes);
 	    }
 	  else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
@@ -24076,7 +24095,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
-  OID class_oid_local;
+  OID class_oid_local = OID_INITIALIZER;
 
   assert (context->scan_cache != NULL);
 
@@ -24086,7 +24105,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       context->class_oid_p = &class_oid_local;
     }
 
-  scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
+  scan = heap_prepare_get_context (thread_p, context, context->latch_mode, is_heap_scan, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -24287,7 +24306,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   assert (context->scan_cache != NULL);
   assert (context->recdes_p != NULL);
 
-  scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
+  scan = heap_prepare_get_context (thread_p, context, context->latch_mode, false, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -24324,9 +24343,13 @@ exit:
 }
 
 /* 
- * heap_prepare_object_page () - Check if provided page matches the page of provided OID or fix the right one
+ * heap_prepare_object_page () - Check if provided page matches the page of provided OID or fix the right one.
  *
- *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * oid (in)	       : Object identifier.
+ * page_watcher_p(out) : Page watcher used for page fix.
+ * latch_mode (in)     : Latch mode.
  */
 int
 heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
@@ -24437,6 +24460,14 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->scan_cache = scan_cache;
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
+  if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
+    {
+      context->latch_mode = PGBUF_LATCH_WRITE;
+    }
+  else
+    {
+      context->latch_mode = PGBUF_LATCH_READ;
+    }
 }
 
 

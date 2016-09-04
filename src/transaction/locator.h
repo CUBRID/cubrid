@@ -35,7 +35,7 @@
 
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \
-                                    OR_OID_SIZE * 3)
+                                    OR_OID_SIZE * 2)
 
 #define LC_MANYOBJS_PTR_IN_COPYAREA(copy_areaptr) \
   ((LC_COPYAREA_MANYOBJS *) ((char *)(copy_areaptr)->mem + \
@@ -391,7 +391,7 @@ extern LC_COPYAREA *locator_allocate_copy_area_by_length (int length);
 extern LC_COPYAREA *locator_reallocate_copy_area_by_length (LC_COPYAREA * old_area, int new_length);
 
 extern void locator_free_copy_area (LC_COPYAREA * copyarea);
-extern char *locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc);
+extern char *locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc, int desc_len);
 extern char *locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc);
 extern int locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *contents_length, char **desc_ptr,
 				   int *desc_length);

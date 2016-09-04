@@ -377,6 +377,9 @@ struct heap_get_context
   /* retrieving parameters */
   int ispeeking;		/* PEEK or COPY */
   int old_chn;			/* Cache number coherency */
+
+  PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
+				 * (like serial increment) require WRITE mode */
 };
 
 /* Forward definition. */

@@ -1323,6 +1323,7 @@ spage_find_free_slot (PAGE_PTR page_p, SPAGE_SLOT ** out_slot_p, PGSLOTID start_
   SPAGE_VERIFY_HEADER (page_header_p);
 
   slot_p = spage_find_slot (page_p, page_header_p, 0, false);
+  assert (slot_p != NULL);
 
   if (page_header_p->num_slots == page_header_p->num_records)
     {
@@ -1447,6 +1448,10 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int record_leng
 
   /* Find a free slot. Try to reuse an unused slotid, instead of allocating a new one */
   slot_id = spage_find_free_slot (page_p, &slot_p, 0);
+  if (slot_id == SP_ERROR)
+    {
+      return SP_ERROR;		/* this will not happen */
+    }
 
   /* Make sure that there is enough space for the record and the slot */
 
@@ -2373,6 +2378,10 @@ spage_check_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
 
   /* Find a free slot. Try to reuse an unused slotid, instead of allocating a new one */
   slot_id = spage_find_free_slot (page_p, &slot_p, 0);
+  if (slot_id == SP_ERROR)
+    {
+      return SP_ERROR;		/* this will not happen */
+    }
 
   /* Make sure that there is enough space for the record and the slot */
   if (slot_id > page_header_p->num_slots)
@@ -2576,6 +2585,8 @@ spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, const 
   assert (page_p != NULL);
   assert (record_descriptor_p != NULL);
 
+  assert (pgbuf_get_latch_mode (page_p) == PGBUF_LATCH_WRITE);
+
   if (record_descriptor_p->length < 0)
     {
       assert (false);
@@ -2691,6 +2702,8 @@ spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slo
   SPAGE_SLOT *slot_p;
 
   assert (page_p != NULL);
+
+  assert (pgbuf_get_latch_mode (page_p) == PGBUF_LATCH_WRITE);
 
   page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_VERIFY_HEADER (page_header_p);
