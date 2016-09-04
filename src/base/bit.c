@@ -115,7 +115,7 @@ bit16_count_ones (UINT16 i)
   /* Voodoo SWAR algorithm. One explanation found here: http://www.playingwithpointers.com/swar.html */
   i = i - ((i >> 1) & 0x5555);
   i = (i & 0x3333) + ((i >> 2) & 0x3333);
-  return (int) ((((i + (i >> 4)) & 0x0F0F) * 0x0101) >> 8);
+  return (int) (((((i + (i >> 4)) & 0x0F0F) * 0x0101) & 0xFFFF) >> 8);
 }
 
 int
