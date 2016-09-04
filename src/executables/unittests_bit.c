@@ -229,7 +229,7 @@ main (int ignore_argc, char **ignore_argv)
       ui = *(UINT32 *) rands;
       /* check bit count */
       unittest_result = count_bits ((unsigned char *) &ui, 32);
-      bit_result = bit8_count_ones (ui);
+      bit_result = bit32_count_ones (ui);
       if (unittest_result != bit_result)
 	{
 	  bitset_string ((unsigned char *) &ui, 32, bitset_buf);
@@ -307,6 +307,6 @@ main (int ignore_argc, char **ignore_argv)
 	  abort ();
 	}
     }
-  printf ("success");
+  printf ("success\n");
   return 0;
 }
