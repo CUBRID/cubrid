@@ -24,6 +24,7 @@
 #include "bit.h"
 #include "system.h"
 #include <stdlib.h>
+#include <assert.h>
 
 int
 count_bits (char *mem, int nbits)
@@ -47,6 +48,7 @@ count_bits (char *mem, int nbits)
 int
 ctz8 (UINT8 x)
 {
+  int i;
   for (i = 0; i < 8; i++)
     {
       if ((x & (((UINT8) 1) << i)) != 0)
@@ -60,6 +62,7 @@ ctz8 (UINT8 x)
 int
 ctz16 (UINT16 x)
 {
+  int i;
   for (i = 0; i < 16; i++)
     {
       if ((x & (((UINT16) 1) << i)) != 0)
@@ -73,6 +76,7 @@ ctz16 (UINT16 x)
 int
 ctz32 (UINT32 x)
 {
+  int i;
   for (i = 0; i < 32; i++)
     {
       if ((x & (((UINT32) 1) << i)) != 0)
@@ -86,6 +90,7 @@ ctz32 (UINT32 x)
 int
 ctz64 (UINT64 x)
 {
+  int i;
   for (i = 0; i < 16; i++)
     {
       if ((x & (((UINT64) 1) << i)) != 0)
