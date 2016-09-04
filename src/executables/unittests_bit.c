@@ -26,8 +26,8 @@
 #include <stdlib.h>
 #include <assert.h>
 
-int
-count_bits (char *mem, int nbits)
+static int
+count_bits (const unsigned char *mem, int nbits)
 {
   int byte, bit;
   int count = 0;
@@ -36,7 +36,7 @@ count_bits (char *mem, int nbits)
     {
       for (bit = 0; bit < 8; bit++)
 	{
-	  if (mem[byte] & (((char) 1) << bit) != 0)
+	  if ((mem[byte] & (((char) 1) << bit)) != 0)
 	    {
 	      count++;
 	    }
@@ -45,7 +45,7 @@ count_bits (char *mem, int nbits)
   return count;
 }
 
-int
+static int
 ctz8 (UINT8 x)
 {
   int i;
@@ -59,7 +59,7 @@ ctz8 (UINT8 x)
   return i;
 }
 
-int
+static int
 ctz16 (UINT16 x)
 {
   int i;
@@ -73,7 +73,7 @@ ctz16 (UINT16 x)
   return i;
 }
 
-int
+static int
 ctz32 (UINT32 x)
 {
   int i;
@@ -87,7 +87,7 @@ ctz32 (UINT32 x)
   return i;
 }
 
-int
+static int
 ctz64 (UINT64 x)
 {
   int i;
@@ -101,8 +101,8 @@ ctz64 (UINT64 x)
   return i;
 }
 
-void
-bitset_string (char *mem, int nbits, char *bitset)
+static void
+bitset_string (const unsigned char *mem, int nbits, char *bitset)
 {
   int byte, bit;
   int count = 0;
@@ -111,7 +111,7 @@ bitset_string (char *mem, int nbits, char *bitset)
     {
       for (bit = 0; bit < 8; bit++)
 	{
-	  bitset[count++] = (mem[byte] & (((char) 1) << bit) != 0) ? '1' : '0';
+	  bitset[count++] = ((mem[byte] & (((char) 1) << bit)) != 0) ? '1' : '0';
 	}
       bitset[count++] = ' ';
     }
@@ -187,11 +187,11 @@ main (int ignore_argc, char **ignore_argv)
       /* check bit16 */
       us = *(UINT16 *) rands;
       /* check bit count */
-      unittest_result = count_bits (&us, 16);
+      unittest_result = count_bits ((unsigned char *) &us, 16);
       bit_result = bit16_count_ones (us);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&us, 16, bitset_buf);
+	  bitset_string ((unsigned char *) &us, 16, bitset_buf);
 	  printf ("error bit16_count_ones: \n"
 		  "bitset: %s\n unit test: %d\n bit16: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -200,7 +200,7 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit16_count_zeroes (us);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&us, 16, bitset_buf);
+	  bitset_string ((unsigned char *) &us, 16, bitset_buf);
 	  printf ("error bit16_count_zeroes: \n"
 		  "bitset: %s\n unit test: %d\n bit16: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -210,7 +210,7 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit16_count_trailing_zeroes (us);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&us, 16, bitset_buf);
+	  bitset_string ((unsigned char *) &us, 16, bitset_buf);
 	  printf ("error bit16_count_trailing_zeroes: \n"
 		  "bitset: %s\n unit test: %d\n bit16: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -219,7 +219,7 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit16_count_trailing_ones (us);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&us, 16, bitset_buf);
+	  bitset_string ((unsigned char *) &us, 16, bitset_buf);
 	  printf ("error bit16_count_trailing_ones: \n"
 		  "bitset: %s\n unit test: %d\n bit16: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -228,11 +228,11 @@ main (int ignore_argc, char **ignore_argv)
       /* check bit32 */
       ui = *(UINT32 *) rands;
       /* check bit count */
-      unittest_result = count_bits (&ui, 32);
+      unittest_result = count_bits ((unsigned char *) &ui, 32);
       bit_result = bit8_count_ones (ui);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&ui, 32, bitset_buf);
+	  bitset_string ((unsigned char *) &ui, 32, bitset_buf);
 	  printf ("error bit32_count_ones: \n"
 		  "bitset: %s\n unit test: %d\n bit32: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -241,7 +241,7 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit32_count_zeroes (ui);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&ui, 32, bitset_buf);
+	  bitset_string ((unsigned char *) &ui, 32, bitset_buf);
 	  printf ("error bit32_count_zeroes: \n"
 		  "bitset: %s\n unit test: %d\n bit32: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -251,7 +251,7 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit32_count_trailing_zeroes (ui);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&ui, 32, bitset_buf);
+	  bitset_string ((unsigned char *) &ui, 32, bitset_buf);
 	  printf ("error bit32_count_trailing_zeroes: \n"
 		  "bitset: %s\n unit test: %d\n bit32: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -260,7 +260,7 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit32_count_trailing_ones (ui);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&ui, 32, bitset_buf);
+	  bitset_string ((unsigned char *) &ui, 32, bitset_buf);
 	  printf ("error bit32_count_trailing_ones: \n"
 		  "bitset: %s\n unit test: %d\n bit32: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -269,11 +269,11 @@ main (int ignore_argc, char **ignore_argv)
       /* check bit64 */
       ull = *(UINT64 *) rands;
       /* check bit count */
-      unittest_result = count_bits (&ull, 64);
+      unittest_result = count_bits ((unsigned char *) &ull, 64);
       bit_result = bit64_count_ones (ull);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&ull, 64, bitset_buf);
+	  bitset_string ((unsigned char *) &ull, 64, bitset_buf);
 	  printf ("error bit64_count_ones: \n"
 		  "bitset: %s\n unit test: %d\n bit64: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -282,7 +282,7 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit64_count_zeroes (ull);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&ull, 64, bitset_buf);
+	  bitset_string ((unsigned char *) &ull, 64, bitset_buf);
 	  printf ("error bit64_count_zeroes: \n"
 		  "bitset: %s\n unit test: %d\n bit64: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -292,7 +292,7 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit64_count_trailing_zeroes (ull);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&ull, 64, bitset_buf);
+	  bitset_string ((unsigned char *) &ull, 64, bitset_buf);
 	  printf ("error bit64_count_trailing_zeroes: \n"
 		  "bitset: %s\n unit test: %d\n bit64: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
@@ -301,10 +301,12 @@ main (int ignore_argc, char **ignore_argv)
       bit_result = bit64_count_trailing_ones (ull);
       if (unittest_result != bit_result)
 	{
-	  bitset_string (&ull, 64, bitset_buf);
+	  bitset_string ((unsigned char *) &ull, 64, bitset_buf);
 	  printf ("error bit64_count_trailing_ones: \n"
 		  "bitset: %s\n unit test: %d\n bit64: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
     }
+  printf ("success");
+  return 0;
 }
