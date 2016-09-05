@@ -220,7 +220,7 @@ struct log_buffer
  * - LOGPB_APPENDREC_IN_PROGRESS => LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG
  *   prev_lsa record is overwritten with end of log record and flushed to disk.
  * - LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG => LOGPB_APPENDREC_PARTIAL_ENDED
- *   incomplete log record is now completely flushed. logpb_flush_all_append_pages is called again.
+ *   incomplete log record is now completely appended. logpb_flush_all_append_pages is called again.
  * - LOGPB_APPENDREC_PARTIAL_ENDED => LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL
  *   at the end of last flush, the prev_lsa record is restored and its page is flushed again to disk.
  * - LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL => LOGPB_APPENDREC_SUCCESS
