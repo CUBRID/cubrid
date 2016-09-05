@@ -4558,6 +4558,12 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 		     vacuum_Data.first_page == vacuum_Data.last_page ?
 		     "This is also first page." : "This is different from first page.");
 
+      if (VPID_EQ (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) (*data_page))))
+	{
+	  /* Set cursor next to last_blockid */
+	  vacuum_Data.blockid_job_cursor = vacuum_Data.last_blockid + 1;
+	}
+
       /* No next page */
       *data_page = NULL;
     }
