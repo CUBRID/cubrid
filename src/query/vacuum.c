@@ -4453,12 +4453,6 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 		      data_page->index_free -= data_page->index_unvacuumed;
 		      data_page->index_unvacuumed = 0;
 		    }
-
-		  if (VPID_EQ (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) data_page)))
-		    {
-		      /* Cursor may have remained behind. Update it. */
-		      vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[0].blockid);
-		    }
 		}
 
 	      /* Log changes. */
@@ -4466,6 +4460,15 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 				     (index - page_start_index) * sizeof (VACUUM_LOG_BLOCKID),
 				     &finished_blocks[page_start_index]);
 	      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
+
+	      if (VPID_EQ (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) data_page))
+		  && (vacuum_Data.blockid_job_cursor
+		      < VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid)))
+		{
+		  /* Cursor remained behind. Update it. */
+		  vacuum_Data.blockid_job_cursor =
+		    VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[data_page->index_unvacuumed].blockid);
+		}
 	    }
 	}
 
