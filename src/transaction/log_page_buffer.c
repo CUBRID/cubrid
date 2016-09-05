@@ -4034,24 +4034,24 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
   /* how this works:
-   * ok, so we might have to flush several pages here. if it is only one page, nothing really matters (the page is just
-   * flushed and that's it.
+   * ok, so we might have to flush several pages here. if there is only one page, the implementation is straight
+   * forward, just flush the page.
    *
-   * however, if there are more than one page, we really need to make sure that first page, where end of log record
-   * resides (or where nxio_lsa points) is flushed last! we cannot validate the new end of log record until we are sure
-   * all pages are flushed in the process.
-   * so, in the first step we will have to skip nxio_lsa page and flush all other pages. in the second step we'll flush
-   * the nxio_lsa page.
+   * however, if there are two or more pages, we really need to make sure that the first page, where previous end of log
+   * record resides (where nxio_lsa points), is flushed last! we cannot validate the new end of log record until we are
+   * sure all log pages have been flushed!
+   * so, we'll do a two-step flushing: in the first step we skip nxio_lsa page and flush all other pages. in the second
+   * step we flush the nxio_lsa page.
    *
-   * the story becomes a lot more complicated when a log entry was only partially appended (this can happen for
-   * instance when log page buffer becomes full). the problem is here, that we cannot yet validate the pages we are
-   * flushing; not all in any case. what we do here is replace the incomplete record with end of log record (in a copy
-   * of the log page, very important!... we cannot modify the entry in log page buffer). the page is flushed with
-   * overwritten log record.
-   * when the log record is fully appended (this can go even through several iterations of flush if we deal with a very
-   * large log record and log page buffer is very small), we will call again flush again (to make sure all remaining
-   * pages are flushed). at the end of flush, the original record will be written back and page will be flushed,
-   * validating new record and moving end of log after the record.
+   * the story becomes a lot more complicated when a log entry is only partially appended before flush is called. this
+   * can happen for when log page buffer becomes full. the problem here is that we cannot yet validate the flushed pages
+   * before flushing this record entirely; not all pages. what we do here is replace the incomplete record with end of
+   * log record (very important! not in log page buffer, but in a copy of the log page; that way we allow others to read
+   * the correct version from buffer). the overwritten copy is flushed to disk.
+   * when the log record is fully appended (there can be several iterations of flush if we deal with a very large log
+   * record and log page buffer is very small), we call again flush again to make sure all remaining record pages are
+   * written to disk. at the end of this flush iteration, the original record is written back and page is flushed again,
+   * validating new record.
    *
    * to see full implementation, follow references of log_Pb.partial_append.
    *
