@@ -32,19 +32,34 @@
  * 8-bit section
  */
 
+#define BYTE_ONES_2(n)      (n),            (n) + 1,              (n) + 1,              (n) + 2
+#define BYTE_ONES_4(n)      BYTE_ONES_2(n), BYTE_ONES_2((n) + 1), BYTE_ONES_2((n) + 1), BYTE_ONES_2((n) + 2)
+#define BYTE_ONES_6(n)      BYTE_ONES_4(n), BYTE_ONES_4((n) + 1), BYTE_ONES_4((n) + 1), BYTE_ONES_4((n) + 2)
+#define BYTE_ONES_8(n)      BYTE_ONES_6(n), BYTE_ONES_6((n) + 1), BYTE_ONES_6((n) + 1), BYTE_ONES_6((n) + 2)
+static const int byte_ones[256] = {
+  BYTE_ONES_8 (0)
+};
+
+#define BYTE_ZEROS_2(n)      8 - (n),         8 - (n) - 1,           8 - (n) - 1,           8 - (n) - 2
+#define BYTE_ZEROS_4(n)      BYTE_ZEROS_2(n), BYTE_ZEROS_2((n) + 1), BYTE_ZEROS_2((n) + 1), BYTE_ZEROS_2((n) + 2)
+#define BYTE_ZEROS_6(n)      BYTE_ZEROS_4(n), BYTE_ZEROS_4((n) + 1), BYTE_ZEROS_4((n) + 1), BYTE_ZEROS_4((n) + 2)
+#define BYTE_ZEROS_8(n)      BYTE_ZEROS_6(n), BYTE_ZEROS_6((n) + 1), BYTE_ZEROS_6((n) + 1), BYTE_ZEROS_6((n) + 2)
+static const int byte_zeros[256] = {
+  BYTE_ZEROS_8 (0)
+};
+
 int
 bit8_count_ones (UINT8 i)
 {
-  /* Voodoo SWAR algorithm. One explanation found here: http://www.playingwithpointers.com/swar.html */
-  i = i - ((i >> 1) & 0x55);
-  i = (i & 0x33) + ((i >> 2) & 0x33);
-  return (int) ((i + (i >> 4)) & 0x0F);
+  /* use lookup table */
+  return byte_ones[i];
 }
 
 int
 bit8_count_zeroes (UINT8 i)
 {
-  return bit8_count_ones (~i);
+  /* use lookup table */
+  return byte_zeros[i];
 }
 
 int
@@ -112,16 +127,15 @@ bit8_clear (UINT8 i, int off)
 int
 bit16_count_ones (UINT16 i)
 {
-  /* Voodoo SWAR algorithm. One explanation found here: http://www.playingwithpointers.com/swar.html */
-  i = i - ((i >> 1) & 0x5555);
-  i = (i & 0x3333) + ((i >> 2) & 0x3333);
-  return (int) (((((i + (i >> 4)) & 0x0F0F) * 0x0101) & 0xFFFF) >> 8);
+  /* use byte lookup table */
+  return byte_ones[i & 0xFF] + byte_ones[i >> 8];
 }
 
 int
 bit16_count_zeroes (UINT16 i)
 {
-  return bit16_count_ones (~i);
+  /* use byte lookup table */
+  return byte_zeros[i & 0xFF] + byte_zeros[i >> 8];
 }
 
 int
