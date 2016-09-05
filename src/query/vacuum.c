@@ -4610,6 +4610,13 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Changed first VPID from %d|%d to %d|%d.\n",
 		     save_first_vpid.volid, save_first_vpid.pageid, log_Gl.hdr.vacuum_data_first_vpid.volid,
 		     log_Gl.hdr.vacuum_data_first_vpid.pageid);
+
+      /* If cursor was in this page, advance to next page */
+      if (VPID_EQ (&save_first_vpid, &vacuum_Data.vpid_job_cursor))
+	{
+	  VPID_COPY (&vacuum_Data.vpid_job_cursor, &log_Gl.hdr.vacuum_data_first_vpid);
+	  vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS ((*data_page)->data[0].blockid);
+	}
     }
   else
     {
@@ -4658,10 +4665,15 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 
       assert (*data_page == NULL);
       /* Move *data_page to next page. */
-      if (!VPID_ISNULL (&prev_data_page->next_page))
+      assert (!VPID_ISNULL (&prev_data_page->next_page));
+      *data_page = vacuum_fix_data_page (thread_p, &prev_data_page->next_page);
+      assert (*data_page != NULL);
+
+      /* If cursor was in deallocated page, move it to next page */
+      if (VPID_EQ (&save_page_vpid, &vacuum_Data.vpid_job_cursor))
 	{
-	  *data_page = vacuum_fix_data_page (thread_p, &prev_data_page->next_page);
-	  assert (*data_page != NULL);
+	  VPID_COPY (&vacuum_Data.vpid_job_cursor, &prev_data_page->next_page);
+	  vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS ((*data_page)->data[0].blockid);
 	}
     }
 }
