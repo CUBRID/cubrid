@@ -211,6 +211,21 @@ struct log_buffer
   LOG_PAGE *logpage;		/* The actual buffered log page */
 };
 
+/* Status for append record status during logpb_flush_all_append_pages.
+ * In normal conditions, only two statuses are used:
+ * - LOGPB_APPENDREC_IN_PROGRESS (set when append record is started)
+ * - LOGPB_APPENDREC_SUCCESS (set when append record is ended).
+ *
+ * If a log record append is not ended during flush, then we'll transition the states in the following order:
+ * - LOGPB_APPENDREC_IN_PROGRESS => LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG
+ *   prev_lsa record is overwritten with end of log record and flushed to disk.
+ * - LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG => LOGPB_APPENDREC_PARTIAL_ENDED
+ *   incomplete log record is now completely flushed. logpb_flush_all_append_pages is called again.
+ * - LOGPB_APPENDREC_PARTIAL_ENDED => LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL
+ *   at the end of last flush, the prev_lsa record is restored and its page is flushed again to disk.
+ * - LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL => LOGPB_APPENDREC_SUCCESS
+ *   set the normal state of log record successful append.
+ */
 typedef enum
 {
   LOGPB_APPENDREC_IN_PROGRESS,	/* append record started */
