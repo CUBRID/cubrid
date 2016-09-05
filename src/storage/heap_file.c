@@ -898,6 +898,8 @@ static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oi
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
 static int heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p,
 						 RECDES * recdes_p, int size);
+static int heap_delete_set_overflow_delid (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, MVCCID mvcc_id,
+					   const OID * ovf_oid);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -16185,36 +16187,12 @@ heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int offset = 0;
   MVCCID mvccid;
-  OID next_version;
-  OID partition_oid;
   MVCC_REC_HEADER mvcc_header;
 
   assert (rcv->pgptr != NULL);
 
   OR_GET_MVCCID (rcv->data + offset, &mvccid);
   offset += OR_MVCCID_SIZE;
-
-  if (offset < rcv->length)
-    {
-      /* Read next version OID */
-      OR_GET_OID (rcv->data + offset, &next_version);
-      offset += OR_OID_SIZE;
-      if (offset < rcv->length)
-	{
-	  /* Read partition OID */
-	  OR_GET_OID (rcv->data + offset, &partition_oid);
-	  offset += OR_OID_SIZE;
-	}
-      else
-	{
-	  OID_SET_NULL (&partition_oid);
-	}
-    }
-  else
-    {
-      OID_SET_NULL (&next_version);
-      OID_SET_NULL (&partition_oid);
-    }
 
   assert (offset == rcv->length);
 
@@ -20595,7 +20573,6 @@ heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
 static int
 heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
-  OID overflow_oid;
   int rc;
 
   /* check input */
@@ -20608,68 +20585,22 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   assert (context->overflow_page_watcher_p->pgptr == NULL);
 
   /* MVCC info is in overflow page, we only keep and OID in home */
-  overflow_oid = *((OID *) context->home_recdes.data);
+  context->ovf_oid = *((OID *) context->home_recdes.data);
 
   /* reset overflow watcher rank */
   PGBUF_WATCHER_RESET_RANK (context->overflow_page_watcher_p, PGBUF_ORDERED_HEAP_OVERFLOW);
 
   if (is_mvcc_op)
     {
-      MVCC_REC_HEADER overflow_header;
-      VPID overflow_vpid;
       LOG_DATA_ADDR log_addr;
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
 
-      /* fix overflow page */
-      overflow_vpid.pageid = overflow_oid.pageid;
-      overflow_vpid.volid = overflow_oid.volid;
-      PGBUF_WATCHER_COPY_GROUP (context->overflow_page_watcher_p, context->home_page_watcher_p);
-      rc = pgbuf_ordered_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, context->overflow_page_watcher_p);
-      if (rc != NO_ERROR)
-	{
-	  if (rc == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, overflow_vpid.volid,
-		      overflow_vpid.pageid);
-	    }
-	  return rc;
-	}
-
-      /* check overflow page type */
-      (void) pgbuf_check_page_ptype (thread_p, context->overflow_page_watcher_p->pgptr, PAGE_OVERFLOW);
-
-      /* fetch header from overflow */
-      if (heap_get_mvcc_rec_header_from_overflow (context->overflow_page_watcher_p->pgptr, &overflow_header, NULL) !=
-	  NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      assert (or_mvcc_header_size_from_flags (overflow_header.mvcc_flag) == OR_MVCC_MAX_HEADER_SIZE);
-
-      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
-
-      /* log operation */
-      log_addr.pgptr = context->overflow_page_watcher_p->pgptr;
-      log_addr.vfid = &context->hfid.vfid;
-      log_addr.offset = overflow_oid.slotid;
-      heap_mvcc_log_delete (thread_p, MVCC_GET_CHN (&overflow_header), &log_addr, RVHF_MVCC_DELETE_OVERFLOW);
-
-      HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
-      /* adjust header; provide zero length, we don't care to make header max size since it's already done */
-      heap_delete_adjust_header (&overflow_header, mvcc_id, 0);
-
-      /* write header to overflow */
-      rc = heap_set_mvcc_rec_header_on_overflow (context->overflow_page_watcher_p->pgptr, &overflow_header);
+      /* mark old overflow record as deleted by setting the delid */
+      rc = heap_delete_set_overflow_delid (thread_p, context, mvcc_id, &context->ovf_oid);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
-
-      /* set page as dirty */
-      pgbuf_set_dirty (thread_p, context->overflow_page_watcher_p->pgptr, DONT_FREE);
-
-      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /* Home record is not changed, but page max MVCCID and vacuum status have to change. Also vacuum needs to be
        * vacuum with the location of home record (REC_RELOCATION). */
@@ -20727,7 +20658,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	}
 
       /* physical deletion of overflow record */
-      if (heap_ovf_delete (thread_p, &context->hfid, &overflow_oid, NULL) == NULL)
+      if (heap_ovf_delete (thread_p, &context->hfid, &context->ovf_oid, NULL) == NULL)
 	{
 	  return ER_FAILED;
 	}
@@ -21459,7 +21390,7 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 static int
 heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
-  OID overflow_oid;
+  OID old_overflow_oid;
   int error_code = NO_ERROR;
   bool update_old_home = true;
   LOG_LSA prev_version_lsa;
@@ -21474,7 +21405,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   assert (context->overflow_page_watcher_p != NULL);
 
   /* read OID of overflow record */
-  overflow_oid = *((OID *) context->home_recdes.data);
+  old_overflow_oid = *((OID *) context->home_recdes.data);
 
   /* fix header page */
   error_code = heap_fix_header_page (thread_p, context);
@@ -21502,7 +21433,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	}
       else
 	{
-	  if (heap_ovf_update (thread_p, &context->hfid, &overflow_oid, context->recdes_p) == NULL)
+	  if (heap_ovf_update (thread_p, &context->hfid, &old_overflow_oid, context->recdes_p) == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
@@ -21575,7 +21506,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       /* log home update operation */
       heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
 				&context->oid, &context->home_recdes, &new_home_recdes,
-				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
+				(is_mvcc_op ? RVHF_MVCC_UPDATE_OVERFLOW : RVHF_UPDATE));
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
@@ -21583,7 +21514,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       /* remove old overflow record in non mvcc */
       if (!is_mvcc_op)
 	{
-	  if (heap_ovf_delete (thread_p, &context->hfid, &overflow_oid, NULL) == NULL)
+	  if (heap_ovf_delete (thread_p, &context->hfid, &old_overflow_oid, NULL) == NULL)
 	    {
 	      assert (false);
 	      ASSERT_ERROR_AND_SET (error_code);
@@ -21596,6 +21527,16 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
 	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
 						     newhome_pg_watcher_p, &prev_version_lsa);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+
+	  /* mark old overflow record as deleted by setting the delid */
+	  /* erm...the page fixing logic is not final...maybe we can combine it with heap_update_set_prev_version to fix ovf page only once */
+	  error_code =
+	    heap_delete_set_overflow_delid (thread_p, context, logtb_get_current_mvccid (thread_p), &old_overflow_oid);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -24539,4 +24480,76 @@ heap_get_class_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes
 #endif /* !NDEBUG */
 
   return scan;
+}
+
+
+/*
+ * heap_delete_set_overflow_delid () - mvcc procedure of deleting overflow record
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * context (in)  : operation context.
+ * mvcc_id (in)  : the mvcc id that will be set as del_id.
+ * ovf_oid (in)  : overflow object identifier.
+ */
+static int
+heap_delete_set_overflow_delid (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, MVCCID mvcc_id,
+				const OID * ovf_oid)
+{
+  MVCC_REC_HEADER overflow_header;
+  VPID overflow_vpid;
+  LOG_DATA_ADDR log_addr;
+  int error_code;
+
+  /* fix overflow page */
+  overflow_vpid.pageid = ovf_oid->pageid;
+  overflow_vpid.volid = ovf_oid->volid;
+  PGBUF_WATCHER_COPY_GROUP (context->overflow_page_watcher_p, context->home_page_watcher_p);
+  error_code = pgbuf_ordered_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+				  context->overflow_page_watcher_p);
+  if (error_code != NO_ERROR)
+    {
+      if (error_code == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, overflow_vpid.volid,
+		  overflow_vpid.pageid);
+	}
+      return error_code;
+    }
+
+  /* check overflow page type */
+  (void) pgbuf_check_page_ptype (thread_p, context->overflow_page_watcher_p->pgptr, PAGE_OVERFLOW);
+
+  /* fetch header from overflow */
+  if (heap_get_mvcc_rec_header_from_overflow (context->overflow_page_watcher_p->pgptr, &overflow_header, NULL) !=
+      NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  assert (or_mvcc_header_size_from_flags (overflow_header.mvcc_flag) == OR_MVCC_MAX_HEADER_SIZE);
+
+  /* log operation */
+  log_addr.pgptr = context->overflow_page_watcher_p->pgptr;
+  log_addr.vfid = &context->hfid.vfid;
+  log_addr.offset = context->ovf_oid.slotid;
+  heap_mvcc_log_delete (thread_p, MVCC_GET_CHN (&overflow_header), &log_addr, RVHF_MVCC_DELETE_OVERFLOW);
+
+  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
+  /* adjust header; provide zero length, we don't care to make header max size since it's already done */
+  heap_delete_adjust_header (&overflow_header, mvcc_id, 0);
+
+  /* write header to overflow */
+  error_code = heap_set_mvcc_rec_header_on_overflow (context->overflow_page_watcher_p->pgptr, &overflow_header);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* set page as dirty */
+  pgbuf_set_dirty (thread_p, context->overflow_page_watcher_p->pgptr, DONT_FREE);
+
+  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+  return NO_ERROR;
 }
