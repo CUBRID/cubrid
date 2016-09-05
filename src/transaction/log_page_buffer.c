@@ -1951,12 +1951,10 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
   assert (log_pgptr != NULL);
   assert (log_pgptr->hdr.logical_pageid == logical_pageid);
-  if (logical_pageid != LOGPB_HEADER_PAGE_ID)
-    {
-      /* we allow writing page as long as they do not belong to archive area */
-      assert (logical_pageid >= LOGPB_NEXT_ARCHIVE_PAGE_ID);
-      assert (logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID);
-    }
+  /* we allow writing page as long as they do not belong to archive area */
+  assert (logical_pageid == LOGPB_HEADER_PAGE_ID
+	  || (!LOGPB_IS_ARCHIVE_PAGE (logical_pageid) && logical_pageid <= LOGPB_LAST_ACTIVE_PAGE_ID));
+
   phy_pageid = logpb_to_physical_pageid (logical_pageid);
   logpb_log ("phy_pageid in logpb_write_page_to_disk is %lld\n", (long long int) phy_pageid);
 
