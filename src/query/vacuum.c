@@ -4453,6 +4453,12 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 		      data_page->index_free -= data_page->index_unvacuumed;
 		      data_page->index_unvacuumed = 0;
 		    }
+
+		  if (VPID_EQ (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) data_page)))
+		    {
+		      /* Cursor may have remained behind. Update it. */
+		      vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS (data_page->data[0].blockid);
+		    }
 		}
 
 	      /* Log changes. */
