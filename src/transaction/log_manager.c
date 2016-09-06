@@ -9781,13 +9781,13 @@ log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
 
 
 /*
- * log_get_undo_record () - gets undo record from log lsa adress
- *   return: S_SUCCESS or ER_code
- * 
+ * log_get_undo_record () - gets undo record from log lsa address
+ *
+ * return: scan_code----to be modified
  * thread_p (in):
  * lsa_addr (in):
  * page (in):
- * record (in/out):
+ * record (out):
  */
 SCAN_CODE
 log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa, RECDES * recdes)

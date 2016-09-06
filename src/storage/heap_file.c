@@ -21534,9 +21534,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	    }
 
 	  /* mark old overflow record as deleted by setting the delid */
-	  /* erm...the page fixing logic is not final...maybe we can combine it with heap_update_set_prev_version to fix ovf page only once */
-	  error_code =
-	    heap_delete_set_overflow_delid (thread_p, context, logtb_get_current_mvccid (thread_p), &old_overflow_oid);
+	  error_code = heap_delete_set_overflow_delid (thread_p, context, logtb_get_current_mvccid (thread_p), 
+						       &old_overflow_oid);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -24193,8 +24192,8 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
   else if (recdes.type == REC_BIGONE)
     {
       forward_oid = *((OID *) recdes.data);
-
       VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
+
       PGBUF_INIT_WATCHER (&overflow_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
       PGBUF_WATCHER_COPY_GROUP (&overflow_pg_watcher, home_pg_watcher);
       if (pgbuf_ordered_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &overflow_pg_watcher) != NO_ERROR)
@@ -24505,7 +24504,7 @@ heap_delete_set_overflow_delid (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT 
   overflow_vpid.pageid = ovf_oid->pageid;
   overflow_vpid.volid = ovf_oid->volid;
   PGBUF_WATCHER_COPY_GROUP (context->overflow_page_watcher_p, context->home_page_watcher_p);
-  error_code = pgbuf_ordered_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+  error_code = pgbuf_ordered_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, 
 				  context->overflow_page_watcher_p);
   if (error_code != NO_ERROR)
     {

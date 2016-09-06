@@ -3085,10 +3085,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  heap_object_oid.volid = log_record_data.volid;
 	  heap_object_oid.slotid = heap_rv_remove_flags_from_offset (log_record_data.offset);
 
-	  /* treat differently overflow records resulted from updates */
+	  /* treat differently overflow records remained from updates */
 	  if (log_record_data.rcvindex == RVHF_MVCC_UPDATE_OVERFLOW)
 	    {
-	      /* only the old OVF record must be removed; can do this here to avoid complications */
+	      /* the old overflow record from update can be reached only following the link from the undo record;
+	       * vacuuming can not be done with the BIGONE mechanism, as the 'home' record does not exist */
 
 	      RECDES forward_rec;
 	      OID ovf_oid;
@@ -3106,7 +3107,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	      if (error_code != NO_ERROR)
 		{
 		  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-				 "VACUUM ERROR: Failed to vacuum updated ovf record %d|%d, error_code=%d.\n",
+				 "VACUUM ERROR: Failed to vacuum update ovf record %d|%d, error_code=%d.\n",
 				 ovf_oid.volid, ovf_oid.pageid, error_code);
 
 		  assert_release (false);
@@ -3114,6 +3115,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		  error_code = NO_ERROR;
 		  /* Release should not stop. Continue. */
 		}
+
+	      /* record should be vacuumed at this point; continue to next record */
 	      continue;
 	    }
 
@@ -7476,9 +7479,14 @@ vacuum_notify_need_flush (int need_flush)
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
  * home_oid (in)         : Home record OID.
- * ovf_oid (in)          : Overflow record OID..
+ * ovf_oid (in)          : Overflow record OID.
  * threshold_mvccid (in) : Threshold MVCCID used to vacuum.
  * was_interrupted (in)  : True if same job was executed and interrupted.
+ *
+ * Note: if job was interrupted it is expected to find:
+ *    - deallocated pages (already vacuumed);
+ *    - not overflow pages (pages have been reallocated for different purpose) - must fix page to check;
+ *    - other overflow record that we expect (record have been overwritten) - should fail the visiblity check.
  */
 static int
 vacuum_heap_ovf_directly (THREAD_ENTRY * thread_p, OID * home_oid, OID * ovf_oid, MVCCID threshold_mvccid,
@@ -7487,14 +7495,10 @@ vacuum_heap_ovf_directly (THREAD_ENTRY * thread_p, OID * home_oid, OID * ovf_oid
   VACUUM_HEAP_HELPER helper;
   OID class_oid;
   VPID forward_vpid;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR;  
 
   VACUUM_PERF_HEAP_START (thread_p, &helper);
-
-  /* if job was interrupted it is expected to find:
-   *    deallocated pages (already vacuumed);
-   *    not overflow pages (pages have been reallocated for different purpose) - must fix page to check;
-   *    other overflow record that we expect (record have been overwritten) - should fail the visiblity check. */
+  
   VPID_GET_FROM_OID (&forward_vpid, ovf_oid);
   if (was_interrupted)
     {
@@ -7594,6 +7598,7 @@ vacuum_heap_ovf_directly (THREAD_ENTRY * thread_p, OID * home_oid, OID * ovf_oid
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
 		     "VACUUM ERROR: Failed to get MVCC header from overflow page %d|%d.", forward_vpid.volid,
 		     forward_vpid.pageid);
+      pgbuf_unfix_and_init (thread_p, helper.forward_page);
       return error_code;
     }
 
@@ -7640,7 +7645,6 @@ vacuum_heap_ovf_directly (THREAD_ENTRY * thread_p, OID * home_oid, OID * ovf_oid
 
   return error_code;
 }
-
 
 #if !defined (NDEBUG)
 /*
