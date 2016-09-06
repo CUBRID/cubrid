@@ -15998,8 +15998,6 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   assert (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID));
   MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID);
-  /* handle DEL_ID  */
-  MVCC_SET_DELID (&mvcc_rec_header, MVCCID_NULL);
 
   if (or_mvcc_set_header (&rebuild_record, &mvcc_rec_header) != NO_ERROR)
     {
