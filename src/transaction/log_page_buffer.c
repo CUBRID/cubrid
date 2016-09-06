@@ -4837,7 +4837,6 @@ static void
 logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 {
   LOG_RECORD_HEADER *log_rec;	/* Log record */
-  LOG_PAGEID initial_pageid;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -4852,7 +4851,6 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_start_append");
     }
 
-  initial_pageid = log_Gl.hdr.append_lsa.pageid;
   assert (log_Gl.append.log_pgptr != NULL);
 
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
