@@ -7495,10 +7495,10 @@ vacuum_heap_ovf_directly (THREAD_ENTRY * thread_p, OID * home_oid, OID * ovf_oid
   VACUUM_HEAP_HELPER helper;
   OID class_oid;
   VPID forward_vpid;
-  int error_code = NO_ERROR;  
+  int error_code = NO_ERROR;
 
   VACUUM_PERF_HEAP_START (thread_p, &helper);
-  
+
   VPID_GET_FROM_OID (&forward_vpid, ovf_oid);
   if (was_interrupted)
     {

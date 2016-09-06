@@ -21534,7 +21534,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	    }
 
 	  /* mark old overflow record as deleted by setting the delid */
-	  error_code = heap_delete_set_overflow_delid (thread_p, context, logtb_get_current_mvccid (thread_p), 
+	  error_code = heap_delete_set_overflow_delid (thread_p, context, logtb_get_current_mvccid (thread_p),
 						       &old_overflow_oid);
 	  if (error_code != NO_ERROR)
 	    {
@@ -24504,7 +24504,7 @@ heap_delete_set_overflow_delid (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT 
   overflow_vpid.pageid = ovf_oid->pageid;
   overflow_vpid.volid = ovf_oid->volid;
   PGBUF_WATCHER_COPY_GROUP (context->overflow_page_watcher_p, context->home_page_watcher_p);
-  error_code = pgbuf_ordered_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, 
+  error_code = pgbuf_ordered_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 				  context->overflow_page_watcher_p);
   if (error_code != NO_ERROR)
     {
