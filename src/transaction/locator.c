@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "memory_alloc.h"
@@ -572,7 +573,7 @@ locator_free_copy_area (LC_COPYAREA * copyarea)
  *              enough to hold the packed data.
  */
 char *
-locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc)
+locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *desc, int desc_len)
 {
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
@@ -580,6 +581,9 @@ locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *d
   int i;
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
+
+  assert (num_objs <= mobjs->num_objs);
+
   ptr = desc;
   for (i = 0, obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs); i < num_objs;
        i++, obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj))
@@ -591,6 +595,8 @@ locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *d
       ptr = or_pack_oid (ptr, &obj->oid);
       ptr = or_pack_int (ptr, obj->length);
       ptr = or_pack_int (ptr, obj->offset);
+
+      assert (CAST_BUFLEN (ptr - desc) <= desc_len);
     }
   return ptr;
 }
@@ -660,7 +666,7 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *conten
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
   int offset = -1;
-  int i;
+  int i, len;
   char *end;
 
   *contents_ptr = copyarea->mem;
@@ -669,7 +675,7 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *conten
   *desc_length = DB_ALIGN (LC_AREA_ONEOBJ_PACKED_SIZE, MAX_ALIGNMENT) * mobjs->num_objs;
   *desc_ptr = (char *) malloc (*desc_length);
 
-  if (!*desc_ptr)
+  if (*desc_ptr == NULL)
     {
       *desc_length = 0;
       return 0;
@@ -703,8 +709,11 @@ locator_send_copy_area (LC_COPYAREA * copyarea, char **contents_ptr, int *conten
 	}
     }
 
-  end = locator_pack_copy_area_descriptor (mobjs->num_objs, copyarea, *desc_ptr);
-  *desc_length = CAST_BUFLEN (end - *desc_ptr);
+  end = locator_pack_copy_area_descriptor (mobjs->num_objs, copyarea, *desc_ptr, *desc_length);
+
+  len = CAST_BUFLEN (end - *desc_ptr);
+  assert (len <= *desc_length);
+  *desc_length = len;
 
   return mobjs->num_objs;
 }

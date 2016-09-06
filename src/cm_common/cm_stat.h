@@ -286,7 +286,6 @@ extern "C"
 
     /* Execution statistics for the log manager */
     unsigned int log_num_fetches;
-    unsigned int log_num_fetch_ioreads;
     unsigned int log_num_ioreads;
     unsigned int log_num_iowrites;
     unsigned int log_num_appendrecs;
@@ -295,6 +294,7 @@ extern "C"
     unsigned int log_num_end_checkpoints;
     unsigned int log_num_wals;
     unsigned int log_num_replacements;
+    unsigned int log_num_iowrites_for_replacement;
 
     /* Execution statistics for the lock manager */
     unsigned int lk_num_acquired_on_pages;

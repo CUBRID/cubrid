@@ -749,11 +749,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 No se puede abrir archivo de salida '%1$s'\n
 60 \
 diagdb: Imprimir una base de datos.\n\
 uso: %1$s diagdb [OPTION] database-name\n\
 \n\
 opciones validas:\n\
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n\
+      --emergency              emergency restart; default: none\n\
   -d, --dump-type=TYPE         TIPO de imprimir\n\
                                -1 imprimir todo\n\
                                 1 imprimir tablas de archivo\n\

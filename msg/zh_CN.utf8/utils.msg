@@ -749,11 +749,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 无法打开输出文件 '%1$s'\n
 60 \
 diagdb: 转储一个数据库.\n\
 用法: %1$s diagdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
+  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n\
+      --emergency              emergency restart; default: none\n\
   -d, --dump-type=TYPE         转储类型\n\
                                -1 转储所有\n\
                                 1 转储文件表\n\
