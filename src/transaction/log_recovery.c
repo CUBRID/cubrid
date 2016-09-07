@@ -4513,7 +4513,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	    }
 	}
 
-      append_pgptr = logpb_create (thread_p, log_Gl.hdr.fpageid);
+      append_pgptr = logpb_create_page (thread_p, log_Gl.hdr.fpageid);
       if (append_pgptr == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
