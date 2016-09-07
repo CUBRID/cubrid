@@ -374,7 +374,7 @@ struct mvcc_rec_header
   LOG_LSA prev_version_lsa;	/* log address of previous version */
 };
 #define MVCC_REC_HEADER_INITIALIZER \
-{ 0, 0, MVCCID_NULL,  MVCCID_NULL, NULL_CHN, LSA_INITIALIZER }
+{ 0, 0, NULL_CHN, MVCCID_NULL,  MVCCID_NULL, LSA_INITIALIZER }
 
 typedef struct lorecdes LORECDES;	/* Work area descriptor */
 struct lorecdes
