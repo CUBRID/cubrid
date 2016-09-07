@@ -4137,9 +4137,9 @@ static void
 perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 {
   UINT64 *statvalp = NULL;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   int tran_index;
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
 
@@ -4147,7 +4147,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (statvalp, amount);
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
@@ -4157,7 +4157,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
       statvalp = pstat_Global.tran_stats[tran_index] + offset;
       (*statvalp) += amount;
     }
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE || SA_MODE */
 }
 
 /*
@@ -4200,9 +4200,9 @@ static void
 perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
 {
   UINT64 *statvalp = NULL;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   int tran_index;
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
 
@@ -4210,7 +4210,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_TAS_64 (statvalp, statval);
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
@@ -4220,7 +4220,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
       statvalp = pstat_Global.tran_stats[tran_index] + offset;
       (*statvalp) = statval;
     }
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE || SA_MODE */
 }
 
 /*
@@ -4267,16 +4267,16 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   /* Update global statistics */
   UINT64 *statvalp = NULL;
   UINT64 max_time;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   int tran_index;
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
 
   /* Update global statistics. */
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1);
-  ATOMIC_TAS_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
+  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
   do
     {
       max_time = ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), 0);
@@ -4289,7 +4289,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
   /* Average is not computed here. */
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
@@ -4306,7 +4306,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 	}
       /* Average is not computed here. */
     }
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE || SA_MODE */
 }
 
 /*
@@ -4752,8 +4752,8 @@ perfmon_allocate_packed_values_buffer (void)
 /*
  * perfmon_copy_values () -
  *
- * dest(in/out): destination buffer
- * source(in): source buffer
+ * dest (in/out): destination buffer
+ * source (in): source buffer
  * 
  */
 void
@@ -4763,12 +4763,12 @@ perfmon_copy_values (UINT64 * dest, UINT64 * src)
 }
 
 /*
- * perfmon_pack_stats -
+ * perfmon_pack_stats - Pack the statistic values in the buffer
  *
  * return:
  *
- *   buf(in):
- *   stats(in):
+ *   buf (in):
+ *   stats (in):
  *
  *
  */
@@ -4790,12 +4790,12 @@ perfmon_pack_stats (char *buf, UINT64 * stats)
 }
 
 /*
- * perfmon_unpack_stats -
+ * perfmon_unpack_stats - Unpack the values from the buffer in the statistics array
  *
  * return:
  *
- *   buf(in):
- *   stats(in):
+ *   buf (in):
+ *   stats (out):
  *
  */
 char *
