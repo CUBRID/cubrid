@@ -669,7 +669,7 @@
       }	\
     else \
       {	\
-	OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE, (valp)); \
+	OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE, (valp)); \
       }	\
   } while (0)
 
@@ -677,8 +677,8 @@
   ((((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) == 0) \
     ? MVCCID_NULL \
     : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
-       ? (OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE, (valp))) \
-       : ((OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE, (valp))))))
+       ? (OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE +  OR_INT_SIZE + OR_MVCCID_SIZE, (valp))) \
+       : ((OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE, (valp))))))
 
 #define OR_GET_MVCC_REPID(ptr)	\
   ((OR_GET_INT(((char *) (ptr)) + OR_REP_OFFSET)) \
@@ -686,8 +686,7 @@
 
 /* in MVCC, chn follow by rep_id, ins_id or del_id depending by flags */
 #define OR_GET_MVCC_CHN_OFFSET(mvcc_flags) \
-  (OR_REP_OFFSET + OR_MVCC_REP_SIZE + ((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID ? OR_MVCCID_SIZE : 0) \
-  + (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0))
+  (OR_REP_OFFSET + OR_MVCC_REP_SIZE)
 
 #define OR_GET_MVCC_CHN(ptr, mvcc_flags) \
   (OR_GET_INT ((char *) (ptr) +  OR_GET_MVCC_CHN_OFFSET(mvcc_flags)))

@@ -368,13 +368,13 @@ struct mvcc_rec_header
 {
   INT32 mvcc_flag:8;		/* MVCC flags */
   INT32 repid:24;		/* representation id */
+  int chn;			/* cache coherency number */
   MVCCID mvcc_ins_id;		/* MVCC insert id */
   MVCCID mvcc_del_id;		/* MVCC delete id */
-  int chn;			/* cache coherency number */
   LOG_LSA prev_version_lsa;	/* log address of previous version */
 };
 #define MVCC_REC_HEADER_INITIALIZER \
-  { 0, 0, MVCCID_NULL,  MVCCID_NULL, MVCCID_NULL, LSA_INITIALIZER }
+{ 0, 0, MVCCID_NULL,  MVCCID_NULL, NULL_CHN, LSA_INITIALIZER }
 
 typedef struct lorecdes LORECDES;	/* Work area descriptor */
 struct lorecdes
