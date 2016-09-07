@@ -3738,21 +3738,6 @@ fetch_peek_arith_end:
   assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
 	  || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
 
-  if (peek_left != NULL && peek_left->need_clear == true)
-    {
-      pr_clear_value (peek_left);
-    }
-
-  if (peek_right != NULL && peek_right->need_clear == true)
-    {
-      pr_clear_value (peek_right);
-    }
-
-  if (peek_third != NULL && peek_third->need_clear == true)
-    {
-      pr_clear_value (peek_third);
-    }
-
 #if !defined(NDEBUG)
   switch (arithptr->opcode)
     {
