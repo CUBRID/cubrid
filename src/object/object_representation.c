@@ -664,9 +664,9 @@ or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 }
 
 /*
- * or_mvcc_get_delid_chn () - Get MVCC delete id or chn
+ * or_mvcc_get_delid () - Get MVCC delid
  *
- * return	   : MVCC delete id or chn
+ * return	   : MVCC delid
  * buf (in/out)	   : or buffer
  * mvcc_falgs(in)  : MVCC flags
  * error(out): NO_ERROR or error code
@@ -698,6 +698,14 @@ or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
   return delid;
 }
 
+/*
+ * or_mvcc_get_chn () - Get MVCC chn
+ *
+ * return	   : MVCC chn
+ * buf (in/out)	   : or buffer
+ * mvcc_falgs(in)  : MVCC flags
+ * error(out): NO_ERROR or error code
+ */
 STATIC_INLINE int
 or_mvcc_get_chn (OR_BUF * buf, int *error)
 {
@@ -741,7 +749,6 @@ or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
     }
 
   return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
-
 }
 STATIC_INLINE int
 or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
@@ -750,7 +757,6 @@ or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   return or_put_int (buf, mvcc_rec_header->chn);
-
 }
 
 /*
@@ -935,14 +941,12 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
     }
 
   error = or_mvcc_set_delid (buf, mvcc_rec_header);
-
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
 
   error = or_mvcc_set_chn (buf, mvcc_rec_header);
-
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -8281,9 +8285,9 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
       return ER_FAILED;
     }
 
-  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE +
-		+(((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
+  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0)) + OR_INT_SIZE;
 
   memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
 
