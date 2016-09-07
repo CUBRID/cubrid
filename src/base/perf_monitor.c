@@ -4059,8 +4059,8 @@ perfmon_is_perf_tracking (void)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * psid (in)	 : Amount to add.
- * amount (in)	 : Statistic ID.
+ * psid (in)	 : Statistic ID.
+ * amount (in)	 : Amount to add.
  */
 void
 perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
@@ -4088,9 +4088,9 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * psid (in)	 : Amount to add.
- * offset (in): offset at which to add the amount
- * amount (in)	 : Statistic ID.
+ * psid (in)	 : Statistic ID.
+ * offset (in)   : offset at which to add the amount
+ * amount (in)	 : Amount to add.
  */
 void
 perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
@@ -4130,8 +4130,8 @@ perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * amount (in)	 : Amount to add.
  * offset (in)	 : Offset to statistics value.
+ * amount (in)	 : Amount to add.
  */
 static void
 perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
@@ -4165,8 +4165,8 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * psid (in)	 : New statistic value.
- * statval (in) : Statistic ID.
+ * psid (in)	 : Statistic ID.
+ * statval (in)  : New statistic value.
  */
 void
 perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
@@ -4193,8 +4193,8 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * offset (in)   : New statistic value.
- * statval (in)	 : Offset to statistic value.
+ * offset (in)   : Offset to statistic value.
+ * statval (in)	 : New statistic value.
  */
 static void
 perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
@@ -4256,8 +4256,8 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
- * offset (in)   : Time difference to add to timer.
- * timediff (in) : Offset to timer values.
+ * offset (in)   : Offset to timer values.
+ * timediff (in) : Time difference to add to timer.
  *
  * NOTE: There will be three values modified: counter, total time and max time.
  */
@@ -4310,150 +4310,242 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 }
 
 /*
- * Complex statistics sections.
+ * f_load_Num_data_page_fix_ext () - Get the number of values for Num_data_page_fix_ext statistic
+ * 
  */
-
-/* Page buffer section.
- */
-
-/* All page buffer statistics:
- *
- * fix, acquire_time, lock_time, hold_time - matrix based on module, page_type, page_found_mode, latch_mode, cond_type.
- * aggregated: total_fix, total_acquire_time, total_lock_time, total_hold_time, total_fix_vacuum, total_fix_vacuum_hit.
- *
- * unfix - matrix based on module, page_type, buf_dirty, dirtied_by_holder, holder_latch
- * aggregated - total_unfix, tot_unfix_vacuum, total_unfix_vacuum_dirty
- *
- * promote counter, timer - matrix based on page_type, promote_cond, holder_latch, success
- *
- */
-
 int
 f_load_Num_data_page_fix_ext (void)
 {
   return PERF_PAGE_FIX_COUNTERS;
 }
 
+/*
+ * f_load_Num_data_page_promote_ext () - Get the number of values for Num_data_page_promote_ext statistic
+ * 
+ */
 int
 f_load_Num_data_page_promote_ext (void)
 {
   return PERF_PAGE_PROMOTE_COUNTERS;
 }
 
+/*
+ * f_load_Num_data_page_promote_time_ext () - Get the number of values for Num_data_page_promote_time_ext statistic
+ * 
+ */
 int
 f_load_Num_data_page_promote_time_ext (void)
 {
   return PERF_PAGE_PROMOTE_COUNTERS;
 }
 
+/*
+ * f_load_Num_data_page_unfix_ext () - Get the number of values for Num_data_page_unfix_ext statistic
+ * 
+ */
 int
 f_load_Num_data_page_unfix_ext (void)
 {
   return PERF_PAGE_UNFIX_COUNTERS;
 }
 
+/*
+ * f_load_Time_data_page_lock_acquire_time () - Get the number of values for Time_data_page_lock_acquire_time statistic
+ * 
+ */
 int
 f_load_Time_data_page_lock_acquire_time (void)
 {
   return PERF_PAGE_LOCK_TIME_COUNTERS;
 }
 
+/*
+ * f_load_Time_data_page_hold_acquire_time () - Get the number of values for Time_data_page_hold_acquire_time statistic
+ * 
+ */
 int
 f_load_Time_data_page_hold_acquire_time (void)
 {
   return PERF_PAGE_HOLD_TIME_COUNTERS;
 }
 
+/*
+ * f_load_Time_data_page_fix_acquire_time () - Get the number of values for Time_data_page_fix_acquire_time statistic
+ * 
+ */
 int
 f_load_Time_data_page_fix_acquire_time (void)
 {
   return PERF_PAGE_FIX_TIME_COUNTERS;
 }
 
+/*
+ * f_load_Num_mvcc_snapshot_ext () - Get the number of values for Num_mvcc_snapshot_ext statistic
+ * 
+ */
 int
 f_load_Num_mvcc_snapshot_ext (void)
 {
   return PERF_MVCC_SNAPSHOT_COUNTERS;
 }
 
+/*
+ * f_load_Time_obj_lock_acquire_time () - Get the number of values for Time_obj_lock_acquire_time statistic
+ * 
+ */
 int
 f_load_Time_obj_lock_acquire_time (void)
 {
   return PERF_OBJ_LOCK_STAT_COUNTERS;
 }
 
+/*
+ * f_load_Time_get_snapshot_acquire_time () - Get the number of values for Time_get_snapshot_acquire_time statistic
+ * 
+ */
 int
 f_load_Time_get_snapshot_acquire_time (void)
 {
   return PERF_MODULE_CNT;
 }
 
+/*
+ * f_load_Count_get_snapshot_retry () - Get the number of values for Count_get_snapshot_retry statistic
+ * 
+ */
 int
 f_load_Count_get_snapshot_retry (void)
 {
   return PERF_MODULE_CNT;
 }
 
+/*
+ * f_load_Time_tran_complete_time () - Get the number of values for Time_tran_complete_time statistic
+ * 
+ */
 int
 f_load_Time_tran_complete_time (void)
 {
   return PERF_MODULE_CNT;
 }
 
+/*
+ * f_load_Time_get_oldest_mvcc_acquire_time () - Get the number of values for Time_get_oldest_mvcc_acquire_time 
+ *						 statistic
+ * 
+ */
 int
 f_load_Time_get_oldest_mvcc_acquire_time (void)
 {
   return PERF_MODULE_CNT;
 }
 
+/*
+ * f_load_Count_get_oldest_mvcc_retry () - Get the number of values for Count_get_oldest_mvcc_retry statistic
+ * 
+ */
 int
 f_load_Count_get_oldest_mvcc_retry (void)
 {
   return PERF_MODULE_CNT;
 }
 
+/*
+ * f_dump_in_file_Num_data_page_fix_ext () - Write in file the values for Num_data_page_fix_ext statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_fix_page_array_stat (f, stat_vals);
 }
 
+/*
+ * f_dump_in_file_Num_data_page_promote_ext () - Write in file the values for Num_data_page_promote_ext statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_promote_page_array_stat (f, stat_vals);
 }
 
+/*
+ * f_dump_in_file_Num_data_page_promote_time_ext () - Write in file the values for Num_data_page_promote_time_ext 
+ *						      statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_promote_page_array_stat (f, stat_vals);
 }
 
+/*
+ * f_dump_in_file_Num_data_page_unfix_ext () - Write in file the values for Num_data_page_unfix_ext 
+ *					       statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_unfix_page_array_stat (f, stat_vals);
 }
 
+/*
+ * f_dump_in_file_Time_data_page_lock_acquire_time () - Write in file the values for Time_data_page_lock_acquire_time 
+ *					                statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_lock_time_array_stat (f, stat_vals);
 }
 
+/*
+ * f_dump_in_file_Time_data_page_hold_acquire_time () - Write in file the values for Time_data_page_hold_acquire_time 
+ *					                statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_hold_time_array_stat (f, stat_vals);
 }
 
+/*
+ * f_dump_in_file_Time_data_page_fix_acquire_time () - Write in file the values for Time_data_page_fix_acquire_time 
+ *					               statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_fix_time_array_stat (f, stat_vals);
 }
 
+/*
+ * f_dump_in_file_Num_mvcc_snapshot_ext () - Write in file the values for Num_mvcc_snapshot_ext
+ *					     statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
@@ -4462,6 +4554,13 @@ f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 #endif
 }
 
+/*
+ * f_dump_in_file_Time_obj_lock_acquire_time () - Write in file the values for Time_obj_lock_acquire_time
+ *						  statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
 void
 f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
@@ -4470,48 +4569,115 @@ f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 #endif
 }
 
+/*
+ * f_dump_in_buffer_Num_data_page_fix_ext () - Write to a buffer the values for Num_data_page_fix_ext
+ *					       statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Num_data_page_fix_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_fix_page_array_stat (stat_vals, s, remaining_size);
 }
 
+/*
+ * f_dump_in_buffer_Num_data_page_promote_ext () - Write to a buffer the values for Num_data_page_promote_ext
+ *						   statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Num_data_page_promote_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
 }
 
+/*
+ * f_dump_in_buffer_Num_data_page_promote_time_ext () - Write to a buffer the values for Num_data_page_promote_time_ext
+ *						        statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Num_data_page_promote_time_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
 }
 
+/*
+ * f_dump_in_buffer_Num_data_page_unfix_ext () - Write to a buffer the values for Num_data_page_unfix_ext
+ *						 statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Num_data_page_unfix_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_unfix_page_array_stat (stat_vals, s, remaining_size);
 }
 
+/*
+ * f_dump_in_buffer_Time_data_page_lock_acquire_time () - Write to a buffer the values for 
+ *							  Time_data_page_lock_acquire_time statistic
+ *
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Time_data_page_lock_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_lock_time_array_stat (stat_vals, s, remaining_size);
 }
 
+/*
+ * f_dump_in_buffer_Time_data_page_hold_acquire_time () - Write to a buffer the values for
+ *							  Time_data_page_hold_acquire_time statistic
+ *
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Time_data_page_hold_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_hold_time_array_stat (stat_vals, s, remaining_size);
 }
 
+/*
+ * f_dump_in_buffer_Time_data_page_fix_acquire_time () - Write to a buffer the values for
+ *							 Time_data_page_fix_acquire_time statistic
+ *
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Time_data_page_fix_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_fix_time_array_stat (stat_vals, s, remaining_size);
 }
 
+/*
+ * f_dump_in_buffer_Num_mvcc_snapshot_ext () - Write to a buffer the values for Num_mvcc_snapshot_ext
+ *					       statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
@@ -4520,6 +4686,14 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char *s, const UINT64 * stat_vals, int *
 #endif
 }
 
+/*
+ * f_dump_in_buffer_Time_obj_lock_acquire_time () - Write to a buffer the values for Time_obj_lock_acquire_time
+ *						    statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
 void
 f_dump_in_buffer_Time_obj_lock_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
@@ -4528,12 +4702,20 @@ f_dump_in_buffer_Time_obj_lock_acquire_time (char *s, const UINT64 * stat_vals, 
 #endif
 }
 
+/*
+ * perfmon_get_number_of_statistic_values () - Get the number of entries in the statistic array
+ * 
+ */
 int
 perfmon_get_number_of_statistic_values (void)
 {
   return pstat_Global.n_stat_values;
 }
 
+/*
+ * perfmon_allocate_values () - Allocate PERFMON_VALUES_MEMSIZE bytes 
+ * 
+ */
 UINT64 *
 perfmon_allocate_values (void)
 {
@@ -4548,6 +4730,10 @@ perfmon_allocate_values (void)
   return vals;
 }
 
+/*
+ * perfmon_allocate_packed_values_buffer () - Allocate PERFMON_VALUES_MEMSIZE bytes and verify alignment
+ * 
+ */
 char *
 perfmon_allocate_packed_values_buffer (void)
 {
@@ -4563,6 +4749,13 @@ perfmon_allocate_packed_values_buffer (void)
   return buf;
 }
 
+/*
+ * perfmon_copy_values () -
+ *
+ * dest(in/out): destination buffer
+ * source(in): source buffer
+ * 
+ */
 void
 perfmon_copy_values (UINT64 * dest, UINT64 * src)
 {
