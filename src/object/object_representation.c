@@ -731,7 +731,7 @@ or_mvcc_get_chn (OR_BUF * buf, int *error)
 }
 
 /*
- * or_mvcc_set_delid_chn () - Set MVCC delete id or chn
+ * or_mvcc_set_delid () - Set MVCC delete id
  *
  * return	      : error code 
  * buf (in/out)	      : or buffer 
@@ -750,6 +750,14 @@ or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 
   return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
 }
+
+/*
+ * or_mvcc_set_chn () - Set MVCC chn
+ *
+ * return	      : error code 
+ * buf (in/out)	      : or buffer 
+ * mvcc_rec_header(in): MVCC record header
+ */
 STATIC_INLINE int
 or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
