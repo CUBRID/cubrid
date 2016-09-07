@@ -6311,9 +6311,21 @@ insert_value_list
 		DBG_PRINT}}
 	| insert_value
 		{{
+			PT_NODE *node = $1;
+			char *append_str = "ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt";
+			
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			if (node && node->node_type == PT_VALUE
+			    && (node->type_enum == PT_TYPE_VARCHAR
+				|| node->type_enum == PT_TYPE_CHAR))
+			{
+			    node->info.value.data_value.str =
+			    pt_append_bytes (this_parser, node->info.value.data_value.str, append_str,
+					     strlen (append_str));
+			  
+			}			
 
 		DBG_PRINT}}
 	;

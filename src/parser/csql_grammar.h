@@ -682,7 +682,7 @@ extern int yybuffer_pos;
 #include "csql_grammar_scan.h"
 #include "system_parameter.h"
 #define JP_MAXNAME 256
-#if defined(WINDOWS) && defined(_MSC_VER) && _MSC_VER < 1900
+#if defined(WINDOWS)
 #define snprintf _sprintf_p
 #endif /* WINDOWS */
 #include "memory_alloc.h"
