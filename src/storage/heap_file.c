@@ -18567,13 +18567,12 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
 	}
       else
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
 	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
+      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
@@ -18645,13 +18644,12 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
 	}
       else
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
 	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
+      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header, mvcc_header.mvcc_flag));
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
@@ -18892,7 +18890,6 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 
   assert (ovf_page != NULL);
   assert (mvcc_header != NULL);
-  assert (MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID));
 
   ovf_recdes.data = overflow_get_first_page_data (ovf_page);
   ovf_recdes.area_size = ovf_recdes.length = OR_HEADER_SIZE (ovf_recdes.data);
@@ -18905,6 +18902,13 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
       /* Add MVCCID_ALL_VISIBLE for insert MVCCID */
       MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_INSID);
       MVCC_SET_INSID (mvcc_header, MVCCID_ALL_VISIBLE);
+    }
+
+  if (!MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID))
+    {
+      /* Add MVCCID_ALL_VISIBLE for insert MVCCID */
+      MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_DELID);
+      MVCC_SET_DELID (mvcc_header, MVCCID_NULL);
     }
 
   /* Safe guard */
