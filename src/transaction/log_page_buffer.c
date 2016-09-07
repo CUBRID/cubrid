@@ -6784,11 +6784,15 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   if (log_max_archives == INT_MAX)
     {
-      return deleted_count;
+      return 0;			/* none is deleted */
     }
 
   /* Get first log pageid needed for vacuum before locking LOG_CS. */
   vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  if (vacuum_first_pageid == NULL_PAGEID)
+    {
+      return 0;			/* none is deleted */
+    }
 
   LOG_CS_ENTER (thread_p);
 
@@ -6799,7 +6803,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
       if (min_copied_pageid == NULL_PAGEID)
 	{
 	  LOG_CS_EXIT (thread_p);
-	  return deleted_count;
+	  return 0;		/* none is deleted */
 	}
 
       if (logpb_is_page_in_archive (min_copied_pageid))
@@ -6808,7 +6812,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	  if (min_copied_arv_num == -1)
 	    {
 	      LOG_CS_EXIT (thread_p);
-	      return deleted_count;
+	      return 0;		/* none is deleted */
 	    }
 	  else if (min_copied_arv_num > 1)
 	    {
