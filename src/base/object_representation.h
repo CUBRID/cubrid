@@ -46,7 +46,7 @@
 #include "sha1.h"
 
 /*
- * NUMERIC TYPE SIZES
+ * NUMERIC TYPE SIZESOR_REP_OFFSET    
  *
  * These constants define the byte sizes for the fundamental
  * primitives types as represented in memory and on disk.
@@ -601,6 +601,21 @@
 #define OR_REP_OFFSET    0
 #define OR_MVCC_REP_SIZE 4
 
+#define OR_MVCC_FLAG_OFFSET OR_REP_OFFSET
+#define OR_MVCC_FLAG_SIZE OR_MVCC_REP_SIZE
+
+#define OR_CHN_OFFSET (OR_REP_OFFSET + OR_MVCC_REP_SIZE)
+#define OR_CHN_SIZE 4
+
+#define OR_MVCC_INSERT_ID_OFFSET (OR_CHN_OFFSET + OR_CHN_SIZE)
+#define OR_MVCC_INSERT_ID_SIZE 8
+
+#define OR_MVCC_DELETE_ID_OFFSET (OR_MVCC_INSERT_ID_OFFSET + OR_MVCC_INSERT_ID_SIZE)
+#define OR_MVCC_DELETE_ID_SIZE 8
+
+#define OR_MVCC_PREV_VERSION_LSA_OFFSET (OR_MVCC_DELETE_ID_OFFSET + OR_MVCC_DELETE_ID_SIZE)
+#define OR_MVCC_PREV_VERSION_LSA_SIZE 8
+
 /* MVCC */
 #define OR_MVCCID_SIZE			OR_BIGINT_SIZE
 #define OR_PUT_MVCCID			OR_PUT_BIGINT
@@ -669,7 +684,7 @@
       }	\
     else \
       {	\
-	OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE, (valp)); \
+	  OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_INSERT_ID_OFFSET, (valp)); \
       }	\
   } while (0)
 
@@ -677,19 +692,14 @@
   ((((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) == 0) \
     ? MVCCID_NULL \
     : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
-       ? (OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE +  OR_INT_SIZE + OR_MVCCID_SIZE, (valp))) \
-       : ((OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE, (valp))))))
+       ? (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_DELETE_ID_OFFSET, (valp))) \
+       : ((OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_INSERT_ID_OFFSET, (valp))))))
 
 #define OR_GET_MVCC_REPID(ptr)	\
   ((OR_GET_INT(((char *) (ptr)) + OR_REP_OFFSET)) \
    & OR_MVCC_REPID_MASK)
 
-/* in MVCC, chn follow by rep_id, ins_id or del_id depending by flags */
-#define OR_GET_MVCC_CHN_OFFSET(mvcc_flags) \
-  (OR_REP_OFFSET + OR_MVCC_REP_SIZE)
-
-#define OR_GET_MVCC_CHN(ptr, mvcc_flags) \
-  (OR_GET_INT ((char *) (ptr) +  OR_GET_MVCC_CHN_OFFSET(mvcc_flags)))
+#define OR_GET_MVCC_CHN(ptr) (OR_GET_INT ((char *) (ptr) + OR_CHN_OFFSET))
 
 #define OR_GET_MVCC_FLAG(ptr) \
   (((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) \

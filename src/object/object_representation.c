@@ -480,7 +480,7 @@ or_chn (RECDES * record)
 
   mvcc_flag = OR_GET_MVCC_FLAG (record->data);
 
-  return OR_GET_MVCC_CHN (record->data, mvcc_flag);
+  return OR_GET_MVCC_CHN (record->data);
 }
 
 /*
@@ -505,7 +505,7 @@ or_replace_chn (RECDES * record, int chn)
   buf = &orep;
 
   mvcc_flag = or_mvcc_get_flag (record);
-  offset = OR_GET_MVCC_CHN_OFFSET (mvcc_flag);
+  offset = OR_CHN_OFFSET;
   buf->ptr = buf->buffer + offset;
 
   error = or_put_int (buf, chn);
@@ -942,6 +942,12 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
       goto exit_on_error;
     }
 
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   error = or_mvcc_set_insid (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
@@ -949,12 +955,6 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
     }
 
   error = or_mvcc_set_delid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_chn (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
