@@ -15694,6 +15694,26 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       recdes.data = NULL;
     }
 
+  if (recdes.type == REC_NEWHOME)
+    {
+      MVCC_REC_HEADER rec_header;
+      MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
+
+      or_mvcc_get_header (&recdes, &rec_header);
+      can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, logtb_get_current_mvccid (thread_p));
+
+      /* it is impossible to restore a record that should be removed by vacuum */
+      assert (can_vacuum != VACUUM_RECORD_REMOVE);
+
+      if (can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
+	{
+	  /* the undo/redo record was qualified to have its insid and prev version vacuumed;
+	   * do this here because it is possible that vacuum have passed over during update/delete operation */
+	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+	  or_mvcc_set_header (&recdes, &rec_header);
+	}
+    }
+
   sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid, &recdes);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -16333,6 +16353,26 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
+      /* vacuum atomicity: */
+      if (recdes.type == REC_HOME || recdes.type == REC_NEWHOME)
+	{
+	  MVCC_REC_HEADER rec_header;
+	  MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
+
+	  or_mvcc_get_header (&recdes, &rec_header);
+	  can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, logtb_get_current_mvccid (thread_p));
+
+	  /* it is impossible to restore a record that should be removed by vacuum */
+	  assert (can_vacuum != VACUUM_RECORD_REMOVE);
+
+	  if (can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
+	    {
+	      /* the undo/redo record was qualified to have its insid and prev version vacuumed;
+	       * do this here because it is possible that vacuum have missed it during update/delete operation */
+	      MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+	      or_mvcc_set_header (&recdes, &rec_header);
+	    }
+	}
       sp_success = spage_update (thread_p, rcv->pgptr, slotid, &recdes);
     }
 
@@ -21897,7 +21937,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   RECDES forwarding_recdes;
   RECDES *home_page_updated_recdes_p = NULL;
   OID forward_oid;
-  LOG_RCVINDEX undo_rcvindex = RVHF_UPDATE;
+  LOG_RCVINDEX undo_rcvindex;
   LOG_LSA prev_version_lsa;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
@@ -21932,7 +21972,11 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* Quick fix: Assign address is update in-place. Vacuum must be notified. */
       undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
     }
+  else
 #endif /* SERVER_MODE */
+    {
+      undo_rcvindex = RVHF_UPDATE;
+    }
 
   if (heap_is_big_length (context->recdes_p->length))
     {
