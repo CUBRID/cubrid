@@ -38125,7 +38125,7 @@ yyparse (void)
   /* User initialization code.  */
   #line 590 "../../src/parser/csql_grammar.y"
 {yybuffer_pos = 0;}
-/* Line 2309 of glr.c.  */
+/* Line 2317 of glr.c.  */
 #line 38130 "../../src/parser/csql_grammar.c"
   if (! yyinitGLRStack (yystackp, YYINITDEPTH))
     goto yyexhaustedlab;

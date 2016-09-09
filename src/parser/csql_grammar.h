@@ -682,7 +682,7 @@ extern int yybuffer_pos;
 #include "csql_grammar_scan.h"
 #include "system_parameter.h"
 #define JP_MAXNAME 256
-#if defined(WINDOWS) && defined(_MSC_VER) && _MSC_VER < 1900
+#if defined(WINDOWS)
 #define snprintf _sprintf_p
 #endif /* WINDOWS */
 #include "memory_alloc.h"
@@ -1128,7 +1128,7 @@ int g_original_buffer_len;
  */
 #define YYLLOC_DEFAULT(Current, Rhs, N)				        \
     do									\
-      if (YYID (N))							\
+      if (N)								\
 	{								\
 	  (Current).first_line   = YYRHSLOC (Rhs, 1).first_line;	\
 	  (Current).first_column = YYRHSLOC (Rhs, 1).first_column;	\
@@ -1144,7 +1144,7 @@ int g_original_buffer_len;
 	    YYRHSLOC (Rhs, 0).last_column;				\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, 0).buffer_pos;	\
 	}								\
-    while (YYID (0))
+    while (0)
 
 /* 
  * YY_LOCATION_PRINT -- Print the location on the stream.
@@ -1172,7 +1172,7 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2604 of glr.c.  */
+/* Line 2616 of glr.c.  */
 #line 1177 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
