@@ -15739,6 +15739,9 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	   * do this here because it is possible that vacuum have missed it during update/delete operation */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
 
+	  /* quick hack: set recdes area = length */
+	  temp_recdes.area_size = temp_recdes.length;
+
 	  if (or_mvcc_set_header (&temp_recdes, &rec_header) != NO_ERROR)
 	    {
 	      assert_release (false);
@@ -16421,6 +16424,9 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	      /* the undo/redo record was qualified to have its insid and prev version vacuumed;
 	       * do this here because it is possible that vacuum have missed it during update/delete operation */
 	      MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+
+	      /* quick hack: set recdes area = length */
+	      temp_recdes.area_size = temp_recdes.length;
 
 	      if (or_mvcc_set_header (&temp_recdes, &rec_header) != NO_ERROR)
 		{
