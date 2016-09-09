@@ -669,9 +669,6 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	    {
 #if defined(SERVER_MODE)
 	      assert (tdes->tran_index == i);
-	      assert (tdes->cs_topop.cs_index ==
-		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
 #endif
 
 	      logtb_finalize_tdes (thread_p, tdes);
@@ -1971,7 +1968,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 {
-  int i;
+  int i, r;
 
   tdes->tran_index = tran_index;
   tdes->trid = NULL_TRANID;
@@ -1993,13 +1990,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
 
-  csect_initialize_critical_section (&tdes->cs_topop, csect_Name_tdes);
-
-#if defined(SERVER_MODE)
-  assert (tdes->cs_topop.cs_index == -1);
-
-  tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
-#endif
+  r = rmutex_initialize (&tdes->rmutex_topop, rmutex_Name_tdes_topop);
+  assert (r == NO_ERROR);
 
   tdes->topops.stack = NULL;
   tdes->topops.last = -1;
@@ -2073,10 +2065,15 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 void
 logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  int r;
+
   logtb_clear_tdes (thread_p, tdes);
   logtb_free_tran_mvcc_info (tdes);
   logtb_tran_free_update_stats (&tdes->log_upd_stats);
-  csect_finalize_critical_section (&tdes->cs_topop);
+
+  r = rmutex_finalize (&tdes->rmutex_topop);
+  assert (r == NO_ERROR);
+
   if (tdes->topops.max != 0)
     {
       free_and_init (tdes->topops.stack);
