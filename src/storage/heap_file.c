@@ -15694,31 +15694,6 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       recdes.data = NULL;
     }
 
-  if (recdes.type == REC_NEWHOME)
-    {
-      MVCC_REC_HEADER rec_header;
-      MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
-      RECDES temp_recdes;
-
-      temp_recdes.area_size = temp_recdes.length = OR_MVCC_MAX_HEADER_SIZE;
-      temp_recdes.data = (char *) db_private_alloc (thread_p, temp_recdes.area_size);
-      memcpy (temp_recdes.data, recdes.data, temp_recdes.area_size);
-
-      or_mvcc_get_header (&temp_recdes, &rec_header);
-      can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, logtb_get_current_mvccid (thread_p));
-
-      /* it is impossible to restore a record that should be removed by vacuum */
-      assert (can_vacuum != VACUUM_RECORD_REMOVE);
-
-      if (can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
-	{
-	  /* the undo/redo record was qualified to have its insid and prev version vacuumed;
-	   * do this here because it is possible that vacuum have passed over during update/delete operation */
-	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  or_mvcc_set_header (&recdes, &rec_header);
-	}
-    }
-
   sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid, &recdes);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -15731,6 +15706,51 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	}
       assert (er_errid () != NO_ERROR);
       return er_errid ();
+    }
+
+  /* vacuum atomicity: */
+  if (recdes.type == REC_NEWHOME)
+    {
+      MVCC_REC_HEADER rec_header;
+      MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
+      RECDES temp_recdes;
+
+      if (spage_get_record (rcv->pgptr, slotid, &temp_recdes, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      assert (temp_recdes.type == REC_HOME || temp_recdes.type == REC_NEWHOME);
+
+      if (or_mvcc_get_header (&temp_recdes, &rec_header) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, logtb_get_current_mvccid (thread_p));
+
+      /* it is impossible to restore a record that should be removed by vacuum */
+      assert (can_vacuum != VACUUM_RECORD_REMOVE);
+
+      if (can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
+	{
+	  /* the undo/redo record was qualified to have its insid and prev version vacuumed;
+	   * do this here because it is possible that vacuum have missed it during update/delete operation */
+	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+
+	  if (or_mvcc_set_header (&temp_recdes, &rec_header) != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+
+	  if (spage_update (thread_p, rcv->pgptr, slotid, &temp_recdes) != SP_SUCCESS)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+	}
     }
 
   return NO_ERROR;
@@ -16358,6 +16378,19 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
+      sp_success = spage_update (thread_p, rcv->pgptr, slotid, &recdes);
+      if (sp_success != SP_SUCCESS)
+	{
+	  /* Unable to recover update for object */
+	  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+	  if (sp_success != SP_ERROR)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
       /* vacuum atomicity: */
       if (recdes.type == REC_HOME || recdes.type == REC_NEWHOME)
 	{
@@ -16365,11 +16398,19 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
 	  RECDES temp_recdes;
 
-	  temp_recdes.area_size = temp_recdes.length = OR_MVCC_MAX_HEADER_SIZE;
-	  temp_recdes.data = (char *) db_private_alloc (thread_p, temp_recdes.area_size);
-	  memcpy (temp_recdes.data, recdes.data, temp_recdes.area_size);
+	  if (spage_get_record (rcv->pgptr, slotid, &temp_recdes, PEEK) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+	  assert (temp_recdes.type == REC_HOME || temp_recdes.type == REC_NEWHOME);
 
-	  or_mvcc_get_header (&temp_recdes, &rec_header);
+	  if (or_mvcc_get_header (&temp_recdes, &rec_header) != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+
 	  can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, logtb_get_current_mvccid (thread_p));
 
 	  /* it is impossible to restore a record that should be removed by vacuum */
@@ -16380,23 +16421,22 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	      /* the undo/redo record was qualified to have its insid and prev version vacuumed;
 	       * do this here because it is possible that vacuum have missed it during update/delete operation */
 	      MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
-	      or_mvcc_set_header (&recdes, &rec_header);
+
+	      if (or_mvcc_set_header (&temp_recdes, &rec_header) != NO_ERROR)
+		{
+		  assert_release (false);
+		  return ER_FAILED;
+		}
+
+	      if (spage_update (thread_p, rcv->pgptr, slotid, &temp_recdes) != SP_SUCCESS)
+		{
+		  assert_release (false);
+		  return ER_FAILED;
+		}
 	    }
 	}
-      sp_success = spage_update (thread_p, rcv->pgptr, slotid, &recdes);
     }
 
-  if (sp_success != SP_SUCCESS)
-    {
-      /* Unable to recover update for object */
-      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-      if (sp_success != SP_ERROR)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	}
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
   spage_update_record_type (thread_p, rcv->pgptr, slotid, recdes.type);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
