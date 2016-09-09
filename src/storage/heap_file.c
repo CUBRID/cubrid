@@ -15698,8 +15698,13 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       MVCC_REC_HEADER rec_header;
       MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
+      RECDES temp_recdes;
 
-      or_mvcc_get_header (&recdes, &rec_header);
+      temp_recdes.area_size = temp_recdes.length = OR_MVCC_MAX_HEADER_SIZE;
+      temp_recdes.data = (char *) db_private_alloc (thread_p, temp_recdes.area_size);
+      memcpy (temp_recdes.data, recdes.data, temp_recdes.area_size);
+
+      or_mvcc_get_header (&temp_recdes, &rec_header);
       can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, logtb_get_current_mvccid (thread_p));
 
       /* it is impossible to restore a record that should be removed by vacuum */
@@ -16358,8 +16363,13 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  MVCC_REC_HEADER rec_header;
 	  MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
+	  RECDES temp_recdes;
 
-	  or_mvcc_get_header (&recdes, &rec_header);
+	  temp_recdes.area_size = temp_recdes.length = OR_MVCC_MAX_HEADER_SIZE;
+	  temp_recdes.data = (char *) db_private_alloc (thread_p, temp_recdes.area_size);
+	  memcpy (temp_recdes.data, recdes.data, temp_recdes.area_size);
+
+	  or_mvcc_get_header (&temp_recdes, &rec_header);
 	  can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, logtb_get_current_mvccid (thread_p));
 
 	  /* it is impossible to restore a record that should be removed by vacuum */
