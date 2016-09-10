@@ -2535,7 +2535,7 @@ perfmon_server_calc_stats (UINT64 * stats)
   int cond_type;
   int promote_cond;
   int success;
-  UINT64 *counter;
+  UINT64 counter = 0;
   UINT64 total_unfix_vacuum = 0;
   UINT64 total_unfix_vacuum_dirty = 0;
   UINT64 total_unfix = 0;
@@ -2559,15 +2559,15 @@ perfmon_server_calc_stats (UINT64 * stats)
 		      offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty, holder_latch);
 
 		      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-		      counter = &(stats[pstat_Metadata[PSTAT_PBX_UNFIX_COUNTERS].start_offset + offset]);
+		      counter = stats[pstat_Metadata[PSTAT_PBX_UNFIX_COUNTERS].start_offset + offset];
 
-		      total_unfix += *counter;
+		      total_unfix += counter;
 		      if (module == PERF_MODULE_VACUUM)
 			{
-			  total_unfix_vacuum += *counter;
+			  total_unfix_vacuum += counter;
 			  if (holder_dirty == 1)
 			    {
-			      total_unfix_vacuum_dirty += *counter;
+			      total_unfix_vacuum_dirty += counter;
 			    }
 			}
 		    }
@@ -2586,31 +2586,31 @@ perfmon_server_calc_stats (UINT64 * stats)
 		{
 		  offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode, holder_latch);
 		  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
-		  counter = &(stats[pstat_Metadata[PSTAT_PBX_HOLD_TIME_COUNTERS].start_offset + offset]);
+		  counter = stats[pstat_Metadata[PSTAT_PBX_HOLD_TIME_COUNTERS].start_offset + offset];
 
-		  if (page_type != PAGE_LOG && *counter > 0)
+		  if (page_type != PAGE_LOG && counter > 0)
 		    {
-		      hold_time_usec += *counter;
+		      hold_time_usec += counter;
 		    }
 
 		  for (cond_type = PERF_CONDITIONAL_FIX; cond_type < PERF_CONDITIONAL_FIX_CNT; cond_type++)
 		    {
 		      offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
 		      assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
-		      counter = &(stats[pstat_Metadata[PSTAT_PBX_FIX_TIME_COUNTERS].start_offset + offset]);
+		      counter = stats[pstat_Metadata[PSTAT_PBX_FIX_TIME_COUNTERS].start_offset + offset];
 		      /* do not include fix time of log pages */
-		      if (page_type != PAGE_LOG && *counter > 0)
+		      if (page_type != PAGE_LOG && counter > 0)
 			{
-			  fix_time_usec += *counter;
+			  fix_time_usec += counter;
 			}
 
 		      offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
 		      assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
-		      counter = &(stats[pstat_Metadata[PSTAT_PBX_LOCK_TIME_COUNTERS].start_offset + offset]);
+		      counter = stats[pstat_Metadata[PSTAT_PBX_LOCK_TIME_COUNTERS].start_offset + offset];
 
-		      if (page_type != PAGE_LOG && *counter > 0)
+		      if (page_type != PAGE_LOG && counter > 0)
 			{
-			  lock_time_usec += *counter;
+			  lock_time_usec += counter;
 			}
 
 		      if (module == PERF_MODULE_VACUUM && page_found_mode != PERF_PAGE_MODE_NEW_LOCK_WAIT
@@ -2620,14 +2620,14 @@ perfmon_server_calc_stats (UINT64 * stats)
 			    PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
 
 			  assert (offset < PERF_PAGE_FIX_COUNTERS);
-			  counter = &(stats[pstat_Metadata[PSTAT_PBX_FIX_COUNTERS].start_offset + offset]);
+			  counter = stats[pstat_Metadata[PSTAT_PBX_FIX_COUNTERS].start_offset + offset];
 
 			  if (module == PERF_MODULE_VACUUM)
 			    {
-			      total_fix_vacuum += *counter;
+			      total_fix_vacuum += counter;
 			      if (page_found_mode == PERF_PAGE_MODE_OLD_IN_BUFFER)
 				{
-				  total_fix_vacuum_hit += *counter;
+				  total_fix_vacuum_hit += counter;
 				}
 			    }
 			}
@@ -2671,22 +2671,22 @@ perfmon_server_calc_stats (UINT64 * stats)
 		      offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
 		      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
 
-		      counter = &(stats[pstat_Metadata[PSTAT_PBX_PROMOTE_TIME_COUNTERS].start_offset + offset]);
-		      if (*counter)
+		      counter = stats[pstat_Metadata[PSTAT_PBX_PROMOTE_TIME_COUNTERS].start_offset + offset];
+		      if (counter)
 			{
-			  total_promote_time += *counter;
+			  total_promote_time += counter;
 			}
 
-		      counter = &(stats[pstat_Metadata[PSTAT_PBX_PROMOTE_COUNTERS].start_offset + offset]);
-		      if (*counter)
+		      counter = stats[pstat_Metadata[PSTAT_PBX_PROMOTE_COUNTERS].start_offset + offset];
+		      if (counter)
 			{
 			  if (success)
 			    {
-			      stats[PSTAT_PB_PAGE_PROMOTE_SUCCESS] += *counter;
+			      stats[PSTAT_PB_PAGE_PROMOTE_SUCCESS] += counter;
 			    }
 			  else
 			    {
-			      stats[PSTAT_PB_PAGE_PROMOTE_FAILED] += *counter;
+			      stats[PSTAT_PB_PAGE_PROMOTE_FAILED] += counter;
 			    }
 			}
 		    }
