@@ -473,7 +473,7 @@ typedef enum
   PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS,
   PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS,
 
-  /* Other statistics (change MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) */
+  /* Computed statistics */
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
   PSTAT_PB_HIT_RATIO,
   /* ((log_num_fetches - log_num_ioreads) x 100 / log_num_fetches) x 100 */
@@ -500,6 +500,7 @@ typedef enum
   /* total promotion time */
   PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC,
 
+  /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
   PSTAT_PBX_PROMOTE_COUNTERS,
   PSTAT_PBX_PROMOTE_TIME_COUNTERS,

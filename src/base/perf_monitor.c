@@ -455,14 +455,13 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_VACUUM_EFFICIENCY, "Vacuum_page_efficiency_ratio"),
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_VACUUM_FETCH_RATIO, "Vacuum_page_fetch_ratio"),
 
-  /* I think we need another computed non-ratio? */
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC, "Data_page_fix_lock_acquire_time_msec"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC, "Data_page_fix_hold_acquire_time_msec"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC, "Data_page_fix_acquire_time_msec"),
+  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC, "Data_page_fix_lock_acquire_time_msec"),
+  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC, "Data_page_fix_hold_acquire_time_msec"),
+  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC, "Data_page_fix_acquire_time_msec"),
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO, "Data_page_allocate_time_ratio"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_PROMOTE_SUCCESS, "Data_page_total_promote_success"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_PROMOTE_FAILED, "Data_page_total_promote_fail"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC, "Data_page_total_promote_time_msec"),
+  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_PROMOTE_SUCCESS, "Data_page_total_promote_success"),
+  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_PROMOTE_FAILED, "Data_page_total_promote_fail"),
+  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC, "Data_page_total_promote_time_msec"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,
@@ -2637,26 +2636,34 @@ perfmon_server_calc_stats (UINT64 * stats)
 	}
     }
 
-  stats[PSTAT_PB_VACUUM_EFFICIENCY] = SAFE_DIV (total_unfix_vacuum_dirty * 100 * 100, total_unfix_vacuum);
+  stats[pstat_Metadata[PSTAT_PB_VACUUM_EFFICIENCY].start_offset] =
+    SAFE_DIV (total_unfix_vacuum_dirty * 100 * 100, total_unfix_vacuum);
 
-  stats[PSTAT_PB_VACUUM_FETCH_RATIO] = SAFE_DIV (total_unfix_vacuum * 100 * 100, total_unfix);
+  stats[pstat_Metadata[PSTAT_PB_VACUUM_FETCH_RATIO].start_offset] =
+    SAFE_DIV (total_unfix_vacuum * 100 * 100, total_unfix);
 
-  stats[PSTAT_VACUUM_DATA_HIT_RATIO] = SAFE_DIV (total_fix_vacuum_hit * 100 * 100, total_fix_vacuum);
+  stats[pstat_Metadata[PSTAT_VACUUM_DATA_HIT_RATIO].start_offset] =
+    SAFE_DIV (total_fix_vacuum_hit * 100 * 100, total_fix_vacuum);
 
-  stats[PSTAT_PB_HIT_RATIO] = SAFE_DIV ((stats[PSTAT_PB_NUM_FETCHES] - stats[PSTAT_PB_NUM_IOREADS]) * 100 * 100,
-					stats[PSTAT_PB_NUM_FETCHES]);
+  stats[pstat_Metadata[PSTAT_PB_HIT_RATIO].start_offset] =
+    SAFE_DIV ((stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] -
+	       stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset]) * 100 * 100,
+	      stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
 
-  stats[PSTAT_LOG_HIT_RATIO] =
-    SAFE_DIV ((stats[PSTAT_LOG_NUM_FETCHES] - stats[PSTAT_LOG_NUM_IOREADS]) * 100 * 100, stats[PSTAT_PB_NUM_FETCHES]);
+  stats[pstat_Metadata[PSTAT_LOG_HIT_RATIO].start_offset] =
+    SAFE_DIV ((stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]
+	       - stats[pstat_Metadata[PSTAT_LOG_NUM_IOREADS].start_offset]) * 100 * 100,
+	      stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
 
-  stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC] = 100 * lock_time_usec / 1000;
-  stats[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] = 100 * hold_time_usec / 1000;
-  stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] = 100 * fix_time_usec / 1000;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset] = 100 * lock_time_usec / 1000;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] = 100 * hold_time_usec / 1000;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] = 100 * fix_time_usec / 1000;
 
-  stats[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO] = SAFE_DIV ((stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] -
-							stats[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] -
-							stats[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC]) * 100 * 100,
-						       stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC]);
+  stats[pstat_Metadata[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO].start_offset] =
+    SAFE_DIV ((stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] -
+	       stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] -
+	       stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset]) * 100 * 100,
+	      stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset]);
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
@@ -2682,11 +2689,11 @@ perfmon_server_calc_stats (UINT64 * stats)
 			{
 			  if (success)
 			    {
-			      stats[PSTAT_PB_PAGE_PROMOTE_SUCCESS] += counter;
+			      stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] += counter;
 			    }
 			  else
 			    {
-			      stats[PSTAT_PB_PAGE_PROMOTE_FAILED] += counter;
+			      stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] += counter;
 			    }
 			}
 		    }
@@ -2695,9 +2702,9 @@ perfmon_server_calc_stats (UINT64 * stats)
 	}
     }
 
-  stats[PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC] = 100 * total_promote_time / 1000;
-  stats[PSTAT_PB_PAGE_PROMOTE_SUCCESS] *= 100;
-  stats[PSTAT_PB_PAGE_PROMOTE_FAILED] *= 100;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC].start_offset] = 100 * total_promote_time / 1000;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] *= 100;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
 
 #if defined (SERVER_MODE)
   pgbuf_peek_stats (&(stats[PSTAT_PB_FIXED_CNT]), &(stats[PSTAT_PB_DIRTY_CNT]),
