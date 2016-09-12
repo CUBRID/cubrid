@@ -25141,17 +25141,24 @@ heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context)
 
 	}
     }
-      assert (oor_context->oor_recdes != NULL);
-      assert (oor_context->home_recdes_oid_offsets != NULL);
 
+  if (oor_context->oor_recdes != NULL)
+    {
       db_private_free (thread_p, oor_context->oor_recdes);
       oor_context->oor_recdes = NULL;
+    }
 
+  if (oor_context->home_recdes_oid_offsets != NULL)
+    {
       db_private_free (thread_p, oor_context->home_recdes_oid_offsets);
       oor_context->home_recdes_oid_offsets = NULL;
+    }
 
+  if (oor_context->att_ids != NULL)
+    {
       db_private_free (thread_p, oor_context->att_ids);
       oor_context->att_ids = NULL;
+    }
 
 
   oor_context->recdes_cnt = 0;
