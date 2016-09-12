@@ -3528,7 +3528,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, r;
 
   /* 
    * Remember the current tail of the transaction, so we can allow partial
@@ -3569,13 +3569,8 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
       if (LOG_ISRESTARTED ())
 	{
-#if defined(SERVER_MODE)
-	  assert (tdes->cs_topop.cs_index ==
-		  CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	  assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	  csect_enter_critical_section (thread_p, &tdes->cs_topop, INF_WAIT);
+	  r = rmutex_lock (thread_p, &tdes->rmutex_topop);
+	  assert (r == NO_ERROR);
 	}
     }
 
@@ -3586,13 +3581,8 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	  /* Out of memory */
 	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
-#if defined(SERVER_MODE)
-	      assert (tdes->cs_topop.cs_index ==
-		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+	      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+	      assert (r == NO_ERROR);
 	    }
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
@@ -3706,7 +3696,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   TRAN_STATE state;
   int tran_index;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, r;
 
   {
     int mod_factor = 5000;	/* 0.02% */
@@ -3947,13 +3937,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 
   if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-#if defined(SERVER_MODE)
-      assert (tdes->cs_topop.cs_index ==
-	      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+      assert (r == NO_ERROR);
     }
 
   mnt_tran_end_topops (thread_p);

@@ -74,9 +74,6 @@ enum
 
 #define CRITICAL_SECTION_COUNT  CSECT_LAST
 
-extern const char *rmutex_Name_conn;
-extern const char *csect_Name_tdes;
-
 typedef enum
 {
   SYNC_TYPE_NONE,
