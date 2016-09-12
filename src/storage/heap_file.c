@@ -11964,6 +11964,11 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			      return S_ERROR;			      
 			    }
 
+			  if (overflow_col_data != NULL)
+			    {
+			      db_private_free (thread_p, overflow_col_data);
+			    }
+
 			  /* TODO[arnia] : recdes type */
 #if 0
 			  out_of_row_recdes->oor_recdes[out_of_row_recdes->recdes_cnt].type = REC_HOME;
