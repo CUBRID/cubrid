@@ -93,10 +93,7 @@ static const char *csect_Names[] = {
   "ACCESS_STATUS"
 };
 
-const char *rmutex_Name_conn = "CONN_ENTRY";
-const char *rmutex_Name_tdes_topop = "TDES_TOPOP";
-
-#define CSECT_NAME(c) ((c)->name ? (c)->name : "TEMP CONN_ENTRY")
+#define CSECT_NAME(c) ((c)->name ? (c)->name : "UNKNOWN")
 
 /* 
  * Synchronization Primitives Statistics Monitor

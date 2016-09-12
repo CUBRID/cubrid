@@ -83,6 +83,8 @@
 #include "transaction_cl.h"
 #endif
 
+#define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
+
 #define MVCC_OLDEST_ACTIVE_BUFFER_LENGTH 300
 
 /* bit area sizes expressed in bits */
@@ -1990,7 +1992,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
 
-  r = rmutex_initialize (&tdes->rmutex_topop, rmutex_Name_tdes_topop);
+  r = rmutex_initialize (&tdes->rmutex_topop, RMUTEX_NAME_TDES_TOPOP);
   assert (r == NO_ERROR);
 
   tdes->topops.stack = NULL;
