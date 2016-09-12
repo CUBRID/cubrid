@@ -25140,6 +25140,7 @@ heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context)
 	    }
 
 	}
+    }
       assert (oor_context->oor_recdes != NULL);
       assert (oor_context->home_recdes_oid_offsets != NULL);
 
@@ -25151,7 +25152,7 @@ heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context)
 
       db_private_free (thread_p, oor_context->att_ids);
       oor_context->att_ids = NULL;
-    }
+
 
   oor_context->recdes_cnt = 0;
   oor_context->recdes_capacity = 0;
