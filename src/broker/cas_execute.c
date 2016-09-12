@@ -9922,7 +9922,7 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
       cas_log_debug (ARG_FILE_LINE, "ux_lob_read: length reduced to %d", size);
     }
 
-  err_code = db_elo_read (db_get_elo (lob_dbval), offset, data, size, &size_read, false);
+  err_code = db_elo_read (db_get_elo (lob_dbval), offset, data, size, &size_read);
   cas_log_debug (ARG_FILE_LINE, "ux_lob_read: result_code=%d size_read=%lld", err_code, size_read);
   if (err_code < 0)
     {
