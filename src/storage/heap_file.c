@@ -15720,7 +15720,7 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  assert_release (false);
 	  return ER_FAILED;
 	}
-      assert (temp_recdes.type == REC_HOME || temp_recdes.type == REC_NEWHOME);
+      assert (temp_recdes.type == REC_NEWHOME);
 
       if (or_mvcc_get_header (&temp_recdes, &rec_header) != NO_ERROR)
 	{
@@ -16381,7 +16381,7 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
-      sp_success = spage_update (thread_p, rcv->pgptr, slotid, &recdes);
+      sp_success = heap_update_physical (thread_p, rcv->pgptr, slotid, &recdes);
       if (sp_success != SP_SUCCESS)
 	{
 	  /* Unable to recover update for object */
@@ -16440,11 +16440,9 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 		  return ER_FAILED;
 		}
 	    }
+	  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 	}
     }
-
-  spage_update_record_type (thread_p, rcv->pgptr, slotid, recdes.type);
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
 }

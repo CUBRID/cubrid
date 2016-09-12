@@ -2571,6 +2571,8 @@ spage_update_record_after_compact (PAGE_PTR page_p, SPAGE_HEADER * page_header_p
  *   page_p(in): Pointer to slotted page
  *   slot_id(in): Slot identifier of record to update
  *   record_descriptor_p(in): Pointer to a record descriptor
+ *
+ * Note: This function do not update the type of the record. If it is changed, it must be handled by the caller
  */
 int
 spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, const RECDES * record_descriptor_p)
