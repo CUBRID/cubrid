@@ -600,7 +600,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       update_indexes (WS_OID (classop), oid, Diskrec);
     }
 
-  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL,
+  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL, NULL,
 			      UPDATE_INPLACE_CURRENT_MVCCID);
   if (heap_update_logical (NULL, &update_context) != NO_ERROR)
     {
@@ -692,7 +692,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
        * 9rd arg -> data or schema, 10th arg -> max repl. log or not
        */
       success =
-	locator_update_index (NULL, rec, &oldrec, NULL, 0, obj_oid, class_oid, SINGLE_ROW_UPDATE,
+	locator_update_index (NULL, rec, &oldrec, NULL, NULL, 0, obj_oid, class_oid, SINGLE_ROW_UPDATE,
 			      (HEAP_SCANCACHE *) NULL, NULL);
     }
   else

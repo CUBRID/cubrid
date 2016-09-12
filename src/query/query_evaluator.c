@@ -2647,6 +2647,7 @@ DB_LOGICAL
 update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification, FILTER_INFO * key_filter,
 		       RECDES * recdes, const OID * oid)
 {
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
   int q;
 
   if (ev_res == V_ERROR)
@@ -2705,7 +2706,8 @@ update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualific
 	  DB_VALUE *dbvalp;
 
 	  /* read the key range the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, key_filter->scan_attrs->attr_cache) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, key_filter->scan_attrs->attr_cache,
+					   &oor_context) != NO_ERROR)
 	    {
 	      return V_ERROR;
 	    }
@@ -2771,6 +2773,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
   SCAN_PRED *scan_predp;
   SCAN_ATTRS *scan_attrsp;
   DB_LOGICAL ev_res;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
 
   if (!filterp)
     {
@@ -2787,7 +2790,8 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
   if (scan_attrsp != NULL && scan_attrsp->attr_cache != NULL && scan_predp->regu_list != NULL)
     {
       /* read the predicate values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, scan_cache, scan_attrsp->attr_cache) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, scan_cache, scan_attrsp->attr_cache, &oor_context)
+	  != NO_ERROR)
 	{
 	  return V_ERROR;
 	}

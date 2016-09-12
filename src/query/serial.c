@@ -207,6 +207,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   ATTR_ID attrid;
   DB_VALUE *cur_val;
   OID serial_class_oid;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
 
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
@@ -238,7 +239,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
 
   attr_info_p = &attr_info;
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, NULL, attr_info_p);
+  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, NULL, attr_info_p, &oor_context);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -512,6 +513,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   DB_VALUE key_val;
   ATTR_ID attrid;
   OID serial_class_oid;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
 
   DB_MAKE_NULL (&key_val);
 
@@ -546,7 +548,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       goto exit_on_error;
     }
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, &entry->oid, &recdesc, NULL, &attr_info);
+  ret = heap_attrinfo_read_dbvalues (thread_p, &entry->oid, &recdesc, NULL, &attr_info, &oor_context);
   if (ret != NO_ERROR)
     {
       heap_attrinfo_end (thread_p, &attr_info);
@@ -626,6 +628,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   SERIAL_CACHE_ENTRY *entry = NULL;
   ATTR_ID attrid;
   OID serial_class_oid;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
 
   DB_MAKE_NULL (&key_val);
 
@@ -654,7 +657,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       goto exit_on_error;
     }
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, NULL, &attr_info);
+  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, NULL, &attr_info, &oor_context);
 
   attr_info_p = &attr_info;
 
@@ -870,7 +873,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   new_recdesc.data = PTR_ALIGN (copyarea_buf, MAX_ALIGNMENT);
   new_recdesc.area_size = DB_PAGESIZE;
 
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
+  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc, NULL);
   if (scan != S_SUCCESS)
     {
       assert (false);

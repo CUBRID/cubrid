@@ -882,7 +882,7 @@ exit_on_error:
  *    to include additional MVCC data that may come from mvcc_rec_header. 
  */
 int
-or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
+or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int *size_delta_p)
 {
   OR_BUF orep, *buf;
   int error = NO_ERROR;
@@ -891,7 +891,11 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
   int old_mvcc_size = 0, new_mvcc_size = 0;
   bool is_bigone = false;
 
+  assert (size_delta_p != NULL);
+
   assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
+
+  *size_delta_p = 0;
 
   repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
 
@@ -910,6 +914,7 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
 	}
 
       HEAP_MOVE_INSIDE_RECORD (record, new_mvcc_size, old_mvcc_size);
+      *size_delta_p = old_mvcc_size - new_mvcc_size;
     }
 
   OR_BUF_INIT (orep, record->data, record->area_size);
@@ -1779,25 +1784,25 @@ or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align)
 int
 or_put_offset (OR_BUF * buf, int num)
 {
-  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE);
+  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE, OOR_COLUMN_DISABLED);
 }
 
 int
-or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
+or_put_offset_internal (OR_BUF * buf, int num, int offset_size, bool overflow_column_flag)
 {
   if (offset_size == OR_BYTE_SIZE)
     {
-      return or_put_byte (buf, num);
+      return or_put_byte (buf, num | (overflow_column_flag ? 0x80 : 0));
     }
   else if (offset_size == OR_SHORT_SIZE)
     {
-      return or_put_short (buf, num);
+      return or_put_short (buf, num | (overflow_column_flag ? 0x8000 : 0));
     }
   else
     {
       assert (offset_size == BIG_VAR_OFFSET_SIZE);
 
-      return or_put_int (buf, num);
+      return or_put_int (buf, num | (overflow_column_flag ? 0x80000000L : 0));
     }
 }
 
@@ -1812,16 +1817,16 @@ or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
 {
   if (offset_size == OR_BYTE_SIZE)
     {
-      return or_get_byte (buf, error);
+      return or_get_byte_offset (buf, error);
     }
   else if (offset_size == OR_SHORT_SIZE)
     {
-      return or_get_short (buf, error);
+      return or_get_short_offset (buf, error);
     }
   else
     {
       assert (offset_size == BIG_VAR_OFFSET_SIZE);
-      return or_get_int (buf, error);
+      return or_get_int_offset (buf, error);
     }
 }
 
@@ -2003,6 +2008,31 @@ or_get_byte (OR_BUF * buf, int *error)
 }
 
 /*
+ * or_get_byte_offset - read a byte value from or buffer
+ *    return: byte value read
+ *    buf(in/out): or buffer
+ *    error(out): NO_ERROR or error code
+ */
+int
+or_get_byte_offset (OR_BUF * buf, int *error)
+{
+  int value = 0;
+
+  if ((buf->ptr + OR_BYTE_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
+      return 0;
+    }
+  else
+    {
+      value = OR_GET_BYTE_OFFSET (buf->ptr);
+      buf->ptr += OR_BYTE_SIZE;
+      *error = NO_ERROR;
+    }
+  return value;
+}
+
+/*
  * or_put_short - put a short value to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
@@ -2053,6 +2083,33 @@ or_get_short (OR_BUF * buf, int *error)
 }
 
 /*
+ * or_get_short - read a short value from or buffer
+ *    return: short value read
+ *    buf(in/out): or buffer
+ *    error(out): NO_ERROR or error code
+ */
+int
+or_get_short_offset (OR_BUF * buf, int *error)
+{
+  int value = 0;
+
+  ASSERT_ALIGN (buf->ptr, SHORT_ALIGNMENT);
+
+  if ((buf->ptr + OR_SHORT_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
+      return 0;
+    }
+  else
+    {
+      value = OR_GET_SHORT_OFFSET (buf->ptr);
+      buf->ptr += OR_SHORT_SIZE;
+    }
+  *error = NO_ERROR;
+  return value;
+}
+
+/*
  * or_put_int - put int value to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
@@ -2095,6 +2152,32 @@ or_get_int (OR_BUF * buf, int *error)
   else
     {
       value = OR_GET_INT (buf->ptr);
+      buf->ptr += OR_INT_SIZE;
+      *error = NO_ERROR;
+    }
+  return value;
+}
+
+/*
+ * or_get_int_offset - get int value from or buffer
+ *    return: int value read
+ *    buf(in/out): or buffer
+ *    error(out): NO_ERROR or error code
+ */
+int
+or_get_int_offset (OR_BUF * buf, int *error)
+{
+  int value = 0;
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
+    }
+  else
+    {
+      value = OR_GET_INT_OFFSET (buf->ptr);
       buf->ptr += OR_INT_SIZE;
       *error = NO_ERROR;
     }

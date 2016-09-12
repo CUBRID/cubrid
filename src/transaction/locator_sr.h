@@ -72,7 +72,9 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * h
 					 bool need_locking);
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
-							     const int copyarea_length_hint, int lob_create_flag);
+							     const int copyarea_length_hint, 
+							     OUT_OF_ROW_RECDES * out_of_row_recdes,
+							     int lob_create_flag);
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, BTID * btid,
 					bool btid_dup_key_locked, HFID * newhfid, OID * newoid,
 					HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache, int *force_count,
@@ -91,9 +93,9 @@ extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
 					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds);
-extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes, ATTR_ID * att_id,
-				 int n_att_id, OID * oid, OID * class_oid, int op_type,
-				 HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info);
+extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes,
+				 OUT_OF_ROW_RECDES * out_of_row_recdes, ATTR_ID * att_id, int n_att_id, OID * oid,
+				 OID * class_oid, int op_type, HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info);
 extern int locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, RECDES * recdes);
 extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT * pcontext, const OID * class_oid,
 							    const HFID * hfid, int op_type, bool has_function_index);

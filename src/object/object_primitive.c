@@ -16598,3 +16598,20 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
 
   return rc;
 }
+
+/*
+ * pr_is_oor_value (): 
+ *
+ * val(in):
+ */
+bool
+pr_is_oor_value (DB_VALUE * val)
+{
+  if (DB_VALUE_TYPE (val) == DB_TYPE_VARCHAR
+      && DB_GET_STRING_SIZE (val) > HEAP_OOR_THRESHOLD_SIZE)
+    {
+      return true;
+    }
+
+  return false;
+}
