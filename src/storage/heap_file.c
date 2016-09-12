@@ -16381,16 +16381,15 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
-      sp_success = heap_update_physical (thread_p, rcv->pgptr, slotid, &recdes);
-      if (sp_success != SP_SUCCESS)
+      if (heap_update_physical (thread_p, rcv->pgptr, slotid, &recdes) != NO_ERROR)
 	{
 	  /* Unable to recover update for object */
 	  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-	  if (sp_success != SP_ERROR)
+	  if (er_errid () == NO_ERROR)
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	    }
-	  assert (er_errid () != NO_ERROR);
+	  ASSERT_ERROR ();
 	  return er_errid ();
 	}
 
