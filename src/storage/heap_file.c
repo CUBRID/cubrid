@@ -16358,7 +16358,7 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* vacuum atomicity: */
       if (recdes.type == REC_HOME || recdes.type == REC_NEWHOME)
 	{
-	  if (vacuum_check_record_at_undoredo (thread_p, rcv->pgptr, slotid, recdes.type != NO_ERROR))
+	  if (vacuum_check_record_at_undoredo (thread_p, rcv->pgptr, slotid, recdes.type) != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return er_errid ();
