@@ -11709,8 +11709,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  header_size = OR_NON_MVCC_HEADER_SIZE;
 	}
 
-      memcpy (common_oor_header, buf->ptr - header_size, header_size);
-
       /* 
        * Calculate the pointer address to variable offset attribute table,
        * fixed attributes, and variable attributes
@@ -11907,8 +11905,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 	      if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
 		{
-		  DB_VALUE temp_clob_value;
+		  DB_VALUE temp_clob_value, perm_clob_value;
 		  PR_TYPE *pr_type_clob = NULL;
+		  DB_ELO perm_clob_elo;
 
 		  /* 
 		   * Now write the value and remember the current pointer
@@ -11916,6 +11915,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		   */
 		  buf->ptr = ptr_varvals;
 		  DB_MAKE_NULL (&temp_clob_value);
+		  DB_MAKE_NULL (&perm_clob_value);
 
 		  if (is_oor)
 		    {
@@ -11933,6 +11933,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			{
 			  INT64 written_bytes;
 			  int err = NO_ERROR;
+			  char *new_meta_data;
+			  DB_ELO *elo_p;
 
 			  err = db_create_fbo (&temp_clob_value, DB_TYPE_CLOB);
 			  if (err != NO_ERROR)
@@ -11941,10 +11943,20 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			      return S_ERROR;			      
 			    }
 
+			  new_meta_data = heap_get_class_name (thread_p, &(attr_info->class_oid));
+
+			  if (new_meta_data == NULL)
+			    {
+			      status = S_ERROR;
+			      break;
+			    }
+			  elo_p = db_get_elo (&temp_clob_value);
+			  elo_p->meta_data = new_meta_data;
+
 			  pr_type_clob = pr_type_from_id (DB_TYPE_CLOB);
 			  lob_offset_in_home = CAST_BUFLEN (buf->ptr - buf->buffer);
 
-			  overflow_col_size = pr_data_writeval_disk_size (dbvalue) + header_size;
+			  overflow_col_size = pr_data_writeval_disk_size (dbvalue);
 			  overflow_col_data = (char *) db_private_alloc (thread_p, overflow_col_size);
 			  if (overflow_col_data == NULL)
 			    {
@@ -11969,27 +11981,20 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			      db_private_free (thread_p, overflow_col_data);
 			    }
 
-			  /* TODO[arnia] : recdes type */
-#if 0
-			  out_of_row_recdes->oor_recdes[out_of_row_recdes->recdes_cnt].type = REC_HOME;
-			  out_of_row_recdes->home_recdes_oid_offsets[out_of_row_recdes->recdes_cnt] = lob_offset_in_home;
-			  out_of_row_recdes->oor_recdes[out_of_row_recdes->recdes_cnt].data = overflow_col_buf.buffer;
-			  out_of_row_recdes->oor_recdes[out_of_row_recdes->recdes_cnt].area_size = overflow_col_size;
-			  out_of_row_recdes->oor_recdes[out_of_row_recdes->recdes_cnt].length =
-			    overflow_col_buf.endptr - overflow_col_buf.buffer;
+			  db_elo_copy (db_get_elo (&temp_clob_value), &perm_clob_elo);
 
-			  out_of_row_recdes->att_ids[out_of_row_recdes->recdes_cnt] = value->attrid;
-			  out_of_row_recdes->recdes_cnt++;
-#endif
+			  free_and_init (elo_p->meta_data);
 
-			  dbvalue = &temp_clob_value;
+			  db_make_elo (&perm_clob_value, pr_type_clob->id, &perm_clob_elo);
+
+			  pr_clear_value (&temp_clob_value);
+	
+			  dbvalue = &perm_clob_value;
 			  pr_type = pr_type_clob;
 			}
 		    }
-
-
-		  if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-		      && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
+		  else if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
+			   && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
 		    {
 		      DB_ELO dest_elo, *elo_p;
 		      char *save_meta_data, *new_meta_data;
@@ -12038,6 +12043,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		    }
 
 		  (*(pr_type->data_writeval)) (buf, dbvalue);
+
+		  pr_clear_value (&perm_clob_value);
 
 		  ptr_varvals = buf->ptr;
 		}
