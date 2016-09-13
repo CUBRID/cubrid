@@ -878,7 +878,6 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	      assert_release (false);
 	      return NULL;
 	    }
-	  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_IOREADS);
 	}
       phy_pageid = logpb_to_physical_pageid (pageid);
       log_bufptr->phy_pageid = phy_pageid;

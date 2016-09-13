@@ -2653,7 +2653,7 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_LOG_HIT_RATIO].start_offset] =
     SAFE_DIV ((stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]
 	       - stats[pstat_Metadata[PSTAT_LOG_NUM_IOREADS].start_offset]) * 100 * 100,
-	      stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
+	      stats[pstat_Metadata[PSTAT_LOG_NUM_FETCHES].start_offset]);
 
   stats[pstat_Metadata[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC].start_offset] = 100 * lock_time_usec / 1000;
   stats[pstat_Metadata[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC].start_offset] = 100 * hold_time_usec / 1000;
