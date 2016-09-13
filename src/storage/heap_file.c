@@ -15708,16 +15708,6 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return er_errid ();
     }
 
-  /* vacuum atomicity: */
-  if (recdes.type == REC_NEWHOME)
-    {
-      if (vacuum_check_record_at_undoredo (thread_p, rcv->pgptr, slotid, recdes.type) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return er_errid ();
-	}
-    }
-
   return NO_ERROR;
 }
 
@@ -16315,7 +16305,73 @@ heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  return heap_rv_redo_insert (thread_p, rcv);
+  INT16 slotid;
+  INT16 recdes_type;
+  int error_code;
+
+  error_code = heap_rv_redo_insert (thread_p, rcv);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* vacuum atomicity */
+  recdes_type = *(INT16 *) (rcv->data);
+  if (recdes_type == REC_NEWHOME)
+    {
+      error_code = vacuum_rv_check_at_undo (thread_p, rcv->pgptr, rcv->offset, recdes_type);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/* 
+ * heap_rv_undo_update () - Undo the update of an object 
+ *   return: int
+ *   rev(in): Recovery structure
+ */
+int
+heap_rv_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  INT16 recdes_type;
+  int error_code;
+
+  error_code = heap_rv_undoredo_update (thread_p, rcv);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* vacuum atomicity */
+  recdes_type = *(INT16 *) (rcv->data);
+  if (recdes_type == REC_HOME || recdes_type == REC_RELOCATION)
+    {
+      error_code = vacuum_rv_check_at_undo (thread_p, rcv->pgptr, rcv->offset, recdes_type);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/* 
+ * heap_rv_redo_update () - Redo the update of an object 
+ *   return: int
+ *   rcv(in): Recovrery structure
+ */
+int
+heap_rv_redo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return heap_rv_undoredo_update (thread_p, rcv);
 }
 
 /*
@@ -16345,24 +16401,8 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       if (heap_update_physical (thread_p, rcv->pgptr, slotid, &recdes) != NO_ERROR)
 	{
-	  /* Unable to recover update for object */
-	  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-	  if (er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	    }
-	  ASSERT_ERROR ();
-	  return er_errid ();
-	}
-
-      /* vacuum atomicity: */
-      if (recdes.type == REC_HOME || recdes.type == REC_NEWHOME)
-	{
-	  if (vacuum_check_record_at_undoredo (thread_p, rcv->pgptr, slotid, recdes.type) != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return er_errid ();
-	    }
+	  assert_release (false);
+	  return ER_FAILED;
 	}
     }
 
@@ -19136,12 +19176,12 @@ heap_mvcc_log_home_no_change_on_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR *
 }
 
 /*
- * heap_rv_undoredo_update_and_update_chain () - Redo update record as part of MVCC delete operation.
+ * heap_rv_redo_update_and_update_chain () - Redo update record as part of MVCC delete operation.
  *   return: int
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
   bool vacuum_status_change = false;
@@ -19158,7 +19198,7 @@ heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
   assert (slotid > 0);
 
-  error_code = heap_rv_undoredo_update (thread_p, rcv);
+  error_code = heap_rv_redo_update (thread_p, rcv);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

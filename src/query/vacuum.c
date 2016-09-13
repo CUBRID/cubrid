@@ -7560,7 +7560,7 @@ vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
 #endif /* !NDEBUG */
 
 /*
- * vacuum_check_record_at_undoredo () - check and modify undo/redo record header to satisfy vacuum status
+ * vacuum_rv_check_at_undo () - check and modify undo record header to satisfy vacuum status
  * 
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -7569,12 +7569,12 @@ vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
  * rec_type (in) : Expected record type.
  *
  * Note: This function will update the record to be valid in terms of vacuuming. Insert ID and prev version
- *       must be removed from the record at undo/redo when the record was subject to vacuuming but skipped 
+ *       must be removed from the record at undo, if the record was subject to vacuuming but skipped 
  *       during an update/delete operation. This happens when the record is changed before vacuum reaches it,
  *       and when it is reached its new header is different and not qualified for vacuum anymore.
  */
 int
-vacuum_check_record_at_undoredo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type)
+vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type)
 {
   MVCC_REC_HEADER rec_header;
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
@@ -7593,7 +7593,7 @@ vacuum_check_record_at_undoredo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 
       return ER_FAILED;
     }
 
-  can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, logtb_get_current_mvccid (thread_p));
+  can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, vacuum_Global_oldest_active_mvccid);
 
   /* it is impossible to restore a record that should be removed by vacuum */
   assert (can_vacuum != VACUUM_RECORD_REMOVE);
