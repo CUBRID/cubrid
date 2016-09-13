@@ -16350,7 +16350,7 @@ heap_rv_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   /* vacuum atomicity */
   recdes_type = *(INT16 *) (rcv->data);
-  if (recdes_type == REC_HOME || recdes_type == REC_RELOCATION)
+  if (recdes_type == REC_HOME || recdes_type == REC_NEWHOME)
     {
       error_code = vacuum_rv_check_at_undo (thread_p, rcv->pgptr, rcv->offset, recdes_type);
       if (error_code != NO_ERROR)
