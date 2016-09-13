@@ -11986,6 +11986,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			  free_and_init (elo_p->meta_data);
 
 			  db_make_elo (&perm_clob_value, pr_type_clob->id, &perm_clob_elo);
+			  perm_clob_value.need_clear = true;
 
 			  pr_clear_value (&temp_clob_value);
 	
