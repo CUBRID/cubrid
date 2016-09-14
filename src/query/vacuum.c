@@ -7560,3 +7560,64 @@ vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
     }
 }
 #endif /* !NDEBUG */
+
+/*
+ * vacuum_rv_check_at_undo () - check and modify undo record header to satisfy vacuum status
+ * 
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * pgptr (in)	 : Page where record resides.
+ * slotid (in)   : Record slot.
+ * rec_type (in) : Expected record type.
+ *
+ * Note: This function will update the record to be valid in terms of vacuuming. Insert ID and prev version
+ *       must be removed from the record at undo, if the record was subject to vacuuming but skipped 
+ *       during an update/delete operation. This happens when the record is changed before vacuum reaches it,
+ *       and when it is reached its new header is different and not qualified for vacuum anymore.
+ */
+int
+vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type)
+{
+  MVCC_REC_HEADER rec_header;
+  MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
+  RECDES recdes;
+
+  if (spage_get_record (pgptr, slotid, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  assert (recdes.type == rec_type);
+
+  if (or_mvcc_get_header (&recdes, &rec_header) != NO_ERROR)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, vacuum_Global_oldest_active_mvccid);
+
+  /* it is impossible to restore a record that should be removed by vacuum */
+  assert (can_vacuum != VACUUM_RECORD_REMOVE);
+
+  if (can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
+    {
+      /* the undo/redo record was qualified to have its insid and prev version vacuumed;
+       * do this here because it is possible that vacuum have missed it during update/delete operation */
+      MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+
+      /* quick hack: set recdes area = length */
+      recdes.area_size = recdes.length;
+
+      /* record was peeked, it should be updated here, while changing the header */
+      if (or_mvcc_set_header (&recdes, &rec_header) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+    }
+
+  return NO_ERROR;
+}
