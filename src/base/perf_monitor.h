@@ -66,12 +66,13 @@
  *    count and time of data page buffer hash anchor
  */
 
-#if 1
-#define PERF_ENABLE_DETAILED_BTREE_PAGE_STAT
-#define PERF_ENABLE_MVCC_SNAPSHOT_STAT
-#define PERF_ENABLE_LOCK_OBJECT_STAT
-#define PERF_ENABLE_PB_HASH_ANCHOR_STAT
-#endif
+/* Statistics activation flags */
+
+#define PERFMON_ACTIVE_DEFAULT 0
+#define PERFMON_ACTIVE_DETAILED_BTREE_PAGE 1
+#define PERFMON_ACTIVE_MVCC_SNASPHOT 2
+#define PERFMON_ACTIVE_LOCK_OBJECT 4
+#define PERFMON_ACTIVE_PB_HASH_ANCHOR 8
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
@@ -212,12 +213,10 @@ typedef enum
   PERF_PAGE_BTREE_GENERIC,	/* b+tree index (uninitialized) */
   PERF_PAGE_LOG,		/* NONE - log page (unused) */
   PERF_PAGE_DROPPED_FILES,	/* Dropped files page.  */
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
   PERF_PAGE_BTREE_ROOT,		/* b+tree root index page */
   PERF_PAGE_BTREE_OVF,		/* b+tree overflow index page */
   PERF_PAGE_BTREE_LEAF,		/* b+tree leaf index page */
   PERF_PAGE_BTREE_NONLEAF,	/* b+tree nonleaf index page */
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
   PERF_PAGE_CNT
 } PERF_PAGE_TYPE;
 
@@ -626,6 +625,7 @@ extern void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int st
 extern void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff);
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
+extern int perfmon_get_activation_flag (void);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */

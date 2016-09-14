@@ -100,6 +100,7 @@ struct pstat_global
   INT32 n_watchers;
 
   bool initialized;
+  int activation_flag;
 };
 
 PSTAT_GLOBAL pstat_Global;
@@ -2820,7 +2821,6 @@ perfmon_stat_page_type_name (const int page_type)
       return "PAGE_LOG";
     case PERF_PAGE_DROPPED_FILES:
       return "PAGE_DROPPED";
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
     case PERF_PAGE_BTREE_ROOT:
       return "PAGE_BTREE_R";
     case PERF_PAGE_BTREE_OVF:
@@ -2829,7 +2829,6 @@ perfmon_stat_page_type_name (const int page_type)
       return "PAGE_BTREE_L";
     case PERF_PAGE_BTREE_NONLEAF:
       return "PAGE_BTREE_N";
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
     default:
       break;
     }
@@ -3933,6 +3932,7 @@ perfmon_initialize (int num_trans)
   pstat_Global.n_watchers = 0;
 
   pstat_Global.initialized = true;
+  pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
   return NO_ERROR;
 
 error:
@@ -4820,4 +4820,14 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
     }
 
   return (ptr);
+}
+
+/*
+ * perfmon_get_activation_flag () - Get the global activation flag
+ * 
+ */
+int
+perfmon_get_activation_flag (void)
+{
+  return pstat_Global.activation_flag;
 }

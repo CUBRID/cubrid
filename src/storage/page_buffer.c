@@ -234,31 +234,6 @@ static int rv;
 #define PGBUF_MAX_FIXED_SOURCE_LEN 64
 #endif /* PAGE_STATISTICS */
 
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
-#define PGBUF_GET_PAGE_TYPE_FOR_STAT(pgptr,perf_page_type) \
-        do { \
-	  FILEIO_PAGE *io_pgptr;  \
-	  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);  \
-	  if (io_pgptr->prv.ptype == PAGE_BTREE)  \
-	    { \
-	      perf_page_type = btree_get_perf_btree_page_type (pgptr); \
-	    } \
-	  else	\
-	    { \
-	      perf_page_type = io_pgptr->prv.ptype; \
-	    } \
-	  } \
-	while (0)
-#else
-#define PGBUF_GET_PAGE_TYPE_FOR_STAT(pgptr,perf_page_type) \
-        do { \
-	  FILEIO_PAGE *io_pgptr;  \
-	  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);  \
-	  perf_page_type = io_pgptr->prv.ptype;	\
-	  } \
-	while (0)
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
-
 /* BCB zone */
 typedef enum
 {
@@ -1732,7 +1707,7 @@ try_again:
     {
       PERF_PAGE_TYPE perf_page_type;
 
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (pgptr);
 
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
@@ -1878,7 +1853,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
   vpid = bufptr->vpid;
   if (is_perf_tracking)
     {
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (*pgptr_p, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (*pgptr_p);
 
       /* promote condition */
       if (condition == PGBUF_PROMOTE_ONLY_READER)
@@ -2152,7 +2127,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (pgptr);
     }
   INIT_HOLDER_STAT (&holder_perf_stat);
   holder_status = pgbuf_unlatch_thrd_holder (thread_p, bufptr, &holder_perf_stat);
@@ -12157,4 +12132,22 @@ pgbuf_get_fix_count (PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
   return bufptr->fcnt;
+}
+
+PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (PAGE_PTR pgptr)
+{
+  PERF_PAGE_TYPE perf_page_type;
+  FILEIO_PAGE *io_pgptr;
+
+  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
+  if ((io_pgptr->prv.ptype == PAGE_BTREE) && ( perfmon_get_activation_flag () & PERFMON_ACTIVE_DETAILED_BTREE_PAGE))
+    { 
+      perf_page_type = btree_get_perf_btree_page_type (pgptr);
+    } 
+  else
+    { 
+      perf_page_type = io_pgptr->prv.ptype;
+    }
+
+  return perf_page_type;
 }

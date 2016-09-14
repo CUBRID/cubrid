@@ -33,6 +33,7 @@
 #include "storage_common.h"
 #include "disk_manager.h"
 #include "lock_manager.h"
+#include "perf_monitor.h"
 
 #define FREE			true	/* Free page buffer */
 #define DONT_FREE		false	/* Don't free the page buffer */
@@ -457,4 +458,6 @@ extern int pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data);
 
 extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
+
+extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (PAGE_PTR pgptr);
 #endif /* _PAGE_BUFFER_H_ */
