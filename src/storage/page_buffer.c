@@ -12134,18 +12134,19 @@ pgbuf_get_fix_count (PAGE_PTR pgptr)
   return bufptr->fcnt;
 }
 
-PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (PAGE_PTR pgptr)
+PERF_PAGE_TYPE
+pgbuf_get_page_type_for_stat (PAGE_PTR pgptr)
 {
   PERF_PAGE_TYPE perf_page_type;
   FILEIO_PAGE *io_pgptr;
 
   CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
-  if ((io_pgptr->prv.ptype == PAGE_BTREE) && ( perfmon_get_activation_flag () & PERFMON_ACTIVE_DETAILED_BTREE_PAGE))
-    { 
+  if ((io_pgptr->prv.ptype == PAGE_BTREE) && (perfmon_get_activation_flag () & PERFMON_ACTIVE_DETAILED_BTREE_PAGE))
+    {
       perf_page_type = btree_get_perf_btree_page_type (pgptr);
-    } 
+    }
   else
-    { 
+    {
       perf_page_type = io_pgptr->prv.ptype;
     }
 

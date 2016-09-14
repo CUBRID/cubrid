@@ -4916,17 +4916,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-   {PRM_NAME_EXTENDED_STATISTICS_ACTIVATION,
-    (PRM_FOR_SERVER | PRM_FOR_CLIENT),
-     PRM_INTEGER,
-     (void *) &prm_extended_statistics_flag,
-     (void *) &prm_extended_statistics_default,
-     (void *) &PRM_EXTENDED_STATISTICS,
-     (void *) &prm_extended_statistics_upper,
-     (void *) &prm_extended_statistics_lower,
-     (char *) NULL,
-     (DUP_PRM_FUNC) NULL,
-     (DUP_PRM_FUNC) NULL}
+  {PRM_NAME_EXTENDED_STATISTICS_ACTIVATION,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   (void *) &prm_extended_statistics_flag,
+   (void *) &prm_extended_statistics_default,
+   (void *) &PRM_EXTENDED_STATISTICS,
+   (void *) &prm_extended_statistics_upper,
+   (void *) &prm_extended_statistics_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
