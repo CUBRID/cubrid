@@ -53,19 +53,6 @@
 #define MAX_SERVER_NAMELENGTH           256
 #define SH_MODE 0644
 
-/*
- * Enable these macros to add extended statistics information in statdump.
- * Some overhead is added, do not activate for production environment.
- * - PERF_ENABLE_DETAILED_BTREE_PAGE_STAT : 
- *    index pages are detailed by root, leaf, non-leaf 
- * - PERF_ENABLE_MVCC_SNAPSHOT_STAT
- *    partitioned information per snapshot function
- * - PERF_ENABLE_LOCK_OBJECT_STAT
- *    partitioned information per type of lock
- * - PERF_ENABLE_PB_HASH_ANCHOR_STAT
- *    count and time of data page buffer hash anchor
- */
-
 /* Statistics activation flags */
 
 #define PERFMON_ACTIVE_DEFAULT 0

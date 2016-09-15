@@ -6744,17 +6744,14 @@ pgbuf_search_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
   int rv;
   int loop_cnt;
 #endif
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = perfmon_is_perf_tracking ();
-#endif
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
 
   mbw_cnt = 0;
 
@@ -6820,22 +6817,21 @@ two_phase:
 
 try_again:
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&start_tick);
     }
-#endif
+
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
       perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   bufptr = hash_anchor->hash_next;
   while (bufptr != NULL)
     {
@@ -6907,34 +6903,31 @@ pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, PGBUF_BCB * bufpt
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
     {
-      tsc_getticks (&start_tick);
+      thread_p = thread_get_thread_entry_info ();
+
+      if (perfmon_is_perf_tracking ())
+	{
+	  tsc_getticks (&start_tick);
+	}
     }
-#endif
 
   /* Note that the caller is not holding bufptr->BCB_mutex */
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
       perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   bufptr->hash_next = hash_anchor->hash_next;
   hash_anchor->hash_next = bufptr;
 
@@ -6962,21 +6955,18 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
     {
-      tsc_getticks (&start_tick);
+      thread_p = thread_get_thread_entry_info ();
+      if (perfmon_is_perf_tracking ())
+	{
+	  tsc_getticks (&start_tick);
+	}
     }
-#endif
 
   /* the caller is holding bufptr->BCB_mutex */
 
@@ -6985,15 +6975,15 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
    * invoked by a victim selector */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&(bufptr->vpid))]);
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
       perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   if (bufptr->avoid_victim == true)
     {
       assert (false);
@@ -7068,11 +7058,8 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 #if defined(SERVER_MODE)
   PGBUF_BUFFER_LOCK *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
-#endif
 
   /* the caller is holding hash_anchor->hash_mutex */
   /* check whether the page is in the Buffer Lock Chain */
@@ -7081,10 +7068,6 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  is_perf_tracking = perfmon_is_perf_tracking ();
-#endif
 
   cur_thrd_entry = thread_p;
   cur_buffer_lock = hash_anchor->lock_next;
@@ -7105,22 +7088,20 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 	      THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
 	      int r;
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-	      if (is_perf_tracking)
+	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 		{
 		  tsc_getticks (&start_tick);
 		}
-#endif
+
 	      r = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-	      if (is_perf_tracking)
+
+	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 		{
 		  tsc_getticks (&end_tick);
 		  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
 		  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
 		  perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
 		}
-#endif
 
 	      thrd_entry = cur_buffer_lock->next_wait_thrd;
 
@@ -7188,36 +7169,33 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
 {
 #if defined(SERVER_MODE)
   int rv;
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
   PGBUF_BUFFER_LOCK *prev_buffer_lock, *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
 
   if (need_hash_mutex)
     {
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-      thread_p = thread_get_thread_entry_info ();
-      is_perf_tracking = perfmon_is_perf_tracking ();
-      if (is_perf_tracking)
+      if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
 	{
-	  tsc_getticks (&start_tick);
+	  thread_p = thread_get_thread_entry_info ();
+	  if (perfmon_is_perf_tracking ())
+	    {
+	      tsc_getticks (&start_tick);
+	    }
 	}
-#endif
       rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-      if (is_perf_tracking)
+
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 	{
 	  tsc_getticks (&end_tick);
 	  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
 	  perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
 	}
-#endif
     }
 
   /* check whether the page is in the Buffer Lock Chain */
