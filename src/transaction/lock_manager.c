@@ -3244,12 +3244,9 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   bool is_instant_duration;
   int compat1, compat2;
   bool is_res_mutex_locked = false;
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  bool is_perf_tracking;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
 #if defined(ENABLE_SYSTEMTAP)
   OID *class_oid_for_marker_p, *oid_for_marker_p;
@@ -3286,10 +3283,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
     }
 
   thrd_entry = thread_p;
-
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  is_perf_tracking = perfmon_is_perf_tracking ();
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   new_mode = group_mode = old_mode = NULL_LOCK;
 #if defined(LK_DUMP)
@@ -3905,12 +3898,10 @@ lock_tran_lk_entry:
 
 blocked:
 
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  if (is_perf_tracking)
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_LOCK_OBJECT))
     {
       tsc_getticks (&start_tick);
     }
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   /* LK_CANWAIT(wait_msecs) : wait_msecs > 0 */
   perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_OBJECTS);
@@ -3924,15 +3915,15 @@ blocked:
       pthread_mutex_unlock (&res_ptr->res_mutex);
     }
   ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  if (is_perf_tracking)
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_LOCK_OBJECT))
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       perfmon_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
     }
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+
   if (ret_val != LOCK_RESUMED)
     {
       /* Following three cases are possible. 1. lock timeout 2. deadlock victim 3. interrupt In any case, current

@@ -519,9 +519,7 @@ static const char *perfmon_stat_cond_type_name (const int cond_type);
 static const char *perfmon_stat_promote_cond_name (const int cond_type);
 static const char *perfmon_stat_snapshot_name (const int snapshot);
 static const char *perfmon_stat_snapshot_record_type (const int rec_type);
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 static const char *perfmon_stat_lock_mode_name (const int lock_mode);
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
@@ -1954,7 +1952,6 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
   return 0;
 }
 
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 /*
  * perfmon_lk_waited_time_on_objects - Increase lock time wait counter of
  *				       the current transaction index
@@ -1975,7 +1972,6 @@ perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT6
       perfmon_add_stat_at_offset (thread_p, PSTAT_OBJ_LOCK_TIME_COUNTERS, lock_mode, amount);
     }
 }
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
 UINT64
 perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
@@ -2951,7 +2947,6 @@ perfmon_stat_snapshot_record_type (const int rec_type)
   return "ERROR";
 }
 
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 static const char *
 perfmon_stat_lock_mode_name (const int lock_mode)
 {
@@ -2984,7 +2979,6 @@ perfmon_stat_lock_mode_name (const int lock_mode)
     }
   return "ERROR";
 }
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
 /*
  * perfmon_stat_cond_type_name () -
@@ -3670,7 +3664,6 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
     }
 }
 
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 /*
  * perfmon_stat_dump_in_buffer_obj_lock_array_stat () -
  *
@@ -3707,9 +3700,7 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
 	}
     }
 }
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 /*
  * perfmon_stat_dump_in_file_obj_lock_array_stat () -
  *
@@ -3736,7 +3727,6 @@ perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * sta
       fprintf (stream, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode), (long long unsigned int) *counter);
     }
 }
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
 /*
  * perfmon_stat_dump_in_buffer_snapshot_array_stat () -
@@ -4039,10 +4029,29 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
   pstat_Global.is_watching[tran_index] = false;
 }
 
+/*
+ * perfmon_is_perf_tracking () - Returns true if the are active threads
+ *
+ * return	 : true or false
+ */
 bool
 perfmon_is_perf_tracking (void)
 {
   return pstat_Global.n_watchers > 0;
+}
+
+/*
+ * perfmon_is_perf_tracking_and_active () - Returns true if the are active threads
+ *					    and the activation_flag of the extended statistic is activated
+ *
+ * return	        : true or false
+ * activation_flag (in) : activation flag for extended statistic
+ *
+ */
+bool
+perfmon_is_perf_tracking_and_active (int activation_flag)
+{
+  return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
 }
 #endif /* SERVER_MODE || SA_MODE */
 
@@ -4561,9 +4570,10 @@ f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 void
 f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
-#if defined PERF_ENABLE_LOCK_OBJECT_STAT
-  perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
-#endif
+  if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
+    {
+      perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
+    }
 }
 
 /*
@@ -4695,9 +4705,10 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char *s, const UINT64 * stat_vals, int *
 void
 f_dump_in_buffer_Time_obj_lock_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
-#if defined PERF_ENABLE_LOCK_OBJECT_STAT
-  perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
-#endif
+  if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
+    {
+      perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
+    }
 }
 
 /*
