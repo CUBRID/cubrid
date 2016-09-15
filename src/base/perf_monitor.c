@@ -4554,7 +4554,7 @@ f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_va
 void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNASPHOT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
     {
       perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
     }
@@ -4688,7 +4688,7 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char *s, const UINT64 * stat_v
 void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNASPHOT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
     {
       perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
     }
