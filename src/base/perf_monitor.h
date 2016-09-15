@@ -854,9 +854,7 @@ extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_typ
 					   UINT64 amount);
 extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 					  int cond_type, UINT64 amount);
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
-#endif
 
 #endif /* SERVER_MODE || SA_MODE */
 

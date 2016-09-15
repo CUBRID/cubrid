@@ -517,10 +517,8 @@ static const char *perfmon_stat_page_mode_name (const int page_mode);
 static const char *perfmon_stat_holder_latch_name (const int holder_latch);
 static const char *perfmon_stat_cond_type_name (const int cond_type);
 static const char *perfmon_stat_promote_cond_name (const int cond_type);
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 static const char *perfmon_stat_snapshot_name (const int snapshot);
 static const char *perfmon_stat_snapshot_record_type (const int rec_type);
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 static const char *perfmon_stat_lock_mode_name (const int lock_mode);
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
@@ -2202,7 +2200,6 @@ perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_f
     }
 }
 
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 /*
  *   perfmon_mvcc_snapshot - 
  *   return: none
@@ -2225,7 +2222,6 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
       perfmon_add_stat_at_offset (thread_p, PSTAT_MVCC_SNAPSHOT_COUNTERS, offset, 1);
     }
 }
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
 #endif /* SERVER_MODE || SA_MODE */
 
@@ -2899,7 +2895,6 @@ perfmon_stat_cond_type_name (const int cond_type)
   return "ERROR";
 }
 
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 /*
  * perfmon_stat_snapshot_name () -
  */
@@ -2955,7 +2950,6 @@ perfmon_stat_snapshot_record_type (const int rec_type)
     }
   return "ERROR";
 }
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 static const char *
@@ -3582,8 +3576,6 @@ perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE * stream, const UINT64 
   perfmon_stat_dump_in_file_page_lock_time_array_stat (stream, stats_ptr);
 }
 
-
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 /*
  * perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat () -
  *
@@ -3635,9 +3627,7 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
 	}
     }
 }
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 /*
  * perf_stat_dump_in_file_mvcc_snapshot_array_stat () -
  *
@@ -3679,7 +3669,6 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
 	}
     }
 }
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
 /*
@@ -4556,9 +4545,10 @@ f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_va
 void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
-#if defined PERF_ENABLE_MVCC_SNAPSHOT_STAT
-  perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
-#endif
+  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNASPHOT)
+    {
+      perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
+    }
 }
 
 /*
@@ -4688,9 +4678,10 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char *s, const UINT64 * stat_v
 void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
 {
-#if defined PERF_ENABLE_MVCC_SNAPSHOT_STAT
-  perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
-#endif
+  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNASPHOT)
+    {
+      perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
+    }
 }
 
 /*
