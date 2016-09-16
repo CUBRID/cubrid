@@ -10066,6 +10066,18 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
     }
   else
     {
+		/* TODO[arnia] */
+	        int header_size = OR_HEADER_SIZE (recdes->data);
+		short *ptr_var_table =  OR_GET_OBJECT_VAR_TABLE (recdes->data);
+		int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+		int var_offset = OR_VAR_OFFSET (recdes->data, value->read_attrepr->location);
+		int element_offset = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (OR_GET_OBJECT_VAR_TABLE (recdes->data), 
+                                           value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data));
+		
+		unsigned char offset_val = *((char *) (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data))));
+		unsigned char *offset_val_ptr = (char *) (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data)));
+
+
       attrepr = value->read_attrepr;
       /* Is it a fixed size attribute ? */
       if (value->read_attrepr->is_fixed != 0)
@@ -10095,18 +10107,6 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 	   */
 	  if (!OR_VAR_IS_NULL (recdes->data, value->read_attrepr->location))
 	    {
-		/* TODO[arnia] */
-	        int header_size = OR_HEADER_SIZE (recdes->data);
-		short *ptr_var_table =  OR_GET_OBJECT_VAR_TABLE (recdes->data);
-		int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-		int var_offset = OR_VAR_OFFSET (recdes->data, value->read_attrepr->location);
-		int element_offset = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (OR_GET_OBJECT_VAR_TABLE (recdes->data), 
-                                           value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data));
-		
-		unsigned char offset_val = *((char *) (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data))));
-		unsigned char *offset_val_ptr = (char *) (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data)));
-
-
 	      /* 
 	       * The variable attribute is bound.
 	       * Find its location through the variable offset attribute table.
@@ -11625,7 +11625,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   int size_without_overflow_columns;
   int overflow_columns_cnt = 0;
   bool check_oor_column = true;
-  char common_oor_header[OR_MVCC_INSERT_HEADER_SIZE];
 
   /* check to make sure the attr_info has been used, it should not be empty. */
   if (attr_info->num_values == -1)
@@ -11780,7 +11779,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    }
 	  memset (out_of_row_recdes->home_recdes_oid_offsets, 0,
 		  out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->home_recdes_oid_offsets[0]));
-
 
 	  out_of_row_recdes->att_ids = (int *) db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity
 								 * sizeof (out_of_row_recdes->att_ids[0]));
@@ -20422,78 +20420,7 @@ heap_insert_handle_out_of_row_records (THREAD_ENTRY * thread_p, HEAP_OPERATION_C
 
   for (i = 0; i < context->out_of_row_recdes->recdes_cnt; i++)
     {
-      OID out_of_row_oid;
-      PR_TYPE *pr_type_oid = pr_type_from_id (DB_TYPE_OID);
-      OR_BUF home_oid_buf;
-      DB_VALUE out_of_row_oid_val;
-
-      /* TODO[arnia] : theshold to insert into heap */
-      if (context->out_of_row_recdes->oor_recdes[i].length < HEAP_OOR_SLOTTED_THRESHOLD_SIZE)
-	{
-	  HEAP_OPERATION_CONTEXT oor_context;
-
-	  /* TODO[arnia] : create insert context */
-#if 0
-	  if (HFID_IS_NULL (&context->oor_hfid))
-	    {
-	      if (heap_oor_find_hfid (thread_p, &context->class_oid, &context->hfid, 3, &context->oor_hfid, true)
-				      == NULL)
-		{
-		  ASSERT_ERROR ();
-		  return rc;
-		}
-	    }
-
-	  heap_create_insert_context (&oor_context, &context->oor_hfid, &context->class_oid,
-				      &context->out_of_row_recdes->oor_recdes[i], NULL, NULL);
-#endif
-
-	  /* fix header page */
-	  rc = heap_fix_header_page (thread_p, &oor_context);
-	  if (rc != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return rc;
-	    }
-
-	  rc = heap_get_insert_location_with_lock (thread_p, &oor_context, NULL);
-	  if (rc != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return rc;
-	    }
-
-	  COPY_OID (&out_of_row_oid, &oor_context.res_oid);
-
-	  rc = heap_insert_physical (thread_p, &oor_context);
-	  if (rc != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return rc;
-	    }
-
-	  heap_log_insert_physical (thread_p, oor_context.home_page_watcher_p->pgptr, &oor_context.hfid.vfid,
-				    &oor_context.res_oid, oor_context.recdes_p, false,
-				    oor_context.is_redistribute_insert_with_delid);
-
-	  /* unfix all pages of insert context */
-	  heap_unfix_watchers (thread_p, &oor_context);
-	}
-      else
-	{
-	  if (heap_ovf_insert (thread_p, &context->hfid, &out_of_row_oid, &context->out_of_row_recdes->oor_recdes[i]) == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-	}
-
-      DB_MAKE_OID (&out_of_row_oid_val, &out_of_row_oid);
-
-      OR_BUF_INIT2 (home_oid_buf, context->recdes_p->data + context->out_of_row_recdes->home_recdes_oid_offsets[i], OR_OID_SIZE);
-
-      pr_type_oid->data_writeval (&home_oid_buf, &out_of_row_oid_val);
-
-      context->out_of_row_recdes->home_oid_updated = true;
+      assert (0);
     }
 
   /* all ok */
@@ -24766,7 +24693,6 @@ heap_check_class_for_rr_isolation_err (const OID * class_oid)
 }
 
 /*
->>>>>>> 6fd2ecfa958afae1c742c0c1c5de88e89ef2ec75
  * heap_update_set_prev_version () - Set prev version lsa to record according to its type. 
  *
  * return	       : error code or NO_ERROR
@@ -24878,7 +24804,6 @@ end:
 }
 
 /*
-<<<<<<< HEAD
  * heap_get_last_version () - Generic function for retrieving last version of heap objects (not considering visibility)
  *
  * return    : Scan code.

@@ -332,9 +332,7 @@ typedef enum
 } SNAPSHOT_TYPE;
 
 /* values with this size or above are stored in out of record data (heap or overflow) */
-#define HEAP_OOR_THRESHOLD_SIZE 50
-/* values with size below this threshold are stored in heap file */
-#define HEAP_OOR_SLOTTED_THRESHOLD_SIZE 200
+#define HEAP_OOR_THRESHOLD_SIZE PATH_MAX
 
 
 /* HEAP_PAGE_VACUUM_STATUS -

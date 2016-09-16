@@ -1792,15 +1792,18 @@ or_put_offset_internal (OR_BUF * buf, int num, int offset_size, bool overflow_co
 {
   if (offset_size == OR_BYTE_SIZE)
     {
+      assert (num <= OR_MAX_BYTE);
       return or_put_byte (buf, num | (overflow_column_flag ? 0x80 : 0));
     }
   else if (offset_size == OR_SHORT_SIZE)
     {
+      assert (num <= OR_MAX_SHORT);
       return or_put_short (buf, num | (overflow_column_flag ? 0x8000 : 0));
     }
   else
     {
       assert (offset_size == BIG_VAR_OFFSET_SIZE);
+      assert (num <= OR_MAX_INT);
 
       return or_put_int (buf, num | (overflow_column_flag ? 0x80000000L : 0));
     }
