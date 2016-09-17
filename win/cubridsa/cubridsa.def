@@ -582,7 +582,6 @@ EXPORTS
     db_print
     db_print_mop
     db_print_stats
-    db_purpose_totalpgs_freepgs
     db_push_values
     db_put
     db_query_column_count

@@ -783,7 +783,6 @@ EXPORTS
     db_print
     db_print_mop
     db_print_stats
-    db_purpose_totalpgs_freepgs
     db_query_end_internal
     db_query_execute
     db_query_execute_immediate

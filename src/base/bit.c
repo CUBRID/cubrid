@@ -56,14 +56,14 @@ bit8_count_ones (UINT8 i)
 }
 
 int
-bit8_count_zeroes (UINT8 i)
+bit8_count_zeros (UINT8 i)
 {
   /* use lookup table */
   return byte_zeros[i];
 }
 
 int
-bit8_count_trailing_zeroes (UINT8 i)
+bit8_count_trailing_zeros (UINT8 i)
 {
   /* returns 0 for 1 and 8 for 0 */
   int c = 7;
@@ -94,7 +94,45 @@ bit8_count_trailing_zeroes (UINT8 i)
 int
 bit8_count_trailing_ones (UINT8 i)
 {
-  return bit8_count_trailing_zeroes (~i);
+  return bit8_count_trailing_zeros (~i);
+}
+
+int
+bit8_count_leading_zeros (UINT8 i)
+{
+  int c;
+
+  if (i == 0)
+    {
+      return 8;
+    }
+  c = 7;
+  if (i & 0xF0)
+    {
+      c -= 4;
+      i >>= 4;
+    }
+  if (i & 0x0C)
+    {
+      c -= 2;
+      i >>= 2;
+    }
+  if (i & 0x02)
+    {
+      c -= 1;
+      i >>= 1;
+    }
+  if (i & 0x01)
+    {
+      c -= 1;
+    }
+  return c;
+}
+
+int
+bit8_count_leading_ones (UINT8 i)
+{
+  return bit8_count_leading_zeros (~i);
 }
 
 bool
@@ -120,6 +158,14 @@ bit8_clear (UINT8 i, int off)
   return i;
 }
 
+UINT8
+bit8_set_trailing_bits (UINT8 i, int n)
+{
+  /* do not use it to set all bits */
+  assert (n < 64);
+  return i | ((((UINT8) i) << n) - 1);
+}
+
 /*
  * 16-bit section
  */
@@ -132,14 +178,14 @@ bit16_count_ones (UINT16 i)
 }
 
 int
-bit16_count_zeroes (UINT16 i)
+bit16_count_zeros (UINT16 i)
 {
   /* use byte lookup table */
   return byte_zeros[i & 0xFF] + byte_zeros[i >> 8];
 }
 
 int
-bit16_count_trailing_zeroes (UINT16 i)
+bit16_count_trailing_zeros (UINT16 i)
 {
   /* returns 0 for 1 and 16 for 0 */
   int c = 15;
@@ -174,7 +220,50 @@ bit16_count_trailing_zeroes (UINT16 i)
 int
 bit16_count_trailing_ones (UINT16 i)
 {
-  return bit16_count_trailing_zeroes (~i);
+  return bit16_count_trailing_zeros (~i);
+}
+
+int
+bit16_count_leading_zeros (UINT16 i)
+{
+  int c;
+
+  if (i == 0)
+    {
+      return 16;
+    }
+  c = 15;
+  if (i & 0xFF00)
+    {
+      c -= 8;
+      i >>= 8;
+    }
+  if (i & 0x00F0)
+    {
+      c -= 4;
+      i >>= 4;
+    }
+  if (i & 0x000C)
+    {
+      c -= 2;
+      i >>= 2;
+    }
+  if (i & 0x0002)
+    {
+      c -= 1;
+      i >>= 1;
+    }
+  if (i & 0x0001)
+    {
+      c -= 1;
+    }
+  return c;
+}
+
+int
+bit16_count_leading_ones (UINT16 i)
+{
+  return bit16_count_leading_zeros (~i);
 }
 
 bool
@@ -200,6 +289,14 @@ bit16_clear (UINT16 i, int off)
   return i;
 }
 
+UINT16
+bit16_set_trailing_bits (UINT16 i, int n)
+{
+  /* do not use it to set all bits */
+  assert (n < 16);
+  return i | ((((UINT16) i) << n) - 1);
+}
+
 /*
  * 32-bit section
  */
@@ -214,13 +311,13 @@ bit32_count_ones (UINT32 i)
 }
 
 int
-bit32_count_zeroes (UINT32 i)
+bit32_count_zeros (UINT32 i)
 {
   return bit32_count_ones (~i);
 }
 
 int
-bit32_count_trailing_zeroes (UINT32 i)
+bit32_count_trailing_zeros (UINT32 i)
 {
   /* returns 0 for 1 and 32 for 0 */
   int c = 31;
@@ -259,7 +356,55 @@ bit32_count_trailing_zeroes (UINT32 i)
 int
 bit32_count_trailing_ones (UINT32 i)
 {
-  return bit32_count_trailing_zeroes (~i);
+  return bit32_count_trailing_zeros (~i);
+}
+
+int
+bit32_count_leading_zeros (UINT32 i)
+{
+  int c;
+
+  if (i == 0)
+    {
+      return 32;
+    }
+  c = 31;
+  if (i & 0xFFFF0000)
+    {
+      c -= 16;
+      i >>= 16;
+    }
+  if (i & 0x0000FF00)
+    {
+      c -= 8;
+      i >>= 8;
+    }
+  if (i & 0x000000F0)
+    {
+      c -= 4;
+      i >>= 4;
+    }
+  if (i & 0x0000000C)
+    {
+      c -= 2;
+      i >>= 2;
+    }
+  if (i & 0x00000002)
+    {
+      c -= 1;
+      i >>= 1;
+    }
+  if (i & 0x00000001)
+    {
+      c -= 1;
+    }
+  return c;
+}
+
+int
+bit32_count_leading_ones (UINT32 i)
+{
+  return bit32_count_leading_zeros (~i);
 }
 
 bool
@@ -285,6 +430,14 @@ bit32_clear (UINT32 i, int off)
   return i;
 }
 
+UINT32
+bit32_set_trailing_bits (UINT32 i, int n)
+{
+  /* do not use it to set all bits */
+  assert (n < 32);
+  return i | ((((UINT32) i) << n) - 1);
+}
+
 /*
  * 64-bit section
  */
@@ -299,13 +452,13 @@ bit64_count_ones (UINT64 i)
 }
 
 int
-bit64_count_zeroes (UINT64 i)
+bit64_count_zeros (UINT64 i)
 {
   return bit64_count_ones (~i);
 }
 
 int
-bit64_count_trailing_zeroes (UINT64 i)
+bit64_count_trailing_zeros (UINT64 i)
 {
   /* returns 0 for 1 and 64 for 0 */
   int c = 63;
@@ -348,7 +501,60 @@ bit64_count_trailing_zeroes (UINT64 i)
 int
 bit64_count_trailing_ones (UINT64 i)
 {
-  return bit64_count_trailing_zeroes (~i);
+  return bit64_count_trailing_zeros (~i);
+}
+
+int
+bit64_count_leading_zeros (UINT64 i)
+{
+  int c;
+
+  if (i == 0)
+    {
+      return 64;
+    }
+  c = 63;
+  if (i & 0xFFFFFFFF00000000)
+    {
+      c -= 32;
+      i >>= 32;
+    }
+  if (i & 0x00000000FFFF0000)
+    {
+      c -= 16;
+      i >>= 16;
+    }
+  if (i & 0x000000000000FF00)
+    {
+      c -= 8;
+      i >>= 8;
+    }
+  if (i & 0x00000000000000F0)
+    {
+      c -= 4;
+      i >>= 4;
+    }
+  if (i & 0x000000000000000C)
+    {
+      c -= 2;
+      i >>= 2;
+    }
+  if (i & 0x0000000000000002)
+    {
+      c -= 1;
+      i >>= 1;
+    }
+  if (i & 0x0000000000000001)
+    {
+      c -= 1;
+    }
+  return c;
+}
+
+int
+bit64_count_leading_ones (UINT64 i)
+{
+  return bit64_count_leading_zeros (~i);
 }
 
 bool
@@ -372,4 +578,12 @@ bit64_clear (UINT64 i, int off)
   assert (off >= 0 && off < 64);
   i &= ~(((UINT64) 1) << off);
   return i;
+}
+
+UINT64
+bit64_set_trailing_bits (UINT64 i, int n)
+{
+  /* do not use it to set all bits */
+  assert (n < 64);
+  return i | ((((UINT64) i) << n) - 1);
 }

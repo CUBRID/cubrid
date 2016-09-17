@@ -117,9 +117,7 @@ static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
 static void log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool is_new_append_page,
 				   LOG_LSA * last_lsa);
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
-					     LOG_LSA * start_postpone_run_lsa, LOG_LSA * partial_dealloc_vol_header_lsa,
-					     LOG_TDES * tdes);
-static int log_recovery_complete_partial_page_deallocation (THREAD_ENTRY * thread_p, LOG_LSA * partial_dealloc_lsa);
+					     LOG_LSA * start_postpone_run_lsa, LOG_TDES * tdes);
 
 static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
 static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv_buf, RECDES * record,
@@ -162,7 +160,6 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 		    LOG_ZIP * undo_unzip_ptr)
 {
   char *area = NULL;
-  LOG_LSA logical_undo_nxlsa;
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   bool is_zip = false;
   int error_code = NO_ERROR;
@@ -3825,7 +3822,6 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   LOG_LSA first_postpone_to_apply;
   LOG_LSA start_postpone_run_lsa;
-  LOG_LSA partial_dealloc_vol_page_lsa;
 
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
@@ -3836,16 +3832,8 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
       LSA_SET_NULL (&first_postpone_to_apply);
-      LSA_SET_NULL (&partial_dealloc_vol_page_lsa);
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
-					&tdes->topops.stack[tdes->topops.last].posp_lsa, &start_postpone_run_lsa,
-					&partial_dealloc_vol_page_lsa, tdes);
-
-      if (!LSA_ISNULL (&partial_dealloc_vol_page_lsa))
-	{
-	  /* todo: this could be solved with logical run postpone */
-	  (void) log_recovery_complete_partial_page_deallocation (thread_p, &partial_dealloc_vol_page_lsa);
-	}
+					&tdes->topops.stack[tdes->topops.last].posp_lsa, &start_postpone_run_lsa, tdes);
 
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply, LOG_COMMIT_TOPOPE_WITH_POSTPONE, false);
       LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
@@ -3876,12 +3864,10 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
 
   LSA_SET_NULL (&first_postpone_to_apply);
-  LSA_SET_NULL (&partial_dealloc_vol_page_lsa);
 
   if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
     {
       LSA_SET_NULL (&first_postpone_to_apply);
-      LSA_SET_NULL (&partial_dealloc_vol_page_lsa);
 
       /* 
        * The transaction was the one that was committing
@@ -3904,14 +3890,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
 	}
 
-      log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply, &tdes->posp_nxlsa, NULL,
-					&partial_dealloc_vol_page_lsa, tdes);
-
-      if (!LSA_ISNULL (&partial_dealloc_vol_page_lsa))
-	{
-	  /* todo: we can solve this with logical run postpone */
-	  (void) log_recovery_complete_partial_page_deallocation (thread_p, &partial_dealloc_vol_page_lsa);
-	}
+      log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply, &tdes->posp_nxlsa, NULL, tdes);
 
       log_do_postpone (thread_p, tdes, &first_postpone_to_apply, LOG_COMMIT_WITH_POSTPONE, false);
 
@@ -5282,14 +5261,12 @@ error:
  *   ret_lsa(out):
  *   start_postpone_lsa(in):
  *   start_postpone_run_lsa(out): run postpone lsa of start postpone
- *   partial_dealloc_vol_page_lsa(out): partial deallocation volume page log lsa
  *   tdes(in):
  *
  */
 static int
 log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
-				  LOG_LSA * start_postpone_run_lsa, LOG_LSA * partial_dealloc_vol_page_lsa,
-				  LOG_TDES * tdes)
+				  LOG_LSA * start_postpone_run_lsa, LOG_TDES * tdes)
 {
   LOG_LSA end_postpone_lsa;
   LOG_LSA start_seek_lsa;
@@ -5316,7 +5293,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
   LOG_REC_TOPOP_RESULT *topop_result = NULL;
   bool found_commit_with_postpone = false;
 
-  assert (ret_lsa && start_postpone_lsa && tdes && partial_dealloc_vol_page_lsa);
+  assert (ret_lsa && start_postpone_lsa && tdes);
 
   LSA_SET_NULL (ret_lsa);
 
@@ -5338,8 +5315,6 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
     {
       LSA_SET_NULL (start_postpone_run_lsa);
     }
-
-  LSA_SET_NULL (partial_dealloc_vol_page_lsa);
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -5458,44 +5433,21 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 			  /* run_postpone_log of start_postpone is found, next_postpone_lsa is the first postpone to be 
 			   * applied. */
 
-			  if (!LSA_ISNULL (partial_dealloc_vol_page_lsa))
+			  if (start_postpone_run_lsa != NULL)
 			    {
-			      if ((run_posp->data.rcvindex == RVDK_IDDEALLOC_VHDR_ONLY)
-				  && LSA_EQ (&run_posp->ref_lsa, partial_dealloc_vol_page_lsa))
-				{
-				  /* volume page deallocation completed */
-				  LSA_SET_NULL (partial_dealloc_vol_page_lsa);
-				}
-
-			      isdone = true;
+			      LSA_COPY (start_postpone_run_lsa, &local_start_postpone_run_lsa);
 			    }
-			  else
-			    {
-			      if (start_postpone_run_lsa != NULL)
-				{
-				  LSA_COPY (start_postpone_run_lsa, &local_start_postpone_run_lsa);
-				}
-
-			      start_postpone_lsa_wasapplied = true;
-
-			      if (run_posp->data.rcvindex == RVDK_IDDEALLOC_BITMAP_ONLY)
-				{
-				  /* need to check atomicity of volume page deallocation. run postpone for
-				   * RVDK_IDDEALLOC_BITMAP_ONLY found. search run postpone for
-				   * RVDK_IDDEALLOC_VHDR_ONLY */
-				  LSA_COPY (partial_dealloc_vol_page_lsa, &run_posp->ref_lsa);
-				}
-			      else
-				{
-				  isdone = true;
-				}
-			    }
+			  start_postpone_lsa_wasapplied = true;
+			  isdone = true;
 			}
 		      break;
 
 		    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
 		      {
 			LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE *sysop_commit_and_run_postpone;
+
+			LSA_COPY (&local_start_postpone_run_lsa, &log_lsa);
+
 			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE),
 							  &log_lsa, log_pgptr);
@@ -5504,6 +5456,11 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 
 			if (LSA_EQ (start_postpone_lsa, &sysop_commit_and_run_postpone->run_postpone.ref_lsa))
 			  {
+			    if (start_postpone_run_lsa != NULL)
+			      {
+				LSA_COPY (start_postpone_run_lsa, &local_start_postpone_run_lsa);
+			      }
+
 			    start_postpone_lsa_wasapplied = true;
 			    isdone = true;
 			  }
@@ -5560,108 +5517,6 @@ end:
     }
 
   return NO_ERROR;
-}
-
-/*
- * log_recovery_complete_partial_page_deallocation () - Complete
- *					partial page deallocation
- *
- * return			: Void.
- * thread_p (in)		: Thread entry.
- * partial_dealloc_lsa (in)	: Partial page deallocation log lsa
- *
- * NOTE: The function is called at recovery only
- */
-static int
-log_recovery_complete_partial_page_deallocation (THREAD_ENTRY * thread_p, LOG_LSA * partial_dealloc_lsa)
-{
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char *aligned_log_pgbuf;
-  LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
-  LOG_REC_REDO redo;		/* A redo log record */
-  int rcv_length = 0;
-  char *rcv_data = NULL;
-  char *area = NULL;
-  int error_code = NO_ERROR;
-  LOG_RCV rcv;			/* Recovery structure for execution */
-  VPID rcv_vpid;		/* Location of data to redo */
-  LOG_RCVINDEX rcvindex;	/* The recovery index */
-  LOG_LSA log_lsa;
-
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-
-  LSA_COPY (&log_lsa, partial_dealloc_lsa);
-  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_complete_partial_page_deallocation");
-      goto end;
-    }
-
-  /* Get the DATA HEADER */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), &log_lsa, log_pgptr);
-
-  redo = *((LOG_REC_REDO *) ((char *) log_pgptr->area + log_lsa.offset));
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REDO), &log_lsa, log_pgptr);
-
-  if (log_lsa.offset + redo.length < (int) LOGAREA_SIZE)
-    {
-      rcv_data = (char *) log_pgptr->area + log_lsa.offset;
-    }
-  else
-    {
-      /* Need to copy the data into a contiguous area */
-      area = (char *) malloc (redo.length);
-      if (area == NULL)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_complete_partial_page_deallocation");
-
-	  goto end;
-	}
-
-      /* Copy the data */
-      logpb_copy_from_log (thread_p, area, redo.length, &log_lsa, log_pgptr);
-      rcv_data = area;
-    }
-
-  rcvindex = redo.data.rcvindex;
-  rcv.offset = 0;
-  rcv.length = redo.length;
-  rcv.data = rcv_data;
-  assert (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER);
-
-  rcv_vpid.volid = redo.data.volid;
-  rcv_vpid.pageid = DISK_VOLHEADER_PAGE;
-
-  rcv.pgptr = pgbuf_fix_with_retry (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, 10);
-  if (rcv.pgptr == NULL)
-    {
-      goto end;
-    }
-
-  disk_deallocate_volheader (thread_p, &rcv, partial_dealloc_lsa);
-
-  if (rcv.pgptr != NULL)
-    {
-      pgbuf_unfix (thread_p, rcv.pgptr);
-    }
-
-  if (area != NULL)
-    {
-      free_and_init (area);
-    }
-
-  return NO_ERROR;
-
-end:
-
-  if (area != NULL)
-    {
-      free_and_init (area);
-    }
-
-  return ER_FAILED;
 }
 
 /*

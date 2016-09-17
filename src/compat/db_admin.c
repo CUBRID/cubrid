@@ -288,11 +288,8 @@ db_init (const char *program, int print_version, const char *dbname, const char 
  *                    header.
  *    ext_npages: Number of pages
  *    ext_purpose: The purpose of the volume extension. One of the following:
- *                  - DISK_PERMVOL_DATA_PURPOSE,
- *                  - DISK_PERMVOL_INDEX_PURPOSE,
- *                  - DISK_PERMVOL_GENERIC_PURPOSE,
- *                  - DISK_PERMVOL_TEMP_PURPOSE,
- *
+ *                  - DB_PERMANENT_DATA_PURPOSE,
+ *                  - DB_TEMPORARY_DATA_PURPOSE
  */
 int
 db_add_volume (const char *ext_path, const char *ext_name, const char *ext_comments, const int ext_npages,
@@ -348,33 +345,6 @@ db_add_volume_ex (DBDEF_VOL_EXT_INFO * ext_info)
 
   return error;
 }
-
-#if 0
-/*
- * db_del_volume_ex() - Delete a volume extension from the database.
- *
- *    return : Error code
- *    volid(in) : 
- *    clear_cached(in) : clear cached files in temporary temp volume
- */
-int
-db_del_volume_ex (VOLID volid, bool clear_cached_files)
-{
-  int error = NO_ERROR;
-
-  CHECK_CONNECT_ERROR ();
-
-  if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "db_del_volume");
-      return er_errid ();
-    }
-
-  error = boot_del_volume_extension (volid, clear_cached_files);
-
-  return error;
-}
-#endif
 
 /*
  * db_num_volumes() - Find the number of permanent volumes in the database.
@@ -2092,48 +2062,6 @@ db_totalpgs (const char *volume_label)
   CHECK_CONNECT_ZERO ();
 
   retval = ((int) disk_get_total_numpages (NULL_VOLID));
-
-  return (retval);
-}
-
-/*
- * db_purpose_totalpgs_freepgs: Find the storage purpose of the volume and the
- *    number of total and free pages in the volume.
- * return           : volid or NULL_VOLID in case of error.
- * volid(in)        : Permanent volume identifier.
- *                    If NULL_VOLID is given, the total information of all
- *                    volumes is requested.
- * vol_purpose(out) : Purpose for the given volume.
- *                    Set as a side effect to the purpose of the given volume.
- *                    If NULL_VOLID is given as part of the volid, the purpose
- *                    is set to GENERIC.
- * vol_ntotal_pages(out):
- *                    Number of total pages for the given volume.
- *                    If NULL_VOLID is given as part of the volid, the argument
- *                    is set to the total number of pages for all volumes.
- * vol_nfree_pages(out):
- *                    Number of total pages for the given volume.
- *                    If NULL_VOLID is given as part of the volid, the argument
- *                    is set to the total number of pages for all volumes.
- */
-int
-db_purpose_totalpgs_freepgs (int volid, DB_VOLPURPOSE * vol_purpose, int *vol_ntotal_pages, int *vol_nfree_pages)
-{
-  int retval;
-  VOL_SPACE_INFO space_info;
-
-  CHECK_CONNECT_ZERO ();
-
-  retval = (int) disk_get_purpose_and_space_info (volid, vol_purpose, &space_info);
-
-  if (vol_ntotal_pages)
-    {
-      *vol_ntotal_pages = space_info.total_pages;
-    }
-  if (vol_nfree_pages)
-    {
-      *vol_nfree_pages = space_info.free_pages;
-    }
 
   return (retval);
 }

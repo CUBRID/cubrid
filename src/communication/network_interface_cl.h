@@ -112,10 +112,7 @@ extern int heap_reclaim_addresses (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern DISK_VOLPURPOSE disk_get_purpose (VOLID volid);
-#endif
-extern VOLID disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info);
+extern int disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
 extern bool disk_is_volume_exist (VOLID volid);
 extern int log_reset_wait_msecs (int wait_msecs);
@@ -166,9 +163,6 @@ extern int boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_leve
 			const char *backup_verbose_file, int num_threads, FILEIO_ZIP_METHOD zip_method,
 			FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
 extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
-#if 0
-extern int boot_del_volume_extension (VOLID volid, bool clear_cached);
-#endif
 extern int boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * idx_btid);
 extern int boot_find_number_permanent_volumes (void);
 extern int boot_find_number_temp_volumes (void);

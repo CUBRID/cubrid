@@ -2736,16 +2736,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       rcv.pgptr = addr->pgptr;
       rcv.data = (char *) data;
 
-      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
-	{
-	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, NULL);
-	  addr->pgptr = rcv.pgptr;	/* pgptr could be changed by pgbuf_fix_with_retry */
-	}
-      else
-	{
-	  assert (RV_fun[rcvindex].redofun != NULL);
-	  (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	}
+      assert (RV_fun[rcvindex].redofun != NULL);
+      (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
 
       LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
       log_skip_logging (thread_p, addr);
@@ -2791,20 +2783,11 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       rcv.pgptr = addr->pgptr;
       rcv.data = (char *) data;
 
-      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
+      assert (RV_fun[rcvindex].redofun != NULL);
+      (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+      if (skipredo == false)
 	{
-	  assert (skipredo == true);
-	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, NULL);
-	  addr->pgptr = rcv.pgptr;	/* pgptr could be changed by pgbuf_fix_with_retry */
-	}
-      else
-	{
-	  assert (RV_fun[rcvindex].redofun != NULL);
-	  (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	  if (skipredo == false)
-	    {
-	      log_append_redo_data (thread_p, rcvindex, addr, length, data);
-	    }
+	  log_append_redo_data (thread_p, rcvindex, addr, length, data);
 	}
 
       return;
@@ -9525,24 +9508,10 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   rvaddr.offset = rcv.offset;
   rvaddr.pgptr = rcv.pgptr;
 
-  /* 
-   * if rcvindex is RVDK_IDDEALLOC_WITH_VOLHEADER,
-   * Don't append same log like others.
-   * because it modify two pages (volume header & bit map)
-   * so, we must append two WAL logs for each page later
-   * (after below RV_fun call ends successfully)
-   */
-
   /* Now call the REDO recovery function */
   if (rcv.pgptr != NULL || (redo->data.volid == NULL_VOLID && redo->data.pageid == NULL_PAGEID))
     {
-      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
-	{
-	  /* TODO: RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL */
-	  error_code = disk_rv_alloctable_with_volheader (thread_p, &rcv, log_lsa);
-	  assert (error_code == NO_ERROR);
-	}
-      else if (rcvindex == RVVAC_DROPPED_FILE_ADD)
+      if (rcvindex == RVVAC_DROPPED_FILE_ADD)
 	{
 	  /* We don't know yet in which page the dropped file will end up so we have to do a special call here. */
 	  /* TODO: RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL */
@@ -9796,8 +9765,9 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 
       /* Find the current pages of the volume and its descriptor */
 
-      if (xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info) != volid)
+      if (xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info) != NO_ERROR)
 	{
+	  /* we just give up? */
 	  continue;
 	}
 
@@ -9816,7 +9786,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
       (void) pgbuf_flush_all (thread_p, volid);
       (void) pgbuf_invalidate_all (thread_p, volid);	/* it flush and invalidate */
 
-      if (vol_purpose != DISK_PERMVOL_TEMP_PURPOSE && vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE)
+      if (vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
 	{
 	  (void) fileio_reset_volume (thread_p, vdes, vlabel, space_info.total_pages, &init_nontemp_lsa);
 	}

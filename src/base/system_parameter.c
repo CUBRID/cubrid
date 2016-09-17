@@ -2257,7 +2257,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_BOSR_MAXTMP_PAGES,
+  {PRM_NAME_BOSR_MAXTMP_PAGES,	/* todo: change me */
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_bosr_maxtmp_flag,

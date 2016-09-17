@@ -1974,57 +1974,6 @@ disk_get_remarks (VOLID volid)
 #endif /* !CS_MODE */
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * disk_get_purpose -
- *
- * return:
- *
- *   volid(in):
- *
- * NOTE:
- */
-DISK_VOLPURPOSE
-disk_get_purpose (VOLID volid)
-{
-#if defined(CS_MODE)
-  DISK_VOLPURPOSE purpose = DISK_UNKNOWN_PURPOSE;
-  int int_purpose;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_pack_int (request, (int) volid);
-
-  req_error =
-    net_client_request (NET_SERVER_DISK_PURPOSE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      or_unpack_int (reply, &int_purpose);
-      purpose = (DB_VOLPURPOSE) int_purpose;
-    }
-
-  return purpose;
-#else /* CS_MODE */
-  DISK_VOLPURPOSE purpose = DISK_UNKNOWN_PURPOSE;
-
-  ENTER_SERVER ();
-
-  purpose = xdisk_get_purpose (NULL, volid);
-
-  EXIT_SERVER ();
-
-  return purpose;
-#endif /* !CS_MODE */
-}
-#endif
-
 /*
  * disk_get_purpose_and_space_info -
  *
@@ -2036,9 +1985,11 @@ disk_get_purpose (VOLID volid)
  *
  * NOTE:
  */
-VOLID
+int
 disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info)
 {
+  int error_code = NO_ERROR;
+
 #if defined(CS_MODE)
   int temp;
   int req_error;
@@ -2056,29 +2007,29 @@ disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL
   req_error =
     net_client_request (NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
       ptr = or_unpack_int (reply, &temp);
       *vol_purpose = (DB_VOLPURPOSE) temp;
       OR_UNPACK_VOL_SPACE_INFO (ptr, space_info);
-      ptr = or_unpack_int (ptr, &temp);
-      volid = temp;
+      ptr = or_unpack_int (ptr, &error_code);
     }
   else
     {
-      volid = NULL_VOLID;
+      ASSERT_ERROR ();
+      error_code = req_error;
     }
 
-  return volid;
+  return error_code;
 #else /* CS_MODE */
 
   ENTER_SERVER ();
 
-  volid = xdisk_get_purpose_and_space_info (NULL, volid, vol_purpose, space_info);
+  error_code = xdisk_get_purpose_and_space_info (NULL, volid, vol_purpose, space_info);
 
   EXIT_SERVER ();
 
-  return volid;
+  return error_code;
 #endif /* !CS_MODE */
 }
 
@@ -4052,66 +4003,6 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
   return volid;
 #endif /* !CS_MODE */
 }
-
-#if 0
-/*
- * boot_del_volume_extension -
- *
- * return:
- *
- *   volid(in):
- *   clear_cached(in): clear cached files in the temporary temp volume
- *
- * NOTE:
- */
-int
-boot_del_volume_extension (VOLID volid, bool clear_cached)
-{
-  int success = ER_FAILED;
-#if defined(CS_MODE)
-  int request_size;
-  char *request, *ptr;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  request_size = OR_INT_SIZE + OR_INT_SIZE;
-
-  request = (char *) malloc (request_size);
-  if (request)
-    {
-      ptr = or_pack_int (request, (int) volid);
-      ptr = or_pack_int (ptr, (int) clear_cached);
-      req_error =
-	net_client_request (NET_SERVER_BO_DEL_VOLEXT, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-			    0, NULL, 0);
-      if (!req_error)
-	{
-	  or_unpack_int (reply, &success);
-	}
-      free_and_init (request);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-    }
-
-  return success;
-#else /* CS_MODE */
-
-  ENTER_SERVER ();
-
-  success = xboot_del_volume_extension (NULL, volid, clear_cached);
-
-  EXIT_SERVER ();
-
-  return success;
-#endif /* !CS_MODE */
-}
-#endif
-
 
 /*
  * boot_check_db_consistency -

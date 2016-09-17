@@ -50,6 +50,7 @@
 
 #define VOLID_MAX       SHRT_MAX
 #define PAGEID_MAX      INT_MAX
+#define SECTID_MAX      INT_MAX
 #define PGLENGTH_MAX    SHRT_MAX
 #define VOL_MAX_NPAGES(page_size) \
   ((sizeof(off_t) == 4) ? (INT_MAX / (page_size)) : INT_MAX)
@@ -77,14 +78,16 @@ enum
 
 /* Type definitions related to disk information	*/
 
+typedef INT16 VOLID;		/* Volume identifier */
+
 typedef INT32 PAGEID;		/* Data page identifier */
+typedef PAGEID DKNPAGES;	/* Number of disk pages */
+
 typedef INT64 LOG_PAGEID;	/* Log page identifier */
 typedef PAGEID LOG_PHY_PAGEID;	/* physical log page identifier */
 
 typedef INT32 SECTID;
-
-typedef INT16 VOLID;		/* Volume identifier */
-typedef PAGEID DKNPAGES;	/* Number of disk pages */
+typedef SECTID DKNSECTS;
 
 typedef INT16 PGSLOTID;		/* Page slot identifier */
 typedef PGSLOTID PGNSLOTS;	/* Number of slots on a page */
@@ -156,7 +159,10 @@ struct log_lsa
  */
 /* Number of pages in a sector. Careful about changing this size. The whole file manager depends on this size. */
 #define DISK_SECTOR_NPAGES 64
+#define IO_SECTORSIZE           (DISK_SECTOR_NPAGES * IO_PAGESIZE)
 #define DB_SECTORSIZE		(DISK_SECTOR_NPAGES * DB_PAGESIZE)
+
+#define VOL_MAX_NSECTS(page_size)  (VOL_MAX_NPAGES(page_size) / DISK_SECTOR_NPAGES)
 
 #define SECTOR_FIRST_PAGEID(sid) ((sid) * DISK_SECTOR_NPAGES)
 #define SECTOR_LAST_PAGEID(sid) ((sid) * (DISK_SECTOR_NPAGES + 1) - 1)

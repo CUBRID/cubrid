@@ -243,7 +243,6 @@ extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID *
 extern int file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * nth_vpids, INT32 start_nthpage,
 			       INT32 num_desired_pages);
 extern VPID *file_find_last_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * last_vpid);
-extern INT32 file_find_maxpages_allocable (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_find_nthfile (THREAD_ENTRY * thread_p, VFID * vfid, int nthfile);
 #if defined(CUBRID_DEBUG)
 extern DISK_ISVALID file_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid);

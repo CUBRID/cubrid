@@ -7458,7 +7458,7 @@ vacuum_notify_server_shutdown (void)
  *
  * return : Global oldest active MVCCID.
  */
-VACUUM_LOG_BLOCKID
+MVCCID
 vacuum_get_global_oldest_active_mvccid (void)
 {
   return ATOMIC_LOAD_64 (&vacuum_Global_oldest_active_mvccid);

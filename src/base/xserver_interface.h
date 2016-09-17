@@ -62,9 +62,6 @@ extern DISK_ISVALID xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids, int num_oids,
 				       BTID * index_btid);
 extern VOLID xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info);
-#if 0
-extern int xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid, bool clear_cached);
-#endif
 extern int xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p);
 extern int xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p);
 extern VOLID xboot_find_last_permanent (THREAD_ENTRY * thread_p);
@@ -191,8 +188,8 @@ extern char *xdisk_get_remarks (THREAD_ENTRY * thread_p, VOLID volid);
 extern int *disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int *db_charset);
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid, char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, VOLID volid);
-extern VOLID xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
-					       VOL_SPACE_INFO * space_info);
+extern int xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
+					     VOL_SPACE_INFO * space_info);
 
 extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID volid, PAGEID pageid,
 				      char *page_bufp, int *page_sizep);

@@ -5942,7 +5942,7 @@ logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
 
   do
     {
-      if (logpb_add_volume (NULL, volid, next_vol_fullname, DISK_PERMVOL_GENERIC_PURPOSE) != volid)
+      if (logpb_add_volume (NULL, volid, next_vol_fullname, DB_PERMANENT_DATA_PURPOSE) != volid)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -5978,10 +5978,11 @@ error:
  *
  * NOTE: Add a new entry to the volume information
  */
+/* todo: remove purpose */
 VOLID
 logpb_add_volume (const char *db_fullname, VOLID new_volid, const char *new_volfullname, DISK_VOLPURPOSE new_volpurpose)
 {
-  if (new_volpurpose != DISK_TEMPVOL_TEMP_PURPOSE)
+  if (new_volpurpose != DB_TEMPORARY_DATA_PURPOSE)
     {
       char vol_fullname[PATH_MAX];
       char *volinfo_fullname;
@@ -8542,7 +8543,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
       error_code = ER_FAILED;
       return error_code;
     }
-  else if (volpurpose == DISK_PERMVOL_TEMP_PURPOSE || volpurpose == DISK_TEMPVOL_TEMP_PURPOSE)
+  else if (volpurpose == DB_TEMPORARY_DATA_PURPOSE)
     {
       /* 
        * Do not allow incremental backups of temp volumes; but since we
@@ -10408,7 +10409,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 	}
 
       /* Write information about this volume in the volume information file */
-      if (logpb_add_volume (to_db_fullname, volid, to_volname, DISK_PERMVOL_GENERIC_PURPOSE) != volid)
+      if (logpb_add_volume (to_db_fullname, volid, to_volname, DB_PERMANENT_DATA_PURPOSE) != volid)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -10937,7 +10938,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	}
 
       /* Write information about this volume in the volume information file */
-      if (logpb_add_volume (to_db_fullname, volid, to_volname, DISK_PERMVOL_GENERIC_PURPOSE) != volid)
+      if (logpb_add_volume (to_db_fullname, volid, to_volname, DB_PERMANENT_DATA_PURPOSE) != volid)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -11605,7 +11606,7 @@ logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid)
       return ER_FAILED;
     }
 
-  if (xdisk_get_purpose (thread_p, volid) == DISK_PERMVOL_TEMP_PURPOSE)
+  if (xdisk_get_purpose (thread_p, volid) == DB_TEMPORARY_DATA_PURPOSE)
     {
       pgbuf_reset_temp_lsa (pgptr);
       pgbuf_set_dirty (thread_p, pgptr, FREE);

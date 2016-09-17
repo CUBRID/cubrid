@@ -3370,10 +3370,14 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   DBDEF_VOL_EXT_INFO ext_info;
   int tmp;
   VOLID volid;
+  char *unpack_char;		/* to suppress warning */
 
-  ptr = or_unpack_string_nocopy (request, &ext_info.path);
-  ptr = or_unpack_string_nocopy (ptr, &ext_info.name);
-  ptr = or_unpack_string_nocopy (ptr, &ext_info.comments);
+  ptr = or_unpack_string_nocopy (request, &unpack_char);
+  ext_info.path = unpack_char;
+  ptr = or_unpack_string_nocopy (ptr, &unpack_char);
+  ext_info.name = unpack_char;
+  ptr = or_unpack_string_nocopy (ptr, &unpack_char);
+  ext_info.comments = unpack_char;
   ptr = or_unpack_int (ptr, &ext_info.max_npages);
   ptr = or_unpack_int (ptr, &ext_info.max_writesize_in_sec);
   ptr = or_unpack_int (ptr, &tmp);
@@ -3391,48 +3395,6 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   (void) or_pack_int (reply, (int) volid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
-
-#if 0
-/*
- * sboot_del_volume_extension -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sboot_del_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr;
-  int tmp;
-  int success;
-  VOLID volid;
-  bool clear_cached = false;
-
-  ptr = or_unpack_int (request, &tmp);
-  volid = (VOLID) tmp;
-  ptr = or_unpack_int (ptr, &tmp);
-  if (tmp)
-    {
-      clear_cached = true;
-    }
-
-  success = xboot_del_volume_extension (thread_p, volid, clear_cached);
-  if (success != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_int (reply, success);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-#endif
 
 
 /*
@@ -4408,41 +4370,6 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 }
 
 /*
- * sdk_purpose -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-#if defined (ENABLE_UNUSED_FUNCTION)
-  DISK_VOLPURPOSE vol_purpose;
-  VOLID volid;
-  int int_volid;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_unpack_int (request, &int_volid);
-  volid = (VOLID) int_volid;
-
-  vol_purpose = xdisk_get_purpose (thread_p, volid);
-  if (vol_purpose < DISK_UNKNOWN_PURPOSE)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_int (reply, vol_purpose);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-#endif
-}
-
-/*
  * sdisk_get_purpose_and_space_info -
  *
  * return:
@@ -4464,19 +4391,20 @@ sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
+  int error_code = NO_ERROR;
+
   (void) or_unpack_int (request, &int_volid);
   volid = (VOLID) int_volid;
 
-  volid = xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info);
-
-  if (volid == NULL_VOLID)
+  error_code = xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return_error_to_client (thread_p, rid);
     }
-
   ptr = or_pack_int (reply, vol_purpose);
   OR_PACK_VOL_SPACE_INFO (ptr, (&space_info));
-  ptr = or_pack_int (ptr, (int) volid);
+  ptr = or_pack_int (ptr, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
