@@ -1322,6 +1322,7 @@ spage_find_free_slot (PAGE_PTR page_p, SPAGE_SLOT ** out_slot_p, PGSLOTID start_
   SPAGE_VERIFY_HEADER (page_header_p);
 
   slot_p = spage_find_slot (page_p, page_header_p, 0, false);
+  assert (slot_p != NULL);
 
   if (page_header_p->num_slots == page_header_p->num_records)
     {
@@ -1446,6 +1447,10 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int record_leng
 
   /* Find a free slot. Try to reuse an unused slotid, instead of allocating a new one */
   slot_id = spage_find_free_slot (page_p, &slot_p, 0);
+  if (slot_id == SP_ERROR)
+    {
+      return SP_ERROR;		/* this will not happen */
+    }
 
   /* Make sure that there is enough space for the record and the slot */
 
@@ -2372,6 +2377,10 @@ spage_check_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
 
   /* Find a free slot. Try to reuse an unused slotid, instead of allocating a new one */
   slot_id = spage_find_free_slot (page_p, &slot_p, 0);
+  if (slot_id == SP_ERROR)
+    {
+      return SP_ERROR;		/* this will not happen */
+    }
 
   /* Make sure that there is enough space for the record and the slot */
   if (slot_id > page_header_p->num_slots)
@@ -2561,6 +2570,8 @@ spage_update_record_after_compact (PAGE_PTR page_p, SPAGE_HEADER * page_header_p
  *   page_p(in): Pointer to slotted page
  *   slot_id(in): Slot identifier of record to update
  *   record_descriptor_p(in): Pointer to a record descriptor
+ *
+ * Note: This function do not update the type of the record. If it is changed, it must be handled by the caller
  */
 int
 spage_update (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, const RECDES * record_descriptor_p)

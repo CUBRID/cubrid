@@ -381,7 +381,6 @@ struct mnt_server_exec_stats
 
   /* Execution statistics for the log manager */
   UINT64 log_num_fetches;
-  UINT64 log_num_fetch_ioreads;
   UINT64 log_num_ioreads;
   UINT64 log_num_iowrites;
   UINT64 log_num_appendrecs;
@@ -390,6 +389,7 @@ struct mnt_server_exec_stats
   UINT64 log_num_end_checkpoints;
   UINT64 log_num_wals;
   UINT64 log_num_replacements;
+  UINT64 log_num_iowrites_for_replacement;
 
   /* Execution statistics for the lock manager */
   UINT64 lk_num_acquired_on_pages;
@@ -592,7 +592,7 @@ struct mnt_server_exec_stats
   /* Other statistics (change MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) */
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
   UINT64 pb_hit_ratio;
-  /* ((log_num_fetches - log_num_fetch_ioreads) x 100 / log_num_fetches) x 100 */
+  /* ((log_num_fetches - log_num_ioreads) x 100 / log_num_fetches) x 100 */
   UINT64 log_hit_ratio;
   /* ((fetches of vacuum - fetches of vacuum not found in PB) x 100 / fetches of vacuum) x 100 */
   UINT64 vacuum_data_hit_ratio;
@@ -941,8 +941,6 @@ extern int mnt_Num_tran_exec_stats;
  */
 #define mnt_log_fetches(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_fetches(thread_p)
-#define mnt_log_fetch_ioreads(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_fetch_ioreads(thread_p)
 #define mnt_log_ioreads(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_ioreads(thread_p)
 #define mnt_log_iowrites(thread_p, num_log_pages) \
@@ -959,6 +957,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_wals(thread_p)
 #define mnt_log_replacements(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_replacements(thread_p)
+#define mnt_log_iowrites_for_replacement(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_iowrites_for_replacement(thread_p)
 
 /*
  * Statistics at lock level
@@ -1382,7 +1382,6 @@ extern void mnt_x_pb_victims (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_replacements (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_num_hash_anchor_waits (THREAD_ENTRY * thread_p, UINT64 time_amount);
 extern void mnt_x_log_fetches (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_fetch_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_iowrites (THREAD_ENTRY * thread_p, int num_log_pages);
 extern void mnt_x_log_appendrecs (THREAD_ENTRY * thread_p);
@@ -1391,6 +1390,7 @@ extern void mnt_x_log_start_checkpoints (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_end_checkpoints (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_wals (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_replacements (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_iowrites_for_replacement (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p);
@@ -1589,7 +1589,6 @@ extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p, UINT64 amoun
 #define mnt_pb_num_hash_anchor_waits(thread_p, time_amount)
 
 #define mnt_log_fetches(thread_p)
-#define mnt_log_fetch_ioreads(thread_p)
 #define mnt_log_ioreads(thread_p)
 #define mnt_log_iowrites(thread_p, num_log_pages)
 #define mnt_log_appendrecs(thread_p)
@@ -1598,6 +1597,7 @@ extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p, UINT64 amoun
 #define mnt_log_end_checkpoints(thread_p)
 #define mnt_log_wals(thread_p)
 #define mnt_log_replacements(thread_p)
+#define mnt_log_iowrites_for_replacement(thread_p)
 
 #define mnt_lk_acquired_on_pages(thread_p)
 #define mnt_lk_acquired_on_objects(thread_p)

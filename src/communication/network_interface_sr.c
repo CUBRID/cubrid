@@ -72,6 +72,7 @@
 #include "event_log.h"
 #include "tsc_timer.h"
 #include "vacuum.h"
+#include "sha1.h"
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
@@ -972,7 +973,7 @@ end:
 void
 slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int size;
+  int received_size;
   int success;
   LC_COPYAREA *copy_area = NULL;
   char *ptr;
@@ -1009,7 +1010,8 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
     {
       if (num_objs > 0)
 	{
-	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &packed_desc, &size);
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &packed_desc, &received_size);
+	  assert (packed_desc_size == received_size);
 	}
 
       if (csserror)
@@ -1027,11 +1029,11 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
 	  if (content_size > 0)
 	    {
-	      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &new_content_ptr, &size);
+	      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &new_content_ptr, &received_size);
 
 	      if (new_content_ptr != NULL)
 		{
-		  memcpy (content_ptr, new_content_ptr, size);
+		  memcpy (content_ptr, new_content_ptr, received_size);
 		  free_and_init (new_content_ptr);
 		}
 
@@ -1051,7 +1053,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	   * Don't need to send the content since it is not updated.
 	   */
 
-	  locator_pack_copy_area_descriptor (num_objs, copy_area, packed_desc);
+	  locator_pack_copy_area_descriptor (num_objs, copy_area, packed_desc, packed_desc_size);
 	  ptr = or_pack_int (reply, success);
 	  ptr = or_pack_int (ptr, packed_desc_size);
 	  ptr = or_pack_int (ptr, 0);
@@ -4583,7 +4585,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
-  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false };
+  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false, false, SHA1_HASH_INITIALIZER };
   XASL_STREAM stream = { NULL, NULL, NULL, 0 };
   bool was_recompile_xasl = false;
   bool force_recompile = false;

@@ -84,6 +84,8 @@
 #define SockError    -1
 #endif /* WINDOWS */
 
+#define RMUTEX_NAME_TEMP_CONN_ENTRY "TEMP_CONN_ENTRY"
+
 static struct timeval css_Shutdown_timeout = { 0, 0 };
 
 static char *css_Master_server_name = NULL;	/* database identifier */
@@ -1060,7 +1062,7 @@ css_process_new_client (SOCKET master_fd)
        * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
        */
       css_initialize_conn (&temp_conn, new_fd);
-      r = rmutex_initialize (&temp_conn.rmutex, NULL);
+      r = rmutex_initialize (&temp_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
       assert (r == NO_ERROR);
 
       reason = htonl (SERVER_INACCESSIBLE_IP);
@@ -1083,7 +1085,7 @@ css_process_new_client (SOCKET master_fd)
        * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
        */
       css_initialize_conn (&temp_conn, new_fd);
-      r = rmutex_initialize (&temp_conn.rmutex, NULL);
+      r = rmutex_initialize (&temp_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
       assert (r == NO_ERROR);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
@@ -1273,7 +1275,7 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
-	  r = rmutex_initialize (&new_conn.rmutex, rmutex_Name_conn);
+	  r = rmutex_initialize (&new_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
 	  assert (r == NO_ERROR);
 
 	  rc = css_read_header (&new_conn, &header);
@@ -1303,7 +1305,7 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
-	  r = rmutex_initialize (&new_conn.rmutex, rmutex_Name_conn);
+	  r = rmutex_initialize (&new_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
 	  assert (r == NO_ERROR);
 
 	  rc = css_read_header (&new_conn, &header);

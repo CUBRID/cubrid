@@ -749,11 +749,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 출력 파일 '%1$s'을 열 수 없습니다.\n
 60 \
 diagdb: 데이터베이스 정보 덤프\n\
 사용법: %1$s diagdb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+      --emergency              emergency restart; 기본값: 없음\n\
   -d, --dump-type=TYPE         TYPE of dump\n\
                                -1 모두 덤프\n\
                                 1 파일 테이블 덤프\n\

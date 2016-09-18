@@ -761,8 +761,8 @@
 #define ER_IO_NOT_A_BACKUP_OF_GIVEN_DATABASE        -633
 #define ER_IO_BKUP_DATABASE_VOLUME_OR_FILE_EXPECTED -634
 
-#define ER_LOG_BUFFER_POOL_TOO_SMALL                -635
-#define ER_LOG_NBUFFERS_TOO_SMALL                   -636
+#define ER_LOG_BUFFER_POOL_TOO_SMALL                -635	/* Obsolete */
+#define ER_LOG_NBUFFERS_TOO_SMALL                   -636	/* Obsolete */
 #define ER_LOG_FREEING_TOO_MUCH                     -637
 #define ER_LOG_FLUSHING_UNUPDATABLE                 -638
 #define ER_LOG_WRONG_FORCE_DELAYED                  -639
@@ -773,7 +773,7 @@
 #define ER_LOG_FATAL_ERROR                          -644
 #define ER_LOG_BADSTATE_FOR_CLIENT_UNDO_OR_POSTPONE -645	/* Obsolete */
 #define ER_LOG_MISSING_COMPENSATING_RECORD          -646
-#define ER_LOG_BKUP_DOESNOT_CORRESPOND              -647
+#define ER_LOG_BKUP_DOESNOT_CORRESPOND              -647	/* Obsolete */
 #define ER_LOG_BKUP_INCOMPATIBLE                    -648
 
 #define ER_INVALID_PRECISION                        -649

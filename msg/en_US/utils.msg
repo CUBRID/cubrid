@@ -752,11 +752,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 Couldn't open output file '%1$s'\n
 60 \
 diagdb: Dump a database.\n\
 usage: %1$s diagdb [OPTION] database-name\n\
 \n\
 valid options:\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+      --emergency              emergency restart; default: none\n\
   -d, --dump-type=TYPE         TYPE of dump\n\
                                -1 dump all\n\
                                 1 dump file tables\n\

@@ -5995,7 +5995,6 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 		}
 	      else
 		{
-		  mop1 = ws_mvcc_latest_version (mop1);
 		  o1 = WS_OID (mop1);
 		}
 	    }
@@ -6006,7 +6005,6 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 	}
       else
 	{
-	  mop1 = ws_mvcc_latest_version (mop1);
 	  o1 = WS_OID (mop1);
 	}
     }
@@ -6038,7 +6036,6 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 		}
 	      else
 		{
-		  mop2 = ws_mvcc_latest_version (mop2);
 		  o2 = WS_OID (mop2);
 		}
 	    }
@@ -6049,7 +6046,6 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 	}
       else
 	{
-	  mop2 = ws_mvcc_latest_version (mop2);
 	  o2 = WS_OID (mop2);
 	}
     }

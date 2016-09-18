@@ -767,11 +767,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
 60 \
 diagdb: Varsă o baza de date.\n\
 utilizare: %1$s diagdb [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
+  -o, --output-file=FIŞIER    redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n\
+      --emergency              emergency restart; default: none\n\
   -d, --dump-type=TIP      TIP de vărsare\n\
                             -1 varsă tot\n\
                              1 varsă tabelele fişier\n\

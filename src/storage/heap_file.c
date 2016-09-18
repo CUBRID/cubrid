@@ -16242,7 +16242,81 @@ heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  return heap_rv_redo_insert (thread_p, rcv);
+  INT16 slotid;
+  INT16 recdes_type;
+  int error_code;
+
+  error_code = heap_rv_redo_insert (thread_p, rcv);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* vacuum atomicity */
+  recdes_type = *(INT16 *) (rcv->data);
+  if (recdes_type == REC_NEWHOME)
+    {
+      INT16 slotid;
+
+      slotid = rcv->offset;
+      slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+      error_code = vacuum_rv_check_at_undo (thread_p, rcv->pgptr, slotid, recdes_type);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/* 
+ * heap_rv_undo_update () - Undo the update of an object 
+ *   return: int
+ *   rev(in): Recovery structure
+ */
+int
+heap_rv_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  INT16 recdes_type;
+  int error_code;
+
+  error_code = heap_rv_undoredo_update (thread_p, rcv);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* vacuum atomicity */
+  recdes_type = *(INT16 *) (rcv->data);
+  if (recdes_type == REC_HOME || recdes_type == REC_NEWHOME)
+    {
+      INT16 slotid;
+
+      slotid = rcv->offset;
+      slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
+      error_code = vacuum_rv_check_at_undo (thread_p, rcv->pgptr, slotid, recdes_type);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/* 
+ * heap_rv_redo_update () - Redo the update of an object 
+ *   return: int
+ *   rcv(in): Recovrery structure
+ */
+int
+heap_rv_redo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return heap_rv_undoredo_update (thread_p, rcv);
 }
 
 /*
@@ -16270,22 +16344,12 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
-      sp_success = spage_update (thread_p, rcv->pgptr, slotid, &recdes);
-    }
-
-  if (sp_success != SP_SUCCESS)
-    {
-      /* Unable to recover update for object */
-      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-      if (sp_success != SP_ERROR)
+      if (heap_update_physical (thread_p, rcv->pgptr, slotid, &recdes) != NO_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  assert_release (false);
+	  return ER_FAILED;
 	}
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
     }
-  spage_update_record_type (thread_p, rcv->pgptr, slotid, recdes.type);
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
 }
@@ -18875,7 +18939,7 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, i
   SCAN_CODE scan = S_SUCCESS;
 
   /* Try to reuse the previously allocated area No need to check the snapshot since was already checked */
-  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL))
+  if (scan_cache != NULL && (ispeeking == PEEK || recdes->data == NULL || recdes->data == scan_cache->area))
     {
       if (scan_cache->area == NULL)
 	{
@@ -19019,12 +19083,12 @@ heap_mvcc_log_home_no_change_on_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR *
 }
 
 /*
- * heap_rv_undoredo_update_and_update_chain () - Redo update record as part of MVCC delete operation.
+ * heap_rv_redo_update_and_update_chain () - Redo update record as part of MVCC delete operation.
  *   return: int
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
   bool vacuum_status_change = false;
@@ -19041,7 +19105,7 @@ heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
   assert (slotid > 0);
 
-  error_code = heap_rv_undoredo_update (thread_p, rcv);
+  error_code = heap_rv_redo_update (thread_p, rcv);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -20018,6 +20082,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   for (slot_id = 0; slot_id <= slot_count; slot_id++)
     {
       slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
+      if (slot_id == SP_ERROR)
+	{
+	  break;		/* this will not happen */
+	}
+
       context->res_oid.slotid = slot_id;
 
       /* lock the object to be inserted conditionally */
@@ -21792,7 +21861,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   RECDES forwarding_recdes;
   RECDES *home_page_updated_recdes_p = NULL;
   OID forward_oid;
-  LOG_RCVINDEX undo_rcvindex = RVHF_UPDATE;
+  LOG_RCVINDEX undo_rcvindex;
   LOG_LSA prev_version_lsa;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
@@ -21827,7 +21896,11 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* Quick fix: Assign address is update in-place. Vacuum must be notified. */
       undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
     }
+  else
 #endif /* SERVER_MODE */
+    {
+      undo_rcvindex = RVHF_UPDATE;
+    }
 
   if (heap_is_big_length (context->recdes_p->length))
     {
@@ -23787,7 +23860,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
       log_page_p->hdr.logical_pageid = NULL_PAGEID;
       log_page_p->hdr.offset = NULL_OFFSET;
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
+      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	{
 	  assert (false);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
@@ -23870,6 +23943,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 		{
 		  return S_SUCCESS_CHN_UPTODATE;
 		}
+
 	      return heap_get_bigone_content (thread_p, scan_cache, COPY, &forward_oid, recdes);
 	    }
 	  else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
