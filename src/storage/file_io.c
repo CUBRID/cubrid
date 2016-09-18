@@ -4835,7 +4835,7 @@ fileio_get_number_of_partition_free_sectors (const char *path_p)
 	  && ((vol_fd = fileio_open (path_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE)) != NULL_VOLDES))
 	{
 	  /* The given file did not exist. We create it for temporary consumption then it is removed */
-	  nsects = fileio_get_number_of_partition_free_pages (path_p);
+	  nsects = fileio_get_number_of_partition_free_sectors (path_p);
 	  /* Close the file and remove it */
 	  fileio_close (vol_fd);
 	  (void) remove (path_p);

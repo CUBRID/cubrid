@@ -13816,7 +13816,7 @@ struct flre_header
 };
 
 /* Disk size of file header. */
-#define FILE_HEADER_ALIGNED_SIZE (DB_ALIGN (sizeof (FLRE_HEADER), MAX_ALIGNMENT))
+#define FILE_HEADER_ALIGNED_SIZE ((INT16) (DB_ALIGN (sizeof (FLRE_HEADER), MAX_ALIGNMENT)))
 
 /* TODO: Add flags. */
 #define FILE_FLAG_NUMERABLE	    0x1	/* Is file numerable */
@@ -14049,13 +14049,13 @@ STATIC_INLINE void file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata, int p
   __attribute__ ((ALWAYS_INLINE));
 static int file_extdata_apply_funcs (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_in,
 				     FILE_EXTDATA_FUNC f_extdata, void *f_extdata_args, FILE_EXTDATA_ITEM_FUNC f_item,
-				     void *f_item_args, bool for_write, const FILE_EXTENSIBLE_DATA ** extdata_out,
+				     void *f_item_args, bool for_write, FILE_EXTENSIBLE_DATA ** extdata_out,
 				     PAGE_PTR * page_out);
 static int file_extdata_item_func_for_search (THREAD_ENTRY * thread_p, const void *item, int index, bool * stop,
 					      void *args);
 static int file_extdata_func_for_search_ordered (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata,
 						 bool * stop, void *args);
-static int file_extdata_search_item (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA ** extdata,
+static int file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extdata,
 				     const void *item_to_find, int (*compare_func) (const void *, const void *),
 				     bool is_ordered, bool for_write, bool * found, int *position,
 				     PAGE_PTR * page_extdata);
@@ -14508,7 +14508,7 @@ file_extdata_init (INT16 item_size, INT16 max_size, FILE_EXTENSIBLE_DATA * extda
 
   /* Align to size of item */
   extdata->max_size = DB_ALIGN_BELOW (max_size - FILE_EXTDATA_HEADER_ALIGNED_SIZE, extdata->size_of_item);
-  if (DB_ALIGN (extdata->max_size, MAX_ALIGNMENT) != extdata->max_size)
+  if ((INT16) DB_ALIGN (extdata->max_size, MAX_ALIGNMENT) != extdata->max_size)
     {
       /* We need max alignment */
       extdata->max_size = DB_ALIGN (extdata->max_size - extdata->size_of_item, MAX_ALIGNMENT);
@@ -15083,7 +15083,7 @@ file_extdata_item_func_for_search (THREAD_ENTRY * thread_p, const void *item, in
  * page_extdata (out) : Output page of extensible data component where item is found (if found).
  */
 static int
-file_extdata_search_item (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA ** extdata, const void *item_to_find,
+file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extdata, const void *item_to_find,
 			  int (*compare_func) (const void *, const void *), bool is_ordered, bool for_write,
 			  bool * found, int *position, PAGE_PTR * page_extdata)
 {
@@ -15314,7 +15314,7 @@ file_rv_dump_extdata_add (FILE * fp, int length, void *data)
   count = *(int *) ((char *) data + offset);
   offset += sizeof (count);
 
-  fprintf (fp, "Add to extensible data at position = %d, count = %d.\n", pos);
+  fprintf (fp, "Add to extensible data at position = %d, count = %d.\n", pos, count);
   log_rv_dump_hexa (fp, length - offset, (char *) data + offset);
 }
 
@@ -15338,7 +15338,7 @@ file_rv_dump_extdata_remove (FILE * fp, int length, void *data)
   offset += sizeof (count);
   assert (length == offset);
 
-  fprintf (fp, "Remove from extensible data at position = %d, count = %d.", pos);
+  fprintf (fp, "Remove from extensible data at position = %d, count = %d.", pos, count);
 }
 
 /*
@@ -15654,7 +15654,7 @@ STATIC_INLINE bool
 file_partsect_alloc (FILE_PARTIAL_SECTOR * partsect, VPID * vpid_out, int *offset_out)
 {
   int offset_to_zero = bit64_count_trailing_ones (partsect->page_bitmap);
-  if (offset_to_zero >= sizeof (FILE_ALLOC_BITMAP))
+  if (offset_to_zero >= (int) sizeof (FILE_ALLOC_BITMAP))
     {
       assert (file_partsect_is_full (partsect));
       return false;
@@ -16193,7 +16193,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 	{
 	  /* split the header page space into: 1/16 for partial table and 15/16 for user page table */
 	  fhead->offset_to_partial_ftab = offset_ftab;
-	  assert (DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
+	  assert ((INT16) DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
 	  size = (DB_PAGESIZE - offset_ftab) / 16;
 	  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), size, extdata_part_ftab);
@@ -16207,7 +16207,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 
 	  /* partial table. */
 	  fhead->offset_to_partial_ftab = offset_ftab;
-	  assert (DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
+	  assert ((INT16) DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
 	  size = (DB_PAGESIZE - offset_ftab) / 32;
 	  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), size, extdata_part_ftab);
@@ -16215,7 +16215,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 	  /* full table. */
 	  offset_ftab += file_extdata_max_size (extdata_part_ftab);
 	  fhead->offset_to_full_ftab = offset_ftab;
-	  assert (DB_ALIGN (fhead->offset_to_full_ftab, MAX_ALIGNMENT) == fhead->offset_to_full_ftab);
+	  assert ((INT16) DB_ALIGN (fhead->offset_to_full_ftab, MAX_ALIGNMENT) == fhead->offset_to_full_ftab);
 	  FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
 	  file_extdata_init (sizeof (VSID), size, extdata_full_ftab);
 
@@ -16224,7 +16224,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 
       /* user page table - consume remaining space. */
       fhead->offset_to_user_page_ftab = offset_ftab;
-      assert (DB_ALIGN (fhead->offset_to_user_page_ftab, MAX_ALIGNMENT) == fhead->offset_to_user_page_ftab);
+      assert ((INT16) DB_ALIGN (fhead->offset_to_user_page_ftab, MAX_ALIGNMENT) == fhead->offset_to_user_page_ftab);
       size = DB_PAGESIZE - offset_ftab;
       FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
       file_extdata_init (sizeof (VPID), size, extdata_user_page_ftab);
@@ -16235,7 +16235,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 	{
 	  /* keep only partial table. */
 	  fhead->offset_to_partial_ftab = offset_ftab;
-	  assert (DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
+	  assert ((INT16) DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
 	  size = DB_PAGESIZE - offset_ftab;
 	  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), size, extdata_part_ftab);
@@ -16246,7 +16246,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 
 	  /* partial table. */
 	  fhead->offset_to_partial_ftab = offset_ftab;
-	  assert (DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
+	  assert ((INT16) DB_ALIGN (fhead->offset_to_partial_ftab, MAX_ALIGNMENT) == fhead->offset_to_partial_ftab);
 	  size = (DB_PAGESIZE - offset_ftab) / 2;
 	  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), size, extdata_part_ftab);
@@ -16254,7 +16254,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 	  /* full table. */
 	  offset_ftab += file_extdata_max_size (extdata_part_ftab);
 	  fhead->offset_to_full_ftab = offset_ftab;
-	  assert (DB_ALIGN (fhead->offset_to_full_ftab, MAX_ALIGNMENT) == fhead->offset_to_full_ftab);
+	  assert ((INT16) DB_ALIGN (fhead->offset_to_full_ftab, MAX_ALIGNMENT) == fhead->offset_to_full_ftab);
 	  size = DB_PAGESIZE - offset_ftab;
 	  FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
 	  file_extdata_init (sizeof (VSID), size, extdata_full_ftab);
@@ -16742,7 +16742,7 @@ file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   vsids = (VSID *) rcv->data;
   count_vsids = rcv->length / sizeof (VSID);
-  assert (count_vsids * sizeof (VSID) == rcv->length);
+  assert (count_vsids * (int) sizeof (VSID) == rcv->length);
 
   fhead = (FLRE_HEADER *) page_fhead;
   file_header_sanity_check (fhead);

@@ -29,6 +29,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
 
 #include "porting.h"
 #include "disk_manager.h"
@@ -105,7 +106,7 @@ typedef struct disk_cache_volinfo DISK_CACHE_VOLINFO;
 struct disk_cache_volinfo
 {
   DB_VOLPURPOSE purpose;
-  int nsect_free;		/* Hint of free sectors on volume */
+  DKNSECTS nsect_free;		/* Hint of free sectors on volume */
 };
 
 typedef struct disk_extend_info DISK_EXTEND_INFO;
@@ -195,11 +196,11 @@ struct disk_stab_cursor
 
 /* Allocation table macro's */
 /* Bit count in a unit */
-#define DISK_STAB_UNIT_BIT_COUNT	    (DISK_STAB_UNIT_SIZE_OF * CHAR_BIT)
+#define DISK_STAB_UNIT_BIT_COUNT	    ((int) (DISK_STAB_UNIT_SIZE_OF * CHAR_BIT))
 /* Unit count in a table page */
-#define DISK_STAB_PAGE_UNITS_COUNT	    (DB_PAGESIZE / DISK_STAB_UNIT_BIT_COUNT)
+#define DISK_STAB_PAGE_UNITS_COUNT	    ((int) (DB_PAGESIZE / DISK_STAB_UNIT_BIT_COUNT))
 /* Bit count in a table page */
-#define DISK_STAB_PAGE_BIT_COUNT	    (DISK_STAB_UNIT_BIT_COUNT * DISK_STAB_PAGE_UNITS_COUNT)
+#define DISK_STAB_PAGE_BIT_COUNT	    ((int) (DISK_STAB_UNIT_BIT_COUNT * DISK_STAB_PAGE_UNITS_COUNT))
 
 /* Get page offset for sector ID. Note this is not the real page ID (since table does not start from page 0). */
 #define DISK_ALLOCTBL_SECTOR_PAGE_OFFSET(sect) ((sect) / DISK_STAB_PAGE_BIT_COUNT)
@@ -714,7 +715,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   int error_code = NO_ERROR;
 
-  assert (sizeof (DISK_VAR_HEADER) <= DB_PAGESIZE);
+  assert ((int) sizeof (DISK_VAR_HEADER) <= DB_PAGESIZE);
 
   addr.vfid = NULL;
 
@@ -2435,7 +2436,7 @@ disk_stab_dump_unit (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * 
   FILE *fp = (FILE *) args;
   int bit;
 
-  fprintf (fp, "\n10d", cursor->sectid);
+  fprintf (fp, "\n%10d", cursor->sectid);
 
   for (bit = 0; bit < DISK_STAB_UNIT_BIT_COUNT; bit++)
     {
@@ -3666,7 +3667,7 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
     }
   /* update hint */
   volheader->hint_allocsect = (context->vsidp - 1)->sectid + 1;
-  DISK_SECTS_ROUND_DOWN (volheader->hint_allocsect);
+  volheader->hint_allocsect = DISK_SECTS_ROUND_DOWN (volheader->hint_allocsect);
   /* we don't really need to set the page dirty or log the hint change. */
 
 exit:
@@ -4389,8 +4390,8 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
     }
 
   /* make sure the total and max size are rounded */
-  DISK_SECTS_ROUND_UP (extinfo->nsect_max);
-  DISK_SECTS_ROUND_UP (extinfo->nsect_total);
+  extinfo->nsect_max = DISK_SECTS_ROUND_UP (extinfo->nsect_max);
+  extinfo->nsect_total = DISK_SECTS_ROUND_UP (extinfo->nsect_total);
 
 #if !defined (WINDOWS)
   {
@@ -4403,7 +4404,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 	|| S_ISCHR (stat_buf.st_mode))	/* is the raw device? */
       {
 	temp_extinfo.path = fileio_get_directory_path (link_path, boot_db_full_name ());
-	if (temp_extinfo == NULL)
+	if (temp_extinfo.path == NULL)
 	  {
 	    link_path[0] = '\0';
 	    temp_extinfo.path = link_path;
@@ -4549,7 +4550,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
 
   /* compute total/max sectors. we always keep a rounded number of sectors. */
   ext_info.nsect_total = CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES);
-  DISK_SECTS_ROUND_UP (ext_info.nsect_total);
+  ext_info.nsect_total = DISK_SECTS_ROUND_UP (ext_info.nsect_total);
   ext_info.nsect_max = ext_info.nsect_total;
 
   /* extensions are permanent */

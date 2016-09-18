@@ -253,8 +253,8 @@ extern int disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE pur
 				      int max_write_size_in_sec, bool overwrite, VOLID * volid_out);
 extern int disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects, VSID * vsids);
 
-extern void disk_lock_extend ();
-extern void disk_unlock_extend ();
+extern void disk_lock_extend (void);
+extern void disk_unlock_extend (void);
 #if defined (SERVER_MODE)
 extern int disk_auto_expand (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */

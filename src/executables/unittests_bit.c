@@ -156,21 +156,21 @@ main (int ignore_argc, char **ignore_argv)
 	  abort ();
 	}
       unittest_result = 8 - unittest_result;
-      bit_result = bit8_count_zeroes (ub);
+      bit_result = bit8_count_zeros (ub);
       if (unittest_result != bit_result)
 	{
 	  bitset_string (&ub, 8, bitset_buf);
-	  printf ("error bit8_count_zeroes: \n"
+	  printf ("error bit8_count_zeros: \n"
 		  "bitset: %s\n unit test: %d\n bit8: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
       /* check count trailing zeros/ones */
       unittest_result = ctz8 (ub);
-      bit_result = bit8_count_trailing_zeroes (ub);
+      bit_result = bit8_count_trailing_zeros (ub);
       if (unittest_result != bit_result)
 	{
 	  bitset_string (&ub, 8, bitset_buf);
-	  printf ("error bit8_count_trailing_zeroes: \n"
+	  printf ("error bit8_count_trailing_zeros: \n"
 		  "bitset: %s\n unit test: %d\n bit8: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
@@ -197,21 +197,21 @@ main (int ignore_argc, char **ignore_argv)
 	  abort ();
 	}
       unittest_result = 16 - unittest_result;
-      bit_result = bit16_count_zeroes (us);
+      bit_result = bit16_count_zeros (us);
       if (unittest_result != bit_result)
 	{
 	  bitset_string ((unsigned char *) &us, 16, bitset_buf);
-	  printf ("error bit16_count_zeroes: \n"
+	  printf ("error bit16_count_zeros: \n"
 		  "bitset: %s\n unit test: %d\n bit16: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
       /* check count trailing zeros/ones */
       unittest_result = ctz16 (us);
-      bit_result = bit16_count_trailing_zeroes (us);
+      bit_result = bit16_count_trailing_zeros (us);
       if (unittest_result != bit_result)
 	{
 	  bitset_string ((unsigned char *) &us, 16, bitset_buf);
-	  printf ("error bit16_count_trailing_zeroes: \n"
+	  printf ("error bit16_count_trailing_zeros: \n"
 		  "bitset: %s\n unit test: %d\n bit16: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
@@ -238,21 +238,21 @@ main (int ignore_argc, char **ignore_argv)
 	  abort ();
 	}
       unittest_result = 32 - unittest_result;
-      bit_result = bit32_count_zeroes (ui);
+      bit_result = bit32_count_zeros (ui);
       if (unittest_result != bit_result)
 	{
 	  bitset_string ((unsigned char *) &ui, 32, bitset_buf);
-	  printf ("error bit32_count_zeroes: \n"
+	  printf ("error bit32_count_zeros: \n"
 		  "bitset: %s\n unit test: %d\n bit32: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
       /* check count trailing zeros/ones */
       unittest_result = ctz32 (ui);
-      bit_result = bit32_count_trailing_zeroes (ui);
+      bit_result = bit32_count_trailing_zeros (ui);
       if (unittest_result != bit_result)
 	{
 	  bitset_string ((unsigned char *) &ui, 32, bitset_buf);
-	  printf ("error bit32_count_trailing_zeroes: \n"
+	  printf ("error bit32_count_trailing_zeros: \n"
 		  "bitset: %s\n unit test: %d\n bit32: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
@@ -279,21 +279,21 @@ main (int ignore_argc, char **ignore_argv)
 	  abort ();
 	}
       unittest_result = 64 - unittest_result;
-      bit_result = bit64_count_zeroes (ull);
+      bit_result = bit64_count_zeros (ull);
       if (unittest_result != bit_result)
 	{
 	  bitset_string ((unsigned char *) &ull, 64, bitset_buf);
-	  printf ("error bit64_count_zeroes: \n"
+	  printf ("error bit64_count_zeros: \n"
 		  "bitset: %s\n unit test: %d\n bit64: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
       /* check count trailing zeros/ones */
       unittest_result = ctz64 (ull);
-      bit_result = bit64_count_trailing_zeroes (ull);
+      bit_result = bit64_count_trailing_zeros (ull);
       if (unittest_result != bit_result)
 	{
 	  bitset_string ((unsigned char *) &ull, 64, bitset_buf);
-	  printf ("error bit64_count_trailing_zeroes: \n"
+	  printf ("error bit64_count_trailing_zeros: \n"
 		  "bitset: %s\n unit test: %d\n bit64: %d\n", bitset_buf, unittest_result, bit_result);
 	  abort ();
 	}
