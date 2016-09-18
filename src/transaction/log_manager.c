@@ -3769,6 +3769,7 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = NULL;
   int tran_index;
+  int r = NO_ERROR;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
@@ -3803,13 +3804,8 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 
       if (LOG_ISRESTARTED ())
 	{
-#if defined(SERVER_MODE)
-	  assert (tdes->cs_topop.cs_index ==
-		  CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	  assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	  csect_enter_critical_section (thread_p, &tdes->cs_topop, INF_WAIT);
+	  r = rmutex_lock (thread_p, &tdes->rmutex_topop);
+	  assert (r == NO_ERROR);
 	}
     }
 
@@ -3821,13 +3817,8 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	  /* Out of memory */
 	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
-#if defined(SERVER_MODE)
-	      assert (tdes->cs_topop.cs_index ==
-		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+	      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+	      assert (r == NO_ERROR);
 	    }
 	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
@@ -3926,17 +3917,13 @@ log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 STATIC_INLINE void
 log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  int r = NO_ERROR;
   log_sysop_end_unstack (thread_p, tdes);
 
   if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-#if defined(SERVER_MODE)
-      assert (tdes->cs_topop.cs_index ==
-	      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+      assert (r == NO_ERROR);
     }
 
   mnt_tran_end_topops (thread_p);
