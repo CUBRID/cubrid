@@ -13913,6 +13913,8 @@ typedef UINT64 FILE_ALLOC_BITMAP;
 #define FILE_FULL_PAGE_BITMAP	    0xFFFFFFFFFFFFFFFF	/* Full allocation bitmap */
 #define FILE_EMPTY_PAGE_BITMAP	    0x0000000000000000	/* Empty allocation bitmap */
 
+#define FILE_ALLOC_BITMAP_NBITS ((int) (sizeof (FILE_ALLOC_BITMAP) * CHAR_BIT))
+
 /* FILE_PARTIAL_SECTOR -
  * Structure used by partially allocated sectors table. Store sector VSID and its allocation bitmap. */
 typedef struct file_partial_sector FILE_PARTIAL_SECTOR;
@@ -15653,7 +15655,7 @@ STATIC_INLINE bool
 file_partsect_alloc (FILE_PARTIAL_SECTOR * partsect, VPID * vpid_out, int *offset_out)
 {
   int offset_to_zero = bit64_count_trailing_ones (partsect->page_bitmap);
-  if (offset_to_zero >= (int) sizeof (FILE_ALLOC_BITMAP))
+  if (offset_to_zero >= FILE_ALLOC_BITMAP_NBITS)
     {
       assert (file_partsect_is_full (partsect));
       return false;
