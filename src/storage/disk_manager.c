@@ -117,7 +117,6 @@ struct disk_extend_info
   volatile DKNSECTS nsect_intention;
 
   pthread_mutex_t mutex_reserve;
-  pthread_mutex_t mutex_extend;	/* note: never get expand mutex while keeping reserve mutexes */
 #if !defined (NDEBUG)
   volatile int owner_reserve;
   volatile int owner_extend;
@@ -490,7 +489,7 @@ disk_cache_init (void)
   disk_Cache->perm_purpose_info.extend_info.nsect_intention = 0;
   disk_Cache->perm_purpose_info.extend_info.voltype = DB_PERMANENT_VOLTYPE;
   disk_Cache->perm_purpose_info.extend_info.volid_extend = NULL_VOLID;
-  pthread_mutex_init (&disk_Cache->perm_purpose_info.extend_info.mutex_extend, NULL);
+  pthread_mutex_init (&disk_Cache->perm_purpose_info.extend_info.mutex_reserve, NULL);
 #if !defined (NDEBUG)
   disk_Cache->perm_purpose_info.extend_info.owner_reserve = -1;
 #endif /* !NDEBUG */
@@ -4897,13 +4896,16 @@ exit:
 static int
 disk_stab_init (THREAD_ENTRY * thread_p, DISK_VAR_HEADER * volheader)
 {
-  DKNSECTS nsects = SECTOR_FROM_PAGEID (volheader->sys_lastpage);
+  DKNSECTS nsects_sys = SECTOR_FROM_PAGEID (volheader->sys_lastpage) + 1;
+  DKNSECTS nsect_copy = 0;
   VPID vpid_stab;
   PAGE_PTR page_stab = NULL;
+  DISK_STAB_CURSOR start_cursor;
+  DISK_STAB_CURSOR end_cursor;
 
   int error_code = NO_ERROR;
 
-  assert (nsects < DISK_STAB_PAGE_BIT_COUNT);
+  assert (nsects_sys < DISK_STAB_PAGE_BIT_COUNT);
 
   vpid_stab.volid = volheader->volid;
   for (vpid_stab.pageid = volheader->stab_first_page;
@@ -4926,27 +4928,44 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VAR_HEADER * volheader)
 
       memset (page_stab, 0, DB_PAGESIZE);
 
-      if (vpid_stab.pageid == volheader->stab_first_page)
+      if (nsects_sys > 0)
 	{
-	  int nsect_copy = nsects;
+	  nsect_copy = nsects_sys;
+
+	  disk_stab_cursor_set_at_sectid (volheader,
+					  (vpid_stab.pageid - volheader->stab_first_page) * DISK_STAB_PAGE_BIT_COUNT,
+					  &start_cursor);
+	  if (vpid_stab.pageid == volheader->stab_first_page + volheader->stab_npages - 1)
+	    {
+	      disk_stab_cursor_set_at_end (volheader, &end_cursor);
+	    }
+	  else
+	    {
+	      disk_stab_cursor_set_at_sectid (volheader,
+					      (vpid_stab.pageid + 1 - volheader->stab_first_page)
+					      * DISK_STAB_PAGE_BIT_COUNT, &end_cursor);
+	    }
 	  error_code =
-	    disk_stab_iterate_units_all (thread_p, volheader, PGBUF_LATCH_WRITE, disk_stab_set_bits_contiguous,
-					 &nsect_copy);
+	    disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
+				     disk_stab_set_bits_contiguous, &nsect_copy);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      pgbuf_unfix (thread_p, page_stab);
 	      return NO_ERROR;
 	    }
-	  assert (nsect_copy == 0);
 	}
 
       if (volheader->purpose != DB_TEMPORARY_DATA_PURPOSE)
 	{
-	  log_append_redo_data2 (thread_p, RVDK_INITMAP, NULL, page_stab, NULL_OFFSET, sizeof (nsects), &nsects);
-	  nsects = 0;
+	  log_append_redo_data2 (thread_p, RVDK_INITMAP, NULL, page_stab, NULL_OFFSET, sizeof (nsects_sys),
+				 &nsects_sys);
+	  nsects_sys = 0;
 	}
       pgbuf_set_dirty_and_free (thread_p, page_stab);
+
+      nsects_sys -= nsect_copy;
+      nsect_copy = 0;
     }
   return NO_ERROR;
 }
@@ -4986,6 +5005,12 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
 void
 disk_manager_final (void)
 {
+  if (disk_Cache == NULL)
+    {
+      /* not initialized */
+      return;
+    }
+
   assert (disk_Cache->perm_purpose_info.extend_info.owner_reserve == -1);
   assert (disk_Cache->temp_purpose_info.extend_info.owner_reserve == -1);
   assert (disk_Cache->owner_extend == -1);
@@ -5031,6 +5056,7 @@ disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_dbname, cons
   ext_info.max_writesize_in_sec = 0;
   ext_info.overwrite = false;
   ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
+  ext_info.voltype = DB_PERMANENT_VOLTYPE;
 
   error_code = disk_format (thread_p, full_dbname, LOG_DBFIRST_VOLID, &ext_info, &nsect_free);
   if (error_code != NO_ERROR)

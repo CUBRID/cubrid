@@ -163,7 +163,7 @@ bit8_set_trailing_bits (UINT8 i, int n)
 {
   /* do not use it to set all bits */
   assert (n < 64);
-  return i | ((((UINT8) i) << n) - 1);
+  return i | ((((UINT8) 1) << n) - 1);
 }
 
 /*
@@ -294,7 +294,7 @@ bit16_set_trailing_bits (UINT16 i, int n)
 {
   /* do not use it to set all bits */
   assert (n < 16);
-  return i | ((((UINT16) i) << n) - 1);
+  return i | ((((UINT16) 1) << n) - 1);
 }
 
 /*
@@ -435,7 +435,7 @@ bit32_set_trailing_bits (UINT32 i, int n)
 {
   /* do not use it to set all bits */
   assert (n < 32);
-  return i | ((((UINT32) i) << n) - 1);
+  return i | ((((UINT32) 1) << n) - 1);
 }
 
 /*
@@ -585,5 +585,5 @@ bit64_set_trailing_bits (UINT64 i, int n)
 {
   /* do not use it to set all bits */
   assert (n < 64);
-  return i | ((((UINT64) i) << n) - 1);
+  return i | ((((UINT64) 1) << n) - 1);
 }

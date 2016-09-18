@@ -1027,12 +1027,6 @@ struct rvfun RV_fun[] = {
    file_rv_header_update_mark_deleted,
    file_rv_header_update_mark_deleted,
    NULL,
-   NULL},
-  {RVFL_FHEAD_STICKY_PAGE,
-   "RVFL_FHEAD_STICKY_PAGE",
-   NULL,
-   disk_rv_volhead_extend_redo,
-   NULL,
    NULL}
 };
 
