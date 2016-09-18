@@ -4030,7 +4030,7 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 }
 
 /*
- * perfmon_is_perf_tracking () - Returns true if the are active threads
+ * perfmon_is_perf_tracking () - Returns true if there are active threads
  *
  * return	 : true or false
  */
@@ -4041,7 +4041,7 @@ perfmon_is_perf_tracking (void)
 }
 
 /*
- * perfmon_is_perf_tracking_and_active () - Returns true if the are active threads
+ * perfmon_is_perf_tracking_and_active () - Returns true if there are active threads
  *					    and the activation_flag of the extended statistic is activated
  *
  * return	        : true or false
