@@ -2854,7 +2854,7 @@ disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   assert (vhdr->nsect_total <= vhdr->nsect_max);
   DISK_SECTS_ASSERT_ROUNDED (vhdr->nsect_total);
   DISK_SECTS_ASSERT_ROUNDED (vhdr->nsect_max);
-  assert (disk_Cache->vols[vhdr->volid].nsect_free <= vhdr->nsect_total);
+  assert (disk_Cache == NULL || disk_Cache->vols[vhdr->volid].nsect_free <= vhdr->nsect_total);
 
   assert (vhdr->stab_first_page == DISK_VOLHEADER_PAGE + 1);
   assert (vhdr->stab_npages >= CEIL_PTVDIV (vhdr->nsect_total, DISK_STAB_PAGE_BIT_COUNT));
