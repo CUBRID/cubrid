@@ -3018,9 +3018,7 @@ disk_stab_cursor_check_valid (const DISK_STAB_CURSOR * cursor)
       assert (cursor->pageid >= cursor->volheader->stab_first_page);
       assert (cursor->pageid < cursor->volheader->stab_first_page + cursor->volheader->stab_npages);
       assert ((cursor->pageid - cursor->volheader->stab_first_page) * DISK_STAB_PAGE_BIT_COUNT
-              + cursor->offset_to_unit * DISK_STAB_UNIT_BIT_COUNT
-	      + cursor->offset_to_bit
-	      == cursor->sectid);
+	      + cursor->offset_to_unit * DISK_STAB_UNIT_BIT_COUNT + cursor->offset_to_bit == cursor->sectid);
     }
 
   assert (cursor->offset_to_unit >= 0);
