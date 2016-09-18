@@ -3017,6 +3017,10 @@ disk_stab_cursor_check_valid (const DISK_STAB_CURSOR * cursor)
       /* Cursor must have a valid position. */
       assert (cursor->pageid >= cursor->volheader->stab_first_page);
       assert (cursor->pageid < cursor->volheader->stab_first_page + cursor->volheader->stab_npages);
+      assert ((cursor->pageid - cursor->volheader->stab_first_page) * DISK_STAB_PAGE_BIT_COUNT
+              + cursor->offset_to_unit * DISK_STAB_UNIT_BIT_COUNT
+	      + cursor->offset_to_bit
+	      == cursor->sectid);
     }
 
   assert (cursor->offset_to_unit >= 0);
@@ -3221,7 +3225,7 @@ disk_stab_unit_reserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool
     {
       /* iterate through unit bits */
       log_unit = 0;
-      for (cursor->offset_to_bit = bit64_count_trailing_ones (*cursor->unit);
+      for (cursor->offset_to_bit = bit64_count_trailing_ones (*cursor->unit), cursor->sectid += cursor->offset_to_bit;
 	   cursor->offset_to_bit < DISK_STAB_UNIT_BIT_COUNT && context->nsects_lastvol_remaining > 0;
 	   cursor->offset_to_bit++, cursor->sectid++)
 	{
