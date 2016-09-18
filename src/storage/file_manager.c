@@ -14047,7 +14047,7 @@ STATIC_INLINE void file_extdata_insert_at (FILE_EXTENSIBLE_DATA * extdata, int p
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata, int position, int count)
   __attribute__ ((ALWAYS_INLINE));
-static int file_extdata_apply_funcs (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_in,
+static int file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata_in,
 				     FILE_EXTDATA_FUNC f_extdata, void *f_extdata_args, FILE_EXTDATA_ITEM_FUNC f_item,
 				     void *f_item_args, bool for_write, FILE_EXTENSIBLE_DATA ** extdata_out,
 				     PAGE_PTR * page_out);
@@ -14161,7 +14161,6 @@ file_header_sanity_check (FLRE_HEADER * fhead)
   FILE_EXTENSIBLE_DATA *page_table;
 
   assert (!VFID_ISNULL (&fhead->self));
-  assert (fhead->type >= FILE_TRACKER && fhead->type < FILE_UNKNOWN_TYPE);
 
   assert (fhead->n_page_total > 0);
   assert (fhead->n_page_user >= 0);
@@ -14930,9 +14929,9 @@ file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata, int position, int count)
  * page_out (out)	   : Output page of current extensible data component if processing is stopped.
  */
 static int
-file_extdata_apply_funcs (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_in, FILE_EXTDATA_FUNC f_extdata,
+file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata_in, FILE_EXTDATA_FUNC f_extdata,
 			  void *f_extdata_args, FILE_EXTDATA_ITEM_FUNC f_item, void *f_item_args,
-			  bool for_write, const FILE_EXTENSIBLE_DATA ** extdata_out, PAGE_PTR * page_out)
+			  bool for_write, FILE_EXTENSIBLE_DATA ** extdata_out, PAGE_PTR * page_out)
 {
   int i;
   bool stop = false;		/* forces to stop processing extensible data */
@@ -14993,7 +14992,7 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * 
 	  goto exit;
 	}
       /* get component in next page */
-      extdata_in = (const FILE_EXTENSIBLE_DATA *) page_extdata;
+      extdata_in = (FILE_EXTENSIBLE_DATA *) page_extdata;
     }
 
 exit:
@@ -15088,7 +15087,7 @@ file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extda
 			  bool * found, int *position, PAGE_PTR * page_extdata)
 {
   FILE_EXTENSIBLE_DATA_SEARCH_CONTEXT search_context;
-  const FILE_EXTENSIBLE_DATA *extdata_in = *extdata;
+  FILE_EXTENSIBLE_DATA *extdata_in = *extdata;
 
   int error_code = NO_ERROR;
 
@@ -16008,7 +16007,6 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
 
   int error_code = NO_ERROR;
 
-  assert (file_type >= FILE_TRACKER && file_type <= FILE_LAST);
   assert (tablespace->initial_size > 0);
   assert (file_type != FILE_TEMP || is_temp);
   assert (vfid != NULL);
