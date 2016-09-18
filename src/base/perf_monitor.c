@@ -3015,7 +3015,7 @@ perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char 
   int latch_mode;
   int cond_type;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
@@ -3035,8 +3035,8 @@ perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char 
 
 			  assert (offset < PERF_PAGE_FIX_COUNTERS);
 
-			  counter = stats_ptr + offset;
-			  if (*counter == 0)
+			  counter = stats_ptr[offset];
+			  if (counter == 0)
 			    {
 			      continue;
 			    }
@@ -3045,7 +3045,7 @@ perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char 
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  perfmon_stat_page_mode_name (page_mode),
 					  perfmon_stat_holder_latch_name (latch_mode),
-					  perfmon_stat_cond_type_name (cond_type), (long long unsigned int) *counter);
+					  perfmon_stat_cond_type_name (cond_type), (long long unsigned int) counter);
 			  *remaining_size -= ret;
 			  if (*remaining_size <= 0)
 			    {
@@ -3075,7 +3075,7 @@ perfmon_stat_dump_in_file_fix_page_array_stat (FILE * stream, const UINT64 * sta
   int latch_mode;
   int cond_type;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
 
   assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
@@ -3091,8 +3091,8 @@ perfmon_stat_dump_in_file_fix_page_array_stat (FILE * stream, const UINT64 * sta
 		      offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode, cond_type);
 
 		      assert (offset < PERF_PAGE_FIX_COUNTERS);
-		      counter = stats_ptr + offset;
-		      if (*counter == 0)
+		      counter = stats_ptr[offset];
+		      if (counter == 0)
 			{
 			  continue;
 			}
@@ -3100,7 +3100,7 @@ perfmon_stat_dump_in_file_fix_page_array_stat (FILE * stream, const UINT64 * sta
 		      fprintf (stream, "%-6s,%-14s,%-18s,%-5s,%-11s = %10llu\n", perfmon_stat_module_name (module),
 			       perfmon_stat_page_type_name (page_type), perfmon_stat_page_mode_name (page_mode),
 			       perfmon_stat_holder_latch_name (latch_mode), perfmon_stat_cond_type_name (cond_type),
-			       (long long unsigned int) *counter);
+			       (long long unsigned int) counter);
 		    }
 		}
 	    }
@@ -3125,7 +3125,7 @@ perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, c
   int holder_latch;
   int success;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
@@ -3146,8 +3146,8 @@ perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, c
 
 			  assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
 
-			  counter = stats_ptr + offset;
-			  if (*counter == 0)
+			  counter = stats_ptr[offset];
+			  if (counter == 0)
 			    {
 			      continue;
 			    }
@@ -3156,7 +3156,7 @@ perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, c
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  perfmon_stat_promote_cond_name (promote_cond),
 					  perfmon_stat_holder_latch_name (holder_latch),
-					  (success ? "SUCCESS" : "FAILED"), (long long unsigned int) *counter);
+					  (success ? "SUCCESS" : "FAILED"), (long long unsigned int) counter);
 			  *remaining_size -= ret;
 			  if (*remaining_size <= 0)
 			    {
@@ -3186,7 +3186,7 @@ perfmon_stat_dump_in_file_promote_page_array_stat (FILE * stream, const UINT64 *
   int holder_latch;
   int success;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
 
   assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
@@ -3202,8 +3202,8 @@ perfmon_stat_dump_in_file_promote_page_array_stat (FILE * stream, const UINT64 *
 		      offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
 
 		      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
-		      counter = stats_ptr + offset;
-		      if (*counter == 0)
+		      counter = stats_ptr[offset];
+		      if (counter == 0)
 			{
 			  continue;
 			}
@@ -3211,7 +3211,7 @@ perfmon_stat_dump_in_file_promote_page_array_stat (FILE * stream, const UINT64 *
 		      fprintf (stream, "%-6s,%-14s,%-13s,%-5s,%-7s = %10llu\n", perfmon_stat_module_name (module),
 			       perfmon_stat_page_type_name (page_type), perfmon_stat_promote_cond_name (promote_cond),
 			       perfmon_stat_holder_latch_name (holder_latch), (success ? "SUCCESS" : "FAILED"),
-			       (long long unsigned int) *counter);
+			       (long long unsigned int) counter);
 		    }
 		}
 	    }
@@ -3237,7 +3237,7 @@ perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, cha
   int holder_dirty;
   int holder_latch;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
@@ -3257,8 +3257,8 @@ perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, cha
 			    PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty, holder_latch);
 
 			  assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-			  counter = stats_ptr + offset;
-			  if (*counter == 0)
+			  counter = stats_ptr[offset];
+			  if (counter == 0)
 			    {
 			      continue;
 			    }
@@ -3268,7 +3268,7 @@ perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, cha
 					  buf_dirty ? "BUF_DIRTY" : "BUF_NON_DIRTY",
 					  holder_dirty ? "HOLDER_DIRTY" : "HOLDER_NON_DIRTY",
 					  perfmon_stat_holder_latch_name (holder_latch),
-					  (long long unsigned int) *counter);
+					  (long long unsigned int) counter);
 			  *remaining_size -= ret;
 			  if (*remaining_size <= 0)
 			    {
@@ -3298,7 +3298,7 @@ perfmon_stat_dump_in_file_unfix_page_array_stat (FILE * stream, const UINT64 * s
   int holder_dirty;
   int holder_latch;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
 
   assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
@@ -3314,8 +3314,8 @@ perfmon_stat_dump_in_file_unfix_page_array_stat (FILE * stream, const UINT64 * s
 		      offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty, holder_latch);
 
 		      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-		      counter = stats_ptr + offset;
-		      if (*counter == 0)
+		      counter = stats_ptr[offset];
+		      if (counter == 0)
 			{
 			  continue;
 			}
@@ -3323,7 +3323,7 @@ perfmon_stat_dump_in_file_unfix_page_array_stat (FILE * stream, const UINT64 * s
 		      fprintf (stream, "%-6s,%-14s,%-13s,%-16s,%-5s = %10llu\n", perfmon_stat_module_name (module),
 			       perfmon_stat_page_type_name (page_type), buf_dirty ? "BUF_DIRTY" : "BUF_NON_DIRTY",
 			       holder_dirty ? "HOLDER_DIRTY" : "HOLDER_NON_DIRTY",
-			       perfmon_stat_holder_latch_name (holder_latch), (long long unsigned int) *counter);
+			       perfmon_stat_holder_latch_name (holder_latch), (long long unsigned int) counter);
 		    }
 		}
 	    }
@@ -3348,7 +3348,7 @@ perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr,
   int latch_mode;
   int cond_type;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
@@ -3367,8 +3367,8 @@ perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr,
 			  offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode, cond_type);
 
 			  assert (offset < PERF_PAGE_FIX_COUNTERS);
-			  counter = stats_ptr + offset;
-			  if (*counter == 0)
+			  counter = stats_ptr[offset];
+			  if (counter == 0)
 			    {
 			      continue;
 			    }
@@ -3377,7 +3377,7 @@ perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr,
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  perfmon_stat_page_mode_name (page_mode),
 					  perfmon_stat_holder_latch_name (latch_mode),
-					  perfmon_stat_cond_type_name (cond_type), (long long unsigned int) *counter);
+					  perfmon_stat_cond_type_name (cond_type), (long long unsigned int) counter);
 			  *remaining_size -= ret;
 			  if (*remaining_size <= 0)
 			    {
@@ -3407,7 +3407,7 @@ perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64
   int latch_mode;
   int cond_type;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
 
   assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
@@ -3423,8 +3423,8 @@ perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64
 		      offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_mode, latch_mode, cond_type);
 
 		      assert (offset < PERF_PAGE_FIX_COUNTERS);
-		      counter = stats_ptr + offset;
-		      if (*counter == 0)
+		      counter = stats_ptr[offset];
+		      if (counter == 0)
 			{
 			  continue;
 			}
@@ -3432,7 +3432,7 @@ perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64
 		      fprintf (stream, "%-6s,%-14s,%-18s,%-5s,%-11s = %16llu\n", perfmon_stat_module_name (module),
 			       perfmon_stat_page_type_name (page_type), perfmon_stat_page_mode_name (page_mode),
 			       perfmon_stat_holder_latch_name (latch_mode), perfmon_stat_cond_type_name (cond_type),
-			       (long long unsigned int) *counter);
+			       (long long unsigned int) counter);
 		    }
 		}
 	    }
@@ -3456,7 +3456,7 @@ perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr,
   int page_mode;
   int latch_mode;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
@@ -3473,8 +3473,8 @@ perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr,
 		      offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_mode, latch_mode);
 
 		      assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
-		      counter = stats_ptr + offset;
-		      if (*counter == 0)
+		      counter = stats_ptr[offset];
+		      if (counter == 0)
 			{
 			  continue;
 			}
@@ -3482,7 +3482,7 @@ perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr,
 		      ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s = %16llu\n",
 				      perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 				      perfmon_stat_page_mode_name (page_mode),
-				      perfmon_stat_holder_latch_name (latch_mode), (long long unsigned int) *counter);
+				      perfmon_stat_holder_latch_name (latch_mode), (long long unsigned int) counter);
 		      *remaining_size -= ret;
 		      if (*remaining_size <= 0)
 			{
@@ -3510,7 +3510,7 @@ perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE * stream, const UINT64
   int page_mode;
   int latch_mode;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
 
   assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
@@ -3526,15 +3526,15 @@ perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE * stream, const UINT64
 		  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
 
 
-		  counter = stats_ptr + offset;
-		  if (*counter == 0)
+		  counter = stats_ptr[offset];
+		  if (counter == 0)
 		    {
 		      continue;
 		    }
 
 		  fprintf (stream, "%-6s,%-14s,%-18s,%-5s = %16llu\n", perfmon_stat_module_name (module),
 			   perfmon_stat_page_type_name (page_type), perfmon_stat_page_mode_name (page_mode),
-			   perfmon_stat_holder_latch_name (latch_mode), (long long unsigned int) *counter);
+			   perfmon_stat_holder_latch_name (latch_mode), (long long unsigned int) counter);
 		}
 	    }
 	}
@@ -3585,7 +3585,7 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
   PERF_SNAPSHOT_RECORD_TYPE rec_type;
   PERF_SNAPSHOT_VISIBILITY visibility;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
@@ -3600,8 +3600,8 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
 		  offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
 
 		  assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
-		  counter = stats_ptr + offset;
-		  if (*counter == 0)
+		  counter = stats_ptr[offset];
+		  if (counter == 0)
 		    {
 		      continue;
 		    }
@@ -3610,7 +3610,7 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
 		    snprintf (s, *remaining_size, "%-8s,%-18s,%-9s = %16llu\n", perfmon_stat_snapshot_name (snapshot),
 			      perfmon_stat_snapshot_record_type (rec_type),
 			      (visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE",
-			      (long long unsigned int) *counter);
+			      (long long unsigned int) counter);
 		  *remaining_size -= ret;
 		  if (*remaining_size <= 0)
 		    {
@@ -3636,7 +3636,7 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
   PERF_SNAPSHOT_RECORD_TYPE rec_type;
   PERF_SNAPSHOT_VISIBILITY visibility;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
 
   assert (stream != NULL);
   for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; snapshot++)
@@ -3649,8 +3649,8 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
 
 	      assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
 
-	      counter = stats_ptr + offset;
-	      if (*counter == 0)
+	      counter = stats_ptr[offset];
+	      if (counter == 0)
 		{
 		  continue;
 		}
@@ -3658,7 +3658,7 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
 	      fprintf (stream, "%-8s,%-18s,%-9s = %16llu\n", perfmon_stat_snapshot_name (snapshot),
 		       perfmon_stat_snapshot_record_type (rec_type),
 		       (visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE",
-		       (long long unsigned int) *counter);
+		       (long long unsigned int) counter);
 	    }
 	}
     }
@@ -3676,7 +3676,7 @@ static void
 perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
 {
   int lock_mode;
-  const UINT64 *counter;
+  UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
@@ -3684,14 +3684,14 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
     {
       for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
 	{
-	  counter = stats_ptr + lock_mode;
-	  if (*counter == 0)
+	  counter = stats_ptr[lock_mode];
+	  if (counter == 0)
 	    {
 	      continue;
 	    }
 
 	  ret = snprintf (s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode),
-			  (long long unsigned int) *counter);
+			  (long long unsigned int) counter);
 	  *remaining_size -= ret;
 	  if (*remaining_size <= 0)
 	    {
@@ -3712,19 +3712,19 @@ static void
 perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * stats_ptr)
 {
   int lock_mode;
-  const UINT64 *counter;
+  UINT64 counter = 0;
 
   assert (stream != NULL);
 
   for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
     {
-      counter = stats_ptr + lock_mode;
-      if (*counter == 0)
+      counter = stats_ptr[lock_mode];
+      if (counter == 0)
 	{
 	  continue;
 	}
 
-      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode), (long long unsigned int) *counter);
+      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode), (long long unsigned int) counter);
     }
 }
 
@@ -3741,7 +3741,7 @@ perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char 
 {
   int module;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
@@ -3752,14 +3752,14 @@ perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char 
 	  offset = module;
 
 	  assert (offset < PERF_MODULE_CNT);
-	  counter = stats_ptr + offset;
-	  if (*counter == 0)
+	  counter = stats_ptr[offset];
+	  if (counter == 0)
 	    {
 	      continue;
 	    }
 
 	  ret = snprintf (s, *remaining_size, "%-6s = %16llu\n", perfmon_stat_module_name (module),
-			  (long long unsigned int) *counter);
+			  (long long unsigned int) counter);
 	  *remaining_size -= ret;
 	  if (*remaining_size <= 0)
 	    {
@@ -3781,7 +3781,7 @@ perfmon_stat_dump_in_file_snapshot_array_stat (FILE * stream, const UINT64 * sta
 {
   int module;
   int offset;
-  const UINT64 *counter;
+  UINT64 counter = 0;
 
   assert (stream != NULL);
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
@@ -3789,13 +3789,13 @@ perfmon_stat_dump_in_file_snapshot_array_stat (FILE * stream, const UINT64 * sta
       offset = module;
 
       assert (offset < PERF_MODULE_CNT);
-      counter = stats_ptr + offset;
-      if (*counter == 0)
+      counter = stats_ptr[offset];
+      if (counter == 0)
 	{
 	  continue;
 	}
 
-      fprintf (stream, "%-6s = %16llu\n", perfmon_stat_module_name (module), (long long unsigned int) *counter);
+      fprintf (stream, "%-6s = %16llu\n", perfmon_stat_module_name (module), (long long unsigned int) counter);
     }
 }
 
