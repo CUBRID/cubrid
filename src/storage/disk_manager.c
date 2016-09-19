@@ -4083,7 +4083,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   DKNSECTS target_free;
 
   DBDEF_VOL_EXT_INFO volext;
-  VOLID volid_new;
+  VOLID volid_new = NULL_VOLID;
 
   DKNSECTS nsect_free_new = 0;
 
@@ -4489,6 +4489,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
     }
 
   assert (error_code == NO_ERROR);
+  *volid_out = volid;
 
 exit:
   if (error_code == NO_ERROR)
