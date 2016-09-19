@@ -18341,6 +18341,7 @@ flre_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user
   file_header_sanity_check (fhead);
 
   *n_user_pages_out = fhead->n_page_user;
+  pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
 
