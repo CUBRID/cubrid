@@ -11194,58 +11194,61 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
     }
   else
     {
-      /* Try to compress the string if it was not already compressed. */
-      if (value->data.ch.medium.was_compressed == 0)
+      if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
-	  /* Alloc memory for the compressed string */
-	  compressed_string = db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (len));
-	  if (compressed_string == NULL)
+	  /* Try to compress the string if it was not already compressed. */
+	  if (value->data.ch.medium.was_compressed == 0)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		      1, (size_t) (LZO_COMPRESSED_STRING_SIZE (len)));
-	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
-	      return len;
-	    }
-
-	  rc = pr_data_compress_string (str, len, compressed_string, &compressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      if (compressed_string != NULL)
+	      /* Alloc memory for the compressed string */
+	      compressed_string = db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (len));
+	      if (compressed_string == NULL)
 		{
-		  db_private_free_and_init (NULL, compressed_string);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+			  1, (size_t) (LZO_COMPRESSED_STRING_SIZE (len)));
+		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+		  return len;
 		}
-	      ASSERT_ERROR ();
-	      return len;
-	    }
 
-	  if (compressed_string != NULL && compressed_length > 0)
-	    {
-	      value->data.ch.medium.was_compressed = 1;
+	      rc = pr_data_compress_string (str, len, compressed_string, &compressed_length);
+	      if (rc != NO_ERROR)
+		{
+		  if (compressed_string != NULL)
+		    {
+		      db_private_free_and_init (NULL, compressed_string);
+		    }
+		  ASSERT_ERROR ();
+		  return len;
+		}
+
+	      if (compressed_string != NULL && compressed_length > 0)
+		{
+		  value->data.ch.medium.was_compressed = 1;
+		}
+	      else
+		{
+		  if (compressed_length == -1)
+		    {
+		      value->data.ch.medium.was_compressed = 2;
+		      compressed_length = 0;
+		    }
+		}
+
+	      /* Add the compressed string and its size to the dbvalue. */
+	      value->data.ch.medium.compressed_buf = compressed_string;
+	      value->data.ch.medium.compressed_length = compressed_length;
+	      if (compressed_length > 0)
+		{
+		  len = compressed_length;
+		}
 	    }
 	  else
 	    {
-	      if (compressed_length == -1)
+	      /* If the DB_VALUE was already compressed, use length of the compression stored in it. */
+	      if (value->data.ch.medium.was_compressed == 1)
 		{
-		  value->data.ch.medium.was_compressed = 2;
-		  compressed_length = 0;
+		  assert (value->data.ch.medium.compressed_buf != NULL);
+		  len = value->data.ch.medium.compressed_length;
 		}
-	    }
-
-	  /* Add the compressed string and its size to the dbvalue. */
-	  value->data.ch.medium.compressed_buf = compressed_string;
-	  value->data.ch.medium.compressed_length = compressed_length;
-	  if (compressed_length > 0)
-	    {
-	      len = compressed_length;
-	    }
-	}
-      else
-	{
-	  /* If the DB_VALUE was already compressed, use length of the compression stored in it. */
-	  if (value->data.ch.medium.was_compressed == 1)
-	    {
-	      assert (value->data.ch.medium.compressed_buf != NULL);
-	      len = value->data.ch.medium.compressed_length;
 	    }
 	}
 
@@ -14016,59 +14019,66 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	  src_length = strlen (str);
 	}
 
-      /* Check for previous compression. */
-      if (value->data.ch.medium.was_compressed == 0)
+      if (src_length >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
-	  /* Alloc memory for the compressed string */
-	  compressed_string = db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_length));
-	  if (compressed_string == NULL)
+	  /* Check for previous compression. */
+	  if (value->data.ch.medium.was_compressed == 0)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		      1, (size_t) (LZO_COMPRESSED_STRING_SIZE (src_length)));
-	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
-	      return len;
-	    }
-
-	  rc = pr_data_compress_string (str, src_length, compressed_string, &compressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      if (compressed_string != NULL)
+	      /* Alloc memory for the compressed string */
+	      compressed_string = db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_length));
+	      if (compressed_string == NULL)
 		{
-		  db_private_free_and_init (NULL, compressed_string);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+			  1, (size_t) (LZO_COMPRESSED_STRING_SIZE (src_length)));
+		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+		  return len;
 		}
-	      ASSERT_ERROR ();
-	      return src_length;
-	    }
 
-	  if (compressed_string != NULL && compressed_length > 0)
-	    {
-	      value->data.ch.medium.was_compressed = 1;
+	      rc = pr_data_compress_string (str, src_length, compressed_string, &compressed_length);
+	      if (rc != NO_ERROR)
+		{
+		  if (compressed_string != NULL)
+		    {
+		      db_private_free_and_init (NULL, compressed_string);
+		    }
+		  ASSERT_ERROR ();
+		  return src_length;
+		}
+
+	      if (compressed_string != NULL && compressed_length > 0)
+		{
+		  value->data.ch.medium.was_compressed = 1;
+		}
+	      else
+		{
+		  if (compressed_length == -1)
+		    {
+		      value->data.ch.medium.was_compressed = 2;
+		      compressed_length = 0;
+		    }
+		}
+
+	      /* Add the compressed string and its size to the dbvalue. */
+	      value->data.ch.medium.compressed_buf = compressed_string;
+	      value->data.ch.medium.compressed_length = compressed_length;
+	      if (compressed_length > 0)
+		{
+		  len = compressed_length;
+		}
 	    }
 	  else
 	    {
-	      if (compressed_length == -1)
+	      /* If the DB_VALUE was already compressed, use length of the compression stored in it. */
+	      if (value->data.ch.medium.was_compressed == 1)
 		{
-		  value->data.ch.medium.was_compressed = 2;
-		  compressed_length = 0;
+		  assert (value->data.ch.medium.compressed_buf != NULL);
+		  len = value->data.ch.medium.compressed_length;
 		}
-	    }
-
-	  /* Add the compressed string and its size to the dbvalue. */
-	  value->data.ch.medium.compressed_buf = compressed_string;
-	  value->data.ch.medium.compressed_length = compressed_length;
-	  if (compressed_length > 0)
-	    {
-	      len = compressed_length;
 	    }
 	}
       else
 	{
-	  /* If the DB_VALUE was already compressed, use length of the compression stored in it. */
-	  if (value->data.ch.medium.was_compressed == 1)
-	    {
-	      assert (value->data.ch.medium.compressed_buf != NULL);
-	      len = value->data.ch.medium.compressed_length;
-	    }
+	  len = src_length;
 	}
 
 #if !defined (SERVER_MODE)
@@ -14110,11 +14120,11 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 
       if (align == INT_ALIGNMENT)
 	{
-	  len = or_packed_varchar_length (src_length);
+	  len = or_packed_varchar_length (len);
 	}
       else
 	{
-	  len = or_varchar_length (src_length);
+	  len = or_varchar_length (len);
 	}
     }
 
