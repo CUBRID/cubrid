@@ -17637,7 +17637,11 @@ flre_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
     }
 
   fhead = (FLRE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  if (LOG_ISRESTARTED ())
+    {
+      /* sometimes called before recovery... we cannot guarantee the header is sane at this point. */
+      file_header_sanity_check (fhead);
+    }
 
   *vpid_out = fhead->vpid_sticky_first;
   if (VPID_ISNULL (vpid_out))
