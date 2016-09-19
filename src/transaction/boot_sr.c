@@ -6089,8 +6089,8 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
     }
   else
     {
-      assert (boot_Db_parm->temp_nvols >= 0);
-      if ((boot_Db_parm->temp_nvols == 0 && volid != LOG_MAX_DBVOLID) || (boot_Db_parm->temp_last_volid - 1 != volid))
+      if (boot_Db_parm < 0 || (boot_Db_parm->temp_nvols == 0 && volid != LOG_MAX_DBVOLID)
+	  || (boot_Db_parm->temp_nvols > 0 && boot_Db_parm->temp_last_volid - 1 != volid))
 	{
 	  /* invalid volid */
 	  assert_release (false);
