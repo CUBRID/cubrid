@@ -503,7 +503,7 @@ disk_cache_init (void)
   disk_Cache->temp_purpose_info.extend_info.nsect_total = 0;
   disk_Cache->temp_purpose_info.extend_info.nsect_max = 0;
   disk_Cache->temp_purpose_info.extend_info.nsect_intention = 0;
-  disk_Cache->temp_purpose_info.extend_info.voltype = DB_PERMANENT_VOLTYPE;
+  disk_Cache->temp_purpose_info.extend_info.voltype = DB_TEMPORARY_VOLTYPE;
   disk_Cache->temp_purpose_info.extend_info.volid_extend = NULL_VOLID;
   pthread_mutex_init (&disk_Cache->temp_purpose_info.extend_info.mutex_reserve, NULL);
 #if !defined (NDEBUG)
@@ -5243,16 +5243,15 @@ disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
   /* must be locked */
   disk_Cache->vols[volid].nsect_free += delta_free;
   assert (disk_Cache->vols[volid].nsect_free >= 0);
+  disk_check_own_reserve_for_purpose (disk_Cache->vols[volid].purpose);
   if (disk_Cache->vols[volid].purpose == DB_PERMANENT_DATA_PURPOSE)
     {
-      assert (disk_Cache->perm_purpose_info.extend_info.owner_reserve == thread_get_current_entry_index ());
       assert (disk_get_voltype (volid) == DB_PERMANENT_VOLTYPE);
       disk_Cache->perm_purpose_info.extend_info.nsect_free += delta_free;
       assert (disk_Cache->perm_purpose_info.extend_info.nsect_free >= 0);
     }
   else
     {
-      assert (disk_Cache->temp_purpose_info.extend_info.owner_reserve == thread_get_current_entry_index ());
       if (disk_get_voltype (volid) == DB_PERMANENT_VOLTYPE)
 	{
 	  disk_Cache->temp_purpose_info.nsect_perm_free += delta_free;

@@ -16095,10 +16095,9 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
       VFID vfid_iter;
       VFID found_vfid = VFID_INITIALIZER;
       MVCCID tran_mvccid = logtb_get_current_mvccid (thread_p);
-      VOLID first_volid = vsids_reserved[0].volid;	/* we really have to have the VFID in the same volume as the first
-							 * allocated page. this means we cannot change volume when we
-							 * look for a valid VFID.
-							 */
+      /* we really have to have the VFID in the same volume as the first allocated page. this means we cannot change
+       * volume when we look for a valid VFID. */
+      VOLID first_volid = vsids_reserved[0].volid;
 
       for (vsid_iter = vsids_reserved;
 	   vsid_iter < vsids_reserved + n_sectors && VFID_ISNULL (&found_vfid) && vsid_iter->volid == first_volid;

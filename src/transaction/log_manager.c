@@ -2019,6 +2019,7 @@ log_rv_redo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   PAGE_TYPE set_page_type;
   assert (rcv->pgptr != NULL);
   assert (rcv->length > 0);
+  assert (rcv->length <= DB_PAGESIZE);
 
   memcpy (rcv->pgptr, rcv->data, rcv->length);
 
