@@ -539,6 +539,9 @@
      (v)->data.ch.medium.codeset = (c), \
      (v)->data.ch.medium.size = (s), \
      (v)->data.ch.medium.buf = (char *) (p), \
+     (v)->data.ch.medium.compressed_buf = NULL, \
+     (v)->data.ch.medium.compressed_size = 0, \
+     (v)->data.ch.medium.was_compressed = 0, \
      (v)->domain.general_info.is_null = (((void *) (p) != NULL) ? 0 : 1), \
      (v)->domain.general_info.is_null = \
          ((s) == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)) \

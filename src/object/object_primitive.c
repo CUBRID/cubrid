@@ -11028,7 +11028,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
-  char *src_str, *new_;
+  char *src_str, *new_, *new_compressed_buf;
 
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
@@ -11059,6 +11059,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  error =
 	    db_make_varchar (dest, src_precision, src_str, src_length, DB_GET_STRING_CODESET (src),
 			     DB_GET_STRING_COLLATION (src));
+	  dest->data.ch.medium.compressed_buf = src->data.ch.medium.compressed_buf;
 	}
       else
 	{
@@ -11077,7 +11078,32 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 			       DB_GET_STRING_COLLATION (src));
 	      dest->need_clear = true;
 	    }
+
+	  /* Copy the possible compressed string stored in the DB_VALUE */
+	  if (src->data.ch.medium.compressed_buf == NULL)
+	    {
+	      dest->data.ch.medium.compressed_buf = NULL;
+	    }
+	  else
+	    {
+	      new_compressed_buf = db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
+	      if (new_compressed_buf == NULL)
+		{
+		  db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	      else
+		{
+		  memcpy (new_compressed_buf, src->data.ch.medium.compressed_buf, src->data.ch.medium.compressed_size);
+		  new_compressed_buf[src->data.ch.medium.compressed_size] = '\0';
+		  dest->data.ch.medium.compressed_buf = new_compressed_buf;
+		}
+	    }
 	}
+
+      dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
+      dest->data.ch.medium.was_compressed = src->data.ch.medium.was_compressed;
     }
 
   return error;
