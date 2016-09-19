@@ -10066,18 +10066,6 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
     }
   else
     {
-		/* TODO[arnia] */
-	        int header_size = OR_HEADER_SIZE (recdes->data);
-		short *ptr_var_table =  OR_GET_OBJECT_VAR_TABLE (recdes->data);
-		int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-		int var_offset = OR_VAR_OFFSET (recdes->data, value->read_attrepr->location);
-		int element_offset = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (OR_GET_OBJECT_VAR_TABLE (recdes->data), 
-                                           value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data));
-		
-		unsigned char offset_val = *((char *) (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data))));
-		unsigned char *offset_val_ptr = (char *) (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data)));
-
-
       attrepr = value->read_attrepr;
       /* Is it a fixed size attribute ? */
       if (value->read_attrepr->is_fixed != 0)
@@ -10107,6 +10095,18 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 	   */
 	  if (!OR_VAR_IS_NULL (recdes->data, value->read_attrepr->location))
 	    {
+		/* TODO[arnia] */
+	        int header_size = OR_HEADER_SIZE (recdes->data);
+		short *ptr_var_table =  OR_GET_OBJECT_VAR_TABLE (recdes->data);
+		int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+		int var_offset = OR_VAR_OFFSET (recdes->data, value->read_attrepr->location);
+		int element_offset = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (OR_GET_OBJECT_VAR_TABLE (recdes->data), 
+                                           value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data));
+		
+		unsigned char offset_val = *((char *) (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data))));
+		unsigned char *offset_val_ptr = (char *) (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data)));
+
+
 	      /* 
 	       * The variable attribute is bound.
 	       * Find its location through the variable offset attribute table.

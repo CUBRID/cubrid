@@ -394,6 +394,8 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
 
   /* set result */
   pwc->unpack_info = unpack_info_p;
+  er_print_callstack (ARG_FILE_LINE, "stx_map_stream_to_filter_pred:pwc->unpack_info:%p", unpack_info_p);
+
   *pred = pwc;
 
 end:
@@ -495,10 +497,13 @@ stx_free_additional_buff (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
     {
       UNPACK_EXTRA_BUF *add_buff = ((XASL_UNPACK_INFO *) xasl_unpack_info)->additional_buffers;
       UNPACK_EXTRA_BUF *temp = NULL;
+      er_print_callstack (ARG_FILE_LINE, "stx_free_additional_buff:xasl_unpack_info:%p", xasl_unpack_info);
       while (add_buff != NULL)
 	{
 	  temp = add_buff->next;
+	  _er_log_debug (ARG_FILE_LINE, "free:add_buff->buff:%p", add_buff->buff);
 	  db_private_free_and_init (thread_p, add_buff->buff);
+	  _er_log_debug (ARG_FILE_LINE, "free:add_buff:%p", add_buff);
 	  db_private_free_and_init (thread_p, add_buff);
 	  add_buff = temp;
 	}
