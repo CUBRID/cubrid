@@ -4473,7 +4473,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 
   if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
     {
-      if (logpb_add_volume (NULL, volid, extinfo->name, DB_PERMANENT_DATA_PURPOSE) != NULL_VOLID)
+      if (logpb_add_volume (NULL, volid, extinfo->name, DB_PERMANENT_DATA_PURPOSE) == NULL_VOLID)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
