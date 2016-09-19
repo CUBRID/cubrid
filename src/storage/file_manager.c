@@ -18256,7 +18256,7 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
     }
 
   /* done */
-  assert (error_code != NO_ERROR);
+  assert (error_code == NO_ERROR);
 
 exit:
   /* system operation must be committed before releasing header page. */

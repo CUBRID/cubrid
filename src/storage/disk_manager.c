@@ -785,6 +785,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   vhdr->nsect_total = ext_info->nsect_total;
   vhdr->nsect_max = ext_info->nsect_max;
   vhdr->db_charset = lang_charset ();
+  vhdr->hint_allocsect = NULL_SECTID;
   vhdr->dummy1 = vhdr->dummy2 = vhdr->dummy3 = 0;	/* useless */
 
   /* set sector table info in volume header */
