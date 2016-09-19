@@ -11524,7 +11524,8 @@ re_check:
 	  if (pr_is_oor_value (&value->dbvalue)
 	      && column_size > OR_OID_SIZE)
 	    {
-	      size_gain_overflow_columns += column_size - OR_OID_SIZE;
+	      /* TODO[arnia] : better approximation of OOR column size */
+	      size_gain_overflow_columns += column_size - HEAP_OOR_THRESHOLD_SIZE;
 	    }
 	}
     }
@@ -11650,6 +11651,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   if (attr_info->num_values > 1
       && out_of_row_recdes != NULL
+      && size_without_overflow_columns < expected_size
       && !heap_is_big_length (size_without_overflow_columns)
       /* TODO[arnia] : remove this line */
       && !heap_is_big_length (expected_size))
