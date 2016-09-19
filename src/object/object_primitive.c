@@ -2084,10 +2084,8 @@ pr_clear_value (DB_VALUE * value)
       data = (unsigned char *) value->data.ch.medium.compressed_buf;
       if (data != NULL)
 	{
-	  if (value->need_clear)
-	    {
-	      db_private_free_and_init (NULL, data);
-	    }
+	  db_private_free_and_init (NULL, data);
+
 	  value->data.ch.medium.compressed_buf = NULL;
 	  value->data.ch.medium.was_compressed = 0;
 	}
@@ -11236,6 +11234,7 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 	      /* Add the compressed string and its size to the dbvalue. */
 	      value->data.ch.medium.compressed_buf = compressed_string;
 	      value->data.ch.medium.compressed_length = compressed_length;
+
 	      if (compressed_length > 0)
 		{
 		  len = compressed_length;
@@ -14061,6 +14060,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	      /* Add the compressed string and its size to the dbvalue. */
 	      value->data.ch.medium.compressed_buf = compressed_string;
 	      value->data.ch.medium.compressed_length = compressed_length;
+
 	      if (compressed_length > 0)
 		{
 		  len = compressed_length;
