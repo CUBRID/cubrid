@@ -4192,6 +4192,8 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
     }
 
+  pgbuf_ordered_unfix (thread_p, &last_pg_watcher);
+
   /* now update header statistics for best1 space page. the changes to the statistics are not logged. */
   /* last page hint */
   heap_hdr->estimates.last_vpid = vpid;

@@ -4429,6 +4429,8 @@ file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
   VPID vpid;
   FILE_TYPE file_type;
 
+  assert (false);
+
   /* First check to see if this is something we've already looked at recently.  If so, it will save us having to
    * pgbuf_fix the header, which can reduce the pressure on the page buffer pool. */
   file_type = file_type_cache_check (vfid);
@@ -4464,6 +4466,7 @@ file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PT
 {
   FILE_TYPE file_type;
 
+  assert (false);
   assert (fhdr_pgptr != NULL);
 
   /* First check to see if this is something we've already looked at recently.  If so, it will save us having to
