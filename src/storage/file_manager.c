@@ -1256,6 +1256,8 @@ file_get_primary_vol_purpose (FILE_TYPE ftype)
 {
   DISK_VOLPURPOSE purpose;
 
+  assert (false);
+
   switch (ftype)
     {
     case FILE_TRACKER:
@@ -16068,7 +16070,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tab
     }
 
   /* reserve sectors on disk */
-  volpurpose = file_get_primary_vol_purpose (file_type);
+  volpurpose = is_temp ? DB_TEMPORARY_DATA_PURPOSE : DB_PERMANENT_DATA_PURPOSE;
   error_code =
     disk_reserve_sectors (thread_p, volpurpose, DISK_NONCONTIGUOUS_SPANVOLS_PAGES, NULL_VOLID, n_sectors,
 			  vsids_reserved);
@@ -16595,9 +16597,18 @@ flre_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   pgbuf_unfix_and_init (thread_p, page_fhead);
 
-  /* TODO: Unreserve sectors from disk */
+  error_code =
+    disk_unreserve_ordered_sectors (thread_p,
+				    FILE_IS_TEMPORARY (fhead) ? DB_TEMPORARY_DATA_PURPOSE : DB_PERMANENT_DATA_PURPOSE,
+				    fhead->n_sector_partial, vsids);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      goto exit;
+    }
 
   /* Done */
+  assert (error_code == NO_ERROR);
 
 exit:
   if (page_fhead != NULL)
@@ -16797,7 +16808,6 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
   int expand_size_in_sectors;
   VSID *vsids_reserved = NULL;
   VSID *vsid_iter = NULL;
-  DB_VOLPURPOSE volpurpose = file_get_primary_vol_purpose (fhead->type);
   FILE_EXTENSIBLE_DATA *extdata_part_ftab;
   FILE_PARTIAL_SECTOR partsect;
   bool is_sysop_started = false;
@@ -16840,8 +16850,8 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
 
   /* reserve disk sectors */
   error_code =
-    disk_reserve_sectors (thread_p, volpurpose, DISK_NONCONTIGUOUS_SPANVOLS_PAGES, fhead->volid_last_expand,
-			  expand_size_in_sectors, vsids_reserved);
+    disk_reserve_sectors (thread_p, DB_PERMANENT_DATA_PURPOSE, DISK_NONCONTIGUOUS_SPANVOLS_PAGES,
+			  fhead->volid_last_expand, expand_size_in_sectors, vsids_reserved);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
