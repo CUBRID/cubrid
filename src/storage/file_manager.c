@@ -4560,6 +4560,8 @@ file_get_numpages (THREAD_ENTRY * thread_p, const VFID * vfid)
   VPID vpid;
   INT32 num_pgs = -1;
 
+  assert (false);
+
   vpid.volid = vfid->volid;
   vpid.pageid = vfid->fileid;
 
@@ -5067,6 +5069,8 @@ file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * nth_vpids
 
   allocset_vpid.volid = vfid->volid;
   allocset_vpid.pageid = vfid->fileid;
+
+  assert (false);
 
   fhdr_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (fhdr_pgptr == NULL)

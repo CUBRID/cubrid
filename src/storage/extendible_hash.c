@@ -2784,7 +2784,13 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
     }
   dir_header_p = (EHASH_DIR_HEADER *) dir_header_page_p;
 
-  old_pages = file_get_numpages (thread_p, &ehid_p->vfid) - 1;	/* The first page starts with 0 */
+  error_code = flre_get_num_user_pages (thread_p, &ehid_p->vfid, &old_pages);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  old_pages -= 1;		/* The first page starts with 0 */
   old_ptrs = 1 << dir_header_p->depth;
   exp_times = 1 << (new_depth - dir_header_p->depth);
 
@@ -2963,16 +2969,23 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
   pgbuf_set_dirty (thread_p, new_dir_page_p, FREE);
 
 #ifdef EHASH_DEBUG
-  if (((new_ptrs / file_get_numpages (&dir_header_p->bucket_file)) > EHASH_BALANCE_FACTOR)
-      || (file_get_numpages (&ehid_p->vfid) > file_get_numpages (&dir_header_p->bucket_file)))
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "WARNING: Ext. Hash EHID=%d|%d|%d is unbalanced.\n Num_bucket_pages = %d, num_dir_pages = %d,\n"
-		    " num_dir_pointers = %d, directory_depth = %d.\n"
-		    " You may want to consider another hash function.\n", ehid_p->vfid.volid, ehid_p->vfid.fileid,
-		    ehid_p->pageid, file_get_numpages (&dir_header_p->bucket_file), file_get_numpages (&ehid_p->vfid),
-		    new_ptrs, dir_header_p->depth);
-    }
+  {
+    DKNPAGES npages_bucket = 0;
+    DKNPAGES npages_ehash = 0;
+    if (flre_get_num_user_pages (thread_p, &dir_header_p->bucket_file, &npages_bucket) == NO_ERROR
+	&& flre_get_num_user_pages (thread_p, &ehid_p->vfid, &npages_ehash) == NO_ERROR)
+      {
+	if (new_ptrs / npages > EHASH_BALANCE_FACTOR || npages_ehash > npages_bucket)
+	  {
+	    er_log_debug (ARG_FILE_LINE,
+			  "WARNING: Ext. Hash EHID=%d|%d|%d is unbalanced.\n Num_bucket_pages = %d, "
+			  "num_dir_pages = %d,\n num_dir_pointers = %d, directory_depth = %d.\n"
+			  " You may want to consider another hash function.\n", ehid_p->vfid.volid,
+			  ehid_p->vfid.fileid, ehid_p->pageid, npages_bucket, npages_ehash,
+			  new_ptrs, dir_header_p->depth);
+	  }
+      }
+  }
 #endif /* EHASH_DEBUG */
 
   /* Release the root page holding the directory header */
@@ -3914,7 +3927,17 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 
   old_ptrs = 1 << dir_header_p->depth;
   times = 1 << (dir_header_p->depth - new_depth);
-  old_pages = file_get_numpages (thread_p, &ehid_p->vfid) - 1;	/* The first page starts with 0 */
+  ret = flre_get_num_user_pages (thread_p, &ehid_p->vfid, &old_pages);
+  if (ret != NO_ERROR)
+    {
+#ifdef EHASH_DEBUG
+      er_log_debug (ARG_FILE_LINE, "WARNING: error reading user page number from file, shrink is cancelled.\n");
+#endif
+      ASSERT_ERROR ();
+      pgbuf_unfix (thread_p, (PAGE_PTR) dir_header_p);
+      return;
+    }
+  old_pages -= 1;		/* The first page starts with 0 */
 
   new_ptrs = old_ptrs / times;	/* Calculate how many pointers will remain */
 
@@ -4739,7 +4762,10 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
     }
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
-  num_pages = file_get_numpages (thread_p, &dir_header_p->bucket_file);
+  if (flre_get_num_user_pages (thread_p, &dir_header_p->bucket_file, &num_pages) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   /* Retrieve each bucket page and apply the given function to its entries */
   for (bucket_page_no = 0; apply_error_code == NO_ERROR && bucket_page_no < num_pages; bucket_page_no++)
@@ -4824,7 +4850,12 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_root_page_p;
 
-  num_pages = file_get_numpages (thread_p, &ehid_p->vfid) - 1;	/* The first page starts with 0 */
+  if (flre_get_num_user_pages (thread_p, &ehid_p->vfid, &num_pages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+  num_pages -= 1;		/* The first page starts with 0 */
 
   num_ptrs = 1 << dir_header_p->depth;
   end_offset = num_ptrs - 1;	/* Directory first pointer has an offset of 0 */
@@ -4980,7 +5011,12 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
   /* Print buckets */
 
-  num_pages = file_get_numpages (thread_p, &dir_header_p->bucket_file) - 1;
+  if (flre_get_num_user_pages (thread_p, &dir_header_p->bucket_file, &num_pages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+  num_pages -= 1;
 
   for (bucket_page_no = 0; bucket_page_no <= num_pages; bucket_page_no++)
     {
