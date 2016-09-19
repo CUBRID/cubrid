@@ -3929,6 +3929,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	  >= disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
+	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, disk_Temp_max_sects);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
 	  return ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED;
@@ -4979,14 +4980,14 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
 {
   int error_code = NO_ERROR;
 
-  disk_Temp_max_sects = (DKNSECTS) (prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES) / DISK_SECTOR_NPAGES);
+  disk_Temp_max_sects = (DKNSECTS) prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
   if (disk_Temp_max_sects < 0)
     {
       disk_Temp_max_sects = SECTID_MAX;	/* infinite */
     }
   else
     {
-      disk_Temp_max_sects = DISK_SECTS_ROUND_DOWN (disk_Temp_max_sects);
+      disk_Temp_max_sects = disk_Temp_max_sects / DISK_SECTOR_NPAGES;
     }
 
   error_code = disk_cache_init ();
