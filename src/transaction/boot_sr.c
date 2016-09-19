@@ -6016,6 +6016,16 @@ boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, co
       else
 	{
 	  temp_path = prm_get_string_value (PRM_ID_IO_VOLUME_EXT_PATH);
+	  if (temp_path == NULL)
+	    {
+	      temp_path = fileio_get_directory_path (buf_temp_path, boot_Db_full_name);
+	      if (temp_path == NULL)
+		{
+		  buf_temp_path[0] = '\0';
+		  temp_path = buf_temp_path;
+		}
+	    }
+
 	}
       if (given_name != NULL)
 	{
