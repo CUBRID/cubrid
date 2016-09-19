@@ -14171,6 +14171,12 @@ file_header_sanity_check (FLRE_HEADER * fhead)
   FILE_EXTENSIBLE_DATA *full_table;
   FILE_EXTENSIBLE_DATA *page_table;
 
+  if (prm_get_bool_value (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY))
+    {
+      /* we cannot guarantee sanity of files headers */
+      return;
+    }
+
   assert (!VFID_ISNULL (&fhead->self));
 
   assert (fhead->n_page_total > 0);
