@@ -479,7 +479,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_length = 0;
       value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       break;
@@ -495,7 +495,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_length = 0;
       value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
@@ -647,7 +647,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_length = 0;
       value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       break;
@@ -663,7 +663,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_length = 0;
       value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
@@ -800,7 +800,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_length = 0;
       value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
@@ -813,7 +813,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_length = 0;
       value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
@@ -1620,7 +1620,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	  value->domain.char_info.collation_id = collation_id;
 	  value->data.ch.info.is_max_string = false;
 	  value->data.ch.medium.compressed_buf = NULL;
-	  value->data.ch.medium.compressed_size = 0;
+	  value->data.ch.medium.compressed_length = 0;
 	  value->data.ch.medium.was_compressed = 0;
 	  /* 
 	   * If size is set to the default, and the type is any
@@ -2603,7 +2603,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int 
   value->data.enumeration.str_val.info.style = MEDIUM_STRING;
   value->data.ch.info.is_max_string = false;
   value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.compressed_size = 0;
+  value->data.ch.medium.compressed_length = 0;
   value->data.ch.medium.was_compressed = 0;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;

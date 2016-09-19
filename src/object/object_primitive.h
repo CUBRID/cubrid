@@ -353,6 +353,8 @@ extern int pr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int com
 extern int pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value,
 						   int *val_size, int align);
 
+extern int pr_data_compress_string (char *string, int str_length, char *compressed_string, int *compressed_length);
+
 /* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
 #define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
 

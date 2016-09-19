@@ -540,7 +540,7 @@
      (v)->data.ch.medium.size = (s), \
      (v)->data.ch.medium.buf = (char *) (p), \
      (v)->data.ch.medium.compressed_buf = NULL, \
-     (v)->data.ch.medium.compressed_size = 0, \
+     (v)->data.ch.medium.compressed_length = 0, \
      (v)->data.ch.medium.was_compressed = 0, \
      (v)->domain.general_info.is_null = (((void *) (p) != NULL) ? 0 : 1), \
      (v)->domain.general_info.is_null = \
