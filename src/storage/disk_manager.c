@@ -4198,6 +4198,17 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	}
       nsect_extend -= nsect_free_new;
 
+      /* update volume count */
+      if (voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  disk_Cache->nvols_perm++;
+	}
+      else
+	{
+	  disk_Cache->nvols_temp++;
+	}
+      assert (disk_Cache->nvols_perm + disk_Cache->nvols_temp <= LOG_MAX_DBVOLID);
+
       /* update total and max */
       extend_info->nsect_total += volext.nsect_total;
       extend_info->nsect_max += volext.nsect_max;
@@ -4216,17 +4227,6 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	}
 
       disk_cache_unlock_reserve (extend_info);
-
-      /* update volume count */
-      if (voltype == DB_PERMANENT_VOLTYPE)
-	{
-	  disk_Cache->nvols_perm++;
-	}
-      else
-	{
-	  disk_Cache->nvols_temp++;
-	}
-      assert (disk_Cache->nvols_perm + disk_Cache->nvols_temp <= LOG_MAX_DBVOLID);
 
       if (extend_info->nsect_total < extend_info->nsect_max)
 	{
