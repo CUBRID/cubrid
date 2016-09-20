@@ -7592,7 +7592,7 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
   {
       /* the undo/redo record was qualified to have its insid and prev version vacuumed;
       * do this here because it is possible that vacuum have missed it during update/delete operation
-      * Note: always clear flags when recovering for crash - all the objects are visible anyway */
+      * Note: always clear flags when recovering from crash - all the objects are visible anyway */
       MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
 
       /* quick hack: set recdes area = length */
