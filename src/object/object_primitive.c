@@ -11223,12 +11223,23 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 	      if (compressed_length > 0)
 		{
 		  value->data.ch.medium.compressed_buf = compressed_string;
-		}
-	      value->data.ch.medium.compressed_length = compressed_length;
-
-	      if (compressed_length > 0)
-		{
+		  value->data.ch.medium.compressed_length = compressed_length;
+		  value->data.ch.medium.was_compressed = 1;
 		  len = compressed_length;
+		}
+	      else
+		{
+		  /* Compression failed so we can free the compressed_buf pointer */
+		  if (compressed_string != NULL)
+		    {
+		      db_private_free_and_init (NULL, compressed_string);
+		    }
+		  if (compressed_length == -1)
+		    {
+		      /* Compression failed due to its bad size */
+		      value->data.ch.medium.was_compressed = 1;
+		      value->data.ch.medium.compressed_length = 0;
+		    }
 		}
 	    }
 	  else
@@ -11236,8 +11247,15 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 	      /* If the DB_VALUE was already compressed, use length of the compression stored in it. */
 	      if (value->data.ch.medium.was_compressed == 1)
 		{
-		  assert (value->data.ch.medium.compressed_buf != NULL);
-		  len = value->data.ch.medium.compressed_length;
+		  /* Check for possible failed compression */
+		  if (value->data.ch.medium.compressed_length == 0)
+		    {
+		      len = value->data.ch.medium.size;
+		    }
+		  else
+		    {
+		      value->data.ch.medium.compressed_length;
+		    }
 		}
 	    }
 	}
@@ -11284,6 +11302,8 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
   int src_length;
   char *str;
   int rc = NO_ERROR;
+  char *string;
+  int size;
 
   if (value != NULL && (str = db_get_string (value)) != NULL)
     {
@@ -11300,9 +11320,20 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	{
 	  /* String has been prompted to compression before. */
 	  assert (value->data.ch.medium.was_compressed == 1 || value->data.ch.medium.was_compressed == 2);
-	  rc =
-	    pr_write_compressed_string_to_buffer (buf, value->data.ch.medium.compressed_buf,
-						  value->data.ch.medium.compressed_length, src_length, align);
+	  if (value->data.ch.medium.compressed_buf == NULL)
+	    {
+	      assert (value->data.ch.medium.compressed_length == 0);
+	      string = value->data.ch.medium.buf;
+	    }
+	  else
+	    {
+	      assert (value->data.ch.medium.compressed_length != 0);
+	      string = value->data.ch.medium.compressed_buf;
+
+	    }
+	  size = value->data.ch.medium.compressed_length;
+
+	  rc = pr_write_compressed_string_to_buffer (buf, string, size, src_length, align);
 	}
     }
   return rc;
@@ -14037,26 +14068,27 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 		  return src_length;
 		}
 
-	      if (compressed_string != NULL && compressed_length > 0)
+	      /* Add the compressed string and its size to the dbvalue. */
+	      if (compressed_length > 0)
 		{
+		  value->data.ch.medium.compressed_buf = compressed_string;
+		  value->data.ch.medium.compressed_length = compressed_length;
 		  value->data.ch.medium.was_compressed = 1;
+		  len = compressed_length;
 		}
 	      else
 		{
+		  /* Compression failed so we can free the compressed_buf pointer */
+		  if (compressed_string != NULL)
+		    {
+		      db_private_free_and_init (NULL, compressed_string);
+		    }
 		  if (compressed_length == -1)
 		    {
-		      value->data.ch.medium.was_compressed = 2;
-		      compressed_length = 0;
+		      /* Compression failed due to its bad size */
+		      value->data.ch.medium.was_compressed = 1;
+		      value->data.ch.medium.compressed_length = 0;
 		    }
-		}
-
-	      /* Add the compressed string and its size to the dbvalue. */
-	      value->data.ch.medium.compressed_buf = compressed_string;
-	      value->data.ch.medium.compressed_length = compressed_length;
-
-	      if (compressed_length > 0)
-		{
-		  len = compressed_length;
 		}
 	    }
 	  else
@@ -14064,8 +14096,15 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	      /* If the DB_VALUE was already compressed, use length of the compression stored in it. */
 	      if (value->data.ch.medium.was_compressed == 1)
 		{
-		  assert (value->data.ch.medium.compressed_buf != NULL);
-		  len = value->data.ch.medium.compressed_length;
+		  /* Check for possible failed compression */
+		  if (value->data.ch.medium.compressed_length == 0)
+		    {
+		      len = value->data.ch.medium.size;
+		    }
+		  else
+		    {
+		      value->data.ch.medium.compressed_length;
+		    }
 		}
 	    }
 	}
@@ -16830,7 +16869,7 @@ pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, in
  *  string(in)		      :- String to be compressed.
  *  str_length(in)	      :- The size of the string.
  *  compressed_string(out)    :- The compressed string. Needs to be alloced!!!!!
- *  compressed_length(out)    :- The size of the compressed string. If it's 0 after this, it means
+ *  compressed_length(out)    :- The size of the compressed string. If it's -1 after this, it means
  *			      :- compression failed, so the compressed_string can be free'd.
  *
  */
@@ -16873,7 +16912,7 @@ pr_data_compress_string (char *string, int str_length, char *compressed_string, 
     {
       /* Compression successful but its length exceeds the original length of the string. */
       /* We will also be freeing the compressed_string since we will not need it anymore. */
-      *compressed_length = 0;
+      *compressed_length = -1;
     }
   else
     {
