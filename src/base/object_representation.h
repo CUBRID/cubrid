@@ -595,42 +595,6 @@
 #define OR_NON_MVCC_HEADER_SIZE	      (8)	/* two integers */
 #define OR_HEADER_SIZE(ptr) (or_header_size ((char *) (ptr)))
 
-/* representation offset in MVCC and non-MVCC. In MVCC the representation
- * contains flags that allow to compute header size and CHN offset.
- */
-#define OR_REP_OFFSET    0
-#define OR_MVCC_REP_SIZE 4
-
-#define OR_MVCC_FLAG_OFFSET OR_REP_OFFSET
-#define OR_MVCC_FLAG_SIZE OR_MVCC_REP_SIZE
-
-#define OR_CHN_OFFSET (OR_REP_OFFSET + OR_MVCC_REP_SIZE)
-#define OR_CHN_SIZE 4
-
-#define OR_MVCC_INSERT_ID_OFFSET (OR_CHN_OFFSET + OR_CHN_SIZE)
-#define OR_MVCC_INSERT_ID_SIZE 8
-
-#define OR_MVCC_DELETE_ID_OFFSET (OR_MVCC_INSERT_ID_OFFSET + OR_MVCC_INSERT_ID_SIZE)
-#define OR_MVCC_DELETE_ID_SIZE 8
-
-#define OR_MVCC_PREV_VERSION_LSA_OFFSET (OR_MVCC_DELETE_ID_OFFSET + OR_MVCC_DELETE_ID_SIZE)
-#define OR_MVCC_PREV_VERSION_LSA_SIZE 8
-
-/* MVCC */
-#define OR_MVCCID_SIZE			OR_BIGINT_SIZE
-#define OR_PUT_MVCCID			OR_PUT_BIGINT
-#define OR_GET_MVCCID			OR_GET_BIGINT
-
-/* In case MVCC is enabled and chn is needed it will be saved instead of
- * delete MVCC id.
- */
-
-/* high bit of the repid word is reserved for the bound bit flag,
-   need to keep representations from going negative ! */
-#define OR_BOUND_BIT_FLAG   0x80000000
-
-#define BIG_VAR_OFFSET_SIZE OR_INT_SIZE	/* 4byte */
-
 /* 01 stand for 1byte, 10-> 2byte, 11-> 4byte  */
 #define OR_OFFSET_SIZE_FLAG 0x60000000
 #define OR_OFFSET_SIZE_1BYTE 0x20000000
@@ -653,6 +617,43 @@
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
 
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
+
+/* representation offset in MVCC and non-MVCC. In MVCC the representation
+ * contains flags that allow to compute header size and CHN offset.
+ */
+
+#define OR_REP_OFFSET    0
+#define OR_MVCC_REP_SIZE 4
+
+#define OR_MVCC_FLAG_OFFSET OR_REP_OFFSET
+#define OR_MVCC_FLAG_SIZE OR_MVCC_REP_SIZE
+
+#define OR_CHN_OFFSET (OR_REP_OFFSET + OR_MVCC_REP_SIZE)
+#define OR_CHN_SIZE 4
+
+#define OR_MVCC_INSERT_ID_OFFSET (OR_CHN_OFFSET + OR_CHN_SIZE)
+#define OR_MVCC_INSERT_ID_SIZE 8
+
+#define OR_MVCC_DELETE_ID_OFFSET(mvcc_flags) (OR_MVCC_INSERT_ID_OFFSET + (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCC_INSERT_ID_SIZE : 0))
+#define OR_MVCC_DELETE_ID_SIZE 8
+
+#define OR_MVCC_PREV_VERSION_LSA_OFFSET(mvcc_flags) (OR_MVCC_DELETE_ID_OFFSET + (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCC_DELETE_ID_SIZE : 0))
+#define OR_MVCC_PREV_VERSION_LSA_SIZE 8
+
+/* MVCC */
+#define OR_MVCCID_SIZE			OR_BIGINT_SIZE
+#define OR_PUT_MVCCID			OR_PUT_BIGINT
+#define OR_GET_MVCCID			OR_GET_BIGINT
+
+/* In case MVCC is enabled and chn is needed it will be saved instead of
+ * delete MVCC id.
+ */
+
+/* high bit of the repid word is reserved for the bound bit flag,
+   need to keep representations from going negative ! */
+#define OR_BOUND_BIT_FLAG   0x80000000
+
+#define BIG_VAR_OFFSET_SIZE OR_INT_SIZE	/* 4byte */
 
 /* OBJECT HEADER ACCESS MACROS */
 
@@ -677,23 +678,14 @@
 
 /* MVCC OBJECT HEADER ACCESS MACROS */
 #define OR_GET_MVCC_INSERT_ID(ptr, mvcc_flags, valp) \
-  do { \
-    if (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) == 0) \
-      {	\
-	*(valp) = MVCCID_ALL_VISIBLE; \
-      }	\
-    else \
-      {	\
-	  OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_INSERT_ID_OFFSET, (valp)); \
-      }	\
-  } while (0)
+  ((((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) == 0) \
+    ? MVCCID_ALL_VISIBLE \
+    (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_INSERT_ID_OFFSET, (valp))))
 
 #define OR_GET_MVCC_DELETE_ID(ptr, mvcc_flags, valp)  \
   ((((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) == 0) \
     ? MVCCID_NULL \
-    : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
-       ? (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_DELETE_ID_OFFSET, (valp))) \
-       : ((OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_INSERT_ID_OFFSET, (valp))))))
+    (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_DELETE_ID_OFFSET(mvcc_flags), (valp))))
 
 #define OR_GET_MVCC_REPID(ptr)	\
   ((OR_GET_INT(((char *) (ptr)) + OR_REP_OFFSET)) \
