@@ -7588,10 +7588,11 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
   /* it is impossible to restore a record that should be removed by vacuum */
   assert (can_vacuum != VACUUM_RECORD_REMOVE);
 
-  if (can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
-    {
+  if (can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER || log_is_in_crash_recovery ())
+  {
       /* the undo/redo record was qualified to have its insid and prev version vacuumed;
-       * do this here because it is possible that vacuum have missed it during update/delete operation */
+      * do this here because it is possible that vacuum have missed it during update/delete operation
+      * Note: always clear flags when recovering for crash - all the objects are visible anyway */
       MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
 
       /* quick hack: set recdes area = length */
