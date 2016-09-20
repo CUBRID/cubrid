@@ -401,24 +401,13 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	  return ER_FAILED;
 	}
 
-      if ((DB_VALUE_DOMAIN_TYPE (dbval_p) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE (dbval_p) == DB_TYPE_VARNCHAR)
-	  && DB_GET_STRING_SIZE (dbval_p) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-	{
-	  /* Get max val_size from string */
-	  val_size = PRIM_STRING_MAXIMUM_DISK_SIZE (DB_GET_STRING_SIZE (dbval_p));
 
-	  OR_BUF_INIT (buf, val_p, val_size);
+      val_size = pr_data_writeval_disk_size (dbval_p);
 
-	  rc = pr_get_size_and_write_string_to_buffer (&buf, val_p, dbval_p, &val_size, INT_ALIGNMENT);
-	}
-      else
-	{
-	  val_size = pr_data_writeval_disk_size (dbval_p);
+      OR_BUF_INIT (buf, val_p, val_size);
 
-	  OR_BUF_INIT (buf, val_p, val_size);
+      rc = (*(pr_type->data_writeval)) (&buf, dbval_p);
 
-	  rc = (*(pr_type->data_writeval)) (&buf, dbval_p);
-	}
 
       if (rc != NO_ERROR)
 	{
