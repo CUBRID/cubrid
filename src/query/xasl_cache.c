@@ -1340,8 +1340,8 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	    }
 	  else
 	    {
-              /* new entry added */
-              ATOMIC_INC_32 (&xcache_Entry_count, 1);
+	      /* new entry added */
+	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
