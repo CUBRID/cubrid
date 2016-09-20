@@ -6089,7 +6089,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
     }
   else
     {
-      if (boot_Db_parm < 0 || (boot_Db_parm->temp_nvols == 0 && volid != LOG_MAX_DBVOLID)
+      if (boot_Db_parm->temp_nvols < 0 || (boot_Db_parm->temp_nvols == 0 && volid != LOG_MAX_DBVOLID)
 	  || (boot_Db_parm->temp_nvols > 0 && boot_Db_parm->temp_last_volid - 1 != volid))
 	{
 	  /* invalid volid */
@@ -6105,8 +6105,9 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
   log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm), &vpid_boot_bp_parm);
 
-  recdes_boot_db_parm.area_size = sizeof (*boot_Db_parm);
+  recdes_boot_db_parm.length = sizeof (*boot_Db_parm);
   recdes_boot_db_parm.data = (char *) boot_Db_parm;
+  recdes_boot_db_parm.type = REC_HOME;
   heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
 			      &recdes_boot_db_parm, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
   error_code = heap_update_logical (thread_p, &update_context);
