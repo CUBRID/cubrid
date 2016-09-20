@@ -427,8 +427,8 @@ disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 
   if (vol_type != DB_PERMANENT_VOLTYPE)
     {
-      assert_release (false);
-      return false;
+      /* don't save temporary volumes... they will be dropped anyway */
+      return true;
     }
 
   /* called during boot, no sync required */
@@ -4826,17 +4826,6 @@ disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_
 
   assert (volid != NULL_VOLID);
 
-  if (purpose_out)
-    {
-      *purpose_out = DISK_UNKNOWN_PURPOSE;
-    }
-  if (space_out)
-    {
-      space_out->n_max_sects = 0;
-      space_out->n_total_sects = 0;
-      space_out->n_free_sects = 0;
-    }
-
   vpid_volheader.volid = volid;
   vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
   page_volheader = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
@@ -4850,6 +4839,12 @@ disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_
 
   *purpose_out = volheader->purpose;
   *voltype_out = volheader->type;
+
+  if (*voltype_out == DB_TEMPORARY_VOLTYPE)
+    {
+      /* don't load temporary volumes */
+      return NO_ERROR;
+    }
 
   /* get space info */
   space_out->n_max_sects = volheader->nsect_max;
