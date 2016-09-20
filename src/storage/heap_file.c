@@ -155,7 +155,7 @@ static int rv;
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID)) \
 	{ \
 	   MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID); \
-            MVCC_SET_DELID (mvcc_rec_header_p, MVCCID_NULL); \
+           MVCC_SET_DELID (mvcc_rec_header_p, MVCCID_NULL); \
 	} \
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_PREV_VERSION)) \
 	{ \
@@ -11542,8 +11542,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	{
 	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
 	  or_put_int (buf, repid_bits);
-	  or_put_bigint (buf, 0);	/* MVCC insert id */
 	  or_put_int (buf, 0);	/* CHN */
+	  or_put_bigint (buf, 0);	/* MVCC insert id */
 	  header_size = OR_MVCC_INSERT_HEADER_SIZE;
 	}
       else
@@ -15750,8 +15750,6 @@ heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR 
     {
       mvcc_flags = (INT32) OR_GET_MVCC_FLAG (p_recdes->data);
       chn_offset = OR_CHN_OFFSET;
-
-      assert (chn_offset > 0);
 
       /* Add representation ID and flags field */
       redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;

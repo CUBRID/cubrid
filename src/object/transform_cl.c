@@ -1340,6 +1340,8 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 
       mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
+      chn = or_get_int (buf, &rc);
+
       if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	{
 	  /* skip insert id */
@@ -1351,8 +1353,6 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 	  /* skip delete id */
 	  or_advance (buf, OR_MVCCID_SIZE);
 	}
-
-      chn = or_get_int (buf, &rc);
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	{

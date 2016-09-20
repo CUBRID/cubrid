@@ -470,15 +470,11 @@ or_replace_rep_id (RECDES * record, int repid)
 int
 or_chn (RECDES * record)
 {
-  int mvcc_flag = 0;
-
-  if (record->length < OR_HEADER_SIZE (record->data))
+  if (record->length < OR_CHN_OFFSET + OR_CHN_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
       return NULL_CHN;
     }
-
-  mvcc_flag = OR_GET_MVCC_FLAG (record->data);
 
   return OR_GET_MVCC_CHN (record->data);
 }
@@ -499,12 +495,10 @@ or_replace_chn (RECDES * record, int chn)
   OR_BUF orep, *buf;
   int offset;
   int error;
-  char mvcc_flag;
 
   OR_BUF_INIT (orep, record->data, record->area_size);
   buf = &orep;
 
-  mvcc_flag = or_mvcc_get_flag (record);
   offset = OR_CHN_OFFSET;
   buf->ptr = buf->buffer + offset;
 
@@ -7796,6 +7790,9 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
 
   /* skip MVCC fields */
   mvcc_header_size = OR_MVCC_REP_SIZE;
+
+  mvcc_header_size += OR_INT_SIZE;	/* chn */
+
   if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
     {
       mvcc_header_size += OR_MVCCID_SIZE;
@@ -7805,8 +7802,6 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
     {
       mvcc_header_size += OR_MVCCID_SIZE;
     }
-
-  mvcc_header_size += OR_INT_SIZE;	/* chn */
 
   if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
     {
@@ -8293,9 +8288,9 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
       return ER_FAILED;
     }
 
-  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE
+  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE
 		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0)) + OR_INT_SIZE;
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
 
   memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
 
