@@ -3220,13 +3220,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = perfmon_initialize (MAX_NTRANS);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
 #if defined(SERVER_MODE)
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
     {
@@ -3237,6 +3230,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
 #endif /* SERVER_MODE */
+
+  error_code = perfmon_initialize (MAX_NTRANS);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   if (db_name == NULL)
     {

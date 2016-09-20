@@ -808,13 +808,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  error_code = perfmon_initialize (0 /* No trans */ );
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
   /* database name must be specified */
   if (client_credential->db_name == NULL)
     {
@@ -842,6 +835,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* initialize the "areas" memory manager, requires prm_ */
   area_init ();
   locator_initialize_areas ();
+
+  error_code = perfmon_initialize (0 /* No trans */ );
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   ptr = (char *) strstr (client_credential->db_name, "@");
   if (ptr == NULL)

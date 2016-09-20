@@ -991,21 +991,19 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 
       mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
+      /* skip chn */
+      or_advance (buf, OR_INT_SIZE);
+
       if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	{
 	  /* skip insert id */
 	  or_advance (buf, OR_MVCCID_SIZE);
 	}
 
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID || mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
 	  /* skip delete id */
 	  or_advance (buf, OR_MVCCID_SIZE);
-	}
-      else
-	{
-	  /* skip chn */
-	  or_advance (buf, OR_INT_SIZE);
 	}
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)

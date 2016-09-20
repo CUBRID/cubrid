@@ -5660,7 +5660,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			{
 			  strcpy (str_insid, "missing");
 			}
-		      if (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID))
+		      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_rec_header))
 			{
 			  sprintf (str_delid, "%llu", (unsigned long long int) MVCC_GET_DELID (&mvcc_rec_header));
 			}
