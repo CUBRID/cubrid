@@ -6992,7 +6992,7 @@ print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_hea
     {
       p += sprintf (p, ", insert_id=missing");
     }
-  if (MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       p += sprintf (p, ", delete_id=%llu", (unsigned long long int) MVCC_GET_DELID (rec_header));
     }
