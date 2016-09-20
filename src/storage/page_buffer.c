@@ -12112,6 +12112,29 @@ pgbuf_get_fix_count (PAGE_PTR pgptr)
   return bufptr->fcnt;
 }
 
+/*
+ * pgbuf_get_hold_count () - Get hold count for current thread.
+ *
+ * return        : Hold count
+ * thread_p (in) : Thread entry
+ */
+int
+pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
+{
+  int me =
+#if defined (SERVER_MODE)
+    thread_p ? thread_p->index :
+#endif /* SERVER_MODE */
+    thread_get_current_entry_index ();
+  return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
+}
+
+/*
+ * pgbuf_get_page_type_for_stat () - Get hold count for current thread.
+ *
+ * return        : page type
+ * pgptr (in)    : pointer to a page
+ */
 PERF_PAGE_TYPE
 pgbuf_get_page_type_for_stat (PAGE_PTR pgptr)
 {
