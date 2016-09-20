@@ -12130,7 +12130,7 @@ pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_get_page_type_for_stat () - Get hold count for current thread.
+ * pgbuf_get_page_type_for_stat () - Return the page type for current page
  *
  * return        : page type
  * pgptr (in)    : pointer to a page
