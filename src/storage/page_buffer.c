@@ -10481,6 +10481,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   int er_status_get_hfid = NO_ERROR;
   VPID req_page_groupid;
   bool has_dealloc_prevent_flag = false;
+  PGBUF_LATCH_CONDITION latch_condition;
 #if defined(PGBUF_ORDERED_DEBUG)
   static unsigned int global_ordered_fix_id = 0;
   unsigned int ordered_fix_id;
@@ -10528,14 +10529,23 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   req_page_holder_info.watch_count = 1;
   req_page_holder_info.watcher[0] = req_watcher;
 
-#if !defined(NDEBUG)
-  ret_pgptr =
-    pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, PGBUF_CONDITIONAL_LATCH, caller_file, caller_line);
-#else
-  ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, PGBUF_CONDITIONAL_LATCH);
-#endif
-
   thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+  if ((holder == NULL) || ((holder->thrd_link == NULL) && (VPID_EQ (req_vpid, &(holder->bufptr->vpid)))))
+    {
+      /* There are no other fixed pages or only the requested page was already fixed */
+      latch_condition = PGBUF_UNCONDITIONAL_LATCH;
+    }
+  else
+    {
+      latch_condition = PGBUF_CONDITIONAL_LATCH;
+    }
+
+#if !defined(NDEBUG)
+  ret_pgptr = pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, latch_condition, caller_file, caller_line);
+#else
+  ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
+#endif
 
   if (ret_pgptr != NULL)
     {
@@ -10586,6 +10596,17 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       int wait_msecs;
 
       assert (ret_pgptr == NULL);
+
+      if (latch_condition == PGBUF_UNCONDITIONAL_LATCH)
+	{
+	  /* continue */
+	  er_status = er_errid ();
+	  if (er_status == NO_ERROR)
+	    {
+	      er_status = ER_FAILED;
+	    }
+	  goto exit;
+	}
 
       er_status = er_errid_if_has_error ();
       if (er_status == ER_PB_BAD_PAGEID || er_status == ER_INTERRUPTED)
