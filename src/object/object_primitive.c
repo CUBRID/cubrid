@@ -890,6 +890,7 @@ static int mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMA
 
 static int pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int compressed_length,
 						 int decompressed_length, int alignment);
+static int pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, int align);
 
 /*
  * Value_area
@@ -11301,19 +11302,21 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	{
 	  src_length = strlen (str);
 	}
-
-      if (align == INT_ALIGNMENT)
+      if (value->data.ch.medium.was_compressed == 0)
 	{
-	  rc = or_packed_put_varchar (buf, str, src_length);
+	  rc = pr_write_uncompressed_string_to_buffer (buf, str, src_length, align);
 	}
       else
 	{
-	  rc = or_put_varchar (buf, str, src_length);
+	  /* String has been prompted to compression before. */
+	  assert (value->data.ch.medium.was_compressed == 1 || value->data.ch.medium.was_compressed == 2);
+	  rc =
+	    pr_write_compressed_string_to_buffer (buf, value->data.ch.medium.compressed_buf,
+						  value->data.ch.medium.compressed_length, src_length, align);
 	}
     }
   return rc;
 }
-
 
 static int
 mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
@@ -16778,6 +16781,55 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
     }
 
   return rc;
+}
+
+/*
+ * pr_write_uncompressed_string_to_buffer()   :-  Writes a string with a size less than
+ *						  PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION to buffer.
+ * 
+ * return				      :- NO_ERROR or error code.
+ * buf(in/out)				      :- Buffer to be written to.
+ * string(in)				      :- String to be written.
+ * size(in)				      :- Size of the string.
+ * align()				      :-
+ */
+
+static int
+pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, int align)
+{
+  int rc = NO_ERROR;
+
+  assert (size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+
+  /* Store the size prefix */
+  rc = or_put_byte (buf, size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  /* store the string bytes */
+  rc = or_put_data (buf, string, size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (align == INT_ALIGNMENT)
+    {
+      /* kludge, temporary NULL terminator */
+      rc = or_put_byte (buf, 0);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+      /* round up to a word boundary */
+      rc = or_put_align32 (buf);
+    }
+
+  return rc;
+
 }
 
 
