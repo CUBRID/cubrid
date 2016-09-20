@@ -634,10 +634,12 @@
 #define OR_MVCC_INSERT_ID_OFFSET (OR_CHN_OFFSET + OR_CHN_SIZE)
 #define OR_MVCC_INSERT_ID_SIZE 8
 
-#define OR_MVCC_DELETE_ID_OFFSET(mvcc_flags) (OR_MVCC_INSERT_ID_OFFSET + (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCC_INSERT_ID_SIZE : 0))
+#define OR_MVCC_DELETE_ID_OFFSET(mvcc_flags) \
+  (OR_MVCC_INSERT_ID_OFFSET + (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCC_INSERT_ID_SIZE : 0))
 #define OR_MVCC_DELETE_ID_SIZE 8
 
-#define OR_MVCC_PREV_VERSION_LSA_OFFSET(mvcc_flags) (OR_MVCC_DELETE_ID_OFFSET + (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCC_DELETE_ID_SIZE : 0))
+#define OR_MVCC_PREV_VERSION_LSA_OFFSET(mvcc_flags) \
+  (OR_MVCC_DELETE_ID_OFFSET(mvcc_flags) + (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCC_DELETE_ID_SIZE : 0))
 #define OR_MVCC_PREV_VERSION_LSA_SIZE 8
 
 /* MVCC */
@@ -680,12 +682,12 @@
 #define OR_GET_MVCC_INSERT_ID(ptr, mvcc_flags, valp) \
   ((((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) == 0) \
     ? MVCCID_ALL_VISIBLE \
-    (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_INSERT_ID_OFFSET, (valp))))
+    : (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_INSERT_ID_OFFSET, (valp))))
 
 #define OR_GET_MVCC_DELETE_ID(ptr, mvcc_flags, valp)  \
   ((((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) == 0) \
     ? MVCCID_NULL \
-    (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_DELETE_ID_OFFSET(mvcc_flags), (valp))))
+    : (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_DELETE_ID_OFFSET(mvcc_flags), (valp))))
 
 #define OR_GET_MVCC_REPID(ptr)	\
   ((OR_GET_INT(((char *) (ptr)) + OR_REP_OFFSET)) \
