@@ -292,14 +292,17 @@ fpcache_entry_uninit (void *entry)
 
   for (head = fpcache_entry->clone_stack_head; head >= 0; head--)
     {
+      void *saved_pred_expr1 = NULL, *saved_pred_expr2 = NULL;
       pred_expr = fpcache_entry->clone_stack[head];
       assert (pred_expr != NULL);
 
+      saved_pred_expr1 = pred_expr;
       qexec_clear_pred_context (thread_p, pred_expr, true);
-      _er_log_debug (ARG_FILE_LINE, "fpcache_entry_uninit:pred_expr:%p", pred_expr);
+      printf ("fpcache_entry_uninit:pred_expr:%p", pred_expr);
+      saved_pred_expr2 = pred_expr;
       stx_free_additional_buff (thread_p, pred_expr->unpack_info);
       stx_free_xasl_unpack_info (pred_expr->unpack_info);
-      _er_log_debug (ARG_FILE_LINE, "fpcache_entry_uninit:pred_expr:%p", pred_expr);
+      printf ("fpcache_entry_uninit:pred_expr:%p", pred_expr);
       db_private_free_and_init (thread_p, pred_expr->unpack_info);
     }
 

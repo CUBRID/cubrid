@@ -2244,6 +2244,10 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 
   if (er_Hasalready_initiated == false)
     {
+      va_start (ap, fmt);
+      printf (fmt, &ap);
+      va_end (ap);
+
       /* do not print debug info */
       return;
     }
