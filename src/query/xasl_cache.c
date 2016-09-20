@@ -1294,11 +1294,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 
       if (inserted)
 	{
-	  if (!context->recompile_xasl)
-	    {
-	      /* This is a new entry. If recompile_xasl flag is true, then this replaces another cache entry. */
-	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
-	    }
 	  (*xcache_entry)->free_data_on_uninit = true;
 	  mnt_pc_add (thread_p);
 	}
@@ -1342,6 +1337,11 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 			  XCACHE_LOG_ENTRY_ARGS (to_be_recompiled), XCACHE_LOG_TRAN_ARGS (thread_p));
 	      xcache_unfix (thread_p, to_be_recompiled);
 	      to_be_recompiled = NULL;
+	    }
+	  else
+	    {
+	      /* new entry added */
+	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
