@@ -4552,7 +4552,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	    }
 	  else
 	    {
-  	      PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
+	      PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
 	    }
 	}
     }
