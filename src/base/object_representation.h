@@ -46,7 +46,7 @@
 #include "sha1.h"
 
 /*
- * NUMERIC TYPE SIZESOR_REP_OFFSET    
+ * NUMERIC TYPE SIZES
  *
  * These constants define the byte sizes for the fundamental
  * primitives types as represented in memory and on disk.
