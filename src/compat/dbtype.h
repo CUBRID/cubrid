@@ -791,7 +791,7 @@ union db_char
     unsigned char codeset;
     int size;
     char *buf;
-    int compressed_length;
+    int compressed_size;
     char *compressed_buf;
     char was_compressed;	/* Compression status */
   } medium;

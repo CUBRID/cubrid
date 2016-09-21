@@ -11097,7 +11097,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	  else
 	    {
-	      new_compressed_buf = db_private_alloc (NULL, src->data.ch.medium.compressed_length + 1);
+	      new_compressed_buf = db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
 	      if (new_compressed_buf == NULL)
 		{
 		  db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
@@ -11106,15 +11106,14 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 	      else
 		{
-		  memcpy (new_compressed_buf, src->data.ch.medium.compressed_buf,
-			  src->data.ch.medium.compressed_length);
-		  new_compressed_buf[src->data.ch.medium.compressed_length] = '\0';
+		  memcpy (new_compressed_buf, src->data.ch.medium.compressed_buf, src->data.ch.medium.compressed_size);
+		  new_compressed_buf[src->data.ch.medium.compressed_size] = '\0';
 		  dest->data.ch.medium.compressed_buf = new_compressed_buf;
 		}
 	    }
 	}
 
-      dest->data.ch.medium.compressed_length = src->data.ch.medium.compressed_length;
+      dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
       dest->data.ch.medium.was_compressed = src->data.ch.medium.was_compressed;
     }
 
@@ -11167,11 +11166,11 @@ static int
 mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 {
   int len;
-  bool temporary_data = false;
+  bool is_temporary_data = false;
   const char *str;
   int rc = NO_ERROR;
   char *compressed_string = NULL;
-  int compressed_length = 0;
+  int compressed_size = 0;
 
   if (DB_IS_NULL (value))
     {
@@ -11202,21 +11201,21 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
       /* We are now sure that the value has been through the process of compression */
 
       /* If the compression was successful, then we use the compression size value */
-      if (value->data.ch.medium.compressed_length > 0)
+      if (value->data.ch.medium.compressed_size > 0)
 	{
-	  len = value->data.ch.medium.compressed_length + PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION;
-	  temporary_data = true;
+	  len = value->data.ch.medium.compressed_size + PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION;
+	  is_temporary_data = true;
 	}
       else
 	{
 	  ;			/* len is already set on the uncompressed size of the value. */
 	}
 
-      if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && temporary_data == false)
+      if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && is_temporary_data == false)
 	{
 	  /* The compression failed but the size of the string calls for the new encoding. */
 	  len += PRIM_TEMPORARY_DISK_SIZE;
-	  temporary_data = true;
+	  is_temporary_data = true;
 	}
 
       if (align == INT_ALIGNMENT)
@@ -11228,7 +11227,7 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 	  len = or_varchar_length (len);
 	}
 
-      if (temporary_data == true)
+      if (is_temporary_data == true)
 	{
 	  return len - PRIM_TEMPORARY_DISK_SIZE;
 	}
@@ -11269,7 +11268,7 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  return rc;
 	}
 
-      if (value->data.ch.medium.compressed_length == 0)
+      if (value->data.ch.medium.compressed_size == 0)
 	{
 	  rc = pr_write_uncompressed_string_to_buffer (buf, str, src_length, align);
 	}
@@ -11279,16 +11278,16 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  assert (value->data.ch.medium.was_compressed == 1);
 	  if (value->data.ch.medium.compressed_buf == NULL)
 	    {
-	      assert (value->data.ch.medium.compressed_length == 0);
+	      assert (value->data.ch.medium.compressed_size == 0);
 	      string = value->data.ch.medium.buf;
 	    }
 	  else
 	    {
-	      assert (value->data.ch.medium.compressed_length != 0);
+	      assert (value->data.ch.medium.compressed_size != 0);
 	      string = value->data.ch.medium.compressed_buf;
 
 	    }
-	  size = value->data.ch.medium.compressed_length;
+	  size = value->data.ch.medium.compressed_size;
 
 	  rc = pr_write_compressed_string_to_buffer (buf, string, size, src_length, align);
 	}
@@ -13982,9 +13981,9 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 {
   int src_length, len, rc = NO_ERROR;
   const char *str;
-  bool temporary_data = false;
+  bool is_temporary_data = false;
   char *compressed_string = NULL;
-  int compressed_length = 0;
+  int compressed_size = 0;
 
 #if !defined (SERVER_MODE)
   INTL_CODESET src_codeset;
@@ -14007,21 +14006,21 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
       /* We are now sure that the value has been through the process of compression */
 
       /* If the compression was successful, then we use the compression size value */
-      if (value->data.ch.medium.compressed_length > 0)
+      if (value->data.ch.medium.compressed_size > 0)
 	{
-	  len = value->data.ch.medium.compressed_length + PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION;
-	  temporary_data = true;
+	  len = value->data.ch.medium.compressed_size + PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION;
+	  is_temporary_data = true;
 	}
       else
 	{
 	  len = src_length;
 	}
 
-      if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && temporary_data == false)
+      if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && is_temporary_data == false)
 	{
 	  /* The compression failed but the size of the string calls for the new encoding. */
 	  len += PRIM_TEMPORARY_DISK_SIZE;
-	  temporary_data = true;
+	  is_temporary_data = true;
 	}
 
 #if !defined (SERVER_MODE)
@@ -14057,7 +14056,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	}
     }
 
-  if (temporary_data == true)
+  if (is_temporary_data == true)
     {
       len -= PRIM_TEMPORARY_DISK_SIZE;
     }
@@ -14118,7 +14117,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	      return rc;
 	    }
 
-	  if (value->data.ch.medium.compressed_length == 0)
+	  if (value->data.ch.medium.compressed_size == 0)
 	    {
 	      rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
 	    }
@@ -14128,16 +14127,15 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	      assert (value->data.ch.medium.was_compressed == 1);
 	      if (value->data.ch.medium.compressed_buf == NULL)
 		{
-		  assert (value->data.ch.medium.compressed_length == 0);
+		  assert (value->data.ch.medium.compressed_size == 0);
 		  string = value->data.ch.medium.buf;
 		}
 	      else
 		{
-		  assert (value->data.ch.medium.compressed_length != 0);
+		  assert (value->data.ch.medium.compressed_size != 0);
 		  string = value->data.ch.medium.compressed_buf;
-
 		}
-	      size = value->data.ch.medium.compressed_length;
+	      size = value->data.ch.medium.compressed_size;
 	      rc = pr_write_compressed_string_to_buffer (buf, string, size, src_size, align);
 	    }
 	}
@@ -14152,7 +14150,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  return rc;
 	}
 
-      if (value->data.ch.medium.compressed_length == 0)
+      if (value->data.ch.medium.compressed_size == 0)
 	{
 	  rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
 	}
@@ -14162,16 +14160,16 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  assert (value->data.ch.medium.was_compressed == 1);
 	  if (value->data.ch.medium.compressed_buf == NULL)
 	    {
-	      assert (value->data.ch.medium.compressed_length == 0);
+	      assert (value->data.ch.medium.compressed_size == 0);
 	      string = value->data.ch.medium.buf;
 	    }
 	  else
 	    {
-	      assert (value->data.ch.medium.compressed_length != 0);
+	      assert (value->data.ch.medium.compressed_size != 0);
 	      string = value->data.ch.medium.compressed_buf;
 
 	    }
-	  size = value->data.ch.medium.compressed_length;
+	  size = value->data.ch.medium.compressed_size;
 	  rc = pr_write_compressed_string_to_buffer (buf, string, size, src_size, align);
 	}
 
@@ -16922,7 +16920,7 @@ pr_clear_compressed_string (DB_VALUE * value)
 
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.was_compressed = 0;
-  value->data.ch.medium.compressed_length = 0;
+  value->data.ch.medium.compressed_size = 0;
 
   return NO_ERROR;
 }
@@ -16941,7 +16939,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   DB_TYPE db_type;
   char *compressed_string, *string;
   int rc = NO_ERROR;
-  int src_size = 0, compressed_length;
+  int src_size = 0, compressed_size;
 
   if (value == NULL || DB_IS_NULL (value))
     {
@@ -16969,7 +16967,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     {
       /* No compression needed. */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_length = 0;
+      value->data.ch.medium.compressed_size = 0;
       value->data.ch.medium.was_compressed = 1;
       return rc;
     }
@@ -16984,7 +16982,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
       return rc;
     }
 
-  rc = pr_data_compress_string (string, src_size, compressed_string, &compressed_length);
+  rc = pr_data_compress_string (string, src_size, compressed_string, &compressed_size);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -16994,18 +16992,18 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   /* Passed through compression once. */
   value->data.ch.medium.was_compressed = 1;
 
-  if (compressed_length > 0)
+  if (compressed_size > 0)
     {
       /* Compression successful */
       value->data.ch.medium.compressed_buf = compressed_string;
-      value->data.ch.medium.compressed_length = compressed_length;
+      value->data.ch.medium.compressed_size = compressed_size;
       return rc;
     }
   else
     {
       /* Compression failed */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_length = 0;
+      value->data.ch.medium.compressed_size = 0;
       goto cleanup;
     }
 

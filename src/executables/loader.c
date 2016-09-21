@@ -2230,7 +2230,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
   val.data.ch.medium.size = len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
-  val.data.ch.medium.compressed_length = 0;
+  val.data.ch.medium.compressed_size = 0;
   val.data.ch.medium.was_compressed = 0;
 
   mem = context->mobj + att->offset;
@@ -2300,7 +2300,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;
   val.data.ch.medium.compressed_buf = NULL;
-  val.data.ch.medium.compressed_length = 0;
+  val.data.ch.medium.compressed_size = 0;
   val.data.ch.medium.was_compressed = 0;
 
   mem = context->mobj + att->offset;
