@@ -7585,7 +7585,23 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
       return ER_FAILED;
     }
 
-  can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, vacuum_Global_oldest_active_mvccid);
+  if (log_is_in_crash_recovery ())
+    {
+      /* always clear flags when recovering from crash - all the objects are visible anyway */
+      if (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID))
+	{
+	  /* Note: PREV_VERSION flag should be set only if VALID_INSID flag is set  */
+	  can_vacuum = VACUUM_RECORD_DELETE_INSID_PREV_VER;
+	}
+      else
+	{
+	  assert (!MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION));
+	}
+    }
+  else
+    {
+      can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, vacuum_Global_oldest_active_mvccid);
+    }
 
   /* it is impossible to restore a record that should be removed by vacuum */
   assert (can_vacuum != VACUUM_RECORD_REMOVE);
