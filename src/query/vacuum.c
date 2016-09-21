@@ -5198,6 +5198,22 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	      LSA_COPY (&mvcc_op_log_lsa, &log_lsa);
 	      break;
 	    }
+	  else if (log_rec_header->type == LOG_REDO_DATA)
+	    {
+	      /* is vacuum complete? */
+	      LOG_REC_REDO *redo = NULL;
+	      LOG_LSA copy_lsa = log_lsa;
+
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &copy_lsa, log_page_p);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), &copy_lsa, log_page_p);
+	      redo = (LOG_REC_REDO *) (log_page_p->area + copy_lsa.offset);
+	      if (redo->data.rcvindex == RVVAC_COMPLETE)
+		{
+		  /* stop looking */
+		  break;
+		}
+	    }
+
 	  LSA_COPY (&log_lsa, &log_rec_header->back_lsa);
 	}
       if (LSA_ISNULL (&mvcc_op_log_lsa))
