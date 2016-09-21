@@ -18968,7 +18968,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 
   if (!MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID))
     {
-      /* Add MVCCID_ALL_VISIBLE for delete MVCCID */
+      /* Add MVCCID_NULL for delete MVCCID */
       MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_DELID);
       MVCC_SET_DELID (mvcc_header, MVCCID_NULL);
     }
