@@ -11268,7 +11268,7 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  return rc;
 	}
 
-      if (value->data.ch.medium.compressed_size == 0)
+      if (value->data.ch.medium.compressed_size == 0 && src_length < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
 	  rc = pr_write_uncompressed_string_to_buffer (buf, str, src_length, align);
 	}
@@ -14117,7 +14117,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	      return rc;
 	    }
 
-	  if (value->data.ch.medium.compressed_size == 0)
+	  if (value->data.ch.medium.compressed_size == 0 && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	    {
 	      rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
 	    }
@@ -14150,7 +14150,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  return rc;
 	}
 
-      if (value->data.ch.medium.compressed_size == 0)
+      if (value->data.ch.medium.compressed_size == 0 && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
 	  rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
 	}
