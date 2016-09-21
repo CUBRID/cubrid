@@ -7232,28 +7232,12 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	      return ER_FAILED;
 	    }
 
-	  if ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_VARNCHAR)
-	      && DB_GET_STRING_SIZE (&dbval) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+
+	  dbval_size = pr_data_writeval_disk_size (&dbval);
+	  if (dbval_size && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
 	    {
-	      int str_size;
-
-	      /* We can alloc more than we will need for these two types of data */
-	      str_size = DB_GET_STRING_SIZE (&dbval);
-
-	      disk_repr_p = db_private_alloc (thread_p, str_size + PRIM_TEMPORARY_DISK_SIZE);
-	      if (disk_repr_p == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  (size_t) (str_size + PRIM_TEMPORARY_DISK_SIZE));
-		  pr_clear_value (&dbval);
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
-		}
-
-	      /* Get max dbval_size */
-	      dbval_size = PRIM_STRING_MAXIMUM_DISK_SIZE (str_size);
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-
-	      error = pr_get_size_and_write_string_to_buffer (&buf, disk_repr_p, &dbval, &dbval_size, INT_ALIGNMENT);
+	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
 	      if (error != NO_ERROR)
 		{
 		  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
@@ -7266,27 +7250,10 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    }
 	  else
 	    {
-	      dbval_size = pr_data_writeval_disk_size (&dbval);
-	      if (dbval_size && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
-		{
-		  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-		  error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
-		  if (error != NO_ERROR)
-		    {
-		      /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
-		      assert (error != ER_TF_BUFFER_OVERFLOW);
-
-		      db_private_free_and_init (thread_p, disk_repr_p);
-		      pr_clear_value (&dbval);
-		      return ER_FAILED;
-		    }
-		}
-	      else
-		{
-		  pr_clear_value (&dbval);
-		  return ER_FAILED;
-		}
+	      pr_clear_value (&dbval);
+	      return ER_FAILED;
 	    }
+
 	  if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size, agg_p->list_id) != NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, disk_repr_p);
@@ -10673,30 +10640,11 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	  goto exit;
 	}
 
-      if ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_VARNCHAR)
-	  && DB_GET_STRING_SIZE (&dbval) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+      dbval_size = pr_data_writeval_disk_size (&dbval);
+      if (dbval_size && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
 	{
-	  int str_size;
-
-	  /* We can alloc more than we will need for these two types of data */
-	  str_size = DB_GET_STRING_SIZE (&dbval);
-
-	  disk_repr_p = db_private_alloc (thread_p, str_size + PRIM_TEMPORARY_DISK_SIZE);
-	  if (disk_repr_p == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (size_t) (str_size + PRIM_TEMPORARY_DISK_SIZE));
-	      pr_clear_value (&dbval);
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto exit;
-	    }
-
-	  /* Get max dbval_size and init the buffer */
-	  dbval_size = PRIM_STRING_MAXIMUM_DISK_SIZE (str_size);
-
 	  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-
-	  error = pr_get_size_and_write_string_to_buffer (&buf, disk_repr_p, &dbval, &dbval_size, INT_ALIGNMENT);
+	  error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
 	  if (error != NO_ERROR)
 	    {
 	      /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
@@ -10709,26 +10657,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	}
       else
 	{
-	  dbval_size = pr_data_writeval_disk_size (&dbval);
-	  if (dbval_size && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
-	    {
-	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
-	      if (error != NO_ERROR)
-		{
-		  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
-		  assert (error != ER_TF_BUFFER_OVERFLOW);
-
-		  db_private_free_and_init (thread_p, disk_repr_p);
-		  error = ER_FAILED;
-		  goto exit;
-		}
-	    }
-	  else
-	    {
-	      error = ER_FAILED;
-	      goto exit;
-	    }
+	  error = ER_FAILED;
+	  goto exit;
 	}
 
       if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size, func_p->list_id) != NO_ERROR)
