@@ -616,7 +616,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FORCE_RESTART_TO_SKIP_RECOVERY "force_restart_to_skip_recovery"
 
-#define PRM_NAME_EXTENDED_STATISTICS_ACTIVATION "extended statistics activation"
+#define PRM_NAME_EXTENDED_STATISTICS_ACTIVATION "extended_statistics_activation"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
