@@ -3818,6 +3818,7 @@ perfmon_initialize (int num_trans)
   pstat_Global.is_watching = NULL;
   pstat_Global.n_watchers = 0;
   pstat_Global.initialized = false;
+  pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
@@ -3909,14 +3910,15 @@ perfmon_initialize (int num_trans)
     }
 
   pstat_Global.n_watchers = 0;
+  goto exit;
 
 error:
   perfmon_finalize ();
   return ER_OUT_OF_VIRTUAL_MEMORY;
 #endif /* SERVER_MODE || SA_MODE */
 
+exit:
   pstat_Global.initialized = true;
-  pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
   return NO_ERROR;
 }
 
