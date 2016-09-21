@@ -382,6 +382,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
   OR_BUF buf;
   PR_TYPE *pr_type;
   DB_TYPE dbval_type;
+  bool temporary_clear;
 
   if (DB_IS_NULL (dbval_p))
     {
@@ -401,13 +402,9 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	  return ER_FAILED;
 	}
 
-
       val_size = pr_data_writeval_disk_size (dbval_p);
-
       OR_BUF_INIT (buf, val_p, val_size);
-
       rc = (*(pr_type->data_writeval)) (&buf, dbval_p);
-
 
       if (rc != NO_ERROR)
 	{
@@ -415,6 +412,12 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	  assert (rc != ER_TF_BUFFER_OVERFLOW);
 	  return ER_FAILED;
 	}
+
+      /* Hack to clear the possible compressed_string that the DB_VALUE might hold. */
+      temporary_clear = dbval_p->need_clear;
+      dbval_p->need_clear = false;
+      pr_clear_value (dbval_p);
+      dbval_p->need_clear = temporary_clear;
 
       /* I don't know if the following is still true. */
       /* since each tuple data value field is already aligned with MAX_ALIGNMENT, val_size by itself can be used to
