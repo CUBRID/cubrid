@@ -5196,6 +5196,22 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	      LSA_COPY (&mvcc_op_log_lsa, &log_lsa);
 	      break;
 	    }
+	  else if (log_rec_header->type == LOG_REDO_DATA)
+	    {
+	      /* is vacuum complete? */
+	      LOG_REC_REDO *redo = NULL;
+	      LOG_LSA copy_lsa = log_lsa;
+
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &copy_lsa, log_page_p);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), &copy_lsa, log_page_p);
+	      redo = (LOG_REC_REDO *) (log_page_p->area + copy_lsa.offset);
+	      if (redo->data.rcvindex == RVVAC_COMPLETE)
+		{
+		  /* stop looking */
+		  break;
+		}
+	    }
+
 	  LSA_COPY (&log_lsa, &log_rec_header->back_lsa);
 	}
       if (LSA_ISNULL (&mvcc_op_log_lsa))
@@ -7583,7 +7599,23 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
       return ER_FAILED;
     }
 
-  can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, vacuum_Global_oldest_active_mvccid);
+  if (log_is_in_crash_recovery ())
+    {
+      /* always clear flags when recovering from crash - all the objects are visible anyway */
+      if (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID))
+	{
+	  /* Note: PREV_VERSION flag should be set only if VALID_INSID flag is set  */
+	  can_vacuum = VACUUM_RECORD_DELETE_INSID_PREV_VER;
+	}
+      else
+	{
+	  assert (!MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION));
+	}
+    }
+  else
+    {
+      can_vacuum = mvcc_satisfies_vacuum (thread_p, &rec_header, vacuum_Global_oldest_active_mvccid);
+    }
 
   /* it is impossible to restore a record that should be removed by vacuum */
   assert (can_vacuum != VACUUM_RECORD_REMOVE);
