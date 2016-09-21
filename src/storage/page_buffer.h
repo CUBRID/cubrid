@@ -457,4 +457,5 @@ extern int pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data);
 
 extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
+extern int pgbuf_get_hold_count (THREAD_ENTRY * thread_p);
 #endif /* _PAGE_BUFFER_H_ */

@@ -6992,7 +6992,7 @@ print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_hea
     {
       p += sprintf (p, ", insert_id=missing");
     }
-  if (MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       p += sprintf (p, ", delete_id=%llu", (unsigned long long int) MVCC_GET_DELID (rec_header));
     }
@@ -7537,24 +7537,14 @@ vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
   assert (pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.first_page) == 1);
   assert (vacuum_Data.last_page == vacuum_Data.first_page
 	  || pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.last_page) == 1);
-
-  if (vacuum_Data.last_page == vacuum_Data.first_page)
+  if (vacuum_Data.first_page == vacuum_Data.last_page)
     {
-      return;
+      assert (pgbuf_get_hold_count (thread_p) == 1);
     }
-  VPID_COPY (&vpid, &vacuum_Data.first_page->next_page);
-  while (!VPID_EQ (&vpid, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.last_page)))
+  else
     {
-      assert (!VPID_ISNULL (&vpid));
-      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (pgptr == NULL)
-	{
-	  ASSERT_ERROR ();
-	  return;
-	}
-      assert (pgbuf_get_fix_count (pgptr) == 1);
-      VPID_COPY (&vpid, &((VACUUM_DATA_PAGE *) pgptr)->next_page);
-      pgbuf_unfix_and_init (thread_p, pgptr);
+      assert (pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.last_page) == 1);
+      assert (pgbuf_get_hold_count (thread_p) == 2);
     }
 }
 #endif /* !NDEBUG */
