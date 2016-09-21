@@ -3910,20 +3910,15 @@ perfmon_initialize (int num_trans)
 
   pstat_Global.n_watchers = 0;
 
-  pstat_Global.initialized = true;
-  pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
-  return NO_ERROR;
-
 error:
   perfmon_finalize ();
   return ER_OUT_OF_VIRTUAL_MEMORY;
+#endif /* SERVER_MODE || SA_MODE */
 
-#else /* !SERVER_MODE && !SA_MODE */
   pstat_Global.initialized = true;
+  pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
   return NO_ERROR;
-#endif /* CS_MODE */
 }
-
 
 /*
  * perfmon_finalize () - Frees all the allocated memory for performance monitor data structures
