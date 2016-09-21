@@ -7232,7 +7232,6 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	      return ER_FAILED;
 	    }
 
-
 	  dbval_size = pr_data_writeval_disk_size (&dbval);
 	  if (dbval_size && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
 	    {

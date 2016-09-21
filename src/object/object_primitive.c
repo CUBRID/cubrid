@@ -2087,8 +2087,8 @@ pr_clear_value (DB_VALUE * value)
       if (data != NULL)
 	{
 	  db_private_free_and_init (NULL, data);
-
 	  value->data.ch.medium.compressed_buf = NULL;
+	  value->data.ch.medium.compressed_size = 0;
 	  value->data.ch.medium.was_compressed = 0;
 	}
       break;
@@ -11203,12 +11203,12 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
       /* If the compression was successful, then we use the compression size value */
       if (value->data.ch.medium.compressed_size > 0)
 	{
-	  len = value->data.ch.medium.compressed_size + PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION;
+	  len = value->data.ch.medium.compressed_size + PRIM_TEMPORARY_DISK_SIZE;
 	  is_temporary_data = true;
 	}
       else
 	{
-	  ;			/* len is already set on the uncompressed size of the value. */
+	  len = value->data.ch.medium.size;
 	}
 
       if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && is_temporary_data == false)
@@ -14008,7 +14008,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
       /* If the compression was successful, then we use the compression size value */
       if (value->data.ch.medium.compressed_size > 0)
 	{
-	  len = value->data.ch.medium.compressed_size + PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION;
+	  len = value->data.ch.medium.compressed_size + PRIM_TEMPORARY_DISK_SIZE;
 	  is_temporary_data = true;
 	}
       else
