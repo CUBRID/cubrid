@@ -2082,6 +2082,7 @@ pr_clear_value (DB_VALUE * value)
 	  value->data.ch.medium.buf = NULL;
 	}
 
+      /* Clear the compressed string since we are here. */
       data = (unsigned char *) value->data.ch.medium.compressed_buf;
       if (data != NULL)
 	{
@@ -16934,4 +16935,49 @@ cleanup:
     }
 
   return rc;
+}
+
+/*
+ * pr_clear_compressed_string()	      :- Clears the compressed string that might have been stored in a DB_VALUE.
+ *					 This needs to succeed only for VARCHAR and VARNCHAR types.
+ *
+ * return ()			      :- NO_ERROR or error code.
+ * value(in/out)		      :- The DB_VALUE that needs the clearing.
+ */
+
+int
+pr_clear_compressed_string (DB_VALUE * value)
+{
+  char *data = NULL;
+  DB_TYPE db_type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return NO_ERROR;		/* do nothing */
+    }
+
+  db_type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Make sure we clear only for VARCHAR and VARNCHAR types. */
+  if (db_type != DB_TYPE_VARCHAR && db_type != DB_TYPE_VARNCHAR)
+    {
+      return NO_ERROR;		/* do nothing */
+    }
+
+  if (value->data.ch.medium.was_compressed == 0)
+    {
+      return NO_ERROR;		/* do nothing */
+    }
+
+  data = value->data.ch.medium.compressed_buf;
+  if (data != NULL)
+    {
+      db_private_free_and_init (NULL, data);
+    }
+
+  value->data.ch.medium.compressed_buf = NULL;
+  value->data.ch.medium.was_compressed = 0;
+  value->data.ch.medium.compressed_length = 0;
+
+  return NO_ERROR;
 }

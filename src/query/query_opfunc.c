@@ -413,11 +413,14 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	  return ER_FAILED;
 	}
 
-      /* Hack to clear the possible compressed_string that the DB_VALUE might hold. */
-      temporary_clear = dbval_p->need_clear;
-      dbval_p->need_clear = false;
-      pr_clear_value (dbval_p);
-      dbval_p->need_clear = temporary_clear;
+      /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
+      rc = pr_clear_compressed_string (dbval_p);
+      if (rc != NO_ERROR)
+	{
+	  /* This should not happen for now */
+	  assert (false);
+	  return ER_FAILED;
+	}
 
       /* I don't know if the following is still true. */
       /* since each tuple data value field is already aligned with MAX_ALIGNMENT, val_size by itself can be used to
