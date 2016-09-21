@@ -787,6 +787,12 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
   mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
   mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
+  mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   mvcc_header->mvcc_ins_id = or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
   if (rc != NO_ERROR)
     {
@@ -794,12 +800,6 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
     }
 
   mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
