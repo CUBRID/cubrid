@@ -7612,6 +7612,7 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
       else
 	{
 	  assert (!MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION));
+	  can_vacuum = VACUUM_RECORD_CANNOT_VACUUM;
 	}
     }
   else
