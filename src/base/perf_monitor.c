@@ -1997,16 +1997,17 @@ perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
 		case PSTAT_PEEK_SINGLE_VALUE:
 		case PSTAT_COMPUTED_RATIO_VALUE:
 		  copied = stats_ptr[offset];
+		  stats_ptr[offset] = 0;
 		  break;
 		case PSTAT_COUNTER_TIMER_VALUE:
 		  copied = stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)];
+		  stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)] = 0;
 		  break;
 		case PSTAT_COMPLEX_VALUE:
 		default:
 		  assert (false);
 		  break;
 		}
-	      stats_ptr[offset] = 0;
 	      return copied;
 	    }
 	}
