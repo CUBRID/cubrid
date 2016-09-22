@@ -2538,6 +2538,7 @@ perfmon_server_calc_stats (UINT64 * stats)
   UINT64 lock_time_usec = 0;
   UINT64 hold_time_usec = 0;
   UINT64 total_promote_time = 0;
+  int i;
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
@@ -2706,6 +2707,17 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[PSTAT_PB_AIN_CNT]), &(stats[PSTAT_PB_AVOID_DEALLOC_CNT]),
 		    &(stats[PSTAT_PB_AVOID_VICTIM_CNT]), &(stats[PSTAT_PB_VICTIM_CAND_CNT]));
 #endif
+
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      if (pstat_Metadata[i].valtype == PSTAT_COUNTER_TIMER_VALUE)
+	{
+	  int offset = pstat_Metadata[i].start_offset;
+	  stats[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]
+	    = SAFE_DIV (stats[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)],
+			stats[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
+	}
+    }
 }
 
 /*
@@ -4307,7 +4319,6 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 	{
 	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
 	}
-      /* Average is not computed here. */
     }
 #endif /* SERVER_MODE || SA_MODE */
 }
