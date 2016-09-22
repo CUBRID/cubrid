@@ -11908,13 +11908,17 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 	    {
 	      /* Not a match. */
 	    }
-	  return NO_ERROR;
 	}
-      /* No delete MVCCID. */
-      /* This is actually not expected. We could expect a deleted object, not yet vacuumed, but we cannot expect an
-       * inserted object, alive, different than the one we just deleted and want to rollback. */
-      assert_release (false);
-      return ER_FAILED;
+      else
+	{
+	  /*
+	   * No delete MVCCID. In case of multi updates, we may have the same OID twice in buffer, but with different
+	   * MVCC info. Thus, the OID may appear first with MVCC insert id only. Then, the same OID appears again with
+	   * MVCC delete id. We have to continue the search if the MVCC info does not match.
+	   */
+	}
+
+      return NO_ERROR;
 
     case BTREE_OP_DELETE_UNDO_INSERT:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
