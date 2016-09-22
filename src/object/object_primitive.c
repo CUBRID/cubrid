@@ -11395,7 +11395,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  goto cleanup;
 		}
 
-	      memcpy (compressed_string, compressed_size, start);
+	      memcpy (compressed_string, start, compressed_size);
 	      compressed_string[compressed_size] = '\0';
 
 	      DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size);
@@ -14314,7 +14314,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		  return rc;
 		}
 
-	      compressed_string = buf->ptr;
+	      start = buf->ptr;
 
 	      /* Getting data from the buffer. */
 	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
@@ -14327,6 +14327,18 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      db_make_varnchar (value, precision, string, decompressed_size, TP_DOMAIN_CODESET (domain),
 				TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
+
+	      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+	      if (compressed_string == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  (compressed_size + 1) * sizeof (char));
+		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto cleanup;
+		}
+
+	      memcpy (compressed_string, start, compressed_size);
+	      compressed_string[compressed_size] = '\0';
 	    }
 	  else
 	    {
