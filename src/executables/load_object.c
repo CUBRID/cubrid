@@ -585,8 +585,9 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
 
       repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
       or_put_int (buf, repid_bits);
-      or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
       or_put_int (buf, 0);	/* CHN, fixed size */
+      or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
+
 
       /* variable info block */
       put_varinfo (buf, obj, offset_size);
