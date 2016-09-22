@@ -5147,7 +5147,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   char log_page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_LSA log_lsa;
-  LOG_RECORD_HEADER *log_rec_header = NULL;
+  LOG_RECORD_HEADER log_rec_header;
   LOG_PAGE *log_page_p = NULL;
   LOG_PAGEID stop_at_pageid;
   VACUUM_DATA_ENTRY data;
@@ -5189,14 +5189,14 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 		  return ER_FAILED;
 		}
 	    }
-	  log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
-	  if (log_rec_header->type == LOG_MVCC_UNDO_DATA || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
-	      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+	  log_rec_header = *LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
+	  if (log_rec_header.type == LOG_MVCC_UNDO_DATA || log_rec_header.type == LOG_MVCC_UNDOREDO_DATA
+	      || log_rec_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
 	    {
 	      LSA_COPY (&mvcc_op_log_lsa, &log_lsa);
 	      break;
 	    }
-	  else if (log_rec_header->type == LOG_REDO_DATA)
+	  else if (log_rec_header.type == LOG_REDO_DATA)
 	    {
 	      /* is vacuum complete? */
 	      LOG_REC_REDO *redo = NULL;
@@ -5212,7 +5212,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 		}
 	    }
 
-	  LSA_COPY (&log_lsa, &log_rec_header->back_lsa);
+	  LSA_COPY (&log_lsa, &log_rec_header.back_lsa);
 	}
       if (LSA_ISNULL (&mvcc_op_log_lsa))
 	{
