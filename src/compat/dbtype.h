@@ -180,6 +180,14 @@
 /* The maximum length of the partition expression after it is processed */
 #define DB_MAX_PARTITION_EXPR_LENGTH 2048
 
+/* Defines the state of a value as not being compressable due to its bad compression size or 
+ * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+ */
+#define DB_UNCOMPRESSABLE -1
+
+/* Defines the state of a value not being yet prompted for a compression process. */
+#define DB_NOT_YET_COMPRESSED 0
+
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection
@@ -428,6 +436,15 @@
 #define DB_GET_ENUM_CODESET(value) db_get_enum_codeset(value)
 
 #define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
+
+#define DB_GET_COMPRESSED_STRING(value) db_get_compressed_string(value)
+
+#define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
+
+#define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size) \
+	db_set_compressed_string(value, compressed_string, compressed_size)
+
+#define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
 
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFF
@@ -793,7 +810,6 @@ union db_char
     char *buf;
     int compressed_size;
     char *compressed_buf;
-    char was_compressed;	/* Compression status */
   } medium;
   struct
   {
@@ -1144,5 +1160,10 @@ extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
+
+extern char *db_get_compressed_string (DB_VALUE * value);
+extern int db_get_compressed_size (DB_VALUE * value);
+extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size);
+
 
 #endif /* _DBTYPE_H_ */

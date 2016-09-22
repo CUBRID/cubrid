@@ -2082,14 +2082,15 @@ pr_clear_value (DB_VALUE * value)
 	  value->data.ch.medium.buf = NULL;
 	}
 
-      /* Clear the compressed string since we are here. */
-      data = (unsigned char *) value->data.ch.medium.compressed_buf;
-      if (data != NULL)
+      /* Clear the compressed string since we are here for DB_TYPE_VARCHAR and DB_TYPE_VARNCHAR. */
+      if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_VARCHAR)
 	{
-	  db_private_free_and_init (NULL, data);
-	  value->data.ch.medium.compressed_buf = NULL;
-	  value->data.ch.medium.compressed_size = 0;
-	  value->data.ch.medium.was_compressed = 0;
+	  data = (unsigned char *) DB_GET_COMPRESSED_STRING (value);
+	  if (data != NULL)
+	    {
+	      db_private_free_and_init (NULL, data);
+	    }
+	  DB_SET_COMPRESSED_STRING (value, NULL, 0);
 	}
       break;
 
@@ -11114,7 +11115,6 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
 
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
-      dest->data.ch.medium.was_compressed = src->data.ch.medium.was_compressed;
     }
 
   return error;
@@ -11194,20 +11194,23 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
   else
     {
       /* Test and try compression. */
-      if (value->data.ch.medium.was_compressed == 0)
+      if (!DB_TRIED_COMPRESSION (value))
 	{
+	  /* It means that the value has never passed through a compression process. */
 	  rc = pr_do_db_value_string_compression (value);
 	}
       /* We are now sure that the value has been through the process of compression */
+      compressed_size = DB_GET_COMPRESSED_SIZE (value);
 
       /* If the compression was successful, then we use the compression size value */
-      if (value->data.ch.medium.compressed_size > 0)
+      if (compressed_size > 0)
 	{
-	  len = value->data.ch.medium.compressed_size + PRIM_TEMPORARY_DISK_SIZE;
+	  len = compressed_size + PRIM_TEMPORARY_DISK_SIZE;
 	  is_temporary_data = true;
 	}
       else
 	{
+	  /* Compression failed so we are using the uncompressed size */
 	  len = value->data.ch.medium.size;
 	}
 
@@ -11243,8 +11246,8 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 static int
 mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
-  int src_length;
-  char *str;
+  int src_length, compressed_size;
+  char *str, *compressed_string;
   int rc = NO_ERROR;
   char *string;
   int size;
@@ -11258,8 +11261,9 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	}
 
       /* Test for possible compression. */
-      if (value->data.ch.medium.was_compressed == 0)
+      if (!DB_TRIED_COMPRESSION (value))
 	{
+	  /* It means that the value has never passed through a compression process. */
 	  rc = pr_do_db_value_string_compression (value);
 	}
 
@@ -11268,27 +11272,37 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  return rc;
 	}
 
-      if (value->data.ch.medium.compressed_size == 0 && src_length < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+      compressed_size = DB_GET_COMPRESSED_SIZE (value);
+      compressed_string = DB_GET_COMPRESSED_STRING (value);
+
+      if (compressed_size == DB_UNCOMPRESSABLE && src_length < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
 	  rc = pr_write_uncompressed_string_to_buffer (buf, str, src_length, align);
 	}
       else
 	{
 	  /* String has been prompted to compression before. */
-	  assert (value->data.ch.medium.was_compressed == 1);
-	  if (value->data.ch.medium.compressed_buf == NULL)
+
+	  if (compressed_string == NULL)
 	    {
-	      assert (value->data.ch.medium.compressed_size == 0);
+	      /* The value passed through a compression process but it failed due to its size. */
+	      assert (compressed_size == DB_UNCOMPRESSABLE);
 	      string = value->data.ch.medium.buf;
 	    }
 	  else
 	    {
-	      assert (value->data.ch.medium.compressed_size != 0);
-	      string = value->data.ch.medium.compressed_buf;
-
+	      /* Compression successful. */
+	      assert (compressed_size > 0);
+	      string = compressed_string;
 	    }
-	  size = value->data.ch.medium.compressed_size;
-
+	  if (compressed_size == DB_UNCOMPRESSABLE)
+	    {
+	      size = 0;
+	    }
+	  else
+	    {
+	      size = compressed_size;
+	    }
 	  rc = pr_write_compressed_string_to_buffer (buf, string, size, src_length, align);
 	}
     }
@@ -13979,7 +13993,7 @@ mr_data_readval_varnchar (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 static int
 mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 {
-  int src_length, len, rc = NO_ERROR;
+  int src_size, len, rc = NO_ERROR;
   const char *str;
   bool is_temporary_data = false;
   char *compressed_string = NULL;
@@ -13992,28 +14006,31 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
   len = 0;
   if (value != NULL && (str = db_get_string (value)) != NULL)
     {
-      src_length = db_get_string_size (value);	/* size in bytes */
-      if (src_length < 0)
+      src_size = db_get_string_size (value);	/* size in bytes */
+      if (src_size < 0)
 	{
-	  src_length = strlen (str);
+	  src_size = strlen (str);
 	}
 
       /* Test and try compression. */
-      if (value->data.ch.medium.was_compressed == 0)
+      if (!DB_TRIED_COMPRESSION (value))
 	{
+	  /* It means that the value has never passed through a compression process. */
 	  rc = pr_do_db_value_string_compression (value);
 	}
       /* We are now sure that the value has been through the process of compression */
-
+      compressed_size = DB_GET_COMPRESSED_SIZE (value);
       /* If the compression was successful, then we use the compression size value */
-      if (value->data.ch.medium.compressed_size > 0)
+      if (compressed_size > 0)
 	{
-	  len = value->data.ch.medium.compressed_size + PRIM_TEMPORARY_DISK_SIZE;
+	  /* Compression successful so we use the compressed_size from the value. */
+	  len = compressed_size + PRIM_TEMPORARY_DISK_SIZE;
 	  is_temporary_data = true;
 	}
       else
 	{
-	  len = src_length;
+	  /* Compression failed so we use the uncompressed size of the value. */
+	  len = src_size;
 	}
 
       if (len >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && is_temporary_data == false)
@@ -14030,7 +14047,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
        * If this is a client side string, and the disk representation length
        * is requested,  Need to return the length of a converted string.
        */
-      if (!db_on_server && src_length > 0 && disk && DO_CONVERSION_TO_SRVR_STR (src_codeset))
+      if (!db_on_server && src_size > 0 && disk && DO_CONVERSION_TO_SRVR_STR (src_codeset))
 	{
 	  int unconverted;
 	  int char_count = db_get_string_length (value);
@@ -14067,9 +14084,9 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 static int
 mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
-  int src_size, size;
+  int src_size, size, compressed_size;
   INTL_CODESET src_codeset;
-  char *str, *string;
+  char *str, *string, *compressed_string;
   int rc = NO_ERROR;
 
   if (value != NULL && (str = db_get_string (value)) != NULL)
@@ -14107,8 +14124,9 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	}
       else
 	{
-	  if (value->data.ch.medium.was_compressed == 0)
+	  if (!DB_TRIED_COMPRESSION (value))
 	    {
+	      /* Check for previous compression. */
 	      rc = pr_do_db_value_string_compression (value);
 	    }
 
@@ -14117,31 +14135,42 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	      return rc;
 	    }
 
-	  if (value->data.ch.medium.compressed_size == 0 && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	  compressed_size = DB_GET_COMPRESSED_SIZE (value);
+	  compressed_string = DB_GET_COMPRESSED_STRING (value);
+
+	  if (compressed_size == -1 && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	    {
 	      rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
 	    }
 	  else
 	    {
 	      /* String has been prompted to compression before. */
-	      assert (value->data.ch.medium.was_compressed == 1);
-	      if (value->data.ch.medium.compressed_buf == NULL)
+	      assert (compressed_size != DB_NOT_YET_COMPRESSED);
+	      if (compressed_string == NULL)
 		{
-		  assert (value->data.ch.medium.compressed_size == 0);
+		  assert (compressed_size == DB_UNCOMPRESSABLE);
 		  string = value->data.ch.medium.buf;
 		}
 	      else
 		{
-		  assert (value->data.ch.medium.compressed_size != 0);
-		  string = value->data.ch.medium.compressed_buf;
+		  assert (compressed_size > 0);
+		  string = compressed_string;
 		}
-	      size = value->data.ch.medium.compressed_size;
+	      if (compressed_size == DB_UNCOMPRESSABLE)
+		{
+		  size = 0;
+		}
+	      else
+		{
+		  size = compressed_size;
+		}
 	      rc = pr_write_compressed_string_to_buffer (buf, string, size, src_size, align);
 	    }
 	}
 #else /* SERVER_MODE */
-      if (value->data.ch.medium.was_compressed == 0)
+      if (!DB_TRIED_COMPRESSION (value))
 	{
+	  /* Check for previous compression. */
 	  rc = pr_do_db_value_string_compression (value);
 	}
 
@@ -14150,26 +14179,35 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  return rc;
 	}
 
-      if (value->data.ch.medium.compressed_size == 0 && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+      compressed_size = DB_GET_COMPRESSED_SIZE (value);
+      compressed_string = DB_GET_COMPRESSED_STRING (value);
+
+      if (compressed_size == -1 && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
 	  rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
 	}
       else
 	{
 	  /* String has been prompted to compression before. */
-	  assert (value->data.ch.medium.was_compressed == 1);
-	  if (value->data.ch.medium.compressed_buf == NULL)
+	  assert (compressed_size != DB_NOT_YET_COMPRESSED);
+	  if (compressed_string == NULL)
 	    {
-	      assert (value->data.ch.medium.compressed_size == 0);
+	      assert (compressed_size == DB_UNCOMPRESSABLE);
 	      string = value->data.ch.medium.buf;
 	    }
 	  else
 	    {
-	      assert (value->data.ch.medium.compressed_size != 0);
-	      string = value->data.ch.medium.compressed_buf;
-
+	      assert (compressed_size > 0);
+	      string = compressed_string;
 	    }
-	  size = value->data.ch.medium.compressed_size;
+	  if (compressed_size == DB_UNCOMPRESSABLE)
+	    {
+	      size = 0;
+	    }
+	  else
+	    {
+	      size = compressed_size;
+	    }
 	  rc = pr_write_compressed_string_to_buffer (buf, string, size, src_size, align);
 	}
 
@@ -16907,7 +16945,7 @@ pr_clear_compressed_string (DB_VALUE * value)
       return NO_ERROR;		/* do nothing */
     }
 
-  if (value->data.ch.medium.was_compressed == 0)
+  if (value->data.ch.medium.compressed_size <= 0)
     {
       return NO_ERROR;		/* do nothing */
     }
@@ -16919,7 +16957,6 @@ pr_clear_compressed_string (DB_VALUE * value)
     }
 
   value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.was_compressed = 0;
   value->data.ch.medium.compressed_size = 0;
 
   return NO_ERROR;
@@ -16955,7 +16992,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   /* Make sure the value has not been through a compression before */
-  if (value->data.ch.medium.was_compressed == 1)
+  if (value->data.ch.medium.compressed_size != 0)
     {
       return rc;
     }
@@ -16967,8 +17004,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     {
       /* No compression needed. */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
-      value->data.ch.medium.was_compressed = 1;
+      value->data.ch.medium.compressed_size = -1;
       return rc;
     }
 
@@ -16989,21 +17025,16 @@ pr_do_db_value_string_compression (DB_VALUE * value)
       goto cleanup;
     }
 
-  /* Passed through compression once. */
-  value->data.ch.medium.was_compressed = 1;
-
   if (compressed_size > 0)
     {
       /* Compression successful */
-      value->data.ch.medium.compressed_buf = compressed_string;
-      value->data.ch.medium.compressed_size = compressed_size;
+      db_set_compressed_string (value, compressed_string, compressed_size);
       return rc;
     }
   else
     {
       /* Compression failed */
-      value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      db_set_compressed_string (value, NULL, -1);
       goto cleanup;
     }
 

@@ -480,7 +480,6 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
-      value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
@@ -496,7 +495,6 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
-      value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -648,7 +646,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
-      value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
@@ -664,7 +661,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
-      value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -801,7 +797,6 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
-      value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -814,7 +809,6 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
       value->data.ch.medium.compressed_size = 0;
-      value->data.ch.medium.was_compressed = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -1621,7 +1615,6 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	  value->data.ch.info.is_max_string = false;
 	  value->data.ch.medium.compressed_buf = NULL;
 	  value->data.ch.medium.compressed_size = 0;
-	  value->data.ch.medium.was_compressed = 0;
 	  /* 
 	   * If size is set to the default, and the type is any
 	   * kind of character string, assume the string is NULL
@@ -2604,7 +2597,6 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int 
   value->data.ch.info.is_max_string = false;
   value->data.ch.medium.compressed_buf = NULL;
   value->data.ch.medium.compressed_size = 0;
-  value->data.ch.medium.was_compressed = 0;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
@@ -6791,4 +6783,60 @@ void
 db_set_connect_status (int status)
 {
   db_Connect_status = status;
+}
+
+void
+db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return;
+    }
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  value->data.ch.medium.compressed_buf = compressed_string;
+  value->data.ch.medium.compressed_size = compressed_size;
+
+  return;
+}
+
+int
+db_get_compressed_size (DB_VALUE * value)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return 0;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  return value->data.ch.medium.compressed_size;
+}
+
+char *
+db_get_compressed_string (DB_VALUE * value)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return NULL;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  return value->data.ch.medium.compressed_buf;
 }
