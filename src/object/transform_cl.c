@@ -844,8 +844,8 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
 
       repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
       or_put_int (buf, repid_bits);
-      or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
       or_put_int (buf, chn);	/* CHN, short size */
+      or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
 
       /* variable info block */
       put_varinfo (buf, obj, class_, offset_size);

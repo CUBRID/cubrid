@@ -2994,8 +2994,8 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 
   repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
   or_put_int (buf_p, repr_id_bits);
-  or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
   or_put_int (buf_p, chn);	/* CHN */
+  or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
   header_size = OR_MVCC_INSERT_HEADER_SIZE;
 
   /* offset table */
