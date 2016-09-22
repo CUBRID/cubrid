@@ -665,10 +665,7 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_t
   LOG_TDES *tdes;
 
   /* todo: remove me */
-  if (true)
-    {
-      return vfid;
-    }
+  assert (false);
 
   /* If the entry already exists (page reused), then remove it from the list and allocate a new entry. */
   VFID_COPY (&key.vfid, vfid);
@@ -724,13 +721,6 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_t
 
   csect_exit (thread_p, CSECT_FILE_NEWFILE);
 
-  tdes = LOG_FIND_TDES (tran_index);
-  if (file_type == FILE_TEMP)
-    {
-      tdes->num_new_temp_files++;
-    }
-  tdes->num_new_files++;
-
   return vfid;
 }
 
@@ -753,10 +743,7 @@ file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid, in
   LOG_TDES *tdes = NULL;
 
   /* todo: remove me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
+  assert (false);
 
   if (hold_csect == false && csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
     {
@@ -811,12 +798,6 @@ file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid, in
 	  /* mht_rem() has been updated to take a function and an arg pointer that can be called on the entry before it 
 	   * is removed.  We may want to take advantage of that here to free the memory associated with the entry */
 	  (void) mht_rem (file_Tracker->newfiles.mht, tmp, NULL, NULL);
-
-	  if (tmp->file_type == FILE_TEMP)
-	    {
-	      tdes->num_new_temp_files--;
-	    }
-	  tdes->num_new_files--;
 
 	  free_and_init (tmp);
 
@@ -901,10 +882,7 @@ file_is_new_file_ext (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * fi
   FILE_IS_NEW_FILE newfile = FILE_OLD_FILE;
 
   /* todo: remove me */
-  if (true)
-    {
-      return FILE_OLD_FILE;
-    }
+  assert (false);
 
   *file_type = FILE_UNKNOWN_TYPE;
   *has_undolog = false;
@@ -945,10 +923,7 @@ file_new_set_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid)
   int ret = NO_ERROR;
 
   /* todo: remove me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
+  assert (false);
 
   VFID_COPY (&key.vfid, vfid);
   key.tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -992,10 +967,7 @@ file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
   delete_list = NULL;
 
   /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
+  assert (false);
 
   if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
     {
@@ -1063,10 +1035,7 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
   LOG_TDES *tdes = NULL;
 
   /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
+  assert (false);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1074,29 +1043,6 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       assert (false);
       return ER_FAILED;
-    }
-
-  if (tdes->num_new_files <= 0)
-    {
-      /* nothing to clear */
-#if !defined (NDEBUG)
-      assert (tdes->num_new_temp_files <= 0);
-
-      /* confirm the file does not exists in mht */
-      key.tran_index = tran_index;
-      VFID_COPY (&key.vfid, vfid);
-
-      if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
-      assert (entry == NULL);
-
-      csect_exit (thread_p, CSECT_FILE_NEWFILE);
-#endif
-      return NO_ERROR;
     }
 
   key.tran_index = tran_index;
@@ -1113,14 +1059,6 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
       csect_exit (thread_p, CSECT_FILE_NEWFILE);
       return NO_ERROR;
     }
-
-  /* decrement temporary files counter */
-  if (entry->file_type == FILE_TEMP)
-    {
-      tdes->num_new_temp_files--;
-    }
-
-  tdes->num_new_files--;
 
   /* remove it from the table */
   mht_rem (file_Tracker->newfiles.mht, &key, NULL, NULL);
@@ -1166,10 +1104,7 @@ file_dump_all_newfiles (THREAD_ENTRY * thread_p, FILE * fp, bool tmptmp_only)
   int ret = NO_ERROR;
 
   /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
+  assert (false);
 
   if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
     {
@@ -2615,6 +2550,8 @@ file_destroy_cached_tmp (THREAD_ENTRY * thread_p, VOLID volid)
 {
   FILE_TEMPFILE_CACHE_ENTRY *p;
   int idx, prev;
+
+  assert (false);
 
   if (csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT) != NO_ERROR)
     {
@@ -11658,7 +11595,8 @@ file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp)
 
   pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
 
-  return file_dump_all_newfiles (thread_p, fp, true);
+  /* todo: dump the cache */
+  return NO_ERROR;
 }
 
 /*
@@ -13310,6 +13248,8 @@ file_tmpfile_cache_initialize (void)
 {
   int i;
 
+  assert (false);
+
   file_Tempfile_cache.entry =
     (FILE_TEMPFILE_CACHE_ENTRY *) malloc (sizeof (FILE_TEMPFILE_CACHE_ENTRY) *
 					  prm_get_integer_value (PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE));
@@ -13345,6 +13285,8 @@ file_tmpfile_cache_finalize (void)
 {
   free_and_init (file_Tempfile_cache.entry);
 
+  assert (false);
+
   return NO_ERROR;
 }
 
@@ -13360,6 +13302,8 @@ file_tmpfile_cache_get (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_typ
   FILE_TEMPFILE_CACHE_ENTRY *p;
   int idx, prev;
   int rv;
+
+  assert (false);
 
   rv = csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT);
 
@@ -13407,6 +13351,8 @@ file_tmpfile_cache_put (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fi
 {
   FILE_TEMPFILE_CACHE_ENTRY *p = NULL;
   int rv;
+
+  assert (false);
 
   rv = csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT);
 
@@ -13982,6 +13928,15 @@ typedef enum
 #define FILE_RV_DEALLOC_COMPENSATE true
 #define FILE_RV_DEALLOC_RUN_POSTPONE false
 
+typedef struct file_ftab_collector FILE_FTAB_COLLECTOR;
+struct file_ftab_collector
+{
+  int npages;
+  int nsects;
+  FILE_PARTIAL_SECTOR *partsect_ftab;
+};
+#define FILE_FTAB_COLLECTOR_INITIALIZER { 0, 0, NULL }
+
 /************************************************************************/
 /* Numerable files section                                              */
 /************************************************************************/
@@ -13999,6 +13954,45 @@ struct file_find_nth_context
   VPID *vpid_nth;
   int nth;
 };
+
+/************************************************************************/
+/* Temporary files section                                              */
+/************************************************************************/
+
+/************************************************************************/
+/* Temporary cache section                                              */
+/************************************************************************/
+typedef struct flre_tempcache_entry FLRE_TEMPCACHE_ENTRY;
+struct flre_tempcache_entry
+{
+  VFID vfid;
+  FILE_TYPE ftype;
+
+  FLRE_TEMPCACHE_ENTRY *next;
+};
+
+typedef struct flre_tempcache FLRE_TEMPCACHE;
+struct flre_tempcache
+{
+  FLRE_TEMPCACHE_ENTRY *free_entries;	/* preallocated entries free to be use */
+  int nfree_entries_max;
+  int nfree_entries;
+
+  FLRE_TEMPCACHE_ENTRY *cached_not_numerable;	/* cached temporary files */
+  FLRE_TEMPCACHE_ENTRY *cached_numerable;	/* cached temporary numerable files */
+  int ncached_max;
+  int ncached_not_numerable;
+  int ncached_numerable;
+
+  pthread_mutex_t mutex;
+#if !defined (NDEBUG)
+  int owner_mutex;
+#endif				/* !NDEBUG */
+
+  FLRE_TEMPCACHE_ENTRY **tran_files;	/* transaction temporary files */
+};
+
+static FLRE_TEMPCACHE *flre_Tempcache = NULL;
 
 /************************************************************************/
 /* End of structures, globals and macro's                               */
@@ -14022,6 +14016,8 @@ STATIC_INLINE void file_log_fhead_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_
 STATIC_INLINE void file_log_fhead_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 					   bool is_empty, bool was_full) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_header_update_mark_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, int delta)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_header_copy (THREAD_ENTRY * thread_p, const VFID * vfid, FLRE_HEADER * fhead_copy)
   __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
@@ -14117,6 +14113,8 @@ static int file_table_collect_vsid (THREAD_ENTRY * thread_p, const void *item, i
 static int file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead);
 static int file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead);
 static int file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VSID * vsid);
+static int file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+					  void *args);
 static int file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 			    VPID * vpid_alloc_out);
 static int file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid_dealloc,
@@ -14126,6 +14124,9 @@ STATIC_INLINE int file_table_try_extdata_merge (THREAD_ENTRY * thread_p, PAGE_PT
 						int (*compare_func) (const void *, const void *), LOG_RCVINDEX rcvindex)
   __attribute__ ((ALWAYS_INLINE));
 static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensate_or_run_postpone);
+
+STATIC_INLINE int flre_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable,
+					     VFID * vfid_out) __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* Numerable files section.                                             */
@@ -14138,11 +14139,36 @@ static int file_extdata_find_nth_vpid_and_skip_marked (THREAD_ENTRY * thread_p, 
 						       bool * stop, void *args);
 
 /************************************************************************/
-/* Temporary file section                                               */
+/* Temporary files section                                               */
 /************************************************************************/
 
 static int file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 			    VPID * vpid_alloc_out);
+STATIC_INLINE int flre_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE ftype)
+  __attribute__ ((ALWAYS_INLINE));
+static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid);
+
+/************************************************************************/
+/* Temporary cache section                                               */
+/************************************************************************/
+
+STATIC_INLINE void flre_tempcache_lock (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void flre_tempcache_unlock (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void flre_tempcache_check_lock (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void flre_tempcache_free_entry_list (FLRE_TEMPCACHE_ENTRY ** list) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int flre_tempcache_alloc_entry (FLRE_TEMPCACHE_ENTRY ** entry) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void flre_tempcache_retire_entry (FLRE_TEMPCACHE_ENTRY * entry) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int flre_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable,
+				      FLRE_TEMPCACHE_ENTRY ** entry) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY ** entries)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE FLRE_TEMPCACHE_ENTRY *flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void flre_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* End of static functions                                              */
@@ -14496,6 +14522,39 @@ file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   fhead = (FLRE_HEADER *) page_fhead;
   fhead->n_page_mark_delete += delta;
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * file_header_copy () - get a file header copy
+ *
+ * return           : ERROR_CODE
+ * thread_p (in)    : thread entry
+ * vfid (in)        : file identifier
+ * fhead_copy (out) : file header copy
+ */
+STATIC_INLINE int
+file_header_copy (THREAD_ENTRY * thread_p, const VFID * vfid, FLRE_HEADER * fhead_copy)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  *fhead_copy = *fhead;
+
+  pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
 
@@ -15854,6 +15913,61 @@ flre_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_
 }
 
 /*
+ * flre_create_temp_internal () - common function to create files for temporary purpose. always try to use a cached
+ *                                temporary file first. if there is no cached entry, create a new file.
+ *                                in the end save the temp cache entry in transaction list of temporary files.
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * npages (in)       : desired number of pages (ignored when taking file from cache)
+ * ftype (in)        : file type
+ * is_numerable (in) : true if file must be numerable, false if should be regular file
+ * vfid_out (out)    : VFID of file (obtained from cache or created).
+ */
+STATIC_INLINE int
+flre_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable, VFID * vfid_out)
+{
+  FILE_TABLESPACE tablespace;
+  FLRE_TEMPCACHE_ENTRY *tempcache_entry = NULL;
+
+  int error_code = NO_ERROR;
+
+  assert (npages > 0);
+
+  error_code = flre_tempcache_get (thread_p, ftype, is_numerable, &tempcache_entry);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  assert (tempcache_entry != NULL);
+  assert (tempcache_entry->ftype == ftype);
+
+  if (VFID_ISNULL (&tempcache_entry->vfid))
+    {
+      FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
+      error_code = flre_create (thread_p, ftype, &tablespace, NULL, true, is_numerable, vfid_out);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  flre_tempcache_retire_entry (tempcache_entry);
+	  return error_code;
+	}
+      tempcache_entry->vfid = *vfid_out;
+    }
+  else
+    {
+      /* we use the cached file */
+      /* what about the number of pages? */
+      *vfid_out = tempcache_entry->vfid;
+    }
+
+  /* save to transaction temporary file list */
+  flre_tempcache_push_tran_file (thread_p, tempcache_entry);
+  return NO_ERROR;
+}
+
+/*
  * flre_create_temp () - Create a temporary file.
  *
  * return	 : Error code
@@ -15864,24 +15978,11 @@ flre_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_
 int
 flre_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
-  FILE_TABLESPACE tablespace;
-
-  assert (npages > 0);
-
-  /* todo: shouldn't we consider the npages? */
-  if (file_tmpfile_cache_get (thread_p, vfid, FILE_TEMP) != NULL)
-    {
-      assert (!VFID_ISNULL (vfid));
-      return NO_ERROR;
-    }
-
-  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
-
-  return flre_create (thread_p, FILE_TEMP, &tablespace, NULL, true, false, vfid);
+  return flre_create_temp_internal (thread_p, npages, FILE_TEMP, false, vfid);
 }
 
 /*
- * file_create_temp_numerable () - Create a temporary file with numerable property.
+ * flre_create_temp_numerable () - Create a temporary file with numerable property.
  *
  * return	 : Error code
  * thread_p (in) : Thread entry
@@ -15889,15 +15990,9 @@ flre_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
  * vfid (out)	 : File identifier
  */
 int
-file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
+flre_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
-  FILE_TABLESPACE tablespace;
-
-  assert (npages > 0);
-
-  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
-
-  return flre_create (thread_p, FILE_TEMP, &tablespace, NULL, true, true, vfid);
+  return flre_create_temp_internal (thread_p, npages, FILE_TEMP, true, vfid);
 }
 
 /*
@@ -15910,18 +16005,7 @@ file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 int
 flre_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid)
 {
-  FILE_TABLESPACE tablespace;
-
-  /* todo: shouldn't we consider the npages? */
-  if (file_tmpfile_cache_get (thread_p, vfid, FILE_QUERY_AREA) != NULL)
-    {
-      assert (!VFID_ISNULL (vfid));
-      return NO_ERROR;
-    }
-
-  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, 1);	/* min size */
-
-  return flre_create (thread_p, FILE_QUERY_AREA, &tablespace, NULL, true, false, vfid);
+  return flre_create_temp_internal (thread_p, 1, FILE_QUERY_AREA, false, vfid);
 }
 
 /*
@@ -15942,8 +16026,9 @@ flre_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_
 
   assert (npages > 0);
 
-  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
+  /* todo: use temporary file cache? */
 
+  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
   return flre_create (thread_p, FILE_EXTENDIBLE_HASH, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp, true, vfid);
 }
 
@@ -15966,8 +16051,9 @@ flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EH
 
   assert (npages > 0);
 
-  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
+  /* todo: use temporary file cache? */
 
+  FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
   return flre_create (thread_p, FILE_EXTENDIBLE_HASH_DIRECTORY, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp,
 		      true, vfid);
 }
@@ -16695,6 +16781,42 @@ flre_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 #endif /* !NDEBUG */
 
   log_append_postpone (thread_p, RVFL_DESTROY, &addr, sizeof (*vfid), vfid);
+}
+
+/*
+ * flre_temp_retire () - retire temporary file. put it in cache is possible or destroy the file.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ */
+int
+flre_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  FLRE_TEMPCACHE_ENTRY *entry = flre_tempcache_pop_tran_file (thread_p, vfid);
+  bool save_interrupt;
+  int error_code = NO_ERROR;
+
+  if (entry == NULL)
+    {
+      assert_release (false);
+    }
+  else if (flre_tempcache_put (thread_p, entry))
+    {
+      /* cached */
+      return NO_ERROR;
+    }
+  /* was not cached. destroy */
+  /* don't allow interrupt to avoid file leak */
+  save_interrupt = thread_set_check_interrupt (thread_p, false);
+  error_code = flre_destroy (thread_p, vfid);
+  thread_set_check_interrupt (thread_p, save_interrupt);
+  if (error_code != NO_ERROR)
+    {
+      /* we should not have errors */
+      assert_release (false);
+    }
+  return error_code;
 }
 
 /*
@@ -18548,6 +18670,48 @@ flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out
   return NO_ERROR;
 }
 
+/*
+ * file_table_collect_ftab_pages () - FILE_EXTDATA_FUNC to collect pages used for file table
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * extdata (in)  : extensible data
+ * stop (in)     : ignored
+ * args (in/out) : FILE_FTAB_COLLECTOR * - file table page collector
+ */
+static int
+file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
+{
+  FILE_FTAB_COLLECTOR *collect = (FILE_FTAB_COLLECTOR *) args;
+  VSID vsid_this;
+  int idx_sect = 0;
+
+  if (!LSA_ISNULL (&extdata->vpid_next))
+    {
+      VSID_FROM_VPID (&vsid_this, &extdata->vpid_next);
+      /* find in collected sectors */
+      for (idx_sect = 0; idx_sect < collect->nsects; idx_sect++)
+	{
+	  if (file_compare_vsids (&vsid_this, &collect->partsect_ftab->vsid) == 0)
+	    {
+	      break;
+	    }
+	}
+      if (idx_sect == collect->nsects)
+	{
+	  /* not found, append new sector */
+	  collect->partsect_ftab->vsid = vsid_this;
+	  collect->partsect_ftab->page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+	  collect->nsects++;
+	}
+      file_partsect_set_bit (&collect->partsect_ftab[idx_sect],
+			     file_partsect_pageid_to_offset (&collect->partsect_ftab[idx_sect],
+							     extdata->vpid_next.pageid));
+      collect->npages++;
+    }
+  return NO_ERROR;
+}
+
 /************************************************************************/
 /* Numerable files section.                                              */
 /************************************************************************/
@@ -19042,7 +19206,7 @@ file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv
 }
 
 /************************************************************************/
-/* Temporary file section.                                              */
+/* Temporary files section.                                             */
 /************************************************************************/
 
 /*
@@ -19221,6 +19385,791 @@ exit:
       pgbuf_unfix_and_init (thread_p, page_ftab);
     }
   return error_code;
+}
+
+/*
+ * flre_temp_set_type () - set new type in existing temporary file
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ * ftype (in)    : new file type
+ */
+STATIC_INLINE int
+flre_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE ftype)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      /* we cannot change type */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+  fhead->type = ftype;
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+
+exit:
+  pgbuf_unfix (thread_p, page_fhead);
+  return error_code;
+}
+
+/*
+ * file_temp_reset_user_pages () - reset all user pages in temporary file.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ */
+static int
+file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  FILE_EXTENSIBLE_DATA *extdata_part_ftab;
+  PAGE_PTR page_ftab = NULL;
+  FILE_PARTIAL_SECTOR *partsect = NULL;
+  int idx_sect = 0;
+  VPID vpid_next;
+  int nsect_part_new;
+  int nsect_full_new;
+  int nsect_empty_new;
+
+  FILE_EXTENSIBLE_DATA *extdata_user_page_ftab;
+
+  bool save_interrupt;
+
+  int error_code = NO_ERROR;
+
+  /* don't let this be interrupted, because we might ruin the file */
+  save_interrupt = thread_set_check_interrupt (thread_p, false);
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+
+  if (FILE_IS_NUMERABLE (fhead))
+    {
+      /* reset user page table */
+      FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
+      VPID_SET_NULL (&extdata_user_page_ftab->vpid_next);
+      extdata_user_page_ftab->n_items = 0;
+      fhead->vpid_last_user_page_ftab = vpid_fhead;
+    }
+
+  /* reset partial table */
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
+
+  /* collect file table pages */
+  collector.partsect_ftab =
+    (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
+  if (collector.partsect_ftab == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
+      goto exit;
+    }
+  /* add page header */
+  VSID_FROM_VPID (&collector.partsect_ftab[0].vsid, &vpid_fhead);
+  collector.partsect_ftab[0].page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+  file_partsect_set_bit (&collector.partsect_ftab[0],
+			 file_partsect_pageid_to_offset (&collector.partsect_ftab[0], vpid_fhead.pageid));
+  collector.nsects = 1;
+  collector.npages = 1;
+  /* add other pages in partial sector table */
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_part_ftab, file_table_collect_ftab_pages, &collector, NULL, NULL, false,
+			      NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+
+  /* count partial, full, empty */
+  nsect_full_new = 0;
+  for (idx_sect = 0; idx_sect < collector.nsects; idx_sect++)
+    {
+      if (collector.partsect_ftab[idx_sect].page_bitmap == FILE_FULL_PAGE_BITMAP)
+	{
+	  nsect_full_new++;
+	}
+    }
+  nsect_part_new = collector.nsects - nsect_full_new;
+  nsect_empty_new = fhead->n_sector_total - collector.nsects;
+  nsect_part_new += nsect_empty_new;
+
+  /* reset partial table sectors, but leave file table pages allocated */
+  page_ftab = page_fhead;
+  while (true)
+    {
+      assert (extdata_part_ftab != NULL);
+
+      for (partsect = (FILE_PARTIAL_SECTOR *) file_extdata_start (extdata_part_ftab);
+	   partsect < (FILE_PARTIAL_SECTOR *) file_extdata_end (extdata_part_ftab); partsect++)
+	{
+	  /* does it have file table pages? */
+	  for (idx_sect = 0; idx_sect < collector.nsects; idx_sect++)
+	    {
+	      if (file_compare_vsids (&partsect->vsid, &collector.partsect_ftab[idx_sect].vsid) == 0)
+		{
+		  /* get bitmap from collector */
+		  partsect->page_bitmap = collector.partsect_ftab[idx_sect].page_bitmap;
+
+		  /* sector cannot be found again. remove it from collector */
+		  if (idx_sect < collector.nsects - 1)
+		    {
+		      memmove (&collector.partsect_ftab[idx_sect], &collector.partsect_ftab[idx_sect + 1],
+			       (collector.nsects - 1 - idx_sect) * sizeof (FILE_PARTIAL_SECTOR));
+		    }
+		  collector.nsects--;
+
+		  continue;
+		}
+	    }
+	  /* not found in collector, must be empty sector */
+	  partsect->page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+	}
+
+      pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
+
+      vpid_next = extdata_part_ftab->vpid_next;
+      if (page_ftab != page_fhead)
+	{
+	  pgbuf_unfix (thread_p, page_fhead);
+	}
+      page_ftab = NULL;
+      if (VPID_ISNULL (&vpid_next))
+	{
+	  break;
+	}
+      page_ftab = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ftab == NULL)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+      extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
+    }
+  /* partial table sectors have been reset */
+
+  /* update header */
+  fhead->n_sector_empty = nsect_empty_new;
+  fhead->n_sector_partial = nsect_part_new;
+  fhead->n_sector_full = nsect_full_new;
+
+  fhead->n_page_ftab = collector.npages;
+  fhead->n_page_free = fhead->n_page_total - fhead->n_page_ftab;
+  fhead->n_page_user = 0;
+
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+  /* done */
+  assert (error_code == NO_ERROR);
+
+exit:
+  assert (page_ftab == NULL);
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+  (void) thread_set_check_interrupt (thread_p, save_interrupt);
+  if (collector.partsect_ftab != NULL)
+    {
+      db_private_free (thread_p, collector.partsect_ftab);
+    }
+  return error_code;
+}
+
+/*
+ * flre_temp_preserve () - preserve temporary file
+ *
+ * return :
+ * THREAD_ENTRY * thread_p (in) :
+ * const VFID * vfid (in) :
+ */
+void
+flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  /* to preserve the file, we need to remove it from transaction list */
+  FLRE_TEMPCACHE_ENTRY *entry = flre_tempcache_pop_tran_file (thread_p, vfid);
+  if (entry == NULL)
+    {
+      assert_release (false);
+    }
+  else
+    {
+      flre_tempcache_retire_entry (entry);
+    }
+}
+
+/************************************************************************/
+/* Temporary cache section                                              */
+/************************************************************************/
+
+/*
+ * flre_tempcache_init () - init temporary file cache
+ *
+ * return : ER_OUT_OF_VIRTUAL_MEMORY or NO_ERROR
+ */
+int
+flre_tempcache_init (void)
+{
+  int memsize = 0;
+#if defined (SERVER_MODE)
+  int ntrans = logtb_get_number_of_total_tran_indices ();
+#else
+  int ntrans = 1;
+#endif
+
+  assert (flre_Tempcache == NULL);
+
+  /* allocate flre_Tempcache */
+  memsize = sizeof (FLRE_TEMPCACHE);
+  flre_Tempcache = (FLRE_TEMPCACHE *) malloc (memsize);
+  if (flre_Tempcache == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* initialize free entry list... used to avoid entry allocation/deallocation */
+  flre_Tempcache->free_entries = NULL;
+  flre_Tempcache->nfree_entries_max = ntrans * 8;	/* I set 8 per transaction, maybe there is a better value */
+  flre_Tempcache->nfree_entries = 0;
+
+  /* initialize temporary file cache. we keep two separate lists for numerable and regular files */
+  flre_Tempcache->cached_not_numerable = NULL;
+  flre_Tempcache->cached_numerable = NULL;
+  flre_Tempcache->ncached_max = prm_get_integer_value (PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE);
+  flre_Tempcache->ncached_not_numerable = 0;
+  flre_Tempcache->ncached_numerable = 0;
+
+  /* initialize mutex used to protect temporary file cache and entry allocation/deallocation */
+  pthread_mutex_init (&flre_Tempcache->mutex, NULL);
+
+  /* allocate transaction temporary files lists */
+  memsize = ntrans * sizeof (FLRE_TEMPCACHE *);
+  flre_Tempcache->tran_files = (FLRE_TEMPCACHE_ENTRY **) malloc (memsize);
+  if (flre_Tempcache->tran_files == NULL)
+    {
+      pthread_mutex_destroy (&flre_Tempcache->mutex);
+      free_and_init (flre_Tempcache);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (flre_Tempcache->tran_files, 0, memsize);
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * flre_tempcache_final () - free temporary files cache resources
+ *
+ * return : void
+ */
+void
+flre_tempcache_final (void)
+{
+  if (flre_Tempcache)
+    {
+      int tran = 0;
+#if defined (SERVER_MODE)
+      int ntrans = logtb_get_number_of_total_tran_indices ();
+#else
+      int ntrans = 1;
+#endif
+
+      flre_tempcache_lock ();
+
+      /* free all transaction lists... they should be empty anyway, but be conservative */
+      for (tran = 0; tran < ntrans; tran++)
+	{
+	  if (flre_Tempcache->tran_files[tran] != NULL)
+	    {
+	      /* should be empty */
+	      assert (false);
+	      flre_tempcache_free_entry_list (&flre_Tempcache->tran_files[tran]);
+	    }
+	}
+      free_and_init (flre_Tempcache->tran_files);
+
+      /* temporary volumes are removed, we don't have to destroy files */
+      flre_tempcache_free_entry_list (&flre_Tempcache->cached_not_numerable);
+      flre_tempcache_free_entry_list (&flre_Tempcache->cached_numerable);
+
+      flre_tempcache_free_entry_list (&flre_Tempcache->free_entries);
+
+      flre_tempcache_unlock ();
+
+      pthread_mutex_destroy (&flre_Tempcache->mutex);
+
+      free_and_init (flre_Tempcache);
+    }
+}
+
+/*
+ * flre_tempcache_free_entry_list () - free entry list and set it to NULL
+ *
+ * return        : void
+ * list (in/out) : list to free. it becomes NULL.
+ */
+STATIC_INLINE void
+flre_tempcache_free_entry_list (FLRE_TEMPCACHE_ENTRY ** list)
+{
+  FLRE_TEMPCACHE_ENTRY *entry;
+  FLRE_TEMPCACHE_ENTRY *next;
+
+  flre_tempcache_check_lock ();
+
+  for (entry = *list; entry != NULL; entry = next)
+    {
+      next = entry->next;
+      free (entry);
+    }
+  *list = NULL;
+}
+
+/*
+ * flre_tempcache_alloc_entry () - allocate a new file temporary cache entry
+ *
+ * return      : error code
+ * entry (out) : entry from free entries or newly allocated
+ */
+STATIC_INLINE int
+flre_tempcache_alloc_entry (FLRE_TEMPCACHE_ENTRY ** entry)
+{
+  flre_tempcache_check_lock ();
+  if (flre_Tempcache->free_entries != NULL)
+    {
+      assert (flre_Tempcache->nfree_entries > 0);
+
+      *entry = flre_Tempcache->free_entries;
+      flre_Tempcache->free_entries = flre_Tempcache->free_entries->next;
+      flre_Tempcache->nfree_entries--;
+    }
+  else
+    {
+      *entry = (FLRE_TEMPCACHE_ENTRY *) malloc (sizeof (FLRE_TEMPCACHE_ENTRY));
+      if (*entry == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (FLRE_TEMPCACHE_ENTRY));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  (*entry)->next = NULL;
+  VFID_SET_NULL (&(*entry)->vfid);
+  (*entry)->ftype = FILE_UNKNOWN_TYPE;
+  return NO_ERROR;
+}
+
+/*
+ * flre_tempcache_retire_entry () - retire entry to free entry list (if not maxed) or deallocate
+ *
+ * return     : void
+ * entry (in) : retired entry
+ */
+STATIC_INLINE void
+flre_tempcache_retire_entry (FLRE_TEMPCACHE_ENTRY * entry)
+{
+  /* we lock to change free entry list */
+  flre_tempcache_lock ();
+  if (flre_Tempcache->nfree_entries < flre_Tempcache->nfree_entries_max)
+    {
+      entry->next = flre_Tempcache->free_entries;
+      flre_Tempcache->free_entries = entry;
+      flre_Tempcache->nfree_entries++;
+    }
+  else
+    {
+      free (entry);
+    }
+  flre_tempcache_unlock ();
+}
+
+/*
+ * flre_tempcache_lock () - lock temporary cache mutex
+ *
+ * return : void
+ */
+STATIC_INLINE void
+flre_tempcache_lock (void)
+{
+  assert (flre_Tempcache->owner_mutex != thread_get_current_entry_index ());
+  pthread_mutex_lock (&flre_Tempcache->mutex);
+  assert (flre_Tempcache->owner_mutex == -1);
+#if !defined (NDEBUG)
+  flre_Tempcache->owner_mutex = thread_get_current_entry_index ();
+#endif /* !NDEBUG */
+}
+
+/*
+ * flre_tempcache_unlock () - unlock temporary cache mutex
+ *
+ * return : void
+ */
+STATIC_INLINE void
+flre_tempcache_unlock (void)
+{
+  assert (flre_Tempcache->owner_mutex == thread_get_current_entry_index ());
+#if !defined (NDEBUG)
+  flre_Tempcache->owner_mutex = -1;
+#endif /* !NDEBUG */
+  pthread_mutex_unlock (&flre_Tempcache->mutex);
+}
+
+/*
+ * flre_tempcache_check_lock () - check temporary cache mutex is locked (for debug)
+ *
+ * return : void
+ */
+STATIC_INLINE void
+flre_tempcache_check_lock (void)
+{
+  assert (flre_Tempcache->owner_mutex == thread_get_current_entry_index ());
+}
+
+/*
+ * flre_tempcache_get () - get a file from temporary file cache
+ *
+ * return         : error code
+ * thread_p (in)  : thread entry
+ * ftype (in)     : file type
+ * numerable (in) : true for numerable file, false for regular file
+ * entry (out)    : always output an temporary cache entry. caller must check entry VFID to find if cached file was used
+ */
+STATIC_INLINE int
+flre_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FLRE_TEMPCACHE_ENTRY ** entry)
+{
+  int error_code = NO_ERROR;
+
+  assert (entry != NULL && *entry == NULL);
+
+  flre_tempcache_lock ();
+
+  *entry = numerable ? flre_Tempcache->cached_numerable : flre_Tempcache->cached_not_numerable;
+  if (*entry != NULL && (*entry)->ftype != ftype)
+    {
+      /* change type */
+      error_code = flre_temp_set_type (thread_p, &(*entry)->vfid, ftype);
+      if (error_code != NO_ERROR)
+	{
+	  /* could not change it, give up */
+	  *entry = NULL;
+	}
+      else
+	{
+	  (*entry)->ftype = ftype;
+	}
+    }
+  if (*entry != NULL)
+    {
+      /* remove from cache */
+      if (numerable)
+	{
+	  assert (*entry == flre_Tempcache->cached_numerable);
+	  assert (flre_Tempcache->ncached_numerable > 0);
+	  flre_Tempcache->cached_numerable = flre_Tempcache->cached_numerable->next;
+	  flre_Tempcache->ncached_numerable--;
+	}
+      else
+	{
+	  assert (*entry == flre_Tempcache->cached_not_numerable);
+	  assert (flre_Tempcache->ncached_not_numerable > 0);
+	  flre_Tempcache->cached_not_numerable = flre_Tempcache->cached_not_numerable->next;
+	  flre_Tempcache->ncached_not_numerable--;
+	}
+      (*entry)->next = NULL;
+      flre_tempcache_unlock ();
+      return NO_ERROR;
+    }
+
+  /* not from cache, get a new entry */
+  error_code = flre_tempcache_alloc_entry (entry);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      flre_tempcache_unlock ();
+      return error_code;
+    }
+  /* init new entry */
+  assert (*entry != NULL);
+  (*entry)->next = NULL;
+  (*entry)->ftype = ftype;
+  VFID_SET_NULL (&(*entry)->vfid);
+  flre_tempcache_unlock ();
+  return NO_ERROR;
+}
+
+/*
+ * flre_tempcache_put () - put entry to file cache (if cache is not full and if file passes vetting)
+ *
+ * return        : true if file was cached, false otherwise
+ * thread_p (in) : thread entry
+ * entry (in)    : entry of retired temporary file
+ */
+STATIC_INLINE bool
+flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
+{
+  FLRE_HEADER fhead;
+
+  if (file_header_copy (thread_p, &entry->vfid, &fhead) != NO_ERROR
+      || fhead.n_page_user > prm_get_integer_value (PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE))
+    {
+      /* file not valid for cache */
+      return false;
+    }
+
+  /* lock temporary cache */
+  flre_tempcache_lock ();
+
+  if (flre_Tempcache->ncached_not_numerable + flre_Tempcache->ncached_numerable < flre_Tempcache->nfree_entries_max)
+    {
+      /* cache not full */
+      assert ((flre_Tempcache->cached_not_numerable == NULL) == (flre_Tempcache->ncached_not_numerable == 0));
+      assert ((flre_Tempcache->cached_numerable == NULL) == (flre_Tempcache->ncached_numerable == 0));
+
+      /* reset file */
+      if (file_temp_reset_user_pages (thread_p, &entry->vfid) != NO_ERROR)
+	{
+	  /* failed to reset file, we cannot cache it */
+	  ASSERT_ERROR ();
+	  flre_tempcache_unlock ();
+	  return false;
+	}
+
+      /* add numerable temporary file to cached numberable file list, regular file to not numberable list */
+      if (FILE_IS_NUMERABLE (&fhead))
+	{
+	  entry->next = flre_Tempcache->cached_numerable;
+	  flre_Tempcache->cached_numerable = entry;
+	  flre_Tempcache->ncached_numerable++;
+	}
+      else
+	{
+	  entry->next = flre_Tempcache->cached_not_numerable;
+	  flre_Tempcache->cached_not_numerable = entry;
+	  flre_Tempcache->ncached_not_numerable++;
+	}
+
+      flre_tempcache_unlock ();
+
+      /* cached */
+      return true;
+    }
+  else
+    {
+      /* cache full */
+      flre_tempcache_unlock ();
+      return false;
+    }
+}
+
+/*
+ * flre_tempcache_drop_tran_temp_files () - drop all temporary files created by current transaction
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ */
+void
+flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  file_tempcache_cache_or_drop_entries (thread_p, &flre_Tempcache->tran_files[thread_get_current_tran_index ()]);
+#else
+  file_tempcache_cache_or_drop_entries (thread_p, &flre_Tempcache->tran_files[0]);
+#endif
+}
+
+/*
+ * file_tempcache_cache_or_drop_entries () - drop all temporary files in the give entry list
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * entries (in)  : temporary files entry list
+ */
+STATIC_INLINE void
+file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY ** entries)
+{
+  FLRE_TEMPCACHE_ENTRY *temp_file;
+  FLRE_TEMPCACHE_ENTRY *next = NULL;
+  bool save_interrupt = thread_set_check_interrupt (thread_p, false);
+
+  for (temp_file = *entries; temp_file != NULL; temp_file = next)
+    {
+      next = temp_file->next;
+      temp_file->next = NULL;
+
+      if (!flre_tempcache_put (thread_p, temp_file))
+	{
+	  /* was not cached. destroy the file */
+	  if (flre_destroy (thread_p, &temp_file->vfid) != NO_ERROR)
+	    {
+	      /* file is leaked */
+	      assert_release (false);
+	      /* ignore error and continue free as many files as possible */
+	    }
+	  flre_tempcache_retire_entry (temp_file);
+	}
+    }
+  *entries = NULL;
+
+  (void) thread_set_check_interrupt (thread_p, save_interrupt);
+}
+
+/*
+ * flre_tempcache_pop_tran_file () - pop entry with the given VFID from transaction list
+ *
+ * return        : popped entry
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ */
+STATIC_INLINE FLRE_TEMPCACHE_ENTRY *
+flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  FLRE_TEMPCACHE_ENTRY **tran_files_p =
+#if defined (SERVER_MODE)
+    &flre_Tempcache->tran_files[thread_get_current_tran_index ()];
+#else
+    &flre_Tempcache->tran_files[0];
+#endif
+  FLRE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
+
+  for (entry = *tran_files_p; entry != NULL; entry = entry->next)
+    {
+      if (VFID_EQ (&entry->vfid, vfid))
+	{
+	  /* remove entry from transaction list */
+	  if (prev_entry == NULL)
+	    {
+	      prev_entry->next = entry->next;
+	    }
+	  else
+	    {
+	      *tran_files_p = entry->next;
+	    }
+	  entry->next = NULL;
+	  return entry;
+	}
+    }
+  /* should have found it */
+  assert_release (false);
+  return NULL;
+}
+
+/*
+ * flre_tempcache_push_tran_file () - push temporary file entry to transaction list
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * entry (in)    : temporary cache entry
+ */
+STATIC_INLINE void
+flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
+{
+  FLRE_TEMPCACHE_ENTRY **tran_files_p =
+#if defined (SERVER_MODE)
+    &flre_Tempcache->tran_files[thread_get_current_tran_index ()];
+#else
+    &flre_Tempcache->tran_files[0];
+#endif
+
+  entry->next = *tran_files_p;
+  *tran_files_p = entry;
+}
+
+int
+flre_get_tran_num_temp_files (THREAD_ENTRY * thread_p)
+{
+  FLRE_TEMPCACHE_ENTRY **tran_files_p =
+#if defined (SERVER_MODE)
+    &flre_Tempcache->tran_files[thread_get_current_tran_index ()];
+#else
+    &flre_Tempcache->tran_files[0];
+#endif
+  FLRE_TEMPCACHE_ENTRY *entry;
+  int num = 0;
+
+  for (entry = *tran_files_p; entry != NULL; entry = entry->next)
+    {
+      num++;
+    }
+  return num;
+}
+
+/*
+ * flre_tempcache_dump () - dump temporary files cache
+ *
+ * return  : void
+ * fp (in) : dump output
+ */
+STATIC_INLINE void
+flre_tempcache_dump (FILE * fp)
+{
+  FLRE_TEMPCACHE_ENTRY *cached_files;
+  flre_tempcache_lock ();
+
+  fprintf (fp, "DUMPING file manager's temporary files cache.\n");
+  fprintf (fp, "  max files = %d, regular files count = %d, numerable files count = %d.\n\n");
+
+  if (flre_Tempcache->cached_not_numerable != NULL)
+    {
+      fprintf (fp, "  cached regular files: \n");
+      for (cached_files = flre_Tempcache->cached_not_numerable; cached_files != NULL; cached_files = cached_files->next)
+	{
+	  fprintf (fp, "    VFID = %d|%d, file type = %s \n", file_type_to_string (cached_files->ftype),
+		   VFID_AS_ARGS (&cached_files->vfid));
+	}
+      fprintf (fp, "\n");
+    }
+  if (flre_Tempcache->cached_numerable != NULL)
+    {
+      fprintf (fp, "  cached numerable files: \n");
+      for (cached_files = flre_Tempcache->cached_numerable; cached_files != NULL; cached_files = cached_files->next)
+	{
+	  fprintf (fp, "    VFID = %d|%d, file type = %s \n", file_type_to_string (cached_files->ftype),
+		   VFID_AS_ARGS (&cached_files->vfid));
+	}
+      fprintf (fp, "\n");
+    }
+
+  flre_tempcache_unlock ();
+
+  /* todo: to print transaction temporary files we need some kind of synchronization... right now each transaction
+   *       manages its own list freely. */
 }
 
 /************************************************************************/

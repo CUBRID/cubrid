@@ -908,8 +908,6 @@ struct log_tdes
   LOG_LSA repl_update_lsa;	/* in-place update target lsa */
   void *first_save_entry;	/* first save entry for the transaction */
 
-  int num_new_files;		/* # of new files created */
-  int num_new_temp_files;	/* # of new FILE_TEMP files created */
   int suppress_replication;	/* suppress writing replication logs when flag is set */
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */

@@ -378,7 +378,7 @@ extern int flre_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type
 				    VFID * vfid);
 extern int flre_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_oid, VFID * vfid);
 extern int flre_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
-extern int file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
+extern int flre_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
 extern int flre_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid);
 extern int flre_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash,
 			      VFID * vfid);
@@ -387,6 +387,7 @@ extern int flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_t
 
 extern void flre_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int flre_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int flre_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 
 extern int flre_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
 extern int flre_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
@@ -403,6 +404,13 @@ extern int flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE 
 
 extern int flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    VPID * vpid_nth);
+
+extern int flre_tempcache_init (void);
+extern void flre_tempcache_final (void);
+extern void flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
+
+extern void flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int flre_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
 
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -2352,7 +2352,7 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY *
       tfile_vfid_p->prev->next = NULL;
       while (tfile_vfid_p)
 	{
-	  file_preserve_temporary (thread_p, &tfile_vfid_p->temp_vfid);
+	  flre_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
 	  temp = tfile_vfid_p;
 	  tfile_vfid_p = tfile_vfid_p->next;
 	}

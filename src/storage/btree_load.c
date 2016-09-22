@@ -925,7 +925,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 #if !defined(NDEBUG)
       (void) btree_verify_tree (thread_p, &class_oids[0], &btid_int, bt_name);
 #endif
-
     }
   else
     {

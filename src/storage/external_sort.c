@@ -4415,13 +4415,13 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     {
       if (sort_param->temp[k].volid != NULL_VOLID)
 	{
-	  (void) flre_destroy (thread_p, &sort_param->temp[k]);
+	  (void) flre_temp_retire (thread_p, &sort_param->temp[k]);
 	}
     }
 
   if (sort_param->multipage_file.volid != NULL_VOLID)
     {
-      (void) flre_destroy (thread_p, &(sort_param->multipage_file));
+      (void) flre_temp_retire (thread_p, &(sort_param->multipage_file));
     }
 
   for (k = 0; k < sort_param->tot_tempfiles; k++)
@@ -4465,7 +4465,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: sort file is a case I missed that seems to use file_find_nthpages. I don't know if it can be optimized to
    *       work without numerable files, that remains to be seen. */
 
-  ret = file_create_temp_numerable (thread_p, file_pg_cnt_est, vfid);
+  ret = flre_create_temp_numerable (thread_p, file_pg_cnt_est, vfid);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4743,7 +4743,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      if (flre_destroy (thread_p, &sort_param->temp[i]) == NO_ERROR)
+	      if (flre_temp_retire (thread_p, &sort_param->temp[i]) == NO_ERROR)
 		{
 		  VFID_SET_NULL (&sort_param->temp[i]);
 		}
