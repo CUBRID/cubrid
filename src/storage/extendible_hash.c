@@ -1266,6 +1266,7 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
     {
       assert_release (false);
     }
+  pgbuf_unfix (thread_p, dir_page_p);
   if (flre_destroy (thread_p, &ehid_p->vfid) != NO_ERROR)
     {
       assert_release (false);
