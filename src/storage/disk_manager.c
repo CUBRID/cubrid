@@ -1925,6 +1925,7 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	  valid = DISK_INVALID;
 	}
     }
+  disk_cache_unlock_reserve_for_purpose (volheader->purpose);
 
   /* the following check also added to the disk_verify_volume_header() macro */
   if (volheader->sect_npgs != DISK_SECTOR_NPAGES
@@ -3297,7 +3298,7 @@ disk_stab_iterate_units (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volhea
   assert (volheader != NULL);
   assert (start->offset_to_bit == 0);
   assert (end->offset_to_bit == 0);
-  assert (disk_stab_cursor_compare (start, end));
+  assert (disk_stab_cursor_compare (start, end) < 0);
 
   /* iterate through pages */
   for (cursor = *start; cursor.pageid <= end->pageid; cursor.pageid++, cursor.offset_to_unit = 0)
@@ -4755,7 +4756,7 @@ disk_stab_unit_unreserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bo
 
   while (context->nsects_lastvol_remaining > 0 && context->vsidp->sectid < cursor->sectid + DISK_STAB_UNIT_BIT_COUNT)
     {
-      unreserve_bits |= (context->vsidp->sectid - cursor->sectid);
+      unreserve_bits = bit64_set (unreserve_bits, context->vsidp->sectid - cursor->sectid);
       context->nsects_lastvol_remaining--;
       context->vsidp++;
       nsect++;
