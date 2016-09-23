@@ -2129,7 +2129,7 @@ pr_clear_value (DB_VALUE * value)
 }
 
 /*
- * pr_free_value - free an interval value container any anything that it
+ * pr_free_value - free an internval value container any anything that it
  * references
  *    return: NO_ERROR if successful, error code otherwise
  *    value(in/out): value to clear & free
