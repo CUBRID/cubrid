@@ -1925,6 +1925,7 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
 	  valid = DISK_INVALID;
 	}
     }
+  disk_cache_unlock_reserve_for_purpose (volheader->purpose);
 
   /* the following check also added to the disk_verify_volume_header() macro */
   if (volheader->sect_npgs != DISK_SECTOR_NPAGES
