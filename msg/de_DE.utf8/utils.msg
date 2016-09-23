@@ -748,11 +748,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 Ausgangsdatei '%1$s' konnte nicht geöffnet werden \n
 60 \
 diagdb: Database exportieren.\n\
 Anwendung: %1$s diagdb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
+  -o, --output-file=DATEI     Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
+      --emergency             emergency restart; default: none\n\
   -d, --dump-type=TYP         Export TYP \n\
                                -1 alles exportieren\n\
                                 1 Dateitabellen exportieren \n\

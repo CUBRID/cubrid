@@ -273,7 +273,7 @@ extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npag
 			      VFID * dropped_files_vfid);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
-extern VACUUM_LOG_BLOCKID vacuum_get_global_oldest_active_mvccid (void);
+extern MVCCID vacuum_get_global_oldest_active_mvccid (void);
 #if defined (SERVER_MODE)
 extern void vacuum_master_start (THREAD_ENTRY * thread_p);
 extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);
@@ -330,4 +330,5 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, O
 extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 							  MVCC_REC_HEADER * rec_header, int btree_node_type);
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
+extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 #endif /* _VACUUM_H_ */

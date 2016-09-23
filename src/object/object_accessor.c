@@ -1322,9 +1322,6 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem, DB_VALUE * source, DB_VALU
       source = &att->default_value.value;
     }
 
-  /* In MVCC, we must be sure that we have the last mop version before we access the object. */
-  op = ws_mvcc_latest_version (op);
-
   if ((ws_find (op, &object) == WS_FIND_MOP_DELETED) || object == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
@@ -2181,11 +2178,6 @@ obj_delete (MOP op)
 	  goto error_exit;
 	}
 
-      if (base_op->decached == 0 && op->is_vid && class_->class_type == SM_VCLASS_CT)
-	{
-	  base_op = ws_mvcc_latest_version (base_op);
-	}
-
       /* in some cases, the object has been decached in before trigger. we need fetch it again. */
       if (base_op->decached)
 	{
@@ -2207,11 +2199,6 @@ obj_delete (MOP op)
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
-	}
-
-      if (op->decached == 0)
-	{
-	  op = ws_mvcc_latest_version (op);
 	}
 
       /* in some cases, the object has been decached in before trigger. we need fetch it again. */
@@ -4412,7 +4399,6 @@ obj_isinstance (MOP obj)
   int status;
   MOBJ object;
 
-  obj = ws_mvcc_latest_version (obj);
   if (obj != NULL)
     {
       status = locator_is_class (obj, DB_FETCH_READ);

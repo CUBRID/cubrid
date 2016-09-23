@@ -180,7 +180,7 @@ extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
       if (!((p_mvcc_rec_header)->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)) \
         { \
           (p_mvcc_rec_header)->mvcc_flag |= OR_MVCC_FLAG_VALID_DELID; \
-          (p_mvcc_rec_header)->delid_chn.mvcc_del_id = MVCCID_NULL; \
+          (p_mvcc_rec_header)->mvcc_del_id = MVCCID_NULL; \
         } \
     } \
   while (0)

@@ -794,7 +794,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   log_Gl.append.vdes =
     fileio_format (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, npages,
 		   prm_get_bool_value (PRM_ID_LOG_SWEEP_CLEAN), true, false, LOG_PAGESIZE, 0, false);
-  if (log_Gl.append.vdes == NULL_VOLDES || logpb_fetch_start_append_page (thread_p) == NULL || loghdr_pgptr == NULL)
+  if (log_Gl.append.vdes == NULL_VOLDES || logpb_fetch_start_append_page (thread_p) != NO_ERROR || loghdr_pgptr == NULL)
     {
       goto error;
     }
@@ -807,7 +807,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
    * Flush the append page, so that the end of the log mark is written.
    * Then, free the page, same for the header page.
    */
-  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
+  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
   logpb_flush_pages_direct (thread_p);
 
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
@@ -815,7 +815,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   /* Flush the log header */
 
   memcpy (loghdr_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr));
-  logpb_set_dirty (thread_p, loghdr_pgptr, DONT_FREE);
+  logpb_set_dirty (thread_p, loghdr_pgptr);
 
 #if defined(CUBRID_DEBUG)
   {
@@ -831,7 +831,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   }
 #endif /* CUBRID_DEBUG */
 
-  error_code = logpb_flush_page (thread_p, loghdr_pgptr, DONT_FREE);
+  error_code = logpb_flush_page (thread_p, loghdr_pgptr);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -850,14 +850,11 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   }
 #endif /* CUBRID_DEBUG */
 
-  logpb_free_page (thread_p, loghdr_pgptr);
-
   /* logpb_flush_header(); */
 
   /* 
    * Free the append and header page and dismount the lg active volume
    */
-  logpb_free_page (thread_p, log_Gl.append.log_pgptr);
   log_Gl.append.log_pgptr = NULL;
 
   fileio_dismount (thread_p, log_Gl.append.vdes);
@@ -1263,6 +1260,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   logtb_reset_bit_area_start_mvccid ();
 
+  if (prm_get_bool_value (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY))
+    {
+      init_emergency = true;
+    }
+
   /* 
    * Was the database system shut down or was it involved in a crash ?
    */
@@ -1290,7 +1292,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * The system was shut down. There is nothing to recover.
        * Find the append page and start execution
        */
-      if (logpb_fetch_start_append_page (thread_p) == NULL)
+      if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -3367,7 +3369,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
 
   while (!LSA_ISNULL (&prev_lsa) && found == false)
     {
-      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	{
 	  break;
 	}
@@ -3526,7 +3528,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, r;
 
   /* 
    * Remember the current tail of the transaction, so we can allow partial
@@ -3567,13 +3569,8 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
       if (LOG_ISRESTARTED ())
 	{
-#if defined(SERVER_MODE)
-	  assert (tdes->cs_topop.cs_index ==
-		  CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	  assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	  csect_enter_critical_section (thread_p, &tdes->cs_topop, INF_WAIT);
+	  r = rmutex_lock (thread_p, &tdes->rmutex_topop);
+	  assert (r == NO_ERROR);
 	}
     }
 
@@ -3584,13 +3581,8 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	  /* Out of memory */
 	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
-#if defined(SERVER_MODE)
-	      assert (tdes->cs_topop.cs_index ==
-		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+	      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+	      assert (r == NO_ERROR);
 	    }
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
@@ -3704,7 +3696,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   TRAN_STATE state;
   int tran_index;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, r;
 
   {
     int mod_factor = 5000;	/* 0.02% */
@@ -3945,13 +3937,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 
   if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-#if defined(SERVER_MODE)
-      assert (tdes->cs_topop.cs_index ==
-	      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+      assert (r == NO_ERROR);
     }
 
   mnt_tran_end_topops (thread_p);
@@ -6694,7 +6681,7 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
   redo = (LOG_REC_REDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (redo->data.rcvindex));
-  fprintf (stdout, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n", redo->data.volid,
+  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n", redo->data.volid,
 	   redo->data.pageid, redo->data.offset, (int) GET_ZIP_LEN (redo->length));
 
   redo_length = redo->length;
@@ -6702,7 +6689,7 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo), log_lsa, log_page_p);
 
   /* Print REDO(AFTER) DATA */
-  fprintf (stdout, "-->> Redo (After) Data:\n");
+  fprintf (out_fp, "-->> Redo (After) Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), log_zip_p);
 
@@ -6805,7 +6792,7 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_redo), log_lsa, log_page_p);
 
   /* Print REDO(AFTER) DATA */
-  fprintf (stdout, "-->> Redo (After) Data:\n");
+  fprintf (out_fp, "-->> Redo (After) Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), log_zip_p);
 
@@ -7184,7 +7171,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       break;
 
     case LOG_WILL_COMMIT:
-      fprintf (stdout, "\n");
+      fprintf (out_fp, "\n");
       break;
 
     case LOG_COMMIT:
@@ -7238,21 +7225,21 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
-      fprintf (stdout, "\n");
+      fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
 
     case LOG_END_OF_LOG:
       if (!logpb_is_page_in_archive (log_lsa->pageid))
 	{
-	  fprintf (stdout, "\n... xxx END OF LOG xxx ...\n");
+	  fprintf (out_fp, "\n... xxx END OF LOG xxx ...\n");
 	}
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
     default:
-      fprintf (stdout, "log_dump: Unknown record type = %d (%s).\n", record_type, log_to_string (record_type));
+      fprintf (out_fp, "log_dump: Unknown record type = %d (%s).\n", record_type, log_to_string (record_type));
       LSA_SET_NULL (log_lsa);
       break;
     }
@@ -7365,7 +7352,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   /* Start dumping all log records following the given direction */
   while (!LSA_ISNULL (&lsa) && dump_npages-- > 0)
     {
-      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
 	{
 	  fprintf (out_fp, " Error reading page %lld... Quit\n", (long long int) lsa.pageid);
 	  if (log_dump_ptr != NULL)
@@ -7483,8 +7470,8 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	  /* Advance the pointer to dump the type of log record */
 
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
-	  log_pgptr = log_dump_record (thread_p, stdout, type, &log_lsa, log_pgptr, log_dump_ptr);
-	  fflush (stdout);
+	  log_pgptr = log_dump_record (thread_p, out_fp, type, &log_lsa, log_pgptr, log_dump_ptr);
+	  fflush (out_fp);
 	  /* 
 	   * We can fix the lsa.pageid in the case of log_records without forward
 	   * address at this moment.
@@ -7941,7 +7928,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
       LSA_COPY (&log_lsa, &prev_tranlsa);
       log_lsa.offset = LOG_PAGESIZE;
 
-      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) != NO_ERROR)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
@@ -8231,7 +8218,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 
       if (last_fetch_page_id != top_result_lsa.pageid)
 	{
-	  if (logpb_fetch_page (thread_p, &top_result_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &top_result_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      if (nxtop_stack != *out_nxtop_range_stack)
 		{
@@ -8412,7 +8399,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  LSA_COPY (&log_lsa, &forward_lsa);
 	  fetch_lsa.pageid = log_lsa.pageid;
 	  fetch_lsa.offset = LOG_PAGESIZE;
-	  if (logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_do_postpone");
 	      goto end;
@@ -8773,7 +8760,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
       fetch_lsa.offset = LOG_PAGESIZE;
 
       /* Fetch the page */
-      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_find_end_log");
 	  goto error;

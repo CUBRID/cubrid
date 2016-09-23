@@ -8720,6 +8720,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
   OID *instance_oid_p;
   DB_VALUE *val_p, element;
   DB_TYPE type;
+  int err;
 
   if (fetch_peek_dbval (thread_p, &function_p->operand->value, val_desc_p, NULL, obj_oid_p, tuple, &val_p) != NO_ERROR)
     {
@@ -8751,9 +8752,11 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
     }
 
   instance_oid_p = DB_PULL_OID (val_p);
-  if (heap_get_class_oid (thread_p, instance_oid_p, &class_oid) != S_SUCCESS)
+  err = heap_get_class_oid (thread_p, instance_oid_p, &class_oid);
+  if (err != S_SUCCESS)
     {
-      return ER_FAILED;
+      ASSERT_ERROR_AND_SET (err);
+      return err;
     }
 
   DB_MAKE_OID (function_p->value, &class_oid);
