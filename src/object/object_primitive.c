@@ -8320,11 +8320,13 @@ clean_up:
   if (!DB_IS_NULL (&val1) && val1.need_clear == true)
     {
       pr_clear_value (&val1);
+      pr_clear_compressed_string (&val1);
     }
 
   if (!DB_IS_NULL (&val2) && val2.need_clear == true)
     {
       pr_clear_value (&val2);
+      pr_clear_compressed_string (&val1);
     }
 
   if (!comparable || error == true)
@@ -16998,6 +17000,11 @@ pr_clear_compressed_string (DB_VALUE * value)
   if (db_type != DB_TYPE_VARCHAR && db_type != DB_TYPE_VARNCHAR)
     {
       return NO_ERROR;		/* do nothing */
+    }
+
+  if (value->data.ch.info.compressed_need_clear == false)
+    {
+      return NO_ERROR;
     }
 
   if (value->data.ch.medium.compressed_size <= 0)
