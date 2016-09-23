@@ -3586,7 +3586,6 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
   VOLID volid;
   PAGE_PTR page_volheader = NULL;
   DISK_VAR_HEADER *volheader = NULL;
-  VPID vpid_volheader = VPID_INITIALIZER;
   DISK_STAB_CURSOR start_cursor = DISK_STAB_CURSOR_INITIALIZER;
   DISK_STAB_CURSOR end_cursor = DISK_STAB_CURSOR_INITIALIZER;
   int vol_free_sects = 0;
@@ -3603,16 +3602,12 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
   assert (context->nsects_lastvol_remaining > 0);
 
   /* fix volume header */
-  vpid_volheader.volid = volid;
-  vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
-  page_volheader = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_volheader == NULL)
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &page_volheader, &volheader);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      ASSERT_ERROR ();
       return error_code;
     }
-  (void) disk_verify_volume_header (thread_p, page_volheader);
-  volheader = (DISK_VAR_HEADER *) page_volheader;
 
   /* reserve all possible sectors. */
   if (volheader->hint_allocsect > 0 && volheader->hint_allocsect < volheader->nsect_total)
@@ -4817,7 +4812,6 @@ static int
 disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_out, DB_VOLTYPE * voltype_out,
 		  VOL_SPACE_INFO * space_out)
 {
-  VPID vpid_volheader;
   PAGE_PTR page_volheader = NULL;
   DISK_VAR_HEADER *volheader;
 
@@ -4825,16 +4819,12 @@ disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_
 
   assert (volid != NULL_VOLID);
 
-  vpid_volheader.volid = volid;
-  vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
-  page_volheader = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_volheader == NULL)
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &page_volheader, &volheader);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      ASSERT_ERROR ();
       return error_code;
     }
-  disk_verify_volume_header (thread_p, page_volheader);
-  volheader = (DISK_VAR_HEADER *) page_volheader;
 
   *purpose_out = volheader->purpose;
   *voltype_out = volheader->type;
