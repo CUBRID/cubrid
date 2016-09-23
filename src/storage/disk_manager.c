@@ -2452,7 +2452,7 @@ disk_stab_dump_unit (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * 
 }
 
 /*
- * disk_map_dump () - Dump the content of the allocation map table
+ * disk_stab_dump () - Dump the content of the allocation map table
  *   return: NO_ERROR
  *   vpid(in): Complete Page identifier
  *   at_name(in): Name of allocator table
@@ -2576,7 +2576,6 @@ void
 disk_rv_dump_hdr (FILE * fp, int length_ignore, void *data)
 {
   DISK_VAR_HEADER *vhdr;
-  int ret = NO_ERROR;
 
   vhdr = (DISK_VAR_HEADER *) data;
   disk_vhdr_dump (fp, vhdr);
@@ -2879,7 +2878,7 @@ disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 /************************************************************************/
 
 /*
- * disk_alloctbl_cursor_set_at_sectid () - Position cursor for allocation table at sector ID.
+ * disk_stab_cursor_set_at_sectid () - Position cursor for allocation table at sector ID.
  *
  * return	  : Void.
  * volheader (in) : Volume header.
@@ -2906,7 +2905,7 @@ disk_stab_cursor_set_at_sectid (const DISK_VAR_HEADER * volheader, SECTID sectid
 }
 
 /*
- * disk_alloctbl_cursor_set_at_end () - Position cursor at the end of allocation table.
+ * disk_stab_cursor_set_at_end () - Position cursor at the end of allocation table.
  *
  * return	  : Void.
  * volheader (in) : Volume header.
@@ -2925,7 +2924,7 @@ disk_stab_cursor_set_at_end (const DISK_VAR_HEADER * volheader, DISK_STAB_CURSOR
 }
 
 /*
- * disk_alloctbl_cursor_set_at_start () - Position cursor at the start of allocation table.
+ * disk_stab_cursor_set_at_start () - Position cursor at the start of allocation table.
  *
  * return	  : Void.
  * volheader (in) : Volume header.
@@ -2948,7 +2947,7 @@ disk_stab_cursor_set_at_start (const DISK_VAR_HEADER * volheader, DISK_STAB_CURS
 }
 
 /*
- * disk_alloctbl_cursor_compare () - Compare two allocation table cursors.
+ * disk_stab_cursor_compare () - Compare two allocation table cursors.
  *
  * return	      : -1 if first cursor is positioned before second cursor.
  *			0 if both cursors have the same position.
@@ -2993,7 +2992,7 @@ disk_stab_cursor_compare (const DISK_STAB_CURSOR * first_cursor, const DISK_STAB
 }
 
 /*
- * disk_alloctable_cursor_check_valid () - Check allocation table cursor validity.
+ * disk_stab_cursor_check_valid () - Check allocation table cursor validity.
  *
  * return      : void.
  * cursor (in) : Allocation table cursor.
@@ -3037,7 +3036,7 @@ disk_stab_cursor_check_valid (const DISK_STAB_CURSOR * cursor)
 }
 
 /*
- * disk_alloctbl_cursor_is_bit_set () - Is bit set on current allocation table cursor.
+ * disk_stab_cursor_is_bit_set () - Is bit set on current allocation table cursor.
  *
  * return      : True if bit is set, false otherwise.
  * cursor (in) : Allocation table cursor.
@@ -3051,7 +3050,7 @@ disk_stab_cursor_is_bit_set (const DISK_STAB_CURSOR * cursor)
 }
 
 /*
- * disk_alloctbl_cursor_set_bit () - Set bit on current allocation table cursor.
+ * disk_stab_cursor_set_bit () - Set bit on current allocation table cursor.
  *
  * return	   : Void.
  * cursor (in/out) : Allocation table cursor.
@@ -3066,7 +3065,7 @@ disk_stab_cursor_set_bit (DISK_STAB_CURSOR * cursor)
 }
 
 /*
- * disk_alloctbl_cursor_clear_bit () - Clear bit on current allocation table cursor.
+ * disk_stab_cursor_clear_bit () - Clear bit on current allocation table cursor.
  *
  * return	   : Void.
  * cursor (in/out) : Allocation table cursor.
@@ -3081,7 +3080,7 @@ disk_stab_cursor_clear_bit (DISK_STAB_CURSOR * cursor)
 }
 
 /*
- * disk_alloctbl_cursor_get_bit_index_in_page () - Get the index of cursor bit in allocation table page.
+ * disk_stab_cursor_get_bit_index_in_page () - Get the index of cursor bit in allocation table page.
  *
  * return      : Bit index in page.
  * cursor (in) : Allocation table cursor.
@@ -3108,7 +3107,7 @@ disk_stab_cursor_get_sectid (const DISK_STAB_CURSOR * cursor)
 }
 
 /*
- * disk_alloctbl_cursor_fix () - Fix current table page.
+ * disk_stab_cursor_fix () - Fix current table page.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -3141,7 +3140,7 @@ disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_
 }
 
 /*
- * disk_alloctbl_cursor_unfix () - Unfix page from allocation table cursor.
+ * disk_stab_cursor_unfix () - Unfix page from allocation table cursor.
  *
  * return	   : Void.
  * thread_p (in)   : Thread entry.
@@ -3272,7 +3271,7 @@ disk_stab_unit_reserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool
 }
 
 /*
- * disk_stab_iterate_units () - iterate ithrough units between start and end and call argument function. start and end
+ * disk_stab_iterate_units () - iterate through units between start and end and call argument function. start and end
  *                              cursor should be aligned.
  *
  * return           : error code
@@ -3587,7 +3586,6 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
   VOLID volid;
   PAGE_PTR page_volheader = NULL;
   DISK_VAR_HEADER *volheader = NULL;
-  VPID vpid_volheader = VPID_INITIALIZER;
   DISK_STAB_CURSOR start_cursor = DISK_STAB_CURSOR_INITIALIZER;
   DISK_STAB_CURSOR end_cursor = DISK_STAB_CURSOR_INITIALIZER;
   int vol_free_sects = 0;
@@ -3604,16 +3602,12 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
   assert (context->nsects_lastvol_remaining > 0);
 
   /* fix volume header */
-  vpid_volheader.volid = volid;
-  vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
-  page_volheader = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_volheader == NULL)
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &page_volheader, &volheader);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      ASSERT_ERROR ();
       return error_code;
     }
-  (void) disk_verify_volume_header (thread_p, page_volheader);
-  volheader = (DISK_VAR_HEADER *) page_volheader;
 
   /* reserve all possible sectors. */
   if (volheader->hint_allocsect > 0 && volheader->hint_allocsect < volheader->nsect_total)
@@ -4818,7 +4812,6 @@ static int
 disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_out, DB_VOLTYPE * voltype_out,
 		  VOL_SPACE_INFO * space_out)
 {
-  VPID vpid_volheader;
   PAGE_PTR page_volheader = NULL;
   DISK_VAR_HEADER *volheader;
 
@@ -4826,16 +4819,12 @@ disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_
 
   assert (volid != NULL_VOLID);
 
-  vpid_volheader.volid = volid;
-  vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
-  page_volheader = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_volheader == NULL)
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &page_volheader, &volheader);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      ASSERT_ERROR ();
       return error_code;
     }
-  disk_verify_volume_header (thread_p, page_volheader);
-  volheader = (DISK_VAR_HEADER *) page_volheader;
 
   *purpose_out = volheader->purpose;
   *voltype_out = volheader->type;
@@ -5256,7 +5245,7 @@ disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
       else
 	{
 	  disk_Cache->temp_purpose_info.extend_info.nsect_free += delta_free;
-	  assert (disk_Cache->temp_purpose_info.nsect_perm_free >= 0);
+	  assert (disk_Cache->temp_purpose_info.extend_info.nsect_free >= 0);
 	}
     }
 }

@@ -13499,6 +13499,7 @@ file_descriptor_dump_extendible_hash (THREAD_ENTRY * thread_p, FILE * fp, const 
 {
   file_print_name_of_class_with_attrid (thread_p, fp, &ext_hash_des_p->class_oid, ext_hash_des_p->attr_id);
 }
+
 static void
 file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p)
 {
@@ -14229,7 +14230,7 @@ file_header_sanity_check (FLRE_HEADER * fhead)
   if (fhead->n_sector_partial == 0)
     {
       assert (FILE_IS_TEMPORARY (fhead)
-              || (file_extdata_is_empty (part_table) && VPID_ISNULL (&part_table->vpid_next)));
+	      || (file_extdata_is_empty (part_table) && VPID_ISNULL (&part_table->vpid_next)));
     }
   else
     {
@@ -20147,15 +20148,16 @@ flre_tempcache_dump (FILE * fp)
   flre_tempcache_lock ();
 
   fprintf (fp, "DUMPING file manager's temporary files cache.\n");
-  fprintf (fp, "  max files = %d, regular files count = %d, numerable files count = %d.\n\n");
+  fprintf (fp, "  max files = %d, regular files count = %d, numerable files count = %d.\n\n",
+	   flre_Tempcache->ncached_max, flre_Tempcache->ncached_not_numerable, flre_Tempcache->ncached_numerable);
 
   if (flre_Tempcache->cached_not_numerable != NULL)
     {
       fprintf (fp, "  cached regular files: \n");
       for (cached_files = flre_Tempcache->cached_not_numerable; cached_files != NULL; cached_files = cached_files->next)
 	{
-	  fprintf (fp, "    VFID = %d|%d, file type = %s \n", file_type_to_string (cached_files->ftype),
-		   VFID_AS_ARGS (&cached_files->vfid));
+	  fprintf (fp, "    VFID = %d|%d, file type = %s \n", VFID_AS_ARGS (&cached_files->vfid),
+		   file_type_to_string (cached_files->ftype));
 	}
       fprintf (fp, "\n");
     }
@@ -20164,8 +20166,8 @@ flre_tempcache_dump (FILE * fp)
       fprintf (fp, "  cached numerable files: \n");
       for (cached_files = flre_Tempcache->cached_numerable; cached_files != NULL; cached_files = cached_files->next)
 	{
-	  fprintf (fp, "    VFID = %d|%d, file type = %s \n", file_type_to_string (cached_files->ftype),
-		   VFID_AS_ARGS (&cached_files->vfid));
+	  fprintf (fp, "    VFID = %d|%d, file type = %s \n", VFID_AS_ARGS (&cached_files->vfid),
+		   file_type_to_string (cached_files->ftype));
 	}
       fprintf (fp, "\n");
     }
