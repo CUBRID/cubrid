@@ -14700,8 +14700,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
     }
 
   /* Compare the strings */
-  c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) buf1.ptr, str_length1,
-			  (unsigned char *) buf2.ptr, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
+  c = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1,
+			  (unsigned char *) string2, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
   c = MR_CMP_RETURN_CODE (c);
   /* Clean up the strings */
   if (string1 != NULL && alloced_string1 == true)
