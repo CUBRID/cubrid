@@ -14228,7 +14228,8 @@ file_header_sanity_check (FLRE_HEADER * fhead)
   FILE_HEADER_GET_PART_FTAB (fhead, part_table);
   if (fhead->n_sector_partial == 0)
     {
-      assert (file_extdata_is_empty (part_table) && VPID_ISNULL (&part_table->vpid_next));
+      assert (FILE_IS_TEMPORARY (fhead)
+              || (file_extdata_is_empty (part_table) && VPID_ISNULL (&part_table->vpid_next)));
     }
   else
     {
