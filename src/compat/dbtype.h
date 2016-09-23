@@ -441,8 +441,8 @@
 
 #define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
 
-#define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size) \
-	db_set_compressed_string(value, compressed_string, compressed_size)
+#define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
+	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
 
 #define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
 
@@ -794,6 +794,7 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     bool is_max_string;
+    bool compressed_need_clear;
   } info;
   struct
   {
@@ -1163,7 +1164,8 @@ extern int db_get_enum_collation (const DB_VALUE * value);
 
 extern char *db_get_compressed_string (DB_VALUE * value);
 extern int db_get_compressed_size (DB_VALUE * value);
-extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size);
+extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
+				      int compressed_size, bool compressed_need_clear);
 
 
 #endif /* _DBTYPE_H_ */

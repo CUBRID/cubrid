@@ -2088,9 +2088,12 @@ pr_clear_value (DB_VALUE * value)
 	  data = (unsigned char *) DB_GET_COMPRESSED_STRING (value);
 	  if (data != NULL)
 	    {
-	      db_private_free_and_init (NULL, data);
+	      if (value->data.ch.info.compressed_need_clear == true)
+		{
+		  db_private_free_and_init (NULL, data);
+		}
 	    }
-	  DB_SET_COMPRESSED_STRING (value, NULL, 0);
+	  DB_SET_COMPRESSED_STRING (value, NULL, 0, false);
 	}
       break;
 
@@ -2126,7 +2129,7 @@ pr_clear_value (DB_VALUE * value)
 }
 
 /*
- * pr_free_value - free an internval value container any anything that it
+ * pr_free_value - free an interval value container any anything that it
  * references
  *    return: NO_ERROR if successful, error code otherwise
  *    value(in/out): value to clear & free
@@ -11115,6 +11118,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
 
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
+      dest->data.ch.info.compressed_need_clear = src->data.ch.info.compressed_need_clear;
     }
 
   return error;
@@ -11320,6 +11324,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
   int compressed_size = 0, decompressed_size = 0;
   char *decompressed_string = NULL, *string = NULL, *compressed_string = NULL;
   lzo_uint decompression_size = 0;
+  bool compressed_need_clear = false;
 
   if (value == NULL)
     {
@@ -11398,7 +11403,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      memcpy (compressed_string, start, compressed_size);
 	      compressed_string[compressed_size] = '\0';
 
-	      DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size);
+	      DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size, true);
 	    }
 	  else
 	    {
@@ -11408,7 +11413,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      db_make_varchar (value, precision, buf->ptr, decompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = false;
-	      DB_SET_COMPRESSED_STRING (value, NULL, DB_UNCOMPRESSABLE);
+	      DB_SET_COMPRESSED_STRING (value, NULL, DB_UNCOMPRESSABLE, false);
 	    }
 
 	  or_skip_varchar_remainder (buf, str_length, align);
@@ -11536,6 +11541,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			}
 
 		      compressed_string = new_;
+		      compressed_need_clear = true;
 
 		      new_ = decompressed_string;
 		      str_length = decompressed_size;
@@ -11552,12 +11558,14 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 				   TP_DOMAIN_COLLATION (domain));
 		  value->need_clear = (new_ != copy_buf) ? true : false;
 
+		  compressed_need_clear = true;
+
 		  if (compressed_string == NULL)
 		    {
 		      compressed_size = DB_UNCOMPRESSABLE;
 		    }
 
-		  DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size);
+		  DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size, compressed_need_clear);
 
 		  if (size == -1)
 		    {
@@ -14251,6 +14259,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
   int str_length, decompressed_size = 0, compressed_size = 0;
   char *decompressed_string = NULL;
   int rc = NO_ERROR;
+  bool compressed_need_clear = false;
 
   if (value == NULL)
     {
@@ -14339,6 +14348,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 
 	      memcpy (compressed_string, start, compressed_size);
 	      compressed_string[compressed_size] = '\0';
+	      compressed_need_clear = true;
 	    }
 	  else
 	    {
@@ -14350,7 +14360,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      compressed_size = DB_UNCOMPRESSABLE;
 	    }
 
-	  DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size);
+	  DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size, compressed_need_clear);
 
 	  or_skip_varchar_remainder (buf, str_length, align);
 	}
@@ -14479,6 +14489,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		       * and is needed now to be copied over new_. */
 
 		      compressed_string = new_;
+		      compressed_need_clear = true;
 
 		      new_ = decompressed_string;
 		      str_length = decompressed_size;
@@ -14500,7 +14511,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      compressed_size = DB_UNCOMPRESSABLE;
 		    }
 
-		  DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size);
+		  DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size, compressed_need_clear);
 
 		  if (size == -1)
 		    {
@@ -17072,13 +17083,13 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   if (compressed_size > 0)
     {
       /* Compression successful */
-      db_set_compressed_string (value, compressed_string, compressed_size);
+      db_set_compressed_string (value, compressed_string, compressed_size, true);
       return rc;
     }
   else
     {
       /* Compression failed */
-      db_set_compressed_string (value, NULL, -1);
+      db_set_compressed_string (value, NULL, -1, false);
       goto cleanup;
     }
 
