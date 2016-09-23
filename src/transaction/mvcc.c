@@ -35,19 +35,19 @@
   (mvcc_is_active_id (thread_p, (rec_header_p)->mvcc_ins_id))
 
 #define MVCC_IS_REC_DELETER_ACTIVE(thread_p, rec_header_p) \
-  (mvcc_is_active_id (thread_p, (rec_header_p)->delid_chn.mvcc_del_id))
+  (mvcc_is_active_id (thread_p, (rec_header_p)->mvcc_del_id))
 
 #define MVCC_IS_REC_INSERTER_IN_SNAPSHOT(thread_p, rec_header_p, snapshot) \
   (mvcc_is_id_in_snapshot (thread_p, (rec_header_p)->mvcc_ins_id, (snapshot)))
 
 #define MVCC_IS_REC_DELETER_IN_SNAPSHOT(thread_p, rec_header_p, snapshot) \
-  (mvcc_is_id_in_snapshot (thread_p, (rec_header_p)->delid_chn.mvcc_del_id, (snapshot)))
+  (mvcc_is_id_in_snapshot (thread_p, (rec_header_p)->mvcc_del_id, (snapshot)))
 
 #define MVCC_IS_REC_INSERTED_SINCE_MVCCID(rec_header_p, mvcc_id) \
   (!MVCC_ID_PRECEDES ((rec_header_p)->mvcc_ins_id, (mvcc_id)))
 
 #define MVCC_IS_REC_DELETED_SINCE_MVCCID(rec_header_p, mvcc_id) \
-  (!MVCC_ID_PRECEDES ((rec_header_p)->delid_chn.mvcc_del_id, (mvcc_id)))
+  (!MVCC_ID_PRECEDES ((rec_header_p)->mvcc_del_id, (mvcc_id)))
 
 
 /* Used by mvcc_chain_satisfies_vacuum to avoid handling the same OID twice */
@@ -251,7 +251,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 {
   assert (rec_header != NULL && snapshot != NULL);
 
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       /* The record is not deleted */
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
@@ -337,7 +337,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	{
 	  /* The deleter transaction has committed and the record is not visible to current transaction. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
+	  if (vacuum_is_mvccid_vacuumed (rec_header->mvcc_del_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
 				 PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST, PERF_SNAPSHOT_INVISIBLE);
@@ -366,7 +366,7 @@ mvcc_is_not_deleted_for_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec
 {
   assert (rec_header != NULL && snapshot != NULL);
 
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       /* The record is not deleted */
       return SNAPSHOT_SATISFIED;
@@ -471,7 +471,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 {
   assert (rec_header != NULL);
 
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       /* Record was not deleted */
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
@@ -545,7 +545,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	{
 	  /* Record was already deleted and the deleter has committed. Cannot be updated by current transaction. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
+	  if (vacuum_is_mvccid_vacuumed (rec_header->mvcc_del_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
 				 PERF_SNAPSHOT_INVISIBLE);
@@ -591,7 +591,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
   snapshot->lowest_active_mvccid = MVCCID_NULL;
   snapshot->highest_completed_mvccid = MVCCID_NULL;
 
-  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
       /* Record was not deleted */
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
@@ -655,7 +655,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
       else if (MVCC_IS_REC_DELETER_ACTIVE (thread_p, rec_header))
 	{
 	  /* Record was deleted by other active transaction and is still visible */
-	  snapshot->highest_completed_mvccid = rec_header->delid_chn.mvcc_del_id;
+	  snapshot->highest_completed_mvccid = rec_header->mvcc_del_id;
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
 			     PERF_SNAPSHOT_VISIBLE);
@@ -666,7 +666,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	{
 	  /* Record was already deleted and the deleter has committed. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  if (vacuum_is_mvccid_vacuumed (rec_header->delid_chn.mvcc_del_id))
+	  if (vacuum_is_mvccid_vacuumed (rec_header->mvcc_del_id))
 	    {
 	      mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED_LOST,
 				 PERF_SNAPSHOT_INVISIBLE);
@@ -680,4 +680,39 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	  return TOO_OLD_FOR_SNAPSHOT;
 	}
     }
+}
+
+/*
+* mvcc_is_mvcc_disabled_class () - MVCC is disabled for root class and
+*					db_serial, db_partition.
+*
+* return	  : True if MVCC is disabled for class.
+* thread_p (in)  : Thread entry.
+* class_oid (in) : Class OID.
+*/
+bool
+mvcc_is_mvcc_disabled_class (const OID * class_oid)
+{
+  if (OID_ISNULL (class_oid) || OID_IS_ROOTOID (class_oid))
+    {
+      /* MVCC is disabled for root class */
+      return true;
+    }
+
+  if (oid_is_serial (class_oid))
+    {
+      return true;
+    }
+
+  if (oid_check_cached_class_oid (OID_CACHE_COLLATION_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  if (oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  return false;
 }

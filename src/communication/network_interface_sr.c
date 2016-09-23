@@ -73,6 +73,7 @@
 #include "event_log.h"
 #include "tsc_timer.h"
 #include "vacuum.h"
+#include "sha1.h"
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
@@ -973,7 +974,7 @@ end:
 void
 slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int size;
+  int received_size;
   int success;
   LC_COPYAREA *copy_area = NULL;
   char *ptr;
@@ -1010,7 +1011,8 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
     {
       if (num_objs > 0)
 	{
-	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &packed_desc, &size);
+	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &packed_desc, &received_size);
+	  assert (packed_desc_size == received_size);
 	}
 
       if (csserror)
@@ -1028,11 +1030,11 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
 	  if (content_size > 0)
 	    {
-	      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &new_content_ptr, &size);
+	      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &new_content_ptr, &received_size);
 
 	      if (new_content_ptr != NULL)
 		{
-		  memcpy (content_ptr, new_content_ptr, size);
+		  memcpy (content_ptr, new_content_ptr, received_size);
 		  free_and_init (new_content_ptr);
 		}
 
@@ -1052,7 +1054,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	   * Don't need to send the content since it is not updated.
 	   */
 
-	  locator_pack_copy_area_descriptor (num_objs, copy_area, packed_desc);
+	  locator_pack_copy_area_descriptor (num_objs, copy_area, packed_desc, packed_desc_size);
 	  ptr = or_pack_int (reply, success);
 	  ptr = or_pack_int (ptr, packed_desc_size);
 	  ptr = or_pack_int (ptr, 0);
@@ -5105,7 +5107,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   XASL_NODE_HEADER xasl_header;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
-  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false };
+  COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false, false, SHA1_HASH_INITIALIZER };
   XASL_STREAM stream = { NULL, NULL, NULL, 0 };
   bool was_recompile_xasl = false;
   bool force_recompile = false;
@@ -5264,6 +5266,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   CACHE_TIME srv_cache_time;
   int query_timeout;
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
+  char data_buf[EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE + MAX_ALIGNMENT], *aligned_data_buf = NULL;
 
   int response_time = 0;
 
@@ -5301,7 +5304,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* unpack XASL file id (XASL_ID), number of parameter values, size of the reecieved data, and query execution mode
+  /* unpack XASL file id (XASL_ID), number of parameter values, size of the recieved data, and query execution mode
    * flag from the request data */
   ptr = request;
   OR_UNPACK_XASL_ID (ptr, &xasl_id);
@@ -5310,9 +5313,14 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
-
-  /* if the request contains parameter values for the query, allocate space for them */
-  if (0 < dbval_cnt)
+  if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
+    {
+      assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
+      aligned_data_buf = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+      data = aligned_data_buf;
+      memcpy (data, ptr, data_size);
+    }
+  else if (0 < dbval_cnt)
     {
       /* receive parameter values (DB_VALUE) from the client */
       csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &data_size);
@@ -5335,7 +5343,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time, &srv_cache_time,
 			 query_timeout, &xasl_cache_entry_p);
 
-  if (data)
+  if (data && data != aligned_data_buf)
     {
       free_and_init (data);
     }

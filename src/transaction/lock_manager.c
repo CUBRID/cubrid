@@ -1225,7 +1225,7 @@ lock_remove_resource (LK_RES * res_ptr)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_RES);
   int success = 0, rc;
 
-  rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, &success);
+  rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, res_ptr, &success);
   if (!success)
     {
       /* this should not happen, as the hash entry is mutex protected and no clear operations are performed on the hash 
@@ -1236,6 +1236,7 @@ lock_remove_resource (LK_RES * res_ptr)
     }
   else
     {
+      assert (rc == NO_ERROR);
       return rc;
     }
 }
@@ -5653,7 +5654,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 
 	      recdes.data = NULL;
 
-	      if (heap_get (thread_p, &res_ptr->key.oid, &recdes, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
+	      if (heap_get_visible_version (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache,
+					    PEEK, NULL_CHN) == S_SUCCESS)
 		{
 		  MVCC_REC_HEADER mvcc_rec_header;
 		  if (or_mvcc_get_header (&recdes, &mvcc_rec_header) == NO_ERROR)
@@ -5667,7 +5669,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			{
 			  strcpy (str_insid, "missing");
 			}
-		      if (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID))
+		      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_rec_header))
 			{
 			  sprintf (str_delid, "%llu", (unsigned long long int) MVCC_GET_DELID (&mvcc_rec_header));
 			}
@@ -7168,7 +7170,7 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 	      /* Don't release locks on classes. READ COMMITTED isolation is only applied on instances, classes must
 	       * have at least REPEATABLE READ isolation. */
 	    }
-	  else if (heap_is_mvcc_disabled_for_class (class_oid))
+	  else if (mvcc_is_mvcc_disabled_class (class_oid))
 	    {
 	      /* Release S_LOCK after reading object. */
 	      lock_unlock_shared_inst_lock (thread_p, tran_index, oid);

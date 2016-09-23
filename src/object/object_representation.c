@@ -89,10 +89,10 @@ static char or_mvcc_get_flag (RECDES * record);
 static void or_mvcc_set_flag (RECDES * record, char flags);
 static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE union DELID_CHN or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
-  __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-  __attribute__ ((ALWAYS_INLINE));
+static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_get_chn (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
   __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
@@ -470,67 +470,13 @@ or_replace_rep_id (RECDES * record, int repid)
 int
 or_chn (RECDES * record)
 {
-  int mvcc_flag = 0;
-
-  if (record->length < OR_HEADER_SIZE (record->data))
+  if (record->length < OR_CHN_OFFSET + OR_CHN_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
       return NULL_CHN;
     }
 
-  mvcc_flag = OR_GET_MVCC_FLAG (record->data);
-  if (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
-    {
-      return NULL_CHN;
-    }
-  else
-    {
-      if (mvcc_flag & OR_MVCC_FLAG_VALID_INSID)
-	{
-	  /* CHN is positioned after representation id and insert MVCC id */
-	  return OR_GET_INT (record->data + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE);
-	}
-      else
-	{
-	  /* CHN is positioned after representation id */
-	  return OR_GET_INT (record->data + OR_MVCC_REP_SIZE);
-	}
-    }
-
-  return OR_GET_NON_MVCC_CHN (record->data);
-}
-
-/*
- * or_mvcc_chn - extracts cache coherency number from the disk representation
- *		in MVCC
- * object
- *    return: cache coherency number (chn), or -1 for error
- *    buf(in/out): or buffer
- *    mvcc_falgs(in): MVCC flags
- *    error(out): NO_ERROR or error code
- */
-int
-or_mvcc_chn (OR_BUF * buf, int mvcc_flags, int *error)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-    {
-      return NULL_CHN;
-    }
-  else if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return NULL_CHN;
-    }
-  else
-    {
-      int chn = -1;
-      chn = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-      *error = NO_ERROR;
-      return chn;
-    }
+  return OR_GET_MVCC_CHN (record->data);
 }
 
 /*
@@ -549,38 +495,14 @@ or_replace_chn (RECDES * record, int chn)
   OR_BUF orep, *buf;
   int offset;
   int error;
-  char mvcc_flag;
 
   OR_BUF_INIT (orep, record->data, record->area_size);
   buf = &orep;
 
-  mvcc_flag = or_mvcc_get_flag (record);
-  if (mvcc_flag == 0)
-    {
-      /* non-MVCC record */
-      offset = OR_NON_MVCC_CHN_OFFSET;
-    }
-  else
-    {
-      /* MVCC record */
-      if (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
-	{
-	  /* delid is active, cannot replace chn */
-	  return ER_FAILED;
-	}
-
-      offset = OR_GET_MVCC_CHN_OFFSET (mvcc_flag);
-      assert (offset > 0);
-    }
-
+  offset = OR_CHN_OFFSET;
   buf->ptr = buf->buffer + offset;
 
   error = or_put_int (buf, chn);
-
-  if (error == NO_ERROR && (mvcc_flag & OR_MVCC_FLAG_VALID_LONG_CHN))
-    {
-      error = or_put_int (buf, 0);
-    }
 
   return error;
 }
@@ -736,17 +658,17 @@ or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 }
 
 /*
- * or_mvcc_get_delid_chn () - Get MVCC delete id or chn
+ * or_mvcc_get_delid () - Get MVCC delid
  *
- * return	   : MVCC delete id or chn
+ * return	   : MVCC delid
  * buf (in/out)	   : or buffer
  * mvcc_falgs(in)  : MVCC flags
  * error(out): NO_ERROR or error code
  */
-STATIC_INLINE union DELID_CHN
-or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
+STATIC_INLINE MVCCID
+or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
 {
-  union DELID_CHN delid_or_chn;
+  MVCCID delid = MVCCID_NULL;
 
   assert (buf != NULL && error != NULL);
 
@@ -759,66 +681,84 @@ or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flags, int *error)
       if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
 	{
 	  *error = or_underflow (buf);
-	  delid_or_chn.mvcc_del_id = MVCCID_NULL;
+	  delid = MVCCID_NULL;
 	}
       else
 	{
-	  OR_GET_BIGINT (buf->ptr, &(delid_or_chn.mvcc_del_id));
+	  OR_GET_BIGINT (buf->ptr, &(delid));
 	  buf->ptr += OR_MVCCID_SIZE;
 	}
     }
-  else if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+  return delid;
+}
+
+/*
+ * or_mvcc_get_chn () - Get MVCC chn
+ *
+ * return	   : MVCC chn
+ * buf (in/out)	   : or buffer
+ * mvcc_falgs(in)  : MVCC flags
+ * error(out): NO_ERROR or error code
+ */
+STATIC_INLINE int
+or_mvcc_get_chn (OR_BUF * buf, int *error)
+{
+  int chn = NULL_CHN;
+
+  assert (buf != NULL && error != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  *error = NO_ERROR;
+
+  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
     {
       *error = or_underflow (buf);
     }
   else
     {
-      delid_or_chn.chn = OR_GET_INT (buf->ptr);
+      chn = OR_GET_INT (buf->ptr);
       buf->ptr += OR_INT_SIZE;
-
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
-	{
-	  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-	    {
-	      *error = or_underflow (buf);
-	    }
-	  else
-	    {
-	      *error = or_advance (buf, OR_INT_SIZE);
-	    }
-	}
     }
 
-  return delid_or_chn;
+  return chn;
 }
 
 /*
- * or_mvcc_set_delid_chn () - Set MVCC delete id or chn
+ * or_mvcc_set_delid () - Set MVCC delete id
  *
  * return	      : error code 
  * buf (in/out)	      : or buffer 
  * mvcc_rec_header(in): MVCC record header
  */
 STATIC_INLINE int
-or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
-  int error_code = NO_ERROR;
   assert (buf != NULL);
-
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+
+  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID))
     {
-      /* MVCC DELID is active */
-      return or_put_bigint (buf, mvcc_rec_header->delid_chn.mvcc_del_id);
+      return NO_ERROR;
     }
 
-  /* CHN is active */
-  error_code = or_put_int (buf, mvcc_rec_header->delid_chn.chn);
-  if ((error_code == NO_ERROR) && (mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_LONG_CHN))
-    {
-      error_code = or_put_int (buf, 0);
-    }
-  return error_code;
+  return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
+}
+
+/*
+ * or_mvcc_set_chn () - Set MVCC chn
+ *
+ * return	      : error code 
+ * buf (in/out)	      : or buffer 
+ * mvcc_rec_header(in): MVCC record header
+ */
+STATIC_INLINE int
+or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+{
+  assert (buf != NULL);
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  return or_put_int (buf, mvcc_rec_header->chn);
 }
 
 /*
@@ -847,13 +787,19 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
   mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
   mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
+  mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   mvcc_header->mvcc_ins_id = or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  mvcc_header->delid_chn = or_mvcc_get_delid_chn (&buf, mvcc_header->mvcc_flag, &rc);
+  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -923,13 +869,19 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
       goto exit_on_error;
     }
 
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   error = or_mvcc_set_insid (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_delid_chn (buf, mvcc_rec_header);
+  error = or_mvcc_set_delid (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -984,13 +936,19 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
       goto exit_on_error;
     }
 
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   error = or_mvcc_set_insid (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_delid_chn (buf, mvcc_rec_header);
+  error = or_mvcc_set_delid (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -1290,19 +1248,27 @@ or_varchar_length_internal (int charlen, int align)
 {
   int len;
 
-  if (charlen < 0xFF)
+  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
-      len = 1 + charlen;
+      len = OR_BYTE_SIZE + charlen;
     }
   else
     {
-      len = 1 + OR_INT_SIZE + charlen;
+      /* 
+       * Regarding the new encoding for VARCHAR and VARNCHAR, the strings stored in buffers have this representation:
+       * OR_BYTE_SIZE    : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
+       *                 : Otherwise, the first byte states the length of the string.
+       * 1st OR_INT_SIZE : string's compressed length
+       * 2nd OR_INT_SIZE : string's decompressed length
+       * charlen         : string's disk length
+       */
+      len = OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + charlen;
     }
 
   if (align == INT_ALIGNMENT)
     {
       /* size of NULL terminator */
-      len += 1;
+      len += OR_BYTE_SIZE;
 
       len = DB_ALIGN (len, INT_ALIGNMENT);
     }
@@ -1339,36 +1305,123 @@ or_packed_put_varchar (OR_BUF * buf, char *string, int charlen)
 static int
 or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 {
-  int net_charlen;
-  char *start;
+  int net_charlen = 0;
+  char *compressed_string = NULL;
   int rc = NO_ERROR;
+  bool compressable = false;
+  lzo_uint compressed_length = 0;
+  lzo_voidp wrkmem = NULL;
+  int error_abort = 0;
 
-  start = buf->ptr;
+  error_abort = buf->error_abort;
+
+  buf->error_abort = 0;
+
   /* store the size prefix */
-  if (charlen < 0xFF)
+  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_put_byte (buf, charlen);
     }
   else
     {
       rc = or_put_byte (buf, 0xFF);
+      compressable = true;
+    }
 
-      if (rc == NO_ERROR)
+  if (rc != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  if (compressable == true)
+    {
+      /* Future optimization : use a preallocated object for wrkmem in thread_entry. */
+      /* Alloc memory */
+      wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
+      if (wrkmem == NULL)
 	{
-	  OR_PUT_INT (&net_charlen, charlen);
-	  rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
+	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
+	}
+      memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
+
+      /* Alloc memory for the compressed string */
+      /* Worst case LZO compression size from their FAQ */
+      compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
+      if (compressed_string == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (size_t) (LZO_COMPRESSED_STRING_SIZE (charlen)));
+	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
+	}
+
+      /* Compress the string */
+      rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) charlen, (lzo_bytep) compressed_string,
+			     &compressed_length, wrkmem);
+      if (rc != LZO_E_OK)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
+		  fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
+		  fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
+	  rc = ER_IO_LZO_COMPRESS_FAIL;
+	  goto cleanup;
+	}
+
+      if (compressed_length >= (lzo_uint) (charlen - 8))
+	{
+	  /* Compression successful but its length exceeds the original length of the string. */
+	  compressed_length = 0;
+	}
+
+      /* Store the compression size */
+      assert (compressed_length < (lzo_uint) (charlen - 8));
+      OR_PUT_INT (&net_charlen, compressed_length);
+      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      net_charlen = 0;
+      /* Store the uncompressed data size */
+      OR_PUT_INT (&net_charlen, charlen);
+      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      if (compressed_length == 0)
+	{
+	  /* Compression failed. */
+	  /* Store the original string bytes */
+	  rc = or_put_data (buf, string, charlen);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+      else
+	{
+	  /* Store the compressed string bytes */
+	  rc = or_put_data (buf, compressed_string, compressed_length);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
 	}
     }
-  if (rc != NO_ERROR)
+  else
     {
-      return rc;
-    }
-
-  /* store the string bytes */
-  rc = or_put_data (buf, string, charlen);
-  if (rc != NO_ERROR)
-    {
-      return rc;
+      /* No compression needed */
+      /* Store the string in its raw form */
+      rc = or_put_data (buf, string, charlen);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
     }
 
   if (align == INT_ALIGNMENT)
@@ -1377,11 +1430,30 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       rc = or_put_byte (buf, 0);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  goto cleanup;
 	}
 
       /* round up to a word boundary */
       rc = or_put_align32 (buf);
+    }
+
+cleanup:
+
+  if (compressed_string != NULL)
+    {
+      free_and_init (compressed_string);
+    }
+
+  if (wrkmem != NULL)
+    {
+      free_and_init (wrkmem);
+    }
+
+  buf->error_abort = error_abort;
+
+  if (rc == ER_TF_BUFFER_OVERFLOW)
+    {
+      return or_overflow (buf);
     }
 
   return rc;
@@ -1451,21 +1523,17 @@ or_get_varchar (OR_BUF * buf, int *length_ptr)
 int
 or_get_varchar_length (OR_BUF * buf, int *rc)
 {
-  int net_charlen, charlen;
+  int net_charlen, charlen, compressed_length = 0, decompressed_length = 0;
 
-  /* unpack the size prefix */
-  charlen = or_get_byte (buf, rc);
+  *rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
 
-  if (*rc != NO_ERROR)
+  if (compressed_length > 0)
     {
-      assert (charlen == 0);
-      return charlen;
+      charlen = compressed_length;
     }
-
-  if (charlen == 0xFF)
+  else
     {
-      *rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      charlen = OR_GET_INT (&net_charlen);
+      charlen = decompressed_length;
     }
 
   return charlen;
@@ -7722,18 +7790,17 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
 
   /* skip MVCC fields */
   mvcc_header_size = OR_MVCC_REP_SIZE;
+
+  mvcc_header_size += OR_INT_SIZE;	/* chn */
+
   if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
     {
       mvcc_header_size += OR_MVCCID_SIZE;
     }
 
-  if ((mvcc_flags & OR_MVCC_FLAG_VALID_DELID) || (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN))
+  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
     {
       mvcc_header_size += OR_MVCCID_SIZE;
-    }
-  else
-    {
-      mvcc_header_size += OR_INT_SIZE;
     }
 
   if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
@@ -8221,10 +8288,9 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
       return ER_FAILED;
     }
 
-  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE
+  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE
 		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
-		+ (((mvcc_flags) & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN)) ? OR_MVCCID_SIZE :
-		   OR_INT_SIZE));
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
 
   memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
 
@@ -8402,3 +8468,59 @@ htond (double from)
 #endif /* ! OR_HAVE_HTOND */
 
 #endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
+
+/* or_get_varchar_comp_lengths()  :   Function to get the compressed length
+ *				      and the uncompressed length of a compressed string.
+ *
+ * return			  :   NO_ERROR or error_code.
+ * buf(in)			  :   The buffer where the string is stored.
+ * compressed_size(out)		  :   The compressed size of the string. Set to 0 if the string was not compressed.
+ * decompressed_size(out)	  :   The uncompressed size of the string.
+ */
+
+int
+or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
+{
+  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR, net_charlen = 0;
+  int size_prefix = 0;
+
+  /* Check if the string is compressed */
+  size_prefix = or_get_byte (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      assert (size_prefix == 0);
+      return rc;
+    }
+
+  if (size_prefix == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      /* String was compressed */
+      /* Get the compressed size */
+      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      compressed_length = OR_GET_INT ((char *) &net_charlen);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      *compressed_size = compressed_length;
+
+      net_charlen = 0;
+
+      /* Get the decompressed size */
+      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      decompressed_length = OR_GET_INT ((char *) &net_charlen);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      *decompressed_size = decompressed_length;
+    }
+  else
+    {
+      /* String was not compressed so we set compressed_size to 0 to know that no compression happened. */
+      *compressed_size = 0;
+      *decompressed_size = size_prefix;
+    }
+
+  return rc;
+}

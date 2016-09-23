@@ -83,6 +83,8 @@
 #include "transaction_cl.h"
 #endif
 
+#define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
+
 #define MVCC_OLDEST_ACTIVE_BUFFER_LENGTH 300
 
 /* bit area sizes expressed in bits */
@@ -669,9 +671,6 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	    {
 #if defined(SERVER_MODE)
 	      assert (tdes->tran_index == i);
-	      assert (tdes->cs_topop.cs_index ==
-		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
 #endif
 
 	      logtb_finalize_tdes (thread_p, tdes);
@@ -1971,7 +1970,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 {
-  int i;
+  int i, r;
 
   tdes->tran_index = tran_index;
   tdes->trid = NULL_TRANID;
@@ -1993,13 +1992,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
 
-  csect_initialize_critical_section (&tdes->cs_topop, csect_Name_tdes);
-
-#if defined(SERVER_MODE)
-  assert (tdes->cs_topop.cs_index == -1);
-
-  tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
-#endif
+  r = rmutex_initialize (&tdes->rmutex_topop, RMUTEX_NAME_TDES_TOPOP);
+  assert (r == NO_ERROR);
 
   tdes->topops.stack = NULL;
   tdes->topops.last = -1;
@@ -2073,10 +2067,15 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 void
 logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  int r;
+
   logtb_clear_tdes (thread_p, tdes);
   logtb_free_tran_mvcc_info (tdes);
   logtb_tran_free_update_stats (&tdes->log_upd_stats);
-  csect_finalize_critical_section (&tdes->cs_topop);
+
+  r = rmutex_finalize (&tdes->rmutex_topop);
+  assert (r == NO_ERROR);
+
   if (tdes->topops.max != 0)
     {
       free_and_init (tdes->topops.stack);
@@ -4589,7 +4588,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 #if !defined (NDEBUG)
   {
     /* Safe guard: vacuum_Global_oldest_active_mvccid can never become smaller. */
-    VACUUM_LOG_BLOCKID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
+    MVCCID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
     assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
   }
 #endif /* !NDEBUG */
@@ -7385,4 +7384,37 @@ tran_abort_reason_to_string (TRAN_ABORT_REASON val)
       return "ABORT_DUE_ROLLBACK_ON_ESCALATION";
     }
   return "UNKNOWN";
+}
+
+/*
+ * logtb_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
+ *
+ * return		   : true if the class is not root/trigger/user class, otherwise false
+ * class_oid (in)	   : Class object identifier.
+ *
+ * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency
+ *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
+ *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
+ *	 are accessed when triggers are modified.
+ *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction.
+ *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last
+ *	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
+ *	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot.
+ *	 Since instances from these classes are accessed before locking tables, the snapshot is generated before
+ *	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
+ *	 locks are acquired before snapshot.
+ */
+bool
+logtb_check_class_for_rr_isolation_err (const OID * class_oid)
+{
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  if (!oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  return false;
 }

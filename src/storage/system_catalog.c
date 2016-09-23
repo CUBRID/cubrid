@@ -342,7 +342,7 @@ static int catalog_fixup_missing_class_info (THREAD_ENTRY * thread_p, OID * clas
 static DISK_ISVALID catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid);
 static void catalog_dump_disk_attribute (DISK_ATTR * atr);
 static void catalog_dump_representation (DISK_REPR * dr);
-static void catalog_clear_hash_table ();
+static void catalog_clear_hash_table (void);
 
 static void catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p);
 static void catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p);
@@ -1807,7 +1807,7 @@ catalog_get_rep_dir (THREAD_ENTRY * thread_p, OID * class_oid_p, OID * rep_dir_p
 
       heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
-      if (heap_get (thread_p, class_oid_p, &record, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
+      if (heap_get_class_record (thread_p, class_oid_p, &record, &scan_cache, PEEK) == S_SUCCESS)
 	{
 	  or_class_rep_dir (&record, rep_dir_p);
 	}
@@ -5044,7 +5044,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 }
 
 static void
-catalog_clear_hash_table ()
+catalog_clear_hash_table (void)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
 
@@ -5672,7 +5672,7 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
   /* not found in cache, get it from class record */
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
-  if (heap_get (thread_p, class_id_p, &record, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_id_p, &record, &scan_cache, PEEK) == S_SUCCESS)
     {
       or_class_rep_dir (&record, dir_oid_p);
     }
@@ -5683,6 +5683,9 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
 	{
 	  error = ER_FAILED;
 	}
+
+      heap_scancache_end (thread_p, &scan_cache);
+
       return error;
     }
 

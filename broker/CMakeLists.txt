@@ -47,6 +47,9 @@ if(WIN32)
   target_link_libraries(cub_broker LINK_PRIVATE ws2_32)
 endif(WIN32)
 target_link_libraries(cub_broker LINK_PRIVATE cubridcs)
+if(UNIX)
+  target_link_libraries(cub_broker LINK_PRIVATE m)
+endif(UNIX)
 
 
 set(BROKER_MONITOR_SOURCES
@@ -106,8 +109,15 @@ target_compile_definitions(broker_changer PRIVATE ${BROKER_DEFS})
 target_link_libraries(broker_changer LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(broker_changer LINK_PRIVATE rt)
+  target_link_libraries(broker_changer LINK_PRIVATE m)
 else(UNIX)
   target_link_libraries(broker_changer LINK_PRIVATE ws2_32)
+  if(MSVC_VERSION LESS 1600)
+    # for VS 2008 (9.0) or less version
+    set_target_properties(broker_changer PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
+  else(MSVC_VERSION LESS 1600)
+    set_target_properties(broker_changer PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
+  endif(MSVC_VERSION LESS 1600)
 endif(UNIX)
 
 
@@ -137,8 +147,17 @@ endif(WIN32)
 add_executable(cubrid_broker ${CUBRID_BROKER_SOURCES})
 target_compile_definitions(cubrid_broker PRIVATE ${BROKER_DEFS})
 target_link_libraries(cubrid_broker LINK_PRIVATE cubridcs)
+if(UNIX)
+  target_link_libraries(cubrid_broker LINK_PRIVATE m)
+endif(UNIX)
 if(WIN32)
   target_link_libraries(cubrid_broker LINK_PRIVATE ws2_32)
+  if(MSVC_VERSION LESS 1600)
+    # for VS 2008 (9.0) or less version
+    set_target_properties(cubrid_broker PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
+  else(MSVC_VERSION LESS 1600)
+    set_target_properties(cubrid_broker PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
+  endif(MSVC_VERSION LESS 1600)
 endif(WIN32)
 
 
@@ -223,6 +242,9 @@ target_link_libraries(cub_proxy LINK_PRIVATE cubridcs)
 if(WIN32)
   target_link_libraries(cub_proxy LINK_PRIVATE ws2_32)
 endif(WIN32)
+if(UNIX)
+  target_link_libraries(cub_proxy LINK_PRIVATE m)
+endif(UNIX)
 
 
 set(BROKER_LOG_CONVERTER_SOURCES
@@ -258,6 +280,9 @@ target_link_libraries(broker_log_runner LINK_PRIVATE cubridcs cascci)
 if(WIN32)
   target_link_libraries(broker_log_runner LINK_PRIVATE ws2_32)
 endif(WIN32)
+if(UNIX)
+  target_link_libraries(broker_log_runner LINK_PRIVATE m)
+endif(UNIX)
 
 
 set(BROKER_TESTER_SOURCES

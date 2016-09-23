@@ -88,17 +88,12 @@ static const char *csect_Names[] = {
   "ACL",
   "PARTITION_CACHE",
   "EVENT_LOG_FILE",
-  "CONN_ACTIVE",
-  "CONN_FREE",
   "TEMPFILE_CACHE",
   "LOG_ARCHIVE",
   "ACCESS_STATUS"
 };
 
-const char *csect_Name_conn = "CONN_ENTRY";
-const char *csect_Name_tdes = "TDES";
-
-#define CSECT_NAME(c) ((c)->name ? (c)->name : "TEMP CONN_ENTRY")
+#define CSECT_NAME(c) ((c)->name ? (c)->name : "UNKNOWN")
 
 /* 
  * Synchronization Primitives Statistics Monitor
@@ -2066,7 +2061,7 @@ rwlock_dump_statistics (FILE * fp)
   SYNC_STATS *stats;
   int i, cnt;
 
-  fprintf (fp, "\n         RWlock Name         |Total Enter|  Max elapsed  |  Total elapsed\n");
+  fprintf (fp, "\n         RWlock Name          |Total Enter|  Max elapsed  |  Total elapsed\n");
 
   pthread_mutex_lock (&sync_Stats_lock);
 
@@ -2080,7 +2075,7 @@ rwlock_dump_statistics (FILE * fp)
 	    {
 	      cnt++;
 
-	      fprintf (fp, "%-28s |%10d | %6ld.%06ld | %6ld.%06ld\n", stats->name, stats->nenter,
+	      fprintf (fp, "%-29s |%10d | %6ld.%06ld | %6ld.%06ld\n", stats->name, stats->nenter,
 		       stats->max_elapsed.tv_sec, stats->max_elapsed.tv_usec,
 		       stats->total_elapsed.tv_sec, stats->total_elapsed.tv_usec);
 

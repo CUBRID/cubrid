@@ -742,7 +742,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
-  if (logpb_fetch_start_append_page (thread_p) == NULL)
+  if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:logpb_fetch_start_append_page");
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
@@ -2189,7 +2189,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
     {
       /* Fetch the page where the LSA record to undo is located */
       LSA_COPY (&log_lsa, &lsa);
-      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) == NULL)
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
 	{
 	  if (is_media_crash == true)
 	    {
@@ -2395,7 +2395,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
       log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
-      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) == NULL)
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
 	{
 	  /* 
 	   * There is a problem. We have just read this page a little while ago
@@ -2574,7 +2574,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
     {
       /* Fetch the page where the LSA record to undo is located */
       LSA_COPY (&log_lsa, &lsa);
-      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	{
 	  if (end_redo_lsa != NULL && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
 	    {
@@ -2591,6 +2591,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       /* Check all log records in this phase */
       while (lsa.pageid == log_lsa.pageid)
 	{
+	  tdes = NULL;
 	  /* 
 	   * Do we want to stop the recovery redo process at this time ?
 	   */
@@ -2815,7 +2816,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			      fetch_lsa.pageid = ++log_lsa.pageid;
 			      fetch_lsa.offset = LOG_PAGESIZE;
 
-			      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
+			      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) != NO_ERROR)
 				{
 				  LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 				  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
@@ -2918,10 +2919,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      if (redo->data.rcvindex == RVVAC_COMPLETE)
 		{
+		  LOG_LSA null_lsa = LSA_INITIALIZER;
+
 		  /* Reset log header MVCC info */
 		  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
 		  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
 		  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+
+		  /* Reset vacuum recover LSA */
+		  vacuum_notify_server_crashed (&null_lsa);
 		}
 
 	      /* 
@@ -3372,35 +3378,51 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
-	      tran_index = logtb_find_tran_index (thread_p, tran_id);
-	      if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-		{
-#if !defined (NDEBUG)
-		  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+	      {
+		bool free_tran = false;
 
-		  assert (tdes && tdes->state != TRAN_ACTIVE);
-#endif
-		  logtb_free_tran_index (thread_p, tran_index);
-		}
+		tran_index = logtb_find_tran_index (thread_p, tran_id);
+		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
+		  {
+		    tdes = LOG_FIND_TDES (tran_index);
+		    assert (tdes && tdes->state != TRAN_ACTIVE);
+		    free_tran = true;
+		  }
 
-	      if (stopat != NULL && *stopat != -1)
-		{
+		if (stopat != NULL && *stopat != -1)
+		  {
+		    /* 
+		     * Need to read the donetime record to find out if we need to stop
+		     * the recovery at this point.
+		     */
+		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
+		    donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
 
-		  /* 
-		   * Need to read the donetime record to find out if we need to stop
-		   * the recovery at this point.
-		   */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
-		  donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
-		  if (difftime (*stopat, (time_t) donetime->at_time) < 0)
-		    {
-		      /* 
-		       * Stop the recovery process at this point
-		       */
-		      LSA_SET_NULL (&lsa);
-		    }
-		}
+		    if (difftime (*stopat, (time_t) donetime->at_time) < 0)
+		      {
+			/* 
+			 * Stop the recovery process at this point
+			 */
+			LSA_SET_NULL (&lsa);
+
+			/* Commit/abort record was recorded after the stopat recovery time. The transaction needs to
+			 * undo all its changes (log_recovery_undo), so transaction descriptor needs to be kept,
+			 * and transaction state should be changed to aborted. The undo process starts from this
+			 * record's LSA and undoes all previous changes of the transaction
+			 * (See log_find_unilaterally_largest_undo_lsa usage from log_recovery_undo) */
+			if (tdes != NULL)
+			  {
+			    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+			  }
+			free_tran = false;
+		      }
+		  }
+		if (free_tran == true)
+		  {
+		    logtb_free_tran_index (thread_p, tran_index);
+		  }
+	      }
 
 	      break;
 
@@ -3717,7 +3739,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
 
-
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /* 
@@ -3769,7 +3790,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
     {
       /* Fetch the page where the LSA record to undo is located */
       LSA_COPY (&log_lsa, lsa_ptr);
-      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	{
 	  log_zip_free (undo_unzip_ptr);
 
@@ -4413,7 +4434,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 
 	  newappend_pgptr = (LOG_PAGE *) aligned_newappend_pgbuf;
 
-	  if ((logpb_fetch_page (thread_p, new_append_lsa, LOG_CS_FORCE_USE, newappend_pgptr)) == NULL)
+	  if ((logpb_fetch_page (thread_p, new_append_lsa, LOG_CS_FORCE_USE, newappend_pgptr)) != NO_ERROR)
 	    {
 	      newappend_pgptr = NULL;
 	    }
@@ -4483,10 +4504,6 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 
 	  if (log_Gl.append.vdes == NULL_VOLDES || loghdr_pgptr == NULL)
 	    {
-	      if (loghdr_pgptr != NULL)
-		{
-		  logpb_free_page (thread_p, loghdr_pgptr);
-		}
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
 	      return;
 	    }
@@ -4495,19 +4512,19 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	   * Flush the header page and first append page so that we can record
 	   * the header page on it
 	   */
-	  if (logpb_flush_page (thread_p, loghdr_pgptr, FREE) != NO_ERROR)
+	  if (logpb_flush_page (thread_p, loghdr_pgptr) != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_recovery_resetlog");
 	    }
 	}
 
-      append_pgptr = logpb_create (thread_p, log_Gl.hdr.fpageid);
+      append_pgptr = logpb_create_page (thread_p, log_Gl.hdr.fpageid);
       if (append_pgptr == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
 	  return;
 	}
-      if (logpb_flush_page (thread_p, append_pgptr, FREE) != NO_ERROR)
+      if (logpb_flush_page (thread_p, append_pgptr) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_recovery_resetlog");
 	  return;
@@ -4541,12 +4558,12 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
     }
   else
     {
-      if (logpb_fetch_start_append_page (thread_p) != NULL)
+      if (logpb_fetch_start_append_page (thread_p) == NO_ERROR)
 	{
 	  if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
 	    {
 	      memcpy ((char *) log_Gl.append.log_pgptr, (char *) newappend_pgptr, LOG_PAGESIZE);
-	      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
+	      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 	    }
 	  logpb_flush_pages_direct (thread_p);
 	}
@@ -4609,7 +4626,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-  if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+  if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
     {
       fprintf (stdout, " Error reading page %lld... Quit\n", (long long int) lsa->pageid);
       goto error;
@@ -5013,7 +5030,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 	{
 	  /* Fetch the page where the postpone LSA record is located */
 	  LSA_COPY (&log_lsa, &forward_lsa);
-	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_find_first_postpone");
 	      goto end;
@@ -5226,7 +5243,7 @@ log_recovery_complete_partial_page_deallocation (THREAD_ENTRY * thread_p, LOG_LS
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   LSA_COPY (&log_lsa, partial_dealloc_lsa);
-  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_complete_partial_page_deallocation");
       goto end;

@@ -127,7 +127,6 @@ struct db_object
   /* Careful whenever looping through objects using hash_link to save it and advance using this saved hash link if the
    * current mop can be removed or relocated in hash table. */
   struct db_object *commit_link;	/* link for obj to be reset at commit/abort */
-  struct db_object *mvcc_link;	/* Used by MVCC to link mops for different object versions. */
   WS_VALUE_LIST *label_value_list;	/* label value list */
   LOCK lock;			/* object lock */
   int mvcc_snapshot_version;	/* The snapshot version at the time mop object is fetched and cached. Used only when
@@ -148,9 +147,6 @@ struct db_object
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the
 				 * loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
-  unsigned permanent_mvcc_link:1;	/* is set to true when new MVCC version is committed. Updates done by current
-					 * transaction may be reverted, therefore the mvcc link is not permanent. On
-					 * rollback, mvcc link is removed. On commit mvcc link is made permanent. */
 };
 
 
@@ -666,7 +662,6 @@ extern int ws_get_mvcc_snapshot_version (void);
 extern void ws_increment_mvcc_snapshot_version (void);
 extern bool ws_is_mop_fetched_with_current_snapshot (MOP mop);
 extern void ws_set_mop_fetched_with_current_snapshot (MOP mop);
-extern MOP ws_mvcc_latest_version (MOP mop);
 
 extern bool ws_is_same_object (MOP mop1, MOP mop2);
 extern void ws_move_label_value_list (MOP dest_mop, MOP src_mop);

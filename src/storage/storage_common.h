@@ -179,7 +179,6 @@ typedef enum
   PAGE_HEAP,			/* heap page */
   PAGE_VOLHEADER,		/* volume header page */
   PAGE_VOLBITMAP,		/* volume bitmap page */
-  PAGE_XASL,                    /* Obsolete; it was used to store XASL's on disk */
   PAGE_QRESULT,			/* query result page */
   PAGE_EHASH,			/* ehash bucket/dir page */
   PAGE_LARGEOBJ,		/* large object/dir page */
@@ -369,16 +368,13 @@ struct mvcc_rec_header
 {
   INT32 mvcc_flag:8;		/* MVCC flags */
   INT32 repid:24;		/* representation id */
+  int chn;			/* cache coherency number */
   MVCCID mvcc_ins_id;		/* MVCC insert id */
-  union DELID_CHN
-  {
-    MVCCID mvcc_del_id;		/* MVCC delete id */
-    int chn;			/* cache coherency number */
-  } delid_chn;
+  MVCCID mvcc_del_id;		/* MVCC delete id */
   LOG_LSA prev_version_lsa;	/* log address of previous version */
 };
 #define MVCC_REC_HEADER_INITIALIZER \
-  { 0, 0, MVCCID_NULL, { MVCCID_NULL }, LSA_INITIALIZER }
+{ 0, 0, NULL_CHN, MVCCID_NULL, MVCCID_NULL, LSA_INITIALIZER }
 
 typedef struct lorecdes LORECDES;	/* Work area descriptor */
 struct lorecdes

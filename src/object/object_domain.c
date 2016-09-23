@@ -600,8 +600,8 @@ static int tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * d
 #if defined(CUBRID_DEBUG)
 static void fprint_domain (FILE * fp, TP_DOMAIN * domain);
 #endif
-static TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain);
-static TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain);
+static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
+static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
 
 static int tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2);
 static int tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is_negative,
@@ -1854,7 +1854,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
  *    type(in): type of value
  *    setdomain(in): used to find appropriate list of MIDXKEY
  */
-static TP_DOMAIN **
+STATIC_INLINE TP_DOMAIN **
 tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
 {
   int list_index;
@@ -1877,7 +1877,7 @@ tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
  *    type(in): type of value
  *    setdomain(in): used to find appropriate list of MIDXKEY
  */
-static TP_DOMAIN *
+STATIC_INLINE TP_DOMAIN *
 tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain)
 {
   TP_DOMAIN **dlist;
@@ -2618,10 +2618,10 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
    * DB_TYPE_CHAR    DB_TYPE_VARCHAR
    * DB_TYPE_BIT     DB_TYPE_VARBIT
    */
-  assert (type == DB_TYPE_NCHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR
+  assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR || type == DB_TYPE_NCHAR || type == DB_TYPE_VARNCHAR
 	  || type == DB_TYPE_BIT || type == DB_TYPE_VARBIT);
 
-  if (type == DB_TYPE_VARNCHAR || type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_VARBIT)
     {
       /* search the list for a domain that matches */
       for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)

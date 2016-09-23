@@ -170,7 +170,6 @@ static int rv;
     PUT_STAT (RES, NEW, pb_victim_cand_cnt);				\
                                                                         \
     DIFF_METHOD (RES, NEW, OLD, log_num_fetches);                       \
-    DIFF_METHOD (RES, NEW, OLD, log_num_fetch_ioreads);                 \
     DIFF_METHOD (RES, NEW, OLD, log_num_ioreads);                       \
     DIFF_METHOD (RES, NEW, OLD, log_num_iowrites);                      \
     DIFF_METHOD (RES, NEW, OLD, log_num_appendrecs);                    \
@@ -179,6 +178,7 @@ static int rv;
     DIFF_METHOD (RES, NEW, OLD, log_num_end_checkpoints);               \
     DIFF_METHOD (RES, NEW, OLD, log_num_wals);                          \
     DIFF_METHOD (RES, NEW, OLD, log_num_replacements);                  \
+    DIFF_METHOD (RES, NEW, OLD, log_num_iowrites_for_replacement);      \
                                                                         \
     DIFF_METHOD (RES, NEW, OLD, lk_num_acquired_on_pages);              \
     DIFF_METHOD (RES, NEW, OLD, lk_num_acquired_on_objects);            \
@@ -394,7 +394,7 @@ static void mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats);
 static void mnt_server_check_stats_threshold (int tran_index, MNT_SERVER_EXEC_STATS * stats);
 
 static const char *perf_stat_module_name (const int module);
-static int perf_get_module_type (THREAD_ENTRY * thread_p);
+static INLINE int perf_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 static const char *perf_stat_page_type_name (const int page_type);
 static const char *perf_stat_page_mode_name (const int page_mode);
 static const char *perf_stat_holder_latch_name (const int holder_latch);
@@ -1738,7 +1738,6 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_data_page_avoid_victim",
   "Num_data_page_victim_cand",
   "Num_log_page_fetches",
-  "Num_log_page_fetch_ioreads",
   "Num_log_page_ioreads",
   "Num_log_page_iowrites",
   "Num_log_append_records",
@@ -1746,6 +1745,7 @@ static const char *mnt_Stats_name[MNT_SERVER_EXEC_STATS_COUNT] = {
   "Num_log_start_checkpoints",
   "Num_log_end_checkpoints",
   "Num_log_wals",
+  "Num_log_page_replacements",
   "Num_log_page_iowrites_for_replacement",
   "Num_page_locks_acquired",
   "Num_object_locks_acquired",
@@ -2603,22 +2603,6 @@ mnt_x_log_fetches (THREAD_ENTRY * thread_p)
     }
 }
 
-/*
- * mnt_x_log_fetch_ioreads - Increase log_num_fetch_ioreads counter of the
- *			     current transaction index
- *   return: none
- */
-void
-mnt_x_log_fetch_ioreads (THREAD_ENTRY * thread_p)
-{
-  MNT_SERVER_EXEC_STATS *stats;
-
-  stats = mnt_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      ADD_STATS (stats, log_num_fetch_ioreads, 1);
-    }
-}
 
 /*
  * mnt_x_log_ioreads - Increase pb_num_ioreads counter of the current
@@ -2742,8 +2726,7 @@ mnt_x_log_wals (THREAD_ENTRY * thread_p)
 }
 
 /*
- * mnt_x_log_replacements - Increase log flush for replacement counter of the
- *			    current transaction index
+ * mnt_x_log_replacements - Increase log page replacement counter of the current transaction index
  *   return: none
  */
 void
@@ -2758,6 +2741,21 @@ mnt_x_log_replacements (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ * mnt_x_log_iowrites_for_replacement - Increase log flush for replacement counter of the current transaction index
+ *   return: none
+ */
+void
+mnt_x_log_iowrites_for_replacement (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, log_num_iowrites_for_replacement, 1);
+    }
+}
 
 /*
  * mnt_x_lk_acquired_on_pages - Increase lk_num_acquired_on_pages counter
@@ -5442,7 +5440,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 
   stats->log_hit_ratio =
     (stats->log_num_fetches ==
-     0) ? 0 : (stats->log_num_fetches - stats->log_num_fetch_ioreads) * 100 * 100 / stats->log_num_fetches;
+     0) ? 0 : (stats->log_num_fetches - stats->log_num_ioreads) * 100 * 100 / stats->log_num_fetches;
 
   stats->pb_page_lock_acquire_time_10usec = 100 * lock_time_usec / 1000;
   stats->pb_page_hold_acquire_time_10usec = 100 * hold_time_usec / 1000;
@@ -5526,12 +5524,13 @@ perf_stat_module_name (const int module)
 /*
  * perf_get_module_type () -
  */
-static int
+STATIC_INLINE int
 perf_get_module_type (THREAD_ENTRY * thread_p)
 {
   int thread_index;
   int module_type;
-  int first_vacuum_worker_idx;
+  static int first_vacuum_worker_idx = 0;
+  static int num_worker_threads = 0;
 
 #if defined (SERVER_MODE)
   if (thread_p == NULL)
@@ -5540,13 +5539,21 @@ perf_get_module_type (THREAD_ENTRY * thread_p)
     }
 
   thread_index = thread_p->index;
-  first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
+
+  if (first_vacuum_worker_idx == 0)
+    {
+      first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
+    }
+  if (num_worker_threads == 0)
+    {
+      num_worker_threads = thread_num_worker_threads ();
+    }
 #else
   thread_index = 0;
   first_vacuum_worker_idx = 100;
 #endif
 
-  if (thread_index >= 1 && thread_index <= thread_num_worker_threads ())
+  if (thread_index >= 1 && thread_index <= num_worker_threads)
     {
       module_type = PERF_MODULE_USER;
     }
