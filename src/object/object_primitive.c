@@ -17018,8 +17018,7 @@ pr_clear_compressed_string (DB_VALUE * value)
       db_private_free_and_init (NULL, data);
     }
 
-  value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.compressed_size = 0;
+  DB_SET_COMPRESSED_STRING (value, NULL, 0, false);
 
   return NO_ERROR;
 }
