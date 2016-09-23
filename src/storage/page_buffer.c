@@ -10630,17 +10630,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
       assert (ret_pgptr == NULL);
 
-      if (latch_condition == PGBUF_UNCONDITIONAL_LATCH)
-	{
-	  /* continue */
-	  er_status = er_errid ();
-	  if (er_status == NO_ERROR)
-	    {
-	      er_status = ER_FAILED;
-	    }
-	  goto exit;
-	}
-
       er_status = er_errid_if_has_error ();
       if (er_status == ER_PB_BAD_PAGEID || er_status == ER_INTERRUPTED)
 	{
@@ -10659,6 +10648,17 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	       * is set : this allows scan of pages to continue */
 	      assert (wait_msecs == LK_FORCE_ZERO_WAIT);
 	      er_status = ER_LK_PAGE_TIMEOUT;
+	    }
+	  goto exit;
+	}
+
+      if (latch_condition == PGBUF_UNCONDITIONAL_LATCH)
+	{
+	  /* continue */
+	  er_status = er_errid ();
+	  if (er_status == NO_ERROR)
+	    {
+	      er_status = ER_FAILED;
 	    }
 	  goto exit;
 	}
