@@ -7503,7 +7503,7 @@ try_again:
   /* Impossible */
   assert_release (false);
 error:
-  assert (er_errid () != NO_ERROR);
+  assert (ret == ER_LK_PAGE_TIMEOUT || er_errid () != NO_ERROR);
 
   heap_clean_get_context (thread_p, context);
   return S_ERROR;
