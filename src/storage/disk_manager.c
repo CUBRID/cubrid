@@ -4038,6 +4038,8 @@ disk_reserve_from_cache_vols (DB_VOLTYPE type, DISK_RESERVE_CONTEXT * context)
 
       min_free = MIN (context->nsect_total, disk_Cache->temp_purpose_info.nsect_vol_max) / 2;
     }
+  /* make sure we search for at least one sector */
+  min_free = MAX (min_free, 1);
 
   for (volid_iter = start_iter; volid_iter != end_iter && context->n_cache_reserve_remaining > 0; volid_iter += incr)
     {
@@ -4607,6 +4609,7 @@ disk_reserve_from_cache_volume (VOLID volid, DISK_RESERVE_CONTEXT * context)
     }
   disk_check_own_reserve_for_purpose (context->purpose);
   assert (context->n_cache_reserve_remaining > 0);
+  assert (disk_Cache->vols[volid].nsect_free > 0);
 
   nsects = MIN (disk_Cache->vols[volid].nsect_free, context->n_cache_reserve_remaining);
   disk_cache_update_vol_free (volid, -nsects);
