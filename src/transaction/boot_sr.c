@@ -6084,7 +6084,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	  error_code = ER_FAILED;
 	  goto exit;
 	}
-      boot_Db_parm->last_volid = volid + 1;
+      boot_Db_parm->last_volid = volid;
       boot_Db_parm->nvols++;
     }
   else
