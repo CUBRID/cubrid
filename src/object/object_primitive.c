@@ -11077,6 +11077,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    db_make_varchar (dest, src_precision, src_str, src_length, DB_GET_STRING_CODESET (src),
 			     DB_GET_STRING_COLLATION (src));
 	  dest->data.ch.medium.compressed_buf = src->data.ch.medium.compressed_buf;
+	  dest->data.ch.info.compressed_need_clear = false;
 	}
       else
 	{
@@ -11117,10 +11118,11 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		  dest->data.ch.medium.compressed_buf = new_compressed_buf;
 		}
 	    }
+	  dest->data.ch.info.compressed_need_clear = src->data.ch.info.compressed_need_clear;
 	}
 
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
-      dest->data.ch.info.compressed_need_clear = src->data.ch.info.compressed_need_clear;
+
     }
 
   return error;
@@ -11560,11 +11562,10 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 				   TP_DOMAIN_COLLATION (domain));
 		  value->need_clear = (new_ != copy_buf) ? true : false;
 
-		  compressed_need_clear = true;
-
 		  if (compressed_string == NULL)
 		    {
 		      compressed_size = DB_UNCOMPRESSABLE;
+		      compressed_need_clear = false;
 		    }
 
 		  DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size, compressed_need_clear);
@@ -14511,6 +14512,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		  if (compressed_string == NULL)
 		    {
 		      compressed_size = DB_UNCOMPRESSABLE;
+		      compressed_need_clear = false;
 		    }
 
 		  DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size, compressed_need_clear);
