@@ -139,7 +139,7 @@ bool
 bit8_is_set (UINT8 i, int off)
 {
   assert (off >= 0 && off < 8);
-  return i & (((UINT8) 1) << off);
+  return (i & (((UINT8) 1) << off)) != 0;
 }
 
 UINT8
@@ -270,7 +270,7 @@ bool
 bit16_is_set (UINT16 i, int off)
 {
   assert (off >= 0 && off < 16);
-  return i & (((UINT16) 1) << off);
+  return (i & (((UINT16) 1) << off)) != 0;
 }
 
 UINT16
@@ -411,7 +411,7 @@ bool
 bit32_is_set (UINT32 i, int off)
 {
   assert (off >= 0 && off < 32);
-  return i & (((UINT32) 1) << off);
+  return (i & (((UINT32) 1) << off)) != 0;
 }
 
 UINT32
@@ -561,7 +561,7 @@ bool
 bit64_is_set (UINT64 i, int off)
 {
   assert (off >= 0 && off < 64);
-  return i & (((UINT64) 1) << off);
+  return (i & (((UINT64) 1) << off)) != 0;
 }
 
 UINT64
