@@ -4663,9 +4663,9 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
       assert (volid < vsids[start_index].volid);
       volid = vsids[start_index].volid;
       for (end_index = start_index + 1; end_index < nsects && vsids[end_index].volid == volid; end_index++)
-        {
+	{
 	  assert (vsids[end_index].sectid > vsids[end_index - 1].sectid);
-        }
+	}
       assert (end_index == nsects);
       context.cache_vol_reserve[context.n_cache_vol_reserve].nsect = end_index - start_index;
       context.cache_vol_reserve[context.n_cache_vol_reserve].volid = volid;
