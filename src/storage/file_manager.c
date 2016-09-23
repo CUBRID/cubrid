@@ -14874,7 +14874,7 @@ file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata, const void *ite
 {
   int min = 0;
   int max = file_extdata_item_count (extdata) - 1;
-  int mid;
+  int mid = 0;
   int compare = 0;
   void *item_at_mid = NULL;
 
