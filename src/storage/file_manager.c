@@ -16959,9 +16959,9 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
     MIN (fhead->tablespace.expand_max_size / DB_SECTORSIZE, file_extdata_remaining_capacity (extdata_part_ftab));
   assert (expand_min_size_in_sectors <= expand_max_size_in_sectors);
 
-  expand_size_in_sectors = (int) ((float) fhead->n_sector_full * fhead->tablespace.expand_ratio);
-  expand_size_in_sectors = MAX (expand_size_in_sectors, fhead->tablespace.expand_min_size);
-  expand_size_in_sectors = MIN (expand_size_in_sectors, fhead->tablespace.expand_max_size);
+  expand_size_in_sectors = (int) ((float) fhead->n_sector_total * fhead->tablespace.expand_ratio);
+  expand_size_in_sectors = MAX (expand_size_in_sectors, expand_min_size_in_sectors);
+  expand_size_in_sectors = MIN (expand_size_in_sectors, expand_max_size_in_sectors);
 
   /* allocate a buffer to hold the new sectors */
   vsids_reserved = (VSID *) db_private_alloc (thread_p, expand_size_in_sectors * sizeof (VSID));
