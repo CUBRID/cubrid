@@ -120,7 +120,6 @@ struct disk_extend_info
   pthread_mutex_t mutex_reserve;
 #if !defined (NDEBUG)
   volatile int owner_reserve;
-  volatile int owner_extend;
 #endif				/* !NDEBUG */
 
   VOLID volid_extend;
@@ -4116,7 +4115,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
    *       permanent volumes for temporary data purpose can only be added by user and are never extended.
    */
 
-  assert (extend_info->owner_extend == thread_get_current_entry_index ());
+  assert (disk_Cache->owner_extend == thread_get_current_entry_index ());
 
   /* expand */
   /* what is the desired remaining free after expand? */
