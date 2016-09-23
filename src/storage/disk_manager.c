@@ -95,7 +95,7 @@ typedef struct disk_check_vol_info DISK_CHECK_VOL_INFO;
 struct disk_check_vol_info
 {
   VOLID volid;			/* volume id be found */
-  bool exists;			/* weather volid does exist */
+  bool exists;			/* whether volid does exist */
 };
 
 /************************************************************************/
@@ -220,8 +220,8 @@ typedef int (*DISK_STAB_UNIT_FUNC) (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * 
 /* Sector reserve section                                               */
 /************************************************************************/
 
-typedef struct disk_cahe_vol_reserve DISK_CACHE_VOL_RESERVE;
-struct disk_cahe_vol_reserve
+typedef struct disk_cache_vol_reserve DISK_CACHE_VOL_RESERVE;
+struct disk_cache_vol_reserve
 {
   VOLID volid;
   DKNSECTS nsect;
@@ -440,7 +440,7 @@ disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 
       if (space_info.n_total_sects < space_info.n_max_sects)
 	{
-	  assert (disk_Cache->perm_purpose_info.extend_info.volid_extend = NULL_VOLID);
+	  assert (disk_Cache->perm_purpose_info.extend_info.volid_extend == NULL_VOLID);
 	  disk_Cache->perm_purpose_info.extend_info.volid_extend = volid;
 	}
     }

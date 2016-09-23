@@ -539,7 +539,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
     {
       goto error;
     }
-  error_code = file_manager_initialize (thread_p);
+  error_code = flre_tempcache_init ();
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -652,7 +652,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   logtb_finalize_mvcctable (thread_p);
   lock_finalize ();
   pgbuf_finalize ();
-  (void) file_manager_finalize (thread_p);
+  flre_tempcache_final ();
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -955,8 +955,6 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   RB_INIT (&tdes->lob_locator_root);
 }
 
@@ -1931,8 +1929,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
@@ -2013,8 +2009,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
@@ -7239,12 +7233,8 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
       idx++;
 
-      /* Num_new_files */
-      db_make_int (&vals[idx], tdes->num_new_files);
-      idx++;
-
       /* Num_new_temp_temp_files */
-      db_make_int (&vals[idx], tdes->num_new_temp_files);
+      db_make_int (&vals[idx], flre_get_tran_num_temp_files (thread_p));
       idx++;
 
       /* Waiting_for_res */

@@ -4817,11 +4817,6 @@ log_is_tran_in_system_op (THREAD_ENTRY * thread_p)
 static bool
 log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const LOG_TDES * tdes, LOG_DATA_ADDR * addr)
 {
-  bool canskip = false;
-  bool has_undolog;
-  FILE_TYPE ftype = FILE_UNKNOWN_TYPE;
-  FILE_IS_NEW_FILE is_new_file = FILE_ERROR;
-
   /* 
    * Some log record types (rcvindex) should never be skipped.
    * In the case of LINK_PERM_VOLEXT, the link of a permanent temp
@@ -4848,6 +4843,8 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
 
   if (addr->pgptr != NULL && pgbuf_is_lsa_temporary (addr->pgptr) == true)
     {
+      /* why do we log temporary files */
+      assert (false);
       return true;
     }
 
@@ -4856,50 +4853,7 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
       return false;
     }
 
-  /* Check if temporary file. */
-  if (addr->pgptr == NULL && tdes->num_new_temp_files > 0)
-    {
-      is_new_file = file_is_new_file_ext (thread_p, addr->vfid, &ftype, &has_undolog);
-      assert (is_new_file != FILE_ERROR);
-      if (ftype == FILE_TEMP)
-	{
-	  return true;
-	}
-    }
-  /* Check if new file. */
-  if (tdes->num_new_files <= 0)
-    {
-      return false;
-    }
-  if (is_new_file == FILE_ERROR)
-    {
-      is_new_file = file_is_new_file_ext (thread_p, addr->vfid, &ftype, &has_undolog);
-    }
-  if (is_new_file == FILE_NEW_FILE && has_undolog == false)
-    {
-      /* 
-       * We may be able to skip undo logging if we are not in a savepoint or
-       * a top system operation.
-       */
-      if (tdes->topops.last < 0 && LSA_ISNULL (&tdes->savept_lsa))
-	{
-	  canskip = true;
-	}
-      else
-	{
-	  /* 
-	   * We cannot skip the undo logging. In addition we must declare that
-	   * logging must be done on this file from now on, otherwise, we may
-	   * not be able to rollback properly. For example:
-	   * insert (without top op), delete (with top op),
-	   * insert (without top op), rollback. We may not be able to undo the
-	   * delete due to lack of space.
-	   */
-	  (void) file_new_set_has_undolog (thread_p, addr->vfid);
-	}
-    }
-
-  return canskip;
+  return false;
 }
 
 /*
@@ -6031,11 +5985,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    */
   LSA_SET_NULL (&tdes->undo_nxlsa);
 
-  if (tdes->num_new_temp_files > 0)
-    {
-      (void) file_new_destroy_all_tmp (thread_p, FILE_TEMP);
-    }
-  assert (tdes->num_new_temp_files == 0);
+  /* destroy all transaction's remaining temporary files */
+  flre_tempcache_drop_tran_temp_files (thread_p);
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
@@ -6052,12 +6003,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
 	  tdes->first_save_entry = NULL;
 	}
-
-      if (tdes->num_new_files > 0)
-	{
-	  (void) file_new_declare_as_old (thread_p, NULL);
-	}
-      assert (tdes->num_new_files == 0);
 
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
 
@@ -6108,12 +6053,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  tdes->first_save_entry = NULL;
 	}
 
-      if (tdes->num_new_files > 0)
-	{
-	  (void) file_new_declare_as_old (thread_p, NULL);
-	}
-      assert (tdes->num_new_files == 0);
-
       if (retain_lock != true)
 	{
 	  lock_unlock_all (thread_p);
@@ -6145,13 +6084,8 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 
   tdes->state = TRAN_UNACTIVE_ABORTED;
 
-  /* Delete only temporary files created on volumes with temporary purposes Temporary files created on volumes with
-   * permanent purposes (e.g., generic) are cleaned by undo records. */
-  if (tdes->num_new_temp_files > 0)
-    {
-      (void) file_new_destroy_all_tmp (thread_p, FILE_TEMP);
-    }
-  assert (tdes->num_new_temp_files == 0);
+  /* destroy transaction's temporary files */
+  flre_tempcache_drop_tran_temp_files (thread_p);
 
   (void) file_typecache_clear ();
 
@@ -6162,12 +6096,6 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
        */
 
       log_rollback (thread_p, tdes, NULL);
-
-      if (tdes->num_new_files > 0)
-	{
-	  (void) file_new_declare_as_old (thread_p, NULL);
-	}
-      assert (tdes->num_new_files == 0);
 
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, true);
 
@@ -6188,11 +6116,6 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
       /* 
        * Transaction did not update anything or we are not logging
        */
-      if (tdes->num_new_files > 0)
-	{
-	  (void) file_new_declare_as_old (thread_p, NULL);
-	}
-      assert (tdes->num_new_files == 0);
 
       if (tdes->first_save_entry != NULL)
 	{
