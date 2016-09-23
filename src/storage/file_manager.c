@@ -19679,6 +19679,9 @@ flre_tempcache_init (void)
 
   /* initialize mutex used to protect temporary file cache and entry allocation/deallocation */
   pthread_mutex_init (&flre_Tempcache->mutex, NULL);
+#if !defined (NDEBUG)
+  flre_Tempcache->owner_mutex = -1;
+#endif
 
   /* allocate transaction temporary files lists */
   memsize = ntrans * sizeof (FLRE_TEMPCACHE *);
