@@ -3031,7 +3031,7 @@ disk_stab_cursor_check_valid (const DISK_STAB_CURSOR * cursor)
       /* Must have a page fixed */
       assert (cursor->page != NULL);
       /* Unit pointer must match offset_to_unit */
-      assert ((cursor->unit - ((DISK_STAB_UNIT *) cursor->page)) == cursor->offset_to_unit);
+      assert (((char *) cursor->unit - cursor->page) == cursor->offset_to_unit * DISK_STAB_UNIT_SIZE_OF);
     }
 }
 
@@ -3134,7 +3134,7 @@ disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_
       return error_code;
     }
 
-  cursor->unit = (DISK_STAB_UNIT *) (cursor->page + cursor->offset_to_unit);
+  cursor->unit = ((DISK_STAB_UNIT *) cursor->page) + cursor->offset_to_unit;
 
   return NO_ERROR;
 }
