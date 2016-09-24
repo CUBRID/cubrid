@@ -20078,7 +20078,7 @@ flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
       if (VFID_EQ (&entry->vfid, vfid))
 	{
 	  /* remove entry from transaction list */
-	  if (prev_entry == NULL)
+	  if (prev_entry != NULL)
 	    {
 	      prev_entry->next = entry->next;
 	    }
