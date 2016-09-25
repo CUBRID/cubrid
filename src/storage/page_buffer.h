@@ -72,6 +72,8 @@ extern const VPID vpid_Null_vpid;
   (((oid_ptr1)->volid == (oid_ptr2)->volid)  \
    && ((oid_ptr1)->pageid == (oid_ptr2)->pageid))
 
+#define PGBUF_PAGE_VPID_AS_ARGS(pg) pgbuf_get_volume_id (pg), pgbuf_get_page_id (pg)
+
 #define pgbuf_unfix_and_init(thread_p, pgptr) \
   do { \
     pgbuf_unfix ((thread_p), (pgptr)); \

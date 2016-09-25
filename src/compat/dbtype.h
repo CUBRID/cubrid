@@ -708,7 +708,7 @@ struct vsid
   INT16 volid;			/* Volume identifier where the sector resides */
 };
 #define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
-#define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->pageid
+#define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
 
 typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
 struct vfid

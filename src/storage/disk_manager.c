@@ -231,7 +231,6 @@ typedef struct disk_reserve_context DISK_RESERVE_CONTEXT;
 struct disk_reserve_context
 {
   int nsect_total;
-  int nsect_reserve_remaining;
   VSID *vsidp;
 
   DISK_CACHE_VOL_RESERVE cache_vol_reserve[VOLID_MAX];
@@ -253,6 +252,27 @@ struct disk_reserve_context
 /* when allocating remaining disk space, leave out 64MB for safety */
 #define DISK_SAFE_OSDISK_FREE_SPACE (64 * 1024 * 1024)
 #define DISK_SAFE_OSDISK_FREE_SECTS (DISK_SAFE_OSDISK_FREE_SPACE / IO_SECTORSIZE)
+
+/************************************************************************/
+/* Utility section                                                      */
+/************************************************************************/
+
+/* logging */
+static bool disk_Logging = false;
+#define disk_log(func, msg, ...) \
+  if (disk_Logging) \
+    _er_log_debug (ARG_FILE_LINE, "DISK " func " (thread=%d tran=%d): \n\t" msg "\n", \
+                   thread_get_current_entry_index (), LOG_FIND_THREAD_TRAN_INDEX (thread_get_thread_entry_info ()), \
+                   __VA_ARGS__)
+
+#define DISK_RESERVE_CONTEXT_MSG \
+  "\t\tcontext: \n" \
+  "\t\t\tnsect_total = %d\n" \
+  "\t\t\tn_cache_vol_reserve = %d, n_cache_reserve_remaining = %d\n" \
+  "\t\t\tpurpose = %s"
+#define DISK_RESERVE_CONTEXT_AS_ARGS(context) \
+  (context)->nsect_total, (context)->n_cache_vol_reserve, (context)->n_cache_reserve_remaining, \
+  disk_purpose_to_string ((context)->purpose)
 
 /************************************************************************/
 /* Declare static functions.                                            */
@@ -3217,6 +3237,8 @@ disk_stab_unit_reserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool
 	  context->vsidp->volid = cursor->volheader->volid;
 	  context->vsidp->sectid = sectid;
 	  context->vsidp++;
+
+	  disk_log ("disk_stab_unit_reserve", "reserved sectid %d in volume %d.", sectid, cursor->volheader->volid);
 	}
     }
   else
@@ -3244,6 +3266,9 @@ disk_stab_unit_reserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool
 	      context->vsidp->volid = cursor->volheader->volid;
 	      context->vsidp->sectid = cursor->sectid;
 	      context->vsidp++;
+
+	      disk_log ("disk_stab_unit_reserve", "reserved sectid %d in volume %d.", cursor->sectid,
+			cursor->volheader->volid);
 	    }
 	}
     }
@@ -3609,6 +3634,9 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
       return error_code;
     }
 
+  disk_log ("disk_reserve_sectors_in_volume", "reserve %d sectors in volume %d.", context->nsects_lastvol_remaining,
+	    volid);
+
   /* reserve all possible sectors. */
   if (volheader->hint_allocsect > 0 && volheader->hint_allocsect < volheader->nsect_total)
     {
@@ -3813,6 +3841,8 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DISK_SETPA
       return ER_FAILED;
     }
 
+  disk_log ("disk_reserve_sectors", "reserve %d sectors for %s.", n_sectors, disk_purpose_to_string (purpose));
+
   log_sysop_start (thread_p);
 
   /* we don't want to conflict with disk check */
@@ -3955,6 +3985,11 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
   /* we might have to expand */
   /* first, save our intention in case somebody else will do the expand */
   extend_info->nsect_intention += context->n_cache_reserve_remaining;
+
+  disk_log ("disk_reserve_from_cache", "existing free space could not satisfy reserve. "
+	    "increment intention by %d to %d for %s.", context->n_cache_reserve_remaining,
+	    extend_info->nsect_intention, disk_type_to_string (extend_info->voltype));
+
   disk_cache_unlock_reserve (extend_info);
 
   /* now lock expand */
@@ -3968,6 +4003,10 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       /* also update intention */
       extend_info->nsect_intention -= context->n_cache_reserve_remaining;
 
+      disk_log ("disk_reserve_from_cache", "somebody else extended disk. try reserve from cache again. "
+		"also decrement intention by %d to %d for %s.", context->n_cache_reserve_remaining,
+		extend_info->nsect_intention, disk_type_to_string (extend_info->voltype));
+
       disk_reserve_from_cache_vols (extend_info->voltype, context);
       if (context->n_cache_reserve_remaining <= 0)
 	{
@@ -3978,6 +4017,10 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 	}
 
       extend_info->nsect_intention += context->n_cache_reserve_remaining;
+
+      disk_log ("disk_reserve_from_cache", "could not reserve enough from cache. need to do extend. "
+		"increment intention by %d to %d for %s.", context->n_cache_reserve_remaining,
+		extend_info->nsect_intention, disk_type_to_string (extend_info->voltype));
     }
 
   /* ok, we really have to extend the disk space ourselves */
@@ -3989,6 +4032,8 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
   /* remove intention */
   disk_cache_lock_reserve (extend_info);
   extend_info->nsect_intention -= save_remaining;
+  disk_log ("disk_reserve_from_cache", "extend done. decrement intention by %d to %d for %s. \n",
+	    save_remaining, extend_info->nsect_intention, disk_type_to_string (extend_info->voltype));
   disk_cache_unlock_reserve (extend_info);
 
   disk_unlock_extend ();
@@ -4002,6 +4047,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       assert_release (false);
       return ER_FAILED;
     }
+
   /* all cache reservations were made */
   return NO_ERROR;
 }
@@ -4124,6 +4170,8 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       return NO_ERROR;
     }
 
+  disk_log ("disk_extend", "extend disk by %d sectors.", nsect_extend);
+
   if (total < max)
     {
       /* first expand last volume to its capacity */
@@ -4139,6 +4187,9 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	  return error_code;
 	}
       assert (nsect_free_new >= to_expand);
+
+      disk_log ("disk_extend", "expanded volume %d by %d sectors for %s.", extend_info->volid_extend, nsect_free_new,
+		disk_type_to_string (extend_info->voltype));
 
       /* subtract from what we need to expand */
       nsect_extend -= nsect_free_new;
@@ -4192,6 +4243,10 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+
+      disk_log ("disk_extend", "added new volume %d with %d free sectors for %s.", volid_new, nsect_free_new,
+		disk_type_to_string (extend_info->voltype));
+
       nsect_extend -= nsect_free_new;
 
       /* update volume count */
@@ -4616,8 +4671,12 @@ disk_reserve_from_cache_volume (VOLID volid, DISK_RESERVE_CONTEXT * context)
 
   context->cache_vol_reserve[context->n_cache_vol_reserve].volid = volid;
   context->cache_vol_reserve[context->n_cache_vol_reserve].nsect = nsects;
-  context->n_cache_vol_reserve++;
   context->n_cache_reserve_remaining -= nsects;
+
+  disk_log ("disk_reserve_from_cache_volume", "reserved %d sectors from volid = %d, \n" DISK_RESERVE_CONTEXT_MSG,
+	    nsects, volid, DISK_RESERVE_CONTEXT_AS_ARGS (context));
+
+  context->n_cache_vol_reserve++;
   assert (context->n_cache_reserve_remaining >= 0);
 }
 
@@ -4669,6 +4728,9 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
       context.n_cache_vol_reserve++;
     }
 
+  disk_log ("disk_unreserve_ordered_sectors", "unreserve sectors.\n" DISK_RESERVE_CONTEXT_MSG,
+	    DISK_RESERVE_CONTEXT_AS_ARGS (&context));
+
   for (index = 0; index < context.n_cache_vol_reserve; index++)
     {
       /* unreserve volume sectors */
@@ -4707,6 +4769,9 @@ disk_unreserve_sectors_from_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_R
   int error_code = NO_ERROR;
 
   assert (context != NULL && context->nsects_lastvol_remaining > 0);
+
+  disk_log ("disk_unreserve_sectors_from_volume", "unreserve %d sectors in volume %d.",
+	    context->nsects_lastvol_remaining, volid);
 
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_WRITE, &page_volheader, &volheader);
   if (error_code != NO_ERROR)
@@ -4760,6 +4825,10 @@ disk_stab_unit_unreserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bo
     {
       unreserve_bits = bit64_set (unreserve_bits, context->vsidp->sectid - cursor->sectid);
       context->nsects_lastvol_remaining--;
+
+      disk_log ("disk_stab_unit_unreserve", "unreserve sectid %d from volume %d.", context->vsidp->sectid,
+		context->vsidp->volid);
+
       context->vsidp++;
       nsect++;
     }
@@ -4978,6 +5047,8 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
     {
       disk_Temp_max_sects = disk_Temp_max_sects / DISK_SECTOR_NPAGES;
     }
+
+  disk_Logging = prm_get_bool_value (PRM_ID_DISK_LOGGING);
 
   error_code = disk_cache_init ();
   if (error_code != NO_ERROR)
@@ -5237,6 +5308,9 @@ disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
       assert (disk_get_voltype (volid) == DB_PERMANENT_VOLTYPE);
       disk_Cache->perm_purpose_info.extend_info.nsect_free += delta_free;
       assert (disk_Cache->perm_purpose_info.extend_info.nsect_free >= 0);
+
+      disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and perm_perm to %d; "
+		"delta free = %d", volid, disk_Cache->perm_purpose_info.extend_info.nsect_free, delta_free);
     }
   else
     {
@@ -5244,11 +5318,17 @@ disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
 	{
 	  disk_Cache->temp_purpose_info.nsect_perm_free += delta_free;
 	  assert (disk_Cache->temp_purpose_info.nsect_perm_free >= 0);
+
+	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and perm_temp to %d; "
+		    "delta free = %d", volid, disk_Cache->temp_purpose_info.nsect_perm_free, delta_free);
 	}
       else
 	{
 	  disk_Cache->temp_purpose_info.extend_info.nsect_free += delta_free;
 	  assert (disk_Cache->temp_purpose_info.extend_info.nsect_free >= 0);
+
+	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and temp_temp to %d; "
+		    "delta free = %d", volid, disk_Cache->temp_purpose_info.extend_info.nsect_free, delta_free);
 	}
     }
 }
