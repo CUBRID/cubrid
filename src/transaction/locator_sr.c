@@ -6429,7 +6429,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   *force_count = 1;
 
 
-  if (deleted == true)
+  if (!OID_IS_ROOTOID (&class_oid) && deleted == true)
     {
       HEAP_CACHE_ATTRINFO attr_info;
 
