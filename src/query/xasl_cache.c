@@ -1339,7 +1339,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	      xcache_unfix (thread_p, to_be_recompiled);
 	      to_be_recompiled = NULL;
 	    }
-	  else
+	  else if (inserted)
 	    {
 	      /* new entry added */
 	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
