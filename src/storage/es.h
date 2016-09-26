@@ -44,6 +44,7 @@ extern ssize_t es_read_file (const char *uri, void *buf, size_t count, off_t off
 extern int es_delete_file (const char *uri);
 extern int es_copy_file (const char *in_uri, const char *metaname, char *out_uri);
 extern int es_rename_file (const char *in_uri, const char *metaname, char *out_uri);
+extern int es_rename_file_with_new (const char *in_uri, const char *new_uri);
 extern off_t es_get_file_size (const char *uri);
 
 extern int es_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

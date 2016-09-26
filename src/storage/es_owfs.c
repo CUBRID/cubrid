@@ -800,6 +800,62 @@ es_owfs_rename_file (const char *src_path, const char *metaname, char *new_path)
   return NO_ERROR;
 }
 
+/*
+ * es_owfs_rename_file_with_new - renames a file path
+ *
+ * return: error code, ER_ES_GENERAL or NO_ERRROR
+ * src_path(in): file path to rename
+ * new_path(out): new file path
+ */
+int
+es_owfs_rename_file_with_new (const char *src_path, char *new_path)
+{
+  char src_mds_ip[MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN], src_owner_name[NAME_MAX], src_file_name[NAME_MAX],
+    tgt_file_name[NAME_MAX];
+  char new_mds_ip[MAXHOSTNAMELEN], new_svc_code[MAXSVCCODELEN], new_owner_name[NAME_MAX], new_file_name[NAME_MAX];
+  char *s;
+  ES_OWFS_FSH *src_fsh, *dst_fsh;
+  owner_handle src_oh, dst_oh;
+  int ret;
+
+  if (es_parse_owfs_path (src_path, src_mds_ip, src_svc_code, src_owner_name, src_file_name) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, src_path);
+      return ER_ES_INVALID_PATH;
+    }
+  src_fsh = es_open_owfs (src_mds_ip, src_svc_code);
+  if (src_fsh == NULL)
+    {
+      return ER_ES_GENERAL;
+    }
+  /* open owner */
+  ret = owfs_open_owner (src_fsh->fsh, src_owner_name, &src_oh);
+  if (ret < 0)
+    {
+      /* failed to stat a file */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
+      return ER_ES_GENERAL;
+    }
+
+  if (es_parse_owfs_path (new_path, dst_mds_ip, dst_svc_code, dst_owner_name, dst_file_name) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, new_path);
+      return ER_ES_INVALID_PATH;
+    }
+
+  /* rename a file */
+  ret = owfs_rename (src_oh, src_file_name, dst_file_name);
+
+  owfs_close_owner (src_oh);
+  if (ret < 0)
+    {
+      /* failed to rename a file */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
+      return ER_ES_GENERAL;
+    }
+
+ return NO_ERROR;
+}
 
 /*
  * es_owfs_get_file_size -
@@ -906,6 +962,13 @@ es_owfs_copy_file (const char *src_path, char *metaname, char *new_path)
 
 int
 es_owfs_rename_file (const char *src_path, const char *metaname, char *new_path)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
+  return ER_ES_GENERAL;
+}
+
+int
+es_owfs_rename_file_with_new (const char *src_path, char *new_path)
 {
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;

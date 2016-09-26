@@ -254,6 +254,10 @@ extern int pr_ordered_mem_size_total;
     ((db_value_ptr)->domain.general_info.is_null = 1, \
      (db_value_ptr)->need_clear = false)
 
+
+/* values with this size or above are stored in out of record data (heap or overflow) */
+#define OBJECT_OOR_THRESHOLD_SIZE PATH_MAX
+
 /*
  * EXTERNAL FUNCTIONS
  */

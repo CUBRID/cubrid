@@ -6428,6 +6428,22 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
     }
   *force_count = 1;
 
+
+  if (deleted == true)
+    {
+      HEAP_CACHE_ATTRINFO attr_info;
+
+      error_code = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      error_code = heap_attrinfo_delete_lob (thread_p, &copy_recdes, &attr_info);
+
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+
 #if defined(ENABLE_UNUSED_FUNCTION)
   if (isold_object == true && !OID_IS_ROOTOID (&class_oid))
     {

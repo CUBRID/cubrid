@@ -3252,6 +3252,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  (void) es_delete_file (es_uri);
 	  db_private_free_and_init (thread_p, es_uri);
 	}
+      else if (log_record_data.rcvindex == RVELO_DELETE_FILE)
+	{
+	  /* A lob file must be deleted */
+	  (void) or_unpack_string (undo_data, &es_uri);
+	  vacuum_er_log (VACUUM_ER_LOG_WORKER, "VACUUM: Delete lob %s.", es_uri);
+	  (void) es_delete_file (es_uri);
+	  db_private_free_and_init (thread_p, es_uri);
+	}
       else
 	{
 	  /* Safeguard code */

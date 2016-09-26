@@ -16608,7 +16608,7 @@ bool
 pr_is_oor_value (DB_VALUE * val)
 {
   if (DB_VALUE_TYPE (val) == DB_TYPE_VARCHAR
-      && DB_GET_STRING_SIZE (val) > HEAP_OOR_THRESHOLD_SIZE)
+      && DB_GET_STRING_SIZE (val) > OBJECT_OOR_THRESHOLD_SIZE)
     {
       return true;
     }

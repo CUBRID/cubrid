@@ -142,6 +142,9 @@ static int rv;
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
     && ((RCVI) != RVBT_DELETE_INDEX) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
+    && ((RCVI) != RVELO_CREATE_FILE) \
+    && ((RCVI) != RVELO_DELETE_FILE) \
+    && ((RCVI) != RVELO_RENAME_FILE) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
 /* Assume that locator end with <path>/<meta_name>.<key_name> */
@@ -8655,7 +8658,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   rcv.length = redo->length;
   rcv.data = redo_rcv_data;
 
-  if (rcvindex == RVVAC_DROPPED_FILE_ADD || rcvindex == RVFL_POSTPONE_DESTROY_FILE)
+  if (rcvindex == RVVAC_DROPPED_FILE_ADD || rcvindex == RVFL_POSTPONE_DESTROY_FILE || rcvindex == RVELO_DELETE_FILE)
     {
       rcv.pgptr = NULL;
     }

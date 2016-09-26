@@ -472,6 +472,67 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
 }
 
 /*
+ * es_rename_file_with_new - rename a locator according to the metaname
+ *
+ * return: error code
+ * in_uri(in):
+ * new_uri(i):
+ */
+int
+es_rename_file_with_new (const char *in_uri, const char *new_uri)
+{
+  int ret;
+  ES_TYPE es_type;
+
+  assert (in_uri != NULL);
+  assert (new_uri != NULL);
+
+  if (es_initialized_type == ES_NONE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+      return ER_ES_NO_LOB_PATH;
+    }
+
+  es_type = es_get_type (in_uri);
+  if (es_type != es_initialized_type)
+    {
+      /* copy file operation is allowed only between same types */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE, 2, es_get_type_string (es_type),
+	      es_get_type_string (es_initialized_type));
+      return ER_ES_COPY_TO_DIFFERENT_TYPE;
+    }
+
+  if (es_type == ES_OWFS)
+    {
+#if defined(WINDOWS)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
+      ret = ER_ES_GENERAL;
+#else /* WINDOWS */
+      ret = es_owfs_rename_file_with_new (ES_OWFS_PATH_POS (in_uri), ES_OWFS_PATH_POS (new_uri));
+      er_log_debug (ARG_FILE_LINE, "es_rename_file_with_new: es_owfs_rename_file_with_new(%s) -> %s: %d\n",
+		    in_uri, new_uri, ret);
+#endif /* !WINDOWS */
+    }
+  else if (es_type == ES_POSIX)
+    {
+#if defined (CS_MODE)
+      assert (false);
+#else /* CS_MODE */
+      ret = xes_posix_rename_file_with_new (ES_POSIX_PATH_POS (in_uri), ES_POSIX_PATH_POS (new_uri));
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: xes_posix_copy_file_with_new(%s) -> %s: %d\n", in_uri, new_uri, ret);
+#endif /* SERVER_MODE || SA_MODE */
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, in_uri);
+      return ER_ES_INVALID_PATH;
+    }
+
+  return ret;
+}
+
+
+/*
  * es_get_file_size
  *
  * return: file size or -1 on error

@@ -10201,39 +10201,47 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		      DB_BIGINT clob_size;
 		      char *clob_buf = NULL;
 
-		      (*(pr_type_clob->data_readval)) (&buf, &tmp_clob_value, NULL, disk_length, false, NULL, 0);
-
-		      clob_size = db_elo_size (DB_GET_ELO (&tmp_clob_value));
-		      clob_buf = db_private_alloc (thread_p, clob_size);
-		      if (clob_buf == NULL)
+/* 		      if (oor_context->read_location_only == true) */
+		      if (false)
 			{
-			  /* TODO[arnia] : error */
-			  ret = ER_FAILED;
-			  break;
-			}
-
-		      ret = elo_read (DB_GET_ELO (&tmp_clob_value), 0, clob_buf, clob_size);
-		      if (ret < NO_ERROR)
-			{
-			  /* TODO[arnia] : error */
-			  break;
+			  (*(pr_type_clob->data_readval)) (&buf, &value->dbvalue, NULL, disk_length, false, NULL, 0);
 			}
 		      else
 			{
-			  ret = NO_ERROR;
-			}
-  
-		      OR_BUF_INIT2 (out_of_row_buf, clob_buf, clob_size);
+			  (*(pr_type_clob->data_readval)) (&buf, &tmp_clob_value, NULL, disk_length, false, NULL, 0);
 
-		      pr_type = PR_TYPE_FROM_ID (attrepr->type);
-		      if (pr_type)
-			{
-			  (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
-						      true, NULL, 0);
-			}
-		      if (clob_buf != NULL)
-			{
-			  db_private_free (thread_p, clob_buf);
+			  clob_size = db_elo_size (DB_GET_ELO (&tmp_clob_value));
+			  clob_buf = db_private_alloc (thread_p, clob_size);
+			  if (clob_buf == NULL)
+			    {
+			      /* TODO[arnia] : error */
+			      ret = ER_FAILED;
+			      break;
+			    }
+
+			  ret = (int) elo_read (DB_GET_ELO (&tmp_clob_value), 0, clob_buf, clob_size);
+			  if (ret < NO_ERROR)
+			    {
+			      /* TODO[arnia] : error */
+			      break;
+			    }
+			  else
+			    {
+			      ret = NO_ERROR;
+			    }
+      
+			  OR_BUF_INIT2 (out_of_row_buf, clob_buf, clob_size);
+
+			  pr_type = PR_TYPE_FROM_ID (attrepr->type);
+			  if (pr_type)
+			    {
+			      (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
+							  true, NULL, 0);
+			    }
+			  if (clob_buf != NULL)
+			    {
+			      db_private_free (thread_p, clob_buf);
+			    }
 			}
 		    }
 		  else /* if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_LOB) */
@@ -10295,6 +10303,74 @@ exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
+
+
+/*
+ * heap_attrvalue_read_oor_location () - Read oor attribute information of given attribute cache
+ *					 and instance
+ *   return: NO_ERROR
+ *   recdes(in): Instance record descriptor
+ *   value(in): Disk value attribute information
+ *   attr_info(in/out): The attribute information structure
+ *
+ * Note: Read the dbvalue of the given value attribute information.
+ */
+static int
+heap_attrvalue_read_oor_location (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * value,
+				  HEAP_CACHE_ATTRINFO * attr_info, DB_VALUE * oor_value)
+{
+  OR_BUF buf;
+  OR_ATTRIBUTE *volatile attrepr;
+  char *disk_data = NULL;
+  int disk_bound = false;
+  int ret = NO_ERROR;
+  int is_out_of_row = false;
+  PR_TYPE *pr_type_clob;		/* Primitive type array function structure */
+
+  /* Initialize disk value information */
+  disk_data = NULL;
+  disk_bound = false;
+ 
+  assert (oor_value != NULL);
+
+  if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
+      || value->attr_type == HEAP_CLASS_ATTR || value->read_attrepr->is_fixed != 0)
+    {
+      return NO_ERROR;
+    }
+  else
+    {
+      attrepr = value->read_attrepr;
+      if ((TP_DOMAIN_TYPE (attrepr->domain) != DB_TYPE_CHAR
+	   && TP_DOMAIN_TYPE (attrepr->domain) != DB_TYPE_VARCHAR)
+	  || OR_VAR_IS_NULL (recdes->data, value->read_attrepr->location))
+	{
+	  return NO_ERROR;
+	}
+
+      disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, value->read_attrepr->location));
+
+      is_out_of_row =
+	OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+						      value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data));
+      if (is_out_of_row == 0)
+	{
+	  return NO_ERROR;
+	}
+
+      disk_bound = true;
+    }
+
+  OR_BUF_INIT2 (buf, disk_data, -1);
+  buf.error_abort = 1;
+
+  pr_type_clob = PR_TYPE_FROM_ID (DB_TYPE_CLOB);
+  assert (pr_type_clob != NULL);
+  (*(pr_type_clob->data_readval)) (&buf, oor_value, NULL, -1, false, NULL, 0);
+
+  return NO_ERROR;
+}
+
 
 /*
  * heap_midxkey_get_value () -
@@ -10593,6 +10669,28 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	      value->state = HEAP_WRITTEN_ATTRVALUE;
 	    }
 	}
+      /* TODO[arnia] : macro for OOR types */
+      else if (value->last_attrepr->type == DB_TYPE_STRING || value->last_attrepr->type == DB_TYPE_CHAR
+	       || value->last_attrepr->type == DB_TYPE_NCHAR || value->last_attrepr->type == DB_TYPE_VARNCHAR)
+	{
+	  DB_VALUE tmp_value;
+
+	  DB_MAKE_NULL (&tmp_value);
+	  
+	  ret = heap_attrvalue_read_oor_location (thread_p, recdes, value, attr_info, &tmp_value);
+	  if (!db_value_is_null (&tmp_value))
+	    {
+	      DB_ELO *elo;
+	      assert (db_value_type (&tmp_value) == DB_TYPE_CLOB);
+	      elo = db_get_elo (&tmp_value);
+	      if (elo)
+		{
+		  ret = db_elo_delete (elo);
+		}
+	      value->state = HEAP_WRITTEN_ATTRVALUE;
+	      pr_clear_value (&tmp_value);
+	    }
+	}
     }
 
   return ret;
@@ -10817,7 +10915,6 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
   int error = NO_ERROR;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
-  OID root_oid;
 
   assert (class_oid != NULL);
 
@@ -11466,6 +11563,37 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	  db_value_clone (save, &value->dbvalue);
 	  db_value_free (save);
 	}
+      else if (value->state == HEAP_WRITTEN_ATTRVALUE
+	       && (value->last_attrepr->type == DB_TYPE_CHAR || value->last_attrepr->type == DB_TYPE_VARCHAR))
+	{
+	  DB_VALUE oor_location;
+
+	  DB_MAKE_NULL (&oor_location);
+	  /* read and delete old value */
+	  ret = heap_attrvalue_read_oor_location (thread_p, recdes, value, attr_info, &oor_location);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  if (!db_value_is_null (&oor_location))
+	    {
+	      DB_ELO *elo;
+
+	      assert (db_value_type (&oor_location) == DB_TYPE_CLOB);
+	      elo = db_get_elo (&oor_location);
+	      if (elo)
+		{
+		  ret = db_elo_delete (elo);
+		}
+	      db_value_clear (&oor_location);
+	      ret = (ret >= 0 ? NO_ERROR : ret);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
+	}
+
     }
 
   if (recdes != NULL)
@@ -11525,7 +11653,7 @@ re_check:
 	      && column_size > OR_OID_SIZE)
 	    {
 	      /* TODO[arnia] : better approximation of OOR column size */
-	      size_gain_overflow_columns += column_size - HEAP_OOR_THRESHOLD_SIZE;
+	      size_gain_overflow_columns += column_size - OBJECT_OOR_THRESHOLD_SIZE;
 	    }
 	}
     }
@@ -20414,7 +20542,6 @@ heap_insert_handle_out_of_row_records (THREAD_ENTRY * thread_p, HEAP_OPERATION_C
 {
   int i;
   bool use_bigone_maxsize = false;
-  int rc;
 
   assert (context != NULL);
   assert (context->out_of_row_recdes != NULL);

@@ -588,6 +588,25 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
   return (ret < 0) ? ER_ES_GENERAL : NO_ERROR;
 }
 
+/*
+ * es_posix_rename_file - convert a locator & file path according to the metaname
+ *
+ * return: error code, ER_ES_GENERAL or NO_ERRROR
+ * src_path(in): file path to rename
+ * metapath(in) : meta name combined with src_path
+ * new_path(out): new file path
+ */
+int
+xes_posix_rename_file_with_new (const char *src_path, const char *new_path)
+{
+  int ret;
+
+  er_log_debug (ARG_FILE_LINE, "xes_posix_rename_file_with_new(%s): %s\n", src_path, new_path);
+
+  ret = os_rename_file (src_path, new_path);
+
+  return (ret < 0) ? ER_ES_GENERAL : NO_ERROR;
+}
 
 /*
  * xes_posix_get_file_size - get the size of the external file

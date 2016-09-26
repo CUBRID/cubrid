@@ -975,7 +975,30 @@ struct rvfun RV_fun[] = {
    heap_rv_undoredo_update,
    heap_rv_undoredo_update_and_update_chain,
    log_rv_dump_hexa,
-   log_rv_dump_hexa}
+   log_rv_dump_hexa},
+
+  {RVELO_CREATE_FILE,
+   "RVELO_CREATE_FILE",
+   elo_rv_delete_elo,
+   elo_rv_create_elo,
+   /* TODO[arnia] : log dump functions */
+   NULL,
+   NULL},
+  {RVELO_DELETE_FILE,
+   "RVELO_DELETE_FILE",
+   /* TODO[arnia] : undo redo functions */
+   NULL,
+   elo_rv_delete_elo,
+   NULL,
+   NULL},
+  {RVELO_RENAME_FILE,
+   "RVELO_RENAME_FILE",
+   /* TODO[arnia] : undo redo functions */
+   elo_rv_rename_elo,
+   NULL,
+   NULL,
+   NULL}
+   
 };
 
 /*

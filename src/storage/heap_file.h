@@ -175,6 +175,7 @@ typedef enum
   HEAP_WRITTEN_ATTRVALUE,
   HEAP_UNINIT_ATTRVALUE,
   HEAP_WRITTEN_LOB_ATTRVALUE,
+  /* TODO[arnia] : remove if not needed */
   HEAP_READ_ATTRVALUE_OOR_LOB
 } HEAP_ATTRVALUE_STATE;
 
@@ -330,9 +331,6 @@ typedef enum
   SNAPSHOT_TYPE_MVCC,		/* use MVCC snapshot */
   SNAPSHOT_TYPE_DIRTY		/* use dirty snapshot */
 } SNAPSHOT_TYPE;
-
-/* values with this size or above are stored in out of record data (heap or overflow) */
-#define HEAP_OOR_THRESHOLD_SIZE PATH_MAX
 
 
 /* HEAP_PAGE_VACUUM_STATUS -
