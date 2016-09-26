@@ -413,6 +413,15 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	  return ER_FAILED;
 	}
 
+      /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
+      rc = pr_clear_compressed_string (dbval_p);
+      if (rc != NO_ERROR)
+	{
+	  /* This should not happen for now */
+	  assert (false);
+	  return ER_FAILED;
+	}
+
       /* I don't know if the following is still true. */
       /* since each tuple data value field is already aligned with MAX_ALIGNMENT, val_size by itself can be used to
        * find the maximum alignment for the following field which is next val_header */
@@ -580,11 +589,11 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	  /* The value has been peeked so it does not require any clear, but we still might have the compressed_string
 	   * alloced so we need to clear it.
 	   */
-	  /*val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
-	     if (!DB_IS_NULL (val_buffer))
-	     {
-	     pr_clear_compressed_string (val_buffer);
-	     } */
+	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
+	  if (!DB_IS_NULL (val_buffer))
+	    {
+	      pr_clear_compressed_string (val_buffer);
+	    }
 
 	  tuple_desc_p->tpl_size += value_size;
 	  tuple_desc_p->f_cnt += 1;	/* increase field number */
