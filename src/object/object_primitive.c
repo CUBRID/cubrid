@@ -11560,6 +11560,11 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      compressed_string[compressed_size] = '\0';
 		      compressed_need_clear = true;
 
+		      if (new_ != copy_buf)
+			{
+			  db_private_free_and_init (NULL, new_);
+			}
+
 		      new_ = decompressed_string;
 		      str_length = decompressed_size;
 		    }
@@ -14516,6 +14521,11 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      memcpy (compressed_string, new_, compressed_size);
 		      compressed_string[compressed_size] = '\0';
 		      compressed_need_clear = true;
+
+		      if (new_ != copy_buf)
+			{
+			  db_private_free_and_init (NULL, new_);
+			}
 
 		      new_ = decompressed_string;
 		      str_length = decompressed_size;
