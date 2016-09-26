@@ -1027,6 +1027,12 @@ struct rvfun RV_fun[] = {
    file_rv_fhead_sticky_page,
    file_rv_fhead_sticky_page,
    NULL,
+   NULL},
+  {RVDK_VOLHEAD_EXPAND,
+   "RVDK_VOLHEAD_EXPAND",
+   NULL,
+   disk_rv_volhead_extend_redo,
+   NULL,
    NULL}
 };
 

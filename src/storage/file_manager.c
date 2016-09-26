@@ -62,14 +62,6 @@
 
 #include "fault_injection.h"
 
-#if !defined(SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(a)	0
-#define pthread_mutex_unlock(a)
-static int rv;
-#endif /* !SERVER_MODE */
-
 #define FILE_SET_NUMVPIDS     10
 #define FILE_NUM_EMPTY_SECTS  500
 
@@ -301,10 +293,8 @@ static FILE_TRACKER_CACHE file_Tracker_cache = {
 
 static FILE_TRACKER_CACHE *file_Tracker = &file_Tracker_cache;
 
-#if defined(SERVER_MODE)
 static pthread_mutex_t file_Type_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t file_Num_mark_deleted_hint_lock = PTHREAD_MUTEX_INITIALIZER;
-#endif /* SERVER_MODE */
 
 #ifdef FILE_DEBUG
 static int file_Debug_newallocset_multiple_of = -10;
@@ -4185,9 +4175,7 @@ file_type_cache_check (const VFID * vfid)
 {
   FILE_TYPE file_type = FILE_UNKNOWN_TYPE;
   int i;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
   rv = pthread_mutex_lock (&file_Type_cache_lock);
 
@@ -4219,9 +4207,7 @@ static int
 file_type_cache_add_entry (const VFID * vfid, FILE_TYPE type)
 {
   int candidate;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
   rv = pthread_mutex_lock (&file_Type_cache_lock);
@@ -4273,9 +4259,7 @@ static int
 file_type_cache_entry_remove (const VFID * vfid)
 {
   int i;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
   rv = pthread_mutex_lock (&file_Type_cache_lock);
@@ -4314,9 +4298,7 @@ file_type_cache_entry_remove (const VFID * vfid)
 int
 file_typecache_clear (void)
 {
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
   rv = pthread_mutex_lock (&file_Type_cache_lock);
@@ -11774,9 +11756,7 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type, c
   int num_found;		/* Number of files found in each cycle */
   INT16 clean;
   int i, j;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
   VFID tmp_vfid = {
     NULL_FILEID, NULL_VOLID
   };
@@ -12441,9 +12421,7 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_HEADER *fhdr;
   INT16 isdeleted;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
   int ret = NO_ERROR;
   int offset = 0;
   OID class_oid;
