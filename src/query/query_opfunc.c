@@ -551,6 +551,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   int i;
   int value_size;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
+  DB_VALUE *val_buffer;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -584,8 +585,22 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	      status = QPROC_TPLDESCR_FAILURE;
 	      goto exit_with_status;
 	    }
+
+	  /* The value has been peeked so it does not require any clear, but we still might have the compressed_string
+	   * alloced so we need to clear it.
+	   */
+
+	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
+	  if (!DB_IS_NULL (val_buffer) && (DB_VALUE_DOMAIN_TYPE (val_buffer) == DB_TYPE_VARCHAR ||
+					   DB_VALUE_DOMAIN_TYPE (val_buffer) == DB_TYPE_VARNCHAR))
+	    {
+	      pr_clear_compressed_string (val_buffer);
+	    }
+
 	  tuple_desc_p->tpl_size += value_size;
 	  tuple_desc_p->f_cnt += 1;	/* increase field number */
+
+
 	}
 
       reg_var_p = reg_var_p->next;
