@@ -11547,7 +11547,17 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			  assert (false);
 			}
 
-		      compressed_string = new_;
+		      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+		      if (compressed_string == NULL)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				  (size_t) (compressed_size + 1) * sizeof (char));
+			  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+			  goto cleanup;
+			}
+
+		      memcpy (compressed_string, new_, compressed_size);
+		      compressed_string[compressed_size] = '\0';
 		      compressed_need_clear = true;
 
 		      new_ = decompressed_string;
@@ -14494,7 +14504,17 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      /* The compressed string stored in buf is now decompressed in decompressed_string
 		       * and is needed now to be copied over new_. */
 
-		      compressed_string = new_;
+		      compressed_string = db_private_alloc (NULL, compressed_size + 1);
+		      if (compressed_string == NULL)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				  (size_t) (compressed_size + 1) * sizeof (char));
+			  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+			  goto cleanup;
+			}
+
+		      memcpy (compressed_string, new_, compressed_size);
+		      compressed_string[compressed_size] = '\0';
 		      compressed_need_clear = true;
 
 		      new_ = decompressed_string;
