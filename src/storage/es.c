@@ -631,6 +631,8 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
   addr.pgptr = NULL;
   addr.vfid = NULL;
 
+  (void) logtb_get_current_mvccid (thread_p);
+
   /* Compute the total length required to pack string */
   length = or_packed_string_length (uri, NULL);
 
