@@ -91,11 +91,9 @@ static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, i
 static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen,
 					 bool is_replication);
 static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-			      MNT_SERVER_EXEC_STATS * diff_stats, char *queryinfo_string);
-static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-				  MNT_SERVER_EXEC_STATS * diff_stats);
-static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-				    MNT_SERVER_EXEC_STATS * diff_stats);
+			      UINT64 * diff_stats, char *queryinfo_string);
+static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
+static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
 
 
@@ -5238,7 +5236,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 /*
  * sqmgr_execute_query - Process a SERVER_QM_EXECUTE request
  *
- * return:
+ * return:error or no error
  *
  *   thrd(in):
  *   rid(in):
@@ -5276,7 +5274,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   int queryinfo_string_length = 0;
   char queryinfo_string[QUERY_INFO_BUF_SIZE];
 
-  MNT_SERVER_EXEC_STATS base_stats, current_stats, diff_stats;
+  UINT64 *base_stats = NULL;
+  UINT64 *current_stats = NULL;
+  UINT64 *diff_stats = NULL;
   char *sql_id = NULL;
   int error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
@@ -5289,8 +5289,15 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
-      xmnt_server_start_stats (thread_p, false);
-      xmnt_server_copy_stats (thread_p, &base_stats);
+      perfmon_start_watch (thread_p);
+
+      base_stats = perfmon_allocate_values ();
+      if (base_stats == NULL)
+	{
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  return;
+	}
+      xperfmon_server_copy_stats (thread_p, base_stats);
 
       tsc_getticks (&start_tick);
 
@@ -5469,22 +5476,45 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	  response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
 
-	  xmnt_server_copy_stats (thread_p, &current_stats);
-	  mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
+	  if (base_stats == NULL)
+	    {
+	      base_stats = perfmon_allocate_values ();
+	      if (base_stats == NULL)
+		{
+		  css_send_abort_to_client (thread_p->conn_entry, rid);
+		  return;
+		}
+	    }
+
+	  current_stats = perfmon_allocate_values ();
+	  if (current_stats == NULL)
+	    {
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      goto exit;
+	    }
+	  diff_stats = perfmon_allocate_values ();
+	  if (diff_stats == NULL)
+	    {
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      goto exit;
+	    }
+
+	  xperfmon_server_copy_stats (thread_p, current_stats);
+	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
 
 	  if (response_time >= trace_slow_msec)
 	    {
 	      queryinfo_string_length =
-		er_log_slow_query (thread_p, &info, response_time, &diff_stats, queryinfo_string);
-	      event_log_slow_query (thread_p, &info, response_time, &diff_stats);
+		er_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string);
+	      event_log_slow_query (thread_p, &info, response_time, diff_stats);
 	    }
 
-	  if (trace_ioreads > 0 && diff_stats.pb_num_ioreads >= trace_ioreads)
+	  if (trace_ioreads > 0 && diff_stats[PSTAT_PB_NUM_IOREADS] >= trace_ioreads)
 	    {
-	      event_log_many_ioreads (thread_p, &info, response_time, &diff_stats);
+	      event_log_many_ioreads (thread_p, &info, response_time, diff_stats);
 	    }
 
-	  xmnt_server_stop_stats (thread_p);
+	  perfmon_stop_watch (thread_p);
 	}
 
       if (thread_p->event_stats.temp_expand_pages > 0)
@@ -5523,6 +5553,20 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
+
+exit:
+  if (base_stats != NULL)
+    {
+      free_and_init (base_stats);
+    }
+  if (current_stats != NULL)
+    {
+      free_and_init (current_stats);
+    }
+  if (diff_stats != NULL)
+    {
+      free_and_init (diff_stats);
+    }
 }
 
 /*
@@ -5535,7 +5579,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
  *   queryinfo_string(out):
  */
 static int
-er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT_SERVER_EXEC_STATS * diff_stats,
+er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats,
 		   char *queryinfo_string)
 {
   char stat_buf[STATDUMP_BUF_SIZE];
@@ -5546,7 +5590,7 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT
 
   if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
     {
-      mnt_server_dump_stats_to_buffer (diff_stats, stat_buf, STATDUMP_BUF_SIZE, NULL);
+      perfmon_server_dump_stats_to_buffer (diff_stats, stat_buf, STATDUMP_BUF_SIZE, NULL);
     }
   else
     {
@@ -5595,7 +5639,7 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT
  *   bind_vals(in):
  */
 static void
-event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT_SERVER_EXEC_STATS * diff_stats)
+event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5621,8 +5665,8 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
   fprintf (log_fp, "%*cbuffer: fetch=%lld, ioread=%lld, iowrite=%lld\n", indent, ' ',
-	   (long long int) diff_stats->pb_num_fetches, (long long int) diff_stats->pb_num_ioreads,
-	   (long long int) diff_stats->pb_num_iowrites);
+	   (long long int) diff_stats[PSTAT_PB_NUM_FETCHES],
+	   (long long int) diff_stats[PSTAT_PB_NUM_IOREADS], (long long int) diff_stats[PSTAT_PB_NUM_IOWRITES]);
   fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ', TO_MSEC (thread_p->event_stats.cs_waits),
 	   TO_MSEC (thread_p->event_stats.lock_waits), TO_MSEC (thread_p->event_stats.latch_waits));
 
@@ -5640,7 +5684,7 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
  *   bind_vals(in):
  */
 static void
-event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT_SERVER_EXEC_STATS * diff_stats)
+event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5665,7 +5709,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats->pb_num_ioreads);
+  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats[PSTAT_PB_NUM_IOREADS]);
 
   event_log_end (thread_p);
 }
@@ -6353,19 +6397,12 @@ sserial_decache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 void
 smnt_server_start_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int success, for_all_trans;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_unpack_int (request, &for_all_trans);
+  perfmon_start_watch (thread_p);
 
-  success = xmnt_server_start_stats (thread_p, (bool) for_all_trans);
-  if (success != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_int (reply, (int) success);
+  (void) or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -6386,7 +6423,7 @@ smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  xmnt_server_stop_stats (thread_p);
+  perfmon_stop_watch (thread_p);
   /* dummy reply message */
   (void) or_pack_int (reply, 1);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -6406,16 +6443,34 @@ smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  MNT_SERVER_EXEC_STATS stats;
+  char *reply = NULL;
+  int nr_statistic_values;
+  UINT64 *stats = NULL;
 
-  /* check to see if the pack/unpack functions match the current structure definition */
-  assert (STAT_SIZE_MEMORY == MNT_SERVER_EXEC_STATS_SIZEOF);
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  stats = perfmon_allocate_values ();
 
-  xmnt_server_copy_stats (thread_p, &stats);
-  net_pack_stats (reply, &stats);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (stats == NULL)
+    {
+      ASSERT_ERROR ();
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  reply = perfmon_allocate_packed_values_buffer ();
+  if (reply == NULL)
+    {
+      ASSERT_ERROR ();
+      free_and_init (stats);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  xperfmon_server_copy_stats (thread_p, stats);
+  perfmon_pack_stats (reply, stats);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, nr_statistic_values * sizeof (UINT64));
+  free_and_init (stats);
+  free_and_init (reply);
 }
 
 /*
@@ -6432,13 +6487,33 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  MNT_SERVER_EXEC_STATS stats;
+  char *reply = NULL;
+  int nr_statistic_values;
+  UINT64 *stats = NULL;
 
-  xmnt_server_copy_global_stats (thread_p, &stats);
-  net_pack_stats (reply, &stats);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  stats = perfmon_allocate_values ();
+  if (stats == NULL)
+    {
+      ASSERT_ERROR ();
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  reply = perfmon_allocate_packed_values_buffer ();
+  if (reply == NULL)
+    {
+      ASSERT_ERROR ();
+      free_and_init (stats);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  xperfmon_server_copy_global_stats (thread_p, stats);
+  perfmon_pack_stats (reply, stats);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, nr_statistic_values * sizeof (UINT64));
+  free_and_init (stats);
+  free_and_init (reply);
 }
 
 /*
