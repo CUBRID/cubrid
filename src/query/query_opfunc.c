@@ -414,7 +414,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	}
 
       /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
-      // rc = pr_clear_compressed_string (dbval_p);
+      rc = pr_clear_compressed_string (dbval_p);
       if (rc != NO_ERROR)
 	{
 	  /* This should not happen for now */
@@ -589,18 +589,14 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	  /* The value has been peeked so it does not require any clear, but we still might have the compressed_string
 	   * alloced so we need to clear it.
 	   */
-
 	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
-	  if (!DB_IS_NULL (val_buffer) && (DB_VALUE_DOMAIN_TYPE (val_buffer) == DB_TYPE_VARCHAR ||
-					   DB_VALUE_DOMAIN_TYPE (val_buffer) == DB_TYPE_VARNCHAR))
+	  if (!DB_IS_NULL (val_buffer))
 	    {
 	      pr_clear_compressed_string (val_buffer);
 	    }
 
 	  tuple_desc_p->tpl_size += value_size;
 	  tuple_desc_p->f_cnt += 1;	/* increase field number */
-
-
 	}
 
       reg_var_p = reg_var_p->next;
