@@ -11058,6 +11058,9 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  dest->data.ch.info.is_max_string = true;
 	  dest->domain.general_info.is_null = 0;
+	  dest->data.ch.medium.compressed_buf = NULL;
+	  dest->data.ch.medium.compressed_size = -1;
+	  dest->data.ch.info.compressed_need_clear = false;
 	}
     }
   else
