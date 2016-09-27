@@ -406,8 +406,8 @@ struct rvfun RV_fun[] = {
    heap_rv_redo_update_and_update_chain,
    NULL,
    NULL},
-  {RVHF_MVCC_DELETE_NO_MODIFY_HOME,
-   "RVHF_MVCC_DELETE_NO_MODIFY_HOME",
+  {RVHF_MVCC_NO_MODIFY_HOME,
+   "RVHF_MVCC_NO_MODIFY_HOME",
    heap_rv_nop,
    heap_rv_update_chain_after_mvcc_op,
    NULL,
@@ -972,10 +972,17 @@ struct rvfun RV_fun[] = {
 
   {RVHF_MVCC_UPDATE_OVERFLOW,
    "RVHF_MVCC_UPDATE_OVERFLOW",
-   heap_rv_undo_update,
-   heap_rv_redo_update_and_update_chain,
-   log_rv_dump_hexa,
-   log_rv_dump_hexa}
+   NULL,
+   NULL,
+   NULL,
+   NULL},
+
+  {RVOVF_FIRSTPAGE_UPDATE,
+   "RVOVF_FIRSTPAGE_UPDATE",
+   overflow_rv_firstpage_update_undo,
+   overflow_rv_page_update_redo,
+   overflow_rv_page_dump,
+   overflow_rv_page_dump},
 };
 
 /*

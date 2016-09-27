@@ -595,12 +595,12 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	  /* Log before image */
 	  if (hdr_length + old_length > DB_PAGESIZE)
 	    {
-	      log_append_undo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, DB_PAGESIZE, addr.pgptr);
+	      log_append_undo_data (thread_p, RVOVF_FIRSTPAGE_UPDATE, &addr, DB_PAGESIZE, addr.pgptr);
 	      old_length -= DB_PAGESIZE - hdr_length;
 	    }
 	  else
 	    {
-	      log_append_undo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, hdr_length + old_length, addr.pgptr);
+	      log_append_undo_data (thread_p, RVOVF_FIRSTPAGE_UPDATE, &addr, hdr_length + old_length, addr.pgptr);
 	      old_length = 0;
 	    }
 
@@ -1423,4 +1423,24 @@ overflow_get_first_page_data (char *page_ptr)
 {
   assert (page_ptr != NULL);
   return ((OVERFLOW_FIRST_PART *) page_ptr)->data;
+}
+
+/*
+* overflow_rv_firstpage_update_undo () -
+*   return: error_code
+*   rcv(in): Recovery structure
+*/
+int
+overflow_rv_firstpage_update_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  int error_code;
+
+  error_code = log_rv_copy_char (thread_p, rcv);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = vacuum_rv_check_at_undo (thread_p, rcv->pgptr, NULL_SLOTID, REC_BIGONE);
+  return error_code;
 }
