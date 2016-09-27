@@ -22472,6 +22472,14 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   context->file_type = heap_get_file_type (thread_p, context);
   if (context->file_type != FILE_HEAP && context->file_type != FILE_HEAP_REUSE_SLOTS)
     {
+      if (context->file_type == FILE_UNKNOWN_TYPE)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  if (rc == ER_INTERRUPTED)
+	    {
+	      return rc;
+	    }
+	}
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
@@ -22625,6 +22633,14 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   context->file_type = heap_get_file_type (thread_p, context);
   if (context->file_type != FILE_HEAP && context->file_type != FILE_HEAP_REUSE_SLOTS)
     {
+      if (context->file_type == FILE_UNKNOWN_TYPE)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  if (rc == ER_INTERRUPTED)
+	    {
+	      return rc;
+	    }
+	}
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
