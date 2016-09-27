@@ -313,7 +313,7 @@ fpcache_entry_uninit (void *entry)
 	saved_pred_expr1 = *pred_expr;
 
       qexec_clear_pred_context (thread_p, pred_expr, true);
-	pos = ATOMIC_INC_32 (&dbg_cnt, 1);
+	pos = ATOMIC_INC_32 (&dbg_cnt, 1) % DBG_SIZE;
 	dbg[pos].dbg_info = pred_expr;
 	dbg[pos].pcode = 0;
 	dbg[pos].pthread_p = thread_p;
