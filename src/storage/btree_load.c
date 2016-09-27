@@ -1043,6 +1043,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   if (filter_pred != NULL && filter_pred->unpack_info != NULL)
     {
+      printf ("xbtree_load_index:pred_expr:%p", filter_pred);
+      fflush (stdout);
       stx_free_additional_buff (thread_p, filter_pred->unpack_info);
       stx_free_xasl_unpack_info (filter_pred->unpack_info);
       db_private_free_and_init (thread_p, filter_pred->unpack_info);
@@ -1152,6 +1154,9 @@ error:
     }
   if (filter_pred != NULL && filter_pred->unpack_info != NULL)
     {
+      printf ("xbtree_load_index:pred_expr:%p", filter_pred);
+      fflush (stdout);
+
       stx_free_additional_buff (thread_p, filter_pred->unpack_info);
       stx_free_xasl_unpack_info (filter_pred->unpack_info);
       db_private_free_and_init (thread_p, filter_pred->unpack_info);
