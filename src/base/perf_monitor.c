@@ -2454,7 +2454,7 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	}
     }
 
-  while (i < PSTAT_COUNT)
+  for (; i < PSTAT_COUNT; i++)
     {
       if (substr != NULL)
 	{
@@ -2471,7 +2471,6 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 
       fprintf (stream, "%s:\n", pstat_Metadata[i].stat_name);
       pstat_Metadata[i].f_dump_in_file (stream, &(stats[pstat_Metadata[i].start_offset]));
-      i++;
     }
 }
 
