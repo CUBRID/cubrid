@@ -27,11 +27,12 @@
 #include "lock_free.h"
 #include "query_executor.h"
 
-#define DBG_SIZE 5000
+#define DBG_SIZE 30000
 
 typedef struct debug_info DEBUG_INFO;
 struct debug_info
 {
+  int pos;
   int pcode;
   void *pthread_p;
   void *dbg_info;
@@ -314,6 +315,7 @@ fpcache_entry_uninit (void *entry)
 
       qexec_clear_pred_context (thread_p, pred_expr, true);
 	pos = ATOMIC_INC_32 (&dbg_cnt, 1) % DBG_SIZE;
+	dbg[pos].pos = pos;
 	dbg[pos].dbg_info = pred_expr;
 	dbg[pos].pcode = 0;
 	dbg[pos].pthread_p = thread_p;
@@ -324,6 +326,7 @@ fpcache_entry_uninit (void *entry)
       stx_free_additional_buff (thread_p, pred_expr->unpack_info);
 
 	pos = ATOMIC_INC_32 (&dbg_cnt, 1) % DBG_SIZE;
+	dbg[pos].pos = pos;
 	dbg[pos].dbg_info = pred_expr;
 	dbg[pos].pcode = 1;
 	dbg[pos].pthread_p = thread_p;
@@ -333,6 +336,7 @@ fpcache_entry_uninit (void *entry)
       stx_free_xasl_unpack_info (pred_expr->unpack_info);
 
 	pos = ATOMIC_INC_32 (&dbg_cnt, 1) % DBG_SIZE;
+	dbg[pos].pos = pos;
 	dbg[pos].dbg_info = pred_expr;
 	dbg[pos].pcode = 2;
 	dbg[pos].pthread_p = thread_p;
@@ -493,6 +497,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR
 	      /* Can save filter predicate expression. */
 
 	      pos = ATOMIC_INC_32 (&dbg_cnt, 1) % DBG_SIZE;
+	      dbg[pos].pos = pos;
 	      dbg[pos].dbg_info = filter_pred;
 	      dbg[pos].pcode = 3;
 	      dbg[pos].pthread_p = thread_p;
@@ -533,8 +538,9 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR
 
 
 	      pos = ATOMIC_INC_32 (&dbg_cnt, 1) % DBG_SIZE;
+	      dbg[pos].pos = pos;
 	      dbg[pos].dbg_info = filter_pred;
-	      dbg[pos].pcode = 3;
+	      dbg[pos].pcode = 4;
 	      dbg[pos].pthread_p = thread_p;
 
 
