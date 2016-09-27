@@ -1964,7 +1964,7 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
 void
 perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount)
 {
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   perfmon_add_stat (thread_p, PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS, amount);
   assert (lock_mode >= NA_LOCK && lock_mode <= SCH_M_LOCK);
@@ -2024,7 +2024,7 @@ perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, in
   int module;
   int offset;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   module = perfmon_get_module_type (thread_p);
 
@@ -2051,7 +2051,7 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
   int module;
   int offset;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   module = perfmon_get_module_type (thread_p);
 
@@ -2078,7 +2078,7 @@ perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int di
   int module;
   int offset;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   module = perfmon_get_module_type (thread_p);
 
@@ -2105,7 +2105,7 @@ perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
   int module;
   int offset;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   module = perfmon_get_module_type (thread_p);
 
@@ -2133,7 +2133,7 @@ perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
   int module;
   int offset;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   module = perfmon_get_module_type (thread_p);
 
@@ -2160,7 +2160,7 @@ perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_f
   int module;
   int offset;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   module = perfmon_get_module_type (thread_p);
 
@@ -2186,7 +2186,7 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
 {
   int offset;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   assert (snapshot >= PERF_SNAPSHOT_SATISFIES_DELETE && snapshot < PERF_SNAPSHOT_CNT);
   assert (rec_type >= PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED && rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT);
@@ -4127,7 +4127,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 #endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   /* Update global statistic. */
   statvalp = pstat_Global.global_stats + offset;
@@ -4191,7 +4191,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
 #endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   /* Update global statistic. */
   statvalp = pstat_Global.global_stats + offset;
@@ -4259,7 +4259,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 #endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
 
   /* Update global statistics. */
   statvalp = pstat_Global.global_stats + offset;
