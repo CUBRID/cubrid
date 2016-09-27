@@ -4015,6 +4015,7 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 
   pstat_Global.is_watching[tran_index] = false;
 }
+#endif /* SERVER_MODE || SA_MODE */
 
 /*
  * perfmon_is_perf_tracking () - Returns true if there are active threads
@@ -4040,7 +4041,6 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
 {
   return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
 }
-#endif /* SERVER_MODE || SA_MODE */
 
 /*
  *  Add/set stats section.
