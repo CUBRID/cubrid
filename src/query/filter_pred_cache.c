@@ -292,18 +292,26 @@ fpcache_entry_uninit (void *entry)
 
   for (head = fpcache_entry->clone_stack_head; head >= 0; head--)
     {
-      void *saved_pred_expr1 = NULL, *saved_pred_expr2 = NULL;
+      PRED_EXPR_WITH_CONTEXT saved_pred_expr1, saved_pred_expr2, saved_pred_expr3;
       pred_expr = fpcache_entry->clone_stack[head];
       assert (pred_expr != NULL);
 
-      saved_pred_expr1 = pred_expr;
+	saved_pred_expr1 = *pred_expr;
+
       qexec_clear_pred_context (thread_p, pred_expr, true);
-      printf ("fpcache_entry_uninit:pred_expr:%p", pred_expr);
-      saved_pred_expr2 = pred_expr;
+
+	printf ("fpcache_entry_uninit:pred_expr:%p\n", pred_expr);
+	saved_pred_expr2 = *pred_expr;
+
       stx_free_additional_buff (thread_p, pred_expr->unpack_info);
+	
+	saved_pred_expr3 = *pred_expr;
+      
       stx_free_xasl_unpack_info (pred_expr->unpack_info);
-      printf ("fpcache_entry_uninit:pred_expr:%p", pred_expr);
-      fflush (stdout);
+
+	printf ("fpcache_entry_uninit:pred_expr:%p\n", pred_expr);
+	fflush (stdout);
+
       db_private_free_and_init (thread_p, pred_expr->unpack_info);
     }
 
@@ -454,7 +462,12 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR
 	  if (fpcache_entry->clone_stack_head < fpcache_Clone_stack_size - 1)
 	    {
 	      /* Can save filter predicate expression. */
+	      printf ("fpcache_retire:pred_expr:%p, fpcache_entry->clone_stack_head:%d\n", filter_pred, fpcache_entry->clone_stack_head);
+
 	      fpcache_entry->clone_stack[++fpcache_entry->clone_stack_head] = filter_pred;
+
+	      er_print_callstack (ARG_FILE_LINE, "fpcache_retire:pred_expr:%p, fpcache_entry->clone_stack_head:%d\n", filter_pred, fpcache_entry->clone_stack_head);
+
 	      filter_pred = NULL;
 	      ATOMIC_INC_64 (&fpcache_Stat_clone_add, 1);
 	      ATOMIC_INC_32 (&fpcache_Clone_counter, 1);
@@ -480,7 +493,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR
       /* Filter predicate expression could not be cached. Free it. */
       HL_HEAPID old_private_heap = db_change_private_heap (thread_p, 0);
 
-      printf ("fpcache_retire:pred_expr:%p", filter_pred);
+      printf ("fpcache_retire:pred_expr:%p\n", filter_pred);
       fflush (stdout);
 
       stx_free_additional_buff (thread_p, filter_pred->unpack_info);
