@@ -4201,11 +4201,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
       if (index->n_atts > 1)
 	{
-#if 1	/* CBRD-20523, If any column contains NULL value, skip foreign key constrains validity check */
-	  is_null = btree_multicol_key_has_null (key_dbvalue);
-#else
 	  is_null = btree_multicol_key_is_null (key_dbvalue);
-#endif
 	}
       else
 	{
