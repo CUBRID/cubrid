@@ -2342,7 +2342,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	}
     }
 
-  while (i < PSTAT_COUNT && remained_size > 0)
+  for (; i < PSTAT_COUNT && remained_size > 0; i++)
     {
       if (substr != NULL)
 	{
@@ -2364,7 +2364,6 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	  return;
 	}
       pstat_Metadata[i].f_dump_in_buffer (p, &(stats[pstat_Metadata[i].start_offset]), &remained_size);
-      i++;
     }
 
   buffer[buf_size - 1] = '\0';
