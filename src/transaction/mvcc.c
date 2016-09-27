@@ -257,7 +257,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
 	{
 	  /* Record was inserted and is visible for all transactions */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
 				     PERF_SNAPSHOT_VISIBLE);
@@ -268,7 +268,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
       else if (MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record was inserted by current transaction and is visible */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
 				     PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN, PERF_SNAPSHOT_VISIBLE);
@@ -279,7 +279,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	{
 	  /* Record was inserted by an active transaction or by a transaction that has committed after snapshot was
 	   * obtained. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
 				     PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN, PERF_SNAPSHOT_INVISIBLE);
@@ -289,7 +289,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
       else
 	{
 	  /* The inserter transaction has committed and the record is visible to current transaction. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 		{
@@ -311,7 +311,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
       if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
 	{
 	  /* The record was deleted by current transaction and it is not visible anymore. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
 				     PERF_SNAPSHOT_INVISIBLE);
@@ -323,7 +323,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	  /* !!TODO: Is this check necessary? It seems that if inserter is active, then so will be the deleter (actually
 	   *       they will be the same). It only adds an extra-check in a function frequently called.
 	   */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_DELETED,
 				     PERF_SNAPSHOT_INVISIBLE);
@@ -334,7 +334,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	{
 	  /* The record was deleted by an active transaction or by a transaction that has committed after snapshot was
 	   * obtained. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT,
 				     PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN, PERF_SNAPSHOT_VISIBLE);
@@ -344,7 +344,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
       else
 	{
 	  /* The deleter transaction has committed and the record is not visible to current transaction. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      if (vacuum_is_mvccid_vacuumed (rec_header->mvcc_del_id))
 		{
@@ -422,7 +422,7 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
 	{
 	  /* 1: Record is all visible, and insert MVCCID was already removed/replaced. 2: Record was recently inserted
 	   * and is not yet visible to all active transactions. Cannot vacuum insert MVCCID. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      if (MVCC_IS_HEADER_DELID_VALID (rec_header)
 		  && MVCC_IS_REC_DELETED_SINCE_MVCCID (rec_header, oldest_mvccid))
@@ -447,7 +447,7 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
 	{
 	  /* The inserter transaction has committed and the record is visible to all running transactions. Insert
 	   * MVCCID and previous version lsa can be removed. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
 				     PERF_SNAPSHOT_VISIBLE);
@@ -458,7 +458,7 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
   else
     {
       /* The deleter transaction has committed and the record is not visible to any running transactions. */
-      if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	{
 	  perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_DELETED_COMMITTED,
 				 PERF_SNAPSHOT_VISIBLE);
@@ -490,7 +490,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
 	{
 	  /* Record was inserted and is visible for all transactions */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
 				     PERF_SNAPSHOT_VISIBLE);
@@ -501,7 +501,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       if (MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record is only visible to current transaction and can be safely deleted. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
 				     PERF_SNAPSHOT_VISIBLE);
@@ -511,7 +511,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       else if (MVCC_IS_REC_INSERTER_ACTIVE (thread_p, rec_header))
 	{
 	  /* Record is inserted by an active transaction and is not visible to current transaction. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
 				     PERF_SNAPSHOT_INVISIBLE);
@@ -521,7 +521,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       else
 	{
 	  /* The inserter transaction has committed and the record can be deleted by current transaction. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 		{
@@ -543,7 +543,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record was already deleted by me... */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
 				     PERF_SNAPSHOT_INVISIBLE);
@@ -553,7 +553,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       else if (MVCC_IS_REC_DELETER_ACTIVE (thread_p, rec_header))
 	{
 	  /* Record was deleted by an active transaction. Current transaction must wait until the deleter completes. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
 				     PERF_SNAPSHOT_INVISIBLE);
@@ -563,7 +563,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
       else
 	{
 	  /* Record was already deleted and the deleter has committed. Cannot be updated by current transaction. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      if (vacuum_is_mvccid_vacuumed (rec_header->mvcc_del_id))
 		{
@@ -617,7 +617,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
       if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
 	{
 	  /* Record was inserted and is visible for all transactions */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
 				     PERF_SNAPSHOT_VISIBLE);
@@ -627,7 +627,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
       else if (MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record was inserted by current transaction and is visible */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
 				     PERF_SNAPSHOT_VISIBLE);
@@ -638,7 +638,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	{
 	  /* Record is inserted by an active transaction and is visible */
 	  snapshot->lowest_active_mvccid = MVCC_GET_INSID (rec_header);
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
 				     PERF_SNAPSHOT_VISIBLE);
@@ -648,7 +648,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
       else
 	{
 	  /* Record is inserted by committed transaction. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      if (rec_header->mvcc_ins_id != MVCCID_ALL_VISIBLE && vacuum_is_mvccid_vacuumed (rec_header->mvcc_ins_id))
 		{
@@ -670,7 +670,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
       if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
 	{
 	  /* Record was deleted by current transaction and is not visible */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
 				     PERF_SNAPSHOT_INVISIBLE);
@@ -681,7 +681,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	{
 	  /* Record was deleted by other active transaction and is still visible */
 	  snapshot->highest_completed_mvccid = rec_header->mvcc_del_id;
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      perfmon_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DIRTY, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
 				     PERF_SNAPSHOT_VISIBLE);
@@ -692,7 +692,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
       else
 	{
 	  /* Record was already deleted and the deleter has committed. */
-	  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_MVCC_SNAPSHOT))
 	    {
 	      if (vacuum_is_mvccid_vacuumed (rec_header->mvcc_del_id))
 		{
