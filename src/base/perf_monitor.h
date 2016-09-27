@@ -603,9 +603,10 @@ extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
+#endif /* SERVER_MODE || SA_MODE */
+
 extern bool perfmon_is_perf_tracking (void);
 extern bool perfmon_is_perf_tracking_and_active (int activation_flag);
-#endif /* SERVER_MODE || SA_MODE */
 
 extern void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount);
 extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);

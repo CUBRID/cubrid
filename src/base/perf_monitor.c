@@ -503,23 +503,27 @@ PSTAT_METADATA pstat_Metadata[] = {
 #define PSTAT_COUNTER_TIMER_MAX_TIME_VALUE(startvalp) ((startvalp) + 2)
 #define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
 
-static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount);
-static void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount);
-static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval);
-static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff);
+STATIC_INLINE void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
+					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
+  __attribute__ ((ALWAYS_INLINE));
 
 static void perfmon_server_calc_stats (UINT64 * stats);
 
-static const char *perfmon_stat_module_name (const int module);
-static INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-static const char *perfmon_stat_page_type_name (const int page_type);
-static const char *perfmon_stat_page_mode_name (const int page_mode);
-static const char *perfmon_stat_holder_latch_name (const int holder_latch);
-static const char *perfmon_stat_cond_type_name (const int cond_type);
-static const char *perfmon_stat_promote_cond_name (const int cond_type);
-static const char *perfmon_stat_snapshot_name (const int snapshot);
-static const char *perfmon_stat_snapshot_record_type (const int rec_type);
-static const char *perfmon_stat_lock_mode_name (const int lock_mode);
+STATIC_INLINE const char *perfmon_stat_module_name (const int module) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_page_type_name (const int page_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_page_mode_name (const int page_mode) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_holder_latch_name (const int holder_latch) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_cond_type_name (const int cond_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
@@ -1960,17 +1964,11 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
 void
 perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount)
 {
-  UINT64 *stats;
+  assert (pstat_Global.initialized);
 
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      perfmon_add_stat (thread_p, PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS, amount);
-
-      assert (lock_mode >= NA_LOCK && lock_mode <= SCH_M_LOCK);
-
-      perfmon_add_stat_at_offset (thread_p, PSTAT_OBJ_LOCK_TIME_COUNTERS, lock_mode, amount);
-    }
+  perfmon_add_stat (thread_p, PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS, amount);
+  assert (lock_mode >= NA_LOCK && lock_mode <= SCH_M_LOCK);
+  perfmon_add_stat_at_offset (thread_p, PSTAT_OBJ_LOCK_TIME_COUNTERS, lock_mode, amount);
 }
 
 UINT64
@@ -2023,26 +2021,23 @@ perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
 void
 perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type)
 {
-  UINT64 *stats;
   int module;
   int offset;
 
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      module = perfmon_get_module_type (thread_p);
+  assert (pstat_Global.initialized);
 
-      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-      assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
-      assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
-      assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
+  module = perfmon_get_module_type (thread_p);
 
-      offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
-      assert (offset < PERF_PAGE_FIX_COUNTERS);
+  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
+  assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
+  assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
+  assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
 
-      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_FIX_COUNTERS, offset, 1);
-    }
+  offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
+  assert (offset < PERF_PAGE_FIX_COUNTERS);
+
+  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_FIX_COUNTERS, offset, 1);
 }
 
 /*
@@ -2053,27 +2048,24 @@ void
 perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
 		     UINT64 amount)
 {
-  UINT64 *stats;
   int module;
   int offset;
 
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      module = perfmon_get_module_type (thread_p);
+  assert (pstat_Global.initialized);
 
-      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-      assert (promote_cond >= PERF_PROMOTE_ONLY_READER && promote_cond < PERF_PROMOTE_CONDITION_CNT);
-      assert (holder_latch >= PERF_HOLDER_LATCH_READ && holder_latch < PERF_HOLDER_LATCH_CNT);
-      assert (success == 0 || success == 1);
+  module = perfmon_get_module_type (thread_p);
 
-      offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
-      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
+  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
+  assert (promote_cond >= PERF_PROMOTE_ONLY_READER && promote_cond < PERF_PROMOTE_CONDITION_CNT);
+  assert (holder_latch >= PERF_HOLDER_LATCH_READ && holder_latch < PERF_HOLDER_LATCH_CNT);
+  assert (success == 0 || success == 1);
 
-      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_PROMOTE_COUNTERS, offset, 1);
-      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_PROMOTE_TIME_COUNTERS, offset, amount);
-    }
+  offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
+  assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
+
+  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_PROMOTE_COUNTERS, offset, 1);
+  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_PROMOTE_TIME_COUNTERS, offset, amount);
 }
 
 /*
@@ -2083,26 +2075,23 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
 void
 perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder, int holder_latch)
 {
-  UINT64 *stats;
   int module;
   int offset;
 
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      module = perfmon_get_module_type (thread_p);
+  assert (pstat_Global.initialized);
 
-      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type > PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-      assert (buf_dirty == 0 || buf_dirty == 1);
-      assert (dirtied_by_holder == 0 || dirtied_by_holder == 1);
-      assert (holder_latch >= PERF_HOLDER_LATCH_READ && holder_latch < PERF_HOLDER_LATCH_CNT);
+  module = perfmon_get_module_type (thread_p);
 
-      offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, dirtied_by_holder, holder_latch);
-      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
+  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+  assert (page_type > PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
+  assert (buf_dirty == 0 || buf_dirty == 1);
+  assert (dirtied_by_holder == 0 || dirtied_by_holder == 1);
+  assert (holder_latch >= PERF_HOLDER_LATCH_READ && holder_latch < PERF_HOLDER_LATCH_CNT);
 
-      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_UNFIX_COUNTERS, offset, 1);
-    }
+  offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, dirtied_by_holder, holder_latch);
+  assert (offset < PERF_PAGE_UNFIX_COUNTERS);
+
+  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_UNFIX_COUNTERS, offset, 1);
 }
 
 /*
@@ -2113,27 +2102,24 @@ void
 perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 			       int cond_type, UINT64 amount)
 {
-  UINT64 *stats;
   int module;
   int offset;
 
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      module = perfmon_get_module_type (thread_p);
+  assert (pstat_Global.initialized);
 
-      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-      assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
-      assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
-      assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
-      assert (amount > 0);
+  module = perfmon_get_module_type (thread_p);
 
-      offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
-      assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
+  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
+  assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
+  assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
+  assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
+  assert (amount > 0);
 
-      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_LOCK_TIME_COUNTERS, offset, amount);
-    }
+  offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
+  assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
+
+  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_LOCK_TIME_COUNTERS, offset, amount);
 }
 
 /*
@@ -2144,26 +2130,23 @@ void
 perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 			       UINT64 amount)
 {
-  UINT64 *stats;
   int module;
   int offset;
 
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      module = perfmon_get_module_type (thread_p);
+  assert (pstat_Global.initialized);
 
-      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-      assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
-      assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
-      assert (amount > 0);
+  module = perfmon_get_module_type (thread_p);
 
-      offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode, latch_mode);
-      assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
+  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
+  assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
+  assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
+  assert (amount > 0);
 
-      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_HOLD_TIME_COUNTERS, offset, amount);
-    }
+  offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode, latch_mode);
+  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
+
+  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_HOLD_TIME_COUNTERS, offset, amount);
 }
 
 /*
@@ -2174,27 +2157,24 @@ void
 perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 			      int cond_type, UINT64 amount)
 {
-  UINT64 *stats;
   int module;
   int offset;
 
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      module = perfmon_get_module_type (thread_p);
+  assert (pstat_Global.initialized);
 
-      assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-      assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
-      assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
-      assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
-      assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
-      assert (amount > 0);
+  module = perfmon_get_module_type (thread_p);
 
-      offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
-      assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
+  assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
+  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
+  assert (page_found_mode >= PERF_PAGE_MODE_OLD_LOCK_WAIT && page_found_mode < PERF_PAGE_MODE_CNT);
+  assert (latch_mode >= PERF_HOLDER_LATCH_READ && latch_mode < PERF_HOLDER_LATCH_CNT);
+  assert (cond_type >= PERF_CONDITIONAL_FIX && cond_type < PERF_CONDITIONAL_FIX_CNT);
+  assert (amount > 0);
 
-      perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_FIX_TIME_COUNTERS, offset, amount);
-    }
+  offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
+  assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
+
+  perfmon_add_stat_at_offset (thread_p, PSTAT_PBX_FIX_TIME_COUNTERS, offset, amount);
 }
 
 /*
@@ -2204,20 +2184,17 @@ perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_f
 void
 perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility)
 {
-  UINT64 *stats;
   int offset;
 
-  stats = perfmon_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      assert (snapshot >= PERF_SNAPSHOT_SATISFIES_DELETE && snapshot < PERF_SNAPSHOT_CNT);
-      assert (rec_type >= PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED && rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT);
-      assert (visibility >= PERF_SNAPSHOT_INVISIBLE && visibility < PERF_SNAPSHOT_VISIBILITY_CNT);
-      offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
-      assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
+  assert (pstat_Global.initialized);
 
-      perfmon_add_stat_at_offset (thread_p, PSTAT_MVCC_SNAPSHOT_COUNTERS, offset, 1);
-    }
+  assert (snapshot >= PERF_SNAPSHOT_SATISFIES_DELETE && snapshot < PERF_SNAPSHOT_CNT);
+  assert (rec_type >= PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED && rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT);
+  assert (visibility >= PERF_SNAPSHOT_INVISIBLE && visibility < PERF_SNAPSHOT_VISIBILITY_CNT);
+  offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
+  assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
+
+  perfmon_add_stat_at_offset (thread_p, PSTAT_MVCC_SNAPSHOT_COUNTERS, offset, 1);
 }
 
 #endif /* SERVER_MODE || SA_MODE */
@@ -2365,7 +2342,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	}
     }
 
-  while (i < PSTAT_COUNT && remained_size > 0)
+  for (; i < PSTAT_COUNT && remained_size > 0; i++)
     {
       if (substr != NULL)
 	{
@@ -2387,7 +2364,6 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	  return;
 	}
       pstat_Metadata[i].f_dump_in_buffer (p, &(stats[pstat_Metadata[i].start_offset]), &remained_size);
-      i++;
     }
 
   buffer[buf_size - 1] = '\0';
@@ -2722,7 +2698,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 /*
  * perfmon_stat_module_name () -
  */
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_module_name (const int module)
 {
   switch (module)
@@ -2790,7 +2766,7 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
 /*
  * perf_stat_page_type_name () -
  */
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_page_type_name (const int page_type)
 {
   switch (page_type)
@@ -2842,7 +2818,7 @@ perfmon_stat_page_type_name (const int page_type)
 /*
  * perfmon_stat_page_mode_name () -
  */
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_page_mode_name (const int page_mode)
 {
   switch (page_mode)
@@ -2866,7 +2842,7 @@ perfmon_stat_page_mode_name (const int page_mode)
 /*
  * perfmon_stat_holder_latch_name () -
  */
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_holder_latch_name (const int holder_latch)
 {
   switch (holder_latch)
@@ -2886,7 +2862,7 @@ perfmon_stat_holder_latch_name (const int holder_latch)
 /*
  * perfmon_stat_cond_type_name () -
  */
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_cond_type_name (const int cond_type)
 {
   switch (cond_type)
@@ -2906,7 +2882,7 @@ perfmon_stat_cond_type_name (const int cond_type)
 /*
  * perfmon_stat_snapshot_name () -
  */
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_snapshot_name (const int snapshot)
 {
   switch (snapshot)
@@ -2928,7 +2904,7 @@ perfmon_stat_snapshot_name (const int snapshot)
 /*
  * perfmon_stat_snapshot_record_type () -
  */
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_snapshot_record_type (const int rec_type)
 {
   switch (rec_type)
@@ -2959,7 +2935,7 @@ perfmon_stat_snapshot_record_type (const int rec_type)
   return "ERROR";
 }
 
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_lock_mode_name (const int lock_mode)
 {
   switch (lock_mode)
@@ -2995,7 +2971,7 @@ perfmon_stat_lock_mode_name (const int lock_mode)
 /*
  * perfmon_stat_cond_type_name () -
  */
-static const char *
+STATIC_INLINE const char *
 perfmon_stat_promote_cond_name (const int cond_type)
 {
   switch (cond_type)
@@ -4037,6 +4013,7 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 
   pstat_Global.is_watching[tran_index] = false;
 }
+#endif /* SERVER_MODE || SA_MODE */
 
 /*
  * perfmon_is_perf_tracking () - Returns true if there are active threads
@@ -4046,7 +4023,7 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 bool
 perfmon_is_perf_tracking (void)
 {
-  return pstat_Global.n_watchers > 0;
+  return pstat_Global.initialized && pstat_Global.n_watchers > 0;
 }
 
 /*
@@ -4062,7 +4039,6 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
 {
   return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
 }
-#endif /* SERVER_MODE || SA_MODE */
 
 /*
  *  Add/set stats section.
@@ -4081,10 +4057,9 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 {
   PSTAT_METADATA *metadata = NULL;
 
-  assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
-  if (pstat_Global.n_watchers <= 0)
+  if (!perfmon_is_perf_tracking ())
     {
       /* No need to collect statistics since no one is interested. */
       return;
@@ -4106,19 +4081,13 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
  * offset (in)   : offset at which to add the amount
  * amount (in)	 : Amount to add.
  */
-void
+STATIC_INLINE void
 perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
 {
   PSTAT_METADATA *metadata = NULL;
 
-  assert (pstat_Global.initialized);
+  assert (perfmon_is_perf_tracking ());
   assert (psid >= 0 && psid < PSTAT_COUNT);
-
-  if (pstat_Global.n_watchers <= 0)
-    {
-      /* No need to collect statistics since no one is interested. */
-      return;
-    }
 
   metadata = &pstat_Metadata[psid];
 
@@ -4147,7 +4116,7 @@ perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
  * offset (in)	 : Offset to statistics value.
  * amount (in)	 : Amount to add.
  */
-static void
+STATIC_INLINE void
 perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 {
   UINT64 *statvalp = NULL;
@@ -4156,6 +4125,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 #endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
 
   /* Update global statistic. */
   statvalp = pstat_Global.global_stats + offset;
@@ -4190,7 +4160,7 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
   assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
-  if (pstat_Global.n_watchers <= 0)
+  if (!perfmon_is_perf_tracking ())
     {
       /* No need to collect statistics since no one is interested. */
       return;
@@ -4210,7 +4180,7 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
  * offset (in)   : Offset to statistic value.
  * statval (in)	 : New statistic value.
  */
-static void
+STATIC_INLINE void
 perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
 {
   UINT64 *statvalp = NULL;
@@ -4219,6 +4189,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
 #endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
 
   /* Update global statistic. */
   statvalp = pstat_Global.global_stats + offset;
@@ -4253,7 +4224,7 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
   assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
-  if (pstat_Global.n_watchers <= 0)
+  if (!perfmon_is_perf_tracking ())
     {
       /* No need to collect statistics since no one is interested. */
       return;
@@ -4275,7 +4246,7 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
  *
  * NOTE: There will be three values modified: counter, total time and max time.
  */
-static void
+STATIC_INLINE void
 perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 {
   /* Update global statistics */
@@ -4286,6 +4257,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 #endif /* SERVER_MODE || SA_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
 
   /* Update global statistics. */
   statvalp = pstat_Global.global_stats + offset;
