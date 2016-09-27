@@ -21786,6 +21786,25 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (remove_old_forward)
     {
+      assert (context->forward_page_watcher_p != NULL && context->forward_page_watcher_p->pgptr != NULL);
+      if ((new_home_recdes.type == REC_RELOCATION || new_home_recdes.type == REC_BIGONE)
+	  && context->forward_page_watcher_p->page_was_unfixed)
+	{
+	  /* 
+	   * Need to get the record again, since the record may have changed by other concurrent
+	   * transactions (INSID removed by VACUUM).
+	   */
+	  if (spage_get_record (context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes,
+				COPY) != S_SUCCESS)
+	    {
+	      assert (false);
+	      ASSERT_ERROR_AND_SET (rc);
+	      goto exit;
+	    }
+	  HEAP_PERF_TRACK_PREPARE (thread_p, context);
+	}
+
+
       /* log operation */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 				&forward_recdes, true, &prev_version_lsa);
