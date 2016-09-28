@@ -653,6 +653,9 @@ int yybuffer_pos;
 [rR][eE][vV][eE][rR][sS][eE]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return REVERSE; }
+[dD][iI][sS][kK][_][sS][iI][zZ][Ee]		{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return DISK_SIZE; }
 [rR][eE][vV][oO][kK][eE]						{ begin_token(yytext);   return REVOKE; }
 [rR][iI][gG][hH][tT]							{ begin_token(yytext);   return RIGHT; }
 [rR][lL][iI][kK][eE]							{ begin_token(yytext);   return RLIKE; }

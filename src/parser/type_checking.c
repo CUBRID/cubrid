@@ -1015,7 +1015,23 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
+    case PT_DISK_SIZE:
+      num = 0;
 
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
     case PT_LIKE_LOWER_BOUND:
     case PT_LIKE_UPPER_BOUND:
       num = 0;
@@ -6804,6 +6820,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_LOCATE:
     case PT_MID:
     case PT_REVERSE:
+    case PT_DISK_SIZE:
     case PT_ADDDATE:
     case PT_DATE_ADD:
     case PT_SUBDATE:
@@ -11816,7 +11833,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       || op == PT_BITSHIFT_RIGHT || op == PT_DIV || op == PT_MOD || op == PT_IF || op == PT_IFNULL || op == PT_CONCAT
       || op == PT_CONCAT_WS || op == PT_FIELD || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF || op == PT_AES_ENCRYPT || op == PT_AES_DECRYPT
-      || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64)
+      || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DISK_SIZE)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -11943,7 +11960,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       dt->info.data_type.dec_precision = 0;
       dt->info.data_type.units = 0;
       break;
-
+    case PT_DISK_SIZE:
+      dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+      break;
     case PT_TIMES:
     case PT_POWER:
       if (common_type == PT_TYPE_NUMERIC)
@@ -12446,8 +12465,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
 	      if ((arg1 == NULL || arg1->type_enum != PT_TYPE_MAYBE)
 		  && (arg2 == NULL || arg2->type_enum != PT_TYPE_MAYBE)
-		  && (!((PT_NODE_IS_SESSION_VARIABLE (arg1))
-			&& (PT_NODE_IS_SESSION_VARIABLE (arg2)))))
+		  && (!((PT_NODE_IS_SESSION_VARIABLE (arg1)) && (PT_NODE_IS_SESSION_VARIABLE (arg2)))))
 		{
 		  /* operator without arguments or with arguments has result with system collation */
 		  collation_flag = TP_DOMAIN_COLL_NORMAL;
@@ -15120,7 +15138,16 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    }
 	}
       break;
-
+    case PT_DISK_SIZE:
+      if (DB_IS_NULL (arg1))
+	{
+	  db_make_null (result);
+	}
+      else
+	{
+	  db_make_int (result, pr_data_writeval_disk_size (arg1));
+	}
+      break;
     case PT_BIT_COUNT:
       if (db_bit_count_dbval (result, arg1) != NO_ERROR)
 	{
@@ -21652,6 +21679,7 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_IF:
     case PT_FIELD:
     case PT_REVERSE:
+    case PT_DISK_SIZE:
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
     case PT_QPRIOR:
@@ -23685,6 +23713,7 @@ coerce_result:
     case PT_TIMEF:
     case PT_IF:
     case PT_REVERSE:
+    case PT_DISK_SIZE:
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
     case PT_QPRIOR:

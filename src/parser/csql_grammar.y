@@ -238,6 +238,7 @@ static FUNCTION_MAP functions[] = {
   {"repeat", PT_REPEAT},
   {"space", PT_SPACE},
   {"reverse", PT_REVERSE},
+  {"disk_size", PT_DISK_SIZE},
   {"round", PT_ROUND},
   {"row_count", PT_ROW_COUNT},
   {"last_insert_id", PT_LAST_INSERT_ID},
@@ -1546,6 +1547,7 @@ int g_original_buffer_len;
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
 %token <cptr> REVERSE
+%token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
 %token <cptr> SEPARATOR
@@ -20715,6 +20717,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| DISK_SIZE
+	{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| ROW_NUMBER
 		{{
 
@@ -24951,7 +24963,14 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
-
+	case PT_DISK_SIZE:
+ 		if (c != 1)
+	return NULL;
+  
+       a1 = args;
+       node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
+       return node;
+	   
     case PT_STRCMP:
       if (c != 2)
 	return NULL;
