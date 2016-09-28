@@ -4019,7 +4019,7 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
  *
  * return	 : true or false
  */
-bool
+INLINE bool
 perfmon_is_perf_tracking (void)
 {
   return pstat_Global.initialized && pstat_Global.n_watchers > 0;
@@ -4033,7 +4033,7 @@ perfmon_is_perf_tracking (void)
  * activation_flag (in) : activation flag for extended statistic
  *
  */
-bool
+INLINE bool
 perfmon_is_perf_tracking_and_active (int activation_flag)
 {
   return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
@@ -4054,8 +4054,6 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
 void
 perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 {
-  PSTAT_METADATA *metadata = NULL;
-
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
   if (!perfmon_is_perf_tracking ())
@@ -4064,11 +4062,10 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
       return;
     }
 
-  metadata = &pstat_Metadata[psid];
-  assert (metadata->valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
+  assert (pstat_Metadata[psid].valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
 
   /* Update statistics. */
-  perfmon_add_at_offset (thread_p, metadata->start_offset, amount);
+  perfmon_add_at_offset (thread_p, pstat_Metadata[psid].start_offset, amount);
 }
 
 /*
@@ -4083,15 +4080,11 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 STATIC_INLINE void
 perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
 {
-  PSTAT_METADATA *metadata = NULL;
-
   assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
-  metadata = &pstat_Metadata[psid];
-
   /* Update statistics. */
-  perfmon_add_at_offset (thread_p, metadata->start_offset + offset, amount);
+  perfmon_add_at_offset (thread_p, pstat_Metadata[psid].start_offset + offset, amount);
 }
 
 /*
@@ -4118,7 +4111,6 @@ perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
 STATIC_INLINE void
 perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 {
-  UINT64 *statvalp = NULL;
 #if defined (SERVER_MODE) || defined (SA_MODE)
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
@@ -4127,8 +4119,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   assert (pstat_Global.initialized);
 
   /* Update global statistic. */
-  statvalp = pstat_Global.global_stats + offset;
-  ATOMIC_INC_64 (statvalp, amount);
+  ATOMIC_INC_64 (&(pstat_Global.global_stats[offset]), amount);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
@@ -4137,8 +4128,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   if (pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-      (*statvalp) += amount;
+      pstat_Global.tran_stats[tran_index][offset] += amount;
     }
 #endif /* SERVER_MODE || SA_MODE */
 }
@@ -4154,8 +4144,6 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 void
 perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
 {
-  PSTAT_METADATA *metadata = NULL;
-
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
   if (!perfmon_is_perf_tracking ())
@@ -4164,10 +4152,9 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
       return;
     }
 
-  metadata = &pstat_Metadata[psid];
-  assert (metadata->valtype == PSTAT_PEEK_SINGLE_VALUE);
+  assert (pstat_Metadata[psid].valtype == PSTAT_PEEK_SINGLE_VALUE);
 
-  perfmon_set_at_offset (thread_p, metadata->start_offset, statval);
+  perfmon_set_at_offset (thread_p, pstat_Metadata[psid].start_offset, statval);
 }
 
 /*
@@ -4181,7 +4168,6 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
 STATIC_INLINE void
 perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
 {
-  UINT64 *statvalp = NULL;
 #if defined (SERVER_MODE) || defined (SA_MODE)
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
@@ -4190,8 +4176,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
   assert (pstat_Global.initialized);
 
   /* Update global statistic. */
-  statvalp = pstat_Global.global_stats + offset;
-  ATOMIC_TAS_64 (statvalp, statval);
+  ATOMIC_TAS_64 (&(pstat_Global.global_stats[offset]), statval);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
@@ -4200,8 +4185,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
   if (pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-      (*statvalp) = statval;
+      pstat_Global.tran_stats[tran_index][offset] = statval;
     }
 #endif /* SERVER_MODE || SA_MODE */
 }
@@ -4217,15 +4201,12 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
 void
 perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
 {
-  PSTAT_METADATA *metadata = NULL;
-
   assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
-  metadata = &pstat_Metadata[psid];
-  assert (metadata->valtype == PSTAT_COUNTER_TIMER_VALUE);
+  assert (pstat_Metadata[psid].valtype == PSTAT_COUNTER_TIMER_VALUE);
 
-  perfmon_time_at_offset (thread_p, metadata->start_offset, timediff);
+  perfmon_time_at_offset (thread_p, pstat_Metadata[psid].start_offset, timediff);
 }
 
 /*
