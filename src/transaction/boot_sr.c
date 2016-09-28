@@ -5593,7 +5593,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 
       er_clear ();
     }
-  error_code = perfmon_initialize (0);
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

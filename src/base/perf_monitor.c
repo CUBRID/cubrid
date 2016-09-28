@@ -3863,39 +3863,38 @@ perfmon_initialize (int num_trans)
     }
   memset (pstat_Global.global_stats, 0, PERFMON_VALUES_MEMSIZE);
 
-  if (num_trans > 0)
+  assert (num_trans > 0);
+
+  pstat_Global.n_trans = num_trans + 1;	/* 1 more for easier indexing with tran_index */
+  memsize = pstat_Global.n_trans * sizeof (UINT64 *);
+  pstat_Global.tran_stats = (UINT64 **) malloc (memsize);
+  if (pstat_Global.tran_stats == NULL)
     {
-      pstat_Global.n_trans = num_trans;
-      memsize = pstat_Global.n_trans * sizeof (UINT64 *);
-      pstat_Global.tran_stats = (UINT64 **) malloc (memsize);
-      if (pstat_Global.tran_stats == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-	  goto error;
-	}
-      memsize = pstat_Global.n_trans * PERFMON_VALUES_MEMSIZE;
-      pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
-      if (pstat_Global.tran_stats[0] == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-	  goto error;
-	}
-      memset (pstat_Global.tran_stats[0], 0, memsize);
-
-      for (idx = 1; idx < pstat_Global.n_trans; idx++)
-	{
-	  pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + pstat_Global.n_stat_values * idx;
-	}
-
-      memsize = pstat_Global.n_trans * sizeof (bool);
-      pstat_Global.is_watching = (bool *) malloc (memsize);
-      if (pstat_Global.is_watching == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-	  goto error;
-	}
-      memset (pstat_Global.is_watching, 0, memsize);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
     }
+  memsize = pstat_Global.n_trans * PERFMON_VALUES_MEMSIZE;
+  pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
+  if (pstat_Global.tran_stats[0] == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
+    }
+  memset (pstat_Global.tran_stats[0], 0, memsize);
+
+  for (idx = 1; idx < pstat_Global.n_trans; idx++)
+    {
+      pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + pstat_Global.n_stat_values * idx;
+    }
+
+  memsize = pstat_Global.n_trans * sizeof (bool);
+  pstat_Global.is_watching = (bool *) malloc (memsize);
+  if (pstat_Global.is_watching == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      goto error;
+    }
+  memset (pstat_Global.is_watching, 0, memsize);
 
   pstat_Global.n_watchers = 0;
   goto exit;
@@ -4086,7 +4085,7 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
 {
   PSTAT_METADATA *metadata = NULL;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
   metadata = &pstat_Metadata[psid];
@@ -4157,7 +4156,6 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
 {
   PSTAT_METADATA *metadata = NULL;
 
-  assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
   if (!perfmon_is_perf_tracking ())
@@ -4223,12 +4221,6 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
 
   assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
-
-  if (!perfmon_is_perf_tracking ())
-    {
-      /* No need to collect statistics since no one is interested. */
-      return;
-    }
 
   metadata = &pstat_Metadata[psid];
   assert (metadata->valtype == PSTAT_COUNTER_TIMER_VALUE);

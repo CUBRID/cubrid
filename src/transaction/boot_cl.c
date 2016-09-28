@@ -836,7 +836,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   area_init ();
   locator_initialize_areas ();
 
-  error_code = perfmon_initialize (0 /* No trans */ );
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
