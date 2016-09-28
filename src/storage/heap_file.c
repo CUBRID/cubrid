@@ -21487,6 +21487,14 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  /* actual logging */
 	  log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, NULL, NULL, -1, &ovf_recdes);
 	  or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
+
+	  /* log home no change; vacuum needs it to reach the updated overflow record */
+	  LOG_DATA_ADDR log_addr;
+
+	  log_addr.vfid = &context->hfid.vfid;
+	  log_addr.pgptr = context->home_page_watcher_p->pgptr;
+	  log_addr.offset = context->oid.slotid;
+	  heap_mvcc_log_home_no_change (thread_p, &log_addr);
 	}
 
       if (heap_ovf_update (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p) == NULL)
@@ -21591,16 +21599,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* location did not change */
       COPY_OID (&context->res_oid, &context->oid);
-    }
-  else
-    {
-      /* log home no change; vacuum needs it to reach the updated overflow record */
-      LOG_DATA_ADDR log_addr;
-
-      log_addr.vfid = &context->hfid.vfid;
-      log_addr.pgptr = context->home_page_watcher_p->pgptr;
-      log_addr.offset = context->oid.slotid;
-      heap_mvcc_log_home_no_change (thread_p, &log_addr);
     }
 
   perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_UPDATES);
