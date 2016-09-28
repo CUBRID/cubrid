@@ -21480,7 +21480,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  /* log old overflow record */
 	  RECDES ovf_recdes = RECDES_INITIALIZER;
 	  LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
-	  LOG_LSA prev_version_lsa_2;	//!!!remove _2
 
 	  heap_get_bigone_content (thread_p, context->scan_cache_p, COPY, &context->ovf_oid, &ovf_recdes);
 
@@ -21489,8 +21488,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
 
 	  /* log home no change; vacuum needs it to reach the updated overflow record */
-	  LOG_DATA_ADDR log_addr;
-
 	  log_addr.vfid = &context->hfid.vfid;
 	  log_addr.pgptr = context->home_page_watcher_p->pgptr;
 	  log_addr.offset = context->oid.slotid;
