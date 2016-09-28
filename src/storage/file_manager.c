@@ -20665,10 +20665,10 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* Add to full table */
       error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
       if (error_code != NO_ERROR)
-        {
-          ASSERT_ERROR ();
-          goto exit;
-        }
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
 
       /* Remove from partial table */
       save_page_lsa = *pgbuf_get_lsa (addr.pgptr);

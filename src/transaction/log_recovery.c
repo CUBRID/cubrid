@@ -4308,6 +4308,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    rcv.offset = sysop_commit_and_undo->undo.data.offset;
 		    rcv_vpid.volid = sysop_commit_and_undo->undo.data.volid;
 		    rcv_vpid.pageid = sysop_commit_and_undo->undo.data.pageid;
+		    rcv.mvcc_id = MVCCID_NULL;
 
 		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_COMMIT_AND_UNDO), &log_lsa, log_pgptr);
 
