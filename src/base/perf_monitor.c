@@ -4086,8 +4086,14 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
 {
   PSTAT_METADATA *metadata = NULL;
 
-  assert (perfmon_is_perf_tracking ());
+  assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
+
+  if (!perfmon_is_perf_tracking ())
+    {
+      /* No need to collect statistics since no one is interested. */
+      return;
+    }
 
   metadata = &pstat_Metadata[psid];
 
