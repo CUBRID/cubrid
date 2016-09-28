@@ -17624,6 +17624,14 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       /* move to full table. */
       is_full = true;
 
+      /* add to full table */
+      error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
       /* remove from partial table. log change first (while we still have access to data being removed) */
       save_lsa = *pgbuf_get_lsa (page_fhead);
       file_log_extdata_remove (thread_p, extdata_part_ftab, page_fhead, 0, 1);
@@ -17633,14 +17641,6 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n" FILE_EXTDATA_MSG ("partial table after alloc"),
 		VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
 		PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
-
-      /* add to full table */
-      error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
     }
 
   /* almost finished. update header statistics */
@@ -20662,6 +20662,14 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* Move to full table. */
       is_full = true;
 
+      /* Add to full table */
+      error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          goto exit;
+        }
+
       /* Remove from partial table */
       save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
       file_log_extdata_remove (thread_p, extdata_part_ftab, addr.pgptr, position, 1);
@@ -20679,9 +20687,6 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  /* we don't need this anymore */
 	  pgbuf_unfix_and_init (thread_p, page_ftab);
 	}
-
-      /* Add to full table */
-      error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
     }
 
   /* Update file header statistics. */
@@ -20695,7 +20700,14 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_ALLOC_TYPE_STRING (alloc_type),
 	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
+  assert (error_code == NO_ERROR);
+
 exit:
+
+  if (page_ftab != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page_ftab);
+    }
 
   if (page_fhead != NULL)
     {
