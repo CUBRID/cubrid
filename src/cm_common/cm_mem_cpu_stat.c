@@ -954,6 +954,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
 
 #endif // WINDOWS
 
+/* TODO: Find out what this is used for. */
 int
 cm_get_db_exec_stat (const char *db_name, T_CM_DB_EXEC_STAT * exec_stat, T_CM_ERROR * err_buf)
 {

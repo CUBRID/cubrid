@@ -695,7 +695,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   xcache_check_logging ();
 
   XCACHE_STAT_INC (lookups);
-  mnt_pc_lookup (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_LOOKUP);
 
   XASL_ID_SET_NULL (&lookup_key);
   lookup_key.sha1 = *sha1;
@@ -716,7 +716,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
     {
       /* No match! */
       XCACHE_STAT_INC (miss);
-      mnt_pc_miss (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_MISS);
       xcache_log ("could not find cache entry: \n"
 		  XCACHE_LOG_SHA1_TEXT
 		  XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_SHA1_ARGS (&lookup_key.sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
@@ -727,7 +727,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   /* We have incremented fix count, we don't need lf_tran anymore. */
   lf_tran_end_with_mb (t_entry);
 
-  mnt_pc_hit (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_HIT);
   XCACHE_STAT_INC (hits);
 
   assert (*xcache_entry != NULL);
@@ -1122,8 +1122,9 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 	      XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
 
   XCACHE_STAT_INC (deletes);
-  mnt_pc_delete (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
+  perfmon_set_stat (thread_p, PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
 
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
@@ -1295,7 +1296,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       if (inserted)
 	{
 	  (*xcache_entry)->free_data_on_uninit = true;
-	  mnt_pc_add (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_ADD);
 	}
       else
 	{
@@ -1338,7 +1339,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	      xcache_unfix (thread_p, to_be_recompiled);
 	      to_be_recompiled = NULL;
 	    }
-	  else
+	  else if (inserted)
 	    {
 	      /* new entry added */
 	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
@@ -1969,6 +1970,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
 	  XCACHE_STAT_INC (deletes_at_cleanup);
 	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
+	  perfmon_set_stat (thread_p, PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
 	}
       else
 	{

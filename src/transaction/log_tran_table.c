@@ -3169,7 +3169,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
-	      mnt_tran_interrupts (thread_p);
+	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
 	    }
 
 	  return true;
@@ -4223,7 +4223,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   bool is_perf_tracking = false;
   UINT64 snapshot_retry_cnt = 0;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
 
   if (is_perf_tracking)
     {
@@ -4363,11 +4363,11 @@ start_get_mvcc_table:
       snapshot_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (snapshot_wait_time > 0)
 	{
-	  mnt_snapshot_acquire_time (thread_p, snapshot_wait_time);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, snapshot_wait_time);
 	}
       if (snapshot_retry_cnt > 1)
 	{
-	  mnt_snapshot_retry_counters (thread_p, snapshot_retry_cnt - 1);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, snapshot_retry_cnt - 1);
 	}
     }
 
@@ -4456,7 +4456,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   UINT64 oldest_time, retry_cnt = 0;
   bool is_perf_tracking = false;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -4578,11 +4578,11 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
       oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (oldest_time > 0)
 	{
-	  mnt_oldest_mvcc_acquire_time (thread_p, oldest_time);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, oldest_time);
 	}
       if (retry_cnt > 1)
 	{
-	  mnt_oldest_mvcc_retry_counters (thread_p, retry_cnt - 1);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, retry_cnt - 1);
 	}
     }
 #if !defined (NDEBUG)
@@ -4826,7 +4826,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   assert (tdes != NULL);
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -5230,7 +5230,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (tran_complete_time > 0)
 	{
-	  mnt_tran_complete_time (thread_p, tran_complete_time);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, tran_complete_time);
 	}
     }
 }
