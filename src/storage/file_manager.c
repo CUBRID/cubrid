@@ -13688,6 +13688,10 @@ file_construct_space_info (THREAD_ENTRY * thread_p, VOL_SPACE_INFO * space_info,
 /************************************************************************/
 
 /************************************************************************/
+/* File manager section                                                 */
+/************************************************************************/
+
+/************************************************************************/
 /* File header section                                                  */
 /************************************************************************/
 
@@ -14038,6 +14042,10 @@ static FLRE_TEMPCACHE *flre_Tempcache = NULL;
 /************************************************************************/
 
 /************************************************************************/
+/* File manager section                                                 */
+/************************************************************************/
+
+/************************************************************************/
 /* File header section.                                                 */
 /************************************************************************/
 
@@ -14187,6 +14195,8 @@ static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfi
 /* Temporary cache section                                               */
 /************************************************************************/
 
+static int flre_tempcache_init (void);
+static void flre_tempcache_final (void);
 STATIC_INLINE void flre_tempcache_lock (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void flre_tempcache_unlock (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void flre_tempcache_check_lock (void) __attribute__ ((ALWAYS_INLINE));
@@ -14212,6 +14222,30 @@ STATIC_INLINE void flre_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE
 /************************************************************************/
 /* Define functions.                                                    */
 /************************************************************************/
+
+/************************************************************************/
+/* File manager section                                                 */
+/************************************************************************/
+
+/*
+ * flre_manager_init () - initialize file manager
+ */
+int
+flre_manager_init (void)
+{
+  file_Logging = prm_get_bool_value (PRM_ID_FILE_LOGGING);
+
+  return flre_tempcache_init ();
+}
+
+/*
+ * flre_manager_final () - finalize file manager
+ */
+void
+flre_manager_final (void)
+{
+  flre_tempcache_final ();
+}
 
 /************************************************************************/
 /* File header section.                                                 */
@@ -19990,7 +20024,7 @@ flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid)
  *
  * return : ER_OUT_OF_VIRTUAL_MEMORY or NO_ERROR
  */
-int
+static int
 flre_tempcache_init (void)
 {
   int memsize = 0;
@@ -20050,7 +20084,7 @@ flre_tempcache_init (void)
  *
  * return : void
  */
-void
+static void
 flre_tempcache_final (void)
 {
   if (flre_Tempcache)
