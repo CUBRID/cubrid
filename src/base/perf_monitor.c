@@ -4157,7 +4157,6 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
 {
   PSTAT_METADATA *metadata = NULL;
 
-  assert (pstat_Global.initialized);
   assert (psid >= 0 && psid < PSTAT_COUNT);
 
   if (!perfmon_is_perf_tracking ())
