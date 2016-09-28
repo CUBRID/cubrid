@@ -8317,16 +8317,14 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
   c = tp_value_compare_with_error (&val1, &val2, do_coercion, total_order, &comparable);
 
 clean_up:
-  if (!DB_IS_NULL (&val1) && val1.need_clear == true)
+  if (DB_NEED_CLEAR (&val1))
     {
       pr_clear_value (&val1);
-      pr_clear_compressed_string (&val1);
     }
 
-  if (!DB_IS_NULL (&val2) && val2.need_clear == true)
+  if (DB_NEED_CLEAR (&val2))
     {
       pr_clear_value (&val2);
-      pr_clear_compressed_string (&val1);
     }
 
   if (!comparable || error == true)

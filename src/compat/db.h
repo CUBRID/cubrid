@@ -321,4 +321,10 @@ extern int db_col_optimize (DB_COLLECTION * col);
 extern int db_get_connect_status (void);
 extern void db_set_connect_status (int status);
 
+#define DB_NEED_CLEAR (value) ((DB_IS_NULL(value) \
+	&& ((value)->need_clear \
+	|| ((DB_VALUE_DOMAIN_TYPE(value) == DB_TYPE_VARCHAR \
+	|| DB_VALUE_DOMAIN_TYPE(value) == DB_TYPE_VARNCHAR) \
+	&& (value)->data.ch.info.compressed_need_clear))))
+
 #endif /* _DB_H_ */
