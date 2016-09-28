@@ -361,7 +361,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto print_addvol_usage;
 	}
-      ext_info.max_writesize_in_sec = (int) (volext_max_writesize / ONE_K);
+      ext_info.max_writesize_in_sec = (int) volext_max_writesize / ONE_K;
     }
   else
     {
@@ -2697,7 +2697,10 @@ statdump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  histo_start (true);
+  if (histo_start (true) != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   if (interval > 0)
     {
@@ -2712,7 +2715,11 @@ statdump (UTIL_FUNCTION_ARG * arg)
   do
     {
       print_timestamp (outfp);
-      histo_print_global_stats (outfp, cumulative, substr);
+      if (histo_print_global_stats (outfp, cumulative, substr) != NO_ERROR)
+	{
+	  histo_stop ();
+	  goto error_exit;
+	}
       fflush (outfp);
       sleep (interval);
     }

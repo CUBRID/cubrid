@@ -616,6 +616,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FORCE_RESTART_TO_SKIP_RECOVERY "force_restart_to_skip_recovery"
 
+#define PRM_NAME_EXTENDED_STATISTICS_ACTIVATION "extended_statistics_activation"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
 /*
@@ -2021,6 +2023,13 @@ static unsigned int prm_logpb_logging_debug_flag = 0;
 bool PRM_FORCE_RESTART_TO_SKIP_RECOVERY = false;
 static bool prm_force_restart_to_skip_recovery_default = false;
 static unsigned int prm_force_restart_to_skip_recovery_flag = 0;
+
+static unsigned int prm_extended_statistics_flag = 0;
+static int prm_extended_statistics_default = 15;
+int PRM_EXTENDED_STATISTICS = 15;
+static int prm_extended_statistics_upper = 15;
+static int prm_extended_statistics_lower = 0;
+
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4907,6 +4916,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_EXTENDED_STATISTICS_ACTIVATION,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   (void *) &prm_extended_statistics_flag,
+   (void *) &prm_extended_statistics_default,
+   (void *) &PRM_EXTENDED_STATISTICS,
+   (void *) &prm_extended_statistics_upper,
+   (void *) &prm_extended_statistics_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

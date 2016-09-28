@@ -7954,30 +7954,26 @@ serial_decache (OID * oid)
 }
 
 /*
- * mnt_server_start_stats -
+ * perfmon_server_start_stats -
  *
  * return:
  *
  * NOTE:
  */
 int
-mnt_server_start_stats (bool for_all_trans)
+perfmon_server_start_stats (void)
 {
 #if defined(CS_MODE)
   int status = ER_FAILED;
   int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *request;
   char *reply;
 
-  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_int (request, for_all_trans);
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_START_STATS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_MNT_SERVER_START_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+			NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -7985,27 +7981,25 @@ mnt_server_start_stats (bool for_all_trans)
 
   return (status);
 #else /* CS_MODE */
-  int success = ER_FAILED;
-
   ENTER_SERVER ();
 
-  success = xmnt_server_start_stats (NULL, for_all_trans);
+  perfmon_start_watch (NULL);
 
   EXIT_SERVER ();
 
-  return success;
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
 /*
- * mnt_server_stop_stats -
+ * perfmon_server_stop_stats -
  *
  * return:
  *
  * NOTE:
  */
 int
-mnt_server_stop_stats (void)
+perfmon_server_stop_stats (void)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -8026,7 +8020,7 @@ mnt_server_stop_stats (void)
 
   ENTER_SERVER ();
 
-  xmnt_server_stop_stats (NULL);
+  perfmon_stop_watch (NULL);
 
   EXIT_SERVER ();
   return NO_ERROR;
@@ -8034,7 +8028,7 @@ mnt_server_stop_stats (void)
 }
 
 /*
- * mnt_server_copy_stats -
+ * perfmon_server_copy_stats -
  *
  * return:
  *
@@ -8042,39 +8036,56 @@ mnt_server_stop_stats (void)
  *
  * NOTE:
  */
-void
-mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats)
+int
+perfmon_server_copy_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
   int req_error;
-  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
   char *reply;
+  int nr_statistic_values;
+  int err = NO_ERROR;
 
-  reply = OR_ALIGNED_BUF_START (a_reply);
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
+
+  if (reply == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * OR_INT64_SIZE);
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
 
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL,
-			0);
+    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply, nr_statistic_values * OR_INT64_SIZE,
+			NULL, 0, NULL, 0);
   if (!req_error)
     {
-      net_unpack_stats (reply, to_stats);
+      perfmon_unpack_stats (reply, to_stats);
     }
   else
     {
-      mnt_Iscollecting_stats = false;
+      perfmon_Iscollecting_stats = false;
     }
+error:
+  if (reply != NULL)
+    {
+      free_and_init (reply);
+    }
+  return err;
+
 #else /* CS_MODE */
 
   ENTER_SERVER ();
 
-  xmnt_server_copy_stats (NULL, to_stats);
+  xperfmon_server_copy_stats (NULL, to_stats);
 
   EXIT_SERVER ();
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
 /*
- * mnt_server_copy_global_stats -
+ * perfmon_server_copy_global_stats -
  *
  * return:
  *
@@ -8082,34 +8093,49 @@ mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats)
  *
  * NOTE:
  */
-void
-mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats)
+int
+perfmon_server_copy_global_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
   int req_error;
-  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
-  char *reply;
+  char *reply = NULL;
+  int nr_statistic_values;
+  int err = NO_ERROR;
 
-  reply = OR_ALIGNED_BUF_START (a_reply);
+  nr_statistic_values = perfmon_get_number_of_statistic_values ();
+  reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
+  if (reply == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * OR_INT64_SIZE);
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
 
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-			NULL, 0);
+    net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS, NULL, 0, reply,
+			nr_statistic_values * OR_INT64_SIZE, NULL, 0, NULL, 0);
   if (!req_error)
     {
-      net_unpack_stats (reply, to_stats);
+      perfmon_unpack_stats (reply, to_stats);
     }
   else
     {
-      mnt_Iscollecting_stats = false;
+      perfmon_Iscollecting_stats = false;
     }
+error:
+  if (reply != NULL)
+    {
+      free_and_init (reply);
+    }
+  return err;
 #else /* CS_MODE */
 
   ENTER_SERVER ();
 
-  xmnt_server_copy_global_stats (NULL, to_stats);
+  xperfmon_server_copy_global_stats (NULL, to_stats);
 
   EXIT_SERVER ();
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
@@ -9631,7 +9657,7 @@ histo_start (bool for_all_trans)
 #if defined (CS_MODE)
   return net_histo_start (for_all_trans);
 #else /* CS_MODE */
-  return mnt_start_stats (for_all_trans);
+  return perfmon_start_stats (for_all_trans);
 #endif /* !CS_MODE */
 }
 
@@ -9641,28 +9667,36 @@ histo_stop (void)
 #if defined (CS_MODE)
   return net_histo_stop ();
 #else /* CS_MODE */
-  return mnt_stop_stats ();
+  return perfmon_stop_stats ();
 #endif /* !CS_MODE */
 }
 
-void
+int
 histo_print (FILE * stream)
 {
+  int err = NO_ERROR;
+
 #if defined (CS_MODE)
-  net_histo_print (stream);
+  err = net_histo_print (stream);
 #else /* CS_MODE */
-  mnt_print_stats (stream);
+  err = perfmon_print_stats (stream);
 #endif /* !CS_MODE */
+
+  return err;
 }
 
-void
+int
 histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 {
+  int err = NO_ERROR;
+
 #if defined (CS_MODE)
-  net_histo_print_global_stats (stream, cumulative, substr);
+  err = net_histo_print_global_stats (stream, cumulative, substr);
 #else /* CS_MODE */
-  mnt_print_global_stats (stream, cumulative, substr);
+  err = perfmon_print_global_stats (stream, cumulative, substr);
 #endif /* !CS_MODE */
+
+  return err;
 }
 
 void
@@ -9671,7 +9705,7 @@ histo_clear (void)
 #if defined (CS_MODE)
   net_histo_clear ();
 #else /* CS_MODE */
-  mnt_reset_stats ();
+  perfmon_reset_stats ();
 #endif /* !CS_MODE */
 }
 
