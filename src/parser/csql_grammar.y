@@ -24963,7 +24963,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
-	  
+
 	case PT_DISK_SIZE:
  		if (c != 1)
 	return NULL;
