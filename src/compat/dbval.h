@@ -155,6 +155,10 @@
 #define DB_GET_BIT_PRECISION(v) \
     ((v)->domain.char_info.length)
 
+#define DB_GET_COMPRESSED_STRING(v) \
+      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR \
+	&& DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) ? NULL \
+      : (v)->data.ch.medium.compressed_buf)
 
 
 /* note : this will have to change when we start using the small and large

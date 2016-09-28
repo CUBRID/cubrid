@@ -14188,7 +14188,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  compressed_size = DB_GET_COMPRESSED_SIZE (value);
 	  compressed_string = DB_GET_COMPRESSED_STRING (value);
 
-	  if (compressed_size == -1 && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	  if (compressed_size == DB_UNCOMPRESSABLE && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	    {
 	      rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
 	    }
@@ -14232,7 +14232,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
       compressed_size = DB_GET_COMPRESSED_SIZE (value);
       compressed_string = DB_GET_COMPRESSED_STRING (value);
 
-      if (compressed_size == -1 && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+      if (compressed_size == DB_UNCOMPRESSABLE && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
 	  rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
 	}
@@ -17123,13 +17123,13 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   if (compressed_size > 0)
     {
       /* Compression successful */
-      db_set_compressed_string (value, compressed_string, compressed_size, true);
+      DB_SET_COMPRESSED_STRING (value, compressed_string, compressed_size, true);
       return rc;
     }
   else
     {
       /* Compression failed */
-      db_set_compressed_string (value, NULL, -1, false);
+      DB_SET_COMPRESSED_STRING (value, NULL, -1, false);
       goto cleanup;
     }
 

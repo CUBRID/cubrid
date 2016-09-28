@@ -437,7 +437,7 @@
 
 #define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
 
-#define DB_GET_COMPRESSED_STRING(value) db_get_compressed_string(value)
+//#define DB_GET_COMPRESSED_STRING(value) db_get_compressed_string(value)
 
 #define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
 
@@ -1168,10 +1168,8 @@ extern int valcnv_convert_value_to_string (DB_VALUE * value);
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
 
-extern char *db_get_compressed_string (DB_VALUE * value);
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
-
 
 #endif /* _DBTYPE_H_ */

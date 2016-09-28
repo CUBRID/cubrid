@@ -6839,21 +6839,3 @@ db_get_compressed_size (DB_VALUE * value)
 
   return value->data.ch.medium.compressed_size;
 }
-
-char *
-db_get_compressed_string (DB_VALUE * value)
-{
-  DB_TYPE type;
-
-  if (value == NULL || DB_IS_NULL (value))
-    {
-      return NULL;
-    }
-
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
-
-  return value->data.ch.medium.compressed_buf;
-}
