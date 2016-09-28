@@ -499,7 +499,6 @@ stx_free_additional_buff (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
     {
       UNPACK_EXTRA_BUF *add_buff = ((XASL_UNPACK_INFO *) xasl_unpack_info)->additional_buffers;
       UNPACK_EXTRA_BUF *temp = NULL;
-      er_print_callstack (ARG_FILE_LINE, "stx_free_additional_buff:xasl_unpack_info:%p", xasl_unpack_info);
       while (add_buff != NULL)
 	{
 	  temp = add_buff->next;
