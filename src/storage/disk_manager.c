@@ -5318,8 +5318,9 @@ disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
       disk_Cache->perm_purpose_info.extend_info.nsect_free += delta_free;
       assert (disk_Cache->perm_purpose_info.extend_info.nsect_free >= 0);
 
-      disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and perm_perm to %d; "
-		"delta free = %d", volid, disk_Cache->perm_purpose_info.extend_info.nsect_free, delta_free);
+      disk_log ("disk_cache_update_vol_free", "updated cached free for volid %d to %d and perm_perm to %d; "
+		"delta free = %d", volid, disk_Cache->vols[volid].nsect_free,
+		disk_Cache->perm_purpose_info.extend_info.nsect_free, delta_free);
     }
   else
     {
@@ -5328,16 +5329,18 @@ disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
 	  disk_Cache->temp_purpose_info.nsect_perm_free += delta_free;
 	  assert (disk_Cache->temp_purpose_info.nsect_perm_free >= 0);
 
-	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and perm_temp to %d; "
-		    "delta free = %d", volid, disk_Cache->temp_purpose_info.nsect_perm_free, delta_free);
+	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid %d to %d and perm_temp to %d; "
+		    "delta free = %d", volid, disk_Cache->vols[volid].nsect_free,
+		    disk_Cache->temp_purpose_info.nsect_perm_free, delta_free);
 	}
       else
 	{
 	  disk_Cache->temp_purpose_info.extend_info.nsect_free += delta_free;
 	  assert (disk_Cache->temp_purpose_info.extend_info.nsect_free >= 0);
 
-	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and temp_temp to %d; "
-		    "delta free = %d", volid, disk_Cache->temp_purpose_info.extend_info.nsect_free, delta_free);
+	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid %d to %d and temp_temp to %d; "
+		    "delta free = %d", volid, disk_Cache->vols[volid].nsect_free,
+		    disk_Cache->temp_purpose_info.extend_info.nsect_free, delta_free);
 	}
     }
 }

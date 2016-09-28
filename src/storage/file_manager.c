@@ -13913,8 +13913,8 @@ static bool file_Logging = false;
 
 #define FILE_HEAD_ALLOC_MSG \
  "\tfile header: \n" \
- "\t%s \n" \
- "\t%s \n" \
+ "\t\t%s \n" \
+ "\t\t%s \n" \
  "\t\tpage: total = %d, user = %d, table = %d, free = %d \n" \
  "\t\tsector: total = %d, partial = %d, full = %d, empty = %d \n"
 #define FILE_HEAD_ALLOC_AS_ARGS(fhead) \
@@ -17179,10 +17179,10 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
   log_append_undoredo_data2 (thread_p, RVFL_EXPAND, NULL, page_fhead, 0, 0, expand_size_in_sectors * sizeof (VSID),
 			     NULL, vsids_reserved);
 
-  file_log ("file_perm_expand", "expand file %d|%d, page header %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, \n"
-	    FILE_HEAD_ALLOC_MSG FILE_EXTDATA_MSG ("partial table"),
+  file_log ("file_perm_expand", "expand file %d|%d, page header %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d; "
+	    "first sector %d|%d \n" FILE_HEAD_ALLOC_MSG FILE_EXTDATA_MSG ("partial table"),
 	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
-	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_HEAD_ALLOC_AS_ARGS (fhead),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), VSID_AS_ARGS (vsids_reserved), FILE_HEAD_ALLOC_AS_ARGS (fhead),
 	    FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
@@ -17617,7 +17617,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	    "set bit at offset %d in partial sector at offset %d \n" FILE_PARTSECT_MSG ("partsect after"),
 	    VPID_AS_ARGS (vpid_alloc_out), VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead),
 	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_fhead), offset_to_alloc_bit,
-	    (PGLENGTH) ((char *) partsect - page_fhead));
+	    (PGLENGTH) ((char *) partsect - page_fhead), FILE_PARTSECT_AS_ARGS (partsect));
 
   if (file_partsect_is_full (partsect))
     {
@@ -17630,7 +17630,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       file_extdata_remove_at (extdata_part_ftab, 0, 1);
 
       file_log ("file_perm_alloc", "removed full partial sector from position 0 in file %d|%d, header page %d|%d, "
-		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n", FILE_EXTDATA_MSG ("partial table after alloc"),
+		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n" FILE_EXTDATA_MSG ("partial table after alloc"),
 		VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
 		PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
