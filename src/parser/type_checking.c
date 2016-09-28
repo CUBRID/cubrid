@@ -15141,7 +15141,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_DISK_SIZE:
       if (DB_IS_NULL (arg1))
 	{
-	  db_make_null (result);
+	  db_make_int (result, 0);
 	}
       else
 	{
