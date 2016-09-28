@@ -234,31 +234,6 @@ static int rv;
 #define PGBUF_MAX_FIXED_SOURCE_LEN 64
 #endif /* PAGE_STATISTICS */
 
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
-#define PGBUF_GET_PAGE_TYPE_FOR_STAT(pgptr,perf_page_type) \
-        do { \
-	  FILEIO_PAGE *io_pgptr;  \
-	  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);  \
-	  if (io_pgptr->prv.ptype == PAGE_BTREE)  \
-	    { \
-	      perf_page_type = btree_get_perf_btree_page_type (pgptr); \
-	    } \
-	  else	\
-	    { \
-	      perf_page_type = io_pgptr->prv.ptype; \
-	    } \
-	  } \
-	while (0)
-#else
-#define PGBUF_GET_PAGE_TYPE_FOR_STAT(pgptr,perf_page_type) \
-        do { \
-	  FILEIO_PAGE *io_pgptr;  \
-	  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);  \
-	  perf_page_type = io_pgptr->prv.ptype;	\
-	  } \
-	while (0)
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
-
 /* BCB zone */
 typedef enum
 {
@@ -1387,7 +1362,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   lock_wait_time = 0;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
 
   if (is_perf_tracking)
     {
@@ -1509,7 +1484,7 @@ try_again:
       if (fetch_mode != NEW_PAGE)
 	{
 	  /* Record number of reads in statistics */
-	  mnt_pb_ioreads (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
 #if defined(ENABLE_SYSTEMTAP)
 	  query_id = qmgr_get_current_query_id (thread_p);
@@ -1576,7 +1551,10 @@ try_again:
 	    }
 #endif /* NDEBUG */
 
-	  mnt_sort_io_pages (thread_p);
+	  if (thread_get_sort_stats_active (thread_p))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+	    }
 	}
       else
 	{
@@ -1604,7 +1582,10 @@ try_again:
 	      bufptr->iopage_buffer->iopage.prv.volid = -1;
 	    }
 
-	  mnt_sort_data_pages (thread_p);
+	  if (thread_get_sort_stats_active (thread_p))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	    }
 	}
       buf_lock_acquired = true;
     }
@@ -1726,9 +1707,9 @@ try_again:
     {
       PERF_PAGE_TYPE perf_page_type;
 
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (pgptr);
 
-      mnt_pb_fetches (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
 	{
 	  perf_latch_mode = PERF_HOLDER_LATCH_READ;
@@ -1746,8 +1727,8 @@ try_again:
 	      perf_cond_type = PERF_UNCONDITIONAL_FIX_WITH_WAIT;
 	      if (holder_wait_time > 0)
 		{
-		  mnt_pbx_hold_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode,
-					     holder_wait_time);
+		  perfmon_pbx_hold_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode,
+						 holder_wait_time);
 		}
 	    }
 	  else
@@ -1760,11 +1741,11 @@ try_again:
 	  perf_cond_type = PERF_CONDITIONAL_FIX;
 	}
 
-      mnt_pbx_fix (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type);
+      perfmon_pbx_fix (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type);
       if (lock_wait_time > 0)
 	{
-	  mnt_pbx_lock_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
-				     lock_wait_time);
+	  perfmon_pbx_lock_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
+					 lock_wait_time);
 	}
 
       tsc_getticks (&end_tick);
@@ -1773,8 +1754,8 @@ try_again:
 
       if (fix_wait_time > 0)
 	{
-	  mnt_pbx_fix_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
-				    fix_wait_time);
+	  perfmon_pbx_fix_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
+					fix_wait_time);
 	}
     }
 
@@ -1860,7 +1841,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
 #if defined(SERVER_MODE)	/* SERVER_MODE */
   /* performance tracking - get start counter */
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -1872,7 +1853,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
   vpid = bufptr->vpid;
   if (is_perf_tracking)
     {
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (*pgptr_p, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (*pgptr_p);
 
       /* promote condition */
       if (condition == PGBUF_PROMOTE_ONLY_READER)
@@ -2040,8 +2021,8 @@ end:
 	}
 
       /* aggregate success/fail */
-      mnt_pbx_promote (thread_p, perf_page_type, perf_promote_cond_type, perf_holder_latch, stat_success,
-		       promote_wait_time);
+      perfmon_pbx_promote (thread_p, perf_page_type, perf_promote_cond_type, perf_holder_latch, stat_success,
+			   promote_wait_time);
     }
 
   /* all successful */
@@ -2143,10 +2124,10 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 #endif /* CUBRID_DEBUG */
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (pgptr);
     }
   INIT_HOLDER_STAT (&holder_perf_stat);
   holder_status = pgbuf_unlatch_thrd_holder (thread_p, bufptr, &holder_perf_stat);
@@ -2168,8 +2149,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	  assert (holder_perf_stat.hold_has_write_latch);
 	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
 	}
-      mnt_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold, holder_perf_stat.dirtied_by_holder,
-		     perf_holder_latch);
+      perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold,
+			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
     }
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
@@ -3057,7 +3038,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
 
-  mnt_pb_victims (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_VICTIMS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
   er_log_debug (ARG_FILE_LINE, "start flush victim candidates\n");
@@ -3223,7 +3204,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      flushed_pages = (error == NO_ERROR) ? 1 : 0;
 	    }
 
-	  mnt_pb_replacements (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_REPLACEMENTS);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3943,7 +3924,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	    }
 
 	  /* Record number of reads in statistics */
-	  mnt_pb_ioreads (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
 	  if (fileio_read_user_area (thread_p, fileio_get_volume_descriptor (vpid->volid), vpid->pageid, start_offset,
 				     length, area) == NULL)
@@ -3962,7 +3943,10 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 
       memcpy (area, (char *) pgptr + start_offset, length);
 
-      mnt_sort_data_pages (thread_p);
+      if (thread_get_sort_stats_active (thread_p))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	}
 
       /* release BCB_mutex */
       pthread_mutex_unlock (&bufptr->BCB_mutex);
@@ -4036,7 +4020,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 	    }
 
 	  /* Record number of reads in statistics */
-	  mnt_pb_iowrites (thread_p, 1);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
 	  vol_fd = fileio_get_volume_descriptor (vpid->volid);
 	  if (fileio_write_user_area (thread_p, vol_fd, vpid->pageid, start_offset, length, area) == NULL)
@@ -6760,17 +6744,14 @@ pgbuf_search_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
   int rv;
   int loop_cnt;
 #endif
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-#endif
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
 
   mbw_cnt = 0;
 
@@ -6836,21 +6817,21 @@ two_phase:
 
 try_again:
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&start_tick);
     }
-#endif
+
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   bufptr = hash_anchor->hash_next;
   while (bufptr != NULL)
     {
@@ -6922,33 +6903,31 @@ pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, PGBUF_BCB * bufpt
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-  if (is_perf_tracking)
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
     {
-      tsc_getticks (&start_tick);
+      thread_p = thread_get_thread_entry_info ();
+
+      if (perfmon_is_perf_tracking ())
+	{
+	  tsc_getticks (&start_tick);
+	}
     }
-#endif
 
   /* Note that the caller is not holding bufptr->BCB_mutex */
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   bufptr->hash_next = hash_anchor->hash_next;
   hash_anchor->hash_next = bufptr;
 
@@ -6976,21 +6955,18 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-  if (is_perf_tracking)
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
     {
-      tsc_getticks (&start_tick);
+      thread_p = thread_get_thread_entry_info ();
+      if (perfmon_is_perf_tracking ())
+	{
+	  tsc_getticks (&start_tick);
+	}
     }
-#endif
 
   /* the caller is holding bufptr->BCB_mutex */
 
@@ -6999,14 +6975,15 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
    * invoked by a victim selector */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&(bufptr->vpid))]);
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   if (bufptr->avoid_victim == true)
     {
       assert (false);
@@ -7081,11 +7058,8 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 #if defined(SERVER_MODE)
   PGBUF_BUFFER_LOCK *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
-#endif
 
   /* the caller is holding hash_anchor->hash_mutex */
   /* check whether the page is in the Buffer Lock Chain */
@@ -7094,10 +7068,6 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-#endif
 
   cur_thrd_entry = thread_p;
   cur_buffer_lock = hash_anchor->lock_next;
@@ -7118,21 +7088,20 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 	      THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
 	      int r;
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-	      if (is_perf_tracking)
+	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 		{
 		  tsc_getticks (&start_tick);
 		}
-#endif
+
 	      r = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-	      if (is_perf_tracking)
+
+	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 		{
 		  tsc_getticks (&end_tick);
 		  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-		  mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+		  perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
 		}
-#endif
 
 	      thrd_entry = cur_buffer_lock->next_wait_thrd;
 
@@ -7152,7 +7121,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		      thrd_entry->next_wait_thrd = NULL;
 		      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 
-		      mnt_lk_waited_on_pages (thread_p);	/* monitoring */
+		      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
 		      return PGBUF_LOCK_WAITER;
 		    }
 		  prev_thrd_entry = thrd_entry;
@@ -7160,7 +7129,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		}
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	    }
-	  mnt_lk_waited_on_pages (thread_p);	/* monitoring */
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
 	  return PGBUF_LOCK_WAITER;
 	}
       cur_buffer_lock = cur_buffer_lock->lock_next;
@@ -7178,7 +7147,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
   pthread_mutex_unlock (&hash_anchor->hash_mutex);
 #endif /* SERVER_MODE */
 
-  mnt_lk_acquired_on_pages (thread_p);	/* monitoring */
+  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
   return PGBUF_LOCK_HOLDER;
 }
 
@@ -7200,35 +7169,33 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
 {
 #if defined(SERVER_MODE)
   int rv;
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
   PGBUF_BUFFER_LOCK *prev_buffer_lock, *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
 
   if (need_hash_mutex)
     {
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-      thread_p = thread_get_thread_entry_info ();
-      is_perf_tracking = mnt_is_perf_tracking (thread_p);
-      if (is_perf_tracking)
+      if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
 	{
-	  tsc_getticks (&start_tick);
+	  thread_p = thread_get_thread_entry_info ();
+	  if (perfmon_is_perf_tracking ())
+	    {
+	      tsc_getticks (&start_tick);
+	    }
 	}
-#endif
       rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-      if (is_perf_tracking)
+
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 	{
 	  tsc_getticks (&end_tick);
 	  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-	  mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+	  perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
 	}
-#endif
     }
 
   /* check whether the page is in the Buffer Lock Chain */
@@ -8753,7 +8720,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   logpb_flush_log_for_wal (thread_p, &iopage->prv.lsa);
 
   /* Record number of writes in statistics */
-  mnt_pb_iowrites (thread_p, 1);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
 #if defined(ENABLE_SYSTEMTAP)
   query_id = qmgr_get_current_query_id (thread_p);
@@ -9909,7 +9876,7 @@ pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
 
   /* Record number of dirties in statistics */
-  mnt_pb_dirties (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_DIRTIES);
 }
 
 /*
@@ -10386,7 +10353,7 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 			IO_PAGESIZE) != NULL)
 	{
 	  *flushed = true;
-	  mnt_pb_iowrites (thread_p, 1);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 	  /* ignore error, just store it for Systemtap marker */
 	  error = ER_FAILED;
 	}
@@ -10513,6 +10480,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   int er_status_get_hfid = NO_ERROR;
   VPID req_page_groupid;
   bool has_dealloc_prevent_flag = false;
+  PGBUF_LATCH_CONDITION latch_condition;
 #if defined(PGBUF_ORDERED_DEBUG)
   static unsigned int global_ordered_fix_id = 0;
   unsigned int ordered_fix_id;
@@ -10560,14 +10528,23 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   req_page_holder_info.watch_count = 1;
   req_page_holder_info.watcher[0] = req_watcher;
 
-#if !defined(NDEBUG)
-  ret_pgptr =
-    pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, PGBUF_CONDITIONAL_LATCH, caller_file, caller_line);
-#else
-  ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, PGBUF_CONDITIONAL_LATCH);
-#endif
-
   thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+  if ((holder == NULL) || ((holder->thrd_link == NULL) && (VPID_EQ (req_vpid, &(holder->bufptr->vpid)))))
+    {
+      /* There are no other fixed pages or only the requested page was already fixed */
+      latch_condition = PGBUF_UNCONDITIONAL_LATCH;
+    }
+  else
+    {
+      latch_condition = PGBUF_CONDITIONAL_LATCH;
+    }
+
+#if !defined(NDEBUG)
+  ret_pgptr = pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, latch_condition, caller_file, caller_line);
+#else
+  ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
+#endif
 
   if (ret_pgptr != NULL)
     {
@@ -10637,6 +10614,17 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	       * is set : this allows scan of pages to continue */
 	      assert (wait_msecs == LK_FORCE_ZERO_WAIT);
 	      er_status = ER_LK_PAGE_TIMEOUT;
+	    }
+	  goto exit;
+	}
+
+      if (latch_condition == PGBUF_UNCONDITIONAL_LATCH)
+	{
+	  /* continue */
+	  er_status = er_errid ();
+	  if (er_status == NO_ERROR)
+	    {
+	      er_status = ER_FAILED;
 	    }
 	  goto exit;
 	}
@@ -12142,4 +12130,46 @@ pgbuf_get_fix_count (PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
   return bufptr->fcnt;
+}
+
+/*
+ * pgbuf_get_hold_count () - Get hold count for current thread.
+ *
+ * return        : Hold count
+ * thread_p (in) : Thread entry
+ */
+int
+pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
+{
+  int me =
+#if defined (SERVER_MODE)
+    thread_p ? thread_p->index :
+#endif /* SERVER_MODE */
+    thread_get_current_entry_index ();
+  return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
+}
+
+/*
+ * pgbuf_get_page_type_for_stat () - Return the page type for current page
+ *
+ * return        : page type
+ * pgptr (in)    : pointer to a page
+ */
+PERF_PAGE_TYPE
+pgbuf_get_page_type_for_stat (PAGE_PTR pgptr)
+{
+  PERF_PAGE_TYPE perf_page_type;
+  FILEIO_PAGE *io_pgptr;
+
+  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
+  if ((io_pgptr->prv.ptype == PAGE_BTREE) && (perfmon_get_activation_flag () & PERFMON_ACTIVE_DETAILED_BTREE_PAGE))
+    {
+      perf_page_type = btree_get_perf_btree_page_type (pgptr);
+    }
+  else
+    {
+      perf_page_type = io_pgptr->prv.ptype;
+    }
+
+  return perf_page_type;
 }

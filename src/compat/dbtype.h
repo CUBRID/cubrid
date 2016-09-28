@@ -776,12 +776,13 @@ union db_char
   {
     unsigned char style;
     unsigned char codeset;
-    bool is_max_string;
+    unsigned char is_max_string;
   } info;
   struct
   {
     unsigned char style;
     unsigned char codeset;
+    unsigned char is_max_string;
     unsigned char size;
     char buf[DB_SMALL_CHAR_BUF_SIZE];
   } sm;
@@ -789,6 +790,7 @@ union db_char
   {
     unsigned char style;
     unsigned char codeset;
+    unsigned char is_max_string;
     int size;
     char *buf;
   } medium;
@@ -796,6 +798,7 @@ union db_char
   {
     unsigned char style;
     unsigned char codeset;
+    unsigned char is_max_string;
     DB_LARGE_STRING *str;
   } large;
 };

@@ -909,35 +909,36 @@ struct btree_delete_helper
 #define BTREE_PERF_TRACK_TIME(thread_p, helper) \
   do \
     { \
+      PERF_UTIME_TRACKER_TIME (thread_p, &(helper)->time_track, PSTAT_BT_LEAF); \
       switch ((helper)->purpose) \
       { \
       case BTREE_OP_INSERT_NEW_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_insert_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_INSERT); \
 	break; \
       case BTREE_OP_INSERT_MVCC_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mvcc_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_MVCC_DELETE); \
 	break; \
       case BTREE_OP_INSERT_MARK_DELETED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mark_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_MARK_DELETE); \
 	break; \
       case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_DELETE); \
 	break; \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL: \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_DELETE); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_insert_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_INSERT); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_mvcc_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_MVCC_DELETE); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_VACUUM); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_INSID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_insid_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_VACUUM_INSID); \
 	break; \
       default: \
 	assert (false); \
@@ -948,35 +949,36 @@ struct btree_delete_helper
 #define BTREE_PERF_TRACK_TRAVERSE_TIME(thread_p, helper) \
   do \
     { \
+      PERF_UTIME_TRACKER_TIME (thread_p, &(helper)->time_track, PSTAT_BT_TRAVERSE); \
       switch ((helper)->purpose) \
       { \
       case BTREE_OP_INSERT_NEW_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_insert_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_INSERT_TRAVERSE); \
 	break; \
       case BTREE_OP_INSERT_MVCC_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mvcc_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_MVCC_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_INSERT_MARK_DELETED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mark_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_MARK_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL: \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_insert_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_INSERT_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_mvcc_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_MVCC_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_VACUUM_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_INSID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_insid_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_VACUUM_INSID_TRAVERSE); \
 	break; \
       default: \
 	assert (false); \
@@ -985,19 +987,19 @@ struct btree_delete_helper
   while (false)
 
 #define BTREE_PERF_OVF_OIDS_FIX_TIME(thread_p, track) \
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_fix_ovf_oids_time)
+    PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, PSTAT_BT_FIX_OVF_OIDS)
 
 #define BTREE_PERF_UNIQUE_LOCK_TIME(thread_p, track, lock) \
   do \
     { \
       if ((lock) == S_LOCK) \
-        { \
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_unique_rlocks_time); \
-        } \
+	{			    \
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, PSTAT_BT_UNIQUE_RLOCKS); \
+	}	\
       else \
-        { \
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_unique_wlocks_time); \
-        } \
+	{	   \
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, PSTAT_BT_UNIQUE_WLOCKS ); \
+	}	  \
     } \
   while (false)
 
@@ -5865,7 +5867,7 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class
       if (error == NO_ERROR)
 	{
 	  /* monitor */
-	  mnt_qm_deletes (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
 	}
 
       heap_scancache_end_modify (thread_p, &scan_cache);
@@ -7163,7 +7165,7 @@ end:
       pr_clear_value (&(env->pkeys_val[i]));
     }
 
-  mnt_bt_get_stats (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_GET_STATS);
 
   return ret;
 
@@ -10535,7 +10537,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
 
-  mnt_bt_merges (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MERGES);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -11025,7 +11027,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   right_header->node_level = -1;
   pgbuf_set_dirty (thread_p, right_pg, DONT_FREE);
 
-  mnt_bt_merges (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MERGES);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -11907,11 +11909,14 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 	      /* Not a match. */
 	    }
 	}
-      /* No delete MVCCID. */
-      /* In case of multi updates we may have the same OID twice in buffer, but with different MVCC info. Thus, the OID
-       * may appear first with MVCC insert id only. Then, the same OID appears again with MVCC delete id. 
-       * We have to continue the search if the MVCC info does not match.       
-       */
+      else
+	{
+	  /*
+	   * No delete MVCCID. In case of multi updates, we may have the same OID twice in buffer, but with different
+	   * MVCC info. Thus, the OID may appear first with MVCC insert id only. Then, the same OID appears again with
+	   * MVCC delete id. We have to continue the search if the MVCC info does not match.
+	   */
+	}
 
       return NO_ERROR;
 
@@ -13695,7 +13700,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
-  mnt_bt_splits (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_SPLITS);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -14559,7 +14564,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   pgbuf_set_dirty (thread_p, Q, DONT_FREE);
   pgbuf_set_dirty (thread_p, R, DONT_FREE);
 
-  mnt_bt_splits (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_SPLITS);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -14662,12 +14667,12 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE
 
 end:
 
-  mnt_bt_updates (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_UPDATES);
 
   return ret;
 
 exit_on_error:
-  mnt_bt_updates (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_UPDATES);
 
   assert_release (ret != NO_ERROR);
   return ret;
@@ -16816,7 +16821,7 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
   else
     {
       /* resume search */
-      mnt_bt_resumes (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_BT_NUM_RESUMES);
 
       error_code = btree_range_scan_resume (thread_p, bts);
       if (error_code != NO_ERROR)
@@ -23405,7 +23410,8 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (leaf_page != NULL && *leaf_page != NULL);
   assert (find_unique_helper != NULL);
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_traverse_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_TRAVERSE);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
   /* Initialize find unique helper. */
   find_unique_helper->found_object = false;
@@ -23473,7 +23479,8 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       COPY_OID (&find_unique_helper->oid, &unique_oid);
     }
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE);
   return NO_ERROR;
 }
 
@@ -23554,7 +23561,8 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
   /* other_args is find unique helper. */
   find_unique_helper = (BTREE_FIND_UNIQUE_HELPER *) other_args;
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_traverse_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_TRAVERSE);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
   /* Locking is required. */
   assert (find_unique_helper->lock_mode >= S_LOCK);
@@ -23734,7 +23742,8 @@ error_or_not_found:
     }
 #endif
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE);
   return error_code;
 }
 
@@ -23798,7 +23807,8 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
   /* other_args is find unique helper. */
   find_unique_helper = (BTREE_FIND_UNIQUE_HELPER *) other_args;
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_traverse_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_TRAVERSE);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
   /* Locking is required. */
   assert (find_unique_helper->lock_mode >= S_LOCK);
@@ -24084,7 +24094,8 @@ error_or_not_found:
     }
 #endif
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_traverse_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE);
 
   return error_code;
 }
@@ -25504,7 +25515,8 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  error_code = btree_range_scan_resume (thread_p, bts);
 	}
 
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, mnt_bt_range_search_traverse_time);
+      PERF_UTIME_TRACKER_TIME (thread_p, &bts->time_track, PSTAT_BT_TRAVERSE);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, PSTAT_BT_RANGE_SEARCH_TRAVERSE);
 
       if (error_code != NO_ERROR)
 	{
@@ -25590,7 +25602,8 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	    }
 	}
 
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, mnt_bt_range_search_time);
+      PERF_UTIME_TRACKER_TIME (thread_p, &bts->time_track, PSTAT_BT_LEAF);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, PSTAT_BT_RANGE_SEARCH);
     }
 
 end:
@@ -25636,7 +25649,8 @@ end:
       assert ((*bts->key_limit_upper) >= 0);
     }
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, mnt_bt_range_search_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &bts->time_track, PSTAT_BT_LEAF);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, PSTAT_BT_RANGE_SEARCH);
 
   return error_code;
 
@@ -26733,7 +26747,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       return error_code;
     }
 
-  mnt_bt_inserts (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_INSERTS);
 
   if (unique != NULL)
     {
@@ -30462,7 +30476,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       return error_code;
     }
 
-  mnt_bt_deletes (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_DELETES);
 
   if (unique != NULL)
     {

@@ -5798,7 +5798,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  MVCC_CLEAR_FLAG_BITS (&new_rec_header, OR_MVCC_FLAG_VALID_INSID);
 		}
 
-	      if (MVCC_IS_FLAG_SET (&old_rec_header, OR_MVCC_FLAG_VALID_DELID))
+	      if (MVCC_IS_HEADER_DELID_VALID (&old_rec_header))
 		{
 		  MVCC_SET_FLAG_BITS (&new_rec_header, OR_MVCC_FLAG_VALID_DELID);
 		  MVCC_SET_DELID (&new_rec_header, MVCC_GET_DELID (&old_rec_header));
@@ -7057,7 +7057,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      if (error_code == NO_ERROR)
 		{
 		  /* monitor */
-		  mnt_qm_inserts (thread_p);
+		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
 		}
 	      break;
 
@@ -7073,7 +7073,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      if (error_code == NO_ERROR)
 		{
 		  /* monitor */
-		  mnt_qm_updates (thread_p);
+		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
 		}
 	      break;
 
@@ -7085,7 +7085,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      if (error_code == NO_ERROR)
 		{
 		  /* monitor */
-		  mnt_qm_deletes (thread_p);
+		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
 		}
 	      break;
 
@@ -7245,7 +7245,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  if (error_code == NO_ERROR)
 	    {
 	      /* monitor */
-	      mnt_qm_inserts (thread_p);
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
 	    }
 	  break;
 
@@ -7261,7 +7261,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  if (error_code == NO_ERROR)
 	    {
 	      /* monitor */
-	      mnt_qm_updates (thread_p);
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
 	    }
 	  break;
 
@@ -7273,7 +7273,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  if (error_code == NO_ERROR)
 	    {
 	      /* monitor */
-	      mnt_qm_deletes (thread_p);
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
 	    }
 	  break;
 
