@@ -11128,12 +11128,14 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+
     case PT_DISK_SIZE:
       q = pt_append_nulstring (parser, q, " disk_size(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+
     case PT_LPAD:
       q = pt_append_nulstring (parser, q, " lpad(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);

@@ -11960,9 +11960,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       dt->info.data_type.dec_precision = 0;
       dt->info.data_type.units = 0;
       break;
+
     case PT_DISK_SIZE:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       break;
+
     case PT_TIMES:
     case PT_POWER:
       if (common_type == PT_TYPE_NUMERIC)
@@ -15138,6 +15140,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    }
 	}
       break;
+
     case PT_DISK_SIZE:
       if (DB_IS_NULL (arg1))
 	{
@@ -15148,6 +15151,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  db_make_int (result, pr_data_writeval_disk_size (arg1));
 	}
       break;
+
     case PT_BIT_COUNT:
       if (db_bit_count_dbval (result, arg1) != NO_ERROR)
 	{

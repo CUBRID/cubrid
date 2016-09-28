@@ -3049,6 +3049,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    }
 	}
       break;
+
     case T_DISK_SIZE:
       if (DB_IS_NULL (peek_right))
 	{
@@ -3059,6 +3060,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  db_make_int (arithptr->value, pr_data_writeval_disk_size (peek_right));
 	}
       break;
+
     case T_NULLIF:		/* when a = b then null else a end */
       {
 	TP_DOMAIN *target_domain;

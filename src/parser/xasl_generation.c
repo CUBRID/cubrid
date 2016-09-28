@@ -7599,9 +7599,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_REVERSE:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_REVERSE, domain);
 		  break;
+
 		case PT_DISK_SIZE:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISK_SIZE, domain);
 		  break;
+
 		case PT_BIT_COUNT:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_BIT_COUNT, domain);
 		  break;
