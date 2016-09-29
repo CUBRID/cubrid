@@ -13688,6 +13688,10 @@ file_construct_space_info (THREAD_ENTRY * thread_p, VOL_SPACE_INFO * space_info,
 /************************************************************************/
 
 /************************************************************************/
+/* File manager section                                                 */
+/************************************************************************/
+
+/************************************************************************/
 /* File header section                                                  */
 /************************************************************************/
 
@@ -13909,8 +13913,8 @@ static bool file_Logging = false;
 
 #define FILE_HEAD_ALLOC_MSG \
  "\tfile header: \n" \
- "\t%s \n" \
- "\t%s \n" \
+ "\t\t%s \n" \
+ "\t\t%s \n" \
  "\t\tpage: total = %d, user = %d, table = %d, free = %d \n" \
  "\t\tsector: total = %d, partial = %d, full = %d, empty = %d \n"
 #define FILE_HEAD_ALLOC_AS_ARGS(fhead) \
@@ -14035,6 +14039,10 @@ static FLRE_TEMPCACHE *flre_Tempcache = NULL;
 
 /************************************************************************/
 /* Declare static functions.                                            */
+/************************************************************************/
+
+/************************************************************************/
+/* File manager section                                                 */
 /************************************************************************/
 
 /************************************************************************/
@@ -14187,6 +14195,8 @@ static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfi
 /* Temporary cache section                                               */
 /************************************************************************/
 
+static int flre_tempcache_init (void);
+static void flre_tempcache_final (void);
 STATIC_INLINE void flre_tempcache_lock (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void flre_tempcache_unlock (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void flre_tempcache_check_lock (void) __attribute__ ((ALWAYS_INLINE));
@@ -14214,6 +14224,30 @@ STATIC_INLINE void flre_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE
 /************************************************************************/
 
 /************************************************************************/
+/* File manager section                                                 */
+/************************************************************************/
+
+/*
+ * flre_manager_init () - initialize file manager
+ */
+int
+flre_manager_init (void)
+{
+  file_Logging = prm_get_bool_value (PRM_ID_FILE_LOGGING);
+
+  return flre_tempcache_init ();
+}
+
+/*
+ * flre_manager_final () - finalize file manager
+ */
+void
+flre_manager_final (void)
+{
+  flre_tempcache_final ();
+}
+
+/************************************************************************/
 /* File header section.                                                 */
 /************************************************************************/
 
@@ -14230,7 +14264,6 @@ file_header_sanity_check (FLRE_HEADER * fhead)
 #if !defined (NDEBUG)
   FILE_EXTENSIBLE_DATA *part_table;
   FILE_EXTENSIBLE_DATA *full_table;
-  FILE_EXTENSIBLE_DATA *page_table;
 
   if (prm_get_bool_value (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY))
     {
@@ -14310,6 +14343,10 @@ file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   VPID_COPY (&fhead->vpid_last_user_page_ftab, vpid);
   file_header_sanity_check (fhead);
+
+  file_log ("file_rv_fhead_set_last_user_page_ftab", "update vpid_last_user_page_ftab to %d|%d in file %d|%d, "
+	    "header page %d|%d, lsa %lld|%d ", VPID_AS_ARGS (vpid), VFID_AS_ARGS (&fhead->self),
+	    PGBUF_PAGE_VPID_AS_ARGS (page_fhead), PGBUF_PAGE_LSA_AS_ARGS (page_fhead));
 
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
   return NO_ERROR;
@@ -14411,6 +14448,13 @@ file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   fhead = (FLRE_HEADER *) page_fhead;
 
   file_header_alloc (fhead, is_ftab_page ? FILE_ALLOC_TABLE_PAGE : FILE_ALLOC_USER_PAGE, was_empty, is_full);
+
+  file_log ("file_rv_fhead_alloc", "update header in file %d|%d, header page %d|%d, lsa %lld|%d, "
+	    "after %s, was_empty %s, is_full %s \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), PGBUF_PAGE_LSA_AS_ARGS (page_fhead),
+	    FILE_ALLOC_TYPE_STRING (is_ftab_page ? FILE_ALLOC_TABLE_PAGE : FILE_ALLOC_USER_PAGE),
+	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
+
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
   return NO_ERROR;
@@ -14440,6 +14484,13 @@ file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   fhead = (FLRE_HEADER *) page_fhead;
 
   file_header_dealloc (fhead, is_ftab_page ? FILE_ALLOC_TABLE_PAGE : FILE_ALLOC_USER_PAGE, is_empty, was_full);
+
+  file_log ("file_rv_fhead_dealloc", "update header in file %d|%d, header page %d|%d, lsa %lld|%d, "
+	    "after de%s, is_empty %s, was_full %s \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), PGBUF_PAGE_LSA_AS_ARGS (page_fhead),
+	    FILE_ALLOC_TYPE_STRING (is_ftab_page ? FILE_ALLOC_TABLE_PAGE : FILE_ALLOC_USER_PAGE),
+	    is_empty ? "true" : "false", was_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
+
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
   return NO_ERROR;
 }
@@ -14507,7 +14558,7 @@ file_log_fhead_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC
   log_bools[2] = was_full;
 
   addr.pgptr = page_fhead;
-  log_append_undoredo_data (thread_p, RVFL_FHEAD_ALLOC, &addr, sizeof (log_bools), sizeof (log_bools), log_bools,
+  log_append_undoredo_data (thread_p, RVFL_FHEAD_DEALLOC, &addr, sizeof (log_bools), sizeof (log_bools), log_bools,
 			    log_bools);
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
@@ -14528,6 +14579,8 @@ file_header_update_mark_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, i
   FLRE_HEADER *fhead = (FLRE_HEADER *) page_fhead;
   int undo_delta = -delta;
 
+  LOG_LSA save_lsa = *pgbuf_get_lsa (page_fhead);
+
   fhead->n_page_mark_delete += delta;
 
   if (!FILE_IS_TEMPORARY (fhead))
@@ -14536,6 +14589,11 @@ file_header_update_mark_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, i
 				 sizeof (delta), &undo_delta, &delta);
     }
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+
+  file_log ("file_header_update_mark_deleted", "updated n_page_mark_delete by %d to %d in file %d|%d, "
+	    "header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d ", delta, fhead->n_page_mark_delete,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead));
 }
 
 /*
@@ -14558,6 +14616,11 @@ file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   fhead = (FLRE_HEADER *) page_fhead;
   fhead->n_page_mark_delete += delta;
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+
+  file_log ("file_rv_header_update_mark_deleted", "modified n_page_mark_delete by %d to %d in file %d|%d, "
+	    "header page %d|%d, lsa %lld|%d", delta, fhead->n_page_mark_delete, VFID_AS_ARGS (&fhead->self),
+	    PGBUF_PAGE_VPID_AS_ARGS (page_fhead), PGBUF_PAGE_LSA_AS_ARGS (page_fhead));
+
   return NO_ERROR;
 }
 
@@ -15322,6 +15385,10 @@ file_rv_extdata_set_next (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   extdata = (FILE_EXTENSIBLE_DATA *) (page_ftab + rcv->offset);
   VPID_COPY (&extdata->vpid_next, vpid_next);
 
+  file_log ("file_rv_extdata_set_next", "page %d|%d, lsa %lld|%d, changed extdata link \n"
+	    FILE_EXTDATA_MSG ("extdata after"), PGBUF_PAGE_VPID_AS_ARGS (page_ftab), PGBUF_PAGE_LSA_AS_ARGS (page_ftab),
+	    FILE_EXTDATA_AS_ARGS (extdata));
+
   pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
   return NO_ERROR;
 }
@@ -15369,6 +15436,11 @@ file_rv_extdata_add (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (rcv->length == offset + extdata->size_of_item * count);
 
   file_extdata_insert_at (extdata, pos, count, rcv->data + offset);
+
+  file_log ("file_rv_extdata_add", "add %d entries at position %d in page %d|%d, lsa %lld|%d \n"
+	    FILE_EXTDATA_MSG ("extdata after"), count, pos, PGBUF_PAGE_VPID_AS_ARGS (page_ftab),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_ftab), FILE_EXTDATA_AS_ARGS (extdata));
+
   pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
   return NO_ERROR;
 }
@@ -15402,6 +15474,11 @@ file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   extdata = (FILE_EXTENSIBLE_DATA *) (page_ftab + rcv->offset);
   file_extdata_remove_at (extdata, pos, count);
+
+  file_log ("file_rv_extdata_remove", "remove %d entries at position %d in page %d|%d, lsa %lld|%d"
+	    FILE_EXTDATA_MSG ("extdata after"), count, pos, PGBUF_PAGE_VPID_AS_ARGS (page_ftab),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_ftab), FILE_EXTDATA_AS_ARGS (extdata));
+
   pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
   return NO_ERROR;
 }
@@ -15533,12 +15610,19 @@ file_log_extdata_set_next (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA *
 			   VPID * vpid_next)
 {
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  LOG_LSA save_lsa;
 
   addr.pgptr = page;
   addr.offset = (PGLENGTH) (((char *) extdata) - page);
-
+  save_lsa = *pgbuf_get_lsa (page);
   log_append_undoredo_data (thread_p, RVFL_EXTDATA_SET_NEXT, &addr, sizeof (VPID), sizeof (VPID), &extdata->vpid_next,
 			    vpid_next);
+
+  file_log ("file_log_extdata_set_next", "page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+	    "change extdata link to %d|%d, \n" FILE_EXTDATA_MSG ("extdata before"),
+	    PGBUF_PAGE_VPID_AS_ARGS (page), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page),
+	    VPID_AS_ARGS (vpid_next), FILE_EXTDATA_AS_ARGS (extdata));
+
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 }
 
@@ -15571,6 +15655,10 @@ file_rv_extdata_merge_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   /* overwrite extdata with recovery. */
   memcpy (extdata_in_page, extdata_in_rcv, rcv->length);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  file_log ("file_rv_extdata_merge_undo", "page %d|%d lsa %lld|%d" FILE_EXTDATA_MSG ("extdata after"),
+	    PGBUF_PAGE_VPID_AS_ARGS (rcv->pgptr), PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr),
+	    FILE_EXTDATA_AS_ARGS (extdata_in_page));
 
   return NO_ERROR;
 }
@@ -15611,6 +15699,11 @@ file_rv_extdata_merge_redo_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
     {
       file_extdata_merge_unordered (extdata_in_rcv, extdata_in_page);
     }
+
+  file_log ("file_rv_extdata_merge_redo_internal", "page %d|%d, lsa %lld|%d, %s merge \n"
+	    FILE_EXTDATA_MSG ("extdata after"), PGBUF_PAGE_VPID_AS_ARGS (rcv->pgptr),
+	    PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr), compare_func ? "ordered" : "unordered",
+	    FILE_EXTDATA_AS_ARGS (extdata_in_page));
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -15814,6 +15907,12 @@ file_rv_partsect_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool set)
     {
       file_partsect_clear_bit (partsect, offset);
     }
+
+  file_log ("file_rv_partsect_update", "recovery partial sector update in page %d|%d prev_lsa %lld|%d: "
+	    "%s bit at offset %d, partial sector offset %d \n" FILE_PARTSECT_MSG ("partsect after rcv"),
+	    PGBUF_PAGE_VPID_AS_ARGS (rcv->pgptr), PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr), set ? "set" : "clear",
+	    offset, rcv->offset, FILE_PARTSECT_AS_ARGS (partsect));
+
   pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
   return NO_ERROR;
 }
@@ -16881,6 +16980,8 @@ file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FLRE_HEADER *fhead;
   FILE_EXTENSIBLE_DATA *part_table;
 
+  DKNSECTS save_nsects;
+
   fhead = (FLRE_HEADER *) page_fhead;
   file_header_sanity_check (fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
@@ -16901,10 +17002,16 @@ file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   fhead->n_page_total -= fhead->n_page_free;
   fhead->n_page_free = 0;
   fhead->n_sector_total -= fhead->n_sector_empty;
+  save_nsects = fhead->n_sector_empty;
   fhead->n_sector_partial = 0;
   fhead->n_sector_empty = 0;
 
   file_header_sanity_check (fhead);
+
+  file_log ("file_rv_perm_expand_undo", "removed expanded sectors from partial table and file header in file %d|%d, "
+	    "page header %d|%d, lsa %lld|%d, number of sectors %d \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), PGBUF_PAGE_LSA_AS_ARGS (page_fhead),
+	    save_nsects, FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
@@ -16963,6 +17070,11 @@ file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   file_header_sanity_check (fhead);
 
+  file_log ("file_rv_perm_expand_redo", "recovery expand in file %d|%d, file header %d|%d, lsa %lld|%d \n"
+	    FILE_HEAD_ALLOC_MSG FILE_EXTDATA_MSG ("partial table after"),
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), PGBUF_PAGE_LSA_AS_ARGS (page_fhead),
+	    FILE_HEAD_ALLOC_AS_ARGS (fhead), FILE_EXTDATA_AS_ARGS (extdata_part_table));
+
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
   return NO_ERROR;
 }
@@ -16986,6 +17098,8 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
   FILE_EXTENSIBLE_DATA *extdata_part_ftab;
   FILE_PARTIAL_SECTOR partsect;
   bool is_sysop_started = false;
+
+  LOG_LSA save_lsa;
 
   int error_code = NO_ERROR;
 
@@ -17059,13 +17173,18 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
   fhead->n_page_free = expand_size_in_sectors * DISK_SECTOR_NPAGES;
   fhead->n_page_total += fhead->n_page_free;
 
-  file_log ("file_perm_expand", "success expanding file %d|%d \n"
-	    FILE_HEAD_ALLOC_MSG FILE_EXTDATA_MSG ("partial table"), VFID_AS_ARGS (&fhead->self),
-	    FILE_HEAD_ALLOC_AS_ARGS (fhead), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
+  save_lsa = *pgbuf_get_lsa (page_fhead);
 
   /* file extended successfully. log the change. */
   log_append_undoredo_data2 (thread_p, RVFL_EXPAND, NULL, page_fhead, 0, 0, expand_size_in_sectors * sizeof (VSID),
 			     NULL, vsids_reserved);
+
+  file_log ("file_perm_expand", "expand file %d|%d, page header %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d; "
+	    "first sector %d|%d \n" FILE_HEAD_ALLOC_MSG FILE_EXTDATA_MSG ("partial table"),
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), VSID_AS_ARGS (vsids_reserved), FILE_HEAD_ALLOC_AS_ARGS (fhead),
+	    FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
+
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
 exit:
@@ -17104,6 +17223,7 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
   PAGE_PTR page_part_ftab_first = NULL;
   int n_items_to_move;
   bool is_sysop_started = false;
+  LOG_LSA save_lsa;
 
   int error_code = NO_ERROR;
 
@@ -17174,20 +17294,30 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
   /* copy items to header section */
   file_extdata_append_array (extdata_part_ftab_head, file_extdata_start (extdata_part_ftab_first),
 			     (INT16) n_items_to_move);
+  save_lsa = *pgbuf_get_lsa (page_fhead);
   /* log changes to extensible data in header page */
   file_log_extdata_add (thread_p, extdata_part_ftab_head, page_fhead, 0, n_items_to_move,
 			file_extdata_start (extdata_part_ftab_first));
+
+  file_log ("file_table_move_partial_sectors_to_header", "moved %d items from first page to header page file table. \n"
+	    "file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d \n"
+	    FILE_EXTDATA_MSG ("header partial table"), n_items_to_move, VFID_AS_ARGS (&fhead->self),
+	    PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_fhead),
+	    FILE_EXTDATA_AS_ARGS (extdata_part_ftab_head));
 
   /* now remove from first page. if all items have been moved, we can deallocate first page. */
   if (n_items_to_move < file_extdata_item_count (extdata_part_ftab_first))
     {
       /* Remove copied entries. */
+      save_lsa = *pgbuf_get_lsa (page_part_ftab_first);
       file_extdata_remove_at (extdata_part_ftab_first, 0, n_items_to_move);
       file_log_extdata_remove (thread_p, extdata_part_ftab_first, page_part_ftab_first, 0, n_items_to_move);
 
-      file_log ("file_table_move_partial_sectors_to_header", "moved %d items from first page to header \n"
-		FILE_EXTDATA_MSG ("header (destination)") FILE_EXTDATA_MSG ("first page (source)"),
-		FILE_EXTDATA_AS_ARGS (extdata_part_ftab_head), FILE_EXTDATA_AS_ARGS (extdata_part_ftab_first));
+      file_log ("file_table_move_partial_sectors_to_header", "removed %d items from first page partial table \n"
+		"file %d|%d, page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d \n"
+		FILE_EXTDATA_MSG ("first page partial table"), n_items_to_move, VFID_AS_ARGS (&fhead->self),
+		PGBUF_PAGE_VPID_AS_ARGS (page_part_ftab_first), LSA_AS_ARGS (&save_lsa),
+		PGBUF_PAGE_LSA_AS_ARGS (page_part_ftab_first), FILE_EXTDATA_AS_ARGS (extdata_part_ftab_first));
     }
   else
     {
@@ -17196,8 +17326,8 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
       file_log_extdata_set_next (thread_p, extdata_part_ftab_head, page_fhead, &extdata_part_ftab_first->vpid_next);
       VPID_COPY (&extdata_part_ftab_head->vpid_next, &extdata_part_ftab_first->vpid_next);
 
-      file_log ("file_table_move_partial_sectors_to_header", "merged first page into header \n"
-		FILE_EXTDATA_MSG ("header (destination)"), FILE_EXTDATA_AS_ARGS (extdata_part_ftab_head));
+      file_log ("file_table_move_partial_sectors_to_header", "remove first partial table page %d|%d\n",
+		VPID_AS_ARGS (&save_next));
 
       pgbuf_unfix_and_init (thread_p, page_part_ftab_first);
       error_code = file_perm_dealloc (thread_p, page_fhead, &save_next, FILE_ALLOC_TABLE_PAGE);
@@ -17248,6 +17378,8 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
   FILE_EXTENSIBLE_DATA *extdata_full_ftab;
   PAGE_PTR page_extdata = NULL;
 
+  LOG_LSA save_lsa;
+
   int error_code = NO_ERROR;
 
   /* how it works:
@@ -17292,11 +17424,14 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
       file_extdata_insert_at (extdata_full_ftab, pos, 1, vsid);
 
       /* log the change. */
+      save_lsa = *pgbuf_get_lsa (page_extdata);
       file_log_extdata_add (thread_p, extdata_full_ftab, page_extdata, pos, 1, vsid);
 
-      file_log ("file_table_add_full_sector", "added sector %d|%d to existing full table page %d|%d \n"
-		FILE_EXTDATA_MSG ("extensible data component"), VSID_AS_ARGS (vsid),
-		PGBUF_PAGE_VPID_AS_ARGS (page_extdata), FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
+      file_log ("file_table_add_full_sector", "add sector %d|%d at position %d in file %d|%d, full table page %d|%d, "
+		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n" FILE_EXTDATA_MSG ("full table component"),
+		VSID_AS_ARGS (vsid), pos, VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_extdata),
+		LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_extdata),
+		FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
     }
   else
     {
@@ -17400,6 +17535,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   int offset_to_alloc_bit;
   bool was_empty = false;
   bool is_full = false;
+  LOG_LSA save_lsa;
 
   int error_code = NO_ERROR;
 
@@ -17471,25 +17607,22 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       goto exit;
     }
   assert (file_partsect_is_bit_set (partsect, offset_to_alloc_bit));
+  save_lsa = *pgbuf_get_lsa (page_fhead);
   /* log allocation */
   log_append_undoredo_data2 (thread_p, RVFL_PARTSECT_ALLOC, NULL, page_fhead,
 			     (PGLENGTH) ((char *) partsect - page_fhead), sizeof (offset_to_alloc_bit),
 			     sizeof (offset_to_alloc_bit), &offset_to_alloc_bit, &offset_to_alloc_bit);
 
-  file_log ("file_perm_alloc", "file %d|%d allocated page %d|%d \n" FILE_PARTSECT_MSG ("partial sector after alloc"),
-	    VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_alloc_out), FILE_PARTSECT_AS_ARGS (partsect));
+  file_log ("file_perm_alloc", "allocated page %d|%d in file %d|%d page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+	    "set bit at offset %d in partial sector at offset %d \n" FILE_PARTSECT_MSG ("partsect after"),
+	    VPID_AS_ARGS (vpid_alloc_out), VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead),
+	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_fhead), offset_to_alloc_bit,
+	    (PGLENGTH) ((char *) partsect - page_fhead), FILE_PARTSECT_AS_ARGS (partsect));
 
   if (file_partsect_is_full (partsect))
     {
       /* move to full table. */
       is_full = true;
-
-      /* remove from partial table. log change first (while we still have access to data being removed) */
-      file_log_extdata_remove (thread_p, extdata_part_ftab, page_fhead, 0, 1);
-      file_extdata_remove_at (extdata_part_ftab, 0, 1);
-
-      file_log ("file_perm_alloc", "removed full partial sector \n" FILE_EXTDATA_MSG ("partial table after alloc"),
-		FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
       /* add to full table */
       error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
@@ -17498,18 +17631,31 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
+
+      /* remove from partial table. log change first (while we still have access to data being removed) */
+      save_lsa = *pgbuf_get_lsa (page_fhead);
+      file_log_extdata_remove (thread_p, extdata_part_ftab, page_fhead, 0, 1);
+      file_extdata_remove_at (extdata_part_ftab, 0, 1);
+
+      file_log ("file_perm_alloc", "removed full partial sector from position 0 in file %d|%d, header page %d|%d, "
+		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n" FILE_EXTDATA_MSG ("partial table after alloc"),
+		VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
+		PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
     }
 
   /* almost finished. update header statistics */
   file_header_alloc (fhead, alloc_type, was_empty, is_full);
+  save_lsa = *pgbuf_get_lsa (page_fhead);
   file_log_fhead_alloc (thread_p, page_fhead, alloc_type, was_empty, is_full);
 
   /* done */
   file_header_sanity_check (fhead);
 
-  file_log ("file_perm_alloc", "file %d|%d %s %d|%d successful \n" FILE_HEAD_ALLOC_MSG,
-	    VFID_AS_ARGS (&fhead->self), FILE_ALLOC_TYPE_STRING (alloc_type), VPID_AS_ARGS (vpid_alloc_out),
-	    FILE_HEAD_ALLOC_AS_ARGS (fhead));
+  file_log ("file_perm_alloc", "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+	    "after %s, was_empty = %s, is_full = %s, \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_ALLOC_TYPE_STRING (alloc_type),
+	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
   assert (error_code == NO_ERROR);
 
@@ -17766,6 +17912,8 @@ flre_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID *
   PAGE_PTR page_fhead = NULL;
   FLRE_HEADER *fhead = NULL;
 
+  LOG_LSA save_lsa;
+
   int error_code = NO_ERROR;
 
   /* fix header */
@@ -17791,6 +17939,7 @@ flre_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID *
     }
 
   /* save VPID */
+  save_lsa = *pgbuf_get_lsa (page_fhead);
   log_append_undoredo_data2 (thread_p, RVFL_FHEAD_STICKY_PAGE, NULL, page_fhead, 0, sizeof (VPID), sizeof (VPID),
 			     &fhead->vpid_sticky_first, vpid_out);
   fhead->vpid_sticky_first = *vpid_out;
@@ -17800,8 +17949,9 @@ flre_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID *
   file_header_sanity_check (fhead);
   assert (error_code == NO_ERROR);
 
-  file_log ("flre_alloc_sticky_first_page", "file %d|%d allocated sticky first page" FILE_HEAD_FULL_MSG,
-	    VFID_AS_ARGS (vfid), FILE_HEAD_FULL_AS_ARGS (fhead));
+  file_log ("flre_alloc_sticky_first_page", "set vpid_sticky_first to %d|%d in file %d|%d, header page %d|%d, "
+	    "prev_lsa %lld|%d, crt_lsa %lld|%d", VPID_AS_ARGS (vpid_out), VFID_AS_ARGS (vfid),
+	    PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_fhead));
 
 exit:
   if (page_fhead != NULL)
@@ -17829,6 +17979,10 @@ file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   fhead->vpid_sticky_first = *vpid;
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+
+  file_log ("file_rv_fhead_sticky_page", "set vpid_sticky_first to %d|%d in file %d|%d, header page %d|%d, lsa %lld|%d",
+	    VPID_AS_ARGS (vpid), VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead));
   return NO_ERROR;
 }
 
@@ -17903,6 +18057,8 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
   bool found = false;
   int pos = -1;
   VPID *vpid_found;
+
+  LOG_LSA save_lsa;
 
   int error_code = NO_ERROR;
 
@@ -18015,6 +18171,7 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
   /* mark page as deleted */
   FILE_USER_PAGE_MARK_DELETED (vpid_found);
   page_extdata = page_ftab != NULL ? page_ftab : page_fhead;
+  save_lsa = *pgbuf_get_lsa (page_extdata);
   pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
   if (!FILE_IS_TEMPORARY (fhead))
     {
@@ -18024,6 +18181,12 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
       addr.offset = (PGLENGTH) (((char *) vpid_found) - addr.pgptr);
       log_append_undoredo_data (thread_p, RVFL_USER_PAGE_MARK_DELETE, &addr, LOG_DATA_SIZE, 0, log_data, NULL);
     }
+
+  file_log ("file_dealloc", "marked page %d|%d as deleted in file %d|%d, page %d|%d, prev_lsa %lld|%d, "
+	    "crt_lsa %lld_%d, at offset %d ", VPID_AS_ARGS (vpid_found), VFID_AS_ARGS (&fhead->self),
+	    PGBUF_PAGE_VPID_AS_ARGS (page_extdata), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_extdata),
+	    (PGLENGTH) (((char *) vpid_found) - page_extdata));
+
   /* update file header */
   file_header_update_mark_deleted (thread_p, page_fhead, 1);
 
@@ -18101,6 +18264,10 @@ file_table_try_extdata_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, PAGE
   if (file_extdata_can_merge (extdata_next, extdata_dest))
     {
       /* do the merge */
+      file_log ("file_table_try_extdata_merge", "page %d|%d prev_lsa %lld|%d \n" FILE_EXTDATA_MSG ("dest before merge"),
+		PGBUF_PAGE_VPID_AS_ARGS (page_dest), PGBUF_PAGE_LSA_AS_ARGS (page_dest),
+		FILE_EXTDATA_AS_ARGS (extdata_dest));
+
       file_log_extdata_merge (thread_p, extdata_dest, page_dest, extdata_next, rcvindex);
       if (compare_func)
 	{
@@ -18110,6 +18277,10 @@ file_table_try_extdata_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, PAGE
 	{
 	  file_extdata_merge_unordered (extdata_next, extdata_dest);
 	}
+
+      file_log ("file_table_try_extdata_merge", "page %d|%d crt_lsa %lld|%d \n" FILE_EXTDATA_MSG ("dest after merge"),
+		PGBUF_PAGE_VPID_AS_ARGS (page_dest), PGBUF_PAGE_LSA_AS_ARGS (page_dest),
+		FILE_EXTDATA_AS_ARGS (extdata_dest));
 
       file_log_extdata_set_next (thread_p, extdata_dest, page_dest, &extdata_next->vpid_next);
       VPID_COPY (&extdata_dest->vpid_next, &extdata_next->vpid_next);
@@ -18158,6 +18329,8 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
   bool is_ftab = (alloc_type == FILE_ALLOC_TABLE_PAGE);
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   int offset_to_dealloc_bit;
+
+  LOG_LSA save_page_lsa;
 
   int error_code = NO_ERROR;
 
@@ -18209,14 +18382,18 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 
       addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
       addr.offset = (PGLENGTH) (((char *) partsect) - addr.pgptr);
+      save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
 
       log_append_undoredo_data (thread_p, RVFL_PARTSECT_DEALLOC, &addr, sizeof (offset_to_dealloc_bit),
 				sizeof (offset_to_dealloc_bit), &offset_to_dealloc_bit, &offset_to_dealloc_bit);
 
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 
-      file_log ("file_perm_dealloc", "file %d|%d update partial sector \n" FILE_PARTSECT_MSG ("partsect after dealloc"),
-		VFID_AS_ARGS (&fhead->self), FILE_PARTSECT_AS_ARGS (partsect));
+      file_log ("file_perm_dealloc", "dealloc page %d|%d in file %d|%d page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+		"clear bit at offset %d in partsect at offset %d \n" FILE_PARTSECT_MSG ("partsect after"),
+		VPID_AS_ARGS (vpid_dealloc), VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr),
+		LSA_AS_ARGS (&save_page_lsa), PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), offset_to_dealloc_bit,
+		addr.offset, FILE_PARTSECT_AS_ARGS (partsect));
 
       if (page_ftab != NULL)
 	{
@@ -18253,12 +18430,14 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 
       /* remove from full table. */
       addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
+      save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
       file_log_extdata_remove (thread_p, extdata_full_ftab, addr.pgptr, position, 1);
       file_extdata_remove_at (extdata_full_ftab, position, 1);
 
-      file_log ("file_perm_dealloc", "file %d|%d found vsid %d|%d in full table page %d|%d"
-		FILE_EXTDATA_MSG ("full table component"), VFID_AS_ARGS (&fhead->self), VSID_AS_ARGS (&vsid_dealloc),
-		PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr), FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
+      file_log ("file_perm_dealloc", "removed vsid %d|%d from position %d in file %d|%d, page %d|%d, prev_lsa %lld|%d, "
+		"crt_lsa %lld|%d, \n" FILE_EXTDATA_MSG ("full table component"), VSID_AS_ARGS (&vsid_dealloc),
+		VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr), LSA_AS_ARGS (&save_page_lsa),
+		PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
 
       /* check if full table pages can be merged. */
       /* todo: tweak the condition for trying merges. */
@@ -18311,13 +18490,16 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	      error_code = ER_FAILED;
 	      goto exit;
 	    }
+	  save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
 	  file_log_extdata_add (thread_p, extdata_part_ftab, addr.pgptr, position, 1, &partsect_new);
 	  file_extdata_insert_at (extdata_part_ftab, position, 1, &partsect_new);
 
-	  file_log ("file_perm_dealloc", "file %d|%d moved to partial table existing page %d|%d \n"
-		    FILE_PARTSECT_MSG ("new partial sector") FILE_EXTDATA_MSG ("partial table component"),
-		    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr),
-		    FILE_PARTSECT_AS_ARGS (&partsect_new), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
+	  file_log ("file_perm_dealloc", "add new partsect at position %d in file %d|%d, page %d|%d, prev_lsa %lld|%d, "
+		    "crt_lsa %lld|%d \n" FILE_PARTSECT_MSG ("new partial sector")
+		    FILE_EXTDATA_MSG ("partial table component"), position, VFID_AS_ARGS (&fhead->self),
+		    PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr), LSA_AS_ARGS (&save_page_lsa),
+		    PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), FILE_PARTSECT_AS_ARGS (&partsect_new),
+		    FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
 	  if (page_ftab != NULL)
 	    {
@@ -18376,14 +18558,17 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 
   /* almost done. We need to update header statistics */
   file_header_dealloc (fhead, alloc_type, is_empty, was_full);
+  save_page_lsa = *pgbuf_get_lsa (page_fhead);
   file_log_fhead_dealloc (thread_p, page_fhead, alloc_type, is_empty, was_full);
 
   /* done */
   assert (error_code == NO_ERROR);
 
-  file_log ("file_perm_dealloc", "file %d|%d de%s %d|%d success \n" FILE_HEAD_ALLOC_MSG,
-	    VFID_AS_ARGS (&fhead->self), FILE_ALLOC_TYPE_STRING (alloc_type), VPID_AS_ARGS (vpid_dealloc),
-	    FILE_HEAD_ALLOC_AS_ARGS (fhead));
+  file_log ("file_perm_dealloc", "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+	    "after de%s, is_empty = %s, was_full = %s, \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_page_lsa),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_ALLOC_TYPE_STRING (alloc_type),
+	    is_empty ? "true" : "false", was_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
 exit:
 
@@ -18415,6 +18600,8 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
   bool is_sysop_started = false;
 
   PAGE_PTR page_dealloc = NULL;
+
+  LOG_LSA save_lsa;
 
   int error_code = NO_ERROR;
 
@@ -18512,8 +18699,15 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
 
       /* remove VPID */
       addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
+      save_lsa = *pgbuf_get_lsa (addr.pgptr);
       file_log_extdata_remove (thread_p, extdata_user_page_ftab, addr.pgptr, position, 1);
       file_extdata_remove_at (extdata_user_page_ftab, position, 1);
+
+      file_log ("file_rv_dealloc_internal", "remove deallocated page %d|%d in file %d|%d, page %d|%d, "
+		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n" FILE_EXTDATA_MSG ("user page table component"),
+		VPID_AS_ARGS (vpid_dealloc), VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr),
+		LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr),
+		FILE_EXTDATA_AS_ARGS (extdata_user_page_ftab));
 
       /* should we merge pages? */
       /* todo: tweak the condition for trying merges */
@@ -18869,6 +19063,8 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
   PAGE_PTR page_ftab = NULL;
   PAGE_PTR page_extdata = NULL;
 
+  LOG_LSA save_lsa;
+
   int error_code = NO_ERROR;
 
   assert (fhead != NULL);
@@ -18963,6 +19159,7 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
       page_extdata = page_ftab;
       pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
 
+      save_lsa = *pgbuf_get_lsa (page_fhead);
       if (!FILE_IS_TEMPORARY (fhead))
 	{
 	  /* log that we are going to change fhead->vpid_last_page_ftab. */
@@ -18973,12 +19170,14 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
       VPID_COPY (&fhead->vpid_last_user_page_ftab, &vpid_ftab_new);
       pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
+      file_log ("file_numerable_add_page", "file %d|%d added new page %d|%d to user table; "
+		"updated vpid_last_user_page_ftab in header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d ",
+		VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (&vpid_ftab_new), PGBUF_PAGE_VPID_AS_ARGS (page_fhead),
+		LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_fhead));
+
       /* initialize new page table */
       extdata_user_page_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
       file_extdata_init (sizeof (VPID), DB_PAGESIZE, extdata_user_page_ftab);
-
-      file_log ("file_numerable_add_page", "file %d|%d added new page %d|%d to user table", VFID_AS_ARGS (&fhead->self),
-		VPID_AS_ARGS (&vpid_ftab_new));
 
       if (!FILE_IS_TEMPORARY (fhead))
 	{
@@ -18993,6 +19192,7 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
     }
 
   assert (!file_extdata_is_full (extdata_user_page_ftab));
+  save_lsa = *pgbuf_get_lsa (page_extdata);
   if (!FILE_IS_TEMPORARY (fhead))
     {
       /* log changes */
@@ -19006,9 +19206,11 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
     }
   file_extdata_append (extdata_user_page_ftab, vpid);
 
-  file_log ("file_numerable_add_page", "file %d|%d finished adding page %d|%d to user page table" FILE_HEAD_FULL_MSG
-	    FILE_EXTDATA_MSG ("last user page table component"), VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid),
-	    FILE_HEAD_FULL_AS_ARGS (fhead), FILE_EXTDATA_AS_ARGS (extdata_user_page_ftab));
+  file_log ("file_numerable_add_page", "add page %d|%d to position %d in file %d|%d, page %d|%d, prev_lsa = %lld|%d, "
+	    "crt_lsa = %lld|%d \n" FILE_EXTDATA_MSG ("last user page table component") FILE_HEAD_FULL_MSG,
+	    VPID_AS_ARGS (vpid), file_extdata_item_count (extdata_user_page_ftab) - 1, VFID_AS_ARGS (&fhead->self),
+	    PGBUF_PAGE_VPID_AS_ARGS (page_extdata), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_extdata),
+	    FILE_EXTDATA_AS_ARGS (extdata_user_page_ftab), FILE_HEAD_FULL_AS_ARGS (fhead));
 
   /* done */
   assert (error_code == NO_ERROR);
@@ -19216,6 +19418,10 @@ file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (!FILE_USER_PAGE_IS_MARKED_DELETED (vpid_ptr));
   FILE_USER_PAGE_MARK_DELETED (vpid_ptr);
 
+  file_log ("file_rv_user_page_mark_delete", "marked deleted vpid %d|%d in page %d|%d lsa %lld|%d at offset %d",
+	    VPID_AS_ARGS (vpid_ptr), PGBUF_PAGE_VPID_AS_ARGS (page_ftab), PGBUF_PAGE_LSA_AS_ARGS (page_ftab),
+	    rcv->offset);
+
   pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
   return NO_ERROR;
 }
@@ -19242,6 +19448,8 @@ file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   bool found = false;
   int position = -1;
   int offset = 0;
+
+  LOG_LSA save_lsa;
 
   int error_code = NO_ERROR;
 
@@ -19307,8 +19515,14 @@ file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   /* compensate logging. */
   addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
   addr.offset = (PGLENGTH) (((char *) vpid_in_table) - addr.pgptr);
+  save_lsa = *pgbuf_get_lsa (addr.pgptr);
   log_append_compensate (thread_p, RVFL_USER_PAGE_MARK_DELETE_COMPENSATE, pgbuf_get_vpid_ptr (addr.pgptr), addr.offset,
 			 addr.pgptr, 0, NULL, LOG_FIND_CURRENT_TDES (thread_p));
+
+  file_log ("file_rv_user_page_unmark_delete_logical", "unmark delete vpid %d|%d in file %d|%d, page %d|%d, "
+	    "prev_lsa %lld|%d, crt_lsa %lld|%d, at offset %d", VPID_AS_ARGS (vpid_in_table), VFID_AS_ARGS (vfid),
+	    PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr),
+	    addr.offset);
 
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 
@@ -19346,6 +19560,10 @@ file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv
   assert (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_ptr));
 
   FILE_USER_PAGE_CLEAR_MARK_DELETED (vpid_ptr);
+
+  file_log ("file_rv_user_page_unmark_delete_physical", "unmark delete vpid %d|%d in page %d|%d, lsa %lld|%d, "
+	    "at offset %d", VPID_AS_ARGS (vpid_ptr), PGBUF_PAGE_VPID_AS_ARGS (page_ftab),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_ftab), rcv->offset);
 
   pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
   return NO_ERROR;
@@ -19806,7 +20024,7 @@ flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid)
  *
  * return : ER_OUT_OF_VIRTUAL_MEMORY or NO_ERROR
  */
-int
+static int
 flre_tempcache_init (void)
 {
   int memsize = 0;
@@ -19866,7 +20084,7 @@ flre_tempcache_init (void)
  *
  * return : void
  */
-void
+static void
 flre_tempcache_final (void)
 {
   if (flre_Tempcache)
@@ -20363,11 +20581,13 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILE_PARTIAL_SECTOR *partsect = NULL;
   int offset_to_realloc_bit;
 
-  LOG_DATA_ADDR addr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   bool is_sysop_started = false;
 
   bool is_full;
   bool was_empty;
+
+  LOG_LSA save_page_lsa;
 
   int error_code = NO_ERROR;
 
@@ -20424,8 +20644,17 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   file_partsect_set_bit (partsect, offset_to_realloc_bit);
 
   addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
+  addr.offset = (PGLENGTH) ((char *) partsect - addr.pgptr);
+  save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
   log_append_undoredo_data (thread_p, RVFL_PARTSECT_ALLOC, &addr, sizeof (offset_to_realloc_bit),
 			    sizeof (offset_to_realloc_bit), &offset_to_realloc_bit, &offset_to_realloc_bit);
+
+  file_log ("file_rv_undo_dealloc", "realloc page %d|%d in file %d|%d page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+	    "set bit at offset %d in partsect at offset %d" FILE_PARTSECT_MSG ("partsect after"),
+	    VPID_AS_ARGS (vpid_realloc), VFID_AS_ARGS (vfid), PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr),
+	    LSA_AS_ARGS (&save_page_lsa), PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), offset_to_realloc_bit, addr.offset,
+	    FILE_PARTSECT_AS_ARGS (partsect));
+
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 
   if (file_partsect_is_full (partsect))
@@ -20433,9 +20662,23 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* Move to full table. */
       is_full = true;
 
+      /* Add to full table */
+      error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
       /* Remove from partial table */
+      save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
       file_log_extdata_remove (thread_p, extdata_part_ftab, addr.pgptr, position, 1);
       file_extdata_remove_at (extdata_part_ftab, position, 1);
+
+      file_log ("file_rv_undo_dealloc", "removed full partsect from partial table in file %d|%d, page %d|%d, "
+		"prev_lsa %lld|%d, crt_lsa %lld|%d \n" FILE_EXTDATA_MSG ("partial table component"),
+		VFID_AS_ARGS (vfid), PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr), LSA_AS_ARGS (&save_page_lsa),
+		PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
       /* todo: try to merge with next page? */
 
@@ -20444,16 +20687,27 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  /* we don't need this anymore */
 	  pgbuf_unfix_and_init (thread_p, page_ftab);
 	}
-
-      /* Add to full table */
-      error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
     }
 
   /* Update file header statistics. */
   file_header_alloc (fhead, alloc_type, was_empty, is_full);
+  save_page_lsa = *pgbuf_get_lsa (page_fhead);
   file_log_fhead_alloc (thread_p, page_fhead, alloc_type, was_empty, is_full);
 
+  file_log ("file_perm_alloc", "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+	    "after re%s, was_empty = %s, is_full = %s, \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_page_lsa),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_ALLOC_TYPE_STRING (alloc_type),
+	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
+
+  assert (error_code == NO_ERROR);
+
 exit:
+
+  if (page_ftab != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page_ftab);
+    }
 
   if (page_fhead != NULL)
     {

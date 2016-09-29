@@ -8822,8 +8822,10 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		rcv_vpid.volid = sysop_commit_and_undo->undo.data.volid;
 		rcv_vpid.pageid = sysop_commit_and_undo->undo.data.pageid;
 		rcv.length = sysop_commit_and_undo->undo.length;
+		rcv.mvcc_id = MVCCID_NULL;
 
 		log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
+		LSA_COPY (&prev_tranlsa, &sysop_commit_and_undo->sysop_commit.lastparent_lsa);
 		break;
 	      }
 	    case LOG_REDO_DATA:

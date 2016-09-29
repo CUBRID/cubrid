@@ -2428,7 +2428,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
 		  disk_vhdr_get_next_vol_fullname (vhdr));
   (void) fprintf (fp, " LAST SYSTEM PAGE = %d\n", vhdr->sys_lastpage);
   (void) fprintf (fp, " SECTOR: SIZE IN PAGES = %10d, TOTAL = %10d,", vhdr->sect_npgs, vhdr->nsect_total);
-  (void) fprintf (fp, " FREE = %10d, MAX=%d10\n", disk_Cache->vols[vhdr->volid].nsect_free, vhdr->nsect_max);
+  (void) fprintf (fp, " FREE = %10d, MAX=%10d\n", disk_Cache->vols[vhdr->volid].nsect_free, vhdr->nsect_max);
   (void) fprintf (fp, " %10s HINT_ALLOC = %10d\n", " ", vhdr->hint_allocsect);
   (void) fprintf (fp, " SECTOR TABLE:    SIZE IN PAGES = %10d, FIRST_PAGE = %5d\n", vhdr->stab_npages,
 		  vhdr->stab_first_page);
@@ -2582,6 +2582,8 @@ int
 disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLHEADER);
+
+  /* todo: what about new volumes found at recovery? how do we deal with cache in this case? */
 
   return log_rv_copy_char (thread_p, rcv);
 }
@@ -4390,10 +4392,17 @@ disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   DKNSECTS nsect_extend = *(DKNSECTS *) rcv->data;
 
   assert (rcv->length == sizeof (nsect_extend));
+  assert (volheader->type == DB_PERMANENT_VOLTYPE);
+  assert (volheader->purpose == DB_PERMANENT_DATA_PURPOSE);
 
   disk_verify_volume_header (thread_p, rcv->pgptr);
   volheader->nsect_total += nsect_extend;
   disk_verify_volume_header (thread_p, rcv->pgptr);
+
+  disk_Cache->perm_purpose_info.extend_info.nsect_total += nsect_extend;
+  disk_cache_lock_reserve_for_purpose (DB_PERMANENT_DATA_PURPOSE);
+  disk_cache_update_vol_free (volheader->volid, nsect_extend);
+  disk_cache_unlock_reserve_for_purpose (DB_PERMANENT_DATA_PURPOSE);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
@@ -5313,8 +5322,9 @@ disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
       disk_Cache->perm_purpose_info.extend_info.nsect_free += delta_free;
       assert (disk_Cache->perm_purpose_info.extend_info.nsect_free >= 0);
 
-      disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and perm_perm to %d; "
-		"delta free = %d", volid, disk_Cache->perm_purpose_info.extend_info.nsect_free, delta_free);
+      disk_log ("disk_cache_update_vol_free", "updated cached free for volid %d to %d and perm_perm to %d; "
+		"delta free = %d", volid, disk_Cache->vols[volid].nsect_free,
+		disk_Cache->perm_purpose_info.extend_info.nsect_free, delta_free);
     }
   else
     {
@@ -5323,16 +5333,18 @@ disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
 	  disk_Cache->temp_purpose_info.nsect_perm_free += delta_free;
 	  assert (disk_Cache->temp_purpose_info.nsect_perm_free >= 0);
 
-	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and perm_temp to %d; "
-		    "delta free = %d", volid, disk_Cache->temp_purpose_info.nsect_perm_free, delta_free);
+	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid %d to %d and perm_temp to %d; "
+		    "delta free = %d", volid, disk_Cache->vols[volid].nsect_free,
+		    disk_Cache->temp_purpose_info.nsect_perm_free, delta_free);
 	}
       else
 	{
 	  disk_Cache->temp_purpose_info.extend_info.nsect_free += delta_free;
 	  assert (disk_Cache->temp_purpose_info.extend_info.nsect_free >= 0);
 
-	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid to %d and temp_temp to %d; "
-		    "delta free = %d", volid, disk_Cache->temp_purpose_info.extend_info.nsect_free, delta_free);
+	  disk_log ("disk_cache_update_vol_free", "updated cached free for volid %d to %d and temp_temp to %d; "
+		    "delta free = %d", volid, disk_Cache->vols[volid].nsect_free,
+		    disk_Cache->temp_purpose_info.extend_info.nsect_free, delta_free);
 	}
     }
 }

@@ -36,7 +36,7 @@
 #define BIT8_HEXA_PRINT_FORMAT    "0x%02x"
 #define BIT16_HEXA_PRINT_FORMAT   "0x%04x"
 #define BIT32_HEXA_PRINT_FORMAT   "0x%08x"
-#define BIT64_HEXA_PRINT_FORMAT   "0x%16xll"
+#define BIT64_HEXA_PRINT_FORMAT   "0x%16llx"
 
 extern int bit8_count_ones (UINT8 i);
 extern int bit8_count_zeros (UINT8 i);

@@ -372,6 +372,9 @@ union file_descriptors
 
 typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 
+extern int flre_manager_init (void);
+extern void flre_manager_final (void);
+
 extern int flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tablespace,
 			FILE_DESCRIPTORS * des, bool is_temp, bool is_numerable, VFID * vfid);
 extern int flre_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npages, FILE_DESCRIPTORS * des,
@@ -405,8 +408,6 @@ extern int flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE 
 extern int flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    VPID * vpid_nth);
 
-extern int flre_tempcache_init (void);
-extern void flre_tempcache_final (void);
 extern void flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
 
 extern void flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);

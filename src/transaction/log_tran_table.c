@@ -539,7 +539,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
     {
       goto error;
     }
-  error_code = flre_tempcache_init ();
+  error_code = flre_manager_init ();
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -652,7 +652,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   logtb_finalize_mvcctable (thread_p);
   lock_finalize ();
   pgbuf_finalize ();
-  flre_tempcache_final ();
+  flre_manager_final ();
 
   if (log_Gl.trantable.area != NULL)
     {
