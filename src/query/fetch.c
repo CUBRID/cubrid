@@ -3058,6 +3058,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       else
 	{
 	  db_make_int (arithptr->value, pr_data_writeval_disk_size (peek_right));
+	  /* call pr_data_writeval_disk_size function to return the size on disk */
 	}
       break;
 
