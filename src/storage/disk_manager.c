@@ -3902,11 +3902,11 @@ error:
 }
 
 /*
- * disk_reserve_ahead () - First step of sector reservation on disk. This searches the cache for free space in existing
- *                         volumes. If not enough available sectors were found, volumes will be expanded/added until
- *                         all sectors could be reserved.
- *                         NOTE: this will modify the disk cache. It will "move" free sectors from disk cache to reserve
- *                         context. If any error occurs, the sectors must be returned to disk cache.
+ * disk_reserve_from_cache () - First step of sector reservation on disk. This searches the cache for free space in 
+ * 				existing volumes. If not enough available sectors were found, volumes will be 
+ * 				expanded/added until all sectors could be reserved.  
+ * 				NOTE: this will modify the disk cache. It will "move" free sectors from disk cache 
+ * 				to reserve context. If any error occurs, the sectors must be returned to disk cache.
  *
  * return           : Error code
  * thread_p (in)    : Thread entry
@@ -4027,6 +4027,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
   save_remaining = context->n_cache_reserve_remaining;
 
   disk_cache_unlock_reserve (extend_info);
+
   error_code = disk_extend (thread_p, extend_info, context);
 
   /* remove intention */
@@ -4053,7 +4054,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 }
 
 /*
- * disk_reserve_ahead_from_perm_vols () - reserve sectors in disk cache permanent volumes
+ * disk_reserve_from_cache_vols () - reserve sectors in disk cache volumes
  *
  * return       : Void
  * purpose (in) : Permanent/temporary purpose
@@ -4084,6 +4085,7 @@ disk_reserve_from_cache_vols (DB_VOLTYPE type, DISK_RESERVE_CONTEXT * context)
 
       min_free = MIN (context->nsect_total, disk_Cache->temp_purpose_info.nsect_vol_max) / 2;
     }
+
   /* make sure we search for at least one sector */
   min_free = MAX (min_free, 1);
 
@@ -4131,30 +4133,30 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 
   int error_code = NO_ERROR;
 
-  /* how this works:
-   * there can be only one expand running for permanent volumes and one for temporary volumes. any expander must first
+  /* How this works:
+   * There can be only one expand running for permanent volumes and one for temporary volumes. Any expander must first
    * lock expand mutex.
    *
-   * we want to avoid concurrent expansions as much as possible, therefore on each expansion we try to allocate more
-   * disk space than currently necessary. moreover, there is an auto-expansion thread that tries to keep a stable level
-   * of free space. as long as the worker requirements do not spike, they would never have to do the disk expansion.
+   * We want to avoid concurrent expansions as much as possible, therefore on each expansion we try to allocate more
+   * disk space than currently necessary. Moreover, there is an auto-expansion thread that tries to keep a stable level
+   * of free space. As long as the worker requirements do not spike, they would never have to do the disk expansion.
    *
-   * however, we cannot rule out spikes in disk space requirements. we cannot even rule out concurrent spikes. intention
-   * field saves all sector requests that could not be satisfied with existing free space. therefore, one expand
+   * However, we cannot rule out spikes in disk space requirements. We cannot even rule out concurrent spikes. Intention
+   * field saves all sector requests that could not be satisfied with existing free space. Therefore, one expand
    * iteration can serve all expansion needs.
    *
-   * this being said, now let's get to how expand works.
+   * This being said, now let's get to how expand works.
    *
-   * first we decide how much to expand. we set the target_free to MAX (1% current size, min threshold). The we subtract
-   * the current free space. if the difference is negative, we set it to 0.
-   * then we add the reserve intentions that could not be satisfied by existing disk space.
+   * First we decide how much to expand. we set the target_free to MAX (1% current size, min threshold). Then we subtract
+   * the current free space. If the difference is negative, we set it to 0.
+   * Then we add the reserve intentions that could not be satisfied by existing disk space.
    *
-   * once we decided how much we want to expand, we first extend last volume are already extended to their maximum
-   * capacities). if last volume is also extended to its maximum capacity, we start adding new volumes.
+   * Once we decide how much we want to expand, we first extend last volume are already extended to their maximum
+   * capacities. If last volume is also extended to its maximum capacity, we start adding new volumes.
    * 
-   * note: the same algorithm is applied to both permanent and temporary files. more exactly, the expansion is allowed
+   * NOTE: The same algorithm is applied to both permanent and temporary files. More exactly, the expansion is allowed
    *       for permanent volumes used for permanent data purpose or temporary files used for temporary data purpose.
-   *       permanent volumes for temporary data purpose can only be added by user and are never extended.
+   *       Permanent volumes for temporary data purpose can only be added by user and are never extended.
    */
 
   assert (disk_Cache->owner_extend == thread_get_current_entry_index ());
@@ -4852,6 +4854,7 @@ disk_stab_unit_unreserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bo
 
 	  assert (context->purpose == DB_TEMPORARY_DATA_PURPOSE);
 	  assert (nsect > 0);
+
 	  disk_cache_lock_reserve_for_purpose (DB_TEMPORARY_DATA_PURPOSE);
 	  disk_cache_update_vol_free (cursor->volheader->volid, nsect);
 	  disk_cache_unlock_reserve_for_purpose (DB_TEMPORARY_DATA_PURPOSE);
@@ -5141,7 +5144,7 @@ disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_dbname, cons
 }
 
 void
-disk_lock_extend ()
+disk_lock_extend (void)
 {
 #if defined (NDEBUG)
   pthread_mutex_lock (&disk_Cache->mutex_extend);
@@ -5164,7 +5167,7 @@ disk_lock_extend ()
 }
 
 void
-disk_unlock_extend ()
+disk_unlock_extend (void)
 {
 #if defined (NDEBUG)
 #else /* !NDEBUG */
@@ -5281,6 +5284,7 @@ STATIC_INLINE void
 disk_cache_free_reserved (DISK_RESERVE_CONTEXT * context)
 {
   int iter;
+
   disk_cache_lock_reserve_for_purpose (context->purpose);
   for (iter = 0; iter < context->n_cache_vol_reserve; iter++)
     {
@@ -5356,6 +5360,7 @@ disk_get_volpurpose (VOLID volid)
 {
   assert (disk_Cache != NULL);
   assert (disk_is_valid_volid (volid));
+
   return disk_Cache->vols[volid].purpose;
 }
 
@@ -5370,6 +5375,7 @@ disk_get_voltype (VOLID volid)
 {
   assert (disk_Cache != NULL);
   assert (disk_is_valid_volid (volid));
+
   return volid < disk_Cache->nvols_perm ? DB_PERMANENT_VOLTYPE : DB_TEMPORARY_VOLTYPE;
 }
 
@@ -5397,7 +5403,7 @@ STATIC_INLINE void
 disk_check_own_reserve_for_purpose (DB_VOLPURPOSE purpose)
 {
   assert (thread_get_current_entry_index ()
-	  == ((purpose == DB_PERMANENT_DATA_PURPOSE) ?
-	      disk_Cache->perm_purpose_info.extend_info.owner_reserve :
-	      disk_Cache->temp_purpose_info.extend_info.owner_reserve));
+	  == ((purpose == DB_PERMANENT_DATA_PURPOSE)
+	      ? disk_Cache->perm_purpose_info.extend_info.owner_reserve
+	      : disk_Cache->temp_purpose_info.extend_info.owner_reserve));
 }
