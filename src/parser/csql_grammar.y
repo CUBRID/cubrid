@@ -20718,7 +20718,7 @@ identifier
 
 		DBG_PRINT}}
 	| DISK_SIZE
-	{{
+		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)

@@ -17978,7 +17978,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_FLOOR:
     case PT_CEIL:
     case PT_ABS:
-    case PT_DISK_SIZE:
     case PT_POWER:
     case PT_ROUND:
     case PT_LOG:

@@ -11955,14 +11955,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_CONCAT_WS:
     case PT_FIELD:
     case PT_STRCAT:
+    case PT_DISK_SIZE:
     case PT_SYS_CONNECT_BY_PATH:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       dt->info.data_type.dec_precision = 0;
       dt->info.data_type.units = 0;
-      break;
-
-    case PT_DISK_SIZE:
-      dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       break;
 
     case PT_TIMES:
