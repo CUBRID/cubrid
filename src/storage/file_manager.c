@@ -17619,20 +17619,33 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_fhead), offset_to_alloc_bit,
 	    (PGLENGTH) ((char *) partsect - page_fhead), FILE_PARTSECT_AS_ARGS (partsect));
 
-  if (file_partsect_is_full (partsect))
+  is_full = file_partsect_is_full (partsect);
+
+  /* update header statistics */
+  file_header_alloc (fhead, alloc_type, was_empty, is_full);
+  save_lsa = *pgbuf_get_lsa (page_fhead);
+  file_log_fhead_alloc (thread_p, page_fhead, alloc_type, was_empty, is_full);
+
+  file_log ("file_perm_alloc", "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
+	    "after %s, was_empty = %s, is_full = %s, \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_ALLOC_TYPE_STRING (alloc_type),
+	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
+
+  /* we need to first update header and then move full partial sector to full table. we might need a new page and we
+   * must know if no free pages are available to expand the file */
+  if (is_full)
     {
       /* move to full table. */
-      is_full = true;
+      VSID vsid_full;
 
-      /* add to full table */
-      error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
+      assert (file_partsect_is_full (partsect));
 
-      /* remove from partial table. log change first (while we still have access to data being removed) */
+      /* save VSID before removing from partial table */
+      vsid_full = partsect->vsid;
+
+      /* remove from partial table first. adding to full table may need a new page and it expects to find one in first
+       * partial sector. */
       save_lsa = *pgbuf_get_lsa (page_fhead);
       file_log_extdata_remove (thread_p, extdata_part_ftab, page_fhead, 0, 1);
       file_extdata_remove_at (extdata_part_ftab, 0, 1);
@@ -17641,21 +17654,17 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n" FILE_EXTDATA_MSG ("partial table after alloc"),
 		VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
 		PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
+
+      /* add to full table */
+      error_code = file_table_add_full_sector (thread_p, page_fhead, &vsid_full);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
     }
 
-  /* almost finished. update header statistics */
-  file_header_alloc (fhead, alloc_type, was_empty, is_full);
-  save_lsa = *pgbuf_get_lsa (page_fhead);
-  file_log_fhead_alloc (thread_p, page_fhead, alloc_type, was_empty, is_full);
-
   /* done */
-  file_header_sanity_check (fhead);
-
-  file_log ("file_perm_alloc", "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
-	    "after %s, was_empty = %s, is_full = %s, \n" FILE_HEAD_ALLOC_MSG,
-	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_lsa),
-	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_ALLOC_TYPE_STRING (alloc_type),
-	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
   assert (error_code == NO_ERROR);
 
@@ -20657,20 +20666,32 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 
-  if (file_partsect_is_full (partsect))
+  is_full = file_partsect_is_full (partsect);
+
+  /* update file header statistics. */
+  file_header_alloc (fhead, alloc_type, was_empty, is_full);
+  save_page_lsa = *pgbuf_get_lsa (page_fhead);
+  file_log_fhead_alloc (thread_p, page_fhead, alloc_type, was_empty, is_full);
+
+  file_log ("file_rv_undo_dealloc", "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, "
+	    "crt_lsa %lld|%d, after re%s, was_empty = %s, is_full = %s, \n" FILE_HEAD_ALLOC_MSG,
+	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_page_lsa),
+	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_ALLOC_TYPE_STRING (alloc_type),
+	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
+
+  /* we need to first update header and then move full partial sector to full table. we might need a new page and we
+   * must know if no free pages are available to expand the file */
+  if (is_full)
     {
-      /* Move to full table. */
-      is_full = true;
+      /* move to full table. */
+      VSID vsid_full;
+      assert (file_partsect_is_full (partsect));
 
-      /* Add to full table */
-      error_code = file_table_add_full_sector (thread_p, page_fhead, &partsect->vsid);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
+      /* save VSID before removing from partial table */
+      vsid_full = partsect->vsid;
 
-      /* Remove from partial table */
+      /* remove from partial table first. adding to full table may need a new page and it expects to find one in first
+       * partial sector. */
       save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
       file_log_extdata_remove (thread_p, extdata_part_ftab, addr.pgptr, position, 1);
       file_extdata_remove_at (extdata_part_ftab, position, 1);
@@ -20687,18 +20708,15 @@ file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  /* we don't need this anymore */
 	  pgbuf_unfix_and_init (thread_p, page_ftab);
 	}
+
+      /* add to full table */
+      error_code = file_table_add_full_sector (thread_p, page_fhead, &vsid_full);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
     }
-
-  /* Update file header statistics. */
-  file_header_alloc (fhead, alloc_type, was_empty, is_full);
-  save_page_lsa = *pgbuf_get_lsa (page_fhead);
-  file_log_fhead_alloc (thread_p, page_fhead, alloc_type, was_empty, is_full);
-
-  file_log ("file_perm_alloc", "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
-	    "after re%s, was_empty = %s, is_full = %s, \n" FILE_HEAD_ALLOC_MSG,
-	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead), LSA_AS_ARGS (&save_page_lsa),
-	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), FILE_ALLOC_TYPE_STRING (alloc_type),
-	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
   assert (error_code == NO_ERROR);
 
