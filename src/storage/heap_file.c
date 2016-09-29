@@ -23932,99 +23932,35 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	    }
 	}
 
-      if (recdes->type == REC_HOME || recdes->type == REC_NEWHOME || recdes->type == REC_BIGONE || true)
+      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
 	{
-	  if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
-	    {
-	      assert (false);
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      return S_ERROR;
-	    }
-	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
-	  if (snapshot_res == SNAPSHOT_SATISFIED)
-	    {
-	      /* Visible. Get record if CHN was changed. */
-	      if (MVCC_IS_CHN_UPTODATE (&mvcc_header, has_chn))
-		{
-		  return S_SUCCESS_CHN_UPTODATE;
-		}
-	      return S_SUCCESS;
-	    }
-	  else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
-	    {
-	      assert (false);
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      return S_ERROR;
-	    }
-	  else
-	    {
-	      /* TOO_NEW_FOR_SNAPSHOT */
-	      assert (snapshot_res == TOO_NEW_FOR_SNAPSHOT);
-	      /* continue with previous version */
-	      LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
-	      continue;
-	    }
+	  assert (false);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return S_ERROR;
 	}
-      else if (recdes->type == REC_BIGONE)	//!!!!!!!!!!!!! to remove
+      snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
+      if (snapshot_res == SNAPSHOT_SATISFIED)
 	{
-	  PAGE_PTR overflow_page = NULL;
-	  VPID overflow_first_vpid;
-
-	  /* get forward oid to ovf record */
-	  forward_oid = *((OID *) recdes->data);
-
-	  /* Fix first overflow page. */
-	  VPID_GET_FROM_OID (&overflow_first_vpid, &forward_oid);
-	  overflow_page =
-	    pgbuf_fix (thread_p, &overflow_first_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (overflow_page == NULL)
+	  /* Visible. Get record if CHN was changed. */
+	  if (MVCC_IS_CHN_UPTODATE (&mvcc_header, has_chn))
 	    {
-	      ASSERT_ERROR ();
-	      return S_ERROR;
+	      return S_SUCCESS_CHN_UPTODATE;
 	    }
-
-	  /* Check snapshot & get MVCC record header. */
-	  if (heap_get_mvcc_rec_header_from_overflow (overflow_page, &mvcc_header, NULL) != NO_ERROR)
-	    {
-	      /* Unexpected. */
-	      assert (false);
-	      pgbuf_unfix_and_init (thread_p, overflow_page);
-	      return S_ERROR;
-	    }
-	  /* First page no longer required. */
-	  pgbuf_unfix_and_init (thread_p, overflow_page);
-
-	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
-	  if (snapshot_res == SNAPSHOT_SATISFIED)
-	    {
-	      /* Visible. Get record if CHN was changed. */
-	      if (MVCC_IS_CHN_UPTODATE (&mvcc_header, has_chn))
-		{
-		  return S_SUCCESS_CHN_UPTODATE;
-		}
-
-	      return heap_get_bigone_content (thread_p, scan_cache, COPY, &forward_oid, recdes);
-	    }
-	  else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
-	    {
-	      assert (false);
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      return S_ERROR;
-	    }
-	  else
-	    {
-	      /* TOO_NEW_FOR_SNAPSHOT */
-	      assert (snapshot_res == TOO_NEW_FOR_SNAPSHOT);
-	      /* continue with previous version */
-	      LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
-	      continue;
-	    }
+	  return S_SUCCESS;
+	}
+      else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
+	{
+	  assert (false);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return S_ERROR;
 	}
       else
 	{
-	  /* Unexpected record type. */
-	  assert (false);
-	  return S_ERROR;
+	  /* TOO_NEW_FOR_SNAPSHOT */
+	  assert (snapshot_res == TOO_NEW_FOR_SNAPSHOT);
+	  /* continue with previous version */
+	  LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
+	  continue;
 	}
     }
 
