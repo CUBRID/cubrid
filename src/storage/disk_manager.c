@@ -4465,7 +4465,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
     char link_fullname[PATH_MAX];
     struct stat stat_buf;
     if (stat (fullname, &stat_buf) == 0	/* file exists */
-	|| S_ISCHR (stat_buf.st_mode))	/* is the raw device? */
+	&& S_ISCHR (stat_buf.st_mode))	/* is the raw device? */
       {
 	temp_extinfo.path = fileio_get_directory_path (link_path, boot_db_full_name ());
 	if (temp_extinfo.path == NULL)
