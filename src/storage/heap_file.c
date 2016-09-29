@@ -21445,10 +21445,8 @@ static int
 heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
   int error_code = NO_ERROR;
-  bool update_old_home = true;
-  LOG_LSA prev_version_lsa;
-  PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
-  PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
+  bool is_old_home_updated;
+  RECDES new_home_recdes;
 
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
@@ -21470,146 +21468,123 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
+  if (is_mvcc_op)
+    {
+      /* log old overflow record and set prev version lsa */
+
+      /* Note that this undo log record is used only to keep the old record version; 
+       * the real undo is actually logged and done page by page */
+      RECDES ovf_recdes = RECDES_INITIALIZER;
+
+      heap_get_bigone_content (thread_p, context->scan_cache_p, COPY, &context->ovf_oid, &ovf_recdes);
+
+      /* actual logging */
+      log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, NULL, NULL, -1, &ovf_recdes);
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
+      /* set prev version lsa */
+      or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
+    }
+
+  /* Proceed with the update. the new record is prepared and for mvcc it should have the prev version lsa set */
   if (heap_is_big_length (context->recdes_p->length))
     {
       /* overflow -> overflow update */
-      update_old_home = false;
-
-      if (is_mvcc_op)
-	{
-	  /* log old overflow record */
-	  RECDES ovf_recdes = RECDES_INITIALIZER;
-	  LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
-
-	  heap_get_bigone_content (thread_p, context->scan_cache_p, COPY, &context->ovf_oid, &ovf_recdes);
-
-	  /* actual logging */
-	  log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, NULL, NULL, -1, &ovf_recdes);
-	  or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
-
-	  /* log home no change; vacuum needs it to reach the updated overflow record */
-	  log_addr.vfid = &context->hfid.vfid;
-	  log_addr.pgptr = context->home_page_watcher_p->pgptr;
-	  log_addr.offset = context->oid.slotid;
-	  heap_mvcc_log_home_no_change (thread_p, &log_addr);
-	}
+      is_old_home_updated = false;
 
       if (heap_ovf_update (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+      if (is_mvcc_op)
+	{
+	  /* log home no change; vacuum needs it to reach the updated overflow record */
+	  LOG_DATA_ADDR log_addr;
+
+	  LOG_SET_DATA_ADDR (&log_addr, context->home_page_watcher_p->pgptr, &context->hfid.vfid, context->oid.slotid);
+
+	  heap_mvcc_log_home_no_change (thread_p, &log_addr);
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+	}
+    }
+  else if (spage_update (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, context->recdes_p) ==
+	   SP_SUCCESS)
+    {
+      /* overflow -> rec home update (new record fits in home page) */
+      is_old_home_updated = true;
+
+      /* update it's type in the page */
+      context->record_type = context->recdes_p->type = REC_HOME;
+      spage_update_record_type (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+				context->recdes_p->type);
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+      new_home_recdes = *context->recdes_p;
+
+      /* dirty home page */
+      pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
     }
   else
     {
-      /* continue as a REC_HOME update */
-      context->record_type = context->recdes_p->type = REC_HOME;
+      /* overflow -> rec relocation update (home record will point to new rechome) */
+      OID newhome_oid;
+
+      /* insert new home */
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+      context->recdes_p->type = REC_NEWHOME;
+      error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      /* prepare record descriptor */
+      heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &newhome_oid);
+
+      /* update home */
+      error_code = heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+					 &new_home_recdes);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      is_old_home_updated = true;
+
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
-  if (update_old_home)
+  if (is_old_home_updated)
     {
-      RECDES new_home_recdes;
-
-      /* try to update in place home record */
-      if (spage_update (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, context->recdes_p) ==
-	  SP_SUCCESS)
-	{
-	  /* yaay! new record fits in home page; update it's type in the page */
-	  spage_update_record_type (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
-				    context->recdes_p->type);
-
-	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
-
-	  new_home_recdes = *context->recdes_p;
-
-	  /* dirty home page */
-	  pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
-	}
-      else
-	{
-	  OID newhome_oid;
-
-	  /* insert new home */
-
-	  if (is_mvcc_op)
-	    {
-	      /* necessary later to set prev version, which is required only for mvcc objects */
-	      newhome_pg_watcher_p = &newhome_pg_watcher;
-	      PGBUF_INIT_WATCHER (newhome_pg_watcher_p, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
-	    }
-
-	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
-	  context->recdes_p->type = REC_NEWHOME;
-	  error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid, newhome_pg_watcher_p);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit;
-	    }
-
-	  /* prepare record descriptor */
-	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &newhome_oid);
-
-	  /* update home */
-	  error_code =
-	    heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &new_home_recdes);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit;
-	    }
-
-	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
-	}
-
-      /* log home update operation */
+      /* log home update operation and remove old overflow record */
       heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
 				&context->oid, &context->home_recdes, &new_home_recdes,
 				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
-      LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
-
-      /* remove old overflow record in non mvcc */
-      if (!is_mvcc_op)
+      /* the old overflow record is no longer needed, it was linked only by old home */
+      if (heap_ovf_delete (thread_p, &context->hfid, &context->ovf_oid, NULL) == NULL)
 	{
-	  /* the old overflow record is no longer needed, now we have REC_HOME or REC_RELOCATION instead */
-	  if (heap_ovf_delete (thread_p, &context->hfid, &context->ovf_oid, NULL) == NULL)
-	    {
-	      assert (false);
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto exit;
-	    }
-	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+	  assert (false);
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
 	}
-      else
-	{
-	  /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
-	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
-						     newhome_pg_watcher_p, &prev_version_lsa);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit;
-	    }
-	}
-
-      /* location did not change */
-      COPY_OID (&context->res_oid, &context->oid);
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
+
+  /* location did not change */
+  COPY_OID (&context->res_oid, &context->oid);
 
   perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_UPDATES);
 
   /* Fall through to exit. */
 
 exit:
-
-  if (newhome_pg_watcher_p != NULL && newhome_pg_watcher_p->pgptr != NULL)
-    {
-      /* newhome_pg_watcher is used only locally; must be unfixed */
-      pgbuf_ordered_unfix (thread_p, newhome_pg_watcher_p);
-    }
-
   return error_code;
 }
 
