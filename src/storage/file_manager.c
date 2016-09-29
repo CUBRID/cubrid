@@ -16784,7 +16784,7 @@ flre_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   fhead = (FLRE_HEADER *) page_fhead;
   file_header_sanity_check (fhead);
 
-  assert (!FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
+  assert (FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
 
   /* Allocate enough space to collect all sectors. */
   vsids = (VSID *) db_private_alloc (thread_p, fhead->n_sector_total * sizeof (VSID));
