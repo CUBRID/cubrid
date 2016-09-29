@@ -23555,8 +23555,10 @@ heap_page_get_vacuum_status (THREAD_ENTRY * thread_p, PAGE_PTR heap_page)
 int
 heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  assert (rcv->pgptr != NULL);
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  if (rcv->pgptr != NULL)
+    {
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+    }
   return NO_ERROR;
 }
 

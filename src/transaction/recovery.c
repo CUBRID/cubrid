@@ -972,8 +972,8 @@ struct rvfun RV_fun[] = {
 
   {RVHF_MVCC_UPDATE_OVERFLOW,
    "RVHF_MVCC_UPDATE_OVERFLOW",
-   NULL,
-   NULL,
+   heap_rv_nop,
+   heap_rv_nop,
    NULL,
    NULL},
 
