@@ -81,75 +81,6 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-/* All globals on statistics will be here. */
-typedef struct pstat_global PSTAT_GLOBAL;
-struct pstat_global
-{
-  int n_stat_values;
-
-  UINT64 *global_stats;
-
-  int n_trans;
-  UINT64 **tran_stats;
-
-  bool *is_watching;
-#if !defined (HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t watch_lock;
-#endif				/* !HAVE_ATOMIC_BUILTINS */
-
-  INT32 n_watchers;
-
-  bool initialized;
-  int activation_flag;
-};
-
-PSTAT_GLOBAL pstat_Global;
-
-typedef enum
-{
-  PSTAT_ACCUMULATE_SINGLE_VALUE,	/* A single accumulator value. */
-  PSTAT_PEEK_SINGLE_VALUE,	/* A single value peeked from database. */
-  /* TODO: Currently this type of statistics is set by active workers. I think in
-   *       most cases we could peek it at "compute". There can be two approaches:
-   *       if f_compute is provided, it is read at compute phase. If not, the
-   *       existing value is used and it must be set by active workers.
-   */
-  PSTAT_COUNTER_TIMER_VALUE,	/* A counter/timer. Counter is incremented, timer is accumulated, max time
-				 * is compared with all registered timers and average time is computed.
-				 */
-  PSTAT_COMPUTED_RATIO_VALUE,	/* Value is computed based on other values in statistics. A ratio is obtained
-				 * at the end.
-				 */
-  PSTAT_COMPLEX_VALUE		/* A "complex" value. The creator must handle loading, adding, dumping and
-				 * computing values.
-				 */
-} PSTAT_VALUE_TYPE;
-
-/* PSTAT_METADATA
- * This structure will keep meta-data information on each statistic we are monitoring.
- */
-typedef struct pstat_metadata PSTAT_METADATA;
-
-typedef void (*PSTAT_DUMP_IN_FILE_FUNC) (FILE *, const UINT64 * stat_vals);
-typedef void (*PSTAT_DUMP_IN_BUFFER_FUNC) (char *, const UINT64 * stat_vals, int *remaining_size);
-typedef int (*PSTAT_LOAD_FUNC) (void);
-
-struct pstat_metadata
-{
-  /* These members must be set. */
-  PERF_STAT_ID psid;
-  const char *stat_name;
-  PSTAT_VALUE_TYPE valtype;
-
-  /* These members are computed at startup. */
-  int start_offset;
-  int n_vals;
-
-  PSTAT_DUMP_IN_FILE_FUNC f_dump_in_file;
-  PSTAT_DUMP_IN_BUFFER_FUNC f_dump_in_buffer;
-  PSTAT_LOAD_FUNC f_load;
-};
-
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
 
@@ -218,6 +149,8 @@ static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 
 static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char *s,
 								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
+
+PSTAT_GLOBAL pstat_Global;
 
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
@@ -4015,31 +3948,6 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE || SA_MODE */
 
 /*
- * perfmon_is_perf_tracking () - Returns true if there are active threads
- *
- * return	 : true or false
- */
-INLINE bool
-perfmon_is_perf_tracking (void)
-{
-  return pstat_Global.initialized && pstat_Global.n_watchers > 0;
-}
-
-/*
- * perfmon_is_perf_tracking_and_active () - Returns true if there are active threads
- *					    and the activation_flag of the extended statistic is activated
- *
- * return	        : true or false
- * activation_flag (in) : activation flag for extended statistic
- *
- */
-INLINE bool
-perfmon_is_perf_tracking_and_active (int activation_flag)
-{
-  return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
-}
-
-/*
  *  Add/set stats section.
  */
 
@@ -4051,7 +3959,7 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
  * psid (in)	 : Statistic ID.
  * amount (in)	 : Amount to add.
  */
-void
+INLINE void
 perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 {
   assert (psid >= 0 && psid < PSTAT_COUNT);
@@ -4094,7 +4002,7 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
  * thread_p (in) : Thread entry.
  * psid (in)	 : Statistic ID.
  */
-void
+INLINE void
 perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
 {
   perfmon_add_stat (thread_p, psid, 1);
@@ -4141,7 +4049,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
  * psid (in)	 : Statistic ID.
  * statval (in)  : New statistic value.
  */
-void
+INLINE void
 perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
 {
   assert (psid >= 0 && psid < PSTAT_COUNT);
@@ -4785,4 +4693,29 @@ int
 perfmon_get_activation_flag (void)
 {
   return pstat_Global.activation_flag;
+}
+
+/*
+ * perfmon_is_perf_tracking () - Returns true if there are active threads
+ *
+ * return	 : true or false
+ */
+INLINE bool
+perfmon_is_perf_tracking (void)
+{
+  return pstat_Global.initialized && pstat_Global.n_watchers > 0;
+}
+
+/*
+ * perfmon_is_perf_tracking_and_active () - Returns true if there are active threads
+ *					    and the activation_flag of the extended statistic is activated
+ *
+ * return	        : true or false
+ * activation_flag (in) : activation flag for extended statistic
+ *
+ */
+INLINE bool
+perfmon_is_perf_tracking_and_active (int activation_flag)
+{
+  return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
 }

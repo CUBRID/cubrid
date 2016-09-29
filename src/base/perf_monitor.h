@@ -500,6 +500,76 @@ typedef enum
   PSTAT_COUNT = PSTAT_OBJ_LOCK_TIME_COUNTERS + 1
 } PERF_STAT_ID;
 
+/* All globals on statistics will be here. */
+typedef struct pstat_global PSTAT_GLOBAL;
+struct pstat_global
+{
+  int n_stat_values;
+
+  UINT64 *global_stats;
+
+  int n_trans;
+  UINT64 **tran_stats;
+
+  bool *is_watching;
+#if !defined (HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t watch_lock;
+#endif				/* !HAVE_ATOMIC_BUILTINS */
+
+  INT32 n_watchers;
+
+  bool initialized;
+  int activation_flag;
+};
+
+extern PSTAT_GLOBAL pstat_Global;
+
+typedef enum
+{
+  PSTAT_ACCUMULATE_SINGLE_VALUE,	/* A single accumulator value. */
+  PSTAT_PEEK_SINGLE_VALUE,	/* A single value peeked from database. */
+  /* TODO: Currently this type of statistics is set by active workers. I think in
+   *       most cases we could peek it at "compute". There can be two approaches:
+   *       if f_compute is provided, it is read at compute phase. If not, the
+   *       existing value is used and it must be set by active workers.
+   */
+  PSTAT_COUNTER_TIMER_VALUE,	/* A counter/timer. Counter is incremented, timer is accumulated, max time
+				 * is compared with all registered timers and average time is computed.
+				 */
+  PSTAT_COMPUTED_RATIO_VALUE,	/* Value is computed based on other values in statistics. A ratio is obtained
+				 * at the end.
+				 */
+  PSTAT_COMPLEX_VALUE		/* A "complex" value. The creator must handle loading, adding, dumping and
+				 * computing values.
+				 */
+} PSTAT_VALUE_TYPE;
+
+/* PSTAT_METADATA
+ * This structure will keep meta-data information on each statistic we are monitoring.
+ */
+typedef struct pstat_metadata PSTAT_METADATA;
+
+typedef void (*PSTAT_DUMP_IN_FILE_FUNC) (FILE *, const UINT64 * stat_vals);
+typedef void (*PSTAT_DUMP_IN_BUFFER_FUNC) (char *, const UINT64 * stat_vals, int *remaining_size);
+typedef int (*PSTAT_LOAD_FUNC) (void);
+
+struct pstat_metadata
+{
+  /* These members must be set. */
+  PERF_STAT_ID psid;
+  const char *stat_name;
+  PSTAT_VALUE_TYPE valtype;
+
+  /* These members are computed at startup. */
+  int start_offset;
+  int n_vals;
+
+  PSTAT_DUMP_IN_FILE_FUNC f_dump_in_file;
+  PSTAT_DUMP_IN_BUFFER_FUNC f_dump_in_buffer;
+  PSTAT_LOAD_FUNC f_load;
+};
+
+extern PSTAT_METADATA pstat_Metadata[];
 
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config
@@ -605,12 +675,14 @@ extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
-extern INLINE bool perfmon_is_perf_tracking (void);
-extern INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag);
+extern INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
+extern INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __attribute__ ((ALWAYS_INLINE));
 
-extern void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount);
-extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
-extern void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval);
+extern INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
+  __attribute__ ((ALWAYS_INLINE));
+extern INLINE void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
+extern INLINE void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
+  __attribute__ ((ALWAYS_INLINE));
 extern void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff);
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
