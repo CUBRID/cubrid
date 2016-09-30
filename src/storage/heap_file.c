@@ -21472,15 +21472,31 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
     {
       /* log old overflow record and set prev version lsa */
 
-      /* Note that this undo log record is used only to keep the old record version; 
-       * the real undo is actually logged and done page by page */
+      /* Note that this undo log record is used only to keep the old record version and to check if the record
+       * should have its insert id vacuumed at rollback; the real undo is actually logged and done page by page */
       RECDES ovf_recdes = RECDES_INITIALIZER;
+      VPID ovf_vpid;
+      PAGE_PTR first_pgptr;
 
-      heap_get_bigone_content (thread_p, context->scan_cache_p, COPY, &context->ovf_oid, &ovf_recdes);
+      if (heap_get_bigone_content (thread_p, context->scan_cache_p, COPY, &context->ovf_oid, &ovf_recdes) != S_SUCCESS)
+	{
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+
+      VPID_GET_FROM_OID (&ovf_vpid, &context->ovf_oid);
+      first_pgptr = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (first_pgptr == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
 
       /* actual logging */
-      log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, NULL, NULL, -1, &ovf_recdes);
+      log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, NULL, first_pgptr, -1, &ovf_recdes);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
+      pgbuf_unfix (thread_p, first_pgptr);
 
       /* set prev version lsa */
       or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
@@ -24497,4 +24513,17 @@ heap_get_class_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes
 #endif /* !NDEBUG */
 
   return scan;
+}
+
+/*
+ * heap_rv_undo_ovf_update - Assure undo record corresponds with vacuum status
+ *
+ * return	: int
+ * thread_p (in): Thread entry.
+ * rcv (in)     : Recovery structure.
+ */
+int
+heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return vacuum_rv_check_at_undo (thread_p, rcv->pgptr, NULL_SLOTID, REC_BIGONE);
 }

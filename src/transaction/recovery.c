@@ -975,14 +975,7 @@ struct rvfun RV_fun[] = {
    heap_rv_nop,
    heap_rv_nop,
    NULL,
-   NULL},
-
-  {RVOVF_FIRSTPAGE_UPDATE,
-   "RVOVF_FIRSTPAGE_UPDATE",
-   overflow_rv_firstpage_update_undo,
-   overflow_rv_page_update_redo,
-   overflow_rv_page_dump,
-   overflow_rv_page_dump},
+   NULL}
 };
 
 /*
