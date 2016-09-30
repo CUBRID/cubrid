@@ -370,10 +370,11 @@ struct pgbuf_bcb
   int ain_tick;			/* age of AIN when this BCB was inserted into AIN list */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
-  volatile unsigned dirty;	/* Is page dirty ? */
-  unsigned avoid_victim:1;
-  unsigned async_flush_request:1;
-  unsigned victim_candidate:1;
+  volatile bool dirty;		/* Is page dirty ? */
+  bool avoid_victim;
+  bool async_flush_request;
+  bool victim_candidate;
+
   volatile LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
   PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
 };
