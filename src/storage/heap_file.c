@@ -3526,6 +3526,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
       if (heap_vpid_alloc (thread_p, hfid, hdr_page_watcher.pgptr, heap_hdr, scan_cache, pg_watcher) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	  return NULL;
 	}
       assert (pg_watcher->pgptr != NULL || er_errid () == ER_INTERRUPTED

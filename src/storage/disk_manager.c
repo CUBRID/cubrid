@@ -4554,7 +4554,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 exit:
   if (error_code == NO_ERROR)
     {
-      log_sysop_attach_to_outer (thread_p);
+      log_sysop_commit (thread_p);
     }
   else
     {
