@@ -21824,8 +21824,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     {
       /* log operation */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, context->recdes_p,
-				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
+				&forward_recdes, context->recdes_p, RVHF_UPDATE);
       LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
 
       if (is_mvcc_op)
@@ -23865,7 +23864,6 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
   RECDES local_recdes;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
   LOG_LSA oldest_prior_lsa;
-  SCAN_CODE error_code = NO_ERROR;
 
   assert (scan_cache != NULL);
   assert (scan_cache->mvcc_snapshot != NULL);
@@ -23920,31 +23918,31 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  return S_ERROR;
 	}
 
-      error_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
-      if (error_code != S_SUCCESS)
+      scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
+      if (scan_code != S_SUCCESS)
 	{
-	  if (error_code == S_DOESNT_FIT && recdes->data == scan_cache->area)
+	  if (scan_code == S_DOESNT_FIT && recdes->data == scan_cache->area)
 	    {
 	      /* expand record area and try again */
-	      scan_cache->area = (char *) db_private_realloc (thread_p, scan_cache->area, -recdes->length);
-	      if (scan_cache->area == NULL)
+	      recdes->data = (char *) db_private_realloc (thread_p, scan_cache->area, -recdes->length);
+	      if (recdes->data == NULL)
 		{
 		  return S_ERROR;
 		}
 	      recdes->area_size = scan_cache->area_size = -recdes->length;
-	      recdes->data = scan_cache->area;
+	      scan_cache->area = recdes->data;
 
 	      /* final try to get the undo record */
-	      error_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
-	      if (error_code != S_SUCCESS)
+	      scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
+	      if (scan_code != S_SUCCESS)
 		{
-		  assert (error_code != S_DOESNT_FIT);
-		  return error_code;
+		  assert (scan_code != S_DOESNT_FIT);
+		  return scan_code;
 		}
 	    }
 	  else
 	    {
-	      return error_code;
+	      return scan_code;
 	    }
 	}
 
