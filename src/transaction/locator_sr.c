@@ -4199,15 +4199,16 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	  goto error;
 	}
 
+      /* SQL standard defines as follows:
+       * If no <match type> was specified then, for each row R1 of the referencing table, 
+       * either at least one of the values of the referencing columns in R1 shall be a null value,
+       * or the value of each referencing column in R1 shall be equal to the value of 
+       * the corresponding referenced column in some row of the referenced table.
+       * Please notice that we don't currently support <match type>. 
+       */
       if (index->n_atts > 1)
 	{
-	  /* SQL standard defines as follows:
-	   * If no <match type> was specified then, for each row R1 of the referencing table, 
-	   * either at least one of the values of the referencing columns in R1 shall be a null value,
-	   * or the value of each referencing column in R1 shall be equal to the value of 
-	   * the corresponding referenced column in some row of the referenced table.
-	   * Please notice that we don't currently support <match type>. 
-	   */
+
 	  has_null = btree_multicol_key_has_null (key_dbvalue);
 	}
       else
