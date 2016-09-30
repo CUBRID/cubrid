@@ -20466,11 +20466,6 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
   /* check for big record */
   if (!heap_is_big_length (context->recdes_p->length))
     {
-      if (context->out_of_row_recdes != NULL
-	  && context->out_of_row_recdes->recdes_cnt > 0)
-	{
-	  return heap_insert_handle_out_of_row_records (thread_p, context);
-	}
       return NO_ERROR;
     }
 
