@@ -314,6 +314,7 @@ typedef enum
   T_MID,
   T_STRCMP,
   T_REVERSE,
+  T_DISK_SIZE,
   T_LN,
   T_LOG2,
   T_LOG10,
