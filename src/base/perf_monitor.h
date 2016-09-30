@@ -675,8 +675,8 @@ extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
-extern INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
-extern INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __attribute__ ((ALWAYS_INLINE));
 
 extern INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
@@ -693,7 +693,7 @@ extern int perfmon_get_activation_flag (void);
  *
  * return	 : true or false
  */
-INLINE bool
+STATIC_INLINE bool
 perfmon_is_perf_tracking (void)
 {
   return pstat_Global.initialized && pstat_Global.n_watchers > 0;
@@ -707,7 +707,7 @@ perfmon_is_perf_tracking (void)
  * activation_flag (in) : activation flag for extended statistic
  *
  */
-INLINE bool
+STATIC_INLINE bool
 perfmon_is_perf_tracking_and_active (int activation_flag)
 {
   return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
