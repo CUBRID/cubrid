@@ -21530,7 +21530,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
     }
   else
     {
-      /* overflow -> rec relocation update (home record will point to new rechome) */
+      /* overflow -> rec relocation update (home record will point to the new_home record) */
       OID newhome_oid;
 
       /* insert new home */

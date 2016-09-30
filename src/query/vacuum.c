@@ -7011,8 +7011,8 @@ print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_hea
  *	   and DISK_ERROR in case of an error.
  * thread_p (in):
  * oid (in): The not vacuumed instance OID
- * class_oid (in): The class to which belongs the oid
- * peek_recdes (in): The not vacuumed record
+ * class_oid (in): The class to which the oid belongs
+ * recdes (in): The not vacuumed record
  * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
  *			 the type node. If <0 then the OID comes from heap. 
  *
@@ -7036,7 +7036,7 @@ vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid, OID * clas
  *
  * return: true if the record was not vacuumed and is completely lost.
  * thread_p (in):
- * peek_recdes (in): The header of the record to be checked
+ * rec_header (in): The header of the record to be checked
  *
  */
 static bool
@@ -7072,7 +7072,7 @@ is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
  * thread_p (in):
  * oid (in): The not vacuumed instance OID
  * class_oid (in): The class to which belongs the oid
- * peek_recdes (in): The not vacuumed record header
+ * rec_header (in): The not vacuumed record header
  * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
  *			 the type node. If <0 then the OID comes from heap. 
  *
@@ -7530,6 +7530,7 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
 
   if (rec_type == REC_BIGONE)
     {
+      assert (slotid == NULL_SLOTID);
       peek_recdes.data = overflow_get_first_page_data (pgptr);
       peek_recdes.length = OR_MVCC_MAX_HEADER_SIZE;
       peek_recdes.type = REC_BIGONE;
