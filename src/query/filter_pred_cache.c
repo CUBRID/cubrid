@@ -498,13 +498,19 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR
 
 	      pos = ATOMIC_INC_32 (&dbg_cnt, 1) % DBG_SIZE;
 	      dbg[pos].pos = pos;
-	      dbg[pos].dbg_info = filter_pred;
+	      dbg[pos].dbg_info = fpcache_entry->clone_stack[fpcache_entry->clone_stack_head];
 	      dbg[pos].pcode = 3;
 	      dbg[pos].pthread_p = thread_p;
 
 	      printf ("fpcache_retire:pred_expr:%p, fpcache_entry->clone_stack_head:%d\n", filter_pred, fpcache_entry->clone_stack_head);
 
 	      fpcache_entry->clone_stack[++fpcache_entry->clone_stack_head] = filter_pred;
+
+	      pos = ATOMIC_INC_32 (&dbg_cnt, 1) % DBG_SIZE;
+	      dbg[pos].pos = pos;
+	      dbg[pos].dbg_info = filter_pred;
+	      dbg[pos].pcode = 5;
+	      dbg[pos].pthread_p = thread_p;
 
 	      filter_pred = NULL;
 	      ATOMIC_INC_64 (&fpcache_Stat_clone_add, 1);
