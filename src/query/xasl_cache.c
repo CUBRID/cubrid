@@ -1871,6 +1871,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
     }
 
   /* Start cleanup. */
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_FULL);
 
   /* How many entries do we need to cleanup? */
   cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
@@ -1969,6 +1970,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 		      XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_XASL_ID_ARGS (&candidate.xid), XCACHE_LOG_TRAN_ARGS (thread_p));
 
 	  XCACHE_STAT_INC (deletes_at_cleanup);
+	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
 	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
 	  perfmon_set_stat (thread_p, PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
 	}
