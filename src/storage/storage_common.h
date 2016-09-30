@@ -705,17 +705,14 @@ typedef enum
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
+/* TODO[arnia] : remove this struct ? */
 typedef struct out_of_row_recdes OUT_OF_ROW_RECDES;
 struct out_of_row_recdes
 {
   RECDES *oor_recdes;		/* array of RECDES of out of row values */
-  int *home_recdes_oid_offsets;	/* array of offsets into home record for OIDs of out of row values */
   int *att_ids;
   int recdes_capacity;		/* allowed RECDES elements in RECDES array */
   int recdes_cnt;		/* current count of elements in RECDES array */
-
-  /* TODO[arnia]: only for debug */
-  bool home_oid_updated;
 };
 
 typedef enum

@@ -16607,8 +16607,7 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
 bool
 pr_is_oor_value (DB_VALUE * val)
 {
-  if (DB_VALUE_TYPE (val) == DB_TYPE_VARCHAR
-      && DB_GET_STRING_SIZE (val) > OBJECT_OOR_THRESHOLD_SIZE)
+  if (TP_IS_OOR_TYPE (DB_VALUE_TYPE (val)) && DB_GET_STRING_SIZE (val) > OBJECT_OOR_THRESHOLD_SIZE)
     {
       return true;
     }

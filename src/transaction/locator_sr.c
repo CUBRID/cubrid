@@ -5840,22 +5840,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  goto error;
 		}
-
-	      if (out_of_row_recdes != NULL
-		  && out_of_row_recdes->recdes_cnt > 0
-		  && delta_size != 0)
-		{
-		  int i;
-
-		  for (i = 0; i < out_of_row_recdes->recdes_cnt; i++)
-		    {
-		      out_of_row_recdes->home_recdes_oid_offsets[i] -= delta_size;
-		      assert (out_of_row_recdes->home_recdes_oid_offsets[i] >= 0);
-		      /* TODO[arnia]:*/
-		      assert (out_of_row_recdes->home_recdes_oid_offsets[i] < DB_PAGESIZE);
-		    }
-		}
-
 	    }
 	}
       else
@@ -7443,8 +7427,7 @@ error:
 LC_COPYAREA *
 locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 					 RECDES * new_recdes, const int copyarea_length_hint,
-					 OUT_OF_ROW_RECDES * out_of_row_recdes,
-					 int lob_create_flag)
+					 OUT_OF_ROW_CONTEXT *oor_context, int lob_create_flag)
 {
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
@@ -7463,11 +7446,11 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 
       if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
 	{
-	  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, new_recdes, out_of_row_recdes);
+	  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, new_recdes, oor_context);
 	}
       else
 	{
-	  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes, out_of_row_recdes);
+	  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes, oor_context);
 	}
 
       if (scan != S_SUCCESS)
@@ -7557,6 +7540,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
   OUT_OF_ROW_RECDES out_of_row_recdes = OUT_OF_ROW_RECDES_INITILIAZER;
+  OUT_OF_ROW_CONTEXT oor_context = { &out_of_row_recdes, HEAPATTR_READ_OOR_FROM_LOB };
 
   /* 
    * While scanning objects, the given scancache does not fix the last
@@ -7654,7 +7638,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
       copyarea =
-	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1, &out_of_row_recdes,
+	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1, &oor_context,
 						 LOB_FLAG_INCLUDE_LOB);
       if (copyarea == NULL)
 	{
