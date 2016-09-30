@@ -5797,7 +5797,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	  else if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
 	    {
-	      int delta_size;
 	      MVCC_REC_HEADER old_rec_header, new_rec_header;
 
 	      if (or_mvcc_get_header (oldrecdes, &old_rec_header) != NO_ERROR
@@ -5836,7 +5835,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  MVCC_CLEAR_FLAG_BITS (&new_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
 		}
 
-	      if (or_mvcc_set_header (recdes, &new_rec_header, &delta_size) != NO_ERROR)
+	      if (or_mvcc_set_header (recdes, &new_rec_header) != NO_ERROR)
 		{
 		  goto error;
 		}

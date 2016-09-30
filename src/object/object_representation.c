@@ -828,7 +828,7 @@ exit_on_error:
  *    to include additional MVCC data that may come from mvcc_rec_header. 
  */
 int
-or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int *size_delta_p)
+or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
 {
   OR_BUF orep, *buf;
   int error = NO_ERROR;
@@ -837,11 +837,7 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int *siz
   int old_mvcc_size = 0, new_mvcc_size = 0;
   bool is_bigone = false;
 
-  assert (size_delta_p != NULL);
-
   assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
-
-  *size_delta_p = 0;
 
   repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
 
@@ -860,7 +856,6 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int *siz
 	}
 
       HEAP_MOVE_INSIDE_RECORD (record, new_mvcc_size, old_mvcc_size);
-      *size_delta_p = old_mvcc_size - new_mvcc_size;
     }
 
   OR_BUF_INIT (orep, record->data, record->area_size);
