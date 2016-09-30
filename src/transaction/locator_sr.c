@@ -5104,7 +5104,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       rep = heap_get_class_repr_id (thread_p, &real_class_oid);
       (void) or_replace_rep_id (context.recdes_p, rep);
-      /* TODO[arnia] : replace in oor recdes */
     }
 
   /* execute insert */
@@ -5366,7 +5365,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 
       insert_cache = &ins_cache->scan_cache;
 
-      /* TODO[arnia] : overflow columns */
+      /* TODO[arnia] : oor columns */
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, NULL, has_index, op_type,
 			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE);

@@ -10165,82 +10165,71 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		{
 		  (*(pr_type_clob->data_readval)) (&buf, &value->dbvalue, NULL, disk_length, false, NULL, 0);
 		}
-	      else
+	      else if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_LOB)
 		{
-		  if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_LOB)
+		  DB_BIGINT clob_size;
+		  char *clob_buf = NULL;
+
+		  (*(pr_type_clob->data_readval)) (&buf, &tmp_clob_value, NULL, disk_length, false, NULL, 0);
+
+		  clob_size = db_elo_size (DB_GET_ELO (&tmp_clob_value));
+		  clob_buf = db_private_alloc (thread_p, clob_size);
+		  if (clob_buf == NULL)
 		    {
-		      DB_BIGINT clob_size;
-		      char *clob_buf = NULL;
+		      ret = ER_OUT_OF_VIRTUAL_MEMORY;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, clob_size);
+		      break;
+		    }
 
-/* 		      if (oor_context->read_location_only == true) */
-		      if (false)
-			{
-			  (*(pr_type_clob->data_readval)) (&buf, &value->dbvalue, NULL, disk_length, false, NULL, 0);
-			}
-		      else
-			{
-			  (*(pr_type_clob->data_readval)) (&buf, &tmp_clob_value, NULL, disk_length, false, NULL, 0);
-
-			  clob_size = db_elo_size (DB_GET_ELO (&tmp_clob_value));
-			  clob_buf = db_private_alloc (thread_p, clob_size);
-			  if (clob_buf == NULL)
-			    {
-			      ret = ER_OUT_OF_VIRTUAL_MEMORY;
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, clob_size);
-			      break;
-			    }
-
-			  ret = (int) elo_read (DB_GET_ELO (&tmp_clob_value), 0, clob_buf, clob_size);
-			  if (ret < NO_ERROR)
-			    {
-			      assert (er_errid () != NO_ERROR);
-			      break;
-			    }
-			  else
-			    {
-			      ret = NO_ERROR;
-			    }
+		  ret = (int) elo_read (DB_GET_ELO (&tmp_clob_value), 0, clob_buf, clob_size);
+		  if (ret < NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      break;
+		    }
+		  else
+		    {
+		      ret = NO_ERROR;
+		    }
       
-			  OR_BUF_INIT2 (out_of_row_buf, clob_buf, clob_size);
+		  OR_BUF_INIT2 (out_of_row_buf, clob_buf, clob_size);
 
-			  pr_type = PR_TYPE_FROM_ID (attrepr->type);
-			  if (pr_type)
-			    {
-			      (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
-							  true, NULL, 0);
-			    }
-			  if (clob_buf != NULL)
-			    {
-			      db_private_free (thread_p, clob_buf);
-			    }
+		  pr_type = PR_TYPE_FROM_ID (attrepr->type);
+		  if (pr_type)
+		    {
+		      (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
+						  true, NULL, 0);
+		    }
+		  if (clob_buf != NULL)
+		    {
+		      db_private_free (thread_p, clob_buf);
+		    }
+		}
+	      else /* if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_LOB) */
+		{
+		  int i, oor_pos = -1;
+
+		  assert (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_OOR_RECDES);
+		  assert (oor_context->oor_recdes != NULL);
+
+		  for (i = 0; i < oor_context->oor_recdes->recdes_capacity; i++)
+		    {
+		      if (oor_context->oor_recdes->att_ids[i] == value->attrid)
+			{
+			  oor_pos = i;
+			  break;
 			}
 		    }
-		  else /* if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_LOB) */
+
+		  assert (oor_pos != -1);
+		  out_of_row_recdes_p = &(oor_context->oor_recdes->oor_recdes[oor_pos]);
+
+		  OR_BUF_INIT2 (out_of_row_buf, out_of_row_recdes_p->data, out_of_row_recdes_p->length);
+		  pr_type = PR_TYPE_FROM_ID (attrepr->type);
+		  if (pr_type)
 		    {
-		      int i, oor_pos = -1;
-
-		      assert (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_OOR_RECDES);
-		      assert (oor_context->oor_recdes != NULL);
-
-		      for (i = 0; i < oor_context->oor_recdes->recdes_capacity; i++)
-			{
-			  if (oor_context->oor_recdes->att_ids[i] == value->attrid)
-			    {
-			      oor_pos = i;
-			      break;
-			    }
-			}
-
-		      assert (oor_pos != -1);
-		      out_of_row_recdes_p = &(oor_context->oor_recdes->oor_recdes[oor_pos]);
-
-		      OR_BUF_INIT2 (out_of_row_buf, out_of_row_recdes_p->data, out_of_row_recdes_p->length);
-		      pr_type = PR_TYPE_FROM_ID (attrepr->type);
-		      if (pr_type)
-			{
-			  (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
-						      true, NULL, 0);
-			}
+		      (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
+						  true, NULL, 0);
 		    }
 		}
 	    }
@@ -10562,7 +10551,6 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
-      /* TODO[arnia] : oor_read_mode */
       ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, &oor_context);
       if (ret != NO_ERROR)
 	{
@@ -12153,7 +12141,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	   */
 
 	  /* Write the offset to the end of the variable attributes table */
-	  /* TODO[arnia] */
 	  buf->ptr = ((char *) (OR_VAR_ELEMENT_PTR (buf->buffer, attr_info->last_classrepr->n_variable)));
 	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size,
 				  OOR_COLUMN_DISABLED);
@@ -20748,7 +20735,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
   assert (parent_context->type == HEAP_OPERATION_DELETE || parent_context->type == HEAP_OPERATION_UPDATE);
 
   /* build insert context */
-  /* TODO[arnia] : overflow columns */
+  /* TODO[arnia] : oor columns */
   heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL, NULL);
 
   /* physical insertion */
@@ -22553,20 +22540,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
-  /* TODO[arnia] : delete this */
-#if 0
-  if (context->out_of_row_recdes != NULL
-      && context->out_of_row_recdes->recdes_cnt > 0)
-    {
-      error_code = heap_insert_handle_out_of_row_records (thread_p, context);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
-    }
-#endif
 
   /* physical update of home record */
   error_code =
