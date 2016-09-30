@@ -3333,7 +3333,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   LSA_COPY (&tdes->savept_lsa, &tdes->tail_lsa);
 
-  mnt_tran_savepoints (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_SAVEPOINTS);
 
   return &tdes->savept_lsa;
 }
@@ -3531,7 +3531,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, r;
 
   /* 
    * Remember the current tail of the transaction, so we can allow partial
@@ -3572,13 +3572,8 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
       if (LOG_ISRESTARTED ())
 	{
-#if defined(SERVER_MODE)
-	  assert (tdes->cs_topop.cs_index ==
-		  CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	  assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	  csect_enter_critical_section (thread_p, &tdes->cs_topop, INF_WAIT);
+	  r = rmutex_lock (thread_p, &tdes->rmutex_topop);
+	  assert (r == NO_ERROR);
 	}
     }
 
@@ -3589,13 +3584,8 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	  /* Out of memory */
 	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
-#if defined(SERVER_MODE)
-	      assert (tdes->cs_topop.cs_index ==
-		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+	      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+	      assert (r == NO_ERROR);
 	    }
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
@@ -3686,7 +3676,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
-  mnt_tran_start_topops (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
 
   return &tdes->topops.stack[tdes->topops.last].lastparent_lsa;
 }
@@ -3709,7 +3699,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   TRAN_STATE state;
   int tran_index;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, r;
 
   {
     int mod_factor = 5000;	/* 0.02% */
@@ -3950,16 +3940,11 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 
   if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-#if defined(SERVER_MODE)
-      assert (tdes->cs_topop.cs_index ==
-	      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+      assert (r == NO_ERROR);
     }
 
-  mnt_tran_end_topops (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_END_TOPOPS);
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
@@ -5605,7 +5590,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       LOG_CS_EXIT (thread_p);
     }
 
-  mnt_tran_commits (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_COMMITS);
 
   return state;
 }
@@ -5709,7 +5694,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
     }
 
-  mnt_tran_rollbacks (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_ROLLBACKS);
 
   return state;
 }

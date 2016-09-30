@@ -577,6 +577,8 @@ extern int heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p, LOG_RCV * rcv
 extern int heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mvcc_redo_delete_newhome (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_redo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -614,7 +616,7 @@ extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT
 extern int heap_get_mvcc_rec_header_from_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header,
 						   RECDES * peek_recdes);
 extern int heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header);
-extern int heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_redo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern bool heap_is_big_length (int length);
 extern int heap_get_class_oid_from_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, OID * class_oid);

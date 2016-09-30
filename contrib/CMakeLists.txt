@@ -28,9 +28,6 @@ if(UNIX)
     ${CMAKE_SOURCE_DIR}/contrib/rpm/cubrid.csh
     ${CMAKE_SOURCE_DIR}/contrib/rpm/cubrid.sh
     DESTINATION ${CUBRID_DATADIR}/rpm)
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/contrib/rpm/cubrid.spec
-    DESTINATION ${CUBRID_DATADIR}/rpm)
 endif(UNIX)
 
 

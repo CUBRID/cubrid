@@ -216,7 +216,7 @@ xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char
     }
   else
     {
-      mnt_pc_invalid_xasl_id (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
     }
 
   return error;

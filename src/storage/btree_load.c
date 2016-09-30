@@ -3920,7 +3920,6 @@ btree_node_number_of_keys (PAGE_PTR page_ptr)
   return key_cnt;
 }
 
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
 /*
  * btree_get_btree_node_type_from_page () -
  *
@@ -3977,4 +3976,3 @@ btree_get_perf_btree_page_type (PAGE_PTR page_ptr)
     }
   return PERF_PAGE_BTREE_ROOT;
 }
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */

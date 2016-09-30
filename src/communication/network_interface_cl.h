@@ -237,10 +237,10 @@ extern int serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num,
 extern int serial_get_current_value (DB_VALUE * value, OID * oid_p, int cached_num);
 extern int serial_decache (OID * oid);
 
-extern int mnt_server_start_stats (bool for_all_trans);
-extern int mnt_server_stop_stats (void);
-extern void mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats);
-extern void mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats);
+extern int perfmon_server_start_stats (void);
+extern int perfmon_server_stop_stats (void);
+extern int perfmon_server_copy_stats (UINT64 * to_stats);
+extern int perfmon_server_copy_global_stats (UINT64 * to_stats);
 extern int catalog_check_rep_dir (OID * class_id, OID * rep_dir_p);
 extern int thread_kill_tran_index (int kill_tran_index, char *kill_user, char *kill_host, int kill_pid);
 extern int thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is_dba_group_member,
@@ -271,14 +271,14 @@ extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
 extern bool histo_is_supported (void);
 extern int histo_start (bool for_all_trans);
 extern int histo_stop (void);
-extern void histo_print (FILE * stream);
-extern void histo_print_global_stats (FILE * stream, bool cumulative, const char *substr);
+extern int histo_print (FILE * stream);
+extern int histo_print_global_stats (FILE * stream, bool cumulative, const char *substr);
 extern void histo_clear (void);
 
 extern int net_histo_start (bool for_all_trans);
 extern int net_histo_stop (void);
-extern void net_histo_print (FILE * stream);
-extern void net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr);
+extern int net_histo_print (FILE * stream);
+extern int net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr);
 extern void net_histo_clear (void);
 
 extern int net_client_request_no_reply (int request, char *argbuf, int argsize);

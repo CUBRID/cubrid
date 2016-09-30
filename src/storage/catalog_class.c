@@ -2994,8 +2994,8 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 
   repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
   or_put_int (buf_p, repr_id_bits);
-  or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
   or_put_int (buf_p, chn);	/* CHN */
+  or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
   header_size = OR_MVCC_INSERT_HEADER_SIZE;
 
   /* offset table */
@@ -3113,20 +3113,17 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   bound_bits_flag = repr_id_bits & OR_BOUND_BIT_FLAG;
   mvcc_flags = (char) ((repr_id_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
   repr_id_bits = repr_id_bits & OR_MVCC_REPID_MASK;
-  /* check that only OR_MVCC_FLAG_VALID_INSID is set */
+
+  or_advance (buf_p, OR_INT_SIZE);	/* skip  CHN */
 
   if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
     {
       or_advance (buf_p, OR_MVCCID_SIZE);	/* skip INS_ID */
     }
 
-  if (mvcc_flags & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN))
+  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
     {
-      or_advance (buf_p, OR_MVCCID_SIZE);	/* skip DEL_ID / long CHN */
-    }
-  else
-    {
-      or_advance (buf_p, OR_INT_SIZE);	/* skip short CHN */
+      or_advance (buf_p, OR_MVCCID_SIZE);	/* skip DEL_ID */
     }
 
   if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
