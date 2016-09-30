@@ -16395,11 +16395,6 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_REC_HEADER mvcc_rec_header;
   char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   RECDES rebuild_record;
-  INT32 chn;
-
-  /* Read chn */
-  chn = (INT32) OR_GET_INT (rcv->data);
-  assert (rcv->length == OR_INT_SIZE);
 
   slotid = rcv->offset;
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
