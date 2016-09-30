@@ -2521,6 +2521,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  error_code = perfmon_initialize (MAX_NTRANS);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   /* reinitialize thread mgr to reflect # of active requests */
   if (thread_initialize_manager () != NO_ERROR)
     {
@@ -2569,8 +2576,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
-
-  mnt_server_init (MAX_NTRANS);
 
   /* 
    * Compose the full name of the database and find location of logs
@@ -3435,7 +3440,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  (void) xtran_server_abort (thread_p);
 	}
 
-      xmnt_server_stop_stats (thread_p);
+      perfmon_stop_watch (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
       CUBRID_CONN_END (client_id, tdes->client.db_user);
@@ -3922,7 +3927,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catalog_finalize ();
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
-  mnt_server_final ();
+  perfmon_finalize ();
   fileio_dismount_all (thread_p);
   disk_manager_final ();
   boot_server_status (BOOT_SERVER_DOWN);
@@ -4729,6 +4734,12 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 	}
 
       er_clear ();
+    }
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   /* Find the prefix for the database */

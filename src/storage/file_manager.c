@@ -6696,7 +6696,7 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, VPID * 
 
   pgbuf_unfix_and_init (thread_p, allocset_pgptr);
 
-  mnt_file_page_allocs (thread_p, npages);
+  perfmon_add_stat (thread_p, PSTAT_FILE_NUM_PAGE_ALLOCS, npages);
 
   return answer;
 
@@ -7609,7 +7609,7 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p, FILE_HEADER * f
 
   rv = thread_set_check_interrupt (thread_p, old_val);
 
-  mnt_file_page_deallocs (thread_p, ncont_page_entries);
+  perfmon_add_stat (thread_p, PSTAT_FILE_NUM_PAGE_DEALLOCS, ncont_page_entries);
 
   return ret;
 }

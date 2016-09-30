@@ -2568,7 +2568,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  mnt_lk_acquired_on_objects (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -2680,7 +2680,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  mnt_lk_acquired_on_objects (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -2832,7 +2832,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  mnt_lk_acquired_on_objects (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3244,12 +3244,9 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   bool is_instant_duration;
   int compat1, compat2;
   bool is_res_mutex_locked = false;
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  bool is_perf_tracking;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
 #if defined(ENABLE_SYSTEMTAP)
   OID *class_oid_for_marker_p, *oid_for_marker_p;
@@ -3286,10 +3283,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
     }
 
   thrd_entry = thread_p;
-
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   new_mode = group_mode = old_mode = NULL_LOCK;
 #if defined(LK_DUMP)
@@ -3340,7 +3333,7 @@ start:
 	  && lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid, tran_index),
 					   lock) == true)
 	{
-	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
 	  ret_val = LK_GRANTED;
 	  goto end;
 	}
@@ -3410,7 +3403,7 @@ start:
       res_ptr->total_holders_mode = lock;
 
       /* Record number of acquired locks */
-      mnt_lk_acquired_on_objects (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
       LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3503,7 +3496,7 @@ start:
 	  lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
 
 	  /* Record number of acquired locks */
-	  mnt_lk_acquired_on_objects (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3725,7 +3718,7 @@ lock_tran_lk_entry:
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	}
-      mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
+      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
       *entry_addr_ptr = entry_ptr;
 
       ret_val = LK_GRANTED;
@@ -3905,15 +3898,13 @@ lock_tran_lk_entry:
 
 blocked:
 
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  if (is_perf_tracking)
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_LOCK_OBJECT))
     {
       tsc_getticks (&start_tick);
     }
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   /* LK_CANWAIT(wait_msecs) : wait_msecs > 0 */
-  mnt_lk_waited_on_objects (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
   LK_MSG_LOCK_WAITFOR (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3924,15 +3915,15 @@ blocked:
       pthread_mutex_unlock (&res_ptr->res_mutex);
     }
   ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
-#if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  if (is_perf_tracking)
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_LOCK_OBJECT))
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      mnt_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
+      perfmon_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
     }
-#endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
+
   if (ret_val != LOCK_RESUMED)
     {
       /* Following three cases are possible. 1. lock timeout 2. deadlock victim 3. interrupt In any case, current
@@ -4005,7 +3996,7 @@ lock_conversion_treatement:
 	  break;
 	}
 
-      mnt_lk_converted_on_objects (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_CONVERTED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
       LK_MSG_LOCK_CONVERTED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -5669,7 +5660,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			{
 			  strcpy (str_insid, "missing");
 			}
-		      if (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID))
+		      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_rec_header))
 			{
 			  sprintf (str_delid, "%llu", (unsigned long long int) MVCC_GET_DELID (&mvcc_rec_header));
 			}

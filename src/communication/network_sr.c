@@ -1050,7 +1050,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   /* call a request processing function */
   if (thread_p->tran_index > 0)
     {
-      mnt_net_requests (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_NET_NUM_REQUESTS);
     }
   func = net_Requests[request].processing_function;
   assert (func != NULL);

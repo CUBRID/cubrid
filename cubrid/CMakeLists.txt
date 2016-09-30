@@ -95,7 +95,6 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
-  ${COMMUNICATION_DIR}/network.c
   )
 
 set(PARSER_SOURCES
