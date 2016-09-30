@@ -688,6 +688,31 @@ extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 extern int perfmon_get_activation_flag (void);
 
+/*
+ * perfmon_is_perf_tracking () - Returns true if there are active threads
+ *
+ * return	 : true or false
+ */
+INLINE bool
+perfmon_is_perf_tracking (void)
+{
+  return pstat_Global.initialized && pstat_Global.n_watchers > 0;
+}
+
+/*
+ * perfmon_is_perf_tracking_and_active () - Returns true if there are active threads
+ *					    and the activation_flag of the extended statistic is activated
+ *
+ * return	        : true or false
+ * activation_flag (in) : activation flag for extended statistic
+ *
+ */
+INLINE bool
+perfmon_is_perf_tracking_and_active (int activation_flag)
+{
+  return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
+}
+
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
 typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;

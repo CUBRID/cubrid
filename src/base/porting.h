@@ -52,7 +52,7 @@ extern "C"
 #define INLINE inline
 #elif _MSC_VER >= 1000
 #define STATIC_INLINE __forceinline static
-#define INLINE
+#define INLINE __forceinline
 #else
 #define STATIC_INLINE static
 #define INLINE
