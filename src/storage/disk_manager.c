@@ -197,7 +197,7 @@ struct disk_stab_cursor
 /* Bit count in a unit */
 #define DISK_STAB_UNIT_BIT_COUNT	    ((int) (DISK_STAB_UNIT_SIZE_OF * CHAR_BIT))
 /* Unit count in a table page */
-#define DISK_STAB_PAGE_UNITS_COUNT	    ((int) (DB_PAGESIZE / DISK_STAB_UNIT_BIT_COUNT))
+#define DISK_STAB_PAGE_UNITS_COUNT	    ((int) (DB_PAGESIZE / DISK_STAB_UNIT_SIZE_OF))
 /* Bit count in a table page */
 #define DISK_STAB_PAGE_BIT_COUNT	    ((int) (DISK_STAB_UNIT_BIT_COUNT * DISK_STAB_PAGE_UNITS_COUNT))
 
@@ -954,7 +954,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
-  *nsect_free_out = vhdr->nsect_total - SECTOR_FROM_PAGEID (vhdr->sys_lastpage);
+  *nsect_free_out = vhdr->nsect_total - SECTOR_FROM_PAGEID (vhdr->sys_lastpage) - 1;
   pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 
   /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
