@@ -122,6 +122,7 @@ struct disk_extend_info
   volatile int owner_reserve;
 #endif				/* !NDEBUG */
 
+  DKNSECTS nsect_vol_max;
   VOLID volid_extend;
   DB_VOLTYPE voltype;
 };
@@ -130,14 +131,12 @@ typedef struct disk_perm_info DISK_PERM_PURPOSE_INFO;
 struct disk_perm_info
 {
   DISK_EXTEND_INFO extend_info;
-  DKNSECTS nsect_vol_max;
 };
 
 typedef struct disk_temp_info DISK_TEMP_PURPOSE_INFO;
 struct disk_temp_info
 {
   DISK_EXTEND_INFO extend_info;
-  DKNSECTS nsect_vol_max;
   DKNSECTS nsect_perm_free;
   DKNSECTS nsect_perm_total;
 };
@@ -212,6 +211,8 @@ struct disk_stab_cursor
 #define DISK_SECTS_ROUND_DOWN(nsects)  ((nsects / DISK_STAB_UNIT_BIT_COUNT) * DISK_STAB_UNIT_BIT_COUNT)
 #define DISK_SECTS_ASSERT_ROUNDED(nsects)  assert (nsects == DISK_SECTS_ROUND_DOWN (nsects));
 
+#define DISK_STAB_NPAGES(nsect_max) (CEIL_PTVDIV (nsect_max, DISK_STAB_PAGE_BIT_COUNT))
+
 /* function used by disk_stab_iterate_units */
 typedef int (*DISK_STAB_UNIT_FUNC) (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
 
@@ -273,6 +274,9 @@ static bool disk_Logging = false;
 #define DISK_RESERVE_CONTEXT_AS_ARGS(context) \
   (context)->nsect_total, (context)->n_cache_vol_reserve, (context)->n_cache_reserve_remaining, \
   disk_purpose_to_string ((context)->purpose)
+
+#define DISK_SYS_NPAGE_SIZE(nsect_max) (1 + DISK_STAB_NPAGES (nsect_max))
+#define DISK_SYS_NSECT_SIZE(nsect_max) (CEIL_PTVDIV (DISK_SYS_NPAGE_SIZE (nsect_max), DISK_SECTOR_NPAGES))
 
 /************************************************************************/
 /* Declare static functions.                                            */
@@ -501,8 +505,8 @@ disk_cache_init (void)
   disk_Cache->nvols_perm = 0;
   disk_Cache->nvols_temp = 0;
 
-  disk_Cache->perm_purpose_info.nsect_vol_max =
-    (DKNSECTS) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / IO_SECTORSIZE);
+  disk_Cache->perm_purpose_info.extend_info.nsect_vol_max =
+    DISK_SECTS_ROUND_UP ((DKNSECTS) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / IO_SECTORSIZE));
   disk_Cache->perm_purpose_info.extend_info.nsect_free = 0;
   disk_Cache->perm_purpose_info.extend_info.nsect_total = 0;
   disk_Cache->perm_purpose_info.extend_info.nsect_max = 0;
@@ -514,8 +518,8 @@ disk_cache_init (void)
   disk_Cache->perm_purpose_info.extend_info.owner_reserve = -1;
 #endif /* !NDEBUG */
 
-  disk_Cache->temp_purpose_info.nsect_vol_max =
-    (DKNSECTS) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / IO_SECTORSIZE);
+  disk_Cache->temp_purpose_info.extend_info.nsect_vol_max =
+    DISK_SECTS_ROUND_UP ((DKNSECTS) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / IO_SECTORSIZE));
   disk_Cache->temp_purpose_info.nsect_perm_free = 0;
   disk_Cache->temp_purpose_info.nsect_perm_total = 0;
   disk_Cache->temp_purpose_info.extend_info.nsect_free = 0;
@@ -4076,7 +4080,7 @@ disk_reserve_from_cache_vols (DB_VOLTYPE type, DISK_RESERVE_CONTEXT * context)
       end_iter = disk_Cache->nvols_perm;
       incr = 1;
 
-      min_free = MIN (context->nsect_total, disk_Cache->perm_purpose_info.nsect_vol_max) / 2;
+      min_free = MIN (context->nsect_total, disk_Cache->perm_purpose_info.extend_info.nsect_vol_max) / 2;
     }
   else
     {
@@ -4084,7 +4088,7 @@ disk_reserve_from_cache_vols (DB_VOLTYPE type, DISK_RESERVE_CONTEXT * context)
       end_iter = LOG_MAX_DBVOLID - disk_Cache->nvols_temp;
       incr = -1;
 
-      min_free = MIN (context->nsect_total, disk_Cache->temp_purpose_info.nsect_vol_max) / 2;
+      min_free = MIN (context->nsect_total, disk_Cache->temp_purpose_info.extend_info.nsect_vol_max) / 2;
     }
   /* make sure we search for at least one sector */
   min_free = MAX (min_free, 1);
@@ -4217,8 +4221,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   assert (nsect_extend > 0);
 
   /* add new volume(s) */
-  volext.nsect_max = (DKNSECTS) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / IO_SECTORSIZE);
-  volext.nsect_max = DISK_SECTS_ROUND_UP (volext.nsect_max);
+  volext.nsect_max = extend_info->nsect_vol_max;
   volext.comments = reserve_context != NULL ? "Forced Volume Extension" : "Automatic Volume Extension";
   volext.voltype = voltype;
   volext.purpose = voltype == DB_PERMANENT_VOLTYPE ? DB_PERMANENT_DATA_PURPOSE : DB_TEMPORARY_DATA_PURPOSE;
@@ -4230,7 +4233,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       volext.name = NULL;
 
       /* set size to remaining sectors */
-      volext.nsect_total = nsect_extend;
+      volext.nsect_total = nsect_extend + DISK_SYS_NSECT_SIZE (volext.nsect_max);
       /* but size cannot exceed max */
       volext.nsect_total = MIN (volext.nsect_max, volext.nsect_total);
       /* and it cannot be lower than a minimum size */
