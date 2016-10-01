@@ -138,14 +138,21 @@
 #define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
 #if !defined(SERVER_MODE)
+#if !defined(LOG_TRAN_INDEX)
+#define LOG_TRAN_INDEX
 extern int log_Tran_index;	/* Index onto transaction table for current thread of execution (client) */
+#endif /* !LOG_TRAN_INDEX */
 #endif /* !SERVER_MODE */
 
 #if defined (SERVER_MODE)
-#define FIND_THREAD_TRAN_INDEX(thrd) \
+#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
+#define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+#endif
 #else
-#define FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
+#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
+#define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
+#endif
 #endif
 
 typedef enum
@@ -768,7 +775,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
-  tran_index = FIND_THREAD_TRAN_INDEX (thread_p);
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
@@ -825,7 +832,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
-  tran_index = FIND_THREAD_TRAN_INDEX (thread_p);
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
