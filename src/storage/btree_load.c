@@ -1869,7 +1869,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
 }
 
 /*
- * btree_load_new_page () - document me!
+ * btree_load_new_page () - load a new b-tree page.
  *
  * return          : Error code
  * thread_p (in)   : Thread entry
@@ -1883,7 +1883,6 @@ static int
 btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 		     VPID * vpid_new, PAGE_PTR * page_new)
 {
-  PAGE_PTR page_ptr = NULL;
   LOG_DATA_ADDR addr;
   unsigned short alignment;
 
@@ -1906,14 +1905,14 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  pgbuf_set_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  pgbuf_set_page_ptype (thread_p, *page_new, PAGE_BTREE);
   alignment = BTREE_MAX_ALIGN;
 
-  spage_initialize (thread_p, page_ptr, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
+  spage_initialize (thread_p, *page_new, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
 
   addr.vfid = &btid->vfid;
   addr.offset = -1;		/* No header slot is initialized */
-  addr.pgptr = page_ptr;
+  addr.pgptr = *page_new;
 
   log_append_redo_data (thread_p, RVBT_GET_NEWPAGE, &addr, sizeof (alignment), &alignment);
 
@@ -1927,7 +1926,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       header->split_info.pivot = 0.0f;
       header->split_info.index = 0;
 
-      error_code = btree_init_node_header (thread_p, &btid->vfid, page_ptr, header, false);
+      error_code = btree_init_node_header (thread_p, &btid->vfid, *page_new, header, false);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1942,7 +1941,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       assert (node_level == -1);
       VPID_SET_NULL (&ovf_header_info.next_vpid);
 
-      error_code = btree_init_overflow_header (thread_p, page_ptr, &ovf_header_info);
+      error_code = btree_init_overflow_header (thread_p, *page_new, &ovf_header_info);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
