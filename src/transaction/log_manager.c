@@ -9390,71 +9390,70 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   rcv.length = redo->length;
   rcv.data = redo_rcv_data;
 
-  if (rcvindex == RVVAC_DROPPED_FILE_ADD)
+  if (VPID_ISNULL (&rcv_vpid))
     {
+      /* logical */
       rcv.pgptr = NULL;
     }
   else
     {
-      if (rcv_vpid.volid == NULL_VOLID || rcv_vpid.pageid == NULL_PAGEID
-	  || (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID))
+      if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
 	{
+	  /* page was deallocated */
 	  return NO_ERROR;
 	}
 
       rcv.pgptr = pgbuf_fix_with_retry (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, 10);
+      if (rcv.pgptr == NULL)
+	{
+	  /* 
+	   * Unable to fetch page of volume... May need media recovery
+	   * on such page
+	   */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
+		  fileio_get_volume_label (rcv_vpid.volid, PEEK));
+	  return ER_LOG_MAYNEED_MEDIA_RECOVERY;
+	}
     }
 
   rvaddr.offset = rcv.offset;
   rvaddr.pgptr = rcv.pgptr;
 
   /* Now call the REDO recovery function */
-  if (rcv.pgptr != NULL || (redo->data.volid == NULL_VOLID && redo->data.pageid == NULL_PAGEID))
-    {
-      if (rcvindex == RVVAC_DROPPED_FILE_ADD)
-	{
-	  /* We don't know yet in which page the dropped file will end up so we have to do a special call here. */
-	  /* TODO: RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL */
-	  error_code = vacuum_notify_dropped_file (thread_p, &rcv, log_lsa);
-	  assert (error_code == NO_ERROR);
-	}
-      else if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
-	{
-	  LSA_COPY (&rcv.reference_lsa, log_lsa);
-	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	  assert (error_code != NO_ERROR);
-	}
-      else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
-	{
-	  /* Logical postpone. Use a system operation and commit with run postpone */
-	  log_sysop_start (thread_p);
-	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	  assert (error_code == NO_ERROR);
-	  log_sysop_commit_and_run_postpone (thread_p, rcvindex, log_lsa);
-	}
-      else
-	{
-	  /* 
-	   * Write the corresponding run postpone record for
-	   * the postpone action
-	   */
-	  log_append_run_postpone (thread_p, rcvindex, &rvaddr, &rcv_vpid, rcv.length, rcv.data, log_lsa);
 
-	  /* Now call the REDO recovery function */
-	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	  assert (error_code == NO_ERROR);
-	}
+  if (rcvindex == RVVAC_DROPPED_FILE_ADD)
+    {
+      /* We don't know yet in which page the dropped file will end up so we have to do a special call here. */
+      /* TODO: RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL */
+      error_code = vacuum_notify_dropped_file (thread_p, &rcv, log_lsa);
+      assert (error_code == NO_ERROR);
+    }
+  else if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
+    {
+      LSA_COPY (&rcv.reference_lsa, log_lsa);
+      error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+      assert (error_code != NO_ERROR);
+    }
+  else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
+    {
+      /* Logical postpone. Use a system operation and commit with run postpone */
+      log_sysop_start (thread_p);
+      error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+      assert (error_code == NO_ERROR);
+      log_sysop_commit_and_run_postpone (thread_p, rcvindex, log_lsa);
     }
   else
     {
       /* 
-       * Unable to fetch page of volume... May need media recovery
-       * on such page
+       * Write the corresponding run postpone record for
+       * the postpone action
        */
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-	      fileio_get_volume_label (rcv_vpid.volid, PEEK));
-      error_code = ER_LOG_MAYNEED_MEDIA_RECOVERY;
+      log_append_run_postpone (thread_p, rcvindex, &rvaddr, &rcv_vpid, rcv.length, rcv.data, log_lsa);
+
+      /* Now call the REDO recovery function */
+      error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+      assert (error_code == NO_ERROR);
     }
 
   if (rcv.pgptr != NULL)
