@@ -9390,7 +9390,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   rcv.length = redo->length;
   rcv.data = redo_rcv_data;
 
-  if (rcvindex == RVVAC_DROPPED_FILE_ADD || rcvindex == RVFL_POSTPONE_DESTROY_FILE)
+  if (rcvindex == RVVAC_DROPPED_FILE_ADD)
     {
       rcv.pgptr = NULL;
     }

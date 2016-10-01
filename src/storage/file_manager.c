@@ -3458,6 +3458,8 @@ file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int num_oids, num_keys = -1, num_nulls;
   LF_TRAN_ENTRY *t_entry;
 
+  assert (false);
+
   if (rcv->length == sizeof (*vfid))
     {
       vfid = (VFID *) rcv->data;

@@ -5625,10 +5625,10 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
   addr.offset = -1;
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, sizeof (vfid), &vfid);
+      flre_postpone_destroy (thread_p, &vfid);
     }
 
-  log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, sizeof (hfid->vfid), &hfid->vfid);
+  flre_postpone_destroy (thread_p, &hfid->vfid);
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
 

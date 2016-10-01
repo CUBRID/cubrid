@@ -5601,28 +5601,17 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   addr.vfid = NULL;
   addr.pgptr = NULL;
   addr.offset = -1;
-
-  log_append_undoredo_data (thread_p, RVBT_DELETE_INDEX, &addr, undo_rec.length, redo_rec.length, undo_rec.data,
-			    redo_rec.data);
-
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
-
   if (unique_pk)
     {
-      datap = PTR_ALIGN (postpone_buf, BTREE_MAX_ALIGN);
-      OR_PUT_BTID (datap, btid);
-
-      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, OR_BTID_ALIGNED_SIZE, datap);
+      log_append_postpone (thread_p, RVBT_DELETE_INDEX, &addr, sizeof (*btid), btid);
     }
-  else
-    {
-      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, sizeof (btid->vfid), &btid->vfid);
-    }
-
   if (!VFID_ISNULL (&ovfid))
     {
-      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, sizeof (ovfid), &ovfid);
+      flre_postpone_destroy (thread_p, &ovfid);
     }
+  flre_postpone_destroy (thread_p, &btid->vfid);
+
 
   btid->root_pageid = NULL_PAGEID;
 
@@ -29629,106 +29618,36 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 }
 
 /*
- * btree_rv_undo_delete_index () -
- *   return: int
- *   recv(in): Recovery structure
- *
- * Note: Restores unique statistics in global hash
- */
-int
-btree_rv_undo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv)
-{
-  char *datap;
-  BTID btid;
-  int ret = NO_ERROR;
-  int num_nulls, num_oids, num_keys, unique_pk;
-
-  assert (recv->length >= OR_INT_SIZE + OR_BTID_ALIGNED_SIZE);
-
-  /* unpack the index btid */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  unique_pk = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  if (unique_pk)
-    {
-      num_nulls = OR_GET_INT (datap);
-      datap += OR_INT_SIZE;
-
-      num_oids = OR_GET_INT (datap);
-      datap += OR_INT_SIZE;
-
-      num_keys = OR_GET_INT (datap);
-      datap += OR_INT_SIZE;
-
-      ret = logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, num_oids, num_nulls, num_keys);
-      if (ret != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  return NO_ERROR;
-
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-
-  return ER_GENERIC_ERROR;
-}
-
-/*
- * btree_rv_redo_delete_index () -
+ * btree_rv_remove_unique_stats () -
  *   return: int
  *   recv(in): Recovery structure
  *
  * Note: Remove unique statistics from global hash
  */
 int
-btree_rv_redo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  char *datap;
   BTID btid;
-  int ret = NO_ERROR, unique_pk;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
+  int ret = NO_ERROR;
 
-  assert (recv->length >= OR_INT_SIZE + OR_BTID_ALIGNED_SIZE);
+  assert (recv->length == sizeof (btid));
 
   /* unpack the index btid */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  unique_pk = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  if (unique_pk)
+  btid = *(BTID *) recv->data;
+  ret = logtb_delete_global_unique_stats (thread_p, &btid);
+  if (ret != NO_ERROR)
     {
-      LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
-
-      ret = logtb_delete_global_unique_stats (thread_p, &btid);
-      if (ret != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      unique_stats = logtb_tran_find_btid_stats (thread_p, &btid, false);
-
-      if (unique_stats != NULL)
-	{
-	  unique_stats->deleted = true;
-	}
+      assert_release (false);
+      return ER_FAILED;
+    }
+  unique_stats = logtb_tran_find_btid_stats (thread_p, &btid, false);
+  if (unique_stats != NULL)
+    {
+      unique_stats->deleted = true;
     }
 
   return NO_ERROR;
-
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-
-  return ER_GENERIC_ERROR;
 }
 
 /*
