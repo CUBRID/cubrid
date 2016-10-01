@@ -45,6 +45,7 @@
 #endif /* WINDOWS */
 
 #include "tsc_timer.h"
+#include <assert.h>
 
 /* EXPORTED GLOBAL DEFINITIONS */
 #define MAX_DIAG_DATA_VALUE     0xfffffffffffffLL
