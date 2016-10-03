@@ -16462,6 +16462,8 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   else
     {
       /* Compression failed */
+      _er_log_debug (ARG_FILE_LINE, "compression is turned off or has failed. The compression was %d for length %d\n ",
+		     str_length, compression_length);
       length = str_length;
       compression_length = 0;
       str = string;
