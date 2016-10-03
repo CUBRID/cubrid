@@ -13929,7 +13929,7 @@ static bool file_Logging = false;
   FILE_HEAD_ALLOC_MSG \
   "\t\tvfid = %d|%d, time_creation = %lld, type = %s \n" \
   "\t" FILE_TABLESPACE_MSG \
-  "\t\ttable offset: partial = %d, full = %d, user = %d \n" \
+  "\t\ttable offsets: partial = %d, full = %d, user page = %d \n" \
   "\t\tvpid_sticky_first = %d|%d \n" \
   "\t\tvpid_last_temp_alloc = %d|%d, offset_to_last_temp_alloc=%d \n" \
   "\t\tvpid_last_user_page_ftab = %d \n"
@@ -13937,6 +13937,7 @@ static bool file_Logging = false;
   FILE_HEAD_ALLOC_AS_ARGS (fhead), \
   VFID_AS_ARGS (&(fhead)->self), (long long int) fhead->time_creation, file_type_to_string ((fhead)->type), \
   FILE_TABLESPACE_AS_ARGS (&(fhead)->tablespace), \
+  (fhead)->offset_to_partial_ftab, (fhead)->offset_to_full_ftab, (fhead)->offset_to_user_page_ftab, \
   VPID_AS_ARGS (&(fhead)->vpid_sticky_first), \
   VPID_AS_ARGS (&(fhead)->vpid_last_temp_alloc), (fhead)->offset_to_last_temp_alloc, \
   VPID_AS_ARGS (&(fhead)->vpid_last_user_page_ftab)
@@ -19043,10 +19044,16 @@ file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DA
 	  collect->partsect_ftab->vsid = vsid_this;
 	  collect->partsect_ftab->page_bitmap = FILE_EMPTY_PAGE_BITMAP;
 	  collect->nsects++;
+
+	  file_log ("file_table_collect_ftab_pages", "add new vsid %d|%d, nsects = %d", VSID_AS_ARGS (&vsid_this),
+		    collect->nsects);
 	}
       file_partsect_set_bit (&collect->partsect_ftab[idx_sect],
 			     file_partsect_pageid_to_offset (&collect->partsect_ftab[idx_sect],
 							     extdata->vpid_next.pageid));
+
+      file_log ("file_table_collect_ftab_pages", "collect ftab page %d|%d, \n" FILE_PARTSECT_MSG ("partsect"),
+		VPID_AS_ARGS (&extdata->vpid_next), FILE_PARTSECT_AS_ARGS (&collect->partsect_ftab[idx_sect]));
       collect->npages++;
     }
   return NO_ERROR;
@@ -19847,6 +19854,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab;
 
   bool save_interrupt;
+  bool found = false;
 
   int error_code = NO_ERROR;
 
@@ -19898,6 +19906,10 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
 			 file_partsect_pageid_to_offset (&collector.partsect_ftab[0], vpid_fhead.pageid));
   collector.nsects = 1;
   collector.npages = 1;
+
+  file_log ("file_temp_reset_user_pages", "init collector with page %d|%d \n " FILE_PARTSECT_MSG ("partsect"),
+	    VPID_AS_ARGS (&vpid_fhead), FILE_PARTSECT_AS_ARGS (collector.partsect_ftab));
+
   /* add other pages in partial sector table */
   error_code =
     file_extdata_apply_funcs (thread_p, extdata_part_ftab, file_table_collect_ftab_pages, &collector, NULL, NULL, false,
@@ -19924,14 +19936,15 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   /* reset partial table sectors, but leave file table pages allocated */
   page_ftab = page_fhead;
-  while (true)
+  while (collector.nsects > 0)
     {
       assert (extdata_part_ftab != NULL);
 
       for (partsect = (FILE_PARTIAL_SECTOR *) file_extdata_start (extdata_part_ftab);
-	   partsect < (FILE_PARTIAL_SECTOR *) file_extdata_end (extdata_part_ftab); partsect++)
+	   partsect < (FILE_PARTIAL_SECTOR *) file_extdata_end (extdata_part_ftab) && collector.nsects > 0; partsect++)
 	{
 	  /* does it have file table pages? */
+	  found = false;
 	  for (idx_sect = 0; idx_sect < collector.nsects; idx_sect++)
 	    {
 	      if (file_compare_vsids (&partsect->vsid, &collector.partsect_ftab[idx_sect].vsid) == 0)
@@ -19946,12 +19959,15 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
 			       (collector.nsects - 1 - idx_sect) * sizeof (FILE_PARTIAL_SECTOR));
 		    }
 		  collector.nsects--;
-
-		  continue;
+		  found = true;
+		  break;
 		}
 	    }
-	  /* not found in collector, must be empty sector */
-	  partsect->page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+	  if (!found)
+	    {
+	      /* not found in collector, must be empty sector */
+	      partsect->page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+	    }
 	}
 
       pgbuf_set_dirty (thread_p, page_ftab, DONT_FREE);
