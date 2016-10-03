@@ -4007,11 +4007,14 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       return;
     }
 
-  if (LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, &LOG_TDES_LAST_SYSOP (tdes)->lastparent_lsa))
+  if ((LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, &LOG_TDES_LAST_SYSOP (tdes)->lastparent_lsa))
+      && log_record->type == LOG_SYSOP_END_COMMIT)
     {
       /* No change. */
       assert (LSA_ISNULL (&LOG_TDES_LAST_SYSOP (tdes)->posp_lsa));
-      assert (log_record->type == LOG_SYSOP_END_COMMIT);
+
+      /* for types different than LOG_SYSOP_END_COMMIT (logical ops), we have to log the end of system transaction even
+       * if there are no changes */
     }
   else
     {
