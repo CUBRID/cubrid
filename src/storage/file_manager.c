@@ -19356,7 +19356,7 @@ flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   fhead = (FLRE_HEADER *) page_fhead;
   file_header_sanity_check (fhead);
-  assert (nth < fhead->n_page_user);
+  assert (nth < fhead->n_page_user || (auto_alloc && nth == fhead->n_page_user));
 
   /* iterate in user page table */
   FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
