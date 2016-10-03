@@ -430,16 +430,8 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_load_Time_obj_lock_acquire_time)
 };
 
-/* Count & timer values. */
-#define PSTAT_COUNTER_TIMER_COUNT_VALUE(startvalp) (startvalp)
-#define PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(startvalp) ((startvalp) + 1)
-#define PSTAT_COUNTER_TIMER_MAX_TIME_VALUE(startvalp) ((startvalp) + 2)
-#define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
-
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
 					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
-  __attribute__ ((ALWAYS_INLINE));
 
 static void perfmon_server_calc_stats (UINT64 * stats);
 
@@ -3963,83 +3955,6 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
 }
 
 /*
- * perfmon_time_stat () - Register statistic timer value. Counter, total time and maximum time are updated.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * psid (in)	 : Statistic ID.
- * timediff (in) : Time difference to register.
- */
-void
-perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
-{
-  assert (pstat_Global.initialized);
-  assert (psid >= 0 && psid < PSTAT_COUNT);
-
-  assert (pstat_Metadata[psid].valtype == PSTAT_COUNTER_TIMER_VALUE);
-
-  perfmon_time_at_offset (thread_p, pstat_Metadata[psid].start_offset, timediff);
-}
-
-/*
- * perfmon_time_at_offset () - Register timer statistics in global/local at offset.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * offset (in)   : Offset to timer values.
- * timediff (in) : Time difference to add to timer.
- *
- * NOTE: There will be three values modified: counter, total time and max time.
- */
-STATIC_INLINE void
-perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
-{
-  /* Update global statistics */
-  UINT64 *statvalp = NULL;
-  UINT64 max_time;
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  int tran_index;
-#endif /* SERVER_MODE || SA_MODE */
-
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
-  assert (pstat_Global.initialized);
-
-  /* Update global statistics. */
-  statvalp = pstat_Global.global_stats + offset;
-  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1);
-  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
-  do
-    {
-      max_time = ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), 0);
-      if (max_time >= timediff)
-	{
-	  /* No need to change max_time. */
-	  break;
-	}
-    }
-  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
-  /* Average is not computed here. */
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  /* Update local statistic */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
-    {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
-      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
-      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
-      if (max_time < timediff)
-	{
-	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
-	}
-    }
-#endif /* SERVER_MODE || SA_MODE */
-}
-
-/*
  * f_load_Num_data_page_fix_ext () - Get the number of values for Num_data_page_fix_ext statistic
  * 
  */
@@ -4547,14 +4462,4 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
     }
 
   return (ptr);
-}
-
-/*
- * perfmon_get_activation_flag () - Get the global activation flag
- * 
- */
-int
-perfmon_get_activation_flag (void)
-{
-  return pstat_Global.activation_flag;
 }
