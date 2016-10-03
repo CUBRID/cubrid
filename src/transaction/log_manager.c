@@ -397,10 +397,10 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_COMMIT";
 
     case LOG_SYSOP_START_POSTPONE:
-      return "LOG_COMMIT_TOPOPE_WITH_POSTPONE";
+      return "LOG_SYSOP_START_POSTPONE";
 
     case LOG_SYSOP_END:
-      return "LOG_COMMIT_TOPOPE";
+      return "LOG_SYSOP_END";
 
     case LOG_ABORT:
       return "LOG_ABORT";
