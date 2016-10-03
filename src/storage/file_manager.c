@@ -20002,6 +20002,12 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   fhead->n_page_free = fhead->n_page_total - fhead->n_page_ftab;
   fhead->n_page_user = 0;
 
+  /* reset pointers used for allocations */
+  fhead->vpid_last_temp_alloc = vpid_fhead;
+  fhead->offset_to_last_temp_alloc = 0;
+
+  file_log ("file_temp_reset_user_pages", "finished \n" FILE_HEAD_FULL_MSG, FILE_HEAD_FULL_AS_ARGS (fhead));
+
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
   /* done */
   assert (error_code == NO_ERROR);
