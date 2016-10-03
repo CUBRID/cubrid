@@ -1228,7 +1228,6 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "VACUUM: Found commit_topope_with_postpone. tdes->trid=%d. ", tdes->trid);
     }
-  tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
 
   LSA_COPY (&tdes->tail_lsa, log_lsa);
   LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
@@ -1262,6 +1261,9 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
       assert (sysop_start_posp->sysop_end.type == LOG_SYSOP_END_COMMIT
 	      || sysop_start_posp->sysop_end.type == LOG_SYSOP_END_LOGICAL_COMPENSATE);
     }
+
+  /* update state */
+  tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
 
   if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
     {
