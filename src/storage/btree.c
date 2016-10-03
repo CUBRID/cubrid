@@ -5394,7 +5394,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   log_sysop_start (thread_p);
 
   /* create a file descriptor, allocate and initialize the root page */
-  if (btree_create_file (thread_p, class_oid, attr_id, 2, btid) != NO_ERROR)
+  if (btree_create_file (thread_p, class_oid, attr_id, btid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
@@ -33643,7 +33643,7 @@ btree_hash_btid (void *btid, int hash_size)
  * todo: use table space.
  */
 int
-btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, int npages, BTID * btid)
+btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid)
 {
   FILE_BTREE_DES des;
   VPID vpid_root;
@@ -33653,7 +33653,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, i
   des.class_oid = *class_oid;
   des.attr_id = attrid;
 
-  error_code = flre_create_with_npages (thread_p, FILE_BTREE, npages, (FILE_DESCRIPTORS *) & des, &btid->vfid);
+  error_code = flre_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) & des, &btid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
