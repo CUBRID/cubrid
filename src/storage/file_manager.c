@@ -19936,12 +19936,12 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   /* reset partial table sectors, but leave file table pages allocated */
   page_ftab = page_fhead;
-  while (collector.nsects > 0)
+  while (true)
     {
       assert (extdata_part_ftab != NULL);
 
       for (partsect = (FILE_PARTIAL_SECTOR *) file_extdata_start (extdata_part_ftab);
-	   partsect < (FILE_PARTIAL_SECTOR *) file_extdata_end (extdata_part_ftab) && collector.nsects > 0; partsect++)
+	   partsect < (FILE_PARTIAL_SECTOR *) file_extdata_end (extdata_part_ftab); partsect++)
 	{
 	  /* does it have file table pages? */
 	  found = false;
