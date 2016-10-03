@@ -10155,13 +10155,8 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 	      OR_BUF out_of_row_buf;
 
 	      pr_type_clob = PR_TYPE_FROM_ID (DB_TYPE_CLOB);
-	      if (pr_type_clob == NULL)
-		{
-		  ret = ER_FAILED;
-		  break;
-		}
 	      
-	      if (oor_context == NULL || oor_context->oor_mode == HEAPATTR_IGNORE_OOR)
+	      if (oor_context == NULL || oor_context->oor_mode == HEAPATTR_READ_OOR_LOCATION_ONLY)
 		{
 		  (*(pr_type_clob->data_readval)) (&buf, &value->dbvalue, NULL, disk_length, false, NULL, 0);
 		}
@@ -10242,7 +10237,7 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		}
 	    }
 
-	  if (is_out_of_row && oor_context->oor_mode == HEAPATTR_IGNORE_OOR)
+	  if (is_out_of_row && oor_context->oor_mode == HEAPATTR_READ_OOR_LOCATION_ONLY)
 	    {
 	      value->state = HEAP_READ_ATTRVALUE_OOR_LOB;
 	    }
@@ -10250,7 +10245,7 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 	    {
 	      value->state = HEAP_READ_ATTRVALUE;
 	    }
-	  
+
 	  break;
 	default:
 	  /* 
@@ -11855,7 +11850,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->oor_recdes[0]));
 	  if (out_of_row_recdes->oor_recdes == NULL)
 	    {
-	      /* TODO[arnia] : */
 	      return S_ERROR;
 	    }
 	  memset (out_of_row_recdes->oor_recdes, 0, out_of_row_recdes->recdes_capacity
@@ -11865,7 +11859,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 								 * sizeof (out_of_row_recdes->att_ids[0]));
 	  if (out_of_row_recdes->att_ids == NULL)
 	    {
-	      /* TODO[arnia] : */
 	      return S_ERROR;
 	    }
 	  memset (out_of_row_recdes->att_ids, 0,
@@ -11942,7 +11935,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  else
 	    {
 	      bool is_oor = OOR_COLUMN_DISABLED;
-	      bool copy_oor_ref = false;
+	      bool copy_oor_location = false;
 
 	      /* 
 	       * Variable attribute
@@ -11962,19 +11955,14 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		  break;
 		}
 
-	      /* TODO[arnia] */
-	      if (check_oor_column)
-		{
-		  is_oor = (pr_is_oor_value (dbvalue)) ? OOR_COLUMN_ENABLED : OOR_COLUMN_DISABLED;
-		}
+	      is_oor = (check_oor_column && pr_is_oor_value (dbvalue)) ? OOR_COLUMN_ENABLED : OOR_COLUMN_DISABLED;
 
 	      if (value->state == HEAP_READ_ATTRVALUE_OOR_LOB)
 		{
-		  assert (DB_VALUE_TYPE (dbvalue) == DB_TYPE_OID);
-		  /* TODO[arnia] : domain type */
-		  assert (TP_DOMAIN_TYPE (value->last_attrepr->domain) != DB_TYPE_OID);
+		  assert (DB_VALUE_TYPE (dbvalue) == DB_TYPE_CLOB);
+		  assert (TP_DOMAIN_TYPE (value->last_attrepr->domain) != DB_TYPE_CLOB);
 
-		  copy_oor_ref = true;
+		  copy_oor_location = true;
 		  is_oor = OOR_COLUMN_ENABLED;
 		}
 
@@ -11985,8 +11973,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	      if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
 		{
 		  DB_VALUE temp_clob_value, perm_clob_value;
-		  PR_TYPE *pr_type_clob = NULL;
+		  PR_TYPE *pr_type_clob;
 		  DB_ELO perm_clob_elo;
+
+		  pr_type_clob = pr_type_from_id (DB_TYPE_CLOB);
 
 		  /* 
 		   * Now write the value and remember the current pointer
@@ -12003,10 +11993,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		      char *overflow_col_data;
 		      int lob_offset_in_home;
 
-		      if (copy_oor_ref)
+		      if (copy_oor_location)
 			{
-			  /* TODO[arnia] : test this case ! */
-			  pr_type_clob->data_writeval (buf, dbvalue);
+			  assert (DB_VALUE_TYPE (dbvalue) == DB_TYPE_CLOB);
+			  pr_type = pr_type_clob;
 			}
 		      else
 			{
@@ -12018,7 +12008,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			  err = db_create_fbo (&temp_clob_value, DB_TYPE_CLOB);
 			  if (err != NO_ERROR)
 			    {
-			      /* TODO[arnia] : error */
 			      return S_ERROR;			      
 			    }
 
@@ -12032,14 +12021,12 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			  elo_p = db_get_elo (&temp_clob_value);
 			  elo_p->meta_data = new_meta_data;
 
-			  pr_type_clob = pr_type_from_id (DB_TYPE_CLOB);
 			  lob_offset_in_home = CAST_BUFLEN (buf->ptr - buf->buffer);
 
 			  overflow_col_size = pr_data_writeval_disk_size (dbvalue);
 			  overflow_col_data = (char *) db_private_alloc (thread_p, overflow_col_size);
 			  if (overflow_col_data == NULL)
 			    {
-			      /* TODO[arnia] : error */
 			      return S_ERROR;
 			    }
     		      
@@ -12051,7 +12038,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 					      overflow_col_size, &written_bytes);
 			  if (err != NO_ERROR)
 			    {
-			      /* TODO[arnia] : error */
 			      return S_ERROR;
 			    }
 

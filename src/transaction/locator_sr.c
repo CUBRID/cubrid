@@ -5017,7 +5017,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       OID superclass_oid;
       int granted;
       /* Perform partition pruning on the given class */
-      /* TODO[arnia] : disable overflow column on partitioned columns */
       error_code =
 	partition_prune_insert (thread_p, class_oid, recdes, scan_cache, pcontext, pruning_type, &real_class_oid,
 				&real_hfid, &superclass_oid);
@@ -5381,7 +5380,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 	  return error;
 	}
 
-      /* TODO[arnia] : overflow columns */
+      /* TODO[arnia] : oor columns */
       /* insert the new record */
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, NULL, has_index, op_type,
@@ -7098,7 +7097,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
-	      /* TODO[arnia] : overflow columns */
+	      /* TODO[arnia] : oor columns */
 	      error_code =
 		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, NULL,
 				      has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
@@ -7271,7 +7270,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_INSERT_PRUNE:
 	case LC_FLUSH_INSERT_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
-	  /* TODO[arnia] : overflow columns */
+	  /* TODO[arnia] : oor columns */
 	  error_code =
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, NULL, has_index,
 				  SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
@@ -7288,7 +7287,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_UPDATE_PRUNE:
 	case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
-	  /* TODO[arnia] : overflow columns */
+	  /* TODO[arnia] : oor columns */
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
 				  NULL,
@@ -7629,6 +7628,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
 
       old_recdes = &copy_recdes;
+      oor_context.oor_mode = HEAPATTR_READ_OOR_LOCATION_ONLY;
 
       /* Fall through */
 
@@ -8459,7 +8459,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   new_attrinfo = &space_attrinfo[0];
   old_attrinfo = &space_attrinfo[1];
 
-  /* TODO[arnia] : get oor_context to use oor_recdes */
   error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, NULL, new_attrinfo, &oor_context_new);
   if (error_code != NO_ERROR)
     {
@@ -13037,7 +13036,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
 	      /* make sure that pruning does not change the given class OID */
 	      COPY_OID (&cls_oid, class_oid);
-	      /* TODO[arnia] : overflow columns */
+	      /* TODO[arnia] : oor columns */
 	      error =
 		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, NULL, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,
