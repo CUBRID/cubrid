@@ -23934,12 +23934,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	      scan_cache->area = recdes->data;
 
 	      /* final try to get the undo record */
-	      scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
-	      if (scan_code != S_SUCCESS)
-		{
-		  assert (scan_code != S_DOESNT_FIT);
-		  return scan_code;
-		}
+	      continue;
 	    }
 	  else
 	    {
