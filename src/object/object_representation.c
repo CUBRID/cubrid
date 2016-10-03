@@ -1357,7 +1357,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
-
       /* Compress the string */
       rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) charlen, (lzo_bytep) compressed_string,
 			     &compressed_length, wrkmem);

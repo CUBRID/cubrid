@@ -400,6 +400,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	{
 	  return ER_FAILED;
 	}
+
       if ((DB_VALUE_DOMAIN_TYPE (dbval_p) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE (dbval_p) == DB_TYPE_VARNCHAR)
 	  && DB_GET_STRING_SIZE (dbval_p) >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
 	{
