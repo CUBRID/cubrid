@@ -3231,13 +3231,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
 #endif /* SERVER_MODE */
 
-  error_code = perfmon_initialize (MAX_NTRANS);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
   if (db_name == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db_name);
@@ -3365,6 +3358,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
+      goto error;
+    }
+
+  error_code = perfmon_initialize (MAX_NTRANS);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -5593,7 +5593,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 
       er_clear ();
     }
-  error_code = perfmon_initialize (0);
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
