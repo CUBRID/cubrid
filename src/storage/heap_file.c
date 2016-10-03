@@ -21472,8 +21472,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
     {
       /* log old overflow record and set prev version lsa */
 
-      /* Note that this undo log record is used only to keep the old record version and to check if the record
-       * should have its insert id vacuumed at rollback; the real undo is actually logged and done page by page */
+      /* This undo log record have two roles: 1) to keep the old record version; 2) to reach the record at undo
+       * in order to check if it should have its insert id and prev version vacuumed; */
       RECDES ovf_recdes = RECDES_INITIALIZER;
       VPID ovf_vpid;
       PAGE_PTR first_pgptr;
@@ -23570,10 +23570,9 @@ heap_page_get_vacuum_status (THREAD_ENTRY * thread_p, PAGE_PTR heap_page)
 int
 heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  if (rcv->pgptr != NULL)
-    {
-      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-    }
+  assert (rcv->pgptr != NULL);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
   return NO_ERROR;
 }
 
@@ -23896,6 +23895,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
 	  if (scan_cache->area == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, scan_cache->area_size);
 	      scan_cache->area_size = -1;
 	      return S_ERROR;
 	    }
@@ -23927,6 +23927,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	      recdes->data = (char *) db_private_realloc (thread_p, scan_cache->area, -recdes->length);
 	      if (recdes->data == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, -recdes->length);
 		  return S_ERROR;
 		}
 	      recdes->area_size = scan_cache->area_size = -recdes->length;
