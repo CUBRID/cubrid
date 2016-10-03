@@ -16717,7 +16717,7 @@ exit:
       else
 	{
 	  ASSERT_NO_ERROR ();
-	  log_sysop_commit_and_undo (thread_p, RVFL_DESTROY, sizeof (*vfid), (char *) vfid);
+	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, sizeof (*vfid), (char *) vfid);
 	}
     }
 
@@ -17779,7 +17779,7 @@ exit:
       else
 	{
 	  /* commit and undo (to deallocate) */
-	  log_sysop_commit_and_undo (thread_p, RVFL_ALLOC, UNDO_DATA_SIZE, undo_log_data);
+	  log_sysop_end_logical_undo (thread_p, RVFL_ALLOC, UNDO_DATA_SIZE, undo_log_data);
 	}
     }
 
@@ -18758,11 +18758,11 @@ exit:
 	{
 	  if (compensate_or_run_postpone == FILE_RV_DEALLOC_COMPENSATE)
 	    {
-	      log_sysop_commit_and_compensate (thread_p, RVFL_ALLOC, &rcv->reference_lsa);
+	      log_sysop_end_logical_compensate (thread_p, &rcv->reference_lsa);
 	    }
 	  else
 	    {
-	      log_sysop_commit_and_run_postpone (thread_p, RVFL_DEALLOC, &rcv->reference_lsa);
+	      log_sysop_end_logical_run_postpone (thread_p, &rcv->reference_lsa);
 	    }
 	}
     }

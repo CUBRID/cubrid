@@ -3766,7 +3766,6 @@ int
 xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids, int num_oids, BTID * index_btid)
 {
   DISK_ISVALID isvalid = DISK_VALID;
-  VOLID volid;
   int i;
   bool repair = check_flag & CHECKDB_REPAIR;
   int error_code = NO_ERROR;

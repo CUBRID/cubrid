@@ -2310,12 +2310,8 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
     case LOG_SAVEPOINT:
     case LOG_COMMIT:
     case LOG_ABORT:
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-    case LOG_COMMIT_TOPOPE:
-    case LOG_SYSOP_COMMIT_AND_UNDO:
-    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
-    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
-    case LOG_ABORT_TOPOPE:
+    case LOG_SYSOP_START_POSTPONE:
+    case LOG_SYSOP_END:
     case LOG_START_CHKPT:
     case LOG_END_CHKPT:
     case LOG_DUMMY_CRASH_RECOVERY:

@@ -5500,13 +5500,8 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   VPID P_vpid;
   BTREE_ROOT_HEADER *root_header = NULL;
   VFID ovfid;
-  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
-  RECDES redo_rec, undo_rec;
-  char redo_rec_buf[OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN], *datap = NULL;
-  char undo_rec_buf[(4 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
-  char postpone_buf[OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
+  int unique_pk;
   int ret = NO_ERROR;
-  int num_nulls, num_oids, num_keys, unique_pk;
   LOG_DATA_ADDR addr;
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
@@ -5514,7 +5509,8 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (P == NULL)
     {
-      return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
     }
 
   (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
@@ -5526,77 +5522,9 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
       pgbuf_unfix_and_init (thread_p, P);
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
-
   ovfid = root_header->ovfid;
-
   unique_pk = root_header->unique_pk;
-
-  if (unique_pk)
-    {
-      /* mark the statistics associated with deleted B-tree as deleted */
-      unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
-      if (unique_stats == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, P);
-	  return ER_FAILED;
-	}
-      else
-	{
-	  unique_stats->deleted = true;
-	}
-    }
-
   pgbuf_unfix_and_init (thread_p, P);
-
-  if (unique_pk)
-    {
-      /* get and remove statistics entry */
-      ret = logtb_get_global_unique_stats (thread_p, btid, &num_oids, &num_nulls, &num_keys);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
-      /* do not remove stats entry yet : remove it at commit postpone */
-    }
-
-  /* This is used by unique indexes at recovery to remove the entry from global hash, and at rollback to restore
-   * statistics in global hash. However, a special log for such an important step as index deletion will be useful,
-   * also, for other purposes. */
-
-  /* undo */
-  undo_rec.data = NULL;
-  undo_rec.area_size = 4 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
-  undo_rec.data = PTR_ALIGN (undo_rec_buf, BTREE_MAX_ALIGN);
-
-  undo_rec.length = 0;
-  datap = (char *) undo_rec.data;
-  OR_PUT_BTID (datap, btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-  OR_PUT_INT (datap, unique_pk);
-  datap += OR_INT_SIZE;
-  if (unique_pk)
-    {
-      OR_PUT_INT (datap, num_nulls);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, num_oids);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, num_keys);
-      datap += OR_INT_SIZE;
-    }
-  undo_rec.length = CAST_BUFLEN (datap - undo_rec.data);
-
-  /* redo */
-  redo_rec.data = NULL;
-  redo_rec.area_size = OR_BTID_ALIGNED_SIZE;
-  redo_rec.data = PTR_ALIGN (redo_rec_buf, BTREE_MAX_ALIGN);
-
-  redo_rec.length = 0;
-  datap = (char *) redo_rec.data;
-  OR_PUT_BTID (datap, btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-  OR_PUT_INT (datap, unique_pk);
-  datap += OR_INT_SIZE;
-  redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
 
   addr.vfid = NULL;
   addr.pgptr = NULL;

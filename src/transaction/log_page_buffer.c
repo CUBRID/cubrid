@@ -3349,8 +3349,8 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_START_POSTPONE);
       break;
 
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-      node->data_header_length = sizeof (LOG_REC_TOPOPE_START_POSTPONE);
+    case LOG_SYSOP_START_POSTPONE:
+      node->data_header_length = sizeof (LOG_REC_SYSOP_START_POSTPONE);
       break;
 
     case LOG_COMMIT:
@@ -3359,24 +3359,8 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_DONETIME);
       break;
 
-    case LOG_COMMIT_TOPOPE:
-    case LOG_ABORT_TOPOPE:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (LOG_REC_TOPOP_RESULT);
-      break;
-
-    case LOG_SYSOP_COMMIT_AND_UNDO:
-      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_UNDO);
-      break;
-
-    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE);
-      break;
-
-    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE);
+    case LOG_SYSOP_END:
+      node->data_header_length = sizeof (LOG_REC_SYSOP_END);
       break;
 
     case LOG_REPLICATION_DATA:
@@ -3498,16 +3482,12 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_2PC_COMMIT_DECISION:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
+    case LOG_SYSOP_START_POSTPONE:
     case LOG_COMMIT:
     case LOG_ABORT:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
-    case LOG_COMMIT_TOPOPE:
-    case LOG_SYSOP_COMMIT_AND_UNDO:
-    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
-    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
-    case LOG_ABORT_TOPOPE:
+    case LOG_SYSOP_END:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
@@ -3725,6 +3705,12 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 
       /* Replace last MVCC deleted/updated log record */
       LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &start_lsa);
+    }
+  else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
+    {
+      /* we need the system operation start postpone LSA for recovery. we have to save it under prior_lsa_mutex
+       * protection */
+      tdes->rcv.sysop_start_postpone_lsa = start_lsa;
     }
 
   LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (node->data_header_length);
@@ -7574,9 +7560,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
   LOG_INFO_CHKPT_TRANS *chkpt_trans;	/* Checkpoint tdes */
   LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
 							 * mode */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topone;	/* One top system ope */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
   LOG_LSA newchkpt_lsa;		/* New address of the checkpoint record */
@@ -7797,7 +7783,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
       length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-      chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) malloc (length_all_tops);
+      chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) malloc (length_all_tops);
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
@@ -7837,14 +7823,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 			      TR_TABLE_CS_EXIT (thread_p);
 			      goto error_cannot_chkpt;
 			    }
-			  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) ptr;
+			  chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) ptr;
 			}
 
 		      chkpt_topone = &chkpt_topops[ntops];
 		      chkpt_topone->trid = act_tdes->trid;
-		      LSA_COPY (&chkpt_topone->lastparent_lsa, &act_tdes->topops.stack[j].lastparent_lsa);
-		      LSA_COPY (&chkpt_topone->posp_lsa, &act_tdes->topops.stack[j].posp_lsa);
-		      chkpt_topone->save_prev_state = tdes->rcv.save_prev_state;
+		      chkpt_topone->sysop_start_postpone = tdes->rcv.sysop_start_postpone;
+		      chkpt_topone->sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
 		      ntops++;
 		      break;
 		    default:
@@ -8125,41 +8110,6 @@ logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 	       (int) chkpt_one->posp_nxlsa.offset, (long long int) chkpt_one->savept_lsa.pageid,
 	       (int) chkpt_one->savept_lsa.offset, (long long int) chkpt_one->tail_topresult_lsa.pageid,
 	       (int) chkpt_one->tail_topresult_lsa.offset, chkpt_one->user_name);
-    }
-  (void) fprintf (out_fp, "\n");
-}
-
-/*
- * logpb_dump_checkpoint_topops - DUMP CHECKPOINT OF TOP SYSTEM OPERATIONS
- *
- * return: nothing
- *
- *   length(in): Length to dump in bytes
- *   data(in): The data being logged
- *
- * NOTE: Dump the checkpoint top system operation structure.
- */
-void
-logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
-{
-  int ntops, i;
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
-							 * mode */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
-
-  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) data;
-  ntops = length / sizeof (*chkpt_topops);
-
-  /* Start dumping each checkpoint top system operation */
-
-  for (i = 0; i < ntops; i++)
-    {
-      chkpt_topone = &chkpt_topops[i];
-      fprintf (out_fp, "     Trid = %d, Lastparent_lsa = %lld|%d, Postpone_lsa = %lld|%d, Rcv prev state: %d\n",
-	       chkpt_topone->trid,
-	       (long long int) chkpt_topone->lastparent_lsa.pageid, chkpt_topone->lastparent_lsa.offset,
-	       (long long int) chkpt_topone->posp_lsa.pageid, chkpt_topone->posp_lsa.offset,
-	       chkpt_topone->save_prev_state);
     }
   (void) fprintf (out_fp, "\n");
 }
