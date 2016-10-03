@@ -19358,6 +19358,51 @@ flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
   file_header_sanity_check (fhead);
   assert (nth < fhead->n_page_user || (auto_alloc && nth == fhead->n_page_user));
 
+  if (auto_alloc && nth == (fhead->n_page_user - fhead->n_page_mark_delete))
+    {
+      /* we need new page */
+      /* todo: can this be simplified? */
+      error_code = pgbuf_promote_read_latch (thread_p, &page_fhead, PGBUF_PROMOTE_SHARED_READER);
+      if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
+	{
+	  /* re-fix page */
+	  pgbuf_unfix (thread_p, page_fhead);
+	  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_fhead == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	  fhead = (FLRE_HEADER *) page_fhead;
+	  file_header_sanity_check (fhead);
+	  if (auto_alloc && nth == (fhead->n_page_user - fhead->n_page_mark_delete))
+	    {
+	      error_code = flre_alloc (thread_p, vfid, vpid_nth);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		}
+	      goto exit;
+	    }
+	}
+      else if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      else if (page_fhead == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      error_code = flre_alloc (thread_p, vfid, vpid_nth);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+      goto exit;
+    }
+
   /* iterate in user page table */
   FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
   find_nth_context.vpid_nth = vpid_nth;
@@ -19390,22 +19435,10 @@ flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   if (VPID_ISNULL (vpid_nth))
     {
-      if (find_nth_context.nth == 0 && auto_alloc)
-	{
-	  error_code = flre_alloc (thread_p, vfid, vpid_nth);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit;
-	    }
-	}
-      else
-	{
-	  /* should not happen */
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto exit;
-	}
+      /* should not happen */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
     }
 
   assert (error_code == NO_ERROR);
