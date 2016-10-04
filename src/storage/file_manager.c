@@ -17872,6 +17872,8 @@ flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
   /* keep header while allocating all pages. we have a great chance to allocate all pages in the same sectors */
 
   /* start a system op. we may abort page allocations if an error occurs. */
