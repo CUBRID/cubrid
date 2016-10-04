@@ -72,6 +72,9 @@
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH 128
 
+/* MAX Length of Default Clause, when the default clauase is of style 'to_char' */
+#define MAX_TOCHAR_STYLE_DEFAULT_CLAUSE_LENGTH  240
+
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -6729,6 +6732,11 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   DB_DEFAULT_EXPR_TYPE default_expr_type = DB_DEFAULT_NONE;
   PARSER_VARCHAR *comment_str = NULL;
 
+  TP_DOMAIN *newdef_domain = NULL;
+  int newdef_precision = 0;
+  int orig_precision = 0;
+  char *default_clause = NULL;
+
   DB_MAKE_NULL (&stack_value);
   attr_name = get_attr_name (attribute);
 
@@ -6759,6 +6767,25 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   if (error != NO_ERROR)
     {
       goto error_exit;
+    }
+
+  /* if default value is not NULL and of type CHAR, extract default value string. */
+  if (default_value)
+    {
+      int type = default_value->domain.general_info.type;
+
+      /* if data type contained in DB_VALUE (default_value) is CHAR related type */
+      switch (type)
+	{
+	case DB_TYPE_STRING:
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARNCHAR:
+	case DB_TYPE_NCHAR:
+	  default_clause = DB_GET_STRING (default_value);	/* extract default string in char pointer */
+	  break;
+	default:
+	  break;
+	}
     }
 
   if (default_value && DB_IS_NULL (default_value))
@@ -6801,6 +6828,29 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       goto error_exit;
     }
 
+  if (attr_db_domain != NULL && default_clause != NULL)
+    {
+      int default_clause_length = strlen (default_clause);
+
+      /* If default clause  is not NULL, check whether it contains 'to_char' inside in it */
+      if (default_clause_length > 7 && memcmp (default_clause, "to_char", 7) == 0)
+	{
+	  int len = strlen (default_clause);	/* Calculate precision that new def. will be stored */
+
+	  if (len > MAX_TOCHAR_STYLE_DEFAULT_CLAUSE_LENGTH)	/* Because catalog access problem, we support up to 240 chars now */
+	    {
+	      error = ER_QSTR_DEFAULT_EXPRESSION_TOO_LONG;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_DEFAULT_EXPRESSION_TOO_LONG, 1,
+		      MAX_TOCHAR_STYLE_DEFAULT_CLAUSE_LENGTH, len);
+	      goto error_exit;
+	    }
+
+	  newdef_precision = attr_db_domain->precision;
+	  newdef_domain = tp_domain_copy (attr_db_domain, false);
+	  newdef_domain->precision = len;	/* Copy current domain & change precision to strlen */
+	}
+    }
+
   error = get_att_order_from_def (attribute, &add_first, &add_after_attr);
   if (error != NO_ERROR)
     {
@@ -6826,9 +6876,32 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       default_expr_type = default_info->info.data_default.default_expr;
       default_value = &stack_value;
     }
-  error =
-    smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space, add_first,
-				      add_after_attr, default_expr_type);
+
+  /*
+   * If we found default value begin with 'to_char', we will change the precision it
+   * from the precision of the column to the length of default clause to prevent truncation
+   * of default value.
+   * If we don't change precision before call 'smt_add_attribute_w_dflt_w_order()', it will
+   * truncate the expression to the size of precision, 
+   * for example if we write 'f2 char(8) default to_char(sysdatetime, 'YYYYMMDD'),
+   * then the default value will be truncated to 8 bytes, 'to_char(', to the size of the precision.
+   */
+  if (default_info != NULL && newdef_domain)
+    {
+      error =
+	smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, newdef_domain, default_value,
+					  name_space, add_first, add_after_attr, default_expr_type);
+      if (newdef_precision)
+	{
+	  newdef_domain->precision = newdef_precision;
+	}
+    }
+  else
+    {
+      error =
+	smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value,
+					  name_space, add_first, add_after_attr, default_expr_type);
+    }
 
   db_value_clear (&stack_value);
 
@@ -6906,6 +6979,10 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
   const char *attr_name;
   MOP class_obj = NULL;
   DB_DEFAULT_EXPR_TYPE default_expr = DB_DEFAULT_NONE;
+  TP_DOMAIN *newdef_domain = NULL;
+  int newdef_precision = 0;
+  int len = 0;
+  char *p = NULL;
 
   DB_MAKE_NULL (&default_value);
 
@@ -6954,10 +7031,49 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	{
 	  goto error_exit;
 	}
+
+      /* Check if the default value is to_char() */
+      if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (column->domain)))
+	{
+	  p = DB_GET_STRING (&default_value);
+	  if (p)
+	    {
+	      if (strstr (p, "to_char(") != NULL)	/* if the default value looks like to_char() */
+		{		/* prepare future proc for default extension */
+		  newdef_domain = tp_domain_copy (column->domain, false);
+		  len = strlen (p);
+		  newdef_precision = column->domain->precision;
+		  newdef_domain->precision = len;
+		}
+	    }
+	}
+
     }
 
-  error =
-    smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE, default_expr);
+  /*
+   * if newdef_domain is true
+   * we have a column domain info with extended default, else we have notmal one.
+   * In case of extended default, precision of new column will be the length of
+   * default clause no matter what the subject column's precision.
+   */
+  if (newdef_domain)		/* extended default */
+    {
+      error =
+	smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, newdef_domain, &default_value,
+				  ID_ATTRIBUTE, default_expr);
+      if (newdef_precision)
+	{
+	  newdef_domain->precision = newdef_precision;
+	}
+    }
+  else
+    {
+      error =
+	smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value,
+				  ID_ATTRIBUTE, default_expr);
+    }
+
+
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -12292,10 +12408,22 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       /* try to coerce the default value into the attribute type */
       if (def_expr == DB_DEFAULT_NONE)
 	{
-	  error = pt_coerce_value (parser, def_val, def_val, desired_type, attribute->data_type);
-	  if (error != NO_ERROR)
+	  char *default_clause, *ptr = NULL;
+
+	  default_clause = pt_short_print (parser, def_val);
+	  ptr = strstr (default_clause, "to_char(");
+
+	  /* following code is for query like 'alter table t2 as select * from t1, and t1 has extended default'
+	   * if we coerce the domain, default value is truncated to the length
+	   * of the precision of the column.
+	   */
+	  if (ptr == NULL)	/* coerce, when default is not to_char() */
 	    {
-	      return error;
+	      error = pt_coerce_value (parser, def_val, def_val, desired_type, attribute->data_type);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
 	    }
 	}
       else
