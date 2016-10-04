@@ -17850,6 +17850,8 @@ flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_
 		     int npages, VPID * vpids_out)
 {
   VPID *vpid_iter;
+  VPID local_vpid = VPID_INITIALIZER;
+  int iter;
 
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
@@ -17859,7 +17861,6 @@ flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (npages >= 1);
-  assert (vpids_out != NULL);
 
   assert (log_check_system_op_is_started (thread_p));
 
@@ -17876,8 +17877,12 @@ flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_
   /* start a system op. we may abort page allocations if an error occurs. */
   log_sysop_start (thread_p);
 
-  for (vpid_iter = vpids_out; vpid_iter < vpids_out + npages; vpid_iter++)
+  /* do not leak pages! if not numerable, it should use all allocated VPIDS */
+  assert (FILE_IS_NUMERABLE (fhead) || vpids_out != NULL);
+
+  for (iter = 0; iter < npages; iter++)
     {
+      vpid_iter = vpids_out ? vpids_out + iter : &local_vpid;
       error_code = flre_alloc_and_init (thread_p, vfid, f_init, f_init_args, vpid_iter);
       if (error_code != NO_ERROR)
 	{
