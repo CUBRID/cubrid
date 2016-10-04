@@ -84,6 +84,7 @@ struct xcache
 
   XCACHE_STATS stats;
 };
+
 XCACHE xcache_Global = {
   false,			/* enabled */
   0,				/* soft_capacity */
@@ -1124,8 +1125,8 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   XCACHE_STAT_INC (deletes);
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
-  perfmon_set_stat (thread_p, PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
-
+  ATOMIC_TAS_32 (&cache_entry_count, xcache_Entry_count);
+  
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
 }
@@ -1972,7 +1973,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  XCACHE_STAT_INC (deletes_at_cleanup);
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
 	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
-	  perfmon_set_stat (thread_p, PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
+	  ATOMIC_TAS_32 (&cache_entry_count, xcache_Entry_count);
 	}
       else
 	{

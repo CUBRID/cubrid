@@ -81,6 +81,12 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
+PSTAT_GLOBAL pstat_Global;
+volatile int cache_entry_count;
+volatile int heap_num_stats_entries;
+int sessions_num_holdable_cursors;
+volatile int delay_in_secs;
+
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
 
@@ -445,6 +451,8 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
+
+static int get_value_from_stat(PERF_STAT_ID perf_id);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
@@ -2238,9 +2246,21 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  ret =
-		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			      (unsigned long long) stats_ptr[offset]);
+		  int stat_val = get_value_from_stat (i);
+		  
+		  if(stat_val == -1)
+		    {
+		      ret =
+			snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stats_ptr[offset]);
+		    }
+		  else
+		    {
+		      assert(stat_val >= 0);
+		      ret =
+			snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stat_val);
+		    }
 		}
 	      else
 		{
@@ -2335,8 +2355,19 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			   (unsigned long long) stats_ptr[offset]);
+		  int stat_val = get_value_from_stat (i);
+		  
+		  if(stat_val == -1)
+		    {
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			      (unsigned long long) stats_ptr[offset]);
+		    }
+		  else
+		    {
+		      assert(stat_val >= 0);
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			      (unsigned long long) stat_val);
+		    }
 		}
 	      else
 		{
@@ -4462,4 +4493,23 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
     }
 
   return (ptr);
+}
+
+static int get_value_from_stat(PERF_STAT_ID perf_id)
+{
+  int ans = -1;
+
+  switch(perf_id)
+    {
+    case  PSTAT_PC_NUM_CACHE_ENTRIES:
+      ans = cache_entry_count;
+    case PSTAT_HF_NUM_STATS_ENTRIES:
+      ans = heap_num_stats_entries;
+    case PSTAT_QM_NUM_HOLDABLE_CURSORS:
+      ans = sessions_num_holdable_cursors;
+    case PSTAT_HA_REPL_DELAY:
+      ans = delay_in_secs;
+    }
+
+    return ans;
 }

@@ -161,6 +161,11 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif
 #endif
 
+extern volatile int cache_entry_count;
+extern volatile int heap_num_stats_entries;
+extern int sessions_num_holdable_cursors;
+extern volatile int delay_in_secs;
+
 typedef enum
 {
   PERF_MODULE_SYSTEM = 0,
@@ -718,7 +723,6 @@ STATIC_INLINE void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid
 STATIC_INLINE int perfmon_get_activation_flag (void) __attribute__ ((ALWAYS_INLINE));
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
-
 
 /*
  *  Add/set stats section.
