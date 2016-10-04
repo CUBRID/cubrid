@@ -9872,7 +9872,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 	  area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
 	}
       else
-	{	  
+	{
 	  area = (char *) malloc (udata_size);
 	  if (area == NULL)
 	    {
@@ -9906,7 +9906,6 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       else
 	{
 	  assert (false);
-	  log_zip_free (log_unzip_ptr);
 	  scan = S_ERROR;
 	  goto exit;
 	}
