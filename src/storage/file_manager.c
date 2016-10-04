@@ -20496,12 +20496,12 @@ flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
 void
 flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
+  file_log ("flre_tempcache_drop_tran_temp_files", "drop %d transaction temporary files",
+            flre_get_tran_num_temp_files (thread_p));
 #if defined (SERVER_MODE)
   file_tempcache_cache_or_drop_entries (thread_p, &flre_Tempcache->tran_files[thread_get_current_tran_index ()]);
-  file_log ("flre_tempcache_drop_tran_temp_files", "transaction %d", thread_get_current_tran_index ());
 #else
   file_tempcache_cache_or_drop_entries (thread_p, &flre_Tempcache->tran_files[0]);
-  file_log ("flre_tempcache_drop_tran_temp_files", "");
 #endif
 }
 
