@@ -7526,28 +7526,37 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
 {
   MVCC_REC_HEADER rec_header;
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
-  RECDES peek_recdes;
+  RECDES recdes = RECDES_INITIALIZER;
+  char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
+  /* get record header according to record type */
   if (rec_type == REC_BIGONE)
     {
-      assert (slotid == NULL_SLOTID);
-      peek_recdes.data = overflow_get_first_page_data (pgptr);
-      peek_recdes.length = OR_MVCC_MAX_HEADER_SIZE;
-      peek_recdes.type = REC_BIGONE;
+      if (heap_get_mvcc_rec_header_from_overflow (pgptr, &rec_header, &recdes) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      recdes.type = REC_BIGONE;
     }
-  else if (spage_get_record (pgptr, slotid, &peek_recdes, PEEK) != S_SUCCESS)
+  else
     {
-      assert_release (false);
-      return ER_FAILED;
+      recdes.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
+      recdes.area_size = DB_PAGESIZE;
+      if (spage_get_record (pgptr, slotid, &recdes, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      if (or_mvcc_get_header (&recdes, &rec_header) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
     }
 
-  assert (peek_recdes.type == rec_type);
-
-  if (or_mvcc_get_header (&peek_recdes, &rec_header) != NO_ERROR)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
+  assert (recdes.type == rec_type);
 
   if (log_is_in_crash_recovery ())
     {
@@ -7580,20 +7589,29 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
 	  assert (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION));
 	  MVCC_SET_INSID (&rec_header, MVCCID_ALL_VISIBLE);
 	  LSA_SET_NULL (&rec_header.prev_version_lsa);
+
+	  if (heap_set_mvcc_rec_header_on_overflow (pgptr, &rec_header) != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
 	}
       else
 	{
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
-	}
 
-      /* quick hack: set record area = length */
-      peek_recdes.area_size = peek_recdes.length;
+	  if (or_mvcc_set_header (&recdes, &rec_header) != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
 
-      /* record was peeked, it should be updated here, while changing the header */
-      if (or_mvcc_set_header (&peek_recdes, &rec_header) != NO_ERROR)
-	{
-	  assert_release (false);
-	  return ER_FAILED;
+	  /* update the record */
+	  if (spage_update (thread_p, pgptr, slotid, &recdes) != SP_SUCCESS)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
 	}
 
       pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
