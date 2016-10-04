@@ -6051,7 +6051,7 @@ boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, co
     }
   else
     {
-      *volid_newvol_out = boot_Db_parm->temp_nvols > 0 ? boot_Db_parm->temp_nvols - 1 : LOG_MAX_DBVOLID;
+      *volid_newvol_out = boot_Db_parm->temp_nvols > 0 ? boot_Db_parm->temp_last_volid - 1 : LOG_MAX_DBVOLID;
       if (*volid_newvol_out <= boot_Db_parm->last_volid)
 	{
 	  /* should be caught early */
