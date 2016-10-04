@@ -4126,12 +4126,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      rcv_vpid.pageid = sysop_end->undo.data.pageid;
 		      rcv.mvcc_id = MVCCID_NULL;
 
+		      /* will jump to parent LSA. save it now before advancing to undo data */
+		      LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
 					  undo_unzip_ptr);
-
-		      /* jump to parent LSA */
-		      LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 		    }
 		  else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 		    {

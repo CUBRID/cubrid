@@ -8824,12 +8824,11 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  rcv.length = sysop_end->undo.length;
 		  rcv.mvcc_id = MVCCID_NULL;
 
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
-
-		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
-
-		  /* jump to last parent */
+		  /* will jump to parent LSA. save it now before advancing to undo data */
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
+		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
 		}
 	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 		{
