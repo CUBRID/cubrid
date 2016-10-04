@@ -7587,8 +7587,12 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
   MVCC_REC_HEADER rec_header;
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
   RECDES recdes;
+  char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
-  if (spage_get_record (pgptr, slotid, &recdes, PEEK) != S_SUCCESS)
+  recdes.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
+  recdes.area_size = DB_PAGESIZE;
+
+  if (spage_get_record (pgptr, slotid, &recdes, COPY) != S_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;
@@ -7629,11 +7633,14 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
        * do this here because it is possible that vacuum have missed it during update/delete operation */
       MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
 
-      /* quick hack: set recdes area = length */
-      recdes.area_size = recdes.length;
-
-      /* record was peeked, it should be updated here, while changing the header */
       if (or_mvcc_set_header (&recdes, &rec_header) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      /* update the record */
+      if (spage_update (thread_p, pgptr, slotid, &recdes) != SP_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;

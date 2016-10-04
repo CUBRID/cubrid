@@ -4155,7 +4155,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   OID unique_oid;
   OID part_oid;
   HFID class_hfid;
-  bool is_null;
+  bool has_null;
   int error_code = NO_ERROR;
   PRUNING_CONTEXT pcontext;
   bool clear_pcontext = false;
@@ -4199,16 +4199,24 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	  goto error;
 	}
 
+      /* SQL standard defines as follows:
+       * If no <match type> was specified then, for each row R1 of the referencing table, 
+       * either at least one of the values of the referencing columns in R1 shall be a null value,
+       * or the value of each referencing column in R1 shall be equal to the value of 
+       * the corresponding referenced column in some row of the referenced table.
+       * Please notice that we don't currently support <match type>. 
+       */
       if (index->n_atts > 1)
 	{
-	  is_null = btree_multicol_key_is_null (key_dbvalue);
+
+	  has_null = btree_multicol_key_has_null (key_dbvalue);
 	}
       else
 	{
-	  is_null = DB_IS_NULL (key_dbvalue);
+	  has_null = DB_IS_NULL (key_dbvalue);
 	}
 
-      if (!is_null)
+      if (!has_null)
 	{
 	  /* get class representation to find partition information */
 	  classrepr =
