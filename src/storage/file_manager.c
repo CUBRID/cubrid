@@ -13954,6 +13954,18 @@ static bool file_Logging = false;
 #define FILE_ALLOC_TYPE_STRING(alloc_type) \
   ((alloc_type) == FILE_ALLOC_USER_PAGE ? "alloc user page" : "alloc table page")
 
+#define FILE_TEMPCACHE_MSG \
+  "\ttempcache: \n" \
+  "\t\tfile cache: max = %d, numerable = %d, regular = %d, total = %d \n" \
+  "\t\tfree entries: max = %d, count = %d \n"
+#define FILE_TEMPCACHE_AS_ARGS \
+  flre_Tempcache->ncached_max, flre_Tempcache->ncached_numerable, flre_Tempcache->cached_not_numerable, \
+  flre_Tempcache->ncached_numerable + flre_Tempcache->cached_not_numerable, \
+  flre_Tempcache->nfree_entries_max, flre_Tempcache->nfree_entries
+
+#define FILE_TEMPCACHE_ENTRY_MSG "%p, VFID %d|%d, %s"
+#define FILE_TEMPCACHE_ENTRY_AS_ARGS(ent) ent, VFID_AS_ARGS (&(ent)->vfid), file_type_to_string ((ent)->ftype)
+
 /************************************************************************/
 /* File manipulation section                                            */
 /************************************************************************/
@@ -20105,7 +20117,7 @@ flre_tempcache_init (void)
 {
   int memsize = 0;
 #if defined (SERVER_MODE)
-  int ntrans = logtb_get_number_of_total_tran_indices ();
+  int ntrans = logtb_get_number_of_total_tran_indices () + 1;
 #else
   int ntrans = 1;
 #endif
@@ -20372,6 +20384,11 @@ flre_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FL
 	  flre_Tempcache->ncached_not_numerable--;
 	}
       (*entry)->next = NULL;
+
+      file_log ("flre_tempcache_get", "found in cache temporary file entry " FILE_TEMPCACHE_ENTRY_MSG ", %s\n"
+		FILE_TEMPCACHE_MSG, FILE_TEMPCACHE_ENTRY_AS_ARGS (*entry), numerable ? "numerable" : "regular",
+		FILE_TEMPCACHE_AS_ARGS);
+
       flre_tempcache_unlock ();
       return NO_ERROR;
     }
@@ -20405,10 +20422,13 @@ flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
 {
   FLRE_HEADER fhead;
 
+  fhead.n_page_user = -1;
   if (file_header_copy (thread_p, &entry->vfid, &fhead) != NO_ERROR
       || fhead.n_page_user > prm_get_integer_value (PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE))
     {
       /* file not valid for cache */
+      file_log ("flre_tempcache_put", "could not cache temporary file " FILE_TEMPCACHE_ENTRY_MSG
+		", fhead->n_page_user = %d ", FILE_TEMPCACHE_ENTRY_AS_ARGS (entry), fhead.n_page_user);
       return false;
     }
 
@@ -20426,11 +20446,14 @@ flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
 	{
 	  /* failed to reset file, we cannot cache it */
 	  ASSERT_ERROR ();
+
+	  file_log ("flre_tempcache_put", "could not cache temporary file " FILE_TEMPCACHE_ENTRY_MSG
+		    ", error during file reset", FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
 	  flre_tempcache_unlock ();
 	  return false;
 	}
 
-      /* add numerable temporary file to cached numberable file list, regular file to not numberable list */
+      /* add numerable temporary file to cached numerable file list, regular file to not numerable list */
       if (FILE_IS_NUMERABLE (&fhead))
 	{
 	  entry->next = flre_Tempcache->cached_numerable;
@@ -20444,6 +20467,10 @@ flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
 	  flre_Tempcache->ncached_not_numerable++;
 	}
 
+      file_log ("flre_tempcache_put", "cached temporary file " FILE_TEMPCACHE_ENTRY_MSG ", %s\n" FILE_TEMPCACHE_MSG,
+		FILE_TEMPCACHE_ENTRY_AS_ARGS (entry), FILE_IS_NUMERABLE (&fhead) ? "numerable" : "regular",
+		FILE_TEMPCACHE_AS_ARGS);
+
       flre_tempcache_unlock ();
 
       /* cached */
@@ -20452,6 +20479,9 @@ flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
   else
     {
       /* cache full */
+      file_log ("flre_tempcache_put", "could not cache temporary file " FILE_TEMPCACHE_ENTRY_MSG
+		", temporary cache is full \n" FILE_TEMPCACHE_MSG, FILE_TEMPCACHE_ENTRY_AS_ARGS (entry),
+		FILE_TEMPCACHE_AS_ARGS);
       flre_tempcache_unlock ();
       return false;
     }
@@ -20468,8 +20498,10 @@ flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   file_tempcache_cache_or_drop_entries (thread_p, &flre_Tempcache->tran_files[thread_get_current_tran_index ()]);
+  file_log ("flre_tempcache_drop_tran_temp_files", "transaction %d", thread_get_current_tran_index ());
 #else
   file_tempcache_cache_or_drop_entries (thread_p, &flre_Tempcache->tran_files[0]);
+  file_log ("flre_tempcache_drop_tran_temp_files", "");
 #endif
 }
 
@@ -20495,6 +20527,8 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_EN
       if (!flre_tempcache_put (thread_p, temp_file))
 	{
 	  /* was not cached. destroy the file */
+	  file_log ("file_tempcache_cache_or_drop_entries", "drop entry " FILE_TEMPCACHE_ENTRY_MSG,
+		    FILE_TEMPCACHE_ENTRY_AS_ARGS (temp_file));
 	  if (flre_destroy (thread_p, &temp_file->vfid) != NO_ERROR)
 	    {
 	      /* file is leaked */
@@ -20541,6 +20575,10 @@ flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 	      *tran_files_p = entry->next;
 	    }
 	  entry->next = NULL;
+
+	  file_log ("flre_tempcache_pop_tran_file", "tran %d removed entry " FILE_TEMPCACHE_ENTRY_MSG,
+		    tran_files_p - flre_Tempcache->tran_files, FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
+
 	  return entry;
 	}
     }
@@ -20568,6 +20606,9 @@ flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * e
 
   entry->next = *tran_files_p;
   *tran_files_p = entry;
+
+  file_log ("flre_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG " to tran %d temporary files \n",
+	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry), tran_files_p - flre_Tempcache->tran_files);
 }
 
 int
