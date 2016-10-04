@@ -21523,6 +21523,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  LOG_SET_DATA_ADDR (&log_addr, context->home_page_watcher_p->pgptr, &context->hfid.vfid, context->oid.slotid);
 
 	  heap_mvcc_log_home_no_change (thread_p, &log_addr);
+
+	  /* dirty home page because of logging */
+	  pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 	}
     }
