@@ -17824,13 +17824,16 @@ flre_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_
       return error_code;
     }
 
-  error_code = f_init (thread_p, page_alloc, f_init_args);
+  if (f_init)
+    {
+      error_code = f_init (thread_p, page_alloc, f_init_args);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+    }
   pgbuf_unfix (thread_p, page_alloc);
 
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-    }
   return error_code;
 }
 
