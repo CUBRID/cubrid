@@ -1431,6 +1431,12 @@ enum log_sysop_end_type
   LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
   LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
 };
+#define LOG_SYSOP_END_TYPE_CHECK(type) \
+  assert ((type) == LOG_SYSOP_END_COMMIT \
+          || (type) == LOG_SYSOP_END_ABORT \
+          || (type) == LOG_SYSOP_END_LOGICAL_UNDO \
+          || (type) == LOG_SYSOP_END_LOGICAL_COMPENSATE \
+          || (type) == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
 
 /* end system operation log record */
 typedef struct log_rec_sysop_end LOG_REC_SYSOP_END;

@@ -1442,8 +1442,11 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
   LSA_COPY (&tdes->tail_lsa, log_lsa);
   LSA_COPY (&tdes->undo_nxlsa, &tdes->tail_lsa);
 
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
   sysop_end = (LOG_REC_SYSOP_END *) (log_page_p->area + log_lsa->offset);
+
+  LOG_SYSOP_END_TYPE_CHECK (sysop_end->type);
 
   switch (sysop_end->type)
     {

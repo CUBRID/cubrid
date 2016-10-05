@@ -3839,10 +3839,6 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	}
     }
 
-  /* NOTE: we should not start new system operations in this state, unless it is recovery and we want to abort a system
-   *       operation */
-  assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || !LOG_ISRESTARTED ());
-
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
@@ -9118,7 +9114,7 @@ void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
 {
   LOG_LSA end_postpone_lsa;	/* The last postpone record of transaction cannot be after this address */
-  LOG_LSA start_seek_lsa;	/* start looking for posptpone records at this address */
+  LOG_LSA start_seek_lsa;	/* start looking for postpone records at this address */
   LOG_LSA *end_seek_lsa;	/* Stop looking for postpone records at this address */
   LOG_LSA next_start_seek_lsa;	/* Next address to look for postpone records. Usually the end of a top system
 				 * operation. */
