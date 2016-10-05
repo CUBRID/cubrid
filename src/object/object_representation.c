@@ -1370,12 +1370,9 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  goto cleanup;
 	}
 
-      if (compressed_length >= (lzo_uint) (charlen - 8) || !prm_get_bool_value (PRM_ID_USE_COMPRESSION))
+      if (compressed_length >= (lzo_uint) (charlen - 8) || prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)
 	{
 	  /* Compression successful but its length exceeds the original length of the string. */
-	  _er_log_debug (ARG_FILE_LINE,
-			 "compression is turned off or has failed. The compression was %d for length %d\n ", charlen,
-			 compressed_length);
 	  compressed_length = 0;
 	}
 

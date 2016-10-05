@@ -2033,8 +2033,8 @@ int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_upper = 15;
 static int prm_extended_statistics_lower = 0;
 
-bool PRM_USE_COMPRESSION = true;
-static bool prm_use_compression_default = true;
+bool PRM_USE_COMPRESSION = false;
+static bool prm_use_compression_default = false;
 static unsigned int prm_use_compression_flag = 0;
 
 

@@ -16318,6 +16318,10 @@ pr_get_compression_length (const char *string, int charlen)
 
   length = charlen;
 
+  if (prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)	/* compession is not set */
+    {
+      return length;
+    }
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
     {
@@ -16352,7 +16356,7 @@ pr_get_compression_length (const char *string, int charlen)
       goto cleanup;
     }
 
-  if (compressed_length < (lzo_uint) (charlen - 8) && prm_get_bool_value (PRM_ID_USE_COMPRESSION))
+  if (compressed_length < (lzo_uint) (charlen - 8))
     {
       /* Compression successful */
       length = (int) compressed_length;
@@ -16413,6 +16417,11 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
 
+  if (prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)
+    {
+      goto no_compression;
+    }
+
   /* Step 1 : Compress, if possible, the dbvalue */
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
@@ -16451,7 +16460,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
       goto cleanup;
     }
 
-  if (compression_length < (lzo_uint) (str_length - 8) && prm_get_bool_value (PRM_ID_USE_COMPRESSION))
+  if (compression_length < (lzo_uint) (str_length - 8))
     {
       /* Compression successful */
       length = (int) compression_length;
@@ -16460,6 +16469,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
     }
   else
     {
+    no_compression:
       /* Compression failed */
       _er_log_debug (ARG_FILE_LINE, "compression is turned off or has failed. The compression was %d for length %d\n ",
 		     str_length, compression_length);
