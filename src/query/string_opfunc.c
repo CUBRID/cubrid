@@ -15949,6 +15949,7 @@ exit:
   return error_status;
 }
 
+
 /*
  * date_to_char () -
  */
@@ -18814,6 +18815,20 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
       return N_INVALID;
     }
 }
+
+/*
+ * get_next_format_external () -
+ *
+ * functions outside of this file, string_opfunc.c, may call get_next_format(). 
+ * Just call get_next_format() with same arguments and returns a value from it.
+ */
+int
+get_next_format_external (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *format_length, char **next_pos)
+{
+  return (get_next_format (sp, codeset, str_type, format_length, next_pos));
+}
+
+/* END OF Function: 'get_next_format_external()' */
 
 /*
  * get_number_format () -
