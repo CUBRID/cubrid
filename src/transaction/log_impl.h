@@ -216,13 +216,17 @@
 #define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
 
 #if defined(SERVER_MODE)
+#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+#endif
 #define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
   ((thrd) ? (thrd)->tran_index = (index) : \
             thread_set_current_tran_index ((thrd), (index)))
 #else /* SERVER_MODE */
+#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
+#endif
 #define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
   log_Tran_index = (index)
 #endif /* SERVER_MODE */
@@ -1903,7 +1907,10 @@ enum log_cs_access_mode
 
 
 #if !defined(SERVER_MODE)
+#if !defined(LOG_TRAN_INDEX)
+#define LOG_TRAN_INDEX
 extern int log_Tran_index;	/* Index onto transaction table for current thread of execution (client) */
+#endif /* !LOG_TRAN_INDEX */
 #endif /* !SERVER_MODE */
 
 extern LOG_GLOBAL log_Gl;
