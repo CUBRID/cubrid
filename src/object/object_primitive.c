@@ -16352,7 +16352,7 @@ pr_get_compression_length (const char *string, int charlen)
       goto cleanup;
     }
 
-  if (compressed_length < (lzo_uint) (charlen - 8))
+  if (compressed_length < (lzo_uint) (charlen - 8) && prm_get_bool_value (PRM_ID_USE_COMPRESSION))
     {
       /* Compression successful */
       length = (int) compressed_length;
