@@ -414,12 +414,15 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	}
 
       /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
-      rc = pr_clear_compressed_string (dbval_p);
-      if (rc != NO_ERROR)
+      if (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR)
 	{
-	  /* This should not happen for now */
-	  assert (false);
-	  return ER_FAILED;
+	  rc = pr_clear_compressed_string (dbval_p);
+	  if (rc != NO_ERROR)
+	    {
+	      /* This should not happen for now */
+	      assert (false);
+	      return ER_FAILED;
+	    }
 	}
 
       /* I don't know if the following is still true. */
@@ -552,6 +555,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   int value_size;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
   DB_VALUE *val_buffer;
+  DB_TYPE dbval_type;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -565,6 +569,8 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
 
+	  dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
+
 	  if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
 	    {
 	      status = QPROC_TPLDESCR_FAILURE;
@@ -572,7 +578,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	    }
 
 	  /* SET data-type cannot use tuple descriptor */
-	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt])))
+	  if (pr_is_set_type (dbval_type))
 	    {
 	      status = QPROC_TPLDESCR_RETRY_SET_TYPE;
 	      goto exit_with_status;
@@ -590,7 +596,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	   * alloced so we need to clear it.
 	   */
 	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
-	  if (!DB_IS_NULL (val_buffer))
+	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
 	    {
 	      pr_clear_compressed_string (val_buffer);
 	    }
@@ -7244,7 +7250,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    }
 
 	  dbval_size = pr_data_writeval_disk_size (&dbval);
-	  if (dbval_size && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
+	  if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
 	    {
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
 	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
@@ -10651,7 +10657,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	}
 
       dbval_size = pr_data_writeval_disk_size (&dbval);
-      if (dbval_size && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
+      if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
 	{
 	  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
 	  error = (*(pr_type_p->data_writeval)) (&buf, &dbval);

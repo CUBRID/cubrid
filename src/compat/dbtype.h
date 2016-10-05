@@ -437,8 +437,6 @@
 
 #define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
 
-//#define DB_GET_COMPRESSED_STRING(value) db_get_compressed_string(value)
-
 #define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
 
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
@@ -794,14 +792,14 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
-    unsigned compressed_need_clear;
+    unsigned char compressed_need_clear;
   } info;
   struct
   {
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
-    unsigned compressed_need_clear;
+    unsigned char compressed_need_clear;
     unsigned char size;
     char buf[DB_SMALL_CHAR_BUF_SIZE];
   } sm;
@@ -810,7 +808,7 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
-    unsigned compressed_need_clear;
+    unsigned char compressed_need_clear;
     int size;
     char *buf;
     int compressed_size;
@@ -821,7 +819,7 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
-    unsigned compressed_need_clear;
+    unsigned char compressed_need_clear;
     DB_LARGE_STRING *str;
   } large;
 };

@@ -11057,7 +11057,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  dest->data.ch.info.is_max_string = true;
 	  dest->domain.general_info.is_null = 0;
 	  dest->data.ch.medium.compressed_buf = NULL;
-	  dest->data.ch.medium.compressed_size = -1;
+	  dest->data.ch.medium.compressed_size = DB_UNCOMPRESSABLE;
 	  dest->data.ch.info.compressed_need_clear = false;
 	}
     }
@@ -11615,6 +11615,11 @@ cleanup:
   if (decompressed_string != NULL && rc != NO_ERROR)
     {
       db_private_free_and_init (NULL, decompressed_string);
+    }
+
+  if (rc != NO_ERROR && compressed_string != NULL)
+    {
+      db_private_free_and_init (NULL, compressed_string);
     }
 
   return rc;
@@ -14168,54 +14173,11 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 		  or_put_varchar (buf, converted_string, src_size);
 		}
 	      db_private_free_and_init (NULL, converted_string);
-	    }
-	}
-      else
-	{
-	  if (!DB_TRIED_COMPRESSION (value))
-	    {
-	      /* Check for previous compression. */
-	      rc = pr_do_db_value_string_compression (value);
-	    }
-
-	  if (rc != NO_ERROR)
-	    {
 	      return rc;
-	    }
-
-	  compressed_size = DB_GET_COMPRESSED_SIZE (value);
-	  compressed_string = DB_GET_COMPRESSED_STRING (value);
-
-	  if (compressed_size == DB_UNCOMPRESSABLE && src_size < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-	    {
-	      rc = pr_write_uncompressed_string_to_buffer (buf, str, src_size, align);
-	    }
-	  else
-	    {
-	      /* String has been prompted to compression before. */
-	      assert (compressed_size != DB_NOT_YET_COMPRESSED);
-	      if (compressed_string == NULL)
-		{
-		  assert (compressed_size == DB_UNCOMPRESSABLE);
-		  string = value->data.ch.medium.buf;
-		}
-	      else
-		{
-		  assert (compressed_size > 0);
-		  string = compressed_string;
-		}
-	      if (compressed_size == DB_UNCOMPRESSABLE)
-		{
-		  size = 0;
-		}
-	      else
-		{
-		  size = compressed_size;
-		}
-	      rc = pr_write_compressed_string_to_buffer (buf, string, size, src_size, align);
 	    }
 	}
 #else /* SERVER_MODE */
+#endif /* !SERVER_MODE */
       if (!DB_TRIED_COMPRESSION (value))
 	{
 	  /* Check for previous compression. */
@@ -14259,7 +14221,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  rc = pr_write_compressed_string_to_buffer (buf, string, size, src_size, align);
 	}
 
-#endif /* !SERVER_MODE */
+
     }
 
   return rc;
@@ -14603,6 +14565,11 @@ cleanup:
   if (new_ != NULL && new_ != copy_buf && rc != NO_ERROR)
     {
       db_private_free_and_init (NULL, new_);
+    }
+
+  if (rc != NO_ERROR && compressed_string != NULL)
+    {
+      db_private_free_and_init (NULL, compressed_string);
     }
   return rc;
 }
@@ -16929,7 +16896,6 @@ pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, in
     }
 
   return rc;
-
 }
 
 

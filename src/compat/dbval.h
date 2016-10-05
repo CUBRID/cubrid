@@ -156,16 +156,14 @@
     ((v)->domain.char_info.length)
 
 #define DB_GET_COMPRESSED_STRING(v) \
-      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR \
-	&& DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) ? NULL \
-      : (v)->data.ch.medium.compressed_buf)
+      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) \
+	? NULL : (v)->data.ch.medium.compressed_buf)
 
 #define DB_NEED_CLEAR(v) \
       ((!DB_IS_NULL(v) \
 	&& ((v)->need_clear == true \
-	|| ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
-	    || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
-	   && (v)->data.ch.info.compressed_need_clear == true))))
+		|| ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
+		 && (v)->data.ch.info.compressed_need_clear == true))))
 
 /* note : this will have to change when we start using the small and large
           string buffers. */
@@ -546,7 +544,7 @@
 #define db_make_db_char(v, c, coll, p, s) \
     ((v)->data.ch.info.style = MEDIUM_STRING, \
      (v)->data.ch.info.is_max_string = false, \
-     (v)->data.ch.info.compressed_need_clear=false, \
+     (v)->data.ch.info.compressed_need_clear = false, \
      (v)->data.ch.medium.codeset = (c), \
      (v)->data.ch.medium.size = (s), \
      (v)->data.ch.medium.buf = (char *) (p), \
