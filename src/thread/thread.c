@@ -3194,7 +3194,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 	{
 	  css_unset_ha_repl_delayed ();
 	  delay_in_secs = 0;
-	  
+
 	  log_append_ha_server_state (tsd_ptr, server_state);
 
 	  csect_exit (tsd_ptr, CSECT_HA_SERVER_STATE);
@@ -3220,7 +3220,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 		{
 		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
 		}
-	       
+
 	      if (delay_limit_in_secs > 0)
 		{
 		  if (curr_delay_in_secs > delay_limit_in_secs)
@@ -3244,7 +3244,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 			}
 		    }
 		}
-	      
+
 	      ATOMIC_TAS_32 (&delay_in_secs, curr_delay_in_secs);
 	    }
 	}

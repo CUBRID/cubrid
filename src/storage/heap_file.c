@@ -1099,7 +1099,7 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
 
   heap_Bestspace->num_stats_entries++;
   heap_num_stats_entries++;
-  
+
 end:
 
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));

@@ -2584,7 +2584,7 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
 	  free_and_init (sentry_p);
 	  sessions.num_holdable_cursors--;
 	  sessions_num_holdable_cursors--;
-	  
+
 	  break;
 	}
       prev = sentry_p;
