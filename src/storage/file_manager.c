@@ -16552,8 +16552,8 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	    FILE_NUMERABLE_REGULAR_STRING (is_numerable), FILE_TABLESPACE_AS_ARGS (tablespace), n_sectors);
 
   error_code =
-    disk_reserve_sectors (thread_p, volpurpose,
-			  DISK_NONCONTIGUOUS_SPANVOLS_PAGES, NULL_VOLID, n_sectors, vsids_reserved);
+    disk_reserve_sectors (thread_p, volpurpose, DISK_NONCONTIGUOUS_SPANVOLS_PAGES, NULL_VOLID, n_sectors,
+			  vsids_reserved);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -16605,12 +16605,12 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       *vfid = found_vfid;
     }
   else
-#else /* SA_MODE */
-  {
-    vfid->volid = vsids_reserved->volid;
-    vfid->fileid = SECTOR_FIRST_PAGEID (vsids_reserved->sectid);
-  }
-#endif /* SA_MODE */
+#endif /* SERVER_MODE */
+    {
+      vfid->volid = vsids_reserved->volid;
+      vfid->fileid = SECTOR_FIRST_PAGEID (vsids_reserved->sectid);
+    }
+
   assert (!VFID_ISNULL (vfid));
   vpid_fhead.volid = vfid->volid;
   vpid_fhead.pageid = vfid->fileid;
