@@ -899,35 +899,36 @@ struct btree_delete_helper
 #define BTREE_PERF_TRACK_TIME(thread_p, helper) \
   do \
     { \
+      PERF_UTIME_TRACKER_TIME (thread_p, &(helper)->time_track, PSTAT_BT_LEAF); \
       switch ((helper)->purpose) \
       { \
       case BTREE_OP_INSERT_NEW_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_insert_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_INSERT); \
 	break; \
       case BTREE_OP_INSERT_MVCC_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mvcc_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_MVCC_DELETE); \
 	break; \
       case BTREE_OP_INSERT_MARK_DELETED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mark_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_MARK_DELETE); \
 	break; \
       case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_DELETE); \
 	break; \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL: \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_DELETE); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_insert_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_INSERT); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_mvcc_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_MVCC_DELETE); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_VACUUM); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_INSID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_insid_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_VACUUM_INSID); \
 	break; \
       default: \
 	assert (false); \
@@ -938,35 +939,36 @@ struct btree_delete_helper
 #define BTREE_PERF_TRACK_TRAVERSE_TIME(thread_p, helper) \
   do \
     { \
+      PERF_UTIME_TRACKER_TIME (thread_p, &(helper)->time_track, PSTAT_BT_TRAVERSE); \
       switch ((helper)->purpose) \
       { \
       case BTREE_OP_INSERT_NEW_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_insert_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_INSERT_TRAVERSE); \
 	break; \
       case BTREE_OP_INSERT_MVCC_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mvcc_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_MVCC_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_INSERT_MARK_DELETED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mark_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_MARK_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL: \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_insert_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_INSERT_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_mvcc_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_UNDO_MVCC_DELETE_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_VACUUM_TRAVERSE); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_INSID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_insid_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_VACUUM_INSID_TRAVERSE); \
 	break; \
       default: \
 	assert (false); \
@@ -975,19 +977,19 @@ struct btree_delete_helper
   while (false)
 
 #define BTREE_PERF_OVF_OIDS_FIX_TIME(thread_p, track) \
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_fix_ovf_oids_time)
+    PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, PSTAT_BT_FIX_OVF_OIDS)
 
 #define BTREE_PERF_UNIQUE_LOCK_TIME(thread_p, track, lock) \
   do \
     { \
       if ((lock) == S_LOCK) \
-        { \
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_unique_rlocks_time); \
-        } \
+	{			    \
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, PSTAT_BT_UNIQUE_RLOCKS); \
+	}	\
       else \
-        { \
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_unique_wlocks_time); \
-        } \
+	{	   \
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, PSTAT_BT_UNIQUE_WLOCKS ); \
+	}	  \
     } \
   while (false)
 
@@ -5392,7 +5394,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   log_sysop_start (thread_p);
 
   /* create a file descriptor, allocate and initialize the root page */
-  if (btree_create_file (thread_p, class_oid, attr_id, 2, btid) != NO_ERROR)
+  if (btree_create_file (thread_p, class_oid, attr_id, btid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
@@ -5498,13 +5500,8 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   VPID P_vpid;
   BTREE_ROOT_HEADER *root_header = NULL;
   VFID ovfid;
-  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
-  RECDES redo_rec, undo_rec;
-  char redo_rec_buf[OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN], *datap = NULL;
-  char undo_rec_buf[(4 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
-  char postpone_buf[OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
+  int unique_pk;
   int ret = NO_ERROR;
-  int num_nulls, num_oids, num_keys, unique_pk;
   LOG_DATA_ADDR addr;
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
@@ -5512,7 +5509,8 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   P = pgbuf_fix (thread_p, &P_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (P == NULL)
     {
-      return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
     }
 
   (void) pgbuf_check_page_ptype (thread_p, P, PAGE_BTREE);
@@ -5524,103 +5522,24 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
       pgbuf_unfix_and_init (thread_p, P);
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
-
   ovfid = root_header->ovfid;
-
   unique_pk = root_header->unique_pk;
-
-  if (unique_pk)
-    {
-      /* mark the statistics associated with deleted B-tree as deleted */
-      unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
-      if (unique_stats == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, P);
-	  return ER_FAILED;
-	}
-      else
-	{
-	  unique_stats->deleted = true;
-	}
-    }
-
   pgbuf_unfix_and_init (thread_p, P);
-
-  if (unique_pk)
-    {
-      /* get and remove statistics entry */
-      ret = logtb_get_global_unique_stats (thread_p, btid, &num_oids, &num_nulls, &num_keys);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
-      /* do not remove stats entry yet : remove it at commit postpone */
-    }
-
-  /* This is used by unique indexes at recovery to remove the entry from global hash, and at rollback to restore
-   * statistics in global hash. However, a special log for such an important step as index deletion will be useful,
-   * also, for other purposes. */
-
-  /* undo */
-  undo_rec.data = NULL;
-  undo_rec.area_size = 4 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
-  undo_rec.data = PTR_ALIGN (undo_rec_buf, BTREE_MAX_ALIGN);
-
-  undo_rec.length = 0;
-  datap = (char *) undo_rec.data;
-  OR_PUT_BTID (datap, btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-  OR_PUT_INT (datap, unique_pk);
-  datap += OR_INT_SIZE;
-  if (unique_pk)
-    {
-      OR_PUT_INT (datap, num_nulls);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, num_oids);
-      datap += OR_INT_SIZE;
-      OR_PUT_INT (datap, num_keys);
-      datap += OR_INT_SIZE;
-    }
-  undo_rec.length = CAST_BUFLEN (datap - undo_rec.data);
-
-  /* redo */
-  redo_rec.data = NULL;
-  redo_rec.area_size = OR_BTID_ALIGNED_SIZE;
-  redo_rec.data = PTR_ALIGN (redo_rec_buf, BTREE_MAX_ALIGN);
-
-  redo_rec.length = 0;
-  datap = (char *) redo_rec.data;
-  OR_PUT_BTID (datap, btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-  OR_PUT_INT (datap, unique_pk);
-  datap += OR_INT_SIZE;
-  redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
 
   addr.vfid = NULL;
   addr.pgptr = NULL;
   addr.offset = -1;
-
-  log_append_undoredo_data (thread_p, RVBT_DELETE_INDEX, &addr, undo_rec.length, redo_rec.length, undo_rec.data,
-			    redo_rec.data);
-
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
-
   if (unique_pk)
     {
-      datap = PTR_ALIGN (postpone_buf, BTREE_MAX_ALIGN);
-      OR_PUT_BTID (datap, btid);
-
-      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, OR_BTID_ALIGNED_SIZE, datap);
+      log_append_postpone (thread_p, RVBT_DELETE_INDEX, &addr, sizeof (*btid), btid);
     }
-  else
-    {
-      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, sizeof (btid->vfid), &btid->vfid);
-    }
-
   if (!VFID_ISNULL (&ovfid))
     {
-      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, sizeof (ovfid), &ovfid);
+      flre_postpone_destroy (thread_p, &ovfid);
     }
+  flre_postpone_destroy (thread_p, &btid->vfid);
+
 
   btid->root_pageid = NULL_PAGEID;
 
@@ -5757,7 +5676,7 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class
       if (error == NO_ERROR)
 	{
 	  /* monitor */
-	  mnt_qm_deletes (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
 	}
 
       heap_scancache_end_modify (thread_p, &scan_cache);
@@ -7052,7 +6971,7 @@ end:
       pr_clear_value (&(env->pkeys_val[i]));
     }
 
-  mnt_bt_get_stats (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_GET_STATS);
 
   return ret;
 
@@ -10276,7 +10195,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
 
-  mnt_bt_merges (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MERGES);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -10766,7 +10685,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   right_header->node_level = -1;
   pgbuf_set_dirty (thread_p, right_pg, DONT_FREE);
 
-  mnt_bt_merges (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MERGES);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -11647,13 +11566,17 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 	    {
 	      /* Not a match. */
 	    }
-	  return NO_ERROR;
 	}
-      /* No delete MVCCID. */
-      /* This is actually not expected. We could expect a deleted object, not yet vacuumed, but we cannot expect an
-       * inserted object, alive, different than the one we just deleted and want to rollback. */
-      assert_release (false);
-      return ER_FAILED;
+      else
+	{
+	  /*
+	   * No delete MVCCID. In case of multi updates, we may have the same OID twice in buffer, but with different
+	   * MVCC info. Thus, the OID may appear first with MVCC insert id only. Then, the same OID appears again with
+	   * MVCC delete id. We have to continue the search if the MVCC info does not match.
+	   */
+	}
+
+      return NO_ERROR;
 
     case BTREE_OP_DELETE_UNDO_INSERT:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
@@ -13435,7 +13358,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
-  mnt_bt_splits (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_SPLITS);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -14294,7 +14217,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   pgbuf_set_dirty (thread_p, Q, DONT_FREE);
   pgbuf_set_dirty (thread_p, R, DONT_FREE);
 
-  mnt_bt_splits (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_SPLITS);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -14397,12 +14320,12 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE
 
 end:
 
-  mnt_bt_updates (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_UPDATES);
 
   return ret;
 
 exit_on_error:
-  mnt_bt_updates (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_UPDATES);
 
   assert_release (ret != NO_ERROR);
   return ret;
@@ -16551,7 +16474,7 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
   else
     {
       /* resume search */
-      mnt_bt_resumes (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_BT_NUM_RESUMES);
 
       error_code = btree_range_scan_resume (thread_p, bts);
       if (error_code != NO_ERROR)
@@ -23105,7 +23028,8 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   assert (leaf_page != NULL && *leaf_page != NULL);
   assert (find_unique_helper != NULL);
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_traverse_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_TRAVERSE);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
   /* Initialize find unique helper. */
   find_unique_helper->found_object = false;
@@ -23173,7 +23097,8 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       COPY_OID (&find_unique_helper->oid, &unique_oid);
     }
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE);
   return NO_ERROR;
 }
 
@@ -23254,7 +23179,8 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
   /* other_args is find unique helper. */
   find_unique_helper = (BTREE_FIND_UNIQUE_HELPER *) other_args;
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_traverse_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_TRAVERSE);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
   /* Locking is required. */
   assert (find_unique_helper->lock_mode >= S_LOCK);
@@ -23434,7 +23360,8 @@ error_or_not_found:
     }
 #endif
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE);
   return error_code;
 }
 
@@ -23498,7 +23425,8 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
   /* other_args is find unique helper. */
   find_unique_helper = (BTREE_FIND_UNIQUE_HELPER *) other_args;
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_traverse_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_TRAVERSE);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
   /* Locking is required. */
   assert (find_unique_helper->lock_mode >= S_LOCK);
@@ -23784,7 +23712,8 @@ error_or_not_found:
     }
 #endif
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, mnt_bt_find_unique_traverse_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE);
 
   return error_code;
 }
@@ -25204,7 +25133,8 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  error_code = btree_range_scan_resume (thread_p, bts);
 	}
 
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, mnt_bt_range_search_traverse_time);
+      PERF_UTIME_TRACKER_TIME (thread_p, &bts->time_track, PSTAT_BT_TRAVERSE);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, PSTAT_BT_RANGE_SEARCH_TRAVERSE);
 
       if (error_code != NO_ERROR)
 	{
@@ -25290,7 +25220,8 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	    }
 	}
 
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, mnt_bt_range_search_time);
+      PERF_UTIME_TRACKER_TIME (thread_p, &bts->time_track, PSTAT_BT_LEAF);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, PSTAT_BT_RANGE_SEARCH);
     }
 
 end:
@@ -25336,7 +25267,8 @@ end:
       assert ((*bts->key_limit_upper) >= 0);
     }
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, mnt_bt_range_search_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &bts->time_track, PSTAT_BT_LEAF);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, PSTAT_BT_RANGE_SEARCH);
 
   return error_code;
 
@@ -26432,7 +26364,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       return error_code;
     }
 
-  mnt_bt_inserts (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_INSERTS);
 
   if (unique != NULL)
     {
@@ -29614,106 +29546,36 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 }
 
 /*
- * btree_rv_undo_delete_index () -
- *   return: int
- *   recv(in): Recovery structure
- *
- * Note: Restores unique statistics in global hash
- */
-int
-btree_rv_undo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv)
-{
-  char *datap;
-  BTID btid;
-  int ret = NO_ERROR;
-  int num_nulls, num_oids, num_keys, unique_pk;
-
-  assert (recv->length >= OR_INT_SIZE + OR_BTID_ALIGNED_SIZE);
-
-  /* unpack the index btid */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  unique_pk = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  if (unique_pk)
-    {
-      num_nulls = OR_GET_INT (datap);
-      datap += OR_INT_SIZE;
-
-      num_oids = OR_GET_INT (datap);
-      datap += OR_INT_SIZE;
-
-      num_keys = OR_GET_INT (datap);
-      datap += OR_INT_SIZE;
-
-      ret = logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, num_oids, num_nulls, num_keys);
-      if (ret != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  return NO_ERROR;
-
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-
-  return ER_GENERIC_ERROR;
-}
-
-/*
- * btree_rv_redo_delete_index () -
+ * btree_rv_remove_unique_stats () -
  *   return: int
  *   recv(in): Recovery structure
  *
  * Note: Remove unique statistics from global hash
  */
 int
-btree_rv_redo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  char *datap;
   BTID btid;
-  int ret = NO_ERROR, unique_pk;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
+  int ret = NO_ERROR;
 
-  assert (recv->length >= OR_INT_SIZE + OR_BTID_ALIGNED_SIZE);
+  assert (recv->length == sizeof (btid));
 
   /* unpack the index btid */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  unique_pk = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  if (unique_pk)
+  btid = *(BTID *) recv->data;
+  ret = logtb_delete_global_unique_stats (thread_p, &btid);
+  if (ret != NO_ERROR)
     {
-      LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
-
-      ret = logtb_delete_global_unique_stats (thread_p, &btid);
-      if (ret != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      unique_stats = logtb_tran_find_btid_stats (thread_p, &btid, false);
-
-      if (unique_stats != NULL)
-	{
-	  unique_stats->deleted = true;
-	}
+      assert_release (false);
+      return ER_FAILED;
+    }
+  unique_stats = logtb_tran_find_btid_stats (thread_p, &btid, false);
+  if (unique_stats != NULL)
+    {
+      unique_stats->deleted = true;
     }
 
   return NO_ERROR;
-
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-
-  return ER_GENERIC_ERROR;
 }
 
 /*
@@ -30135,7 +29997,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       return error_code;
     }
 
-  mnt_bt_deletes (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_DELETES);
 
   if (unique != NULL)
     {
@@ -33781,7 +33643,7 @@ btree_hash_btid (void *btid, int hash_size)
  * todo: use table space.
  */
 int
-btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, int npages, BTID * btid)
+btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid)
 {
   FILE_BTREE_DES des;
   VPID vpid_root;
@@ -33791,7 +33653,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, i
   des.class_oid = *class_oid;
   des.attr_id = attrid;
 
-  error_code = flre_create_with_npages (thread_p, FILE_BTREE, npages, (FILE_DESCRIPTORS *) & des, &btid->vfid);
+  error_code = flre_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) & des, &btid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

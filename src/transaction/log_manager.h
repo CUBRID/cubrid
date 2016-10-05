@@ -169,8 +169,7 @@ extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RE
 				LOG_GETNEWTRID get_newtrid, LOG_WRITE_EOT_LOG wrote_eot_log);
 extern TRAN_STATE log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					LOG_GETNEWTRID get_newtrid);
-extern void log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_posplsa, LOG_RECTYPE posp_type,
-			     bool append_commit_postpone);
+extern void log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_posplsa);
 extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_REDO * redo,
 				     char *redo_rcv_data);
 extern int log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -219,7 +218,11 @@ extern void log_sysop_start (THREAD_ENTRY * thread_p);
 extern void log_sysop_abort (THREAD_ENTRY * thread_p);
 extern void log_sysop_attach_to_outer (THREAD_ENTRY * thread_p);
 extern void log_sysop_commit (THREAD_ENTRY * thread_p);
-extern void log_sysop_commit_and_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int undo_size, char *undo_data);
-extern void log_sysop_commit_and_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_LSA * undo_nxlsa);
-extern void log_sysop_commit_and_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_LSA * posp_lsa);
+extern void log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int undo_size, char *undo_data);
+extern void log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa);
+extern void log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa);
+extern void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
+				       char *data);
+
+extern const char *log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type);
 #endif /* _LOG_MANAGER_H_ */

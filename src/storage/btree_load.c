@@ -92,8 +92,6 @@ struct load_args
   BTID_INT *btid;
   const char *bt_name;		/* index name */
 
-  int allocated_pgcnt;		/* Allocated page count for index */
-  int used_pgcnt;		/* Used page count for the index file */
   RECDES *out_recdes;		/* Pointer to current record descriptor collecting objects. */
   RECDES leaf_nleaf_recdes;	/* Record descriptor used for leaf and non-leaf records. */
   RECDES ovf_recdes;		/* Record descriptor used for overflow OID's records. */
@@ -131,12 +129,6 @@ struct load_args
 
   VPID vpid_first_leaf;
 };
-
-/* While loading an index, BTREE_NUM_ALLOC_PAGES number of pages will be
- * allocated if there is no more page can be used.
- */
-#define BTREE_NUM_ALLOC_PAGES           (DISK_SECTOR_NPAGES)
-
 
 static bool btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VPID * pageid,
@@ -625,7 +617,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   LOG_TDES *tdes = NULL;
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
-  int init_pgcnt;
   int cur_class, attr_offset;
   VPID root_vpid;
   BTID_INT btid_int;
@@ -795,10 +786,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   sort_args->attrinfo_inited = 1;
 
-  /* There is no estimation for the number of pages to be used. We will allocate pages on demand. */
-  init_pgcnt = BTREE_NUM_ALLOC_PAGES;
-
-  if (btree_create_file (thread_p, &class_oids[0], attr_ids[0], init_pgcnt, btid) != NO_ERROR)
+  if (btree_create_file (thread_p, &class_oids[0], attr_ids[0], btid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
@@ -808,8 +796,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
   load_args->bt_name = bt_name;
-  load_args->allocated_pgcnt = init_pgcnt;
-  load_args->used_pgcnt = 1;	/* set used page count (first page used for root) */
   DB_MAKE_NULL (&load_args->current_key);
   VPID_SET_NULL (&load_args->nleaf.vpid);
   load_args->nleaf.pgptr = NULL;
@@ -1869,7 +1855,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
 }
 
 /*
- * btree_load_new_page () - document me!
+ * btree_load_new_page () - load a new b-tree page.
  *
  * return          : Error code
  * thread_p (in)   : Thread entry
@@ -1883,7 +1869,6 @@ static int
 btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 		     VPID * vpid_new, PAGE_PTR * page_new)
 {
-  PAGE_PTR page_ptr = NULL;
   LOG_DATA_ADDR addr;
   unsigned short alignment;
 
@@ -1906,14 +1891,14 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  pgbuf_set_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  pgbuf_set_page_ptype (thread_p, *page_new, PAGE_BTREE);
   alignment = BTREE_MAX_ALIGN;
 
-  spage_initialize (thread_p, page_ptr, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
+  spage_initialize (thread_p, *page_new, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
 
   addr.vfid = &btid->vfid;
   addr.offset = -1;		/* No header slot is initialized */
-  addr.pgptr = page_ptr;
+  addr.pgptr = *page_new;
 
   log_append_redo_data (thread_p, RVBT_GET_NEWPAGE, &addr, sizeof (alignment), &alignment);
 
@@ -1927,7 +1912,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       header->split_info.pivot = 0.0f;
       header->split_info.index = 0;
 
-      error_code = btree_init_node_header (thread_p, &btid->vfid, page_ptr, header, false);
+      error_code = btree_init_node_header (thread_p, &btid->vfid, *page_new, header, false);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1942,7 +1927,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       assert (node_level == -1);
       VPID_SET_NULL (&ovf_header_info.next_vpid);
 
-      error_code = btree_init_overflow_header (thread_p, page_ptr, &ovf_header_info);
+      error_code = btree_init_overflow_header (thread_p, *page_new, &ovf_header_info);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3832,7 +3817,6 @@ btree_node_number_of_keys (PAGE_PTR page_ptr)
   return key_cnt;
 }
 
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
 /*
  * btree_get_btree_node_type_from_page () -
  *
@@ -3889,4 +3873,3 @@ btree_get_perf_btree_page_type (PAGE_PTR page_ptr)
     }
   return PERF_PAGE_BTREE_ROOT;
 }
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */

@@ -811,7 +811,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
   logpb_log ("called logpb_locate_page for pageid %lld, fetch_mode=%s", (long long int) pageid,
 	     fetch_mode == NEW_PAGE ? "new_page" : "old_page\n");
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -856,11 +856,11 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	      return NULL;
 	    }
 	  log_bufptr->dirty = false;
-	  mnt_log_iowrites_for_replacement (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_REPLACEMENTS_IOWRITES);
 	}
 
       log_bufptr->pageid = NULL_PAGEID;	/* invalidate buffer */
-      mnt_log_replacements (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_REPLACEMENTS);
     }
 
   if (log_bufptr->pageid == NULL_PAGEID)
@@ -890,7 +890,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
       logpb_log ("logpb_locate_page using log buffer entry for pageid = %lld", pageid);
     }
 
-  mnt_log_fetches (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_FETCHES);
   if (is_perf_tracking)
     {
       tsc_getticks (&end_tick);
@@ -898,8 +898,8 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
       fix_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (fix_wait_time > 0)
 	{
-	  mnt_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
-				    PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
+	  perfmon_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
+					PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
 	}
     }
 
@@ -1705,7 +1705,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
   logpb_log ("called logpb_copy_page with pageid = %lld\n", (long long int) pageid);
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -1776,7 +1776,7 @@ exit:
     {
       LOG_CS_EXIT (thread_p);
     }
-  mnt_log_fetches (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_FETCHES);
 
   if (is_perf_tracking)
     {
@@ -1788,8 +1788,8 @@ exit:
        * archive vs page is found in log page buffer */
       if (fix_wait_time > 0)
 	{
-	  mnt_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
-				    PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
+	  perfmon_pbx_fix_acquire_time (thread_p, PAGE_LOG, stat_page_found, PERF_HOLDER_LATCH_READ,
+					PERF_UNCONDITIONAL_FIX_WITH_WAIT, fix_wait_time);
 	}
     }
 
@@ -1859,7 +1859,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
       phy_pageid = logpb_to_physical_pageid (pageid);
       logpb_log ("phy_pageid in logpb_read_page_from_file is %lld\n", (long long int) phy_pageid);
 
-      mnt_log_ioreads (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_IOREADS);
 
       if (fileio_read (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
 	{
@@ -1940,9 +1940,9 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
   phy_start_pageid = logpb_to_physical_pageid (pageid);
   num_pages = MIN (num_pages, LOGPB_ACTIVE_NPAGES - phy_start_pageid + 1);
 
-  mnt_log_ioreads (thread_p);
-  if (fileio_read_pages (thread_p, log_Gl.append.vdes, (char *) log_pgptr, phy_start_pageid, num_pages, LOG_PAGESIZE)
-      == NULL)
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_IOREADS);
+  if (fileio_read_pages (thread_p, log_Gl.append.vdes, (char *) log_pgptr, phy_start_pageid, num_pages, LOG_PAGESIZE) ==
+      NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, pageid, phy_start_pageid, log_Name_active);
       return -1;
@@ -2005,7 +2005,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
       return ER_FAILED;
     }
 
-  mnt_log_iowrites (thread_p, 1);
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_IOWRITES);
   return NO_ERROR;
 }
 
@@ -3349,8 +3349,8 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_START_POSTPONE);
       break;
 
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-      node->data_header_length = sizeof (LOG_REC_TOPOPE_START_POSTPONE);
+    case LOG_SYSOP_START_POSTPONE:
+      node->data_header_length = sizeof (LOG_REC_SYSOP_START_POSTPONE);
       break;
 
     case LOG_COMMIT:
@@ -3359,24 +3359,8 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_DONETIME);
       break;
 
-    case LOG_COMMIT_TOPOPE:
-    case LOG_ABORT_TOPOPE:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (LOG_REC_TOPOP_RESULT);
-      break;
-
-    case LOG_SYSOP_COMMIT_AND_UNDO:
-      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_UNDO);
-      break;
-
-    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_COMPENSATE);
-      break;
-
-    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (LOG_REC_SYSOP_COMMIT_AND_RUN_POSTPONE);
+    case LOG_SYSOP_END:
+      node->data_header_length = sizeof (LOG_REC_SYSOP_END);
       break;
 
     case LOG_REPLICATION_DATA:
@@ -3498,16 +3482,12 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_2PC_COMMIT_DECISION:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
+    case LOG_SYSOP_START_POSTPONE:
     case LOG_COMMIT:
     case LOG_ABORT:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
-    case LOG_COMMIT_TOPOPE:
-    case LOG_SYSOP_COMMIT_AND_UNDO:
-    case LOG_SYSOP_COMMIT_AND_COMPENSATE:
-    case LOG_SYSOP_COMMIT_AND_RUN_POSTPONE:
-    case LOG_ABORT_TOPOPE:
+    case LOG_SYSOP_END:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
@@ -3726,6 +3706,12 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
       /* Replace last MVCC deleted/updated log record */
       LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &start_lsa);
     }
+  else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
+    {
+      /* we need the system operation start postpone LSA for recovery. we have to save it under prior_lsa_mutex
+       * protection */
+      tdes->rcv.sysop_start_postpone_lsa = start_lsa;
+    }
 
   LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (node->data_header_length);
   LOG_PRIOR_LSA_APPEND_ADD_ALIGN (node->data_header_length);
@@ -3763,7 +3749,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 
       if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
 	{
-	  mnt_prior_lsa_list_maxed (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_MAXED);
 
 #if defined(SERVER_MODE)
 	  if (!log_is_in_crash_recovery ())
@@ -3930,8 +3916,8 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 
   if (prior_list != NULL)
     {
-      mnt_prior_lsa_list_size (thread_p, (unsigned int) current_size / ONE_K);	/* kbytes */
-      mnt_prior_lsa_list_removed (thread_p);
+      perfmon_add_stat (thread_p, PSTAT_PRIOR_LSA_LIST_SIZE, (unsigned int) current_size / ONE_K);	/* kbytes */
+      perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_REMOVED);
 
       logpb_append_prior_lsa_list (thread_p, prior_list);
     }
@@ -4244,7 +4230,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
   /* Record number of writes in statistics */
-  mnt_log_iowrites (thread_p, flush_info->num_toflush);
+  perfmon_add_stat (thread_p, PSTAT_LOG_NUM_IOWRITES, flush_info->num_toflush);
 
   /* loop through all to flush list. do a two-step process:
    * 1. skip all pages not dirty. also skip the page of nxio_lsa! it must be flushed last!
@@ -4819,7 +4805,7 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 {
   if (logpb_need_wal (lsa_ptr))
     {
-      mnt_log_wals (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_WALS);
 
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
@@ -4858,7 +4844,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   /* Record number of append log record in statistics */
-  mnt_log_appendrecs (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_APPENDRECS);
 
   /* Does the new log record fit in this page ? */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
@@ -6108,7 +6094,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	  phy_pageid = (LOG_PHY_PAGEID) (pageid - arv_hdr->fpageid + 1);
 
 	  /* Record number of reads in statistics */
-	  mnt_log_ioreads (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_IOREADS);
 
 	  if (fileio_read (thread_p, vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
 	    {
@@ -6362,7 +6348,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	      /* Read header page and make sure the page is here */
 
 	      /* Record number of reads in statistics */
-	      mnt_log_ioreads (thread_p);
+	      perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_IOREADS);
 
 	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
 		{
@@ -6539,7 +6525,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
    * Now create the archive and start copying pages
    */
 
-  mnt_log_archives (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_ARCHIVES);
 
   fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, log_Gl.hdr.nxarv_num);
 
@@ -7574,9 +7560,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
   LOG_INFO_CHKPT_TRANS *chkpt_trans;	/* Checkpoint tdes */
   LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
 							 * mode */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topone;	/* One top system ope */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
   LOG_LSA newchkpt_lsa;		/* New address of the checkpoint record */
@@ -7614,7 +7600,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    */
 #endif /* SERVER_MODE */
 
-  mnt_log_start_checkpoints (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_START_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_STARTED, 2, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid);
@@ -7797,7 +7783,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
       length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-      chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) malloc (length_all_tops);
+      chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) malloc (length_all_tops);
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
@@ -7837,14 +7823,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 			      TR_TABLE_CS_EXIT (thread_p);
 			      goto error_cannot_chkpt;
 			    }
-			  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) ptr;
+			  chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) ptr;
 			}
 
 		      chkpt_topone = &chkpt_topops[ntops];
 		      chkpt_topone->trid = act_tdes->trid;
-		      LSA_COPY (&chkpt_topone->lastparent_lsa, &act_tdes->topops.stack[j].lastparent_lsa);
-		      LSA_COPY (&chkpt_topone->posp_lsa, &act_tdes->topops.stack[j].posp_lsa);
-		      chkpt_topone->save_prev_state = tdes->rcv.save_prev_state;
+		      chkpt_topone->sysop_start_postpone = tdes->rcv.sysop_start_postpone;
+		      chkpt_topone->sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
 		      ntops++;
 		      break;
 		    default:
@@ -8073,7 +8058,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   fileio_synchronize_all (thread_p, true /* include_log */ );
 #endif
 
-  mnt_log_end_checkpoints (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_END_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED, 3, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid, flushed_page_cnt);
@@ -8125,41 +8110,6 @@ logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 	       (int) chkpt_one->posp_nxlsa.offset, (long long int) chkpt_one->savept_lsa.pageid,
 	       (int) chkpt_one->savept_lsa.offset, (long long int) chkpt_one->tail_topresult_lsa.pageid,
 	       (int) chkpt_one->tail_topresult_lsa.offset, chkpt_one->user_name);
-    }
-  (void) fprintf (out_fp, "\n");
-}
-
-/*
- * logpb_dump_checkpoint_topops - DUMP CHECKPOINT OF TOP SYSTEM OPERATIONS
- *
- * return: nothing
- *
- *   length(in): Length to dump in bytes
- *   data(in): The data being logged
- *
- * NOTE: Dump the checkpoint top system operation structure.
- */
-void
-logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
-{
-  int ntops, i;
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
-							 * mode */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
-
-  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) data;
-  ntops = length / sizeof (*chkpt_topops);
-
-  /* Start dumping each checkpoint top system operation */
-
-  for (i = 0; i < ntops; i++)
-    {
-      chkpt_topone = &chkpt_topops[i];
-      fprintf (out_fp, "     Trid = %d, Lastparent_lsa = %lld|%d, Postpone_lsa = %lld|%d, Rcv prev state: %d\n",
-	       chkpt_topone->trid,
-	       (long long int) chkpt_topone->lastparent_lsa.pageid, chkpt_topone->lastparent_lsa.offset,
-	       (long long int) chkpt_topone->posp_lsa.pageid, chkpt_topone->posp_lsa.offset,
-	       chkpt_topone->save_prev_state);
     }
   (void) fprintf (out_fp, "\n");
 }

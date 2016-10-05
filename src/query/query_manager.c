@@ -1218,7 +1218,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  saved_is_stats_on = mnt_server_is_stats_on (thread_p);
+  saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
 
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
 
@@ -1228,13 +1228,13 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       if (saved_is_stats_on == true)
 	{
-	  xmnt_server_stop_stats (thread_p);
+	  perfmon_stop_watch (thread_p);
 	}
     }
   else if (xasl_trace == true)
     {
       thread_trace_on (thread_p);
-      xmnt_server_start_stats (thread_p, false);
+      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -1256,14 +1256,14 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       /* XASL cache entry not found. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      mnt_pc_invalid_xasl_id (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
       return NULL;
     }
   if (xclone.xasl == NULL || xclone.xasl_buf == NULL)
     {
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      mnt_pc_invalid_xasl_id (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
       return NULL;
     }
 
@@ -1527,7 +1527,7 @@ end:
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {
-      xmnt_server_start_stats (thread_p, false);
+      perfmon_start_watch (thread_p);
     }
 
 #if defined (SERVER_MODE)
@@ -1567,7 +1567,7 @@ exit_on_error:
 
   if (xasl_trace == true && saved_is_stats_on == false)
     {
-      xmnt_server_stop_stats (thread_p);
+      perfmon_stop_watch (thread_p);
     }
 
   goto end;
@@ -1676,20 +1676,20 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   old_pri_heap_id = 0;
 #endif
 
-  saved_is_stats_on = mnt_server_is_stats_on (thread_p);
+  saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {
       if (saved_is_stats_on == true)
 	{
-	  xmnt_server_stop_stats (thread_p);
+	  perfmon_stop_watch (thread_p);
 	}
     }
   else if (xasl_trace == true)
     {
       thread_trace_on (thread_p);
-      xmnt_server_start_stats (thread_p, false);
+      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -1804,7 +1804,7 @@ end:
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {
-      xmnt_server_start_stats (thread_p, false);
+      perfmon_start_watch (thread_p);
     }
 
 #if defined (SERVER_MODE)
@@ -1840,7 +1840,7 @@ exit_on_error:
 
   if (xasl_trace == true && saved_is_stats_on == false)
     {
-      xmnt_server_stop_stats (thread_p);
+      perfmon_stop_watch (thread_p);
     }
 
   goto end;

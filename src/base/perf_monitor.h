@@ -53,25 +53,13 @@
 #define MAX_SERVER_NAMELENGTH           256
 #define SH_MODE 0644
 
-/*
- * Enable these macros to add extended statistics information in statdump.
- * Some overhead is added, do not activate for production environment.
- * - PERF_ENABLE_DETAILED_BTREE_PAGE_STAT : 
- *    index pages are detailed by root, leaf, non-leaf 
- * - PERF_ENABLE_MVCC_SNAPSHOT_STAT
- *    partitioned information per snapshot function
- * - PERF_ENABLE_LOCK_OBJECT_STAT
- *    partitioned information per type of lock
- * - PERF_ENABLE_PB_HASH_ANCHOR_STAT
- *    count and time of data page buffer hash anchor
- */
+/* Statistics activation flags */
 
-#if 1
-#define PERF_ENABLE_DETAILED_BTREE_PAGE_STAT
-#define PERF_ENABLE_MVCC_SNAPSHOT_STAT
-#define PERF_ENABLE_LOCK_OBJECT_STAT
-#define PERF_ENABLE_PB_HASH_ANCHOR_STAT
-#endif
+#define PERFMON_ACTIVE_DEFAULT 0
+#define PERFMON_ACTIVE_DETAILED_BTREE_PAGE 1
+#define PERFMON_ACTIVE_MVCC_SNAPSHOT 2
+#define PERFMON_ACTIVE_LOCK_OBJECT 4
+#define PERFMON_ACTIVE_PB_HASH_ANCHOR 8
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
@@ -144,10 +132,9 @@
   ((snapshot) * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT \
    + (rec_type) * PERF_SNAPSHOT_VISIBILITY_CNT + (visibility))
 
-#define PERF_OBJ_LOCK_STAT_OFFSET(module,lock_mode) \
-  ((module) * (SCH_M_LOCK + 1) + (lock_mode))
+#define PERF_OBJ_LOCK_STAT_COUNTERS (SCH_M_LOCK + 1)
 
-#define PERF_OBJ_LOCK_STAT_COUNTERS (PERF_MODULE_CNT * (SCH_M_LOCK + 1))
+#define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
 typedef enum
 {
@@ -212,12 +199,10 @@ typedef enum
   PERF_PAGE_LOG,		/* NONE - log page (unused) */
   PERF_PAGE_DROPPED_FILES,	/* Dropped files page.  */
   PERF_PAGE_VACUUM_DATA,	/* Vacuum data */
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
   PERF_PAGE_BTREE_ROOT,		/* b+tree root index page */
   PERF_PAGE_BTREE_OVF,		/* b+tree overflow index page */
   PERF_PAGE_BTREE_LEAF,		/* b+tree leaf index page */
   PERF_PAGE_BTREE_NONLEAF,	/* b+tree nonleaf index page */
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
   PERF_PAGE_CNT
 } PERF_PAGE_TYPE;
 
@@ -256,6 +241,264 @@ typedef enum
 
   PERF_SNAPSHOT_VISIBILITY_CNT
 } PERF_SNAPSHOT_VISIBILITY;
+
+typedef enum
+{
+  /* Execution statistics for the file io */
+  PSTAT_FILE_NUM_CREATES = 0,
+  PSTAT_FILE_NUM_REMOVES,
+  PSTAT_FILE_NUM_IOREADS,
+  PSTAT_FILE_NUM_IOWRITES,
+  PSTAT_FILE_NUM_IOSYNCHES,
+  PSTAT_FILE_NUM_PAGE_ALLOCS,
+  PSTAT_FILE_NUM_PAGE_DEALLOCS,
+
+  /* Execution statistics for the page buffer manager */
+  PSTAT_PB_NUM_FETCHES,
+  PSTAT_PB_NUM_DIRTIES,
+  PSTAT_PB_NUM_IOREADS,
+  PSTAT_PB_NUM_IOWRITES,
+  PSTAT_PB_NUM_VICTIMS,
+  PSTAT_PB_NUM_REPLACEMENTS,
+  PSTAT_PB_NUM_HASH_ANCHOR_WAITS,
+  PSTAT_PB_TIME_HASH_ANCHOR_WAIT,
+  /* peeked stats */
+  PSTAT_PB_FIXED_CNT,
+  PSTAT_PB_DIRTY_CNT,
+  PSTAT_PB_LRU1_CNT,
+  PSTAT_PB_LRU2_CNT,
+  PSTAT_PB_AIN_CNT,
+  PSTAT_PB_AVOID_DEALLOC_CNT,
+  PSTAT_PB_AVOID_VICTIM_CNT,
+  PSTAT_PB_VICTIM_CAND_CNT,
+
+  /* Execution statistics for the log manager */
+  PSTAT_LOG_NUM_FETCHES,
+  PSTAT_LOG_NUM_IOREADS,
+  PSTAT_LOG_NUM_IOWRITES,
+  PSTAT_LOG_NUM_APPENDRECS,
+  PSTAT_LOG_NUM_ARCHIVES,
+  PSTAT_LOG_NUM_START_CHECKPOINTS,
+  PSTAT_LOG_NUM_END_CHECKPOINTS,
+  PSTAT_LOG_NUM_WALS,
+  PSTAT_LOG_NUM_REPLACEMENTS_IOWRITES,
+  PSTAT_LOG_NUM_REPLACEMENTS,
+
+  /* Execution statistics for the lock manager */
+  PSTAT_LK_NUM_ACQUIRED_ON_PAGES,
+  PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS,
+  PSTAT_LK_NUM_CONVERTED_ON_PAGES,
+  PSTAT_LK_NUM_CONVERTED_ON_OBJECTS,
+  PSTAT_LK_NUM_RE_REQUESTED_ON_PAGES,
+  PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS,
+  PSTAT_LK_NUM_WAITED_ON_PAGES,
+  PSTAT_LK_NUM_WAITED_ON_OBJECTS,
+  PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS,	/* include this to avoid client-server compat issue even if extended stats are
+					 * disabled */
+
+  /* Execution statistics for transactions */
+  PSTAT_TRAN_NUM_COMMITS,
+  PSTAT_TRAN_NUM_ROLLBACKS,
+  PSTAT_TRAN_NUM_SAVEPOINTS,
+  PSTAT_TRAN_NUM_START_TOPOPS,
+  PSTAT_TRAN_NUM_END_TOPOPS,
+  PSTAT_TRAN_NUM_INTERRUPTS,
+
+  /* Execution statistics for the btree manager */
+  PSTAT_BT_NUM_INSERTS,
+  PSTAT_BT_NUM_DELETES,
+  PSTAT_BT_NUM_UPDATES,
+  PSTAT_BT_NUM_COVERED,
+  PSTAT_BT_NUM_NONCOVERED,
+  PSTAT_BT_NUM_RESUMES,
+  PSTAT_BT_NUM_MULTI_RANGE_OPT,
+  PSTAT_BT_NUM_SPLITS,
+  PSTAT_BT_NUM_MERGES,
+  PSTAT_BT_NUM_GET_STATS,
+
+  /* Execution statistics for the heap manager */
+  PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE,
+
+  /* Execution statistics for the query manager */
+  PSTAT_QM_NUM_SELECTS,
+  PSTAT_QM_NUM_INSERTS,
+  PSTAT_QM_NUM_DELETES,
+  PSTAT_QM_NUM_UPDATES,
+  PSTAT_QM_NUM_SSCANS,
+  PSTAT_QM_NUM_ISCANS,
+  PSTAT_QM_NUM_LSCANS,
+  PSTAT_QM_NUM_SETSCANS,
+  PSTAT_QM_NUM_METHSCANS,
+  PSTAT_QM_NUM_NLJOINS,
+  PSTAT_QM_NUM_MJOINS,
+  PSTAT_QM_NUM_OBJFETCHES,
+  PSTAT_QM_NUM_HOLDABLE_CURSORS,
+
+  /* Execution statistics for external sort */
+  PSTAT_SORT_NUM_IO_PAGES,
+  PSTAT_SORT_NUM_DATA_PAGES,
+
+  /* Execution statistics for network communication */
+  PSTAT_NET_NUM_REQUESTS,
+
+  /* flush control stat */
+  PSTAT_FC_NUM_PAGES,
+  PSTAT_FC_NUM_LOG_PAGES,
+  PSTAT_FC_TOKENS,
+
+  /* prior lsa info */
+  PSTAT_PRIOR_LSA_LIST_SIZE,	/* kbytes */
+  PSTAT_PRIOR_LSA_LIST_MAXED,
+  PSTAT_PRIOR_LSA_LIST_REMOVED,
+
+  /* best space info */
+  PSTAT_HF_NUM_STATS_ENTRIES,
+  PSTAT_HF_NUM_STATS_MAXED,
+
+  /* HA replication delay */
+  PSTAT_HA_REPL_DELAY,
+
+  /* Execution statistics for Plan cache */
+  PSTAT_PC_NUM_ADD,
+  PSTAT_PC_NUM_LOOKUP,
+  PSTAT_PC_NUM_HIT,
+  PSTAT_PC_NUM_MISS,
+  PSTAT_PC_NUM_FULL,
+  PSTAT_PC_NUM_DELETE,
+  PSTAT_PC_NUM_INVALID_XASL_ID,
+  PSTAT_PC_NUM_CACHE_ENTRIES,
+
+  PSTAT_VAC_NUM_VACUUMED_LOG_PAGES,
+  PSTAT_VAC_NUM_TO_VACUUM_LOG_PAGES,
+  PSTAT_VAC_NUM_PREFETCH_REQUESTS_LOG_PAGES,
+  PSTAT_VAC_NUM_PREFETCH_HITS_LOG_PAGES,
+
+  /* Track heap modify counters. */
+  PSTAT_HEAP_HOME_INSERTS,
+  PSTAT_HEAP_BIG_INSERTS,
+  PSTAT_HEAP_ASSIGN_INSERTS,
+  PSTAT_HEAP_HOME_DELETES,
+  PSTAT_HEAP_HOME_MVCC_DELETES,
+  PSTAT_HEAP_HOME_TO_REL_DELETES,
+  PSTAT_HEAP_HOME_TO_BIG_DELETES,
+  PSTAT_HEAP_REL_DELETES,
+  PSTAT_HEAP_REL_MVCC_DELETES,
+  PSTAT_HEAP_REL_TO_HOME_DELETES,
+  PSTAT_HEAP_REL_TO_BIG_DELETES,
+  PSTAT_HEAP_REL_TO_REL_DELETES,
+  PSTAT_HEAP_BIG_DELETES,
+  PSTAT_HEAP_BIG_MVCC_DELETES,
+  PSTAT_HEAP_HOME_UPDATES,
+  PSTAT_HEAP_HOME_TO_REL_UPDATES,
+  PSTAT_HEAP_HOME_TO_BIG_UPDATES,
+  PSTAT_HEAP_REL_UPDATES,
+  PSTAT_HEAP_REL_TO_HOME_UPDATES,
+  PSTAT_HEAP_REL_TO_REL_UPDATES,
+  PSTAT_HEAP_REL_TO_BIG_UPDATES,
+  PSTAT_HEAP_BIG_UPDATES,
+  PSTAT_HEAP_HOME_VACUUMS,
+  PSTAT_HEAP_BIG_VACUUMS,
+  PSTAT_HEAP_REL_VACUUMS,
+  PSTAT_HEAP_INSID_VACUUMS,
+  PSTAT_HEAP_REMOVE_VACUUMS,
+
+  /* Track heap modify timers. */
+  PSTAT_HEAP_INSERT_PREPARE,
+  PSTAT_HEAP_INSERT_EXECUTE,
+  PSTAT_HEAP_INSERT_LOG,
+  PSTAT_HEAP_DELETE_PREPARE,
+  PSTAT_HEAP_DELETE_EXECUTE,
+  PSTAT_HEAP_DELETE_LOG,
+  PSTAT_HEAP_UPDATE_PREPARE,
+  PSTAT_HEAP_UPDATE_EXECUTE,
+  PSTAT_HEAP_UPDATE_LOG,
+  PSTAT_HEAP_VACUUM_PREPARE,
+  PSTAT_HEAP_VACUUM_EXECUTE,
+  PSTAT_HEAP_VACUUM_LOG,
+
+  /* B-tree ops detailed statistics. */
+  PSTAT_BT_FIX_OVF_OIDS,
+  PSTAT_BT_UNIQUE_RLOCKS,
+  PSTAT_BT_UNIQUE_WLOCKS,
+  PSTAT_BT_LEAF,
+  PSTAT_BT_TRAVERSE,
+  PSTAT_BT_FIND_UNIQUE,
+  PSTAT_BT_FIND_UNIQUE_TRAVERSE,
+  PSTAT_BT_RANGE_SEARCH,
+  PSTAT_BT_RANGE_SEARCH_TRAVERSE,
+  PSTAT_BT_INSERT,
+  PSTAT_BT_INSERT_TRAVERSE,
+  PSTAT_BT_DELETE,
+  PSTAT_BT_DELETE_TRAVERSE,
+  PSTAT_BT_MVCC_DELETE,
+  PSTAT_BT_MVCC_DELETE_TRAVERSE,
+  PSTAT_BT_MARK_DELETE,
+  PSTAT_BT_MARK_DELETE_TRAVERSE,
+  PSTAT_BT_UNDO_INSERT,
+  PSTAT_BT_UNDO_INSERT_TRAVERSE,
+  PSTAT_BT_UNDO_DELETE,
+  PSTAT_BT_UNDO_DELETE_TRAVERSE,
+  PSTAT_BT_UNDO_MVCC_DELETE,
+  PSTAT_BT_UNDO_MVCC_DELETE_TRAVERSE,
+  PSTAT_BT_VACUUM,
+  PSTAT_BT_VACUUM_TRAVERSE,
+  PSTAT_BT_VACUUM_INSID,
+  PSTAT_BT_VACUUM_INSID_TRAVERSE,
+
+  /* Vacuum master/worker timers. */
+  PSTAT_VAC_MASTER,
+  PSTAT_VAC_JOB,
+  PSTAT_VAC_WORKER_PROCESS_LOG,
+  PSTAT_VAC_WORKER_EXECUTE,
+
+  /* Log statistics */
+  PSTAT_LOG_SNAPSHOT_TIME_COUNTERS,
+  PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS,
+  PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS,
+  PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS,
+  PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS,
+
+  /* Computed statistics */
+  /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
+  PSTAT_PB_HIT_RATIO,
+  /* ((log_num_fetches - log_num_ioreads) x 100 / log_num_fetches) x 100 */
+  PSTAT_LOG_HIT_RATIO,
+  /* ((fetches of vacuum - fetches of vacuum not found in PB) x 100 / fetches of vacuum) x 100 */
+  PSTAT_VACUUM_DATA_HIT_RATIO,
+  /* (100 x Number of unfix with of dirty pages of vacuum / total num of unfixes from vacuum) x 100 */
+  PSTAT_PB_VACUUM_EFFICIENCY,
+  /* (100 x Number of unfix from vacuum / total num of unfix) x 100 */
+  PSTAT_PB_VACUUM_FETCH_RATIO,
+  /* total time to acquire page lock (stored as 10 usec unit, displayed as miliseconds) */
+  PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC,
+  /* total time to acquire page hold (stored as 10 usec unit, displayed as miliseconds) */
+  PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC,
+  /* total time to acquire page fix (stored as 10 usec unit, displayed as miliseconds) */
+  PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC,
+  /* ratio of time required to allocate a buffer for a page : (100 x (fix_time - lock_time - hold_time) / fix_time) x
+   * 100 */
+  PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO,
+  /* total successful promotions */
+  PSTAT_PB_PAGE_PROMOTE_SUCCESS,
+  /* total failed promotions */
+  PSTAT_PB_PAGE_PROMOTE_FAILED,
+  /* total promotion time */
+  PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC,
+
+  /* Complex statistics */
+  PSTAT_PBX_FIX_COUNTERS,
+  PSTAT_PBX_PROMOTE_COUNTERS,
+  PSTAT_PBX_PROMOTE_TIME_COUNTERS,
+  PSTAT_PBX_UNFIX_COUNTERS,
+  PSTAT_PBX_LOCK_TIME_COUNTERS,
+  PSTAT_PBX_HOLD_TIME_COUNTERS,
+  PSTAT_PBX_FIX_TIME_COUNTERS,
+  PSTAT_MVCC_SNAPSHOT_COUNTERS,
+  PSTAT_OBJ_LOCK_TIME_COUNTERS,
+
+  PSTAT_COUNT = PSTAT_OBJ_LOCK_TIME_COUNTERS + 1
+} PERF_STAT_ID;
+
 
 typedef struct diag_sys_config DIAG_SYS_CONFIG;
 struct diag_sys_config
@@ -342,396 +585,59 @@ enum t_diag_server_type
 };
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
-/*
- * Server execution statistic structure
- * If members are added or removed in this structure then changes must be made
- * also in MNT_SIZE_OF_SERVER_EXEC_STATS, STAT_SIZE_MEMORY and
- * MNT_SERVER_EXEC_STATS_SIZEOF
- */
-typedef struct mnt_server_exec_stats MNT_SERVER_EXEC_STATS;
-struct mnt_server_exec_stats
-{
-  /* Execution statistics for the file io */
-  UINT64 file_num_creates;
-  UINT64 file_num_removes;
-  UINT64 file_num_ioreads;
-  UINT64 file_num_iowrites;
-  UINT64 file_num_iosynches;
-  UINT64 file_num_page_allocs;
-  UINT64 file_num_page_deallocs;
+extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
 
-  /* Execution statistics for the page buffer manager */
-  UINT64 pb_num_fetches;
-  UINT64 pb_num_dirties;
-  UINT64 pb_num_ioreads;
-  UINT64 pb_num_iowrites;
-  UINT64 pb_num_victims;
-  UINT64 pb_num_replacements;
-  UINT64 pb_num_hash_anchor_waits;
-  UINT64 pb_time_hash_anchor_wait;
-  /* peeked stats */
-  UINT64 pb_fixed_cnt;
-  UINT64 pb_dirty_cnt;
-  UINT64 pb_lru1_cnt;
-  UINT64 pb_lru2_cnt;
-  UINT64 pb_ain_cnt;
-  UINT64 pb_avoid_dealloc_cnt;
-  UINT64 pb_avoid_victim_cnt;
-  UINT64 pb_victim_cand_cnt;
+extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr);
 
-  /* Execution statistics for the log manager */
-  UINT64 log_num_fetches;
-  UINT64 log_num_ioreads;
-  UINT64 log_num_iowrites;
-  UINT64 log_num_appendrecs;
-  UINT64 log_num_archives;
-  UINT64 log_num_start_checkpoints;
-  UINT64 log_num_end_checkpoints;
-  UINT64 log_num_wals;
-  UINT64 log_num_replacements;
-  UINT64 log_num_iowrites_for_replacement;
+extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 
-  /* Execution statistics for the lock manager */
-  UINT64 lk_num_acquired_on_pages;
-  UINT64 lk_num_acquired_on_objects;
-  UINT64 lk_num_converted_on_pages;
-  UINT64 lk_num_converted_on_objects;
-  UINT64 lk_num_re_requested_on_pages;
-  UINT64 lk_num_re_requested_on_objects;
-  UINT64 lk_num_waited_on_pages;
-  UINT64 lk_num_waited_on_objects;
-  UINT64 lk_num_waited_time_on_objects;	/* include this to avoid client-server compat issue even if extended stats are
-					 * disabled */
+extern int perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats);
+extern int perfmon_initialize (int num_trans);
+extern void perfmon_finalize (void);
+extern int perfmon_get_number_of_statistic_values (void);
+extern UINT64 *perfmon_allocate_values (void);
+extern char *perfmon_allocate_packed_values_buffer (void);
+extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 
-  /* Execution statistics for transactions */
-  UINT64 tran_num_commits;
-  UINT64 tran_num_rollbacks;
-  UINT64 tran_num_savepoints;
-  UINT64 tran_num_start_topops;
-  UINT64 tran_num_end_topops;
-  UINT64 tran_num_interrupts;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
+extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
+#endif /* SERVER_MODE || SA_MODE */
 
-  /* Execution statistics for the btree manager */
-  UINT64 bt_num_inserts;
-  UINT64 bt_num_deletes;
-  UINT64 bt_num_updates;
-  UINT64 bt_num_covered;
-  UINT64 bt_num_noncovered;
-  UINT64 bt_num_resumes;
-  UINT64 bt_num_multi_range_opt;
-  UINT64 bt_num_splits;
-  UINT64 bt_num_merges;
-  UINT64 bt_num_get_stats;
+extern bool perfmon_is_perf_tracking (void);
+extern bool perfmon_is_perf_tracking_and_active (int activation_flag);
 
-  /* Execution statistics for the heap manager */
-  UINT64 heap_num_stats_sync_bestspace;
-
-  /* Execution statistics for the query manager */
-  UINT64 qm_num_selects;
-  UINT64 qm_num_inserts;
-  UINT64 qm_num_deletes;
-  UINT64 qm_num_updates;
-  UINT64 qm_num_sscans;
-  UINT64 qm_num_iscans;
-  UINT64 qm_num_lscans;
-  UINT64 qm_num_setscans;
-  UINT64 qm_num_methscans;
-  UINT64 qm_num_nljoins;
-  UINT64 qm_num_mjoins;
-  UINT64 qm_num_objfetches;
-  UINT64 qm_num_holdable_cursors;
-
-  /* Execution statistics for external sort */
-  UINT64 sort_num_io_pages;
-  UINT64 sort_num_data_pages;
-
-  /* Execution statistics for network communication */
-  UINT64 net_num_requests;
-
-  /* flush control stat */
-  UINT64 fc_num_pages;
-  UINT64 fc_num_log_pages;
-  UINT64 fc_tokens;
-
-  /* prior lsa info */
-  UINT64 prior_lsa_list_size;	/* kbytes */
-  UINT64 prior_lsa_list_maxed;
-  UINT64 prior_lsa_list_removed;
-
-  /* best space info */
-  UINT64 hf_num_stats_entries;
-  UINT64 hf_num_stats_maxed;
-
-  /* HA replication delay */
-  UINT64 ha_repl_delay;
-
-  /* Execution statistics for Plan cache */
-  UINT64 pc_num_add;
-  UINT64 pc_num_lookup;
-  UINT64 pc_num_hit;
-  UINT64 pc_num_miss;
-  UINT64 pc_num_full;
-  UINT64 pc_num_delete;
-  UINT64 pc_num_invalid_xasl_id;
-  UINT64 pc_num_query_string_hash_entries;
-  UINT64 pc_num_xasl_id_hash_entries;
-  UINT64 pc_num_class_oid_hash_entries;
-
-  UINT64 vac_num_vacuumed_log_pages;
-  UINT64 vac_num_to_vacuum_log_pages;
-  UINT64 vac_num_prefetch_requests_log_pages;
-  UINT64 vac_num_prefetch_hits_log_pages;
-
-  /* Track heap modify counters. */
-  UINT64 heap_home_inserts;
-  UINT64 heap_big_inserts;
-  UINT64 heap_assign_inserts;
-  UINT64 heap_home_deletes;
-  UINT64 heap_home_mvcc_deletes;
-  UINT64 heap_home_to_rel_deletes;
-  UINT64 heap_home_to_big_deletes;
-  UINT64 heap_rel_deletes;
-  UINT64 heap_rel_mvcc_deletes;
-  UINT64 heap_rel_to_home_deletes;
-  UINT64 heap_rel_to_big_deletes;
-  UINT64 heap_rel_to_rel_deletes;
-  UINT64 heap_big_deletes;
-  UINT64 heap_big_mvcc_deletes;
-  UINT64 heap_new_ver_inserts;
-  UINT64 heap_home_updates;
-  UINT64 heap_home_to_rel_updates;
-  UINT64 heap_home_to_big_updates;
-  UINT64 heap_rel_updates;
-  UINT64 heap_rel_to_home_updates;
-  UINT64 heap_rel_to_rel_updates;
-  UINT64 heap_rel_to_big_updates;
-  UINT64 heap_big_updates;
-  UINT64 heap_home_vacuums;
-  UINT64 heap_big_vacuums;
-  UINT64 heap_rel_vacuums;
-  UINT64 heap_insid_vacuums;
-  UINT64 heap_remove_vacuums;
-  UINT64 heap_next_ver_vacuums;
-
-  /* Track heap modify timers. */
-  UINT64 heap_insert_prepare;
-  UINT64 heap_insert_execute;
-  UINT64 heap_insert_log;
-  UINT64 heap_delete_prepare;
-  UINT64 heap_delete_execute;
-  UINT64 heap_delete_log;
-  UINT64 heap_update_prepare;
-  UINT64 heap_update_execute;
-  UINT64 heap_update_log;
-  UINT64 heap_vacuum_prepare;
-  UINT64 heap_vacuum_execute;
-  UINT64 heap_vacuum_log;
-
-  /* B-tree op counters. */
-  UINT64 bt_find_unique_cnt;
-  UINT64 bt_range_search_cnt;
-  UINT64 bt_insert_cnt;
-  UINT64 bt_delete_cnt;
-  UINT64 bt_mvcc_delete_cnt;
-  UINT64 bt_mark_delete_cnt;
-  UINT64 bt_update_sk_cnt;
-  UINT64 bt_undo_insert_cnt;
-  UINT64 bt_undo_delete_cnt;
-  UINT64 bt_undo_mvcc_delete_cnt;
-  UINT64 bt_undo_update_sk_cnt;
-  UINT64 bt_vacuum_cnt;
-  UINT64 bt_vacuum_insid_cnt;
-  UINT64 bt_vacuum_update_sk_cnt;
-  UINT64 bt_fix_ovf_oids_cnt;
-  UINT64 bt_unique_rlocks_cnt;
-  UINT64 bt_unique_wlocks_cnt;
-
-  /* B-tree op timers. */
-  UINT64 bt_find_unique;
-  UINT64 bt_range_search;
-  UINT64 bt_insert;
-  UINT64 bt_delete;
-  UINT64 bt_mvcc_delete;
-  UINT64 bt_mark_delete;
-  UINT64 bt_update_sk;
-  UINT64 bt_undo_insert;
-  UINT64 bt_undo_delete;
-  UINT64 bt_undo_mvcc_delete;
-  UINT64 bt_undo_update_sk;
-  UINT64 bt_vacuum;
-  UINT64 bt_vacuum_insid;
-  UINT64 bt_vacuum_update_sk;
-
-  /* B-tree traversal timers. */
-  UINT64 bt_traverse;
-  UINT64 bt_find_unique_traverse;
-  UINT64 bt_range_search_traverse;
-  UINT64 bt_insert_traverse;
-  UINT64 bt_delete_traverse;
-  UINT64 bt_mvcc_delete_traverse;
-  UINT64 bt_mark_delete_traverse;
-  UINT64 bt_update_sk_traverse;
-  UINT64 bt_undo_insert_traverse;
-  UINT64 bt_undo_delete_traverse;
-  UINT64 bt_undo_mvcc_delete_traverse;
-  UINT64 bt_undo_update_sk_traverse;
-  UINT64 bt_vacuum_traverse;
-  UINT64 bt_vacuum_insid_traverse;
-  UINT64 bt_vacuum_update_sk_traverse;
-
-  /* B-tree timers to fix overflow OID's and to lock for unique. */
-  UINT64 bt_fix_ovf_oids;
-  UINT64 bt_unique_rlocks;
-  UINT64 bt_unique_wlocks;
-
-  /* Vacuum master/worker timers. */
-  UINT64 vac_master;
-  UINT64 vac_worker_process_log;
-  UINT64 vac_worker_execute;
-
-  /* Other statistics (change MNT_COUNT_OF_SERVER_EXEC_CALC_STATS) */
-  /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
-  UINT64 pb_hit_ratio;
-  /* ((log_num_fetches - log_num_ioreads) x 100 / log_num_fetches) x 100 */
-  UINT64 log_hit_ratio;
-  /* ((fetches of vacuum - fetches of vacuum not found in PB) x 100 / fetches of vacuum) x 100 */
-  UINT64 vacuum_data_hit_ratio;
-  /* (100 x Number of unfix with of dirty pages of vacuum / total num of unfixes from vacuum) x 100 */
-  UINT64 pb_vacuum_efficiency;
-  /* (100 x Number of unfix from vacuum / total num of unfix) x 100 */
-  UINT64 pb_vacuum_fetch_ratio;
-  /* total time to acquire page lock (stored as 10 usec unit, displayed as miliseconds) */
-  UINT64 pb_page_lock_acquire_time_10usec;
-  /* total time to acquire page hold (stored as 10 usec unit, displayed as miliseconds) */
-  UINT64 pb_page_hold_acquire_time_10usec;
-  /* total time to acquire page fix (stored as 10 usec unit, displayed as miliseconds) */
-  UINT64 pb_page_fix_acquire_time_10usec;
-  /* ratio of time required to allocate a buffer for a page : (100 x (fix_time - lock_time - hold_time) / fix_time) x
-   * 100 */
-  UINT64 pb_page_allocate_time_ratio;
-  /* total successful promotions */
-  UINT64 pb_page_promote_success;
-  /* total failed promotions */
-  UINT64 pb_page_promote_failed;
-  /* total promotion time */
-  UINT64 pb_page_promote_total_time_10usec;
-
-  /* array counters : do not include in MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS */
-  /* change MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS and MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS */
-  UINT64 pbx_fix_counters[PERF_PAGE_FIX_COUNTERS];
-  UINT64 pbx_promote_counters[PERF_PAGE_PROMOTE_COUNTERS];
-  UINT64 pbx_promote_time_counters[PERF_PAGE_PROMOTE_COUNTERS];
-  UINT64 pbx_unfix_counters[PERF_PAGE_UNFIX_COUNTERS];
-  UINT64 pbx_lock_time_counters[PERF_PAGE_LOCK_TIME_COUNTERS];
-  UINT64 pbx_hold_time_counters[PERF_PAGE_HOLD_TIME_COUNTERS];
-  UINT64 pbx_fix_time_counters[PERF_PAGE_FIX_TIME_COUNTERS];
-  UINT64 mvcc_snapshot_counters[PERF_MVCC_SNAPSHOT_COUNTERS];
-  UINT64 obj_lock_time_counters[PERF_OBJ_LOCK_STAT_COUNTERS];
-  UINT64 log_snapshot_time_counters[PERF_MODULE_CNT];
-  UINT64 log_snapshot_retry_counters[PERF_MODULE_CNT];
-  UINT64 log_tran_complete_time_counters[PERF_MODULE_CNT];
-  UINT64 log_oldest_mvcc_time_counters[PERF_MODULE_CNT];
-  UINT64 log_oldest_mvcc_retry_counters[PERF_MODULE_CNT];
-
-  /* This must be kept as last member. Otherwise the MNT_SERVER_EXEC_STATS_SIZEOF macro must be modified */
-  bool enable_local_stat;	/* used for local stats */
-};
-
-/* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 203
-
-/* number of array stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 14
-
-/* number of computed stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 12
-
-#define MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
-  MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
-
-#define MNT_SERVER_EXEC_STATS_COUNT \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS \
-   + MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS)
-
-#define MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS \
-(PERF_PAGE_FIX_COUNTERS + PERF_PAGE_PROMOTE_COUNTERS \
- + PERF_PAGE_PROMOTE_COUNTERS + PERF_PAGE_UNFIX_COUNTERS \
- + PERF_PAGE_LOCK_TIME_COUNTERS + PERF_PAGE_HOLD_TIME_COUNTERS \
- + PERF_PAGE_FIX_TIME_COUNTERS + PERF_MVCC_SNAPSHOT_COUNTERS \
- + PERF_OBJ_LOCK_STAT_COUNTERS + PERF_MODULE_CNT + PERF_MODULE_CNT \
- + PERF_MODULE_CNT + PERF_MODULE_CNT + PERF_MODULE_CNT)
-
-#define MNT_SIZE_OF_SERVER_EXEC_STATS \
-  (MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
-   + MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS)
-
-/* The exact size of mnt_server_exec_stats structure */
-#define MNT_SERVER_EXEC_STATS_SIZEOF \
-  (offsetof (MNT_SERVER_EXEC_STATS, enable_local_stat) + sizeof (bool))
-
-#define MNT_SERVER_PBX_FIX_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 0)
-#define MNT_SERVER_PROMOTE_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 1)
-#define MNT_SERVER_PROMOTE_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 2)
-#define MNT_SERVER_PBX_UNFIX_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 3)
-#define MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 4)
-#define MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 5)
-#define MNT_SERVER_PBX_FIX_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 6)
-#define MNT_SERVER_MVCC_SNAPSHOT_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 7)
-#define MNT_SERVER_OBJ_LOCK_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 8)
-#define MNT_SERVER_SNAPSHOT_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 9)
-#define MNT_SERVER_SNAPSHOT_RETRY_CNT_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 10)
-#define MNT_SERVER_TRAN_COMPLETE_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 11)
-#define MNT_SERVER_OLDEST_MVCC_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 12)
-#define MNT_SERVER_OLDEST_MVCC_RETRY_CNT_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 13)
-
-extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream, const char *substr);
-
-extern void mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats, char *buffer, int buf_size,
-					     const char *substr);
-
-extern void mnt_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
-
-extern int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff, MNT_SERVER_EXEC_STATS * new_stats,
-				MNT_SERVER_EXEC_STATS * old_stats);
+extern void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount);
+extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
+extern void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval);
+extern void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff);
+extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
+extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
+extern int perfmon_get_activation_flag (void);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
-typedef struct mnt_client_stat_info MNT_CLIENT_STAT_INFO;
-struct mnt_client_stat_info
+typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
+struct perfmon_client_stat_info
 {
   time_t cpu_start_usr_time;
   time_t cpu_start_sys_time;
   time_t elapsed_start_time;
-  MNT_SERVER_EXEC_STATS *base_server_stats;
-  MNT_SERVER_EXEC_STATS *current_server_stats;
-  MNT_SERVER_EXEC_STATS *old_global_stats;
-  MNT_SERVER_EXEC_STATS *current_global_stats;
+  UINT64 *base_server_stats;
+  UINT64 *current_server_stats;
+  UINT64 *old_global_stats;
+  UINT64 *current_global_stats;
 };
 
-extern bool mnt_Iscollecting_stats;
+extern bool perfmon_Iscollecting_stats;
 
-extern int mnt_start_stats (bool for_all_trans);
-extern int mnt_stop_stats (void);
-extern void mnt_reset_stats (void);
-extern void mnt_print_stats (FILE * stream);
-extern void mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr);
-extern MNT_SERVER_EXEC_STATS *mnt_get_stats (void);
-extern MNT_SERVER_EXEC_STATS *mnt_get_global_stats (void);
-extern int mnt_get_global_diff_stats (MNT_SERVER_EXEC_STATS * diff_stats);
+extern int perfmon_start_stats (bool for_all_trans);
+extern int perfmon_stop_stats (void);
+extern void perfmon_reset_stats (void);
+extern int perfmon_print_stats (FILE * stream);
+extern int perfmon_print_global_stats (FILE * stream, bool cumulative, const char *substr);
+extern int perfmon_get_stats (void);
+extern int perfmon_get_global_stats (void);
 #endif /* CS_MODE || SA_MODE */
 
 #if defined (DIAG_DEVEL)
@@ -870,897 +776,74 @@ struct perf_utime_tracker
 #define PERF_UTIME_TRACKER_START(thread_p, track) \
   do \
     { \
-      (track)->is_perf_tracking = mnt_is_perf_tracking (thread_p); \
+      (track)->is_perf_tracking = perfmon_is_perf_tracking (); \
       if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
     } \
   while (false)
-#define PERF_UTIME_TRACKER_TIME(thread_p, track, callback) \
+/* Time trackers - perfmon_time_stat is called. */
+#define PERF_UTIME_TRACKER_TIME(thread_p, track, psid) \
   do \
     { \
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
-      callback (thread_p, \
-		tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
+      perfmon_time_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
     } \
   while (false)
-#define PERF_UTIME_TRACKER_TIME_AND_RESTART(thread_p, track, callback) \
+#define PERF_UTIME_TRACKER_TIME_AND_RESTART(thread_p, track, psid) \
   do \
     { \
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
-      callback (thread_p, \
-		tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
+      perfmon_time_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
+      (track)->start_tick = (track)->end_tick; \
+    } \
+  while (false)
+
+/* Time accumulators only - perfmon_add_stat is called. */
+#define PERF_UTIME_TRACKER_ADD_TIME(thread_p, track, psid) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_stat (thread_p, psid, (int) tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
+    } \
+  while (false)
+#define PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART(thread_p, track, psid) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_stat (thread_p, psid, (int) tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
 
 #if defined(SERVER_MODE) || defined (SA_MODE)
-extern int mnt_Num_tran_exec_stats;
-
-#define mnt_is_perf_tracking(thread_p) \
-  ((mnt_Num_tran_exec_stats > 0) ? true : false)
 /*
  * Statistics at file io level
  */
-#define mnt_file_creates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_creates(thread_p)
-#define mnt_file_removes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_removes(thread_p)
-#define mnt_file_ioreads(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_ioreads(thread_p)
-#define mnt_file_iowrites(thread_p, num_pages) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iowrites(thread_p, num_pages)
-#define mnt_file_iosynches(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iosynches(thread_p)
-#define mnt_file_page_allocs(thread_p, num_pages) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_page_allocs(thread_p, num_pages)
-#define mnt_file_page_deallocs(thread_p, num_pages) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_page_deallocs(thread_p, num_pages)
+extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
 
-/*
- * Statistics at page level
- */
-#define mnt_pb_fetches(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_fetches(thread_p)
-#define mnt_pb_dirties(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_dirties(thread_p)
-#define mnt_pb_ioreads(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_ioreads(thread_p)
-#define mnt_pb_iowrites(thread_p, num_pages) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_iowrites(thread_p, num_pages)
-#define mnt_pb_victims(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_victims(thread_p)
-#define mnt_pb_replacements(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_replacements(thread_p)
-#define mnt_pb_num_hash_anchor_waits(thread_p, time_amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_num_hash_anchor_waits(thread_p, \
-								  time_amount)
+extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
 
-/*
- * Statistics at log level
- */
-#define mnt_log_fetches(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_fetches(thread_p)
-#define mnt_log_ioreads(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_ioreads(thread_p)
-#define mnt_log_iowrites(thread_p, num_log_pages) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_iowrites(thread_p, num_log_pages)
-#define mnt_log_appendrecs(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_appendrecs(thread_p)
-#define mnt_log_archives(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_archives(thread_p)
-#define mnt_log_start_checkpoints(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_start_checkpoints(thread_p)
-#define mnt_log_end_checkpoints(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_end_checkpoints(thread_p)
-#define mnt_log_wals(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_wals(thread_p)
-#define mnt_log_replacements(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_replacements(thread_p)
-#define mnt_log_iowrites_for_replacement(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_iowrites_for_replacement(thread_p)
+extern void perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
 
-/*
- * Statistics at lock level
- */
-#define mnt_lk_acquired_on_pages(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_acquired_on_pages(thread_p)
-#define mnt_lk_acquired_on_objects(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_acquired_on_objects(thread_p)
-#define mnt_lk_converted_on_pages(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_converted_on_pages(thread_p)
-#define mnt_lk_converted_on_objects(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_converted_on_objects(thread_p)
-#define mnt_lk_re_requested_on_pages(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_re_requested_on_pages(thread_p)
-#define mnt_lk_re_requested_on_objects(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_re_requested_on_objects(thread_p)
-#define mnt_lk_waited_on_pages(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_waited_on_pages(thread_p)
-#define mnt_lk_waited_on_objects(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_waited_on_objects(thread_p)
-#define mnt_lk_waited_time_on_objects(thread_p, lock_mode, time_usec) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_waited_time_on_objects(thread_p, \
-								   lock_mode, \
-								   time_usec)
+extern UINT64 perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
 
-/*
- * Transaction Management level
- */
-#define mnt_tran_commits(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_commits(thread_p)
-#define mnt_tran_rollbacks(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_rollbacks(thread_p)
-#define mnt_tran_savepoints(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_savepoints(thread_p)
-#define mnt_tran_start_topops(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_start_topops(thread_p)
-#define mnt_tran_end_topops(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_end_topops(thread_p)
-#define mnt_tran_interrupts(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_interrupts(thread_p)
+extern void perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+			     int cond_type);
+extern void perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch,
+				 int success, UINT64 amount);
+extern void perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
+			       int holder_latch);
+extern void perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					   int cond_type, UINT64 amount);
+extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					   UINT64 amount);
+extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					  int cond_type, UINT64 amount);
+extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
 
-/*
- * Statistics at btree level
- */
-#define mnt_bt_inserts(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_inserts(thread_p)
-#define mnt_bt_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_deletes(thread_p)
-#define mnt_bt_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_updates(thread_p)
-#define mnt_bt_covered(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_covered(thread_p)
-#define mnt_bt_noncovered(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_noncovered(thread_p)
-#define mnt_bt_resumes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_resumes(thread_p)
-#define mnt_bt_multi_range_opt(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_multi_range_opt(thread_p)
-#define mnt_bt_splits(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_splits(thread_p)
-#define mnt_bt_merges(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_merges(thread_p)
-#define mnt_bt_get_stats(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_get_stats(thread_p)
-
-/* Execution statistics for the query manager */
-#define mnt_qm_selects(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_selects(thread_p)
-#define mnt_qm_inserts(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_inserts(thread_p)
-#define mnt_qm_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_deletes(thread_p)
-#define mnt_qm_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_updates(thread_p)
-#define mnt_qm_sscans(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_sscans(thread_p)
-#define mnt_qm_iscans(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_iscans(thread_p)
-#define mnt_qm_lscans(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_lscans(thread_p)
-#define mnt_qm_setscans(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_setscans(thread_p)
-#define mnt_qm_methscans(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_methscans(thread_p)
-#define mnt_qm_nljoins(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_nljoins(thread_p)
-#define mnt_qm_mjoins(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_mjoins(thread_p)
-#define mnt_qm_objfetches(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_objfetches(thread_p)
-#define mnt_qm_holdable_cursor(thread_p, num_cursors) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_holdable_cursor(thread_p, num_cursors)
-
-/* execution statistics for external sort */
-#define mnt_sort_io_pages(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0 && thread_get_sort_stats_active(thread_p)) \
-    mnt_x_sort_io_pages(thread_p)
-#define mnt_sort_data_pages(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0 && thread_get_sort_stats_active(thread_p)) \
-    mnt_x_sort_data_pages(thread_p)
-
-/* Prior LSA */
-#define mnt_prior_lsa_list_size(thread_p, list_size) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_prior_lsa_list_size(thread_p, list_size)
-#define mnt_prior_lsa_list_maxed(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_prior_lsa_list_maxed(thread_p)
-#define mnt_prior_lsa_list_removed(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_prior_lsa_list_removed(thread_p)
-
-/* Heap best space info */
-#define mnt_hf_stats_bestspace_entries(thread_p, num_entries) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_hf_stats_bestspace_entries(thread_p, num_entries)
-#define mnt_hf_stats_bestspace_maxed(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_hf_stats_bestspace_maxed(thread_p)
-
-/* Statistics at Flush Control */
-#define mnt_fc_stats(thread_p, num_pages, num_overflows, tokens) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_fc_stats(thread_p, num_pages, num_overflows, tokens)
-
-/* Network Communication level */
-#define mnt_net_requests(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_net_requests(thread_p)
-
-/* Plan cache */
-#define mnt_pc_add(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_add(thread_p)
-#define mnt_pc_lookup(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_lookup(thread_p)
-#define mnt_pc_hit(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_hit(thread_p)
-#define mnt_pc_miss(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_miss(thread_p)
-#define mnt_pc_full(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_full(thread_p)
-#define mnt_pc_delete(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_delete(thread_p)
-#define mnt_pc_invalid_xasl_id(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_invalid_xasl_id(thread_p)
-#define mnt_pc_query_string_hash_entries(thread_p, num_entries) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_query_string_hash_entries(thread_p, num_entries)
-#define mnt_pc_xasl_id_hash_entries(thread_p, num_entries) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_xasl_id_hash_entries(thread_p, num_entries)
-#define mnt_pc_class_oid_hash_entries(thread_p, num_entries) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pc_class_oid_hash_entries(thread_p, num_entries)
-
-/* Execution statistics for the heap manager */
-#define mnt_heap_stats_sync_bestspace(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_stats_sync_bestspace(thread_p)
-
-#define mnt_vac_log_vacuumed_pages(thread_p, num_entries) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_log_vacuumed_pages(thread_p, num_entries)
-
-#define mnt_vac_log_to_vacuum_pages(thread_p, num_entries) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_log_to_vacuum_pages(thread_p, num_entries)
-
-#define mnt_vac_prefetch_log_requests_pages(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_prefetch_log_requests_pages(thread_p)
-
-#define mnt_vac_prefetch_log_hits_pages(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_vac_prefetch_log_hits_pages(thread_p)
-
-#define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix(thread_p, page_type, \
-						 page_found_mode,latch_mode, \
-						 cond_type)
-#define mnt_pbx_promote(thread_p,page_type,promote_cond,holder_latch,success, amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_promote(thread_p, page_type, \
-						     promote_cond, \
-						     holder_latch, \
-						     success, amount)
-#define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_unfix(thread_p, page_type, \
-						   buf_dirty, \
-						   dirtied_by_holder, \
-						   holder_latch)
-#define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_hold_acquire_time(thread_p, \
-							       page_type, \
-							       page_found_mode, \
-							       latch_mode, \
-							       amount)
-#define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_lock_acquire_time(thread_p, \
-							       page_type, \
-							       page_found_mode, \
-							       latch_mode, \
-							       cond_type, \
-							       amount)
-#define mnt_pbx_fix_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix_acquire_time(thread_p, \
-							      page_type, \
-							      page_found_mode, \
-							      latch_mode, \
-							      cond_type, \
-							      amount)
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-#define mnt_mvcc_snapshot(thread_p,snapshot,rec_type,visibility) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_mvcc_snapshot(thread_p, \
-						       snapshot, \
-						       rec_type, \
-						       visibility)
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-#define mnt_snapshot_acquire_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_snapshot_acquire_time(thread_p, \
-							       amount)
-#define mnt_snapshot_retry_counters(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_snapshot_retry_counters(thread_p, \
-								 amount)
-#define mnt_tran_complete_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_complete_time(thread_p, amount)
-#define mnt_oldest_mvcc_acquire_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_oldest_mvcc_acquire_time(thread_p, \
-								  amount)
-#define mnt_oldest_mvcc_retry_counters(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_oldest_mvcc_retry_counters(thread_p, \
-								    amount)
-
-#define mnt_heap_home_inserts(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_inserts (thread_p)
-#define mnt_heap_big_inserts(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_inserts (thread_p)
-#define mnt_heap_assign_inserts(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_assign_inserts (thread_p)
-#define mnt_heap_home_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_deletes (thread_p)
-#define mnt_heap_home_mvcc_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_mvcc_deletes (thread_p)
-#define mnt_heap_home_to_rel_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_to_rel_deletes (thread_p)
-#define mnt_heap_home_to_big_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_to_big_deletes (thread_p)
-#define mnt_heap_rel_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_deletes (thread_p)
-#define mnt_heap_rel_mvcc_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_mvcc_deletes (thread_p)
-#define mnt_heap_rel_to_home_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_home_deletes (thread_p)
-#define mnt_heap_rel_to_big_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_big_deletes (thread_p)
-#define mnt_heap_rel_to_rel_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_rel_deletes (thread_p)
-#define mnt_heap_big_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_deletes (thread_p)
-#define mnt_heap_big_mvcc_deletes(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_mvcc_deletes (thread_p)
-#define mnt_heap_new_ver_inserts(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_new_ver_inserts (thread_p)
-#define mnt_heap_home_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_updates (thread_p)
-#define mnt_heap_home_to_rel_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_to_rel_updates (thread_p)
-#define mnt_heap_home_to_big_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_to_big_updates (thread_p)
-#define mnt_heap_rel_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_updates (thread_p)
-#define mnt_heap_rel_to_home_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_home_updates (thread_p)
-#define mnt_heap_rel_to_rel_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_rel_updates (thread_p)
-#define mnt_heap_rel_to_big_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_to_big_updates (thread_p)
-#define mnt_heap_big_updates(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_updates (thread_p)
-#define mnt_heap_home_vacuums(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_home_vacuums (thread_p)
-#define mnt_heap_big_vacuums(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_big_vacuums (thread_p)
-#define mnt_heap_rel_vacuums(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_rel_vacuums (thread_p)
-#define mnt_heap_insid_vacuums(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_insid_vacuums (thread_p)
-#define mnt_heap_remove_vacuums(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_remove_vacuums (thread_p)
-
-#define mnt_heap_insert_prepare_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_insert_prepare_time (thread_p, amount)
-#define mnt_heap_insert_execute_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_insert_execute_time (thread_p, amount)
-#define mnt_heap_insert_log_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_insert_log_time (thread_p, amount)
-#define mnt_heap_delete_prepare_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_delete_prepare_time (thread_p, amount)
-#define mnt_heap_delete_execute_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_delete_execute_time (thread_p, amount)
-#define mnt_heap_delete_log_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_delete_log_time (thread_p, amount)
-#define mnt_heap_update_prepare_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_update_prepare_time (thread_p, amount)
-#define mnt_heap_update_execute_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_update_execute_time (thread_p, amount)
-#define mnt_heap_update_log_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_update_log_time (thread_p, amount)
-#define mnt_heap_vacuum_prepare_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_vacuum_prepare_time (thread_p, amount)
-#define mnt_heap_vacuum_execute_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_vacuum_execute_time (thread_p, amount)
-#define mnt_heap_vacuum_log_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_heap_vacuum_log_time (thread_p, amount)
-
-#define mnt_bt_find_unique_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_find_unique_time (thread_p, amount)
-#define mnt_bt_range_search_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_range_search_time (thread_p, amount)
-#define mnt_bt_insert_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_insert_time (thread_p, amount)
-#define mnt_bt_delete_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_delete_time (thread_p, amount)
-#define mnt_bt_mvcc_delete_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_mvcc_delete_time (thread_p, amount)
-#define mnt_bt_mark_delete_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_mark_delete_time (thread_p, amount)
-#define mnt_bt_undo_insert_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_undo_insert_time (thread_p, amount)
-#define mnt_bt_undo_delete_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_undo_delete_time (thread_p, amount)
-#define mnt_bt_undo_mvcc_delete_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_undo_mvcc_delete_time (thread_p, amount)
-#define mnt_bt_vacuum_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_vacuum_time (thread_p, amount)
-#define mnt_bt_vacuum_insid_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_vacuum_insid_time (thread_p, amount)
-#define mnt_bt_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_traverse_time (thread_p, amount)
-#define mnt_bt_find_unique_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_find_unique_traverse_time (thread_p, amount)
-#define mnt_bt_range_search_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_range_search_traverse_time (thread_p, amount)
-#define mnt_bt_insert_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_insert_traverse_time (thread_p, amount)
-#define mnt_bt_delete_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_delete_traverse_time (thread_p, amount)
-#define mnt_bt_mvcc_delete_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_mvcc_delete_traverse_time (thread_p, amount)
-#define mnt_bt_mark_delete_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_mark_delete_traverse_time (thread_p, amount)
-#define mnt_bt_undo_insert_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_undo_insert_traverse_time (thread_p, amount)
-#define mnt_bt_undo_delete_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_undo_delete_traverse_time (thread_p, amount)
-#define mnt_bt_undo_mvcc_delete_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_undo_mvcc_delete_traverse_time (thread_p, amount)
-#define mnt_bt_vacuum_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_vacuum_traverse_time (thread_p, amount)
-#define mnt_bt_vacuum_insid_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_vacuum_insid_traverse_time (thread_p, amount)
-#define mnt_bt_fix_ovf_oids_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_fix_ovf_oids_time (thread_p, amount)
-#define mnt_bt_unique_rlocks_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_unique_rlocks_time (thread_p, amount)
-#define mnt_bt_unique_wlocks_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_unique_wlocks_time (thread_p, amount)
-
-#define mnt_vac_master_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_vac_master_time (thread_p, amount)
-#define mnt_vac_worker_process_log_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_vac_worker_process_log_time (thread_p, amount)
-#define mnt_vac_worker_execute_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_vac_worker_execute_time (thread_p, amount)
-
-
-extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
-
-extern int mnt_server_init (int num_tran_indices);
-extern void mnt_server_final (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream);
-#endif
-extern void mnt_x_file_creates (THREAD_ENTRY * thread_p);
-extern void mnt_x_file_removes (THREAD_ENTRY * thread_p);
-extern void mnt_x_file_ioreads (THREAD_ENTRY * thread_p);
-extern void mnt_x_file_iowrites (THREAD_ENTRY * thread_p, int num_pages);
-extern void mnt_x_file_iosynches (THREAD_ENTRY * thread_p);
-extern void mnt_x_file_page_allocs (THREAD_ENTRY * thread_p, int num_pages);
-extern void mnt_x_file_page_deallocs (THREAD_ENTRY * thread_p, int num_pages);
-extern void mnt_x_pb_fetches (THREAD_ENTRY * thread_p);
-extern void mnt_x_pb_dirties (THREAD_ENTRY * thread_p);
-extern void mnt_x_pb_ioreads (THREAD_ENTRY * thread_p);
-extern void mnt_x_pb_iowrites (THREAD_ENTRY * thread_p, int num_pages);
-extern void mnt_x_pb_victims (THREAD_ENTRY * thread_p);
-extern void mnt_x_pb_replacements (THREAD_ENTRY * thread_p);
-extern void mnt_x_pb_num_hash_anchor_waits (THREAD_ENTRY * thread_p, UINT64 time_amount);
-extern void mnt_x_log_fetches (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_ioreads (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_iowrites (THREAD_ENTRY * thread_p, int num_log_pages);
-extern void mnt_x_log_appendrecs (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_archives (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_start_checkpoints (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_end_checkpoints (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_wals (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_replacements (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_iowrites_for_replacement (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_converted_on_objects (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_re_requested_on_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_re_requested_on_objects (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_waited_on_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
-extern void mnt_x_tran_commits (THREAD_ENTRY * thread_p);
-extern void mnt_x_tran_rollbacks (THREAD_ENTRY * thread_p);
-extern void mnt_x_tran_savepoints (THREAD_ENTRY * thread_p);
-extern void mnt_x_tran_start_topops (THREAD_ENTRY * thread_p);
-extern void mnt_x_tran_end_topops (THREAD_ENTRY * thread_p);
-extern void mnt_x_tran_interrupts (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_inserts (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_covered (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_noncovered (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_resumes (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_multi_range_opt (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_splits (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_merges (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_get_stats (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_selects (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_inserts (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_sscans (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_iscans (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_lscans (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_setscans (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_methscans (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_nljoins (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_mjoins (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_objfetches (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_holdable_cursor (THREAD_ENTRY * thread_p, int num_cursors);
-extern void mnt_x_sort_io_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_sort_data_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
-
-extern void mnt_x_prior_lsa_list_size (THREAD_ENTRY * thread_p, unsigned int list_size);
-extern void mnt_x_prior_lsa_list_maxed (THREAD_ENTRY * thread_p);
-extern void mnt_x_prior_lsa_list_removed (THREAD_ENTRY * thread_p);
-
-extern void mnt_x_hf_stats_bestspace_entries (THREAD_ENTRY * thread_p, unsigned int num_entries);
-extern void mnt_x_hf_stats_bestspace_maxed (THREAD_ENTRY * thread_p);
-
-extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages, unsigned int num_log_pages,
-			    unsigned int tokens);
-extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
-extern void mnt_x_ha_repl_delay (THREAD_ENTRY * thread_p, int delay);
-
-extern UINT64 mnt_get_pb_fetches (THREAD_ENTRY * thread_p);
-extern UINT64 mnt_get_pb_ioreads (THREAD_ENTRY * thread_p);
-extern UINT64 mnt_get_sort_io_pages (THREAD_ENTRY * thread_p);
-extern UINT64 mnt_get_sort_data_pages (THREAD_ENTRY * thread_p);
-
-extern void mnt_x_pc_add (THREAD_ENTRY * thread_p);
-extern void mnt_x_pc_lookup (THREAD_ENTRY * thread_p);
-extern void mnt_x_pc_hit (THREAD_ENTRY * thread_p);
-extern void mnt_x_pc_miss (THREAD_ENTRY * thread_p);
-extern void mnt_x_pc_full (THREAD_ENTRY * thread_p);
-extern void mnt_x_pc_delete (THREAD_ENTRY * thread_p);
-extern void mnt_x_pc_invalid_xasl_id (THREAD_ENTRY * thread_p);
-extern void mnt_x_pc_query_string_hash_entries (THREAD_ENTRY * thread_p, unsigned int num_entries);
-extern void mnt_x_pc_xasl_id_hash_entries (THREAD_ENTRY * thread_p, unsigned int num_entries);
-extern void mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p, unsigned int num_entries);
-
-extern void mnt_x_heap_stats_sync_bestspace (THREAD_ENTRY * thread_p);
-
-extern void mnt_x_vac_log_vacuumed_pages (THREAD_ENTRY * thread_p, unsigned int num_entries);
-extern void mnt_x_vac_log_to_vacuum_pages (THREAD_ENTRY * thread_p, unsigned int num_entries);
-extern void mnt_x_vac_prefetch_log_requests_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_vac_prefetch_log_hits_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type);
-extern void mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
-			       UINT64 amount);
-extern void mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
-			     int holder_latch);
-extern void mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					 int cond_type, UINT64 amount);
-extern void mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					 UINT64 amount);
-extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
-					int cond_type, UINT64 amount);
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-extern void mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-extern void mnt_x_snapshot_acquire_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_snapshot_retry_counters (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_tran_complete_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_oldest_mvcc_acquire_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p, UINT64 amount);
-
-
-
-extern void mnt_x_heap_home_inserts (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_big_inserts (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_assign_inserts (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_home_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_home_mvcc_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_home_to_rel_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_home_to_big_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_mvcc_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_to_home_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_to_big_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_to_rel_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_big_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_big_mvcc_deletes (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_new_ver_inserts (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_home_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_home_to_rel_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_home_to_big_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_to_home_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_to_rel_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_to_big_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_big_updates (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_home_vacuums (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_big_vacuums (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_rel_vacuums (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_insid_vacuums (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_remove_vacuums (THREAD_ENTRY * thread_p);
-
-extern void mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_insert_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_insert_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_delete_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_delete_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_delete_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_update_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_update_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_update_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_vacuum_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_vacuum_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_heap_vacuum_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
-
-extern void mnt_x_bt_find_unique_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_range_search_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_insert_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_mvcc_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_mark_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_insert_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_mvcc_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_vacuum_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_vacuum_insid_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_vacuum_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount);
-
-extern void mnt_x_bt_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_find_unique_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_range_search_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_insert_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_mark_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_update_sk_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_insert_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_update_sk_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_vacuum_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_vacuum_insid_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_vacuum_update_sk_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-
-extern void mnt_x_bt_fix_ovf_oids_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_unique_rlocks_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_unique_wlocks_time (THREAD_ENTRY * thread_p, UINT64 amount);
-
-extern void mnt_x_vac_master_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_vac_worker_process_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
-
-#else /* SERVER_MODE || SA_MODE */
-
-#define mnt_file_creates(thread_p)
-#define mnt_file_removes(thread_p)
-#define mnt_file_ioreads(thread_p)
-#define mnt_file_iowrites(thread_p, num_pages)
-#define mnt_file_iosynches(thread_p)
-#define mnt_file_page_allocs(thread_p, num_pages)
-#define mnt_file_page_deallocs(thread_p, num_pages)
-
-#define mnt_pb_fetches(thread_p)
-#define mnt_pb_dirties(thread_p)
-#define mnt_pb_ioreads(thread_p)
-#define mnt_pb_iowrites(thread_p, num_pages)
-#define mnt_pb_victims(thread_p)
-#define mnt_pb_replacements(thread_p)
-#define mnt_pb_num_hash_anchor_waits(thread_p, time_amount)
-
-#define mnt_log_fetches(thread_p)
-#define mnt_log_ioreads(thread_p)
-#define mnt_log_iowrites(thread_p, num_log_pages)
-#define mnt_log_appendrecs(thread_p)
-#define mnt_log_archives(thread_p)
-#define mnt_log_start_checkpoints(thread_p)
-#define mnt_log_end_checkpoints(thread_p)
-#define mnt_log_wals(thread_p)
-#define mnt_log_replacements(thread_p)
-#define mnt_log_iowrites_for_replacement(thread_p)
-
-#define mnt_lk_acquired_on_pages(thread_p)
-#define mnt_lk_acquired_on_objects(thread_p)
-#define mnt_lk_converted_on_pages(thread_p)
-#define mnt_lk_converted_on_objects(thread_p)
-#define mnt_lk_re_requested_on_pages(thread_p)
-#define mnt_lk_re_requested_on_objects(thread_p)
-#define mnt_lk_waited_on_pages(thread_p)
-#define mnt_lk_waited_on_objects(thread_p)
-#define mnt_lk_waited_time_on_objects(thread_p, lock_mode, time_usec)
-
-#define mnt_tran_commits(thread_p)
-#define mnt_tran_rollbacks(thread_p)
-#define mnt_tran_savepoints(thread_p)
-#define mnt_tran_start_topops(thread_p)
-#define mnt_tran_end_topops(thread_p)
-#define mnt_tran_interrupts(thread_p)
-
-#define mnt_bt_inserts(thread_p)
-#define mnt_bt_deletes(thread_p)
-#define mnt_bt_updates(thread_p)
-#define mnt_bt_covered(thread_p)
-#define mnt_bt_noncovered(thread_p)
-#define mnt_bt_resumes(thread_p)
-#define mnt_bt_multi_range_opt(thread_p)
-#define mnt_bt_splits(thread_p)
-#define mnt_bt_merges(thread_p)
-#define mnt_bt_get_stat(thread_p)
-
-#define mnt_qm_selects(thread_p)
-#define mnt_qm_inserts(thread_p)
-#define mnt_qm_deletes(thread_p)
-#define mnt_qm_updates(thread_p)
-#define mnt_qm_sscans(thread_p)
-#define mnt_qm_iscans(thread_p)
-#define mnt_qm_lscans(thread_p)
-#define mnt_qm_setscans(thread_p)
-#define mnt_qm_methscans(thread_p)
-#define mnt_qm_nljoins(thread_p)
-#define mnt_qm_mjoins(thread_p)
-#define mnt_qm_objfetches(thread_p)
-#define mnt_qm_holdable_cursor(thread_p, num_cursors)
-
-#define mnt_net_requests(thread_p)
-
-#define mnt_prior_lsa_list_size(thread_p, list_size)
-#define mnt_prior_lsa_list_maxed(thread_p)
-#define mnt_prior_lsa_list_removed(thread_p)
-
-#define mnt_hf_stats_bestspace_entries(thread_p, num_entries)
-#define mnt_hf_stats_bestspace_maxed(thread_p)
-
-#define mnt_fc_stats(thread_p, num_pages, num_log_pages, num_tokens)
-
-#define mnt_pc_add(thread_p)
-#define mnt_pc_lookup(thread_p)
-#define mnt_pc_hit(thread_p)
-#define mnt_pc_miss(thread_p)
-#define mnt_pc_full(thread_p)
-#define mnt_pc_delete(thread_p)
-#define mnt_pc_invalid_xasl_id(thread_p)
-#define mnt_pc_query_string_hash_entries(thread_p, num_entries)
-#define mnt_pc_xasl_id_hash_entries(thread_p, num_entries)
-#define mnt_pc_class_oid_hash_entries(thread_p, num_entries)
-
-#define mnt_heap_stats_sync_bestspace(thread_p)
-
-#define mnt_vac_log_vacuumed_pages(thread_p, num_entries)
-#define mnt_vac_log_to_vacuum_pages(thread_p, num_entries)
-#define mnt_vac_prefetch_log_requests_pages(thread_p)
-#define mnt_vac_prefetch_log_hits_pages(thread_p)
-
-#define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type)
-#define mnt_pbx_promote(thread_p,page_type,promote_cond,holder_latch,success,amount)
-#define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch)
-#define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount)
-#define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
-#define mnt_pbx_fix_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount)
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-#define mnt_mvcc_snapshot(thread_p,snapshot,rec_type,visibility)
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-#define mnt_snapshot_acquire_time(thread_p,amount)
-#define mnt_snapshot_retry_counters(thread_p,amount)
-#define mnt_tran_complete_time(thread_p,amount)
-#define mnt_oldest_mvcc_acquire_time(thread_p,amount)
-#define mnt_oldest_mvcc_retry_counters(thread_p,amount)
-
-#define mnt_heap_home_inserts(thread_p)
-#define mnt_heap_big_inserts(thread_p)
-#define mnt_heap_assign_inserts(thread_p)
-#define mnt_heap_home_deletes(thread_p)
-#define mnt_heap_home_mvcc_deletes(thread_p)
-#define mnt_heap_home_to_rel_deletes(thread_p)
-#define mnt_heap_home_to_big_deletes(thread_p)
-#define mnt_heap_rel_deletes(thread_p)
-#define mnt_heap_rel_mvcc_deletes(thread_p)
-#define mnt_heap_rel_to_home_deletes(thread_p)
-#define mnt_heap_rel_to_big_deletes(thread_p)
-#define mnt_heap_rel_to_rel_deletes(thread_p)
-#define mnt_heap_big_deletes(thread_p)
-#define mnt_heap_big_mvcc_deletes(thread_p)
-#define mnt_heap_new_ver_inserts(thread_p)
-#define mnt_heap_home_updates(thread_p)
-#define mnt_heap_home_to_rel_updates(thread_p)
-#define mnt_heap_home_to_big_updates(thread_p)
-#define mnt_heap_rel_updates(thread_p)
-#define mnt_heap_rel_to_home_updates(thread_p)
-#define mnt_heap_rel_to_rel_updates(thread_p)
-#define mnt_heap_rel_to_big_updates(thread_p)
-#define mnt_heap_big_updates(thread_p)
-#define mnt_heap_home_vacuums(thread_p)
-#define mnt_heap_big_vacuums(thread_p)
-#define mnt_heap_rel_vacuums(thread_p)
-#define mnt_heap_insid_vacuums(thread_p)
-#define mnt_heap_remove_vacuums(thread_p)
-#define mnt_heap_next_ver_vacuums(thread_p)
-
-#define mnt_heap_insert_prepare_time(thread_p,amount)
-#define mnt_heap_insert_execute_time(thread_p,amount)
-#define mnt_heap_insert_log_time(thread_p,amount)
-#define mnt_heap_delete_prepare_time(thread_p,amount)
-#define mnt_heap_delete_execute_time(thread_p,amount)
-#define mnt_heap_delete_log_time(thread_p,amount)
-#define mnt_heap_update_prepare_time(thread_p,amount)
-#define mnt_heap_update_execute_time(thread_p,amount)
-#define mnt_heap_update_log_time(thread_p,amount)
-#define mnt_heap_vacuum_prepare_time(thread_p,amount)
-#define mnt_heap_vacuum_execute_time(thread_p,amount)
-#define mnt_heap_vacuum_log_time(thread_p,amount)
-
-#define mnt_bt_find_unique_time(thread_p,amount)
-#define mnt_bt_range_search_time(thread_p,amount)
-#define mnt_bt_insert_time(thread_p,amount)
-#define mnt_bt_delete_time(thread_p,amount)
-#define mnt_bt_mvcc_delete_time(thread_p,amount)
-#define mnt_bt_mark_delete_time(thread_p,amount)
-#define mnt_bt_undo_insert_time(thread_p,amount)
-#define mnt_bt_undo_delete_time(thread_p,amount)
-#define mnt_bt_undo_mvcc_delete_time(thread_p,amount)
-#define mnt_bt_vacuum_time(thread_p,amount)
-#define mnt_bt_vacuum_insid_time(thread_p,amount)
-
-#define mnt_bt_traverse_time(thread_p,amount)
-#define mnt_bt_find_unique_traverse_time(thread_p,amount)
-#define mnt_bt_range_search_traverse_time(thread_p,amount)
-#define mnt_bt_insert_traverse_time(thread_p,amount)
-#define mnt_bt_delete_traverse_time(thread_p,amount)
-#define mnt_bt_mvcc_delete_traverse_time(thread_p,amount)
-#define mnt_bt_mark_delete_traverse_time(thread_p,amount)
-#define mnt_bt_undo_insert_traverse_time(thread_p,amount)
-#define mnt_bt_undo_delete_traverse_time(thread_p,amount)
-#define mnt_bt_undo_mvcc_delete_traverse_time(thread_p,amount)
-#define mnt_bt_vacuum_traverse_time(thread_p,amount)
-#define mnt_bt_vacuum_insid_traverse_time(thread_p,amount)
-
-#define mnt_bt_fix_ovf_oids_time(thread_p,amount)
-#define mnt_bt_unique_slocks_time(thread_p,amount)
-#define mnt_bt_unique_wlocks_time(thread_p,amount)
-
-#define mnt_vac_master_time(thread_p,amount)
-#define mnt_vac_worker_process_log_time(thread_p,amount)
-#define mnt_vac_worker_execute_time(thread_p,amount)
-
-#endif /* CS_MODE */
+#endif /* SERVER_MODE || SA_MODE */
 
 #endif /* _PERF_MONITOR_H_ */

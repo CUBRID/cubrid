@@ -3693,7 +3693,7 @@ la_make_room_for_mvcc_insid (RECDES * recdes)
   mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
   assert (mvcc_flag != 0);
-  assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN)));
+  assert (!(mvcc_flag & OR_MVCC_FLAG_VALID_DELID));
 
   assert (recdes->area_size >= recdes->length + OR_MVCCID_SIZE);
 
@@ -3760,16 +3760,9 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 	      /* skip delete id */
 	      (void) or_advance (buf, OR_MVCCID_SIZE);
 	    }
-	  else
-	    {
-	      /* skip chn */
-	      (void) or_advance (buf, OR_INT_SIZE);
-	      if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
-		{
-		  /* skip 4 bytes - fixed MVCC header size */
-		  (void) or_advance (buf, OR_INT_SIZE);
-		}
-	    }
+
+	  /* skip chn */
+	  (void) or_advance (buf, OR_INT_SIZE);
 
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	    {
@@ -4660,8 +4653,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 	    }
 	}
     }
-  else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
-	    && recdes->type == REC_RELOCATION)
+  else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM) && recdes->type == REC_RELOCATION)
     {
       error = la_get_relocation_recdes (lrec, pg, 0, &logs, &rec_type, recdes);
       if (error == NO_ERROR)
@@ -5611,7 +5603,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
   if (apply->head == NULL || LSA_LE (commit_lsa, &la_Info.last_committed_lsa))
     {
-      if (rectype == LOG_COMMIT_TOPOPE)
+      if (rectype == LOG_SYSOP_END)
 	{
 	  la_free_all_repl_items (apply);
 	}
@@ -5722,7 +5714,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
       if ((item != NULL) && LSA_GT (&item->lsa, commit_lsa))
 	{
-	  assert (rectype == LOG_COMMIT_TOPOPE);
+	  assert (rectype == LOG_SYSOP_END);
 	  has_more_commit_items = true;
 	  break;
 	}
@@ -5731,7 +5723,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 end:
   *total_rows += apply_repl_log_cnt;
 
-  if (rectype == LOG_COMMIT_TOPOPE)
+  if (rectype == LOG_SYSOP_END)
     {
       if (has_more_commit_items)
 	{
@@ -5769,7 +5761,7 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
   LSA_SET_NULL (lsa);
 
   commit = la_Info.commit_head;
-  if (commit && (commit->type == LOG_COMMIT || commit->type == LOG_COMMIT_TOPOPE || commit->type == LOG_ABORT))
+  if (commit && (commit->type == LOG_COMMIT || commit->type == LOG_SYSOP_END || commit->type == LOG_ABORT))
     {
       error = la_apply_repl_log (commit->tranid, commit->type, &commit->log_lsa, &la_Info.total_rows, final_pageid);
       if (error != NO_ERROR)
@@ -6025,13 +6017,13 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	}
       break;
 
-    case LOG_COMMIT_TOPOPE:
+    case LOG_SYSOP_END:
     case LOG_COMMIT:
       /* apply the replication log to the slave */
       if (LSA_GT (final, &la_Info.committed_lsa))
 	{
 	  /* add the repl_list to the commit_list */
-	  if (lrec->type == LOG_COMMIT_TOPOPE)
+	  if (lrec->type == LOG_SYSOP_END)
 	    {
 	      eot_time = 0;
 	    }

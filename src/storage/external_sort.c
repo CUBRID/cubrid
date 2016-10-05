@@ -4481,22 +4481,22 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
     {
       return NO_ERROR;
     }
+
   /* page allocation force is specified, allocate pages for the file */
   /* todo: we don't have multiple page allocation, but allocation should be fast enough */
-  while (file_pg_cnt_est > 0)
+  for (; file_pg_cnt_est > 0; file_pg_cnt_est--)
     {
       ret = flre_alloc (thread_p, vfid, &new_vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto exit;
+	  flre_temp_retire (thread_p, vfid);
+	  VFID_SET_NULL (vfid);
+	  return ret;
 	}
     }
 
-exit:
-  /* todo: do not leak file */
-
-  return ret;
+  return NO_ERROR;
 }
 
 /*

@@ -180,7 +180,7 @@ extern int btree_get_next_overflow_vpid (PAGE_PTR page_ptr, VPID * vpid);
       if (!((p_mvcc_rec_header)->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)) \
         { \
           (p_mvcc_rec_header)->mvcc_flag |= OR_MVCC_FLAG_VALID_DELID; \
-          (p_mvcc_rec_header)->delid_chn.mvcc_del_id = MVCCID_NULL; \
+          (p_mvcc_rec_header)->mvcc_del_id = MVCCID_NULL; \
         } \
     } \
   while (0)
@@ -293,8 +293,6 @@ extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx
 
 extern void btree_dump_key (FILE * fp, DB_VALUE * key);
 
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
 extern int btree_get_perf_btree_page_type (PAGE_PTR page_ptr);
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
 
 #endif /* _BTREE_LOAD_H_ */

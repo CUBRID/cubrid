@@ -450,6 +450,7 @@ struct btree_node_scan
       MVCC_SET_FLAG (p_mvcc_rec_header, 0); \
       MVCC_SET_INSID (p_mvcc_rec_header, MVCCID_NULL); \
       MVCC_SET_DELID (p_mvcc_rec_header, MVCCID_NULL); \
+      MVCC_SET_CHN (p_mvcc_rec_header, 0); \
       MVCC_SET_REPID (p_mvcc_rec_header, 0); \
       LSA_SET_NULL (p_mvcc_rec_header.prev_version_lsa); \
     } \
@@ -693,8 +694,7 @@ extern void btree_mvcc_info_to_heap_mvcc_header (BTREE_MVCC_INFO * mvcc_info, MV
 
 extern int btree_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int btree_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int btree_rv_undo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int btree_rv_redo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 						    VPID * new_overflow_vpid, char **rv_undo_data_ptr,
@@ -704,5 +704,5 @@ extern int btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * r
 
 extern unsigned int btree_hash_btid (void *btid, int hash_size);
 
-extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, int npages, BTID * btid);
+extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 #endif /* _BTREE_H_ */

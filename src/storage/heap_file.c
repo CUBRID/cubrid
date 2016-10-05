@@ -152,10 +152,10 @@ static int rv;
 	  MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_INSID); \
 	  MVCC_SET_INSID (mvcc_rec_header_p, MVCCID_ALL_VISIBLE); \
 	} \
-      if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID \
-			     | OR_MVCC_FLAG_VALID_LONG_CHN)) \
+      if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID)) \
 	{ \
-	  MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_LONG_CHN); \
+	   MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_DELID); \
+           MVCC_SET_DELID (mvcc_rec_header_p, MVCCID_NULL); \
 	} \
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_PREV_VERSION)) \
 	{ \
@@ -530,19 +530,13 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     mnt_heap_insert_prepare_time); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_INSERT_PREPARE); \
 	break; \
       case HEAP_OPERATION_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     mnt_heap_delete_prepare_time); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_DELETE_PREPARE); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     mnt_heap_update_prepare_time); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_UPDATE_PREPARE); \
 	break; \
       default: \
 	assert (false); \
@@ -555,19 +549,15 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     mnt_heap_insert_execute_time); \
+					     PSTAT_HEAP_INSERT_EXECUTE); \
 	break; \
       case HEAP_OPERATION_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     mnt_heap_delete_execute_time); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_DELETE_EXECUTE); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     mnt_heap_update_execute_time); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_UPDATE_EXECUTE); \
 	break; \
       default: \
 	assert (false); \
@@ -580,19 +570,13 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     mnt_heap_insert_log_time); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_INSERT_LOG); \
 	break; \
       case HEAP_OPERATION_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     mnt_heap_delete_log_time); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_DELETE_LOG); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     mnt_heap_update_log_time); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_UPDATE_LOG); \
 	break; \
       default: \
 	assert (false); \
@@ -790,8 +774,7 @@ static int heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCAN
 static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					  OID * forward_oid, RECDES * recdes);
 static void heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr);
-static void heap_mvcc_log_delete (THREAD_ENTRY * thread_p, INT32 undo_chn, LOG_DATA_ADDR * p_addr,
-				  LOG_RCVINDEX rcvindex);
+static void heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex);
 static int heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLOTID slotid, MVCCID mvccid);
 static void heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p, RECDES * old_recdes, RECDES * new_recdes,
 						 LOG_DATA_ADDR * p_addr);
@@ -1054,7 +1037,8 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HF_MAX_BESTSPACE_ENTRIES, 1,
 	      prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES));
 
-      mnt_hf_stats_bestspace_maxed (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HF_NUM_STATS_MAXED);
+
 
       ent = NULL;
       goto end;
@@ -1110,7 +1094,7 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
     }
 
   heap_Bestspace->num_stats_entries++;
-  mnt_hf_stats_bestspace_entries (thread_p, heap_Bestspace->num_stats_entries);
+  perfmon_set_stat (thread_p, PSTAT_HF_NUM_STATS_ENTRIES, heap_Bestspace->num_stats_entries);
 
 end:
 
@@ -1150,7 +1134,7 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
 
   heap_Bestspace->num_stats_entries -= del_cnt;
 
-  mnt_hf_stats_bestspace_entries (thread_p, heap_Bestspace->num_stats_entries);
+  perfmon_set_stat (thread_p, PSTAT_HF_NUM_STATS_ENTRIES, heap_Bestspace->num_stats_entries);
 
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
@@ -1185,7 +1169,7 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
 
   heap_Bestspace->num_stats_entries -= 1;
 
-  mnt_hf_stats_bestspace_entries (thread_p, heap_Bestspace->num_stats_entries);
+  perfmon_set_stat (thread_p, PSTAT_HF_NUM_STATS_ENTRIES, heap_Bestspace->num_stats_entries);
 
 end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
@@ -3179,7 +3163,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 
 	      heap_Bestspace->num_stats_entries--;
 
-	      mnt_hf_stats_bestspace_entries (thread_p, heap_Bestspace->num_stats_entries);
+	      perfmon_set_stat (thread_p, PSTAT_HF_NUM_STATS_ENTRIES, heap_Bestspace->num_stats_entries);
 
 	      notfound_cnt++;
 	    }
@@ -3526,6 +3510,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
       if (heap_vpid_alloc (thread_p, hfid, hdr_page_watcher.pgptr, heap_hdr, scan_cache, pg_watcher) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	  return NULL;
 	}
       assert (pg_watcher->pgptr != NULL || er_errid () == ER_INTERRUPTED
@@ -3590,7 +3575,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
   tsc_getticks (&start_tick);
 #endif /* CUBRID_DEBUG */
 
-  mnt_heap_stats_sync_bestspace (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE);
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
@@ -5640,10 +5625,10 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
   addr.offset = -1;
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, sizeof (vfid), &vfid);
+      flre_postpone_destroy (thread_p, &vfid);
     }
 
-  log_append_postpone (thread_p, RVFL_POSTPONE_DESTROY_FILE, &addr, sizeof (hfid->vfid), &hfid->vfid);
+  flre_postpone_destroy (thread_p, &hfid->vfid);
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
 
@@ -7446,7 +7431,7 @@ try_again:
   /* Impossible */
   assert_release (false);
 error:
-  assert (er_errid () != NO_ERROR);
+  assert (ret == ER_LK_PAGE_TIMEOUT || er_errid () != NO_ERROR);
 
   heap_clean_get_context (thread_p, context);
   return S_ERROR;
@@ -11480,8 +11465,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	{
 	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
 	  or_put_int (buf, repid_bits);
+	  or_put_int (buf, 0);	/* CHN */
 	  or_put_bigint (buf, 0);	/* MVCC insert id */
-	  or_put_int (buf, 0);	/* CHN, short size */
 	  header_size = OR_MVCC_INSERT_HEADER_SIZE;
 	}
       else
@@ -15689,9 +15674,7 @@ heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR 
   if (p_recdes->type != REC_BIGONE)
     {
       mvcc_flags = (INT32) OR_GET_MVCC_FLAG (p_recdes->data);
-      chn_offset = OR_GET_MVCC_CHN_OFFSET (mvcc_flags);
-
-      assert (chn_offset > 0);
+      chn_offset = OR_CHN_OFFSET;
 
       /* Add representation ID and flags field */
       redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
@@ -15767,7 +15750,7 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       mvcc_flag = (char) ((repid_and_flags >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
-      assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN)));
+      assert (!(mvcc_flag & OR_MVCC_FLAG_VALID_DELID));
 
       if ((repid_and_flags & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE)
 	{
@@ -15859,19 +15842,15 @@ heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *
  * return		    : Void.
  * thread_p (in)	    : Thread entry.
- * undo_chn (in)	    : Record CHN before delete.
  * p_addr (in)		    : Log address data.
  * rcvindex(in)		    : Index to recovery function
  */
 static void
-heap_mvcc_log_delete (THREAD_ENTRY * thread_p, INT32 undo_chn, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex)
+heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex)
 {
-  char undo_data_buffer[OR_INT_SIZE + MAX_ALIGNMENT];
   char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
-  char *undo_data_p = PTR_ALIGN (undo_data_buffer, MAX_ALIGNMENT);
   char *redo_data_p = PTR_ALIGN (redo_data_buffer, MAX_ALIGNMENT);
   char *ptr;
-  int undo_data_size = 0;
   int redo_data_size = 0;
   HEAP_PAGE_VACUUM_STATUS vacuum_status;
 
@@ -15891,11 +15870,6 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, INT32 undo_chn, LOG_DATA_ADDR * p
 	}
     }
 
-  /* Prepare undo data. */
-  ptr = or_pack_int (undo_data_p, (int) undo_chn);
-  assert ((ptr - undo_data_buffer) <= (int) sizeof (undo_data_buffer));
-  undo_data_size = OR_INT_SIZE;
-
   /* Prepare redo data. */
   ptr = redo_data_p;
 
@@ -15909,7 +15883,7 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, INT32 undo_chn, LOG_DATA_ADDR * p
   assert ((ptr - redo_data_buffer) <= (int) sizeof (redo_data_buffer));
 
   /* Log append undo/redo crumbs */
-  log_append_undoredo_data (thread_p, rcvindex, p_addr, undo_data_size, redo_data_size, undo_data_p, redo_data_p);
+  log_append_undoredo_data (thread_p, rcvindex, p_addr, 0, redo_data_size, NULL, redo_data_p);
 }
 
 /*
@@ -15924,11 +15898,6 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_REC_HEADER mvcc_rec_header;
   char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   RECDES rebuild_record;
-  INT32 chn;
-
-  /* Read chn */
-  chn = (INT32) OR_GET_INT (rcv->data);
-  assert (rcv->length == OR_INT_SIZE);
 
   slotid = rcv->offset;
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
@@ -15949,10 +15918,7 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
   assert (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID));
-
-  /* handle DEL_ID / CHN */
   MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID);
-  MVCC_SET_CHN (&mvcc_rec_header, chn);
 
   if (or_mvcc_set_header (&rebuild_record, &mvcc_rec_header) != NO_ERROR)
     {
@@ -15981,10 +15947,7 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  INT32 chn;
   MVCC_REC_HEADER mvcc_header;
-
-  chn = (INT32) OR_GET_INT (rcv->data);
 
   if (heap_get_mvcc_rec_header_from_overflow (rcv->pgptr, &mvcc_header, NULL) != NO_ERROR)
     {
@@ -15996,10 +15959,7 @@ heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID));
   assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION));
 
-  /* Fixed size header. Remove flag for delete MVCCID, and set long chn. */
-  MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
-  MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_LONG_CHN);
-  MVCC_SET_CHN (&mvcc_header, chn);
+  MVCC_SET_DELID (&mvcc_header, MVCCID_NULL);
 
   /* Change header. */
   if (heap_set_mvcc_rec_header_on_overflow (rcv->pgptr, &mvcc_header) != NO_ERROR)
@@ -16124,36 +16084,12 @@ heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int offset = 0;
   MVCCID mvccid;
-  OID next_version;
-  OID partition_oid;
   MVCC_REC_HEADER mvcc_header;
 
   assert (rcv->pgptr != NULL);
 
   OR_GET_MVCCID (rcv->data + offset, &mvccid);
   offset += OR_MVCCID_SIZE;
-
-  if (offset < rcv->length)
-    {
-      /* Read next version OID */
-      OR_GET_OID (rcv->data + offset, &next_version);
-      offset += OR_OID_SIZE;
-      if (offset < rcv->length)
-	{
-	  /* Read partition OID */
-	  OR_GET_OID (rcv->data + offset, &partition_oid);
-	  offset += OR_OID_SIZE;
-	}
-      else
-	{
-	  OID_SET_NULL (&partition_oid);
-	}
-    }
-  else
-    {
-      OID_SET_NULL (&next_version);
-      OID_SET_NULL (&partition_oid);
-    }
 
   assert (offset == rcv->length);
 
@@ -16163,10 +16099,8 @@ heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
   assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID));
-  assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_LONG_CHN));
 
-  /* Set delete MVCCID. */
-  MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
+  assert (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID));
   MVCC_SET_DELID (&mvcc_header, mvccid);
 
   /* Update MVCC header. */
@@ -18579,16 +18513,15 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
       or_mvcc_get_header (recdes, &mvcc_header);
       DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
-      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
+      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
 	}
       else
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
 	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
+      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header));
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
@@ -18657,18 +18590,24 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 
       or_mvcc_get_header (recdes, &mvcc_header);
       DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
-      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_DELID))
+      if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
 	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
 	}
       else
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_NON_MVCC_CHN (&mvcc_header));
 	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
+      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header));
       DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 1);
+      if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
+	{
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 1);
+	}
+      else
+	{
+	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
+	}
       break;
     case REC_RELOCATION:
     case REC_MARKDELETED:
@@ -18913,12 +18852,14 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
       MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_INSID);
       MVCC_SET_INSID (mvcc_header, MVCCID_ALL_VISIBLE);
     }
-  if (!MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID)
-      && !MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_LONG_CHN))
+
+  if (!MVCC_IS_FLAG_SET (mvcc_header, OR_MVCC_FLAG_VALID_DELID))
     {
-      /* Set 8 bytes for CHN */
-      MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_LONG_CHN);
+      /* Add MVCCID_NULL for delete MVCCID */
+      MVCC_SET_FLAG_BITS (mvcc_header, OR_MVCC_FLAG_VALID_DELID);
+      MVCC_SET_DELID (mvcc_header, MVCCID_NULL);
     }
+
   /* Safe guard */
   assert (or_mvcc_header_size_from_flags (MVCC_GET_FLAG (mvcc_header)) == OR_MVCC_MAX_HEADER_SIZE);
   return or_mvcc_set_header (&ovf_recdes, mvcc_header);
@@ -19896,7 +19837,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   insert_from_reorganize = (context->type == HEAP_OPERATION_INSERT
 			    && context->update_in_place == UPDATE_INPLACE_OLD_MVCCID);
 
-  if (insert_from_reorganize == true && MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID))
+  if (insert_from_reorganize == true && MVCC_IS_HEADER_DELID_VALID (&mvcc_rec_header))
     {
       context->is_redistribute_insert_with_delid = true;
     }
@@ -20276,7 +20217,6 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 
   /* unfix all pages of insert context */
   heap_unfix_watchers (thread_p, &ins_context);
-
   /* all ok */
   return NO_ERROR;
 }
@@ -20287,7 +20227,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
  *   context(in): operation context
  *   is_mvcc_op(in): MVCC or non-MVCC operation
  *
- * NOTE: This fuction should receive a fixed page and a location in res_oid,
+ * NOTE: This function should receive a fixed page and a location in res_oid,
  *       where the context->recdes_p will go in.
  */
 static int
@@ -20416,24 +20356,11 @@ heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, int recor
 {
   assert (header_p != NULL);
 
-  /* put delete MVCCID */
   if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_DELID))
     {
-      if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_LONG_CHN))
-	{
-	  /* the record contains short CHN, we need to extend to bigint */
-	  record_size += OR_INT_SIZE;
-	}
-      else
-	{
-	  /* we already have long CHN */
-	  MVCC_CLEAR_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_LONG_CHN);
-	}
+      record_size += OR_MVCCID_SIZE;
     }
-  else
-    {
-      assert (!MVCCID_IS_VALID (MVCC_GET_DELID (header_p)));
-    }
+
   MVCC_SET_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_DELID (header_p, mvcc_id);
 
@@ -20618,7 +20545,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       log_addr.pgptr = context->overflow_page_watcher_p->pgptr;
       log_addr.vfid = &context->hfid.vfid;
       log_addr.offset = overflow_oid.slotid;
-      heap_mvcc_log_delete (thread_p, MVCC_GET_CHN (&overflow_header), &log_addr, RVHF_MVCC_DELETE_OVERFLOW);
+      heap_mvcc_log_delete (thread_p, &log_addr, RVHF_MVCC_DELETE_OVERFLOW);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -20648,7 +20575,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
-      mnt_heap_big_mvcc_deletes (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_MVCC_DELETES);
     }
   else
     {
@@ -20700,7 +20627,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      mnt_heap_big_deletes (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_DELETES);
     }
 
   /* all ok */
@@ -20766,11 +20693,10 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	}
       forward_rec_header_size = or_mvcc_header_size_from_flags (forward_rec_header.mvcc_flag);
       adjusted_size = forward_recdes.length;
-      if (!MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_DELID)
-	  && !MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_LONG_CHN))
+
+      if (!MVCC_IS_FLAG_SET (&forward_rec_header, OR_MVCC_FLAG_VALID_DELID))
 	{
-	  /* extend short CHN to MVCCID */
-	  adjusted_size += OR_INT_SIZE;
+	  adjusted_size += OR_MVCCID_SIZE;	/* delid size */
 	}
 
       if (heap_is_big_length (adjusted_size))
@@ -20839,7 +20765,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  remove_old_forward = true;
 	  update_old_home = true;
 
-	  mnt_heap_rel_to_big_deletes (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_BIG_DELETES);
 	}
       else if (fits_in_home)
 	{
@@ -20857,7 +20783,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  remove_old_forward = true;
 	  update_old_home = true;
 
-	  mnt_heap_rel_to_home_deletes (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_HOME_DELETES);
 	}
       else if (fits_in_forward)
 	{
@@ -20867,7 +20793,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  /* home record will not be touched */
 	  update_old_forward = true;
 
-	  mnt_heap_rel_mvcc_deletes (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_MVCC_DELETES);
 	}
       else
 	{
@@ -20887,7 +20813,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  remove_old_forward = true;
 	  update_old_home = true;
 
-	  mnt_heap_rel_to_rel_deletes (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_REL_DELETES);
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -20956,14 +20882,12 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (update_old_forward)
 	{
 	  LOG_DATA_ADDR forward_addr;
-	  INT32 chn;
 
 	  /* log operation */
 	  forward_addr.vfid = &context->hfid.vfid;
 	  forward_addr.pgptr = context->forward_page_watcher_p->pgptr;
 	  forward_addr.offset = forward_oid.slotid;
-	  chn = MVCC_GET_CHN (&forward_rec_header);
-	  heap_mvcc_log_delete (thread_p, chn, &forward_addr, RVHF_MVCC_DELETE_REC_NEWHOME);
+	  heap_mvcc_log_delete (thread_p, &forward_addr, RVHF_MVCC_DELETE_REC_NEWHOME);
 
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -21091,7 +21015,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      mnt_heap_rel_deletes (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_DELETES);
     }
 
   /* all ok */
@@ -21145,7 +21069,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
       int header_size;
-      INT32 chn;
 
       /* get home record header size */
       error_code = or_mvcc_get_header (&context->home_recdes, &record_header);
@@ -21155,7 +21078,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  return error_code;
 	}
       header_size = or_mvcc_header_size_from_flags (record_header.mvcc_flag);
-      chn = MVCC_GET_CHN (&record_header);
 
       /* build an adjusted record header */
       built_rec_header = heap_delete_adjust_recdes_header (&context->home_recdes, mvcc_id);
@@ -21208,7 +21130,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		  return error_code;
 		}
 
-	      mnt_heap_home_to_big_deletes (thread_p);
+	      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_BIG_DELETES);
 	    }
 	  else
 	    {
@@ -21223,7 +21145,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		  return error_code;
 		}
 
-	      mnt_heap_home_to_rel_deletes (thread_p);
+	      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_REL_DELETES);
 	    }
 
 	  /* build forwarding rebuild_record */
@@ -21270,14 +21192,14 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  rec_address.pgptr = context->home_page_watcher_p->pgptr;
 	  rec_address.vfid = &context->hfid.vfid;
 	  rec_address.offset = context->oid.slotid;
-	  heap_mvcc_log_delete (thread_p, chn, &rec_address, RVHF_MVCC_DELETE_REC_HOME);
+	  heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME);
 
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
 	  /* we'll update the home page with the built record, since it fits in home page */
 	  home_page_updated_recdes = &built_recdes;
 
-	  mnt_heap_home_mvcc_deletes (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_MVCC_DELETES);
 	}
 
       /* update home page and check operation result */
@@ -21309,7 +21231,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      mnt_heap_home_deletes (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_DELETES);
 
       assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
       return error_code;
@@ -21573,7 +21495,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       COPY_OID (&context->res_oid, &context->oid);
     }
 
-  mnt_heap_big_updates (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_UPDATES);
 
   /* Fall through to exit. */
 
@@ -21675,7 +21597,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       remove_old_forward = true;
       update_old_home = true;
 
-      mnt_heap_rel_to_big_updates (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_BIG_UPDATES);
     }
   else if (!fits_in_forward && !fits_in_home)
     {
@@ -21704,7 +21626,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       remove_old_forward = true;
       update_old_home = true;
 
-      mnt_heap_rel_to_rel_updates (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_REL_UPDATES);
     }
   else if (fits_in_home)
     {
@@ -21716,7 +21638,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       remove_old_forward = true;
       update_old_home = true;
 
-      mnt_heap_rel_to_home_updates (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_HOME_UPDATES);
     }
   else if (fits_in_forward)
     {
@@ -21726,7 +21648,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* home record will not be touched */
       update_old_forward = true;
 
-      mnt_heap_rel_updates (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_UPDATES);
     }
   else
     {
@@ -21767,6 +21689,25 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (remove_old_forward)
     {
+      assert (context->forward_page_watcher_p != NULL && context->forward_page_watcher_p->pgptr != NULL);
+      if ((new_home_recdes.type == REC_RELOCATION || new_home_recdes.type == REC_BIGONE)
+	  && context->forward_page_watcher_p->page_was_unfixed)
+	{
+	  /* 
+	   * Need to get the record again, since the record may have changed by other concurrent
+	   * transactions (INSID removed by VACUUM).
+	   */
+	  if (spage_get_record (context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes,
+				COPY) != S_SUCCESS)
+	    {
+	      assert (false);
+	      ASSERT_ERROR_AND_SET (rc);
+	      goto exit;
+	    }
+	  HEAP_PERF_TRACK_PREPARE (thread_p, context);
+	}
+
+
       /* log operation */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 				&forward_recdes, true, &prev_version_lsa);
@@ -21928,7 +21869,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* we'll be updating home with forwarding record */
       home_page_updated_recdes_p = &forwarding_recdes;
 
-      mnt_heap_home_to_big_updates (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_BIG_UPDATES);
     }
   else if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
 				context->recdes_p->length))
@@ -21966,7 +21907,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* we'll be updating home with forwarding record */
       home_page_updated_recdes_p = &forwarding_recdes;
 
-      mnt_heap_home_to_rel_updates (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_REL_UPDATES);
     }
   else
     {
@@ -21975,7 +21916,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* updated record fits in home page */
       home_page_updated_recdes_p = context->recdes_p;
 
-      mnt_heap_home_updates (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_UPDATES);
     }
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -22387,15 +22328,15 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   if (context->recdes_p->type == REC_HOME)
     {
-      mnt_heap_home_inserts (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_INSERTS);
     }
   else if (context->recdes_p->type == REC_BIGONE)
     {
-      mnt_heap_big_inserts (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_INSERTS);
     }
   else
     {
-      mnt_heap_assign_inserts (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_ASSIGN_INSERTS);
     }
 
 error:
@@ -22453,6 +22394,14 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   context->file_type = heap_get_file_type (thread_p, context);
   if (context->file_type != FILE_HEAP && context->file_type != FILE_HEAP_REUSE_SLOTS)
     {
+      if (context->file_type == FILE_UNKNOWN_TYPE)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  if (rc == ER_INTERRUPTED)
+	    {
+	      return rc;
+	    }
+	}
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
@@ -22606,6 +22555,14 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   context->file_type = heap_get_file_type (thread_p, context);
   if (context->file_type != FILE_HEAP && context->file_type != FILE_HEAP_REUSE_SLOTS)
     {
+      if (context->file_type == FILE_UNKNOWN_TYPE)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  if (rc == ER_INTERRUPTED)
+	    {
+	      return rc;
+	    }
+	}
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
@@ -23744,8 +23701,6 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       offset += OR_MVCCID_SIZE;
 
       mvcc_flag = (char) ((repid_and_flags >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-
-      assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_LONG_CHN)));
 
       if ((repid_and_flags & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE)
 	{
