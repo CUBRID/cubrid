@@ -3979,7 +3979,7 @@ STATIC_INLINE void
 perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
 {
   assert (pstat_Global.initialized);
-  assert (psid >= 0 && psid < PSTAT_COUNT);
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
   /* Update statistics. */
   perfmon_add_at_offset (thread_p, pstat_Metadata[psid].start_offset + offset, amount);
