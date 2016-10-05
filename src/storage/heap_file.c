@@ -20813,10 +20813,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       memcpy (new_forward_recdes.data + new_forward_recdes.length, forward_recdes.data + forward_rec_header_size,
 	      forward_recdes.length - forward_rec_header_size);
       new_forward_recdes.length += forward_recdes.length - forward_rec_header_size;
-
-#if !defined(NDEBUG)
       assert (new_forward_recdes.length == adjusted_size);
-#endif
 
       /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
       if (is_adjusted_size_big)
@@ -21177,9 +21174,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       memcpy (built_recdes.data + built_recdes.length, context->home_recdes.data + header_size,
 	      context->home_recdes.length - header_size);
       built_recdes.length += (context->home_recdes.length - header_size);
-#if !defined(NDEBUG)
       assert (built_recdes.length == adjusted_size);
-#endif
 
       /* determine type */
       if (is_adjusted_size_big)
