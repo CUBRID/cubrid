@@ -81,7 +81,6 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-PSTAT_GLOBAL pstat_Global;
 volatile int cache_entry_count;
 volatile int heap_num_stats_entries;
 int sessions_num_holdable_cursors;
