@@ -260,21 +260,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
        * redo/CLR log to describe the undo.
        */
 
-      if (rcvindex == RVVAC_DROPPED_FILE_ADD)
-	{
-	  error_code = vacuum_notify_dropped_file (thread_p, rcv, NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
-			    "Log record %lld|%d, rcvindex = %s, was not undone due to error (%d)\n",
-			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
-			    rv_rcvindex_string (rcvindex), error_code);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
-	    }
-	}
-      else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
+      if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
 	   * compensation since the "undone" page can be accessed and logged. Only no-page logical operations require
@@ -1459,8 +1445,13 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	}
       break;
 
-    case LOG_SYSOP_END_COMMIT:
     case LOG_SYSOP_END_LOGICAL_UNDO:
+      /* can be used in all states, but cannot have postpones. so it doesn't commit_start_postpone.
+       * note: if we add postpones to logical undo, it will have to save previous state... maybe it is a good idea to
+       *       do this for all types of end system op. */
+      break;
+
+    case LOG_SYSOP_END_COMMIT:
       assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
       commit_start_postpone = true;
       break;
