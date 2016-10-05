@@ -20907,12 +20907,12 @@ flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 	    }
 	  entry->next = NULL;
 
-	  file_log ("flre_tempcache_pop_tran_file",
-		    "tran %d removed entry " FILE_TEMPCACHE_ENTRY_MSG,
-		    tran_files_p - flre_Tempcache->tran_files, FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
+	  file_log ("flre_tempcache_pop_tran_file", "removed entry " FILE_TEMPCACHE_ENTRY_MSG,
+		    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
 
 	  return entry;
 	}
+      prev_entry = entry;
     }
   /* should have found it */
   assert_release (false);
@@ -20939,10 +20939,8 @@ flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * e
   entry->next = *tran_files_p;
   *tran_files_p = entry;
 
-  file_log ("flre_tempcache_push_tran_file",
-	    "pushed entry " FILE_TEMPCACHE_ENTRY_MSG
-	    " to tran %d temporary files \n",
-	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry), tran_files_p - flre_Tempcache->tran_files);
+  file_log ("flre_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
+	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
 }
 
 int
