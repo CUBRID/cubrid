@@ -1328,6 +1328,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       compressable = true;
     }
 
+
   if (rc != NO_ERROR)
     {
       goto cleanup;
@@ -1335,6 +1336,11 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
   if (compressable == true)
     {
+      if (prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)
+	{
+	  compressed_length = 0;
+	  goto after_compression;
+	}
       /* Future optimization : use a preallocated object for wrkmem in thread_entry. */
       /* Alloc memory */
       wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
@@ -1370,12 +1376,12 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  goto cleanup;
 	}
 
-      if (compressed_length >= (lzo_uint) (charlen - 8) || prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)
+      if (compressed_length >= (lzo_uint) (charlen - 8))
 	{
 	  /* Compression successful but its length exceeds the original length of the string. */
 	  compressed_length = 0;
 	}
-
+    after_compression:
       /* Store the compression size */
       assert (compressed_length < (lzo_uint) (charlen - 8));
       OR_PUT_INT (&net_charlen, compressed_length);
