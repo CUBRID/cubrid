@@ -30509,15 +30509,10 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      (void) spage_check_num_slots (thread_p, *crt_page);
 #endif /* !NDEBUG */
 
-	      /* Merge successfully finished. */
-	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-	      is_system_op_started = false;
-
 	      pgbuf_unfix_and_init (thread_p, left_page);
 	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &left_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
-		  /* Is this acceptable? Pages are "leaked" if it happens. */
 		  ASSERT_ERROR ();
 		  goto error;
 		}
@@ -30525,10 +30520,14 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
-		  /* Is this acceptable? Pages are "leaked" if it happens. */
 		  ASSERT_ERROR ();
 		  goto error;
 		}
+
+	      /* Merge successfully finished. */
+	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      is_system_op_started = false;
+
 	      /* Nodes have been merged into root. Repeat loop in case we can merge root again. */
 	      *advance_to_page = *crt_page;
 	      *crt_page = NULL;
@@ -30730,8 +30729,6 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      /* Children are merged to the "left" node which is our case is the child page. */
 	      assert (!VPID_ISNULL (&child_vpid_after_merge));
 	      assert (VPID_EQ (&child_vpid_after_merge, &child_vpid));
-	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-	      is_system_op_started = false;
 
 #if !defined(NDEBUG)
 	      (void) spage_check_num_slots (thread_p, *crt_page);
@@ -30743,10 +30740,12 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
-		  /* Is this acceptable? Pages are "leaked" if it happens. */
 		  ASSERT_ERROR ();
 		  goto error;
 		}
+
+	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      is_system_op_started = false;
 
 	      /* Advance to child page. */
 	      *advance_to_page = child_page;
@@ -30895,9 +30894,6 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      assert (!VPID_ISNULL (&child_vpid_after_merge));
 	      assert (VPID_EQ (&child_vpid_after_merge, &left_vpid));
 
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-	      is_system_op_started = false;
-
 	      /* Deallocate child page. */
 	      pgbuf_unfix_and_init (thread_p, child_page);
 	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &child_vpid, FILE_BTREE);
@@ -30907,6 +30903,9 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		  ASSERT_ERROR ();
 		  goto error;
 		}
+
+	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      is_system_op_started = false;
 
 	      /* Choose to advance to left page. */
 	      *advance_to_page = left_page;
@@ -32052,6 +32051,8 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 	    }
 	}
 
+      /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
+       * fixme when replacing the old system operation system */
       /* Deallocate page. */
       error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
       if (error_code != NO_ERROR)
