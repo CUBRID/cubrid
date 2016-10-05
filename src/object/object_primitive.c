@@ -16451,13 +16451,12 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
       goto cleanup;
     }
 
-  if (compression_length < (lzo_uint) (str_length - 8) && !prm_get_bool_value (PRM_ID_USE_COMPRESSION))
+  if (compression_length < (lzo_uint) (str_length - 8) && prm_get_bool_value (PRM_ID_USE_COMPRESSION))
     {
       /* Compression successful */
       length = (int) compression_length;
       compressed = true;
       str = compressed_string;
-      printf ("%d %d\n", str_length, length);
     }
   else
     {
