@@ -9477,7 +9477,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
     {
       LSA_COPY (&rcv.reference_lsa, log_lsa);
       error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-      assert (error_code != NO_ERROR);
+      assert (error_code == NO_ERROR);
     }
   else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
     {
