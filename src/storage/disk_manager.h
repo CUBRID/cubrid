@@ -243,6 +243,8 @@ extern int disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern DISK_ISVALID disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pageid);
+extern DISK_ISVALID disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pageid,
+								   bool debug_crash);
 
 extern int disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
