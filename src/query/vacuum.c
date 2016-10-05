@@ -557,11 +557,6 @@ struct vacuum_dropped_files_page
 	} \
     } while (0)
 
-/* Dropped files recovery flags */
-#define VACUUM_DROPPED_FILES_RV_FLAG_DUPLICATE	  0x8000
-#define VACUUM_DROPPED_FILES_RV_FLAG_NEWPAGE	  0x4000
-#define VACUUM_DROPPED_FILES_RV_CLEAR_MASK		  0x3FFF
-
 #if !defined (NDEBUG)
 /* Track pages allocated for dropped files. Used for debugging only, for
  * easy observation of the lists of dropped files at any time.
@@ -585,7 +580,6 @@ typedef struct vacuum_dropped_files_rcv_data VACUUM_DROPPED_FILES_RCV_DATA;
 struct vacuum_dropped_files_rcv_data
 {
   VFID vfid;
-  MVCCID mvccid;
   OID class_oid;
 };
 
@@ -640,7 +634,7 @@ static int vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
 
 static int vacuum_compare_dropped_files (const void *a, const void *b);
 static int vacuum_compare_dropped_files_version (INT32 version_a, INT32 version_b);
-static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid, LOG_RCV * rcv);
+static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid);
 static int vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p);
 static bool vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid);
 static void vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 * indexes,
@@ -5505,7 +5499,6 @@ vacuum_compare_dropped_files (const void *a, const void *b)
  * thread_p (in) : Thread entry.
  * vfid (in)     : Class OID or B-tree identifier.
  * mvccid (in)	 : MVCCID.
- * rcv (in)      : recovery data
  */
 static int
 vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
@@ -5872,7 +5865,6 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const O
 
   /* Initialize recovery data */
   VFID_COPY (&rcv_data.vfid, vfid);
-  rcv_data.mvccid = MVCCID_NULL;	/* Not really used here */
   if (class_oid != NULL)
     {
       COPY_OID (&rcv_data.class_oid, class_oid);
@@ -6082,18 +6074,12 @@ int
 vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   int error = NO_ERROR;
-  LOG_RCV new_rcv;
-  VACUUM_DROPPED_FILES_RCV_DATA new_rcv_data;
   OID *class_oid;
+  MVCCID mvccid;
 #if defined (SERVER_MODE)
   INT32 my_version, workers_min_version;
 #endif
-
-  new_rcv.mvcc_id = rcv->mvcc_id;
-  new_rcv.offset = rcv->offset;
-  new_rcv.pgptr = rcv->pgptr;
-  new_rcv.data = (char *) &new_rcv_data;
-  new_rcv.length = sizeof (new_rcv_data);
+  VACUUM_DROPPED_FILES_RCV_DATA *rcv_data;
 
   /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id as
    * borderline to distinguish this file from newer files. 1. All changes on this file must be done by transaction that 
@@ -6101,15 +6087,11 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
    * on a new file that reused VFID must be done by transaction that start after this call, which means their MVCCID's
    * will be at least equal to current log_Gl.hdr.mvcc_next_id. */
 
-  VFID_COPY (&new_rcv_data.vfid, &((VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data)->vfid);
-  new_rcv_data.mvccid = log_Gl.hdr.mvcc_next_id;
-  OID_SET_NULL (&new_rcv_data.class_oid);
-
-  assert (!VFID_ISNULL (&new_rcv_data.vfid));
-  assert (MVCCID_IS_VALID (new_rcv_data.mvccid));
+  mvccid = ATOMIC_LOAD_64 (&log_Gl.hdr.mvcc_next_id);
 
   /* Add dropped file to current list */
-  error = vacuum_add_dropped_file (thread_p, &new_rcv_data.vfid, new_rcv_data.mvccid, &new_rcv);
+  rcv_data = (VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data;
+  error = vacuum_add_dropped_file (thread_p, &rcv_data->vfid, mvccid);
   if (error != NO_ERROR)
     {
       return error;
@@ -6121,16 +6103,15 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
    * mutex is used for protection, in case there are several transactions doing file drops. */
   pthread_mutex_lock (&vacuum_Dropped_files_mutex);
   assert (VFID_ISNULL (&vacuum_Last_dropped_vfid));
-  VFID_COPY (&vacuum_Last_dropped_vfid, &new_rcv_data.vfid);
+  VFID_COPY (&vacuum_Last_dropped_vfid, &rcv_data->vfid);
 
-  /* Increment dropped files version and save a version for current change. It is not important to keep the versioning
+  /* Increment dropped files version and save a version for current change. It is not important to keep the version
    * synchronized with the changes. It is only used to make sure that all workers have seen current change. */
   my_version = ++vacuum_Dropped_files_version;
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
 		 "VACUUM: Added dropped file - vfid=(%d, %d), mvccid=%llu - "
-		 "Wait for all workers to see my_version=%d", new_rcv_data.vfid.volid, new_rcv_data.vfid.fileid,
-		 new_rcv_data.mvccid, my_version);
+		 "Wait for all workers to see my_version=%d", VFID_AS_ARGS (&rcv_data->vfid), mvccid, my_version);
 
   /* Wait until all workers have been notified of this change */
   for (workers_min_version = vacuum_get_worker_min_dropped_files_version ();
@@ -6152,7 +6133,7 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 #endif /* SERVER_MODE */
 
   /* vacuum is notified of the file drop, it is safe to remove from cache */
-  class_oid = &((VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data)->class_oid;
+  class_oid = &rcv_data->class_oid;
   if (!OID_ISNULL (class_oid))
     {
       (void) heap_delete_hfid_from_cache (thread_p, class_oid);
