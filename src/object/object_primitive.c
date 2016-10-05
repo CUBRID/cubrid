@@ -16419,7 +16419,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
 
   if (prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)
     {
-      goto no_compression;
+      goto after_compression;
     }
 
   /* Step 1 : Compress, if possible, the dbvalue */
@@ -16469,15 +16469,12 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
     }
   else
     {
-    no_compression:
       /* Compression failed */
-      _er_log_debug (ARG_FILE_LINE, "compression is turned off or has failed. The compression was %d for length %d\n ",
-		     str_length, compression_length);
       length = str_length;
       compression_length = 0;
       str = string;
     }
-
+after_compression:
   /* 
    * Step 2 : Compute the disk size of the dbvalue.
    * We are sure that the initial string length is greater than 255, which means that the new encoding applies.
