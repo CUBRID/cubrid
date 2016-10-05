@@ -161,7 +161,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif
 #endif
 
-extern volatile int cache_entry_count;
+extern volatile INT32 cache_entry_count;
 extern volatile int heap_num_stats_entries;
 extern int sessions_num_holdable_cursors;
 extern volatile int delay_in_secs;

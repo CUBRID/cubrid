@@ -1126,7 +1126,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
   ATOMIC_TAS_32 (&cache_entry_count, xcache_Entry_count);
-  
+
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
 }
@@ -1344,6 +1344,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	    {
 	      /* new entry added */
 	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
+	      ATOMIC_TAS_32 (&cache_entry_count, xcache_Entry_count);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
