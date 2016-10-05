@@ -270,6 +270,8 @@ typedef enum
 
 typedef enum
 {
+  PSTAT_BASE = -1,		/* not a real entry. just to avoid compile warnings */
+
   /* Execution statistics for the file io */
   PSTAT_FILE_NUM_CREATES = 0,
   PSTAT_FILE_NUM_REMOVES,
@@ -735,7 +737,7 @@ extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 STATIC_INLINE void
 perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 {
-  assert (psid >= 0 && psid < PSTAT_COUNT);
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
   if (!perfmon_is_perf_tracking ())
     {
@@ -806,7 +808,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 STATIC_INLINE void
 perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
 {
-  assert (psid >= 0 && psid < PSTAT_COUNT);
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
   if (!perfmon_is_perf_tracking ())
     {
@@ -864,7 +866,7 @@ STATIC_INLINE void
 perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
 {
   assert (pstat_Global.initialized);
-  assert (psid >= 0 && psid < PSTAT_COUNT);
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
   assert (pstat_Metadata[psid].valtype == PSTAT_COUNTER_TIMER_VALUE);
 
