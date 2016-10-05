@@ -17081,7 +17081,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
-      goto cleanup;
+      goto error;
     }
 
   if (compressed_size > 0)
@@ -17094,10 +17094,10 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     {
       /* Compression failed */
       DB_SET_COMPRESSED_STRING (value, NULL, -1, false);
-      goto cleanup;
+      goto error;
     }
 
-cleanup:
+error:
   if (compressed_string != NULL)
     {
       db_private_free_and_init (NULL, compressed_string);
