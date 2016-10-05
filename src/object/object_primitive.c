@@ -14176,8 +14176,8 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	      return rc;
 	    }
 	}
-#else /* SERVER_MODE */
 #endif /* !SERVER_MODE */
+
       if (!DB_TRIED_COMPRESSION (value))
 	{
 	  /* Check for previous compression. */

@@ -295,7 +295,7 @@ extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
 	{ \
 	  *(dst) = *(src); \
 	  (dst)->need_clear = false; \
-	  if(db_value_domain_type (src) == DB_TYPE_STRING || db_value_domain_type (src) == DB_TYPE_VARNCHAR) \
+	  if (db_value_domain_type (src) == DB_TYPE_STRING || db_value_domain_type (src) == DB_TYPE_VARNCHAR) \
 	    { \
 	      (dst)->data.ch.info.compressed_need_clear = false; \
 	    } \
