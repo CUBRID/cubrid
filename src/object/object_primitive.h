@@ -354,7 +354,7 @@ extern int pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB
 						   int *val_size, int align);
 
 /* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
-#define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
+#define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION prm_get_integer_value(PRM_ID_USE_COMPRESSION)
 
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4

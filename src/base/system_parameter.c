@@ -1509,8 +1509,10 @@ bool PRM_INTL_MBS_SUPPORT = false;
 static bool prm_intl_mbs_support_default = false;
 static unsigned int prm_intl_mbs_support_flag = 0;
 
-bool PRM_LOG_COMPRESS = false;
-static bool prm_log_compress_default = true;
+int PRM_LOG_COMPRESS = 255;
+static int prm_log_compress_default = 255;
+static int prm_log_compress_upper = 255;
+static int prm_log_compress_lower = 0;
 static unsigned int prm_log_compress_flag = 0;
 
 bool PRM_BLOCK_NOWHERE_STATEMENT = false;
@@ -2033,8 +2035,11 @@ int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_upper = 15;
 static int prm_extended_statistics_lower = 0;
 
-bool PRM_USE_COMPRESSION = false;
-static bool prm_use_compression_default = false;
+int PRM_USE_COMPRESSION = 63;
+static int prm_use_compression_default = 63;
+static int prm_use_compression_upper = 255;
+static int prm_use_compression_lower = 0;
+
 static unsigned int prm_use_compression_flag = 0;
 
 
@@ -3710,11 +3715,12 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_LOG_COMPRESS,
    (PRM_FOR_SERVER),
-   PRM_BOOLEAN,
+   PRM_INTEGER,
    (void *) &prm_log_compress_flag,
    (void *) &prm_log_compress_default,
    (void *) &PRM_LOG_COMPRESS,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_log_compress_upper,
+   (void *) &prm_log_compress_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -4936,12 +4942,12 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_USE_COMPRESSION,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT),
-   PRM_BOOLEAN,
+   PRM_INTEGER,
    (void *) &prm_use_compression_flag,
    (void *) &prm_use_compression_default,
    (void *) &PRM_USE_COMPRESSION,
-   (void *) NULL,
-   (void *) NULL,
+   (void *) &prm_use_compression_upper,
+   (void *) &prm_use_compression_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

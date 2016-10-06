@@ -1336,7 +1336,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
   if (compressable == true)
     {
-      if (prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)
+      if (PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION == 0)
 	{
 	  compressed_length = 0;
 	  goto after_compression;
@@ -1381,9 +1381,8 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  /* Compression successful but its length exceeds the original length of the string. */
 	  compressed_length = 0;
 	}
-    after_compression:
-      /* Store the compression size */
       assert (compressed_length < (lzo_uint) (charlen - 8));
+      /* Store the compression size */
       OR_PUT_INT (&net_charlen, compressed_length);
       rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
@@ -1399,7 +1398,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	{
 	  goto cleanup;
 	}
-
+    after_compression:
       if (compressed_length == 0)
 	{
 	  /* Compression failed. */

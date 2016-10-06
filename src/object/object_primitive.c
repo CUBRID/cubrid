@@ -11500,8 +11500,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-      && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if ((str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+       && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION))
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
@@ -14353,8 +14353,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-      && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if ((str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+       && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION))
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
@@ -16318,7 +16318,7 @@ pr_get_compression_length (const char *string, int charlen)
 
   length = charlen;
 
-  if (prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)	/* compession is not set */
+  if (prm_get_integer_value (PRM_ID_USE_COMPRESSION) == 0)	/* compession is not set */
     {
       return length;
     }
@@ -16417,8 +16417,11 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
 
-  if (prm_get_bool_value (PRM_ID_USE_COMPRESSION) == false)
+  if (prm_get_integer_value (PRM_ID_USE_COMPRESSION) == 0)
     {
+      length = str_length;
+      compression_length = 0;
+      str = string;
       goto after_compression;
     }
 
