@@ -1056,6 +1056,8 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
     {
       /* Calculate how many directory pages will be used */
       ehash_dir_locate (&exp_dir_pages, &exp_bucket_pages);
+      /* exp_dir_pages is actually an index. the number of pages should be +1 */
+      exp_dir_pages++;
     }
 
   /* Create the directory (allocate the first page) and initialize its header */
