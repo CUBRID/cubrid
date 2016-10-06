@@ -281,9 +281,9 @@ static void convert_locale_number (char *sz, const int size, const INTL_LANG src
 static int parse_tzd (const char *str, const int max_expect_len);
 
 int get_next_format_external (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *format_length,
-			    char **next_pos);
+			      char **next_pos);
 int date_to_char_external (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * date_lang,
-			 DB_VALUE * result_str, const TP_DOMAIN * domain);
+			   DB_VALUE * result_str, const TP_DOMAIN * domain);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -15962,9 +15962,9 @@ exit:
 
 int
 date_to_char_external (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * date_lang,
-	      DB_VALUE * result_str, const TP_DOMAIN * domain)
+		       DB_VALUE * result_str, const TP_DOMAIN * domain)
 {
-	return (date_to_char (src_value, format_str, date_lang, result_str, domain));
+  return (date_to_char (src_value, format_str, date_lang, result_str, domain));
 }
 
 

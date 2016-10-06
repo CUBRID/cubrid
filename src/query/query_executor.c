@@ -10613,7 +10613,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  || pr_type->id == DB_TYPE_VARNCHAR || pr_type->id == DB_TYPE_NCHAR)
 			{
 			  DB_VALUE *result_str;
-			  DB_VALUE _lang, *lang = & _lang;
+			  DB_VALUE _lang, *lang = &_lang;
 			  DB_TYPE type;
 			  DB_VALUE *db_default = insert->vals[k];
 			  DB_VALUE _fmt, *fmt = &_fmt, _db_systime, *db_systime = &_db_systime;
@@ -10687,22 +10687,22 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			      db_value_domain_init (insert->vals[k], attr->type, precision, scale);
 
 			      switch (attr->type)
-				  {
-				  case DB_TYPE_STRING:
-				  case DB_TYPE_VARNCHAR:
-				    DB_MAKE_STRING (db_default, memory_default_value[default_index++]);
-				    break;
-				  case DB_TYPE_CHAR:
-				  case DB_TYPE_NCHAR:
-				    DB_MAKE_CHAR (db_default, precision, memory_default_value[default_index++], len,
-					          	DB_GET_STRING_CODESET (db_default),
-						      DB_GET_STRING_COLLATION (db_default));
-				    break;
-				  default:
-				    break;
-				  }
-			    } /* END-OF-IF: For TO_CHAR Default Processing */
-			} /* END-OF-IF: CHAR type DATA */
+				{
+				case DB_TYPE_STRING:
+				case DB_TYPE_VARNCHAR:
+				  DB_MAKE_STRING (db_default, memory_default_value[default_index++]);
+				  break;
+				case DB_TYPE_CHAR:
+				case DB_TYPE_NCHAR:
+				  DB_MAKE_CHAR (db_default, precision, memory_default_value[default_index++], len,
+						DB_GET_STRING_CODESET (db_default),
+						DB_GET_STRING_COLLATION (db_default));
+				  break;
+				default:
+				  break;
+				}
+			    }	/* END-OF-IF: For TO_CHAR Default Processing */
+			}	/* END-OF-IF: CHAR type DATA */
 		      break;
 		    default:
 		      error = ER_FAILED;
