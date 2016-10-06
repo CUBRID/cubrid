@@ -5505,7 +5505,6 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   VFID ovfid;
   int unique_pk;
   int ret = NO_ERROR;
-  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
@@ -5532,6 +5531,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
   if (unique_pk)
     {
+      LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
       log_append_postpone (thread_p, RVBT_REMOVE_UNIQUE_STATS, &addr, sizeof (*btid), btid);
     }
   if (!VFID_ISNULL (&ovfid))
