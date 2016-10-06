@@ -1336,7 +1336,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
   if (compressable == true)
     {
-      if (PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION == 0)
+      if (prm_get_integer_value (PRM_ID_USE_COMPRESSION) == 0)
 	{
 	  compressed_length = 0;
 	  goto after_compression;
@@ -1383,6 +1383,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	}
       assert (compressed_length < (lzo_uint) (charlen - 8));
       /* Store the compression size */
+    after_compression:
       OR_PUT_INT (&net_charlen, compressed_length);
       rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
@@ -1392,13 +1393,13 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       net_charlen = 0;
       /* Store the uncompressed data size */
+
       OR_PUT_INT (&net_charlen, charlen);
       rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
 	}
-    after_compression:
       if (compressed_length == 0)
 	{
 	  /* Compression failed. */

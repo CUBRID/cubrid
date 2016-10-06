@@ -2035,8 +2035,8 @@ int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_upper = 15;
 static int prm_extended_statistics_lower = 0;
 
-int PRM_USE_COMPRESSION = 63;
-static int prm_use_compression_default = 63;
+int PRM_USE_COMPRESSION = 0;
+static int prm_use_compression_default = 0;
 static int prm_use_compression_upper = 255;
 static int prm_use_compression_lower = 0;
 
