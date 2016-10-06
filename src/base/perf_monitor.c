@@ -81,10 +81,10 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-volatile INT32 cache_entry_count;
-volatile int heap_num_stats_entries;
-int sessions_num_holdable_cursors;
-volatile int delay_in_secs;
+volatile INT32 perfmon_Cache_entry_count;
+volatile int perfmon_Heap_num_stats_entries;
+int perfmon_Sessions_num_holdable_cursors;
+volatile int perfmon_Delay_in_secs;
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
@@ -2627,10 +2627,14 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
 
 #if defined (SERVER_MODE)
-  pgbuf_peek_stats (&(stats[PSTAT_PB_FIXED_CNT]), &(stats[PSTAT_PB_DIRTY_CNT]),
-		    &(stats[PSTAT_PB_LRU1_CNT]), &(stats[PSTAT_PB_LRU2_CNT]),
-		    &(stats[PSTAT_PB_AIN_CNT]), &(stats[PSTAT_PB_AVOID_DEALLOC_CNT]),
-		    &(stats[PSTAT_PB_AVOID_VICTIM_CNT]), &(stats[PSTAT_PB_VICTIM_CAND_CNT]));
+  pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AIN_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_VICTIM_CAND_CNT].start_offset]));
 #endif
 
   for (i = 0; i < PSTAT_COUNT; i++)
@@ -4501,13 +4505,17 @@ get_value_from_stat (PERF_STAT_ID perf_id)
   switch (perf_id)
     {
     case PSTAT_PC_NUM_CACHE_ENTRIES:
-      ans = cache_entry_count;
+      ans = perfmon_Cache_entry_count;
+      break;
     case PSTAT_HF_NUM_STATS_ENTRIES:
-      ans = heap_num_stats_entries;
+      ans = perfmon_Heap_num_stats_entries;
+      break;
     case PSTAT_QM_NUM_HOLDABLE_CURSORS:
-      ans = sessions_num_holdable_cursors;
+      ans = perfmon_Sessions_num_holdable_cursors;
+      break;
     case PSTAT_HA_REPL_DELAY:
-      ans = delay_in_secs;
+      ans = perfmon_Delay_in_secs;
+      break;
     }
 
   return ans;

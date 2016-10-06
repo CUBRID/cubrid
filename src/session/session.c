@@ -2438,7 +2438,7 @@ session_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qent
     }
 
   sessions.num_holdable_cursors++;
-  sessions_num_holdable_cursors++;
+  perfmon_Sessions_num_holdable_cursors++;
 }
 
 /*
@@ -2468,7 +2468,7 @@ session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_
     }
 
   sessions.num_holdable_cursors--;
-  sessions_num_holdable_cursors--;
+  perfmon_Sessions_num_holdable_cursors--;
 }
 
 /*
@@ -2583,7 +2583,7 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
 
 	  free_and_init (sentry_p);
 	  sessions.num_holdable_cursors--;
-	  sessions_num_holdable_cursors--;
+	  perfmon_Sessions_num_holdable_cursors--;
 
 	  break;
 	}
