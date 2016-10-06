@@ -280,6 +280,11 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
 
+int get_next_format_external (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *format_length,
+			    char **next_pos);
+int date_to_char_external (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * date_lang,
+			 DB_VALUE * result_str, const TP_DOMAIN * domain);
+
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
 #define ALPHABETICAL(c) (((c) >= 'A' && (c) <= 'Z') || \
@@ -15947,6 +15952,19 @@ exit:
     }
 
   return error_status;
+}
+
+/*
+ * date_to_char_external ()
+ * interface to call date_to_char_x()
+ * date_to_char_cloned() is a copy of date_to_char()
+ */
+
+int
+date_to_char_external (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * date_lang,
+	      DB_VALUE * result_str, const TP_DOMAIN * domain)
+{
+	return (date_to_char (src_value, format_str, date_lang, result_str, domain));
 }
 
 
