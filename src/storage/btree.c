@@ -5468,7 +5468,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   if (unique_pk)
     {
       /* drop statistics if aborted */
-      log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, 0, sizeof (BTID), btid);
+      log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
     }
 
   return btid;
@@ -5505,7 +5505,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   VFID ovfid;
   int unique_pk;
   int ret = NO_ERROR;
-  LOG_DATA_ADDR addr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
@@ -5529,9 +5529,6 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   unique_pk = root_header->unique_pk;
   pgbuf_unfix_and_init (thread_p, P);
 
-  addr.vfid = NULL;
-  addr.pgptr = NULL;
-  addr.offset = -1;
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
   if (unique_pk)
     {

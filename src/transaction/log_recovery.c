@@ -260,7 +260,11 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
        * redo/CLR log to describe the undo.
        */
 
-      if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
+      if (rcvindex == RVBT_MVCC_INCREMENTS_UPD)
+	{
+	  /* nothing to do during recovery */
+	}
+      else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
 	   * compensation since the "undone" page can be accessed and logged. Only no-page logical operations require
