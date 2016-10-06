@@ -586,10 +586,11 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_record_modify,
    btree_rv_keyval_dump,
    log_rv_dump_hexa},
-  {RVBT_MVCC_INCREMENTS_UPD,
+  {RVBT_MVCC_INCREMENTS_UPD,	/* why do redo on this? redo is only called during recovery. this only affects
+				 * transaction local stats which have no value during recovery! */
    "RVBT_MVCC_INCREMENTS_UPD",
    btree_rv_mvcc_undo_redo_increments_update,
-   btree_rv_mvcc_undo_redo_increments_update,
+   NULL,			/* btree_rv_mvcc_undo_redo_increments_update, */
    NULL, NULL},
   {RVBT_MVCC_NOTIFY_VACUUM,
    "RVBT_MVCC_NOTIFY_VACUUM",

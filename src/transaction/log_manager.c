@@ -8376,7 +8376,15 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
        * redo/CLR log to describe the undo. This in turn will be translated
        * to a compensating record.
        */
-      if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
+      if (rcvindex == RVBT_MVCC_INCREMENTS_UPD)
+	{
+	  /* this is a special case. we need to undo changes to transaction local stats. this only has an impact on
+	   * this transaction during runtime, and recovery has no interest, so we don't have to add a compensate log
+	   * record. */
+	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
+	  assert (rv_err == NO_ERROR);
+	}
+      else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
 	   * compensation since the "undone" page can be accessed and logged. Only no-page logical operations require
