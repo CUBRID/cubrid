@@ -387,7 +387,7 @@ ehash_dir_locate (int *out_page_no_p, int *out_offset_p)
     {
       /* in the first page */
       offset = offset * sizeof (EHASH_DIR_RECORD) + EHASH_DIR_HEADER_SIZE;
-      page_no = 1;		/* at least one page */
+      page_no = 0;		/* at least one page */
     }
   else
     {

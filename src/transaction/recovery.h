@@ -234,8 +234,10 @@ typedef enum
   RVFL_FHEAD_MARK_DELETE = 171,
   RVFL_FHEAD_STICKY_PAGE = 172,
   RVDK_VOLHEAD_EXPAND = 173,
+  RVVAC_NOTIFY_DROPPED_FILE = 174,
+  RVVAC_DROPPED_FILE_REPLACE = 175,
 
-  RV_LAST_LOGID = RVDK_VOLHEAD_EXPAND,
+  RV_LAST_LOGID = RVVAC_DROPPED_FILE_REPLACE,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -302,6 +304,7 @@ extern void rv_check_rvfuns (void);
    || ((idx) == RVPGBUF_FLUSH_PAGE) \
    || ((idx) == RVFL_DESTROY) \
    || ((idx) == RVFL_ALLOC) \
-   || ((idx) == RVFL_DEALLOC))
+   || ((idx) == RVFL_DEALLOC) \
+   || ((idx) == RVVAC_NOTIFY_DROPPED_FILE))
 
 #endif /* _RECOVERY_H_ */

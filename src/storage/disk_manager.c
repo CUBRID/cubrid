@@ -356,7 +356,8 @@ STATIC_INLINE void disk_cache_update_vol_free (VOLID volid, DKNSECTS delta_free)
 /************************************************************************/
 
 static int disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RESERVE_CONTEXT * context);
-static DISK_ISVALID disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volheader, SECTID sectid);
+static DISK_ISVALID disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volheader, SECTID sectid,
+					     bool debug_crash);
 static int disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context);
 STATIC_INLINE void disk_reserve_from_cache_vols (DB_VOLTYPE type, DISK_RESERVE_CONTEXT * context)
   __attribute__ ((ALWAYS_INLINE));
@@ -3720,6 +3721,21 @@ exit:
 DISK_ISVALID
 disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pageid)
 {
+  return disk_is_page_sector_reserved_with_debug_crash (thread_p, volid, pageid, false);
+}
+
+/*
+ * disk_is_page_sector_reserved_with_error () - Is sector of page reserved?
+ *
+ * return           : Valid if sector of page is reserved, invalid (or error) otherwise.
+ * thread_p (in)    : Thread entry
+ * volid (in)       : Page volid
+ * pageid (in)      : Page pageid
+ * debug_crash (in) : crash when invalid in debug mode
+ */
+DISK_ISVALID
+disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pageid, bool debug_crash)
+{
   PAGE_PTR page_volheader = NULL;
   DISK_VAR_HEADER *volheader;
   DISK_ISVALID isvalid = DISK_VALID;
@@ -3757,12 +3773,13 @@ disk_is_page_sector_reserved (THREAD_ENTRY * thread_p, VOLID volid, PAGEID pagei
     }
   if (pageid > DISK_SECTS_NPAGES (volheader->nsect_total))
     {
+      assert (!debug_crash);
       isvalid = DISK_INVALID;
       goto exit;
     }
 
   sectid = SECTOR_FROM_PAGEID (pageid);
-  isvalid = disk_is_sector_reserved (thread_p, volheader, sectid);
+  isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
 
 exit:
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
@@ -3778,13 +3795,14 @@ exit:
 /*
  * disk_is_sector_reserved () - Return valid if sector is reserved, invalid otherwise.
  *
- * return         : Valid if sector is reserved, invalid if it is not reserved or error if table page cannot be fixed.
- * thread_p (in)  : Thread entry
- * volheader (in) : Volume header
- * sectid (in)    : Sector ID
+ * return           : Valid if sector is reserved, invalid if it is not reserved or error if table page cannot be fixed.
+ * thread_p (in)    : Thread entry
+ * volheader (in)   : Volume header
+ * sectid (in)      : Sector ID
+ * debug_crash (in) : crash when invalid in debug mode
  */
 static DISK_ISVALID
-disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volheader, SECTID sectid)
+disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volheader, SECTID sectid, bool debug_crash)
 {
   DISK_STAB_CURSOR cursor_sectid;
 
@@ -3795,6 +3813,7 @@ disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VAR_HEADER * volhea
     }
   if (!disk_stab_cursor_is_bit_set (&cursor_sectid))
     {
+      assert (!debug_crash);
       disk_stab_cursor_unfix (thread_p, &cursor_sectid);
       return DISK_INVALID;
     }

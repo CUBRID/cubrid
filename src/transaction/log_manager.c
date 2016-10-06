@@ -3839,10 +3839,6 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	}
     }
 
-  /* NOTE: we should not start new system operations in this state, unless it is recovery and we want to abort a system
-   *       operation */
-  assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || !LOG_ISRESTARTED ());
-
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
@@ -4042,8 +4038,6 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	{
 	  /* to allow postpone records, we need to extend implementation of sys op start postpone */
 	  assert (LSA_ISNULL (LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)));
-	  assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
-		  && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
 	}
       else
 	{
@@ -4821,11 +4815,6 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
    * See also canskip_undo.
    */
   if (LOG_ISUNSAFE_TO_SKIP_RCVINDEX (rcvindex))
-    {
-      return false;
-    }
-
-  if (rcvindex == RVVAC_DROPPED_FILE_ADD)
     {
       return false;
     }
@@ -8376,22 +8365,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
        * redo/CLR log to describe the undo. This in turn will be translated
        * to a compensating record.
        */
-      if (rcvindex == RVVAC_DROPPED_FILE_ADD)
-	{
-	  rv_err = vacuum_notify_dropped_file (thread_p, rcv, NULL);
-	  if (rv_err != NO_ERROR)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
-			    "Log record %lld|%d, rcvindex = %s, was not undone due to error (%d)\n",
-			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
-			    rv_rcvindex_string (rcvindex), rv_err);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
-	      assert (false);
-	    }
-	}
-      else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
+      if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
 	   * compensation since the "undone" page can be accessed and logged. Only no-page logical operations require
@@ -9118,7 +9092,7 @@ void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
 {
   LOG_LSA end_postpone_lsa;	/* The last postpone record of transaction cannot be after this address */
-  LOG_LSA start_seek_lsa;	/* start looking for posptpone records at this address */
+  LOG_LSA start_seek_lsa;	/* start looking for postpone records at this address */
   LOG_LSA *end_seek_lsa;	/* Stop looking for postpone records at this address */
   LOG_LSA next_start_seek_lsa;	/* Next address to look for postpone records. Usually the end of a top system
 				 * operation. */
@@ -9466,18 +9440,11 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 
   /* Now call the REDO recovery function */
 
-  if (rcvindex == RVVAC_DROPPED_FILE_ADD)
-    {
-      /* We don't know yet in which page the dropped file will end up so we have to do a special call here. */
-      /* TODO: RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL */
-      error_code = vacuum_notify_dropped_file (thread_p, &rcv, log_lsa);
-      assert (error_code == NO_ERROR);
-    }
-  else if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
+  if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
     {
       LSA_COPY (&rcv.reference_lsa, log_lsa);
       error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-      assert (error_code != NO_ERROR);
+      assert (error_code == NO_ERROR);
     }
   else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
     {

@@ -16552,8 +16552,8 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	    FILE_NUMERABLE_REGULAR_STRING (is_numerable), FILE_TABLESPACE_AS_ARGS (tablespace), n_sectors);
 
   error_code =
-    disk_reserve_sectors (thread_p, volpurpose,
-			  DISK_NONCONTIGUOUS_SPANVOLS_PAGES, NULL_VOLID, n_sectors, vsids_reserved);
+    disk_reserve_sectors (thread_p, volpurpose, DISK_NONCONTIGUOUS_SPANVOLS_PAGES, NULL_VOLID, n_sectors,
+			  vsids_reserved);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -16605,12 +16605,12 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       *vfid = found_vfid;
     }
   else
-#else /* SA_MODE */
-  {
-    vfid->volid = vsids_reserved->volid;
-    vfid->fileid = SECTOR_FIRST_PAGEID (vsids_reserved->sectid);
-  }
-#endif /* SA_MODE */
+#endif /* SERVER_MODE */
+    {
+      vfid->volid = vsids_reserved->volid;
+      vfid->fileid = SECTOR_FIRST_PAGEID (vsids_reserved->sectid);
+    }
+
   assert (!VFID_ISNULL (vfid));
   vpid_fhead.volid = vfid->volid;
   vpid_fhead.pageid = vfid->fileid;
@@ -20907,12 +20907,12 @@ flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 	    }
 	  entry->next = NULL;
 
-	  file_log ("flre_tempcache_pop_tran_file",
-		    "tran %d removed entry " FILE_TEMPCACHE_ENTRY_MSG,
-		    tran_files_p - flre_Tempcache->tran_files, FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
+	  file_log ("flre_tempcache_pop_tran_file", "removed entry " FILE_TEMPCACHE_ENTRY_MSG,
+		    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
 
 	  return entry;
 	}
+      prev_entry = entry;
     }
   /* should have found it */
   assert_release (false);
@@ -20939,10 +20939,8 @@ flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * e
   entry->next = *tran_files_p;
   *tran_files_p = entry;
 
-  file_log ("flre_tempcache_push_tran_file",
-	    "pushed entry " FILE_TEMPCACHE_ENTRY_MSG
-	    " to tran %d temporary files \n",
-	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry), tran_files_p - flre_Tempcache->tran_files);
+  file_log ("flre_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
+	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
 }
 
 int
