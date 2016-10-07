@@ -1324,7 +1324,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
     }
   else
     {
-      rc = or_put_byte (buf, 0xFF);
+      rc = or_put_byte (buf, PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
       compressable = true;
     }
 

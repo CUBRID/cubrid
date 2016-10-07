@@ -2024,7 +2024,6 @@ bool PRM_LOGPB_LOGGING_DEBUG = false;
 static bool prm_logpb_logging_debug_default = false;
 static unsigned int prm_logpb_logging_debug_flag = 0;
 
-
 bool PRM_FORCE_RESTART_TO_SKIP_RECOVERY = false;
 static bool prm_force_restart_to_skip_recovery_default = false;
 static unsigned int prm_force_restart_to_skip_recovery_flag = 0;
@@ -2041,7 +2040,6 @@ static int prm_use_compression_upper = 255;
 static int prm_use_compression_lower = 0;
 
 static unsigned int prm_use_compression_flag = 0;
-
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
