@@ -1509,8 +1509,8 @@ bool PRM_INTL_MBS_SUPPORT = false;
 static bool prm_intl_mbs_support_default = false;
 static unsigned int prm_intl_mbs_support_flag = 0;
 
-int PRM_LOG_COMPRESS = 255;
-static int prm_log_compress_default = 255;
+int PRM_LOG_COMPRESS = 127;
+static int prm_log_compress_default = 127;
 static int prm_log_compress_upper = 255;
 static int prm_log_compress_lower = 0;
 static unsigned int prm_log_compress_flag = 0;
@@ -2035,8 +2035,8 @@ int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_upper = 15;
 static int prm_extended_statistics_lower = 0;
 
-int PRM_USE_COMPRESSION = 0;
-static int prm_use_compression_default = 0;
+int PRM_USE_COMPRESSION = 255;
+static int prm_use_compression_default = 255;
 static int prm_use_compression_upper = 255;
 static int prm_use_compression_lower = 0;
 
