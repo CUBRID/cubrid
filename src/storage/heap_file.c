@@ -20738,20 +20738,19 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
       OID new_forward_oid;
-      int adjusted_size, forward_rec_header_size;
+      int adjusted_size;
       bool fits_in_home, fits_in_forward;
       bool update_old_home = false;
       bool update_old_forward = false;
       bool remove_old_forward = false;
       bool is_adjusted_size_big = false;
-      int offset, repid_and_flag_bits, mvcc_flags;
+      int delid_offset, repid_and_flag_bits, mvcc_flags;
       char *build_recdes_data;
       bool use_optimization;
       int sizeof_log_lsa = sizeof (LOG_LSA);
 
       repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data);
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
-      forward_rec_header_size = or_mvcc_header_size_from_flags (mvcc_flags);
       adjusted_size = forward_recdes.length;
 
       /*
@@ -20781,7 +20780,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (is_adjusted_size_big)
 	{
 	  /* not exactly necessary, but we'll be able to compare sizes */
-	  adjusted_size = forward_recdes.length - forward_rec_header_size + OR_MVCC_MAX_HEADER_SIZE;
+	  adjusted_size = forward_recdes.length - or_mvcc_header_size_from_flags (mvcc_flags) + OR_MVCC_MAX_HEADER_SIZE;
 	}
 #endif
 
@@ -20815,14 +20814,14 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		{
 		  /* Rare case - disable optimization, in case that the flags was modified meanwhile. */
 		  mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
-		  forward_rec_header_size = or_mvcc_header_size_from_flags (mvcc_flags);
 		  use_optimization = false;
 
 #if !defined(NDEBUG)
 		  if (is_adjusted_size_big)
 		    {
 		      /* not exactly necessary, but we'll be able to compare sizes */
-		      adjusted_size = forward_recdes.length - forward_rec_header_size + OR_MVCC_MAX_HEADER_SIZE;
+		      adjusted_size = forward_recdes.length - or_mvcc_header_size_from_flags (mvcc_flags)
+			+ OR_MVCC_MAX_HEADER_SIZE;
 		    }
 #endif
 		}
@@ -20834,50 +20833,43 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		       REC_UNKNOWN, PTR_ALIGN (buffer, MAX_ALIGNMENT));
       if (use_optimization)
 	{
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
-	    {
-	      /* Have previous version. */
-	      offset = forward_rec_header_size - sizeof_log_lsa;
-	    }
-	  else
-	    {
-	      /* Don't have previous version. */
-	      offset = forward_rec_header_size;
-	    }
+	  char *start_p;
 
-	  build_recdes_data = new_forward_recdes.data;
+	  delid_offset = OR_MVCC_DELETE_ID_OFFSET (mvcc_flags);
+	  build_recdes_data = start_p = new_forward_recdes.data;
 
 	  /* Copy up to MVCC DELID first. */
-	  memcpy (build_recdes_data, forward_recdes.data, offset);
-	  build_recdes_data += offset;
+	  memcpy (build_recdes_data, forward_recdes.data, delid_offset);
+	  build_recdes_data += delid_offset;
 
 	  /* Sets MVCC DELID flag, overwrite first four bytes. */
 	  repid_and_flag_bits |= (OR_MVCC_FLAG_VALID_DELID << OR_MVCC_FLAG_SHIFT_BITS);
-	  OR_PUT_INT (new_forward_recdes.data, repid_and_flag_bits);
+	  OR_PUT_INT (start_p, repid_and_flag_bits);
 
+	  /* Sets the MVCC DELID. */
+	  OR_PUT_BIGINT (build_recdes_data, &mvcc_id);
+	  build_recdes_data += OR_MVCCID_SIZE;
+
+	  /* Copy remaining data. */
+#if !defined(NDEBUG)
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	    {
-	      /* Sets the previous version. */
-	      memcpy (build_recdes_data + OR_MVCCID_SIZE, forward_recdes.data + offset, sizeof_log_lsa);
-
-	      /* Sets the MVCC DELID. */
-	      OR_PUT_BIGINT (build_recdes_data, &mvcc_id);
-	      build_recdes_data += (OR_MVCCID_SIZE + sizeof_log_lsa);
+	      /* Check that we need to copy from offset of LOG LSA up to the end of the buffer. */
+	      assert (delid_offset == OR_MVCC_PREV_VERSION_LSA_OFFSET (mvcc_flags));
 	    }
 	  else
 	    {
-	      /* Sets the MVCC DELID. */
-	      OR_PUT_BIGINT (build_recdes_data, &mvcc_id);
-	      build_recdes_data += OR_MVCCID_SIZE;
+	      /* Check that we need to copy from end of MVCC header up to the end of the buffer. */
+	      assert (delid_offset == or_mvcc_header_size_from_flags (mvcc_flags));
 	    }
+#endif
 
-	  /* Copy behind MVCC DELID. */
-	  memcpy (build_recdes_data, forward_recdes.data + forward_rec_header_size,
-		  forward_recdes.length - forward_rec_header_size);
+	  memcpy (build_recdes_data, forward_recdes.data + delid_offset, forward_recdes.length - delid_offset);
 	  new_forward_recdes.length = adjusted_size;
 	}
       else
 	{
+	  int forward_rec_header_size;
 	  /*
 	   * Rare case - don't care to optimize it for now. Get the MVCC header, build adjusted record
 	   * header - slow operation.
@@ -20891,6 +20883,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  or_mvcc_add_header (&new_forward_recdes, &forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
 			      OR_GET_OFFSET_SIZE (forward_recdes.data));
 
+	  forward_rec_header_size = or_mvcc_header_size_from_flags (mvcc_flags);
 	  memcpy (new_forward_recdes.data + new_forward_recdes.length, forward_recdes.data + forward_rec_header_size,
 		  forward_recdes.length - forward_rec_header_size);
 	  new_forward_recdes.length += forward_recdes.length - forward_rec_header_size;
@@ -21216,17 +21209,15 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       OID forward_oid;
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
-      int header_size, adjusted_size;
+      int adjusted_size;
       bool is_adjusted_size_big = false;
-      int offset, repid_and_flag_bits, mvcc_flags;
+      int delid_offset, repid_and_flag_bits, mvcc_flags;
       char *build_recdes_data;
       bool use_optimization;
-      int sizeof_log_lsa = sizeof (LOG_LSA);
 
       /* Build the new record descriptor. */
       repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (context->home_recdes.data);
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
-      header_size = or_mvcc_header_size_from_flags (mvcc_flags);
       adjusted_size = context->home_recdes.length;
 
       /* Uses the optimization in most common cases, for now : if DELID not set and adjusted size is not big size. */
@@ -21248,55 +21239,59 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  use_optimization = false;
 	}
 
+#if !defined(NDEBUG)
+      if (is_adjusted_size_big)
+	{
+	  /* not exactly necessary, but we'll be able to compare sizes */
+	  adjusted_size = context->home_recdes.length - or_mvcc_header_size_from_flags (mvcc_flags)
+	    + OR_MVCC_MAX_HEADER_SIZE;
+	}
+#endif
+
       /* Build the new record. */
       HEAP_SET_RECORD (&built_recdes, IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0, REC_UNKNOWN,
 		       PTR_ALIGN (data_buffer, MAX_ALIGNMENT));
       if (use_optimization)
 	{
-	  /* Most common case, computes offset of DELID. */
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
-	    {
-	      /* Have previous version. */
-	      offset = header_size - sizeof_log_lsa;
-	    }
-	  else
-	    {
-	      /* Don't have previous version. */
-	      offset = header_size;
-	    }
+	  char *start_p;
 
-	  build_recdes_data = built_recdes.data;
+	  delid_offset = OR_MVCC_DELETE_ID_OFFSET (mvcc_flags);
+
+	  build_recdes_data = start_p = built_recdes.data;
+
 	  /* Copy up to MVCC DELID first. */
-	  memcpy (build_recdes_data, context->home_recdes.data, offset);
-	  build_recdes_data += offset;
+	  memcpy (build_recdes_data, context->home_recdes.data, delid_offset);
+	  build_recdes_data += delid_offset;
 
 	  /* Sets MVCC DELID flag, overwrite first four bytes. */
 	  repid_and_flag_bits |= (OR_MVCC_FLAG_VALID_DELID << OR_MVCC_FLAG_SHIFT_BITS);
-	  OR_PUT_INT (built_recdes.data, repid_and_flag_bits);
+	  OR_PUT_INT (start_p, repid_and_flag_bits);
 
+	  /* Sets the MVCC DELID. */
+	  OR_PUT_BIGINT (build_recdes_data, &mvcc_id);
+	  build_recdes_data += OR_MVCC_DELETE_ID_SIZE;
+
+	  /* Copy remaining data. */
+#if !defined(NDEBUG)
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	    {
-	      /* Sets the previous version. */
-	      memcpy (build_recdes_data + OR_MVCCID_SIZE, context->home_recdes.data + offset, sizeof_log_lsa);
-
-	      /* Sets the MVCC DELID. */
-	      OR_PUT_BIGINT (build_recdes_data, &mvcc_id);
-	      build_recdes_data += (OR_MVCCID_SIZE + sizeof_log_lsa);
+	      /* Check that we need to copy from offset of LOG LSA up to the end of the buffer. */
+	      assert (delid_offset == OR_MVCC_PREV_VERSION_LSA_OFFSET (mvcc_flags));
 	    }
 	  else
 	    {
-	      /* Sets the MVCC DELID. */
-	      OR_PUT_BIGINT (build_recdes_data, &mvcc_id);
-	      build_recdes_data += OR_MVCCID_SIZE;
+	      /* Check that we need to copy from end of MVCC header up to the end of the buffer. */
+	      assert (delid_offset == or_mvcc_header_size_from_flags (mvcc_flags));
 	    }
+#endif
 
-	  /* Copy behind MVCC DELID. */
-	  memcpy (build_recdes_data, context->home_recdes.data + header_size,
-		  context->home_recdes.length - header_size);
+	  memcpy (build_recdes_data, context->home_recdes.data + delid_offset,
+		  context->home_recdes.length - delid_offset);
 	  built_recdes.length = adjusted_size;
 	}
       else
 	{
+	  int header_size;
 	  /*
 	   * Rare case - don't care to optimize it for now. Get the MVCC header, build adjusted record
 	   * header - slow operation.
@@ -21312,6 +21307,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  heap_delete_adjust_header (&record_header, mvcc_id, is_adjusted_size_big);
 	  or_mvcc_add_header (&built_recdes, &record_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
 			      OR_GET_OFFSET_SIZE (context->home_recdes.data));
+	  header_size = or_mvcc_header_size_from_flags (mvcc_flags);
 	  memcpy (built_recdes.data + built_recdes.length, context->home_recdes.data + header_size,
 		  context->home_recdes.length - header_size);
 	  built_recdes.length += (context->home_recdes.length - header_size);
