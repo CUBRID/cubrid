@@ -16417,7 +16417,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
 
-  if (prm_get_integer_value (PRM_ID_USE_COMPRESSION) == 0)
+  if (prm_get_integer_value (PRM_ID_USE_COMPRESSION) == 0)	/* compession is not set */
     {
       length = str_length;
       compression_length = 0;
