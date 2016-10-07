@@ -11500,8 +11500,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if ((str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-       && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION))
+  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+      && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
@@ -14353,8 +14353,8 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
-  if ((str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-       && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION))
+  if (str_length1 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+      && str_length2 < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;

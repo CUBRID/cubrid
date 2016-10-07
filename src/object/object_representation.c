@@ -1328,7 +1328,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       compressable = true;
     }
 
-
   if (rc != NO_ERROR)
     {
       goto cleanup;
@@ -1393,13 +1392,13 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       net_charlen = 0;
       /* Store the uncompressed data size */
-
       OR_PUT_INT (&net_charlen, charlen);
       rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
 	}
+
       if (compressed_length == 0)
 	{
 	  /* Compression failed. */
