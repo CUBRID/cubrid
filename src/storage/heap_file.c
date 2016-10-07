@@ -840,8 +840,7 @@ static void heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, 
 				      RECDES * recdes_p, bool is_mvcc_op, bool is_redistribute_op);
 
 /* heap delete related functions */
-void heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, int record_size);
-MVCC_REC_HEADER heap_delete_adjust_recdes_header (RECDES * recdes_p, MVCCID mvcc_id);
+static void heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, bool need_mvcc_header_max_size);
 static int heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
@@ -10683,7 +10682,6 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
   int error = NO_ERROR;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
-  OID root_oid;
 
   assert (class_oid != NULL);
 
@@ -16252,8 +16250,6 @@ heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   recdes_type = *(INT16 *) (rcv->data);
   if (recdes_type == REC_NEWHOME)
     {
-      INT16 slotid;
-
       slotid = rcv->offset;
       slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
       error_code = vacuum_rv_check_at_undo (thread_p, rcv->pgptr, slotid, recdes_type);
@@ -20440,62 +20436,27 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 }
 
 /*
- * heap_delete_adjust_recdes_header () - adjust record header for insert
- *                                       operation
- *   recdes_p(in): home record descriptor
+ * heap_delete_adjust_header () - adjust MVCC record header for delete operation
+ *
+ *   header_p(in): MVCC record header
  *   mvcc_id(in): MVCC identifier
- *   prev_version_lsa(in): Previous version lsa
+ *   need_mvcc_header_max_size(in): true, if need maximum size for MVCC header
  *
  * NOTE: Only applicable for MVCC operations.
  */
-void
-heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, int record_size)
+static void
+heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, bool need_mvcc_header_max_size)
 {
   assert (header_p != NULL);
-
-  if (!MVCC_IS_FLAG_SET (header_p, OR_MVCC_FLAG_VALID_DELID))
-    {
-      record_size += OR_MVCCID_SIZE;
-    }
 
   MVCC_SET_FLAG_BITS (header_p, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_DELID (header_p, mvcc_id);
 
-  /* treat overflow */
-  if (heap_is_big_length (record_size))
+  if (need_mvcc_header_max_size)
     {
-      /* overflow records have maximum MVCC header size */
+      /* set maximum MVCC header size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (header_p);
     }
-}
-
-/*
- * heap_delete_adjust_recdes_header () - adjust record header of record
- *                                       descriptor for insert operation
- *   recdes_p(in): home record descriptor
- *   mvcc_id(in): MVCC identifier
- *   returns: an MVCC record header adjusted for delete operation
- *
- * NOTE: Only applicable for MVCC operations.
- */
-MVCC_REC_HEADER
-heap_delete_adjust_recdes_header (RECDES * recdes_p, MVCCID mvcc_id)
-{
-  MVCC_REC_HEADER rec_header;
-
-  assert (recdes_p != NULL);
-
-  /* fetch MVCC header from record descriptor */
-  if (or_mvcc_get_header (recdes_p, &rec_header) != NO_ERROR)
-    {
-      assert (false);
-    }
-
-  /* adjust this header */
-  heap_delete_adjust_header (&rec_header, mvcc_id, recdes_p->length);
-
-  /* return it for further use */
-  return rec_header;
 }
 
 /*
@@ -20646,8 +20607,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
-      /* adjust header; provide zero length, we don't care to make header max size since it's already done */
-      heap_delete_adjust_header (&overflow_header, mvcc_id, 0);
+      /* adjust header; we don't care to make header max size since it's already done */
+      heap_delete_adjust_header (&overflow_header, mvcc_id, false);
 
       /* write header to overflow */
       rc = heap_set_mvcc_rec_header_on_overflow (context->overflow_page_watcher_p->pgptr, &overflow_header);
@@ -20773,7 +20734,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (is_mvcc_op)
     {
       RECDES new_forward_recdes, new_home_recdes;
-      MVCC_REC_HEADER forward_rec_header, new_forward_rec_header;
+      MVCC_REC_HEADER forward_rec_header;
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
       OID new_forward_oid;
@@ -20782,6 +20743,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       bool update_old_home = false;
       bool update_old_forward = false;
       bool remove_old_forward = false;
+      bool is_adjusted_size_big = false;
 
       /* compute new record size (we'll do the real adjustments once we know if we need the header page) */
       if (or_mvcc_get_header (&forward_recdes, &forward_rec_header) != NO_ERROR)
@@ -20796,18 +20758,21 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  adjusted_size += OR_MVCCID_SIZE;	/* delid size */
 	}
 
-      if (heap_is_big_length (adjusted_size))
+      is_adjusted_size_big = heap_is_big_length (adjusted_size);
+#if !defined(NDEBUG)
+      if (is_adjusted_size_big)
 	{
 	  /* not exactly necessary, but we'll be able to compare sizes */
 	  adjusted_size = forward_recdes.length - forward_rec_header_size + OR_MVCC_MAX_HEADER_SIZE;
 	}
+#endif
 
       /* fix header if necessary */
       fits_in_home =
 	spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, adjusted_size);
       fits_in_forward =
 	spage_is_updatable (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid, adjusted_size);
-      if (heap_is_big_length (adjusted_size) || (!fits_in_forward && !fits_in_home))
+      if (is_adjusted_size_big || (!fits_in_forward && !fits_in_home))
 	{
 	  /* fix header page */
 	  rc = heap_fix_header_page (thread_p, context);
@@ -20825,11 +20790,16 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		{
 		  return ER_FAILED;
 		}
+
+	      if (or_mvcc_get_header (&forward_recdes, &forward_rec_header) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
 	    }
 	}
 
       /* get adjusted forward record header */
-      new_forward_rec_header = heap_delete_adjust_recdes_header (&forward_recdes, mvcc_id);
+      heap_delete_adjust_header (&forward_rec_header, mvcc_id, is_adjusted_size_big);
 
       /* build new record */
       new_forward_recdes.data = PTR_ALIGN (buffer, MAX_ALIGNMENT);
@@ -20837,17 +20807,16 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       new_forward_recdes.type = REC_UNKNOWN;	/* to be filled in */
       new_forward_recdes.length = 0;
 
-      or_mvcc_add_header (&new_forward_recdes, &new_forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
+      or_mvcc_add_header (&new_forward_recdes, &forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
 			  OR_GET_OFFSET_SIZE (forward_recdes.data));
 
       memcpy (new_forward_recdes.data + new_forward_recdes.length, forward_recdes.data + forward_rec_header_size,
 	      forward_recdes.length - forward_rec_header_size);
       new_forward_recdes.length += forward_recdes.length - forward_rec_header_size;
-
       assert (new_forward_recdes.length == adjusted_size);
 
       /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
-      if (heap_is_big_length (adjusted_size))
+      if (is_adjusted_size_big)
 	{
 	  /* insert new overflow record */
 	  if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, &new_forward_recdes) == NULL)
@@ -21158,14 +21127,15 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* operation */
   if (is_mvcc_op)
     {
-      MVCC_REC_HEADER record_header, built_rec_header;
+      MVCC_REC_HEADER record_header;
       RECDES built_recdes;
       RECDES forwarding_recdes;
       RECDES *home_page_updated_recdes;
       OID forward_oid;
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
-      int header_size;
+      int header_size, adjusted_size;
+      bool is_adjusted_size_big = false;
 
       /* get home record header size */
       error_code = or_mvcc_get_header (&context->home_recdes, &record_header);
@@ -21175,9 +21145,23 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  return error_code;
 	}
       header_size = or_mvcc_header_size_from_flags (record_header.mvcc_flag);
+      adjusted_size = context->home_recdes.length;
+      if (!MVCC_IS_FLAG_SET (&record_header, OR_MVCC_FLAG_VALID_DELID))
+	{
+	  adjusted_size += OR_MVCCID_SIZE;	/* delid size */
+	}
+
+      is_adjusted_size_big = heap_is_big_length (adjusted_size);
+#if !defined(NDEBUG)
+      if (is_adjusted_size_big)
+	{
+	  /* not exactly necessary, but we'll be able to compare sizes */
+	  adjusted_size = context->home_recdes.length - header_size + OR_MVCC_MAX_HEADER_SIZE;
+	}
+#endif
 
       /* build an adjusted record header */
-      built_rec_header = heap_delete_adjust_recdes_header (&context->home_recdes, mvcc_id);
+      heap_delete_adjust_header (&record_header, mvcc_id, is_adjusted_size_big);
 
       /* build new record descriptor */
       built_recdes.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
@@ -21185,14 +21169,15 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       built_recdes.length = 0;
 
       /* add data to record descriptor */
-      or_mvcc_add_header (&built_recdes, &built_rec_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
+      or_mvcc_add_header (&built_recdes, &record_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
 			  OR_GET_OFFSET_SIZE (context->home_recdes.data));
       memcpy (built_recdes.data + built_recdes.length, context->home_recdes.data + header_size,
 	      context->home_recdes.length - header_size);
       built_recdes.length += (context->home_recdes.length - header_size);
+      assert (built_recdes.length == adjusted_size);
 
       /* determine type */
-      if (heap_is_big_length (built_recdes.length))
+      if (is_adjusted_size_big)
 	{
 	  built_recdes.type = REC_BIGONE;
 	}
@@ -24538,7 +24523,7 @@ heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
  * ispeeking (in)  : PEEK or COPY
  */
 SCAN_CODE
-heap_get_class_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes_p, HEAP_SCANCACHE * scan_cache,
+heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p, HEAP_SCANCACHE * scan_cache,
 		       int ispeeking)
 {
   HEAP_GET_CONTEXT context;
