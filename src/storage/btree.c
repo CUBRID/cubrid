@@ -5465,8 +5465,11 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
 
   log_sysop_attach_to_outer (thread_p);
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-  /* log create index to drop statistics if aborted */
-  log_append_undo_data2 (thread_p, RVBT_CREATE_INDEX, NULL, NULL, 0, sizeof (BTID), btid);
+  if (unique_pk)
+    {
+      /* drop statistics if aborted */
+      log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
+    }
 
   return btid;
 
@@ -5502,7 +5505,6 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   VFID ovfid;
   int unique_pk;
   int ret = NO_ERROR;
-  LOG_DATA_ADDR addr;
 
   P_vpid.volid = btid->vfid.volid;	/* read the root page */
   P_vpid.pageid = btid->root_pageid;
@@ -5526,13 +5528,11 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
   unique_pk = root_header->unique_pk;
   pgbuf_unfix_and_init (thread_p, P);
 
-  addr.vfid = NULL;
-  addr.pgptr = NULL;
-  addr.offset = -1;
   vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
   if (unique_pk)
     {
-      log_append_postpone (thread_p, RVBT_DELETE_INDEX, &addr, sizeof (*btid), btid);
+      LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
+      log_append_postpone (thread_p, RVBT_REMOVE_UNIQUE_STATS, &addr, sizeof (*btid), btid);
     }
   if (!VFID_ISNULL (&ovfid))
     {
@@ -29573,6 +29573,31 @@ btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   if (unique_stats != NULL)
     {
       unique_stats->deleted = true;
+    }
+
+  if (recv->offset < 0)
+    {
+      /* logical run postpone or logical compensate. this will end with an end system op log record that it is only
+       * executed once. however, if the server crashes, we will have to drop these statistics again.
+       * we'll do it by adding a redo log. this redo log record should be executed again and again until we successfully
+       * finish recovery and a new checkpoint is created after it. if server crashes again during recovery, the
+       * statistics may again show up in the memory. so we are only safe when checkpoint passed this point.
+       * the solution was a little hack-ish: we use offset value to separate the logical operation execution and redo
+       * execution. another approach is to create two different recovery indexes and functions.
+       */
+      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+      /* should be system op */
+      assert (log_check_system_op_is_started (thread_p));
+      assert (recv->offset == -1);
+
+      /* append a new RVBT_REMOVE_UNIQUE_STATS redo log record */
+      addr.offset = 0;
+      log_append_redo_data (thread_p, RVBT_REMOVE_UNIQUE_STATS, &addr, sizeof (btid), &btid);
+    }
+  else
+    {
+      /* simple redo. just set page dirty. */
+      assert (recv->offset == 0);
     }
 
   return NO_ERROR;

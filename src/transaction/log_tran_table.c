@@ -3967,10 +3967,14 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys
       redo_rec.data = PTR_ALIGN (redo_rec_buf, MAX_ALIGNMENT);
 
       btree_rv_mvcc_save_increments (btid, -n_keys, -n_oids, -n_nulls, &undo_rec);
-      btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls, &redo_rec);
 
-      log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, -1, undo_rec.length, redo_rec.length,
-				 undo_rec.data, redo_rec.data);
+      /* todo: remove me. redo has no use */
+      /*btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls, &redo_rec);
+
+         log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, -1, undo_rec.length, redo_rec.length,
+         undo_rec.data, redo_rec.data); */
+      log_append_undo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, NULL_OFFSET, undo_rec.length,
+			     undo_rec.data);
     }
 
   return error;

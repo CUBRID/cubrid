@@ -11988,6 +11988,7 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   PAGE_PTR page_to_flush = NULL;
   VPID vpid_to_flush = VPID_INITIALIZER;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
   assert (rcv->pgptr == NULL);
   assert (rcv->length == sizeof (VPID));
@@ -12001,6 +12002,9 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return NO_ERROR;
     }
   /* Flush page and unfix. */
+  /* add a log or else the end of logical system operation will complain */
+  log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, &addr);
+  pgbuf_set_dirty (thread_p, page_to_flush, DONT_FREE);
   pgbuf_flush (thread_p, page_to_flush, DONT_FREE);
   pgbuf_unfix (thread_p, page_to_flush);
 

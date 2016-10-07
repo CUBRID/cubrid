@@ -140,7 +140,7 @@ static int rv;
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
    (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
-    && ((RCVI) != RVBT_DELETE_INDEX) \
+    && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
@@ -450,6 +450,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_HA_SERVER_STATE";
     case LOG_DUMMY_OVF_RECORD:
       return "LOG_DUMMY_OVF_RECORD";
+    case LOG_DUMMY_GENERIC:
+      return "LOG_DUMMY_GENERIC";
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
@@ -4003,19 +4005,22 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       return;
     }
 
-  if ((LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, &LOG_TDES_LAST_SYSOP (tdes)->lastparent_lsa))
+  if ((LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)))
       && log_record->type == LOG_SYSOP_END_COMMIT)
     {
       /* No change. */
       assert (LSA_ISNULL (&LOG_TDES_LAST_SYSOP (tdes)->posp_lsa));
-
-      /* for types different than LOG_SYSOP_END_COMMIT (logical ops), we have to log the end of system transaction even
-       * if there are no changes */
     }
   else
     {
       LOG_PRIOR_NODE *node = NULL;
       TRAN_STATE save_state;
+
+      /* we are here because either system operation is not empty, or this is the end of a logical system operation.
+       * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
+       * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
+       * such a case, you should add a dummy log record to trick this assert. */
+      assert (!LSA_ISNULL (&tdes->tail_lsa) && LSA_GT (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)));
 
       save_state = tdes->state;
 
@@ -7656,6 +7661,11 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
       break;
     case LOG_SYSOP_END_LOGICAL_UNDO:
       assert (log_lsa != NULL && log_page_p != NULL && log_zip_p != NULL);
+
+      fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (sysop_end->undo.data.rcvindex));
+      fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
+	       sysop_end->undo.data.volid, sysop_end->undo.data.pageid, sysop_end->undo.data.offset,
+	       (int) GET_ZIP_LEN (sysop_end->undo.length));
       log_dump_data (thread_p, out_fp, sysop_end->undo.length, log_lsa, log_page_p,
 		     RV_fun[sysop_end->undo.data.rcvindex].dump_undofun, log_zip_p);
       break;
@@ -7958,6 +7968,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_GENERIC:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
@@ -8365,7 +8376,15 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
        * redo/CLR log to describe the undo. This in turn will be translated
        * to a compensating record.
        */
-      if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
+      if (rcvindex == RVBT_MVCC_INCREMENTS_UPD)
+	{
+	  /* this is a special case. we need to undo changes to transaction local stats. this only has an impact on
+	   * this transaction during runtime, and recovery has no interest, so we don't have to add a compensate log
+	   * record. */
+	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
+	  assert (rv_err == NO_ERROR);
+	}
+      else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
 	   * compensation since the "undone" page can be accessed and logged. Only no-page logical operations require
@@ -8839,6 +8858,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
+	    case LOG_DUMMY_GENERIC:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -9239,6 +9259,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_REPLICATION_STATEMENT:
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
+		    case LOG_DUMMY_GENERIC:
 		      break;
 
 		    case LOG_POSTPONE:

@@ -1228,6 +1228,9 @@ enum log_rectype
   LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
 
+  LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
+				 * case. we should find a different approach */
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 
