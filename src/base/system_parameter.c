@@ -1509,8 +1509,8 @@ bool PRM_INTL_MBS_SUPPORT = false;
 static bool prm_intl_mbs_support_default = false;
 static unsigned int prm_intl_mbs_support_flag = 0;
 
-int PRM_LOG_COMPRESS = 127;
-static int prm_log_compress_default = 127;
+int PRM_LOG_COMPRESS = 255;
+static int prm_log_compress_default = 255;
 static int prm_log_compress_upper = 255;
 static int prm_log_compress_lower = 0;
 static unsigned int prm_log_compress_flag = 0;
