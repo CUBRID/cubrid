@@ -81,6 +81,11 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
+/* 
+ * Global variables for the special peek statistics different from the page buffer ones
+ * The page buffer peek statistics are computed right before perfmon_server_dump_stats is called
+ */
+
 volatile INT32 perfmon_Cache_entry_count;
 volatile int perfmon_Heap_num_stats_entries;
 int perfmon_Sessions_num_holdable_cursors;
@@ -4497,6 +4502,15 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
   return (ptr);
 }
 
+/*
+ * get_value_from_stat - Used to get the value for a peek statistic different from
+ *                       the page buffer statistics
+ *
+ * return: the value for a peek statistic
+ *
+ *   perf_id (in): statistic id
+ *
+ */
 static int
 get_value_from_stat (PERF_STAT_ID perf_id)
 {
