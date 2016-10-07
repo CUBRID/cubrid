@@ -3129,7 +3129,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
     {
       /* skip previous version lsa */
-      or_advance (buf_p, sizeof (LOG_LSA));
+      or_advance (buf_p, OR_MVCC_PREV_VERSION_LSA_SIZE);
     }
 
   if (bound_bits_flag)
