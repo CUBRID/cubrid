@@ -1380,8 +1380,9 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  /* Compression successful but its length exceeds the original length of the string. */
 	  compressed_length = 0;
 	}
-      assert (compressed_length < (lzo_uint) (charlen - 8));
+
       /* Store the compression size */
+      assert (compressed_length < (lzo_uint) (charlen - 8));
     after_compression:
       OR_PUT_INT (&net_charlen, compressed_length);
       rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
