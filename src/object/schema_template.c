@@ -1355,18 +1355,18 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  /* check whether it contains default extension */
-	  if(DB_VALUE_DOMAIN_TYPE(value) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE(value) == DB_TYPE_CHAR ||
-	     DB_VALUE_DOMAIN_TYPE(value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE(value) == DB_TYPE_NCHAR)
+	  if (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_CHAR ||
+	      DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NCHAR)
 	    {
-	      str_default = DB_GET_STRING(value);
-  		if (str_default != NULL)
-  		  {	/* if str_default is not NULL, check default extension */
-  		  	if (strlen(str_default) >= 8)
-  		  	  {
-  			    new_style_default = strstr(str_default, "to_char(");	
-  			  }
-  		  }
-  		
+	      str_default = DB_GET_STRING (value);
+	      if (str_default != NULL)
+		{		/* if str_default is not NULL, check default extension */
+		  if (strlen (str_default) >= 8)
+		    {
+		      new_style_default = strstr (str_default, "to_char(");
+		    }
+		}
+
 	    }
 
 	  /* coerce it if we can */
@@ -1382,7 +1382,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	  /* change precision to the string length of DEFAULT Clause */
 	  if (new_style_default != NULL)
 	    {
-	      att->domain->precision = strlen(DB_GET_STRING(proposed_value));
+	      att->domain->precision = strlen (DB_GET_STRING (proposed_value));
 	    }
 
 	  status = tp_value_cast (proposed_value, value, att->domain, false);
@@ -1391,7 +1391,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	  /* restore precision value to its original */
 	  if (new_style_default != NULL)
 	    {
-	    	att->domain->precision = original_precision;
+	      att->domain->precision = original_precision;
 	    }
 	}
       if (status != DOMAIN_COMPATIBLE)
@@ -1403,7 +1403,8 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	  /* check a subset of the integrity constraints, we can't check for NOT NULL or unique here */
 
 	  /* Skip checking, if it is of type default extension */
-	  if (new_style_default == NULL && value != NULL && tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
+	  if (new_style_default == NULL && value != NULL
+	      && tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
 	    {
 	      /* need an error message that isn't specific to "string" types */
 	      ERROR2 (error, ER_OBJ_STRING_OVERFLOW, att->header.name, att->domain->precision);
