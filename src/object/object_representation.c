@@ -1354,7 +1354,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       /* Alloc memory for the compressed string */
       /* Worst case LZO compression size from their FAQ */
       compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
-
       if (compressed_string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
