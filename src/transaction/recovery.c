@@ -980,7 +980,7 @@ struct rvfun RV_fun[] = {
   {RVELO_CREATE_FILE,
    "RVELO_CREATE_FILE",
    elo_rv_delete_elo,
-   elo_rv_create_elo,
+   NULL,
    /* TODO[arnia] : log dump functions */
    NULL,
    NULL},

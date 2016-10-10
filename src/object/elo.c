@@ -765,7 +765,6 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		    ret = er_errid ();
 		    goto error_return;
 		  }
-		/* TODO[arnia] : system operation : add log */
 #if !defined (CS_MODE)
 		addr.offset = NULL_SLOTID;
 		addr.pgptr = NULL;
@@ -801,7 +800,6 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		    es_delete_file (out_uri);
 		    goto error_return;
 		  }
-		/* TODO[arnia] : system operation : add log */
 #if !defined (CS_MODE)
 
 		addr.offset = NULL_SLOTID;
@@ -1158,24 +1156,12 @@ get_lob_state_from_locator (const char *locator)
 }
 
 int
-elo_rv_create_elo (THREAD_ENTRY * thread_p, void * rcv)
-{
-  
-  /* TODO[arnia] */
-
-
-
-  return NO_ERROR;
-}
-
-int
 elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
 {
-  /* TODO[arnia] */
   assert (((LOG_RCV *) rcv)->data != NULL);
 
   es_delete_file (((LOG_RCV *) rcv)->data);
-  
+
   return NO_ERROR;
 }
 

@@ -374,6 +374,9 @@ struct heap_get_context
   OID *class_oid_p;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache;	/* scan cache */
+  
+  HEAP_CACHE_ATTRINFO attr_info;  /* attribute info (required to expand OOR attributes) */
+  bool attr_info_inited;
 
   /* physical page watchers  */
   PGBUF_WATCHER home_page_watcher;	/* home page */
@@ -680,4 +683,5 @@ extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEA
 extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes_p,
 					HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern void heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context);
+extern int heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 #endif /* _HEAP_FILE_H_ */

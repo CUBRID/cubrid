@@ -9797,7 +9797,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  /* TODO[arnoa]*/
+  /* TODO[arnia]*/
   copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, NULL, LOB_FLAG_EXCLUDE_LOB);
   if (copyarea == NULL)
     {

@@ -992,14 +992,8 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	      mem = obj + att->offset;
 	      oor_flag = OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL (OR_GET_OBJECT_VAR_TABLE (buf->buffer), j, offset_size);
 
-	      if (oor_flag)
-		{
-		  PRIM_READ (pr_type_from_id (DB_TYPE_OID), att->domain, buf, mem, vars[j]);
-		}
-	      else
-		{
-		  PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
-		}
+	      assert (oor_flag == 0);
+	      PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
 	    }
 	}
     }
@@ -4219,7 +4213,10 @@ tf_disk_to_class (OID * oid, RECDES * record)
     {
     case 0:
       /* offset size */
-      assert (OR_GET_OFFSET_SIZE (buf->ptr) == BIG_VAR_OFFSET_SIZE);
+      if (OR_GET_OFFSET_SIZE (buf->ptr) != BIG_VAR_OFFSET_SIZE)
+	{
+	  assert (false);
+	}
 
       repid = or_get_int (buf, &rc);
       repid = repid & ~OR_OFFSET_SIZE_FLAG;

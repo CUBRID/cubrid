@@ -7640,8 +7640,19 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  ASSERT_ERROR ();
 	  return S_ERROR;
 	}
-      return spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
+      scan = spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
 			       context->ispeeking);
+      if (scan != S_SUCCESS)
+	{
+	  return scan;
+	}
+
+      if (heap_expand_oor_attributes (thread_p, context) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      return S_SUCCESS;
     default:
       break;
     }
@@ -10030,7 +10041,7 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
   /* 
    * Does attribute exist in this disk representation?
    */
-
+  
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
       || value->attr_type == HEAP_CLASS_ATTR)
     {
@@ -11768,6 +11779,11 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       if ((attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable) != 0)
 	{
 	  repid_bits |= OR_BOUND_BIT_FLAG;
+	}
+
+      if (check_oor_column)
+	{
+	  repid_bits |= OR_OOR_BIT_FLAG;
 	}
 
       /* offset size */
@@ -16242,7 +16258,8 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       HEAP_SET_RECORD (&recdes, IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0, record_type,
 		       PTR_ALIGN (data_buffer, MAX_ALIGNMENT));
-      or_mvcc_add_header (&recdes, &mvcc_rec_header, repid_and_flags & OR_BOUND_BIT_FLAG, offset_size);
+      or_mvcc_add_header (&recdes, &mvcc_rec_header, repid_and_flags & OR_BOUND_BIT_FLAG,
+			  repid_and_flags & OR_OOR_BIT_FLAG, offset_size);
 
       memcpy (recdes.data + recdes.length, rcv->data + offset, rcv->length - offset);
       recdes.length += (rcv->length - offset);
@@ -21284,7 +21301,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       new_forward_recdes.length = 0;
 
       or_mvcc_add_header (&new_forward_recdes, &new_forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
-			  OR_GET_OFFSET_SIZE (forward_recdes.data));
+			  OR_GET_OOR_BIT_FLAG (forward_recdes.data), OR_GET_OFFSET_SIZE (forward_recdes.data));
 
       memcpy (new_forward_recdes.data + new_forward_recdes.length, forward_recdes.data + forward_rec_header_size,
 	      forward_recdes.length - forward_rec_header_size);
@@ -21632,6 +21649,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       /* add data to record descriptor */
       or_mvcc_add_header (&built_recdes, &built_rec_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
+			  OR_GET_OOR_BIT_FLAG (context->home_recdes.data),
 			  OR_GET_OFFSET_SIZE (context->home_recdes.data));
       memcpy (built_recdes.data + built_recdes.length, context->home_recdes.data + header_size,
 	      context->home_recdes.length - header_size);
@@ -23262,21 +23280,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
-
-      if (context->out_of_row_recdes != NULL)
-	{
-	  int i;
-	  for (i = 0; i < context->out_of_row_recdes->recdes_cnt; i++)
-	    {
-	      rc = heap_insert_adjust_recdes_header (thread_p, context, &context->out_of_row_recdes->oor_recdes[i],
-						     is_mvcc_op, is_mvcc_class, true);
-	      if (rc != NO_ERROR)						    
-		{
-		  ASSERT_ERROR ();
-		  goto exit;
-		}
-	    }
-	}
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
@@ -24334,7 +24337,8 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       HEAP_SET_RECORD (&recdes, IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0, record_type,
 		       PTR_ALIGN (data_buffer, MAX_ALIGNMENT));
-      or_mvcc_add_header (&recdes, &mvcc_rec_header, repid_and_flags & OR_BOUND_BIT_FLAG, offset_size);
+      or_mvcc_add_header (&recdes, &mvcc_rec_header, repid_and_flags & OR_BOUND_BIT_FLAG,
+			  repid_and_flags & OR_OOR_BIT_FLAG, offset_size);
 
       memcpy (recdes.data + recdes.length, rcv->data + offset, rcv->length - offset);
       recdes.length += (rcv->length - offset);
@@ -25039,6 +25043,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
     {
       context->latch_mode = PGBUF_LATCH_READ;
     }
+  context->attr_info_inited = false;
 }
 
 
@@ -25151,4 +25156,88 @@ heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context)
 
   oor_context->recdes_cnt = 0;
   oor_context->recdes_capacity = 0;
+}
+
+/*
+ * heap_expand_oor_attributes () - Find db_values of desired attributes of given
+ *                                instance
+ *   return: NO_ERROR
+ *   inst_oid(in): The instance oid
+ *   recdes(in): The instance Record descriptor
+ */
+int
+heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT expanded_oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  int error = NO_ERROR;
+  SCAN_CODE scan;
+
+  assert (context->class_oid_p != NULL);
+  assert (!OID_ISNULL (context->class_oid_p));
+  assert (context->oid_p != NULL);
+  assert (!OID_ISNULL (context->oid_p));
+
+  if (context->recdes_p == NULL || OR_GET_OOR_BIT_FLAG (context->recdes_p->data) == 0)
+    {
+      goto exit;
+    }
+
+  if (context->attr_info_inited == false)
+    {
+      error = heap_attrinfo_start (thread_p, context->class_oid_p, -1, NULL, &context->attr_info);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      context->attr_info_inited = true;
+    }
+
+  error = heap_attrinfo_read_dbvalues (thread_p, context->oid_p, context->recdes_p, NULL, &context->attr_info,
+				       &oor_context);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (context->ispeeking == COPY)
+    {
+      /* TODO[arnia] : need to clear recdes_p ?*/
+      
+    }
+  else
+    {
+      error = heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, context->recdes_p, DB_PAGESIZE);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+/*
+  saved_recdes = *context->recdes_p;
+  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, &context->attr_info, NULL, context->recdes_p, -1,
+						      &expanded_oor_context, LOB_FLAG_EXCLUDE_LOB);
+  if (copyarea == NULL)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+*/
+
+  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, &context->attr_info, NULL, context->recdes_p,
+						     &expanded_oor_context);
+  if (scan != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto exit;      
+    }
+  /* TODO[arnia] : handle doesn't fit error */
+exit:
+  if (context->attr_info_inited == true)
+    {
+      heap_attrinfo_end (thread_p, &context->attr_info);
+      context->attr_info_inited = false;
+    }
+
+  return error;
 }

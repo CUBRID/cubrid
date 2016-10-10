@@ -629,7 +629,7 @@
 
 /* Use for MVCC flags the remainder of 5 bits in the first byte. */
 /* Flag will be shifter by 24 bits to the right */
-#define OR_MVCC_FLAG_MASK	    0x1f
+#define OR_MVCC_FLAG_MASK	    0x0f
 #define OR_MVCC_FLAG_SHIFT_BITS	    24
 
 /* The following flags are used for dynamic MVCC information */
@@ -641,6 +641,9 @@
 
 /* The record have an LSA with the location of the previous version */
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
+
+/* The record has at least one attribute stored out or record (OOR) */
+#define OR_OOR_BIT_FLAG			  0x10000000
 
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
@@ -690,6 +693,9 @@
 
 #define OR_GET_BOUND_BIT_FLAG(ptr) \
   ((OR_GET_INT ((ptr) + OR_REP_OFFSET)) & OR_BOUND_BIT_FLAG)
+
+#define OR_GET_OOR_BIT_FLAG(ptr) \
+  ((OR_GET_INT ((ptr) + OR_REP_OFFSET)) & OR_OOR_BIT_FLAG)
 
 #define OR_GET_OFFSET_SIZE(ptr) \
   ((((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE) \
@@ -1297,12 +1303,12 @@ extern int or_replace_rep_id (RECDES * record, int repid);
 extern int or_chn (RECDES * record);
 extern int or_replace_chn (RECDES * record, int chn);
 extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
-extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit,
+extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit, int oor_bit,
 					int variable_offset_size);
 extern char *or_class_name (RECDES * record);
 extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
 extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
-extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
+extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int oor_bit,
 			       int variable_offset_size);
 
 /* Pointer based decoding functions */

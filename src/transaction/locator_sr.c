@@ -5364,7 +5364,6 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 
       insert_cache = &ins_cache->scan_cache;
 
-      /* TODO[arnia] : oor columns */
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, NULL, has_index, op_type,
 			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE);
@@ -5380,7 +5379,6 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 	  return error;
 	}
 
-      /* TODO[arnia] : oor columns */
       /* insert the new record */
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, NULL, has_index, op_type,
@@ -13036,7 +13034,6 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
 	      /* make sure that pruning does not change the given class OID */
 	      COPY_OID (&cls_oid, class_oid);
-	      /* TODO[arnia] : oor columns */
 	      error =
 		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, NULL, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,

@@ -415,7 +415,7 @@ or_replace_rep_id (RECDES * record, int repid)
   unsigned int new_bits = 0;
   int offset_size = 0;
   char mvcc_flag;
-  bool is_bound_bit = false;
+  bool is_bound_bit = false, is_oor_bit = false;
 
   OR_BUF_INIT (orep, record->data, record->area_size);
   buf = &orep;
@@ -429,6 +429,12 @@ or_replace_rep_id (RECDES * record, int repid)
 	{
 	  is_bound_bit = true;
 	}
+
+      if (OR_GET_OOR_BIT_FLAG (record->data))
+	{
+	  is_oor_bit = true;
+	}
+
       offset_size = OR_GET_OFFSET_SIZE (record->data);
 
       /* construct new REPR_ID element */
@@ -436,6 +442,11 @@ or_replace_rep_id (RECDES * record, int repid)
       if (is_bound_bit)
 	{
 	  new_bits |= OR_BOUND_BIT_FLAG;
+	}
+
+      if (is_oor_bit)
+	{
+	  new_bits |= OR_OOR_BIT_FLAG;
 	}
       OR_SET_VAR_OFFSET_SIZE (new_bits, offset_size);
       buf->ptr = buf->buffer + OR_REP_OFFSET;
@@ -544,7 +555,8 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
  * error(out): NO_ERROR or error code
  */
 int
-or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit, int variable_offset_size)
+or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit, int oor_bit,
+			     int variable_offset_size)
 {
   int repid_and_flags;
 
@@ -556,6 +568,12 @@ or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_b
     {
       repid_and_flags |= OR_BOUND_BIT_FLAG;
     }
+
+  if (oor_bit)
+    {
+      repid_and_flags |= OR_OOR_BIT_FLAG;
+    }
+
   OR_SET_VAR_OFFSET_SIZE (repid_and_flags, variable_offset_size);
 
   repid_and_flags |= (mvcc_flag & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS;
@@ -863,7 +881,8 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
 
   error =
     or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid,
-				 repid_and_flag_bits & OR_BOUND_BIT_FLAG, OR_GET_OFFSET_SIZE (record->data));
+				 repid_and_flag_bits & OR_BOUND_BIT_FLAG, repid_and_flag_bits & OR_OOR_BIT_FLAG,
+				 OR_GET_OFFSET_SIZE (record->data));
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -914,7 +933,8 @@ exit_on_error:
  *    will contain the header size.
  */
 int
-or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int variable_offset_size)
+or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int oor_bit,
+		    int variable_offset_size)
 {
   OR_BUF orep, *buf;
   int error = NO_ERROR;
@@ -929,7 +949,7 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
   buf = &orep;
 
   error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid, bound_bit,
+    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid, bound_bit, oor_bit,
 				 variable_offset_size);
   if (error != NO_ERROR)
     {
