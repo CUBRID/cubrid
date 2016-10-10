@@ -306,7 +306,7 @@ static int log_data_length = 0;
 
 LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
 
-static int log_Zip_min_size_to_compress;
+static int log_Zip_min_size_to_compress = 255;
 
 /*
  * Functions
@@ -493,7 +493,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   if (lzo_init () == LZO_E_OK)
     {				/* lzo library init */
-      if (prm_get_integer_value (PRM_ID_LOG_COMPRESS) == 0)
+      if (!prm_get_bool_value (PRM_ID_LOG_COMPRESS))
 	{
 	  log_zip_support = false;
 	}
@@ -553,7 +553,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   assert (logpb_Initialized == false);
 
   logpb_Logging = prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG);
-  log_Zip_min_size_to_compress = prm_get_integer_value (PRM_ID_LOG_COMPRESS);
+
   /* 
    * Create an area to keep the number of desired buffers
    */
