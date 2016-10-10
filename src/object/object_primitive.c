@@ -10955,6 +10955,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
       new_ = NULL;
       if (size)
 	{
+	  int compressed_size;
 	  start = buf->ptr;
 
 	  /* KLUDGE, we have some knowledge of how the thing is stored here in order have some control over the
@@ -10962,7 +10963,11 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	   * in another specialized or_ function. */
 
 	  /* Get just the length prefix. */
-	  len = or_get_varchar_length (buf, &rc);
+	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &len);
+	  if (rc != NO_ERROR)
+	    {
+	      return;
+	    }
 
 	  /* 
 	   * Allocate storage for this string, including our own full word size
@@ -10981,11 +10986,13 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	      *(int *) new_ = len;
 	      cur = new_ + sizeof (int);
 
-	      /* 
-	       * read the string, INLCUDING the NULL terminator (which is
-	       * expected)
-	       */
-	      or_get_data (buf, cur, len + 1);
+	      /* decompress buffer (this also writes nul terminator) */
+	      rc = pr_get_compressed_data_from_buffer (buf, cur, compressed_size, len);
+	      if (rc != NO_ERROR)
+		{
+		  db_private_free (NULL, new_);
+		  return;
+		}
 	      /* align like or_get_varchar */
 	      or_get_align32 (buf);
 	    }
