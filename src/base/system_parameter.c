@@ -616,7 +616,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FORCE_RESTART_TO_SKIP_RECOVERY "force_restart_to_skip_recovery"
 
-#define PRM_NAME_USE_COMPRESSION "use_compression"
+#define PRM_NAME_ENABLE_STRING_COMPRESSION "enable_string_compression"
 
 #define PRM_NAME_EXTENDED_STATISTICS_ACTIVATION "extended_statistics_activation"
 
@@ -2032,10 +2032,10 @@ int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_upper = 15;
 static int prm_extended_statistics_lower = 0;
 
-bool PRM_USE_COMPRESSION = true;
-static bool prm_use_compression_default = true;
+bool PRM_ENABLE_STRING_COMPRESSION = true;
+static bool prm_enable_string_compression_default = true;
 
-static unsigned int prm_use_compression_flag = 0;
+static unsigned int prm_enable_string_compression_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4933,12 +4933,12 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_USE_COMPRESSION,
+  {PRM_NAME_ENABLE_STRING_COMPRESSION,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT),
    PRM_BOOLEAN,
-   (void *) &prm_use_compression_flag,
-   (void *) &prm_use_compression_default,
-   (void *) &PRM_USE_COMPRESSION,
+   (void *) &prm_enable_string_compression_flag,
+   (void *) &prm_enable_string_compression_default,
+   (void *) &PRM_ENABLE_STRING_COMPRESSION,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

@@ -16318,7 +16318,7 @@ pr_get_compression_length (const char *string, int charlen)
 
   length = charlen;
 
-  if (!prm_get_bool_value (PRM_ID_USE_COMPRESSION))	/* compession is not set */
+  if (!prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION))	/* compession is not set */
     {
       return length;
     }
@@ -16417,7 +16417,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
 
-  if (!prm_get_bool_value (PRM_ID_USE_COMPRESSION))	/* compession is not set */
+  if (!prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION))	/* compession is not set */
     {
       length = str_length;
       compression_length = 0;
