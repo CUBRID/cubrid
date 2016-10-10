@@ -81,6 +81,16 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
+/* 
+ * Global variables for the special peek statistics different from the page buffer ones
+ * The page buffer peek statistics are computed right before perfmon_server_dump_stats is called
+ */
+
+volatile INT32 perfmon_Cache_entry_count;
+volatile int perfmon_Heap_num_stats_entries;
+int perfmon_Sessions_num_holdable_cursors;
+volatile int perfmon_Delay_in_secs;
+
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
 
@@ -445,6 +455,8 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
+
+static int get_value_from_stat (PERF_STAT_ID perf_id);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
@@ -2238,9 +2250,21 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  ret =
-		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			      (unsigned long long) stats_ptr[offset]);
+		  int stat_val = get_value_from_stat (i);
+
+		  if (stat_val == -1)
+		    {
+		      ret =
+			snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stats_ptr[offset]);
+		    }
+		  else
+		    {
+		      assert (stat_val >= 0);
+		      ret =
+			snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stat_val);
+		    }
 		}
 	      else
 		{
@@ -2335,8 +2359,18 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			   (unsigned long long) stats_ptr[offset]);
+		  int stat_val = get_value_from_stat (i);
+
+		  if (stat_val == -1)
+		    {
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			       (unsigned long long) stats_ptr[offset]);
+		    }
+		  else
+		    {
+		      assert (stat_val >= 0);
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stat_val);
+		    }
 		}
 	      else
 		{
@@ -2598,10 +2632,14 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
 
 #if defined (SERVER_MODE)
-  pgbuf_peek_stats (&(stats[PSTAT_PB_FIXED_CNT]), &(stats[PSTAT_PB_DIRTY_CNT]),
-		    &(stats[PSTAT_PB_LRU1_CNT]), &(stats[PSTAT_PB_LRU2_CNT]),
-		    &(stats[PSTAT_PB_AIN_CNT]), &(stats[PSTAT_PB_AVOID_DEALLOC_CNT]),
-		    &(stats[PSTAT_PB_AVOID_VICTIM_CNT]), &(stats[PSTAT_PB_VICTIM_CAND_CNT]));
+  pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AIN_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_VICTIM_CAND_CNT].start_offset]));
 #endif
 
   for (i = 0; i < PSTAT_COUNT; i++)
@@ -4462,4 +4500,37 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
     }
 
   return (ptr);
+}
+
+/*
+ * get_value_from_stat - Used to get the value for a peek statistic different from
+ *                       the page buffer statistics
+ *
+ * return: the value for a peek statistic
+ *
+ *   perf_id (in): statistic id
+ *
+ */
+static int
+get_value_from_stat (PERF_STAT_ID perf_id)
+{
+  int ans = -1;
+
+  switch (perf_id)
+    {
+    case PSTAT_PC_NUM_CACHE_ENTRIES:
+      ans = perfmon_Cache_entry_count;
+      break;
+    case PSTAT_HF_NUM_STATS_ENTRIES:
+      ans = perfmon_Heap_num_stats_entries;
+      break;
+    case PSTAT_QM_NUM_HOLDABLE_CURSORS:
+      ans = perfmon_Sessions_num_holdable_cursors;
+      break;
+    case PSTAT_HA_REPL_DELAY:
+      ans = perfmon_Delay_in_secs;
+      break;
+    }
+
+  return ans;
 }
