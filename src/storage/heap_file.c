@@ -828,7 +828,9 @@ static void heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID
 
 /* heap insert related functions */
 static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
-					     RECDES * recdes_p, bool is_mvcc_op, bool is_mvcc_class);
+					     bool is_mvcc_class);
+static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context,
+					     bool is_mvcc_op, bool is_mvcc_class);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					       PGBUF_WATCHER * home_hint_p);
@@ -19904,121 +19906,77 @@ heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID * forward_o
  * heap_insert_adjust_recdes_header () - adjust record header for insert
  *                                       operation
  *   thread_p(in): thread entry
- *   context(in): operation context
- *   recdes_p(in): record descriptor to adjust
- *   is_mvcc_op(in): specifies type of operation (MVCC/non-MVCC)
+ *   insert_context(in): insert context
+ *   is_mvcc_class(in): true, if MVCC class
  *   returns: error code or NO_ERROR
  *
- * NOTE: For MVCC operation, it will add an insert_id to the header. For
- *       non-MVCC operations, it will clear all flags.
- * NOTE: The function will alter the provided record descriptor data area.
+ * NOTE: For MVCC class, it will add an insert_id to the header. For non-MVCC class, it will clear all flags.
+ *	 The function will alter the provided record descriptor data area.
  */
 static int
-heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, RECDES * recdes_p,
-				  bool is_mvcc_op, bool is_mvcc_class)
+heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * insert_context, bool is_mvcc_class)
 {
   MVCC_REC_HEADER mvcc_rec_header;
   int record_size;
-  bool insert_from_reorganize = false;
-  int repid_and_flag_bits = 0, mvcc_flags = 0, added_bytes = 0;
+  int repid_and_flag_bits = 0, mvcc_flags = 0;
   char *recdes_data, *start_p;
   MVCCID mvcc_id;
-  LOG_LSA null_lsa = LSA_INITIALIZER;
   bool use_optimization = false;
 
-  assert (context != NULL && recdes_p != NULL);
-  record_size = recdes_p->length;
+  assert (insert_context != NULL);
+  assert (insert_context->type == HEAP_OPERATION_INSERT);
+  assert (insert_context->recdes_p != NULL);
 
-  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (recdes_p->data);
+  record_size = insert_context->recdes_p->length;
+
+  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (insert_context->recdes_p->data);
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
-  insert_from_reorganize = (context->type == HEAP_OPERATION_INSERT
-			    && context->update_in_place == UPDATE_INPLACE_OLD_MVCCID);
-
-  if (insert_from_reorganize == true)
-    {
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-	{
-	  MVCCID del_id;
-	  int delid_offset = OR_MVCC_DELETE_ID_OFFSET (mvcc_flags);
-	  OR_GET_MVCCID (recdes_p->data + delid_offset, &del_id);
-	  if (MVCCID_IS_VALID (del_id))
-	    {
-	      context->is_redistribute_insert_with_delid = true;
-	    }
-	}
-    }
-
 #if defined (SERVER_MODE)
-  use_optimization = is_mvcc_class && is_mvcc_class && !(mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-    && ((context->type != HEAP_OPERATION_UPDATE
-	 || context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
-	&& insert_from_reorganize == false)
-    && !heap_is_big_length (record_size + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE);
+  use_optimization = is_mvcc_class && (insert_context->update_in_place == UPDATE_INPLACE_NONE)
+    && !heap_is_big_length (record_size + OR_MVCCID_SIZE);
 #endif
-
 
   if (use_optimization)
     {
-      /* Most common case - optimize header adjustation */
+      /* 
+       * Most common case. Since is UPDATE_INPLACE_NONE, the header does not have DELID and PREV VERSION.
+       * Optimize header adjustment.
+       */
+      assert (!(mvcc_flags & OR_MVCC_FLAG_VALID_DELID));
+      assert (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION));
       mvcc_id = logtb_get_current_mvccid (thread_p);
 
-      recdes_data = start_p = recdes_p->data;
-
-      /* Computes added bytes and new flags */
-      if (!(mvcc_flags & OR_MVCC_FLAG_VALID_INSID))
-	{
-	  mvcc_flags |= (OR_MVCC_FLAG_VALID_INSID);
-	  added_bytes = OR_MVCCID_SIZE;
-	}
-
-      if (context->type == HEAP_OPERATION_UPDATE)
-	{
-	  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
-	    {
-	      mvcc_flags |= OR_MVCC_FLAG_VALID_PREV_VERSION;
-	      added_bytes += OR_MVCC_PREV_VERSION_LSA_SIZE;
-	    }
-	}
-      else
-	{
-	  mvcc_flags &= ~(OR_MVCC_FLAG_VALID_PREV_VERSION);
-	}
-
+      recdes_data = start_p = insert_context->recdes_p->data;
       /* Skip bytes up to insid_offset */
       recdes_data += OR_MVCC_INSERT_ID_OFFSET;
-      if (added_bytes != 0)
+
+      if (!(mvcc_flags & OR_MVCC_FLAG_VALID_INSID))
 	{
-	  /* Sets the new flags */
-	  repid_and_flag_bits |= (mvcc_flags << OR_MVCC_FLAG_SHIFT_BITS);
+	  /* Sets MVCC INSID flag, overwrite first four bytes. */
+	  repid_and_flag_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
 	  OR_PUT_INT (start_p, repid_and_flag_bits);
 
-	  /* Move the record data before inserting INSID and LOG_LSA */
-	  assert (recdes_p->area_size >= recdes_p->length + added_bytes);
-	  memmove (recdes_data + added_bytes, recdes_data, recdes_p->length - OR_MVCC_INSERT_ID_OFFSET);
-	  recdes_p->length += added_bytes;
+	  /* Move the record data before inserting INSID */
+	  assert (insert_context->recdes_p->area_size >= insert_context->recdes_p->length + OR_MVCCID_SIZE);
+	  memmove (recdes_data + OR_MVCCID_SIZE, recdes_data,
+		   insert_context->recdes_p->length - OR_MVCC_INSERT_ID_OFFSET);
+	  insert_context->recdes_p->length += OR_MVCCID_SIZE;
 	}
 
       /* Sets the MVCC INSID */
       OR_PUT_BIGINT (recdes_data, &mvcc_id);
-      recdes_data += OR_MVCCID_SIZE;
 
-      if (context->type == HEAP_OPERATION_UPDATE)
-	{
-	  /* The prev_version_lsa will be filled at the end of the update, in heap_update_set_prev_version() */
-	  memcpy (recdes_data, &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
-	}
       return NO_ERROR;
     }
 
   /* read MVCC header from record */
-  if (or_mvcc_get_header (recdes_p, &mvcc_rec_header) != NO_ERROR)
+  if (or_mvcc_get_header (insert_context->recdes_p, &mvcc_rec_header) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  if ((context->type != HEAP_OPERATION_UPDATE || context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
-      && insert_from_reorganize == false)
+  if (insert_context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
     {
 #if defined (SERVER_MODE)
       if (is_mvcc_class)
@@ -20026,7 +19984,93 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  /* get MVCC id */
 	  mvcc_id = logtb_get_current_mvccid (thread_p);
 
-	  /* set MVCC insertid if necessary */
+	  /* set MVCC INSID if necessary */
+	  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
+	    {
+	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
+	      record_size += OR_MVCCID_SIZE;
+	    }
+	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
+	}
+      else
+#endif /* SERVER_MODE */
+	{
+	  int curr_header_size, new_header_size;
+
+	  /* strip MVCC information */
+	  curr_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
+	  new_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+
+	  /* compute new record size */
+	  record_size -= (curr_header_size - new_header_size);
+	}
+    }
+  else if (MVCC_IS_HEADER_DELID_VALID (&mvcc_rec_header))
+    {
+      insert_context->is_redistribute_insert_with_delid = true;
+    }
+
+  MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
+
+  if (is_mvcc_class && heap_is_big_length (record_size))
+    {
+      /* for multipage records, set MVCC header size to maximum size */
+      HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
+    }
+
+  /* write the header back to the record */
+  if (or_mvcc_set_header (insert_context->recdes_p, &mvcc_rec_header) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * heap_update_adjust_recdes_header () - adjust record header for update
+ *                                       operation
+ *   thread_p(in): thread entry
+ *   update_context(in): update context
+ *   is_mvcc_op(in): specifies type of operation (MVCC/non-MVCC)
+ *   is_mvcc_class(in): specifies whether is MVCC class
+ *   returns: error code or NO_ERROR
+ *
+ * NOTE: For MVCC operation, it will add an insert_id and prev version to the header. The prev_version_lsa will be
+ *  filled at the end of the update, in heap_update_set_prev_version().
+ *	 For non-MVCC operations, it will clear all flags.
+ *	 The function will alter the provided record descriptor data area.
+ */
+static int
+heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context, bool is_mvcc_op,
+				  bool is_mvcc_class)
+{
+  MVCC_REC_HEADER mvcc_rec_header;
+  int record_size;
+
+  assert (update_context != NULL);
+  assert (update_context->type == HEAP_OPERATION_UPDATE);
+  assert (update_context->recdes_p != NULL);
+
+  record_size = update_context->recdes_p->length;
+
+  /* read MVCC header from record */
+  if (or_mvcc_get_header (update_context->recdes_p, &mvcc_rec_header) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (update_context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
+    {
+#if defined (SERVER_MODE)
+      if (is_mvcc_class)
+	{
+	  /* get MVCC id */
+	  MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
+
+	  /* set MVCC INSID if necessary */
 	  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
 	    {
 	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
@@ -20049,12 +20093,12 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	}
     }
 
-  if (is_mvcc_op && context->type == HEAP_OPERATION_UPDATE)
+  if (is_mvcc_op)
     {
       if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
 	  MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  record_size += OR_MVCC_PREV_VERSION_LSA_SIZE;
+	  record_size += sizeof (LOG_LSA);
 	}
 
       /* The prev_version_lsa will be filled at the end of the update, in heap_update_set_prev_version() */
@@ -20072,7 +20116,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
     }
 
   /* write the header back to the record */
-  if (or_mvcc_set_header (recdes_p, &mvcc_rec_header) != NO_ERROR)
+  if (or_mvcc_set_header (update_context->recdes_p, &mvcc_rec_header) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -22498,6 +22542,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   bool is_mvcc_op;
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
+  bool is_mvcc_class;
 
   /* check required input */
   assert (context != NULL);
@@ -22515,17 +22560,18 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       return ER_FAILED;
     }
 
+  is_mvcc_class = !mvcc_is_mvcc_disabled_class (&context->class_oid);
   /* 
    * Determine type of operation
    */
 #if defined (SERVER_MODE)
-  if (mvcc_is_mvcc_disabled_class (&context->class_oid) || context->recdes_p->type == REC_ASSIGN_ADDRESS)
+  if (is_mvcc_class && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
-      is_mvcc_op = false;
+      is_mvcc_op = true;
     }
   else
     {
-      is_mvcc_op = true;
+      is_mvcc_op = false;
     }
 #else /* SERVER_MODE */
   is_mvcc_op = false;
@@ -22537,9 +22583,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid)
       && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
-      bool is_mvcc_class = !mvcc_is_mvcc_disabled_class (&context->class_oid);
-      if (heap_insert_adjust_recdes_header (thread_p, context, context->recdes_p, is_mvcc_op, is_mvcc_class) !=
-	  NO_ERROR)
+      if (heap_insert_adjust_recdes_header (thread_p, context, is_mvcc_class) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -22961,7 +23005,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid))
     {
       bool is_mvcc_class = !mvcc_is_mvcc_disabled_class (&context->class_oid);
-      rc = heap_insert_adjust_recdes_header (thread_p, context, context->recdes_p, is_mvcc_op, is_mvcc_class);
+      rc = heap_update_adjust_recdes_header (thread_p, context, is_mvcc_op, is_mvcc_class);
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
