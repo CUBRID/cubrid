@@ -807,7 +807,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
  * thread_p (in) : Thread entry.
  * psid (in)	 : Statistic ID.
  * statval (in)  : New statistic value.
- * check_watchers(in): flag that tells if we should take into account if there are active watchers
+ * check_watchers (in): Flag that tells if we should take into account if there are active watchers
  */
 STATIC_INLINE void
 perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool check_watchers)
@@ -836,7 +836,7 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool 
  * thread_p (in) : Thread entry.
  * offset (in)   : Offset to statistic value.
  * statval (in)	 : New statistic value.
- * check_watchers(in): flag that tells if we should take into account if there are active watchers
+ * check_watchers (in): Flag that tells if we should take into account if there are active watchers
  */
 STATIC_INLINE void
 perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool check_watchers)
