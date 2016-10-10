@@ -89,7 +89,6 @@ static int rv;
 volatile INT32 perfmon_Cache_entry_count;
 volatile int perfmon_Heap_num_stats_entries;
 int perfmon_Sessions_num_holdable_cursors;
-volatile int perfmon_Delay_in_secs;
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
@@ -4526,9 +4525,6 @@ get_value_from_stat (PERF_STAT_ID perf_id)
       break;
     case PSTAT_QM_NUM_HOLDABLE_CURSORS:
       ans = perfmon_Sessions_num_holdable_cursors;
-      break;
-    case PSTAT_HA_REPL_DELAY:
-      ans = perfmon_Delay_in_secs;
       break;
     }
 

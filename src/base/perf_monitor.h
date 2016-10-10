@@ -164,7 +164,6 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 extern volatile INT32 perfmon_Cache_entry_count;
 extern volatile int perfmon_Heap_num_stats_entries;
 extern int perfmon_Sessions_num_holdable_cursors;
-extern volatile int perfmon_Delay_in_secs;
 
 typedef enum
 {
@@ -714,9 +713,9 @@ STATIC_INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid,
 STATIC_INLINE void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
+STATIC_INLINE void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool check_watchers)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
+STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool check_watchers)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
@@ -808,13 +807,18 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
  * thread_p (in) : Thread entry.
  * psid (in)	 : Statistic ID.
  * statval (in)  : New statistic value.
+ * check_watchers(in): flag that tells if we should take into account if there are active watchers
  */
 STATIC_INLINE void
-perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
+perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool check_watchers)
 {
   assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
-  if (!perfmon_is_perf_tracking ())
+  if (check_watchers && (!(pstat_Global.n_watchers > 0)))
     {
       /* No need to collect statistics since no one is interested. */
       return;
@@ -822,7 +826,7 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
 
   assert (pstat_Metadata[psid].valtype == PSTAT_PEEK_SINGLE_VALUE);
 
-  perfmon_set_at_offset (thread_p, pstat_Metadata[psid].start_offset, statval);
+  perfmon_set_at_offset (thread_p, pstat_Metadata[psid].start_offset, statval, check_watchers);
 }
 
 /*
@@ -832,9 +836,10 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
  * thread_p (in) : Thread entry.
  * offset (in)   : Offset to statistic value.
  * statval (in)	 : New statistic value.
+ * check_watchers(in): flag that tells if we should take into account if there are active watchers
  */
 STATIC_INLINE void
-perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
+perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool check_watchers)
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
   int tran_index;
@@ -850,7 +855,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
+  if (!check_watchers || pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
       pstat_Global.tran_stats[tran_index][offset] = statval;
