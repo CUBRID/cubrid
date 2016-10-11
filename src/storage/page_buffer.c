@@ -370,11 +370,12 @@ struct pgbuf_bcb
   int ain_tick;			/* age of AIN when this BCB was inserted into AIN list */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
-  unsigned dirty:1;		/* Is page dirty ? */
-  unsigned avoid_victim:1;
-  unsigned async_flush_request:1;
-  unsigned victim_candidate:1;
-  LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
+  volatile bool dirty;		/* Is page dirty ? */
+  bool avoid_victim;
+  bool async_flush_request;
+  bool victim_candidate;
+
+  volatile LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
   PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
 };
 
@@ -8710,7 +8711,6 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
   PGBUF_RESET_DIRTY (bufptr);
-  bufptr->dirty = false;
   LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 

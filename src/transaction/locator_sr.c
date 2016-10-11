@@ -4160,7 +4160,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   OID unique_oid;
   OID part_oid;
   HFID class_hfid;
-  bool is_null;
+  bool has_null;
   int error_code = NO_ERROR;
   PRUNING_CONTEXT pcontext;
   bool clear_pcontext = false;
@@ -4211,16 +4211,24 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	  goto error;
 	}
 
+      /* SQL standard defines as follows:
+       * If no <match type> was specified then, for each row R1 of the referencing table, 
+       * either at least one of the values of the referencing columns in R1 shall be a null value,
+       * or the value of each referencing column in R1 shall be equal to the value of 
+       * the corresponding referenced column in some row of the referenced table.
+       * Please notice that we don't currently support <match type>. 
+       */
       if (index->n_atts > 1)
 	{
-	  is_null = btree_multicol_key_is_null (key_dbvalue);
+
+	  has_null = btree_multicol_key_has_null (key_dbvalue);
 	}
       else
 	{
-	  is_null = DB_IS_NULL (key_dbvalue);
+	  has_null = DB_IS_NULL (key_dbvalue);
 	}
 
-      if (!is_null)
+      if (!has_null)
 	{
 	  /* get class representation to find partition information */
 	  classrepr =
@@ -13120,6 +13128,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   assert (context->scan_cache != NULL);
 
   /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
+
   if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
     {
       if (context->scan_cache && context->scan_cache->cache_last_fix_page && context->home_page_watcher.pgptr != NULL)
