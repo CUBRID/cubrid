@@ -708,6 +708,7 @@ extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_perf_tracking_force (bool always_collect) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
@@ -807,18 +808,14 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
  * thread_p (in) : Thread entry.
  * psid (in)	 : Statistic ID.
  * statval (in)  : New statistic value.
- * check_watchers (in): Flag that tells if we should take into account if there are active watchers
+ * always_collect (in): Flag that tells that we should always collect statistics
  */
 STATIC_INLINE void
-perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool check_watchers)
+perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool always_collect)
 {
   assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
-  if (!pstat_Global.initialized)
-    {
-      return;
-    }
 
-  if (check_watchers && (!(pstat_Global.n_watchers > 0)))
+  if (!perfmon_is_perf_tracking_force (always_collect))
     {
       /* No need to collect statistics since no one is interested. */
       return;
@@ -826,7 +823,7 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool 
 
   assert (pstat_Metadata[psid].valtype == PSTAT_PEEK_SINGLE_VALUE);
 
-  perfmon_set_at_offset (thread_p, pstat_Metadata[psid].start_offset, statval, check_watchers);
+  perfmon_set_at_offset (thread_p, pstat_Metadata[psid].start_offset, statval, always_collect);
 }
 
 /*
@@ -836,10 +833,10 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool 
  * thread_p (in) : Thread entry.
  * offset (in)   : Offset to statistic value.
  * statval (in)	 : New statistic value.
- * check_watchers (in): Flag that tells if we should take into account if there are active watchers
+ * always_collect (in): Flag that tells that we should always collect statistics
  */
 STATIC_INLINE void
-perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool check_watchers)
+perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool always_collect)
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
   int tran_index;
@@ -855,7 +852,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool ch
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (!check_watchers || pstat_Global.is_watching[tran_index])
+  if (always_collect || pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
       pstat_Global.tran_stats[tran_index][offset] = statval;
@@ -974,6 +971,21 @@ STATIC_INLINE bool
 perfmon_is_perf_tracking_and_active (int activation_flag)
 {
   return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
+}
+
+
+/*
+ * perfmon_is_perf_tracking_force () - Skips the check for active threads if the always_collect
+ *				       flag is set to true
+ *				       
+ * return	        : true or false
+ * always_collect (in)  : flag that tells that we should always collect statistics
+ *
+ */
+STATIC_INLINE bool
+perfmon_is_perf_tracking_force (bool always_collect)
+{
+  return pstat_Global.initialized && (always_collect || pstat_Global.n_watchers > 0);
 }
 
 #if defined(CS_MODE) || defined(SA_MODE)
