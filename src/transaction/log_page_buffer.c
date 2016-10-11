@@ -11795,7 +11795,7 @@ logpb_get_nxio_lsa (LOG_LSA * nxio_lsa_p)
   volatile INT64 tmp_int64;
 
   tmp_int64 = ATOMIC_INC_64 ((INT64 *) (&log_Gl.append.nxio_lsa), 0);
-  memcpy (nxio_lsa_p, (LOG_LSA *) (&tmp_int64), OR_MVCC_PREV_VERSION_LSA_SIZE);
+  memcpy (nxio_lsa_p, (LOG_LSA *) (&tmp_int64), sizeof (LOG_LSA));
 #else
   (void) pthread_mutex_lock (&log_Gl.append.nxio_lsa_mutex);
   LSA_COPY (nxio_lsa_p, &log_Gl.append.nxio_lsa);
