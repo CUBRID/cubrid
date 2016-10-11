@@ -265,7 +265,7 @@ static PAGE_PTR ehash_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, PGBUF
 static PAGE_PTR ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid, int offset, PGBUF_LATCH_MODE mode);
 static void *ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr, int lock_type,
 				  VPID * existing_ovf_vpid);
-static EHASH_RESULT ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid, VFID * ovf_file, FILE_TYPE file_type,
+static EHASH_RESULT ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid, VFID * ovf_file, bool is_temp,
 					    PAGE_PTR buc_pgptr, DB_TYPE key_type, void *key_ptr, OID * value_ptr,
 					    VPID * existing_ovf_vpid);
 static int ehash_compose_record (DB_TYPE key_type, void *key_ptr, OID * value_ptr, RECDES * recdes);
@@ -326,14 +326,13 @@ static int ehash_write_key_to_record (RECDES * recdes, DB_TYPE key_type, void *k
 static EHASH_RESULT ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
 							      EHASH_DIR_HEADER * dir_header, VPID * buc_vpid, void *key,
 							      EHASH_HASH_KEY hash_key, int lock_type,
-							      FILE_TYPE file_type, OID * value_ptr,
-							      VPID * existing_ovf_vpid);
+							      bool is_temp, OID * value_ptr, VPID * existing_ovf_vpid);
 static PAGE_PTR ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
 				     EHASH_DIR_HEADER * dir_header, PAGE_PTR buc_pgptr, void *key,
 				     EHASH_HASH_KEY hash_key, int *new_bit, VPID * buc_vpid);
 static int ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
 						EHASH_DIR_HEADER * dir_header, VPID * buc_vpid, int location,
-						EHASH_HASH_KEY hash_key, FILE_TYPE file_type, void *key,
+						EHASH_HASH_KEY hash_key, bool is_temp, void *key,
 						OID * value_ptr, VPID * existing_ovf_vpid);
 
 static EHASH_HASH_KEY ehash_hash_string_type (char *key, char *orig_key);
@@ -1459,7 +1458,7 @@ ehash_insert (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p
 static int
 ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 				     EHASH_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, int location,
-				     EHASH_HASH_KEY hash_key, FILE_TYPE file_type, void *key_p, OID * value_p,
+				     EHASH_HASH_KEY hash_key, bool is_temp, void *key_p, OID * value_p,
 				     VPID * existing_ovf_vpid_p)
 {
   PAGE_PTR bucket_page_p;
@@ -1515,7 +1514,7 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
   ins_result =
-    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, file_type, bucket_page_p,
+    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
 			    dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
 
   if (ins_result != EHASH_SUCCESSFUL_COMPLETION)
@@ -1610,7 +1609,7 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
 static EHASH_RESULT
 ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 					  EHASH_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, void *key_p,
-					  EHASH_HASH_KEY hash_key, int lock_type, FILE_TYPE file_type, OID * value_p,
+					  EHASH_HASH_KEY hash_key, int lock_type, bool is_temp, OID * value_p,
 					  VPID * existing_ovf_vpid_p)
 {
   PAGE_PTR bucket_page_p;
@@ -1627,7 +1626,7 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p
     }
 
   result =
-    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, file_type, bucket_page_p,
+    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
 			    dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
   if (result == EHASH_BUCKET_FULL)
     {
@@ -1662,7 +1661,7 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p
 	}
 
       result =
-	ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, file_type, target_bucket_page_p,
+	ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, target_bucket_page_p,
 				dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
     }
@@ -1692,14 +1691,11 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
   EHASH_HASH_KEY hash_key;
   int location;
   EHASH_RESULT result;
-  FILE_TYPE file_type;
+  bool is_temp = false;
 
-  if (flre_get_type (thread_p, &ehid_p->vfid, &file_type) != NO_ERROR)
+  if (flre_is_temp (thread_p, &ehid_p->vfid, &is_temp) != NO_ERROR)
     {
-      return NULL;
-    }
-  if (file_type == FILE_UNKNOWN_TYPE)
-    {
+      ASSERT_ERROR ();
       return NULL;
     }
 
@@ -1756,7 +1752,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
       else
 	{
 	  if (ehash_insert_to_bucket_after_create
-	      (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, location, hash_key, file_type, key_p,
+	      (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, location, hash_key, is_temp, key_p,
 	       value_p, existing_ovf_vpid_p) != NO_ERROR)
 	    {
 	      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
@@ -1768,7 +1764,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
     {
       result =
 	ehash_insert_bucket_after_extend_if_need (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, key_p,
-						  hash_key, lock_type, file_type, value_p, existing_ovf_vpid_p);
+						  hash_key, lock_type, is_temp, value_p, existing_ovf_vpid_p);
       if (result == EHASH_ERROR_OCCURRED)
 	{
 	  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
@@ -1790,7 +1786,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
  *   return: EHASH_RESULT
  *   ehid(in): identifier for the extendible hashing structure
  *   overflow_file(in): Overflow file for extendible hash
- *   file_type(in): TYpe of extendible hash
+ *   is_temp(in): is extensible hash temporary?
  *   buc_pgptr(in): bucket page to insert the key
  *   key_type(in): type of the key
  *   key_ptr(in): Pointer to the key
@@ -1807,7 +1803,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
  * for the new record, etc.) an appropriate error code is returned.
  */
 static EHASH_RESULT
-ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p, FILE_TYPE file_type,
+ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p, bool is_temp,
 			PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p,
 			VPID * existing_ovf_vpid_p)
 {
@@ -1954,7 +1950,7 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_
   /* Copy (the assoc-value, key) pair from the bucket record */
   memcpy (log_record_p, bucket_recdes.data, bucket_recdes.length);
 
-  if (file_type != FILE_TEMP)
+  if (!is_temp)
     {
       if (is_replaced_oid)
 	{
@@ -3390,7 +3386,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
   PGSLOTID max_free;
   PGSLOTID slot_no;
   bool is_long_str = false;
-  FILE_TYPE file_type;
+  bool is_temp = false;
 
   bool do_merge;
 
@@ -3399,12 +3395,9 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
       return NULL;
     }
 
-  if (flre_get_type (thread_p, &ehid_p->vfid, &file_type) != NO_ERROR)
+  if (flre_is_temp (thread_p, &ehid_p->vfid, &is_temp) != NO_ERROR)
     {
-      return NULL;
-    }
-  if (file_type == FILE_UNKNOWN_TYPE)
-    {
+      ASSERT_ERROR ();
       return NULL;
     }
 
@@ -3523,7 +3516,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 	  /* Log this deletion operation */
 
-	  if (file_type != FILE_TEMP)
+	  if (!is_temp)
 	    {
 	      log_append_undo_data2 (thread_p, RVEH_DELETE, &ehid_p->vfid, NULL, bucket_recdes.type,
 				     log_recdes_undo.length, log_recdes_undo.data);

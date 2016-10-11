@@ -13765,6 +13765,11 @@ struct flre_header
 #define FILE_TYPE_CAN_BE_NUMERABLE(ftype) ((ftype) == FILE_EXTENDIBLE_HASH \
 					   || (ftype) == FILE_EXTENDIBLE_HASH_DIRECTORY \
 					   || (ftype) == FILE_TEMP)
+#define FILE_TYPE_IS_ALWAYS_TEMP(ftype) ((ftype) == FILE_TEMP \
+                                         || (ftype) == FILE_QUERY_AREA)
+#define FILE_TYPE_IS_SOMETIMES_TEMP(ftype) ((ftype) == FILE_EXTENDIBLE_HASH \
+                                            || (ftype) == FILE_EXTENDIBLE_HASH_DIRECTORY)
+#define FILE_TYPE_IS_NEVER_TEMP(ftype) (!FILE_TYPE_IS_ALWAYS_TEMP (ftype) && !FILE_TYPE_IS_SOMETIMES_TEMP (ftype))
 
 /* Convert VFID to file header page VPID. */
 #define FILE_GET_HEADER_VPID(vfid, vpid) (vpid)->volid = (vfid)->volid; (vpid)->pageid = (vfid)->fileid
@@ -19157,6 +19162,55 @@ flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out
   *ftype_out = fhead->type;
   assert (*ftype_out != FILE_UNKNOWN_TYPE);
 
+  pgbuf_unfix (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
+ * flre_is_temp () - is file temporary?
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ * is_temp (out) : true for temporary, false otherwise
+ */
+int
+flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+  FILE_TYPE ftype;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+  assert (is_temp != NULL);
+
+
+  ftype = file_type_cache_check (vfid);
+  if (FILE_TYPE_IS_ALWAYS_TEMP (ftype))
+    {
+      *is_temp = false;
+      return NO_ERROR;
+    }
+  else if (FILE_TYPE_IS_NEVER_TEMP (ftype))
+    {
+      *is_temp = true;
+      return NO_ERROR;
+    }
+
+  /* read from file header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      int error_code = NO_ERROR;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  *is_temp = FILE_IS_TEMPORARY (fhead);
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
