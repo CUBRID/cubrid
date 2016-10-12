@@ -3331,7 +3331,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * recovery managers
    */
 #if defined(SERVER_MODE)
-
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
