@@ -361,7 +361,6 @@ extern int pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB
 
 extern int pr_Enable_string_compression;
 
-
 /* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
 #define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + (length) + MAX_ALIGNMENT)
 
