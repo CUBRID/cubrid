@@ -7811,7 +7811,7 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
 
   if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
     {
-      mvcc_header_size += sizeof (LOG_LSA);
+      mvcc_header_size += OR_MVCC_PREV_VERSION_LSA_SIZE;
     }
 
   return mvcc_header_size;
@@ -8224,13 +8224,13 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
       return NO_ERROR;
     }
 
-  if ((buf->ptr + sizeof (LOG_LSA)) > buf->endptr)
+  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
     }
 
-  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, sizeof (LOG_LSA));
-  buf->ptr += sizeof (LOG_LSA);
+  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
+  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
   return NO_ERROR;
 }
@@ -8257,13 +8257,13 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
       return NO_ERROR;
     }
 
-  if ((buf->ptr + sizeof (LOG_LSA)) > buf->endptr)
+  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
     {
       return (or_underflow (buf));
     }
 
   *prev_version_lsa = *(LOG_LSA *) buf->ptr;
-  buf->ptr += sizeof (LOG_LSA);
+  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
   return NO_ERROR;
 }
@@ -8298,7 +8298,7 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
 		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
 		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
 
-  memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
+  memcpy (record->data + lsa_offset, lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
 
   return NO_ERROR;
 }
