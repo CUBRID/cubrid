@@ -1297,7 +1297,10 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       if (inserted)
 	{
 	  (*xcache_entry)->free_data_on_uninit = true;
+	  /* new entry added */
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_ADD);
+	  ATOMIC_INC_32 (&xcache_Entry_count, 1);
+	  ATOMIC_TAS_32 (&perfmon_Cache_entry_count, xcache_Entry_count);
 	}
       else
 	{
@@ -1339,12 +1342,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 			  XCACHE_LOG_ENTRY_ARGS (to_be_recompiled), XCACHE_LOG_TRAN_ARGS (thread_p));
 	      xcache_unfix (thread_p, to_be_recompiled);
 	      to_be_recompiled = NULL;
-	    }
-	  else if (inserted)
-	    {
-	      /* new entry added */
-	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
-	      ATOMIC_TAS_32 (&perfmon_Cache_entry_count, xcache_Entry_count);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
