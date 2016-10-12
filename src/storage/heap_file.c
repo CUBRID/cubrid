@@ -701,7 +701,7 @@ static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, int *offset_size_ptr);
+static int heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr);
 
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
@@ -11351,12 +11351,14 @@ exit_on_error:
  *                        represented by attr_info
  *   return: size of the object
  *   attr_info(in/out): The attribute information structure
+ *   is_mvcc_class(in): true, if MVCC class
+ *   offset_size_ptr(out): offset size
  *
  * Note: Find the disk size needed to transform the object represented
  * by the attribute information structure.
  */
 static int
-heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, int *offset_size_ptr)
+heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr)
 {
   int i, size;
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
@@ -11379,7 +11381,15 @@ re_check:
 	}
     }
 
-  size += OR_MVCC_INSERT_HEADER_SIZE;
+  if (is_mvcc_class)
+    {
+      size += OR_MVCC_INSERT_HEADER_SIZE;
+    }
+  else
+    {
+      size += OR_NON_MVCC_HEADER_SIZE;
+    }
+
   size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
   size += OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable);
 
@@ -11466,6 +11476,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   int expected_size, tmp;
   volatile int offset_size;
   int mvcc_wasted_space = 0, header_size;
+  bool is_mvcc_class;
 
   /* check to make sure the attr_info has been used, it should not be empty. */
   if (attr_info->num_values == -1)
@@ -11485,10 +11496,21 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   OR_BUF_INIT2 (orep, new_recdes->data, new_recdes->area_size);
   buf = &orep;
 
-  expected_size = heap_attrinfo_get_disksize (attr_info, &tmp);
+  is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
+  expected_size = heap_attrinfo_get_disksize (attr_info, is_mvcc_class, &tmp);
   offset_size = tmp;
 
-  mvcc_wasted_space = (OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE);
+  if (is_mvcc_class)
+    {
+      mvcc_wasted_space = (OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE);
+      if (old_recdes != NULL)
+	{
+	  /* Update case, reserve space for previous version LSA. */
+	  expected_size += OR_MVCC_PREV_VERSION_LSA_SIZE;
+	  mvcc_wasted_space -= OR_MVCC_PREV_VERSION_LSA_SIZE;
+	}
+    }
+
   /* reserve enough space if need to add additional MVCC header info */
   expected_size += mvcc_wasted_space;
 
@@ -11520,8 +11542,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
        * refetch the object.
        */
       attr_info->inst_chn++;
-      if (!mvcc_is_mvcc_disabled_class (&(attr_info->class_oid)))
+      if (is_mvcc_class)
 	{
+	  if (old_recdes == NULL)
+	    {
 	      repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
 	      or_put_int (buf, repid_bits);
 	      or_put_int (buf, 0);	/* CHN */
@@ -11530,7 +11554,20 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    }
 	  else
 	    {
+	      LOG_LSA null_lsa = LSA_INITIALIZER;
+	      repid_bits |= ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
 	      or_put_int (buf, repid_bits);
+	      or_put_int (buf, 0);	/* CHN */
+	      or_put_bigint (buf, 0);	/* MVCC insert id */
+
+	      assert ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) <= buf->endptr);
+	      or_put_data (buf, &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);	/* prev version lsa */
+	      header_size = OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
+	    }
+	}
+      else
+	{
+	  or_put_int (buf, repid_bits);
 	  or_put_int (buf, attr_info->inst_chn);
 	  header_size = OR_NON_MVCC_HEADER_SIZE;
 	}
@@ -19930,18 +19967,19 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
 #if defined (SERVER_MODE)
+  /* In case of partitions, it is possible to have OR_MVCC_FLAG_VALID_PREV_VERSION flag. */
   use_optimization = (is_mvcc_class && (insert_context->update_in_place == UPDATE_INPLACE_NONE)
+		      && (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
 		      && !heap_is_big_length (record_size + OR_MVCCID_SIZE));
 #endif
 
   if (use_optimization)
     {
       /* 
-       * Most common case. Since is UPDATE_INPLACE_NONE, the header does not have DELID and PREV VERSION.
+       * Most common case. Since is UPDATE_INPLACE_NONE, the header does not have DELID.
        * Optimize header adjustment.
        */
       assert (!(mvcc_flags & OR_MVCC_FLAG_VALID_DELID));
-      assert (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION));
       mvcc_id = logtb_get_current_mvccid (thread_p);
 
       start_p = insert_context->recdes_p->data;
@@ -20073,7 +20111,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   if (use_optimization)
     {
       /*
-       * Most common case. Since is UPDATE_INPLACE_NONE, the header does not have DELID and PREV VERSION.
+       * Most common case. Since is UPDATE_INPLACE_NONE, the header does not have DELID.
        * Optimize header adjustment.
        */
       assert (!(mvcc_flags & OR_MVCC_FLAG_VALID_DELID));
@@ -20117,8 +20155,9 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
       /* Sets the MVCC INSID */
       OR_PUT_BIGINT (new_ins_mvccid_pos_p, &mvcc_id);
 
-      /* Add NULL LSA after INSID. The prev_version_lsa will be filled at the end of the update,
-       * in heap_update_set_prev_version()
+      /*
+       * Adds NULL LSA after INSID. The prev_version_lsa will be filled at the end of the update,
+       * in heap_update_set_prev_version().
        */
       memcpy (new_ins_mvccid_pos_p + OR_MVCCID_SIZE, &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
       return NO_ERROR;
