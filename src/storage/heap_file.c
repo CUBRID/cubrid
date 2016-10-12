@@ -165,6 +165,13 @@ static int rv;
     } \
   while (0)
 
+#if defined (SERVER_MODE)
+#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) \
+    ((is_mvcc_class) && (!HEAP_IS_UPDATE_INPLACE (update_style)) ? (true) : (false))
+#else
+#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) (false)
+#endif
+
 #define HEAP_SCAN_ORDERED_HFID(scan) \
   (((scan) != NULL) ? (&(scan)->node.hfid) : (PGBUF_ORDERED_NULL_HFID))
 
@@ -11561,7 +11568,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	      or_put_bigint (buf, 0);	/* MVCC insert id */
 
 	      assert ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) <= buf->endptr);
-	      or_put_data (buf, &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);	/* prev version lsa */
+	      or_put_data (buf, (char *) &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);	/* prev version lsa */
 	      header_size = OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
 	    }
 	}
@@ -20088,9 +20095,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   MVCCID mvcc_id;
   bool use_optimization = false;
   LOG_LSA null_lsa = LSA_INITIALIZER;
-#if defined(SERVER_MODE)
-  bool is_update_in_place = false;
-#endif
+  bool is_mvcc_op = false;
 
   assert (update_context != NULL);
   assert (update_context->type == HEAP_OPERATION_UPDATE);
@@ -20102,10 +20107,9 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
+  is_mvcc_op = HEAP_UPDATE_IS_MVCC_OP (is_mvcc_class, update_context->update_in_place);
 #if defined (SERVER_MODE)
-  is_update_in_place = (update_context->update_in_place != UPDATE_INPLACE_NONE);
-  use_optimization = (is_mvcc_class && !is_update_in_place
-		      && !heap_is_big_length (record_size + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE));
+  use_optimization = (is_mvcc_op && !heap_is_big_length (record_size + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE));
 #endif
 
   if (use_optimization)
@@ -20202,7 +20206,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
     }
 
 #if defined (SERVER_MODE)
-  if (is_mvcc_class && !is_update_in_place)
+  if (is_mvcc_op)
     {
       if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
@@ -23053,22 +23057,11 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* 
    * Determine type of operation
    */
+  is_mvcc_op = HEAP_UPDATE_IS_MVCC_OP (is_mvcc_class, context->update_in_place);
 #if defined (SERVER_MODE)
-  if (is_mvcc_class && !HEAP_IS_UPDATE_INPLACE (context->update_in_place))
-    {
-      is_mvcc_op = true;
-    }
-  else
-    {
-      is_mvcc_op = false;
-    }
-
   assert ((!is_mvcc_op && HEAP_IS_UPDATE_INPLACE (context->update_in_place))
 	  || (is_mvcc_op && !HEAP_IS_UPDATE_INPLACE (context->update_in_place)));
   /* the update in place concept should be changed in terms of mvcc */
-
-#else /* SERVER_MODE */
-  is_mvcc_op = false;
 #endif /* SERVER_MODE */
 
 #if defined(ENABLE_SYSTEMTAP)
