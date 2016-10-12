@@ -3231,8 +3231,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
 #endif /* SERVER_MODE */
 
-  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
-
   if (db_name == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db_name);
@@ -3333,6 +3331,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * recovery managers
    */
 #if defined(SERVER_MODE)
+
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
+
   if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
