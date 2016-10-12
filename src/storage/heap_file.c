@@ -592,6 +592,21 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
     } \
   while (false)
 
+/* 
+ * Lookup to compute the size of MVCC fields faster.
+ */
+int mvcc_size_lookup[] = {
+  0,				/* NO MVCC FLAGS */
+  OR_MVCCID_SIZE,		/* INSID */
+  OR_MVCCID_SIZE,		/* DELID */
+  OR_MVCCID_SIZE * OR_MVCCID_SIZE,	/* INSID | DELID */
+  OR_MVCC_PREV_VERSION_LSA_SIZE,	/* PREV_VERSION */
+  OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,	/* INSID + PREV_VERSION */
+  OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,	/* DELID + PREV_VERSION */
+  OR_MVCCID_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE	/* INSID + DELID + PREV_VERSION */
+};
+const int mvcc_size_lookup_count = 8;
+
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr, PAGE_FETCH_MODE fetch_mode,
 					     LOCK lock, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher);

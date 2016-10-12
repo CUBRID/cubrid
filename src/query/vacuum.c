@@ -589,6 +589,9 @@ struct vacuum_dropped_files_rcv_data
   OID class_oid;
 };
 
+extern int mvcc_size_lookup[];
+extern const int mvcc_size_lookup_count;
+
 /* Vacuum static functions. */
 static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
 static void vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p);
@@ -1517,7 +1520,8 @@ retry_prepare:
 	  assert_release (false);
 	  return ER_FAILED;
 	}
-      /* Get MVCC header. */
+
+      /* Get MVCC header to check whether can be vacuumed. */
       error_code = or_mvcc_get_header (&helper->record, &helper->mvcc_header);
       if (error_code != NO_ERROR)
 	{
@@ -1622,14 +1626,17 @@ retry_prepare:
 	  pgbuf_unfix_and_init (thread_p, helper->forward_page);
 	}
 
+      helper->record.data = PTR_ALIGN (helper->rec_buf, MAX_ALIGNMENT);
+      helper->record.area_size = sizeof (helper->rec_buf);
+
       /* Peek record. */
-      if (spage_get_record (helper->home_page, helper->crt_slotid, &helper->record, PEEK) != S_SUCCESS)
+      if (spage_get_record (helper->home_page, helper->crt_slotid, &helper->record, COPY) != S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
 	}
 
-      /* Get MVCC header. */
+      /* Get MVCC header to check whether can be vacuumed. */
       error_code = or_mvcc_get_header (&helper->record, &helper->mvcc_header);
       if (error_code != NO_ERROR)
 	{
@@ -1669,10 +1676,10 @@ retry_prepare:
 static int
 vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
-  RECDES update_record;		/* Record to build updated version without insert MVCCID. */
-  /* Buffer for update_record data. */
-  char update_record_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  RECDES *update_record;	/* Record to build updated version without insert MVCCID. */
   int error_code = NO_ERROR;	/* Error code. */
+  char *start_p, *existing_data_p, *new_data_p;
+  int repid_and_flag_bits = 0, mvcc_flags = 0;
 
   /* Assert expected arguments. */
   assert (helper != NULL);
@@ -1688,33 +1695,39 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       assert (helper->forward_page != NULL);
       assert (!OID_ISNULL (&helper->forward_oid));
 
-      /* Clear flag for valid insert MVCCID and prev version lsa */
-      MVCC_CLEAR_FLAG_BITS (&helper->mvcc_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+      /* Remove insert MVCCID and prev version lsa */
+      assert (helper->record.type == REC_NEWHOME);
+      update_record = &helper->record;
+      start_p = update_record->data;
+      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
+      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
-      /* Create updated record. */
-      update_record.data = PTR_ALIGN (update_record_buffer, MAX_ALIGNMENT);
-      update_record.area_size = DB_PAGESIZE;
-      update_record.type = REC_NEWHOME;
-      memcpy (update_record.data, helper->record.data, helper->record.length);
-      update_record.length = helper->record.length;
-
-      /* Modify header. It will move data inside record if required. */
-      error_code = or_mvcc_set_header (&update_record, &helper->mvcc_header);
-      if (error_code != NO_ERROR)
+      /* Skip bytes up to insid_offset */
+      new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
+      existing_data_p = new_data_p + mvcc_size_lookup[mvcc_flags];
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
-	  ASSERT_ERROR ();
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "Vacuum error: set mvcc header (flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, forward object %d|%d|%d with record of type=%d and size=%d",
-			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
-			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header), helper->forward_oid.volid, helper->forward_oid.pageid,
-			 helper->forward_oid.slotid, REC_NEWHOME, helper->record.length);
-	  return error_code;
+	  /* Has MVCC DELID. */
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
+	    {
+	      /* Copy MVCC DELID and advance. */
+	      *new_data_p = *(new_data_p + OR_MVCCID_SIZE);
+	      new_data_p += OR_MVCCID_SIZE;
+	    }
 	}
 
+      /* Clear flag for valid insert MVCCID and prev version lsa */
+      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      OR_PUT_INT (start_p, repid_and_flag_bits);
+
+      /* Expect new_data_p != existing_data_p in most of the cases. */
+      assert (existing_data_p >= new_data_p);
+      memmove (new_data_p, existing_data_p, update_record->length - CAST_BUFLEN (existing_data_p - start_p));
+      update_record->length -= CAST_BUFLEN (existing_data_p - new_data_p);
+      assert (update_record->length > 0);
+
       /* Update record in page. */
-      if (spage_update (thread_p, helper->forward_page, helper->forward_oid.slotid, &update_record) != SP_SUCCESS)
+      if (spage_update (thread_p, helper->forward_page, helper->forward_oid.slotid, update_record) != SP_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -1758,33 +1771,39 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       break;
 
     case REC_HOME:
-      /* Remove insert MVCCID */
+      /* Remove insert MVCCID and prev version lsa */
 
-      /* Clear valid insert MVCCID flag and prev version lsa */
-      MVCC_CLEAR_FLAG_BITS (&helper->mvcc_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+      assert (helper->record.type == REC_HOME);
+      update_record = &helper->record;
+      start_p = update_record->data;
+      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
+      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
-      /* Create updated record. */
-      update_record.data = PTR_ALIGN (update_record_buffer, MAX_ALIGNMENT);
-      update_record.area_size = DB_PAGESIZE;
-      update_record.type = REC_HOME;
-      memcpy (update_record.data, helper->record.data, helper->record.length);
-      update_record.length = helper->record.length;
-
-      /* Modify header. It will move data inside record if required. */
-      error_code = or_mvcc_set_header (&update_record, &helper->mvcc_header);
-      if (error_code != NO_ERROR)
+      /* Skip bytes up to insid_offset */
+      new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
+      existing_data_p = new_data_p + mvcc_size_lookup[mvcc_flags];
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
-	  ASSERT_ERROR ();
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "Vacuum error: set mvcc header (flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, object %d|%d|%d with record of type=%d and size=%d",
-			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
-			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header), helper->home_vpid.volid, helper->home_vpid.pageid,
-			 helper->crt_slotid, REC_HOME, helper->record.length);
-	  return error_code;
+	  /* Has MVCC DELID. */
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
+	    {
+	      /* Copy MVCC DELID and advance. */
+	      *new_data_p = *(new_data_p + OR_MVCCID_SIZE);
+	      new_data_p += OR_MVCCID_SIZE;
+	    }
 	}
-      if (spage_update (thread_p, helper->home_page, helper->crt_slotid, &update_record) != SP_SUCCESS)
+
+      /* Clear flag for valid insert MVCCID and prev version lsa */
+      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      OR_PUT_INT (start_p, repid_and_flag_bits);
+
+      /* Expect new_data_p != existing_data_p in most of the cases. */
+      assert (existing_data_p >= new_data_p);
+      memmove (new_data_p, existing_data_p, update_record->length - CAST_BUFLEN (existing_data_p - start_p));
+      update_record->length -= CAST_BUFLEN (existing_data_p - new_data_p);
+      assert (update_record->length > 0);
+
+      if (spage_update (thread_p, helper->home_page, helper->crt_slotid, update_record) != SP_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -7489,7 +7508,6 @@ vacuum_notify_need_flush (int need_flush)
 static void
 vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
 {
-  VPID vpid;
   PAGE_PTR pgptr = NULL;
 
   assert (pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.first_page) == 1);
