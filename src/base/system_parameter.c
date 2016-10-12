@@ -2034,7 +2034,6 @@ static int prm_extended_statistics_lower = 0;
 
 bool PRM_ENABLE_STRING_COMPRESSION = true;
 static bool prm_enable_string_compression_default = true;
-
 static unsigned int prm_enable_string_compression_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);

@@ -1335,7 +1335,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
   if (compressable == true)
     {
-      if (!prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION))	/* compession is not set */
+      if (!pr_Enable_string_compression)	/* compession is not set */
 	{
 	  compressed_length = 0;
 	  goto after_compression;
