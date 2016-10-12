@@ -3229,7 +3229,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   common_ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
-
 #endif /* SERVER_MODE */
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
