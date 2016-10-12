@@ -10683,7 +10683,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			      memset (memory_default_value[default_index], 0x00, 256);
 			      strcpy (memory_default_value[default_index], result);
 
-			      db_value_free(result_str);	/* No longer required */
+			      db_value_free (result_str);	/* No longer required */
 
 			      /* Prepare for INSERT */
 			      db_value_domain_init (insert->vals[k], attr->type, precision, scale);
