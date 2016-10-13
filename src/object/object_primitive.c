@@ -904,6 +904,7 @@ int pr_ordered_mem_sizes[PR_TYPE_TOTAL];
 /* The number of items in pr_ordered_mem_sizes */
 int pr_ordered_mem_size_total = 0;
 
+int pr_Enable_string_compression = true;
 PR_TYPE tp_Null = {
   "*NULL*", DB_TYPE_NULL, 0, 0, 0, 0,
   help_fprint_value,
@@ -16250,6 +16251,10 @@ pr_get_compression_length (const char *string, int charlen)
 
   length = charlen;
 
+  if (!pr_Enable_string_compression)	/* compession is not set */
+    {
+      return length;
+    }
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
     {
@@ -16345,6 +16350,14 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
 
+  if (!pr_Enable_string_compression)	/* compession is not set */
+    {
+      length = str_length;
+      compression_length = 0;
+      str = string;
+      goto after_compression;
+    }
+
   /* Step 1 : Compress, if possible, the dbvalue */
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
@@ -16397,7 +16410,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
       compression_length = 0;
       str = string;
     }
-
+after_compression:
   /* 
    * Step 2 : Compute the disk size of the dbvalue.
    * We are sure that the initial string length is greater than 255, which means that the new encoding applies.
