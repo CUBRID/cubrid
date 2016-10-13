@@ -1134,8 +1134,8 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 
   XCACHE_STAT_INC (deletes);
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
-  ATOMIC_INC_32 (&xcache_Entry_count, -1);
-  ATOMIC_TAS_32 (&perfmon_Cache_entry_count, xcache_Entry_count);
+  ATOMIC_INC_32 ((LONG *) & xcache_Entry_count, -1);
+  ATOMIC_TAS_32 ((LONG *) & perfmon_Cache_entry_count, xcache_Entry_count);
 
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
@@ -1353,8 +1353,8 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	  else if (inserted)
 	    {
 	      /* new entry added */
-	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
-	      ATOMIC_TAS_32 (&perfmon_Cache_entry_count, xcache_Entry_count);
+	      ATOMIC_INC_32 ((LONG *) & xcache_Entry_count, 1);
+	      ATOMIC_TAS_32 ((LONG *) & perfmon_Cache_entry_count, xcache_Entry_count);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
@@ -1677,7 +1677,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "XASL cache\n");
   fprintf (fp, "Stats: \n");
   fprintf (fp, "Max size:                   %d\n", xcache_Soft_capacity);
-  fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 (&xcache_Entry_count, 0));
+  fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 ((LONG *) & xcache_Entry_count, 0));
   fprintf (fp, "Lookups:                    %ld\n", XCACHE_STAT_GET (lookups));
   fprintf (fp, "Hits:                       %ld\n", XCACHE_STAT_GET (hits));
   fprintf (fp, "Miss:                       %ld\n", XCACHE_STAT_GET (miss));
@@ -1870,7 +1870,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
   /* We can allow only one cleanup process at a time. There is no point in duplicating this work. Therefore, anyone
    * trying to do the cleanup should first try to set xcache_Cleanup_flag. */
-  if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 0, 1))
+  if (!ATOMIC_CAS_32 ((LONG *) & xcache_Cleanup_flag, 0, 1))
     {
       /* Somebody else does the cleanup. */
       return;
@@ -1878,7 +1878,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   if (xcache_Entry_count <= xcache_Soft_capacity)
     {
       /* Already cleaned up. */
-      if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+      if (!ATOMIC_CAS_32 ((LONG *) & xcache_Cleanup_flag, 1, 0))
 	{
 	  assert_release (false);
 	}
@@ -1893,7 +1893,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   if (cleanup_count <= 0)
     {
       /* Not enough to cleanup */
-      if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+      if (!ATOMIC_CAS_32 ((LONG *) & xcache_Cleanup_flag, 1, 0))
 	{
 	  assert_release (false);
 	}
@@ -1917,7 +1917,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	{
 	  /* Not really expected */
 	  assert (false);
-	  if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+	  if (!ATOMIC_CAS_32 ((LONG *) & xcache_Cleanup_flag, 1, 0))
 	    {
 	      assert_release (false);
 	    }
@@ -1986,8 +1986,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
 	  XCACHE_STAT_INC (deletes_at_cleanup);
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
-	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
-	  ATOMIC_TAS_32 (&perfmon_Cache_entry_count, xcache_Entry_count);
+	  ATOMIC_INC_32 ((LONG *) & xcache_Entry_count, -1);
+	  ATOMIC_TAS_32 ((LONG *) & perfmon_Cache_entry_count, xcache_Entry_count);
 	}
       else
 	{
@@ -2015,7 +2015,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
 
   XCACHE_STAT_INC (cleanups);
-  if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+  if (!ATOMIC_CAS_32 ((LONG *) & xcache_Cleanup_flag, 1, 0))
     {
       assert_release (false);
     }
@@ -2078,7 +2078,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
       /* Too soon. */
       return false;
     }
-  if (!ATOMIC_CAS_32 (&xcache_entry->time_last_rt_check.tv_sec, save_secs, crt_time.tv_sec))
+  if (!ATOMIC_CAS_32 ((LONG *) & xcache_entry->time_last_rt_check.tv_sec, save_secs, crt_time.tv_sec))
     {
       /* Somebody else started the check. */
       return false;

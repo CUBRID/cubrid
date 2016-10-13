@@ -7489,7 +7489,6 @@ vacuum_notify_need_flush (int need_flush)
 static void
 vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
 {
-  VPID vpid;
   PAGE_PTR pgptr = NULL;
 
   assert (pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.first_page) == 1);
