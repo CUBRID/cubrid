@@ -592,21 +592,6 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
     } \
   while (false)
 
-/* 
- * Lookup to compute the size of MVCC fields faster.
- */
-int mvcc_size_lookup[] = {
-  0,				/* NO MVCC FLAGS */
-  OR_MVCCID_SIZE,		/* INSID */
-  OR_MVCCID_SIZE,		/* DELID */
-  OR_MVCCID_SIZE * OR_MVCCID_SIZE,	/* INSID | DELID */
-  OR_MVCC_PREV_VERSION_LSA_SIZE,	/* PREV_VERSION */
-  OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,	/* INSID + PREV_VERSION */
-  OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,	/* DELID + PREV_VERSION */
-  OR_MVCCID_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE	/* INSID + DELID + PREV_VERSION */
-};
-const int mvcc_size_lookup_count = 8;
-
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr, PAGE_FETCH_MODE fetch_mode,
 					     LOCK lock, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher);
@@ -18969,7 +18954,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
     }
 
   /* Safe guard */
-  assert (or_mvcc_header_size_from_flags (MVCC_GET_FLAG (mvcc_header)) == OR_MVCC_MAX_HEADER_SIZE);
+  assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header)] == OR_MVCC_MAX_HEADER_SIZE);
   return or_mvcc_set_header (&ovf_recdes, mvcc_header);
 }
 
@@ -20011,9 +19996,9 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  int curr_header_size, new_header_size;
 
 	  /* strip MVCC information */
-	  curr_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
-	  new_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 
 	  /* compute new record size */
 	  record_size -= (curr_header_size - new_header_size);
@@ -20097,9 +20082,9 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  int curr_header_size, new_header_size;
 
 	  /* strip MVCC information */
-	  curr_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
-	  new_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
+	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 
 	  /* compute new record size */
 	  record_size -= (curr_header_size - new_header_size);
@@ -20734,7 +20719,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	{
 	  return ER_FAILED;
 	}
-      assert (or_mvcc_header_size_from_flags (overflow_header.mvcc_flag) == OR_MVCC_MAX_HEADER_SIZE);
+      assert (mvcc_header_size_lookup[overflow_header.mvcc_flag] == OR_MVCC_MAX_HEADER_SIZE);
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
@@ -20918,7 +20903,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (is_adjusted_size_big)
 	{
 	  /* not exactly necessary, but we'll be able to compare sizes */
-	  adjusted_size = forward_recdes.length - or_mvcc_header_size_from_flags (mvcc_flags) + OR_MVCC_MAX_HEADER_SIZE;
+	  adjusted_size = forward_recdes.length - mvcc_header_size_lookup[mvcc_flags] + OR_MVCC_MAX_HEADER_SIZE;
 	}
 #endif
 
@@ -20958,7 +20943,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		  if (is_adjusted_size_big)
 		    {
 		      /* not exactly necessary, but we'll be able to compare sizes */
-		      adjusted_size = forward_recdes.length - or_mvcc_header_size_from_flags (mvcc_flags)
+		      adjusted_size = forward_recdes.length - mvcc_header_size_lookup[mvcc_flags]
 			+ OR_MVCC_MAX_HEADER_SIZE;
 		    }
 #endif
@@ -20998,7 +20983,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  else
 	    {
 	      /* Check that we need to copy from end of MVCC header up to the end of the buffer. */
-	      assert (delid_offset == or_mvcc_header_size_from_flags (mvcc_flags));
+	      assert (delid_offset == mvcc_header_size_lookup[mvcc_flags]);
 	    }
 #endif
 
@@ -21021,7 +21006,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  or_mvcc_add_header (&new_forward_recdes, &forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
 			      OR_GET_OFFSET_SIZE (forward_recdes.data));
 
-	  forward_rec_header_size = or_mvcc_header_size_from_flags (mvcc_flags);
+	  forward_rec_header_size = mvcc_header_size_lookup[mvcc_flags];
 	  memcpy (new_forward_recdes.data + new_forward_recdes.length, forward_recdes.data + forward_rec_header_size,
 		  forward_recdes.length - forward_rec_header_size);
 	  new_forward_recdes.length += forward_recdes.length - forward_rec_header_size;
@@ -21381,8 +21366,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (is_adjusted_size_big)
 	{
 	  /* not exactly necessary, but we'll be able to compare sizes */
-	  adjusted_size = context->home_recdes.length - or_mvcc_header_size_from_flags (mvcc_flags)
-	    + OR_MVCC_MAX_HEADER_SIZE;
+	  adjusted_size = context->home_recdes.length - mvcc_header_size_lookup[mvcc_flags] + OR_MVCC_MAX_HEADER_SIZE;
 	}
 #endif
 
@@ -21419,7 +21403,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  else
 	    {
 	      /* Check that we need to copy from end of MVCC header up to the end of the buffer. */
-	      assert (delid_offset == or_mvcc_header_size_from_flags (mvcc_flags));
+	      assert (delid_offset == mvcc_header_size_lookup[mvcc_flags]);
 	    }
 #endif
 
@@ -21445,7 +21429,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  heap_delete_adjust_header (&record_header, mvcc_id, is_adjusted_size_big);
 	  or_mvcc_add_header (&built_recdes, &record_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
 			      OR_GET_OFFSET_SIZE (context->home_recdes.data));
-	  header_size = or_mvcc_header_size_from_flags (mvcc_flags);
+	  header_size = mvcc_header_size_lookup[mvcc_flags];
 	  memcpy (built_recdes.data + built_recdes.length, context->home_recdes.data + header_size,
 		  context->home_recdes.length - header_size);
 	  built_recdes.length += (context->home_recdes.length - header_size);

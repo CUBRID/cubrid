@@ -589,9 +589,6 @@ struct vacuum_dropped_files_rcv_data
   OID class_oid;
 };
 
-extern int mvcc_size_lookup[];
-extern const int mvcc_size_lookup_count;
-
 /* Vacuum static functions. */
 static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
 static void vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p);
@@ -1521,7 +1518,7 @@ retry_prepare:
 	  return ER_FAILED;
 	}
 
-      /* Get MVCC header to check whether can be vacuumed. */
+      /* Get MVCC header to check whether the record can be vacuumed. */
       error_code = or_mvcc_get_header (&helper->record, &helper->mvcc_header);
       if (error_code != NO_ERROR)
 	{
@@ -1636,7 +1633,7 @@ retry_prepare:
 	  return ER_FAILED;
 	}
 
-      /* Get MVCC header to check whether can be vacuumed. */
+      /* Get MVCC header to check whether the record can be vacuumed. */
       error_code = or_mvcc_get_header (&helper->record, &helper->mvcc_header);
       if (error_code != NO_ERROR)
 	{
@@ -1676,8 +1673,8 @@ retry_prepare:
 static int
 vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
-  RECDES *update_record;	/* Record to build updated version without insert MVCCID. */
-  int error_code = NO_ERROR;	/* Error code. */
+  RECDES *update_record;
+  int error_code = NO_ERROR;
   char *start_p, *existing_data_p, *new_data_p;
   int repid_and_flag_bits = 0, mvcc_flags = 0;
 
@@ -1694,29 +1691,30 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       /* Forward page and OID are required. */
       assert (helper->forward_page != NULL);
       assert (!OID_ISNULL (&helper->forward_oid));
-
-      /* Remove insert MVCCID and prev version lsa */
       assert (helper->record.type == REC_NEWHOME);
+
+      /* Remove insert MVCCID and prev version lsa. */
       update_record = &helper->record;
       start_p = update_record->data;
       repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
-      /* Skip bytes up to insid_offset */
+      /* Skip bytes up to insid_offset. */
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
-      existing_data_p = new_data_p + mvcc_size_lookup[mvcc_flags];
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
 	  /* Has MVCC DELID. */
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	    {
-	      /* Copy MVCC DELID and advance. */
-	      *new_data_p = *(new_data_p + OR_MVCCID_SIZE);
-	      new_data_p += OR_MVCCID_SIZE;
+	      /* Copy MVCC DELID over INSID (INSID is removed). */
+	      memcpy (new_data_p, new_data_p + OR_MVCCID_SIZE, OR_MVCCID_SIZE);
 	    }
+	  /* Skip DELID. */
+	  new_data_p += OR_MVCCID_SIZE;
 	}
 
-      /* Clear flag for valid insert MVCCID and prev version lsa */
+      /* Clear flag for valid insert MVCCID and prev version lsa. */
       repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
@@ -1771,7 +1769,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       break;
 
     case REC_HOME:
-      /* Remove insert MVCCID and prev version lsa */
+      /* Remove insert MVCCID and prev version lsa. */
 
       assert (helper->record.type == REC_HOME);
       update_record = &helper->record;
@@ -1780,20 +1778,21 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
       /* Skip bytes up to insid_offset */
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
-      existing_data_p = new_data_p + mvcc_size_lookup[mvcc_flags];
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
 	  /* Has MVCC DELID. */
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	    {
-	      /* Copy MVCC DELID and advance. */
-	      *new_data_p = *(new_data_p + OR_MVCCID_SIZE);
-	      new_data_p += OR_MVCCID_SIZE;
+	      /* Copy MVCC DELID over INSID (INSID is removed). */
+	      memcpy (new_data_p, new_data_p + OR_MVCCID_SIZE, OR_MVCCID_SIZE);
 	    }
+	  /* Skip DELID. */
+	  new_data_p += OR_MVCCID_SIZE;
 	}
 
-      /* Clear flag for valid insert MVCCID and prev version lsa */
+      /* Clear flag for valid insert MVCCID and prev version lsa. */
       repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
@@ -2281,12 +2280,12 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
-	  old_header_size = or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
+	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
 	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
 	  /* Clear previous version. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  new_header_size = or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
+	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
 
 	  /* Rebuild record */
 	  rebuild_record.type = peek_record.type;

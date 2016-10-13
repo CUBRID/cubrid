@@ -1545,7 +1545,6 @@ extern int or_packed_enumeration_size (const DB_ENUMERATION * e);
 extern int or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * e);
 extern int or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * e);
 extern int or_header_size (char *ptr);
-extern int or_mvcc_header_size_from_flags (char mvcc_flags);
 
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
