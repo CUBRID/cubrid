@@ -52,7 +52,7 @@ extern "C"
 #define INLINE inline
 #elif _MSC_VER >= 1000
 #define STATIC_INLINE __forceinline static
-#define INLINE
+#define INLINE __forceinline
 #else
 #define STATIC_INLINE static
 #define INLINE
@@ -135,7 +135,7 @@ extern "C"
 
 #if !defined (_MSC_VER) || _MSC_VER < 1700
 #define log2(x)                 (log ((double) x) / log ((double) 2))
-#endif /* !_MSC_VER || _MSC_VER < 1700 */
+#endif				/* !_MSC_VER || _MSC_VER < 1700 */
   extern char *realpath (const char *path, char *resolved_path);
 #define sleep(sec) Sleep(1000*(sec))
 #define usleep(usec) Sleep((usec)/1000)
@@ -495,7 +495,7 @@ extern "C"
 #if !defined(_MSC_VER) || _MSC_VER < 1800
 /* ref: https://msdn.microsoft.com/en-us/library/a206stx2.aspx */
 #define llabs(a)	_abs64((a))
-#endif /* _MSC_VER && _MSC_VER < 1800 */
+#endif				/* _MSC_VER && _MSC_VER < 1800 */
 #endif
 
 #if defined (AIX) && !defined (NAME_MAX)
@@ -539,7 +539,7 @@ extern "C"
 #if !defined(_MSC_VER) || _MSC_VER < 1800
   /* Ref: https://msdn.microsoft.com/en-us/library/dn353646(v=vs.140).aspx */
   extern double round (double d);
-#endif /* !_MSC_VER || _MSC_VER < 1800 */
+#endif				/* !_MSC_VER || _MSC_VER < 1800 */
 
   typedef struct
   {
@@ -585,7 +585,7 @@ extern "C"
 
 #if defined(_MSC_VER) && _MSC_VER >= 1900 && !defined(_CRT_NO_TIME_T)
 #define _TIMESPEC_DEFINED
-#endif /* _MSC_VER && _MSC_VER >= 1900 && !_CRT_NO_TIME_T */
+#endif				/* _MSC_VER && _MSC_VER >= 1900 && !_CRT_NO_TIME_T */
 #if !defined(_TIMESPEC_DEFINED)
 #define _TIMESPEC_DEFINED
   struct timespec
@@ -593,7 +593,7 @@ extern "C"
     int tv_sec;
     int tv_nsec;
   };
-#endif /* !_TIMESPEC_DEFINED */
+#endif				/* !_TIMESPEC_DEFINED */
 
   extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 

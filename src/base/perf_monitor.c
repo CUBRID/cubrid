@@ -81,74 +81,14 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-/* All globals on statistics will be here. */
-typedef struct pstat_global PSTAT_GLOBAL;
-struct pstat_global
-{
-  int n_stat_values;
-
-  UINT64 *global_stats;
-
-  int n_trans;
-  UINT64 **tran_stats;
-
-  bool *is_watching;
-#if !defined (HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t watch_lock;
-#endif				/* !HAVE_ATOMIC_BUILTINS */
-
-  INT32 n_watchers;
-
-  bool initialized;
-  int activation_flag;
-};
-
-PSTAT_GLOBAL pstat_Global;
-
-typedef enum
-{
-  PSTAT_ACCUMULATE_SINGLE_VALUE,	/* A single accumulator value. */
-  PSTAT_PEEK_SINGLE_VALUE,	/* A single value peeked from database. */
-  /* TODO: Currently this type of statistics is set by active workers. I think in
-   *       most cases we could peek it at "compute". There can be two approaches:
-   *       if f_compute is provided, it is read at compute phase. If not, the
-   *       existing value is used and it must be set by active workers.
-   */
-  PSTAT_COUNTER_TIMER_VALUE,	/* A counter/timer. Counter is incremented, timer is accumulated, max time
-				 * is compared with all registered timers and average time is computed.
-				 */
-  PSTAT_COMPUTED_RATIO_VALUE,	/* Value is computed based on other values in statistics. A ratio is obtained
-				 * at the end.
-				 */
-  PSTAT_COMPLEX_VALUE		/* A "complex" value. The creator must handle loading, adding, dumping and
-				 * computing values.
-				 */
-} PSTAT_VALUE_TYPE;
-
-/* PSTAT_METADATA
- * This structure will keep meta-data information on each statistic we are monitoring.
+/* 
+ * Global variables for the special peek statistics different from the page buffer ones
+ * The page buffer peek statistics are computed right before perfmon_server_dump_stats is called
  */
-typedef struct pstat_metadata PSTAT_METADATA;
 
-typedef void (*PSTAT_DUMP_IN_FILE_FUNC) (FILE *, const UINT64 * stat_vals);
-typedef void (*PSTAT_DUMP_IN_BUFFER_FUNC) (char *, const UINT64 * stat_vals, int *remaining_size);
-typedef int (*PSTAT_LOAD_FUNC) (void);
-
-struct pstat_metadata
-{
-  /* These members must be set. */
-  PERF_STAT_ID psid;
-  const char *stat_name;
-  PSTAT_VALUE_TYPE valtype;
-
-  /* These members are computed at startup. */
-  int start_offset;
-  int n_vals;
-
-  PSTAT_DUMP_IN_FILE_FUNC f_dump_in_file;
-  PSTAT_DUMP_IN_BUFFER_FUNC f_dump_in_buffer;
-  PSTAT_LOAD_FUNC f_load;
-};
+volatile INT32 perfmon_Cache_entry_count;
+volatile int perfmon_Heap_num_stats_entries;
+int perfmon_Sessions_num_holdable_cursors;
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
@@ -218,6 +158,8 @@ static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 
 static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char *s,
 								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
+
+PSTAT_GLOBAL pstat_Global;
 
 PSTAT_METADATA pstat_Metadata[] = {
   /* Execution statistics for the file io */
@@ -497,20 +439,8 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_load_Time_obj_lock_acquire_time)
 };
 
-/* Count & timer values. */
-#define PSTAT_COUNTER_TIMER_COUNT_VALUE(startvalp) (startvalp)
-#define PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(startvalp) ((startvalp) + 1)
-#define PSTAT_COUNTER_TIMER_MAX_TIME_VALUE(startvalp) ((startvalp) + 2)
-#define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
-
-STATIC_INLINE void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
-  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
 					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
-  __attribute__ ((ALWAYS_INLINE));
 
 static void perfmon_server_calc_stats (UINT64 * stats);
 
@@ -524,6 +454,8 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
+
+static int get_value_from_stat (PERF_STAT_ID perf_id);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
@@ -2317,9 +2249,21 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  ret =
-		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			      (unsigned long long) stats_ptr[offset]);
+		  int stat_val = get_value_from_stat (i);
+
+		  if (stat_val == -1)
+		    {
+		      ret =
+			snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stats_ptr[offset]);
+		    }
+		  else
+		    {
+		      assert (stat_val >= 0);
+		      ret =
+			snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stat_val);
+		    }
 		}
 	      else
 		{
@@ -2414,8 +2358,18 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			   (unsigned long long) stats_ptr[offset]);
+		  int stat_val = get_value_from_stat (i);
+
+		  if (stat_val == -1)
+		    {
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			       (unsigned long long) stats_ptr[offset]);
+		    }
+		  else
+		    {
+		      assert (stat_val >= 0);
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stat_val);
+		    }
 		}
 	      else
 		{
@@ -2677,10 +2631,14 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
 
 #if defined (SERVER_MODE)
-  pgbuf_peek_stats (&(stats[PSTAT_PB_FIXED_CNT]), &(stats[PSTAT_PB_DIRTY_CNT]),
-		    &(stats[PSTAT_PB_LRU1_CNT]), &(stats[PSTAT_PB_LRU2_CNT]),
-		    &(stats[PSTAT_PB_AIN_CNT]), &(stats[PSTAT_PB_AVOID_DEALLOC_CNT]),
-		    &(stats[PSTAT_PB_AVOID_VICTIM_CNT]), &(stats[PSTAT_PB_VICTIM_CAND_CNT]));
+  pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AIN_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
+		    &(stats[pstat_Metadata[PSTAT_PB_VICTIM_CAND_CNT].start_offset]));
 #endif
 
   for (i = 0; i < PSTAT_COUNT; i++)
@@ -4015,63 +3973,6 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE || SA_MODE */
 
 /*
- * perfmon_is_perf_tracking () - Returns true if there are active threads
- *
- * return	 : true or false
- */
-bool
-perfmon_is_perf_tracking (void)
-{
-  return pstat_Global.initialized && pstat_Global.n_watchers > 0;
-}
-
-/*
- * perfmon_is_perf_tracking_and_active () - Returns true if there are active threads
- *					    and the activation_flag of the extended statistic is activated
- *
- * return	        : true or false
- * activation_flag (in) : activation flag for extended statistic
- *
- */
-bool
-perfmon_is_perf_tracking_and_active (int activation_flag)
-{
-  return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
-}
-
-/*
- *  Add/set stats section.
- */
-
-/*
- * perfmon_add_stat () - Accumulate amount to statistic.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * psid (in)	 : Statistic ID.
- * amount (in)	 : Amount to add.
- */
-void
-perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
-{
-  PSTAT_METADATA *metadata = NULL;
-
-  assert (psid >= 0 && psid < PSTAT_COUNT);
-
-  if (!perfmon_is_perf_tracking ())
-    {
-      /* No need to collect statistics since no one is interested. */
-      return;
-    }
-
-  metadata = &pstat_Metadata[psid];
-  assert (metadata->valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
-
-  /* Update statistics. */
-  perfmon_add_at_offset (thread_p, metadata->start_offset, amount);
-}
-
-/*
  * perfmon_add_stat_at_offset () - Accumulate amount to statistic.
  *
  * return	 : Void.
@@ -4083,207 +3984,11 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 STATIC_INLINE void
 perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
 {
-  PSTAT_METADATA *metadata = NULL;
-
   assert (pstat_Global.initialized);
-  assert (psid >= 0 && psid < PSTAT_COUNT);
-
-  metadata = &pstat_Metadata[psid];
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
   /* Update statistics. */
-  perfmon_add_at_offset (thread_p, metadata->start_offset + offset, amount);
-}
-
-/*
- * perfmon_inc_stat () - Increment statistic value by 1.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * psid (in)	 : Statistic ID.
- */
-void
-perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
-{
-  perfmon_add_stat (thread_p, psid, 1);
-}
-
-/*
- * perfmon_add_at_offset () - Add amount to statistic in global/local at offset.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * offset (in)	 : Offset to statistics value.
- * amount (in)	 : Amount to add.
- */
-STATIC_INLINE void
-perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
-{
-  UINT64 *statvalp = NULL;
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  int tran_index;
-#endif /* SERVER_MODE || SA_MODE */
-
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
-  assert (pstat_Global.initialized);
-
-  /* Update global statistic. */
-  statvalp = pstat_Global.global_stats + offset;
-  ATOMIC_INC_64 (statvalp, amount);
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  /* Update local statistic */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
-    {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-      (*statvalp) += amount;
-    }
-#endif /* SERVER_MODE || SA_MODE */
-}
-
-/*
- * perfmon_set_stat () - Set statistic value.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * psid (in)	 : Statistic ID.
- * statval (in)  : New statistic value.
- */
-void
-perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval)
-{
-  PSTAT_METADATA *metadata = NULL;
-
-  assert (psid >= 0 && psid < PSTAT_COUNT);
-
-  if (!perfmon_is_perf_tracking ())
-    {
-      /* No need to collect statistics since no one is interested. */
-      return;
-    }
-
-  metadata = &pstat_Metadata[psid];
-  assert (metadata->valtype == PSTAT_PEEK_SINGLE_VALUE);
-
-  perfmon_set_at_offset (thread_p, metadata->start_offset, statval);
-}
-
-/*
- * perfmon_set_at_offset () - Set statistic value in global/local at offset.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * offset (in)   : Offset to statistic value.
- * statval (in)	 : New statistic value.
- */
-STATIC_INLINE void
-perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval)
-{
-  UINT64 *statvalp = NULL;
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  int tran_index;
-#endif /* SERVER_MODE || SA_MODE */
-
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
-  assert (pstat_Global.initialized);
-
-  /* Update global statistic. */
-  statvalp = pstat_Global.global_stats + offset;
-  ATOMIC_TAS_64 (statvalp, statval);
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  /* Update local statistic */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
-    {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-      (*statvalp) = statval;
-    }
-#endif /* SERVER_MODE || SA_MODE */
-}
-
-/*
- * perfmon_time_stat () - Register statistic timer value. Counter, total time and maximum time are updated.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * psid (in)	 : Statistic ID.
- * timediff (in) : Time difference to register.
- */
-void
-perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
-{
-  PSTAT_METADATA *metadata = NULL;
-
-  assert (pstat_Global.initialized);
-  assert (psid >= 0 && psid < PSTAT_COUNT);
-
-  metadata = &pstat_Metadata[psid];
-  assert (metadata->valtype == PSTAT_COUNTER_TIMER_VALUE);
-
-  perfmon_time_at_offset (thread_p, metadata->start_offset, timediff);
-}
-
-/*
- * perfmon_time_at_offset () - Register timer statistics in global/local at offset.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * offset (in)   : Offset to timer values.
- * timediff (in) : Time difference to add to timer.
- *
- * NOTE: There will be three values modified: counter, total time and max time.
- */
-STATIC_INLINE void
-perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
-{
-  /* Update global statistics */
-  UINT64 *statvalp = NULL;
-  UINT64 max_time;
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  int tran_index;
-#endif /* SERVER_MODE || SA_MODE */
-
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
-  assert (pstat_Global.initialized);
-
-  /* Update global statistics. */
-  statvalp = pstat_Global.global_stats + offset;
-  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1);
-  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
-  do
-    {
-      max_time = ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), 0);
-      if (max_time >= timediff)
-	{
-	  /* No need to change max_time. */
-	  break;
-	}
-    }
-  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
-  /* Average is not computed here. */
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  /* Update local statistic */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
-    {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
-      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
-      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
-      if (max_time < timediff)
-	{
-	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
-	}
-    }
-#endif /* SERVER_MODE || SA_MODE */
+  perfmon_add_at_offset (thread_p, pstat_Metadata[psid].start_offset + offset, amount);
 }
 
 /*
@@ -4797,11 +4502,31 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 }
 
 /*
- * perfmon_get_activation_flag () - Get the global activation flag
- * 
+ * get_value_from_stat - Used to get the value for a peek statistic different from
+ *                       the page buffer statistics
+ *
+ * return: the value for a peek statistic
+ *
+ *   perf_id (in): statistic id
+ *
  */
-int
-perfmon_get_activation_flag (void)
+static int
+get_value_from_stat (PERF_STAT_ID perf_id)
 {
-  return pstat_Global.activation_flag;
+  int ans = -1;
+
+  switch (perf_id)
+    {
+    case PSTAT_PC_NUM_CACHE_ENTRIES:
+      ans = perfmon_Cache_entry_count;
+      break;
+    case PSTAT_HF_NUM_STATS_ENTRIES:
+      ans = perfmon_Heap_num_stats_entries;
+      break;
+    case PSTAT_QM_NUM_HOLDABLE_CURSORS:
+      ans = perfmon_Sessions_num_holdable_cursors;
+      break;
+    }
+
+  return ans;
 }
