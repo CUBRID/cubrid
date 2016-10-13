@@ -569,13 +569,13 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
 	    qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
 
-	  dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
-
 	  if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
 	    {
 	      status = QPROC_TPLDESCR_FAILURE;
 	      goto exit_with_status;
 	    }
+
+	  dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
 
 	  /* SET data-type cannot use tuple descriptor */
 	  if (pr_is_set_type (dbval_type))
