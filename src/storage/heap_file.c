@@ -12380,7 +12380,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
 
-      if (value.need_clear == true)
+      if (DB_NEED_CLEAR (&value))
 	{
 	  pr_clear_value (&value);
 	}
@@ -12533,7 +12533,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
 
-      if (!DB_IS_NULL (&value) && value.need_clear == true)
+      if (DB_NEED_CLEAR (&value))
 	{
 	  pr_clear_value (&value);
 	}
