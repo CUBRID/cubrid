@@ -905,6 +905,7 @@ int pr_ordered_mem_sizes[PR_TYPE_TOTAL];
 /* The number of items in pr_ordered_mem_sizes */
 int pr_ordered_mem_size_total = 0;
 
+int pr_Enable_string_compression = true;
 PR_TYPE tp_Null = {
   "*NULL*", DB_TYPE_NULL, 0, 0, 0, 0,
   help_fprint_value,
@@ -10970,6 +10971,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
       new_ = NULL;
       if (size)
 	{
+	  int compressed_size;
 	  start = buf->ptr;
 
 	  /* KLUDGE, we have some knowledge of how the thing is stored here in order have some control over the
@@ -10977,7 +10979,12 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	   * in another specialized or_ function. */
 
 	  /* Get just the length prefix. */
-	  len = or_get_varchar_length (buf, &rc);
+	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &len);
+	  if (rc != NO_ERROR)
+	    {
+	      or_abort (buf);
+	      return;
+	    }
 
 	  /* 
 	   * Allocate storage for this string, including our own full word size
@@ -10996,11 +11003,14 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	      *(int *) new_ = len;
 	      cur = new_ + sizeof (int);
 
-	      /* 
-	       * read the string, INLCUDING the NULL terminator (which is
-	       * expected)
-	       */
-	      or_get_data (buf, cur, len + 1);
+	      /* decompress buffer (this also writes nul terminator) */
+	      rc = pr_get_compressed_data_from_buffer (buf, cur, compressed_size, len);
+	      if (rc != NO_ERROR)
+		{
+		  db_private_free (NULL, new_);
+		  or_abort (buf);
+		  return;
+		}
 	      /* align like or_get_varchar */
 	      or_get_align32 (buf);
 	    }
@@ -13845,84 +13855,7 @@ mr_data_writemem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 static void
 mr_data_readmem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  char **mem, *cur, *new_;
-  int len;
-  int mem_length, pad;
-  char *start;
-  int rc = NO_ERROR;
-
-  /* Must have an explicit size here - can't be determined from the domain */
-  if (size < 0)
-    {
-      return;
-    }
-
-  if (memptr == NULL)
-    {
-      if (size)
-	{
-	  or_advance (buf, size);
-	}
-    }
-  else
-    {
-      mem = (char **) memptr;
-      cur = *mem;
-      /* should we be checking for existing strings ? */
-#if 0
-      if (cur != NULL)
-	db_private_free_and_init (NULL, cur);
-#endif
-
-      new_ = NULL;
-      if (size)
-	{
-	  start = buf->ptr;
-
-	  /* KLUDGE, we have some knowledge of how the thing is stored here in order have some control over the
-	   * conversion between the packed length prefix and the full word memory length prefix. Might want to put this 
-	   * in another specialized or_ function. */
-
-	  /* Get just the length prefix. */
-	  len = or_get_varchar_length (buf, &rc);
-
-	  /* 
-	   * Allocate storage for this string, including our own full word size
-	   * prefix and a NULL terminator.
-	   */
-	  mem_length = len + sizeof (int) + 1;
-
-	  new_ = db_private_alloc (NULL, mem_length);
-	  if (new_ == NULL)
-	    {
-	      or_abort (buf);
-	    }
-	  else
-	    {
-	      /* store the length in our memory prefix */
-	      *(int *) new_ = len;
-	      cur = new_ + sizeof (int);
-
-	      /* read the string, with the NULL terminator(which is expected) */
-	      or_get_data (buf, cur, len + 1);
-	      /* align like or_get_varchar */
-	      or_get_align32 (buf);
-	    }
-
-	  /* 
-	   * If we were given a size, check to see if for some reason this is
-	   * larger than the already word aligned string that we have now
-	   * extracted.  This shouldn't be the case but since we've got a
-	   * length, we may as well obey it.
-	   */
-	  pad = size - (int) (buf->ptr - start);
-	  if (pad > 0)
-	    {
-	      or_advance (buf, pad);
-	    }
-	}
-      *mem = new_;
-    }
+  return mr_data_readmem_string (buf, memptr, domain, size);
 }
 
 static void
@@ -16568,6 +16501,10 @@ pr_get_compression_length (const char *string, int charlen)
 
   length = charlen;
 
+  if (!pr_Enable_string_compression)	/* compession is not set */
+    {
+      return length;
+    }
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
     {
@@ -16663,6 +16600,14 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
 
+  if (!pr_Enable_string_compression)	/* compession is not set */
+    {
+      length = str_length;
+      compression_length = 0;
+      str = string;
+      goto after_compression;
+    }
+
   /* Step 1 : Compress, if possible, the dbvalue */
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
@@ -16716,7 +16661,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
       compression_length = 0;
       str = string;
     }
-
+after_compression:
   /* 
    * Step 2 : Compute the disk size of the dbvalue.
    * We are sure that the initial string length is greater than 255, which means that the new encoding applies.

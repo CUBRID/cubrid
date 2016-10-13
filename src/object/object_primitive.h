@@ -367,6 +367,8 @@ extern int pr_do_db_value_string_compression (DB_VALUE * value);
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
 
+extern int pr_Enable_string_compression;
+
 /* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
 #define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + (length) + MAX_ALIGNMENT)
 

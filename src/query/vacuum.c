@@ -620,8 +620,6 @@ static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELP
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_ovf (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_object, MVCCID threshold_mvccid,
-			    bool reusable, bool was_interrupted);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
 static void vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slots, PGSLOTID * slots,
@@ -3081,44 +3079,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
       if (LOG_IS_MVCC_HEAP_OPERATION (log_record_data.rcvindex))
 	{
-	  if (log_record_data.rcvindex == RVHF_MVCC_UPDATE_OVERFLOW)
-	    {
-	      /* only the old OVF record must be removed;
-	       * can do this here to avoid complications */
-
-	      RECDES ovf_rec;
-	      OID ovf_oid;
-	      VACUUM_HEAP_OBJECT ovf_obj;
-	      bool reusable;
-
-	      assert (undo_data != NULL);
-	      ovf_rec.type = *(INT16 *) (undo_data);
-	      ovf_rec.data = (char *) (undo_data) + sizeof (ovf_rec.type);
-	      ovf_rec.area_size = ovf_rec.length = undo_data_size - sizeof (ovf_rec.type);
-
-	      assert (ovf_rec.type == REC_BIGONE);
-	      ovf_oid = *((OID *) ovf_rec.data);
-
-	      VFID_COPY (&ovf_obj.vfid, &log_vacuum.vfid);
-	      COPY_OID (&ovf_obj.oid, &ovf_oid);
-	      reusable = file_get_type (thread_p, &ovf_obj.vfid);
-
-	      error_code = vacuum_heap_ovf (thread_p, &ovf_obj, threshold_mvccid, reusable, was_interrupted);
-	      if (error_code != NO_ERROR)
-		{
-		  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-				 "VACUUM ERROR: Vacuum heap page %d|%d, error_code=%d.\n", ovf_obj.oid.volid,
-				 ovf_obj.oid.pageid);
-
-		  assert_release (false);
-		  er_clear ();
-		  error_code = NO_ERROR;
-		  /* Release should not stop. Continue. */
-		}
-
-	      continue;
-	    }
-
 	  /* Collect heap object to be vacuumed at the end of the job. */
 	  heap_object_oid.pageid = log_record_data.pageid;
 	  heap_object_oid.volid = log_record_data.volid;
@@ -3817,8 +3777,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     }
 
   /* We are here because the file that will be vacuumed is not dropped. */
-  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
-      && log_record_data->rcvindex != RVHF_MVCC_UPDATE_OVERFLOW)
+  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
     {
       /* No need to unpack undo data */
       return NO_ERROR;
@@ -7052,7 +7011,7 @@ print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_hea
  *	   and DISK_ERROR in case of an error.
  * thread_p (in):
  * oid (in): The not vacuumed instance OID
- * class_oid (in): The class to which belongs the oid
+ * class_oid (in): The class to which the oid belongs
  * recdes (in): The not vacuumed record
  * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
  *			 the type node. If <0 then the OID comes from heap. 
@@ -7077,7 +7036,7 @@ vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid, OID * clas
  *
  * return: true if the record was not vacuumed and is completely lost.
  * thread_p (in):
- * recdes (in): The header of the record to be checked
+ * rec_header (in): The header of the record to be checked
  *
  */
 static bool
@@ -7113,7 +7072,7 @@ is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
  * thread_p (in):
  * oid (in): The not vacuumed instance OID
  * class_oid (in): The class to which belongs the oid
- * recdes (in): The not vacuumed record header
+ * rec_header (in): The not vacuumed record header
  * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
  *			 the type node. If <0 then the OID comes from heap. 
  *
@@ -7520,25 +7479,6 @@ vacuum_notify_need_flush (int need_flush)
   vacuum_Data.flush_vacuum_data = need_flush;
 }
 
-/*
- * vacuum_heap_ovf () - Vacuum overflow heap record of bigone.
- *
- * return		 : Error code.
- * thread_p (in)	 : Thread entry.
- * heap_object (in)	 : Object to vacuum.
- * threshold_mvccid (in) : Threshold MVCCID used to vacuum.
- * reusable (in)	 : True if object slots are reusable.
- * was_interrutped (in)  : True if same job was executed and interrupted.
- */
-int
-vacuum_heap_ovf (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * ovf_object, MVCCID threshold_mvccid,
-		 bool reusable, bool was_interrupted)
-{
-  int error_code = NO_ERROR;
-
-  return error_code;
-}
-
 #if !defined (NDEBUG)
 /*
  * vacuum_data_check_page_fix () - Check fix counts on vacuum data pages are not off.
@@ -7586,24 +7526,37 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
 {
   MVCC_REC_HEADER rec_header;
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
-  recdes.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
-  recdes.area_size = DB_PAGESIZE;
-
-  if (spage_get_record (pgptr, slotid, &recdes, COPY) != S_SUCCESS)
+  /* get record header according to record type */
+  if (rec_type == REC_BIGONE)
     {
-      assert_release (false);
-      return ER_FAILED;
+      if (heap_get_mvcc_rec_header_from_overflow (pgptr, &rec_header, &recdes) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      recdes.type = REC_BIGONE;
     }
+  else
+    {
+      recdes.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
+      recdes.area_size = DB_PAGESIZE;
+      if (spage_get_record (pgptr, slotid, &recdes, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      if (or_mvcc_get_header (&recdes, &rec_header) != NO_ERROR)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+    }
+
   assert (recdes.type == rec_type);
-
-  if (or_mvcc_get_header (&recdes, &rec_header) != NO_ERROR)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
 
   if (log_is_in_crash_recovery ())
     {
@@ -7631,19 +7584,34 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
     {
       /* the undo/redo record was qualified to have its insid and prev version vacuumed;
        * do this here because it is possible that vacuum have missed it during update/delete operation */
-      MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
-
-      if (or_mvcc_set_header (&recdes, &rec_header) != NO_ERROR)
+      if (rec_type == REC_BIGONE)
 	{
-	  assert_release (false);
-	  return ER_FAILED;
+	  assert (MVCC_IS_FLAG_SET (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION));
+	  MVCC_SET_INSID (&rec_header, MVCCID_ALL_VISIBLE);
+	  LSA_SET_NULL (&rec_header.prev_version_lsa);
+
+	  if (heap_set_mvcc_rec_header_on_overflow (pgptr, &rec_header) != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
 	}
-
-      /* update the record */
-      if (spage_update (thread_p, pgptr, slotid, &recdes) != SP_SUCCESS)
+      else
 	{
-	  assert_release (false);
-	  return ER_FAILED;
+	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+
+	  if (or_mvcc_set_header (&recdes, &rec_header) != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+
+	  /* update the record */
+	  if (spage_update (thread_p, pgptr, slotid, &recdes) != SP_SUCCESS)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
 	}
 
       pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
