@@ -436,7 +436,7 @@ struct vacuum_heap_helper
   INT16 record_type;		/* Current record type. */
   RECDES record;		/* Current record data. */
 
-  /* buffer of current record (used by NEW_HOME) */
+  /* buffer of current record (used by HOME and NEW_HOME) */
   char rec_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   MVCC_REC_HEADER mvcc_header;	/* MVCC header. */
