@@ -5029,7 +5029,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   VFID_SET_NULL (&boot_Db_parm->dropped_files_vfid);
 
   /* Create the needed files */
-  if (file_tracker_create (thread_p, &boot_Db_parm->trk_vfid) == NULL
+  if (flre_tracker_create (thread_p, &boot_Db_parm->trk_vfid) == NULL
       || xheap_create (thread_p, &boot_Db_parm->hfid, NULL, false) < 0
       || xheap_create (thread_p, &boot_Db_parm->rootclass_hfid, NULL, false) < 0
       || heap_assign_address (thread_p, &boot_Db_parm->rootclass_hfid, NULL, &boot_Db_parm->rootclass_oid,

@@ -405,6 +405,7 @@ extern int flre_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern DISK_ISVALID flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
 extern int flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
 extern int flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp);
+extern int flre_update_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
 
 extern int flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    VPID * vpid_nth);
@@ -413,6 +414,10 @@ extern void flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
 
 extern void flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int flre_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
+
+extern int flre_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);
+extern int flre_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out);
+extern int flre_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
 
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -432,6 +437,7 @@ extern int file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LO
 extern int file_rv_extdata_merge_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_merge_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_extdata_merge_compare_vsid_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_merge_compare_track_item_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

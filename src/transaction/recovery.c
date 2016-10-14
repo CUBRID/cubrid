@@ -1048,6 +1048,19 @@ struct rvfun RV_fun[] = {
    vacuum_rv_replace_dropped_file,
    NULL,
    NULL},
+
+  {RVFL_EXTDATA_MERGE_COMPARE_TRACK_ITEM,
+   "RVFL_EXTDATA_MERGE_COMPARE_TRACK_ITEM",
+   file_rv_extdata_merge_undo,
+   file_rv_extdata_merge_compare_track_item_redo,
+   NULL,
+   NULL},
+  {RVFL_EXTDATA_UPDATE_ITEM,
+   "RVFL_EXTDATA_UPDATE_ITEM",
+   log_rv_copy_char,
+   log_rv_copy_char,
+   NULL,
+   NULL},
 };
 
 /*

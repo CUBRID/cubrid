@@ -5045,25 +5045,43 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
        * Try to reuse an already mark deleted heap file
        */
 
-      vpid.volid = hfid->vfid.volid;
-      if (file_type != FILE_HEAP_REUSE_SLOTS && file_reuse_deleted (thread_p, &hfid->vfid, file_type, &hfdes) != NULL
-	  && heap_get_header_page (thread_p, hfid, &vpid) == NO_ERROR)
+      error_code = flre_tracker_reuse_heap (thread_p, &hfid->vfid);
+      if (error_code != NO_ERROR)
 	{
-	  hfid->hpgid = vpid.pageid;
-	  if (heap_reuse (thread_p, hfid, &hfdes.class_oid, reuse_oid) != NULL)
-	    {
-	      /* A heap has been reused */
-	      assert (!HFID_IS_NULL (hfid));
-	      if (heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid) != NO_ERROR)
-		{
-		  /* Failed to cache HFID. */
-		  assert_release (false);
-		}
-	      goto end;
-	    }
+	  ASSERT_ERROR ();
+	  goto error;
 	}
-
-      hfid->vfid.volid = vpid.volid;
+      if (!VFID_ISNULL (&hfid->vfid))
+	{
+	  VPID vpid_heap_header;
+	  error_code = flre_update_descriptor (thread_p, &hfid->vfid, &hfdes);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error;
+	    }
+	  error_code = flre_get_sticky_first_page (thread_p, &hfid->vfid, &vpid_heap_header);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error;
+	    }
+	  assert (hfid->vfid.volid == vpid_heap_header.volid);
+	  hfid->hpgid = vpid_heap_header.pageid;
+	  if (heap_reuse (thread_p, hfid, &hfdes.class_oid, reuse_oid) == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto error;
+	    }
+	  error_code = heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid);
+	  if (error_code != NO_ERROR)
+	    {
+	      /* could not cache */
+	      assert_release (false);
+	    }
+	  /* reuse successful */
+	  goto end;
+	}
     }
 
   /* 
@@ -5667,16 +5685,13 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
 
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      ret = file_mark_as_deleted (thread_p, &vfid, class_oid);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
+      flre_postpone_destroy (thread_p, &vfid);
     }
 
-  ret = file_mark_as_deleted (thread_p, &hfid->vfid, class_oid);
+  ret = flre_tracker_mark_heap_deleted (thread_p, &hfid->vfid);
   if (ret != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return ret;
     }
 
