@@ -4866,7 +4866,7 @@ disk_stab_unit_unreserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bo
       nsect++;
     }
 
-  /* all bits muse be set */
+  /* all bits must be set */
   assert ((unreserve_bits & (*cursor->unit)) == unreserve_bits);
   if (unreserve_bits != 0)
     {
