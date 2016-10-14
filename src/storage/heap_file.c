@@ -23068,6 +23068,19 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 #endif /* ENABLE_SYSTEMTAP */
 
   /* 
+   * Adjust new record header
+   */
+  if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid))
+    {
+      rc = heap_update_adjust_recdes_header (thread_p, context, is_mvcc_class);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+  /* 
    * Get location
    */
   rc = heap_get_record_location (thread_p, context);
@@ -23099,19 +23112,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     {
       rc = ER_FAILED;
       goto exit;
-    }
-
-  /* 
-   * Adjust new record header
-   */
-  if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid))
-    {
-      rc = heap_update_adjust_recdes_header (thread_p, context, is_mvcc_class);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
