@@ -16868,7 +16868,11 @@ pr_data_compress_string (char *string, int str_length, char *compressed_string, 
     {
       return rc;
     }
-
+  if (!pr_Enable_string_compression)	/* compession is not set */
+    {
+      *compressed_length = -1;
+      return rc;
+    }
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
     {
