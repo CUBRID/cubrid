@@ -15013,7 +15013,7 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
   dest_end_ptr = (char *) file_extdata_end (extdata_dest);
 
   /* advance source and destination pointers based on item order. Stop when end of destination is reached. */
-  while (dest_ptr <= dest_end_ptr)
+  while (dest_ptr < dest_end_ptr)
     {
       /* collect all items from source that are smaller than current destination item. */
       for (src_new_ptr = src_ptr; src_new_ptr < src_end_ptr; src_ptr += extdata_src->size_of_item)
