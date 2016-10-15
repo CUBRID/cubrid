@@ -2692,9 +2692,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = file_tracker_cache_vfid (&boot_Db_parm->trk_vfid);
+  error_code = flre_tracker_load (thread_p, &boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
   catalog_initialize (&boot_Db_parm->ctid);
@@ -5538,9 +5539,10 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
       goto error_exit;
     }
 
-  error_code = file_tracker_cache_vfid (&boot_Db_parm->trk_vfid);
+  error_code = flre_tracker_load (thread_p, &boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error_exit;
     }
   catalog_initialize (&boot_Db_parm->ctid);

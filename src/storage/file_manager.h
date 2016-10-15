@@ -416,6 +416,7 @@ extern void flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int flre_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
 
 extern int flre_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);
+extern int flre_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int flre_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out);
 extern int flre_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
 
