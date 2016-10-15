@@ -16899,7 +16899,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
     }
   pgbuf_set_dirty_and_free (thread_p, page_fhead);
 
-  if (!is_temp)
+  if (!is_temp && file_type != FILE_TRACKER)
     {
       /* add to tracker */
       error_code = flre_tracker_register (thread_p, vfid, file_type, NULL);
