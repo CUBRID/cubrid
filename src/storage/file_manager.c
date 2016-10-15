@@ -13966,6 +13966,9 @@ static bool file_Logging = false;
 #define FILE_TEMPCACHE_ENTRY_MSG "%p, VFID %d|%d, %s"
 #define FILE_TEMPCACHE_ENTRY_AS_ARGS(ent) ent, VFID_AS_ARGS (&(ent)->vfid), file_type_to_string ((ent)->ftype)
 
+#define FILE_TRACK_ITEM_MSG "VFID %d|%d, %s"
+#define FILE_TRACK_ITEM_AS_ARGS(item) (item)->volid, (item)->fileid, file_type_to_string ((FILE_TYPE) (item)->type)
+
 /************************************************************************/
 /* File manipulation section                                            */
 /************************************************************************/
@@ -21205,6 +21208,8 @@ flre_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
   bool found;
   int pos;
 
+  LOG_LSA save_lsa;
+
   int error_code = NO_ERROR;
 
   assert (vfid != NULL);
@@ -21293,9 +21298,14 @@ flre_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
       error_code = ER_FAILED;
       goto exit;
     }
+  save_lsa = *pgbuf_get_lsa (page_extdata);
   file_extdata_insert_at (extdata, pos, 1, &item);
   file_log_extdata_add (thread_p, extdata, page_extdata, pos, 1, &item);
   pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
+
+  file_log ("flre_tracker_register", "added " FILE_TRACK_ITEM_MSG ", to page %d|%d, prev_lsa = %lld|%d, "
+	    "crt_lsa = %lld|%d, at pos %d ", FILE_TRACK_ITEM_AS_ARGS (&item), PGBUF_PAGE_VPID_AS_ARGS (page_extdata),
+	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_extdata), pos);
 
   /* success */
   assert (error_code == NO_ERROR);
@@ -21335,6 +21345,8 @@ flre_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   VPID vpid_merged;
 
+  LOG_LSA save_lsa;
+
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
@@ -21367,8 +21379,13 @@ flre_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   /* remove from pos */
   page_extdata = page_track_other != NULL ? page_track_other : page_track_head;
+  save_lsa = *pgbuf_get_lsa (page_extdata);
   file_log_extdata_remove (thread_p, extdata, page_extdata, pos, 1);
   file_extdata_remove_at (extdata, pos, 1);
+
+  file_log ("flre_tracker_unregister", "removed VFID %d|%d from page_extdata %d|%d, prev_lsa = %lld|%d, "
+	    "crt_lsa = %lld|%d, at pos %d ", VFID_AS_ARGS (vfid), PGBUF_PAGE_VPID_AS_ARGS (page_extdata),
+	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_extdata), pos);
 
   /* try to merge pages */
   error_code =
@@ -21382,6 +21399,7 @@ flre_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
   if (!VPID_ISNULL (&vpid_merged))
     {
       /* merged page. deallocate it */
+      file_log ("flre_tracker_unregister", "deallocate page %d|%d ", VPID_AS_ARGS (&vpid_merged));
       error_code = flre_dealloc (thread_p, vfid, &vpid_merged, FILE_TRACKER);
       if (error_code != NO_ERROR)
 	{
@@ -21597,6 +21615,8 @@ flre_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
   FLRE_TRACK_ITEM item_new;
   VFID *vfid;
 
+  LOG_LSA save_lsa;
+
   if (item->type != (INT16) FILE_HEAP)
     {
       return NO_ERROR;
@@ -21612,7 +21632,13 @@ flre_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
 
   item_new = *item;
   item_new.metadata.heap.is_marked_deleted = false;
+
+  save_lsa = *pgbuf_get_lsa (page_of_item);
   file_extdata_update_item (thread_p, page_of_item, &item_new, index_item, extdata);
+
+  file_log ("flre_tracker_item_reuse_heap", "reuse heap file %d|%d; tracker page %d|%d, prev_lsa = %lld|%d, "
+	    "crt_lsa = %lld|%d, item at pos %d ", VFID_AS_ARGS (vfid), PGBUF_PAGE_VPID_AS_ARGS (page_of_item),
+	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_of_item), index_item);
   return NO_ERROR;
 }
 
@@ -21646,12 +21672,21 @@ flre_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
   FLRE_TRACK_ITEM item_new;
   FLRE_TRACK_ITEM *item_old = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
 
+  LOG_LSA save_lsa;
+
   assert (item_old->type == FILE_HEAP);
   assert (!item_old->metadata.heap.is_marked_deleted);
 
   item_new = *item_old;
   item_new.metadata.heap.is_marked_deleted = true;
+
+  save_lsa = *pgbuf_get_lsa (page_of_item);
   file_extdata_update_item (thread_p, page_of_item, &item_new, index_item, extdata);
+
+  file_log ("flre_tracker_item_mark_heap_deleted", "mark delete heap file %d|%d; tracker page %d|%d, "
+	    "prev_lsa = %lld|%d, crt_lsa = %lld|%d, item at pos %d ", item_old->volid, item_old->fileid,
+	    PGBUF_PAGE_VPID_AS_ARGS (page_of_item), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_of_item),
+	    index_item);
 
   return NO_ERROR;
 }
