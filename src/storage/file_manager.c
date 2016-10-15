@@ -15453,7 +15453,7 @@ file_extdata_find_not_full (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** ext
    * note: the input page is usually NULL. the input extensible data usually belongs to file header. this would unfix
    *       page_out when it advances to next page and we don't want to unfix header page.
    * note: if all extensible data components are full, the last extensible data and page are output. the caller can
-   *       then use them to append a new page and a new extenible data component.
+   *       then use them to append a new page and a new extensible data component.
    */
 
   *found = false;
@@ -21200,9 +21200,9 @@ static int
 flre_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE ftype, FLRE_TRACK_METADATA * metadata)
 {
   FLRE_TRACK_ITEM item;
-  FILE_EXTENSIBLE_DATA *extdata;
-  PAGE_PTR page_track_head;
-  PAGE_PTR page_track_other;
+  FILE_EXTENSIBLE_DATA *extdata = NULL;
+  PAGE_PTR page_track_head = NULL;
+  PAGE_PTR page_track_other = NULL;
   PAGE_PTR page_extdata = NULL;
 
   bool found;
