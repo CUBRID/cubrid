@@ -21652,6 +21652,8 @@ flre_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
 int
 flre_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out)
 {
+  assert (vfid_out != NULL);
+  VFID_SET_NULL (vfid_out);
   return flre_tracker_map (thread_p, PGBUF_LATCH_WRITE, flre_tracker_item_reuse_heap, vfid_out);
 }
 
