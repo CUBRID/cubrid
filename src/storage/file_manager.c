@@ -15016,7 +15016,7 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
   while (dest_ptr <= dest_end_ptr)
     {
       /* collect all items from source that are smaller than current destination item. */
-      for (src_new_ptr = src_ptr; src_new_ptr <= src_end_ptr; src_ptr += extdata_src->size_of_item)
+      for (src_new_ptr = src_ptr; src_new_ptr < src_end_ptr; src_ptr += extdata_src->size_of_item)
 	{
 	  assert (compare_func (src_new_ptr, dest_ptr) != 0);
 	  if (compare_func (src_new_ptr, dest_ptr) > 0)
@@ -15044,7 +15044,7 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
 	  break;
 	}
       /* skip all items from destination smaller than current source item */
-      for (; dest_ptr <= dest_end_ptr; dest_ptr += extdata_dest->size_of_item)
+      for (; dest_ptr < dest_end_ptr; dest_ptr += extdata_dest->size_of_item)
 	{
 	  assert (compare_func (src_ptr, dest_ptr) != 0);
 	  if (compare_func (src_ptr, dest_ptr) <= 0)
