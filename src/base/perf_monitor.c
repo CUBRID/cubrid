@@ -81,7 +81,6 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-int perfmon_Sessions_num_holdable_cursors;
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
