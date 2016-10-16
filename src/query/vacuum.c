@@ -2972,6 +2972,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
     }
 
   assert (worker != NULL);
+  assert (worker->tdes->topops.last == -1);
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
   PERF_UTIME_TRACKER_START (thread_p, &job_time_tracker);
@@ -3266,6 +3267,10 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  /* Safeguard code */
 	  assert_release (false);
 	}
+
+      /* do not leak system ops */
+      assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
+      assert (worker->tdes->topops.last == -1);
     }
 
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
@@ -3274,12 +3279,17 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
       assert_release (false);
       /* Release should not stop. Continue. */
     }
+  assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
+  assert (worker->tdes->topops.last == -1);
 
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, vacuum_Data.log_block_npages);
 
   vacuum_complete = true;
 
 end:
+
+  assert (worker->tdes->topops.last == -1);
+
 #if defined(SERVER_MODE)
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER && block_log_buffer != NULL)
     {

@@ -3704,6 +3704,8 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       LSA_SET_NULL (&first_postpone_to_apply);
 
+      assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+
       /* 
        * The transaction was the one that was committing
        */
@@ -4179,13 +4181,13 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  /* Clear MVCCID */
 		  tdes->mvccinfo.id = MVCCID_NULL;
 
-		  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 		  if (LOG_IS_VACUUM_THREAD_TRANID (tran_id))
 		    {
 		      vacuum_rv_finish_worker_recovery (thread_p, tran_id);
 		    }
 		  else
 		    {
+		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 		      logtb_free_tran_index (thread_p, tran_index);
 		    }
 		  tdes = NULL;
@@ -4200,6 +4202,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 				log_rtype, log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_lsa.pageid);
+		  assert (false);
 
 		  /* 
 		   * Remove the transaction from the recovery process
@@ -4208,13 +4211,13 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  /* Clear MVCCID */
 		  tdes->mvccinfo.id = MVCCID_NULL;
 
-		  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 		  if (LOG_IS_VACUUM_THREAD_TRANID (tran_id))
 		    {
 		      vacuum_rv_finish_worker_recovery (thread_p, tran_id);
 		    }
 		  else
 		    {
+		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 		      logtb_free_tran_index (thread_p, tran_index);
 		    }
 		  tdes = NULL;
@@ -4230,13 +4233,14 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      /* Clear MVCCID */
 		      tdes->mvccinfo.id = MVCCID_NULL;
 
-		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 		      if (LOG_IS_VACUUM_THREAD_TRANID (tran_id))
 			{
 			  vacuum_rv_finish_worker_recovery (thread_p, tran_id);
 			}
 		      else
 			{
+			  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
+					       LOG_NEED_TO_WRITE_EOT_LOG);
 			  logtb_free_tran_index (thread_p, tran_index);
 			  tdes = NULL;
 			}

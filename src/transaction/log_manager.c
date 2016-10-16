@@ -3798,6 +3798,21 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 
       /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
       VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_TOPOP);
+
+      if (tdes->topops.last < 0)
+	{
+	  assert (tdes->topops.last == -1);
+
+	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
+	   * are not  nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
+	   * records to undo will process all system operations until the first one. Since vacuum workers.master never
+	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
+	   * system operations will not be linked between them. */
+	  LSA_SET_NULL (&tdes->head_lsa);
+	  LSA_SET_NULL (&tdes->tail_lsa);
+	  LSA_SET_NULL (&tdes->undo_nxlsa);
+	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
+	}
     }
   else
     {
@@ -6122,6 +6137,8 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
   LOG_2PC_EXECUTE execute_2pc_type;
   int error_code = NO_ERROR;
 
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -6237,6 +6254,8 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
   LOG_TDES *tdes;		/* Transaction descriptor */
   bool decision;
   int error_code = NO_ERROR;
+
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   if (tran_index == NULL_TRAN_INDEX)
     {
@@ -6440,6 +6459,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   TRAN_STATE state;		/* State of transaction */
 
   assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   state = tdes->state;
 
