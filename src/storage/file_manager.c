@@ -21400,7 +21400,7 @@ flre_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       /* merged page. deallocate it */
       file_log ("flre_tracker_unregister", "deallocate page %d|%d ", VPID_AS_ARGS (&vpid_merged));
-      error_code = flre_dealloc (thread_p, vfid, &vpid_merged, FILE_TRACKER);
+      error_code = flre_dealloc (thread_p, &flre_Tracker_vfid, &vpid_merged, FILE_TRACKER);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
