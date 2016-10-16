@@ -18119,12 +18119,12 @@ flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid,
   PAGE_PTR page_fhead = NULL;
   FLRE_HEADER *fhead = NULL;
 
+  bool is_temp;
+
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (npages >= 1);
-
-  assert (log_check_system_op_is_started (thread_p));
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
@@ -18138,8 +18138,14 @@ flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid,
   file_header_sanity_check (fhead);
   /* keep header while allocating all pages. we have a great chance to allocate all pages in the same sectors */
 
-  /* start a system op. we may abort page allocations if an error occurs. */
-  log_sysop_start (thread_p);
+  is_temp = FILE_IS_TEMPORARY (fhead);
+  if (!is_temp)
+    {
+      assert (log_check_system_op_is_started (thread_p));
+
+      /* start a system op. we may abort page allocations if an error occurs. */
+      log_sysop_start (thread_p);
+    }
 
   /* do not leak pages! if not numerable, it should use all allocated VPIDS */
   assert (FILE_IS_NUMERABLE (fhead) || vpids_out != NULL);
@@ -18159,15 +18165,19 @@ flre_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid,
 
 exit:
 
-  if (error_code == NO_ERROR)
+  if (!is_temp)
     {
-      /* caller will decide what happens with allocated pages */
-      log_sysop_attach_to_outer (thread_p);
-    }
-  else
-    {
-      /* undo allocations */
-      log_sysop_abort (thread_p);
+      assert (log_check_system_op_is_started (thread_p));
+      if (error_code == NO_ERROR)
+	{
+	  /* caller will decide what happens with allocated pages */
+	  log_sysop_attach_to_outer (thread_p);
+	}
+      else
+	{
+	  /* undo allocations */
+	  log_sysop_abort (thread_p);
+	}
     }
 
   if (page_fhead != NULL)
