@@ -549,7 +549,7 @@ elo_create (DB_ELO * elo)
 
 
   ret = es_create_file (out_uri);
-  if (ret != NO_ERROR)
+  if (ret < NO_ERROR)
     {
       ASSERT_ERROR ();
       return ret;
@@ -920,7 +920,7 @@ elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count)
   assert (elo->locator != NULL);
 
   ret = es_read_file (elo->locator, buf, count, pos);
-  if (ret != NO_ERROR)
+  if (ret < NO_ERROR)
     {
       ASSERT_ERROR ();
     }
