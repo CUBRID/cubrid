@@ -14149,12 +14149,10 @@ STATIC_INLINE bool file_extdata_can_merge (const FILE_EXTENSIBLE_DATA *
 STATIC_INLINE void file_extdata_merge_unordered (const FILE_EXTENSIBLE_DATA *
 						 extdata_src,
 						 FILE_EXTENSIBLE_DATA * extdata_dest) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA *
-					       extdata_src,
-					       FILE_EXTENSIBLE_DATA *
-					       extdata_dest,
-					       int (*compare_func) (const void
-								    *, const void *)) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
+					       FILE_EXTENSIBLE_DATA * extdata_dest,
+					       int (*compare_func) (const void *, const void *))
+  __attribute__ ((ALWAYS_INLINE));
 static void file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata,
 				       const void *item_to_find,
 				       int (*compare_func) (const void *, const void *), bool * found, int *position);
@@ -14987,8 +14985,8 @@ file_extdata_merge_unordered (const FILE_EXTENSIBLE_DATA * extdata_src, FILE_EXT
  * compare_func (in)	 : Compare function (to order items).
  */
 STATIC_INLINE void
-file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
-			    FILE_EXTENSIBLE_DATA * extdata_dest, int (*compare_func) (const void *, const void *))
+file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src, FILE_EXTENSIBLE_DATA * extdata_dest,
+			    int (*compare_func) (const void *, const void *))
 {
   int n_merged = 0;
   char *dest_ptr;
@@ -15016,7 +15014,7 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
   while (dest_ptr < dest_end_ptr)
     {
       /* collect all items from source that are smaller than current destination item. */
-      for (src_new_ptr = src_ptr; src_new_ptr < src_end_ptr; src_ptr += extdata_src->size_of_item)
+      for (src_new_ptr = src_ptr; src_new_ptr < src_end_ptr; src_new_ptr += extdata_src->size_of_item)
 	{
 	  assert (compare_func (src_new_ptr, dest_ptr) != 0);
 	  if (compare_func (src_new_ptr, dest_ptr) > 0)
@@ -15035,12 +15033,14 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
 	  dest_ptr += memsize;
 	  dest_end_ptr += memsize;
 
+	  src_ptr = src_new_ptr;
+
 	  assert (dest_end_ptr <= debug_dest_end_ptr);
 	}
-      src_ptr = src_new_ptr;
-      if (src_ptr == src_end_ptr)
+      if (src_ptr >= src_end_ptr)
 	{
 	  /* source extensible data was consumed. */
+	  assert (src_ptr == src_end_ptr);
 	  break;
 	}
       /* skip all items from destination smaller than current source item */
