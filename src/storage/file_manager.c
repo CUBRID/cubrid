@@ -21649,6 +21649,9 @@ flre_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
   file_log ("flre_tracker_item_reuse_heap", "reuse heap file %d|%d; tracker page %d|%d, prev_lsa = %lld|%d, "
 	    "crt_lsa = %lld|%d, item at pos %d ", VFID_AS_ARGS (vfid), PGBUF_PAGE_VPID_AS_ARGS (page_of_item),
 	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_of_item), index_item);
+
+  /* stop looking */
+  *stop = true;
   return NO_ERROR;
 }
 

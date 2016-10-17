@@ -56,3 +56,31 @@ define file_header_part_ftab
     set $arg1 = (FILE_EXTENSIBLE_DATA *) (((char *) $fhead) + $off)
     end
   end
+  
+# file_print_tracker
+#
+# Prerequisite:
+# pgbuf_find_page
+#
+define file_print_tracker
+  pgbuf_find_page flre_Tracker_vpid.pageid flre_Tracker_vpid.volid $trkp
+  set $ext = (FILE_EXTENSIBLE_DATA *) $trkp
+  while 1
+    p *$ext
+    set $itemp = (char *) ($ext + 1)
+    set $endp = $itemp + $ext->size_of_item * $ext->n_items
+    while $itemp < $endp
+      set $item = (FLRE_TRACK_ITEM *) $itemp
+      set $ftype = $item->type
+      set $is_markdel = $ftype == 1 && $item->metadata.heap.is_marked_deleted
+      printf "VFID = %d|%d, type = %d, marked_deleted = %d\n", $item->volid, $item->fileid, $ftype, $is_markdel
+      set $itemp = $itemp + $ext->size_of_item
+      end
+    set $vpid = &$ext->vpid_next
+    if $vpid->pageid == -1
+      loop_break
+      end
+    pgbuf_find_page $vpid->pageid $vpid->volid $trkop
+    set $ext = (FILE_EXTENSIBLE_DATA *) $trkop
+    end
+  end
