@@ -5493,14 +5493,6 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
     }
 
   /* 
-   * If there is an overflow file for this heap, remove it
-   */
-  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
-    {
-      flre_postpone_destroy (thread_p, &vfid);
-    }
-
-  /* 
    * Reset the statistics. Set statistics for insertion back to first page
    * and reset unfill space according to new parameters
    */
