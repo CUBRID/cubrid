@@ -74,6 +74,31 @@
     } \
   while (0)
 
+/*
+ * Lookup to compute the MVCC header size faster:
+ *    INDEX	    MVCC FLAGS					      SIZE
+ *      0	     NO FLAGS				        REP_SIZE + CHN_SIZE
+ *	1	      INSID				    REP_SIZE + CHN_SIZE + MVCCID_SIZE
+ *	2	      DELID				    REP_SIZE + CHN_SIZE + MVCCID_SIZE
+ *	3	   INSID | DELID		        REP_SIZE + CHN_SIZE + MVCCID_SIZE + MVCCID_SIZE
+ *	4	    PREV_VERSION			    REP_SIZE + CHN_SIZE + PREV_VERSION_LSA_SIZE
+ *	5	  INSID | PREV_VERSION		    REP_SIZE + CHN_SIZE + MVCCID_SIZE + PREV_VERSION_LSA_SIZE
+ *      6	  DELID | PREV_VERSION		    REP_SIZE + CHN_SIZE + MVCCID_SIZE + PREV_VERSION_LSA_SIZE
+ *      7	INSID | DELID | PREV_VERSION	 REP_SIZE + CHN_SIZE + MVCCID_SIZE + MVCCID_SIZE + PREV_VERSION_LSA_SIZE
+ *
+ * Note:  In case that the heap record header modifies, mvcc_header_size_lookup must be updated.
+ */
+int mvcc_header_size_lookup[8] = {
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE
+};
+
 static TP_DOMAIN *unpack_domain (OR_BUF * buf, int *is_null);
 static char *or_pack_method_sig (char *ptr, void *method_sig_ptr);
 static char *or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n);
@@ -843,8 +868,8 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
 
   mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
-  old_mvcc_size = or_mvcc_header_size_from_flags (mvcc_old_flag);
-  new_mvcc_size = or_mvcc_header_size_from_flags (mvcc_rec_header->mvcc_flag);
+  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
+  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
   if (old_mvcc_size != new_mvcc_size)
     {
       /* resize MVCC info inside recdes */
@@ -1335,7 +1360,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
   if (compressable == true)
     {
-      if (!pr_Enable_string_compression)	/* compession is not set */
+      if (!pr_Enable_string_compression)	/* compression is not set */
 	{
 	  compressed_length = 0;
 	  goto after_compression;
@@ -7778,43 +7803,7 @@ error_return:
 int
 or_header_size (char *ptr)
 {
-  return or_mvcc_header_size_from_flags (OR_GET_MVCC_FLAG (ptr));
-}
-
-/*
- * or_mvcc_header_size_from_flags () - Return the record header size from flags.
- *
- * mvcc_flags(in): MVCC flags 
- * has_fixed_size(in) : true if has fixed size
- * return : header size
- * 
- */
-int
-or_mvcc_header_size_from_flags (char mvcc_flags)
-{
-  int mvcc_header_size = 0;
-
-  /* skip MVCC fields */
-  mvcc_header_size = OR_MVCC_REP_SIZE;
-
-  mvcc_header_size += OR_INT_SIZE;	/* chn */
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
-    {
-      mvcc_header_size += OR_MVCCID_SIZE;
-    }
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-    {
-      mvcc_header_size += OR_MVCCID_SIZE;
-    }
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
-    {
-      mvcc_header_size += OR_MVCC_PREV_VERSION_LSA_SIZE;
-    }
-
-  return mvcc_header_size;
+  return mvcc_header_size_lookup[OR_GET_MVCC_FLAG (ptr)];
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
