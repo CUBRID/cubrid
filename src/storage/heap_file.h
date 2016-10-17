@@ -283,7 +283,6 @@ struct heap_operation_context
 
   /* logical operation input */
   HFID hfid;			/* heap file identifier */
-  HFID oor_hfid;		/* out of row heap file identifier */
   OID oid;			/* object identifier */
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
