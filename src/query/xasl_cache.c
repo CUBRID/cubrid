@@ -93,7 +93,7 @@ XCACHE xcache_Global = {
   0,				/* soft_capacity */
   0,				/* mem_threshold */
   0,				/* last_cleaned_time */
-  10000,			/* time_threshold */
+  24 * 3600,			/* time_threshold */
   LF_HASH_TABLE_INITIALIZER,	/* ht */
   LF_FREELIST_INITIALIZER,	/* freelist */
   0,				/* entry_count */
@@ -1148,7 +1148,6 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
  * thread_p (in)      : Thread entry.
  * context (in)	      : Compile context (sql_info & recompile_xasl).
  * stream (in)	      : XASL stream.
- * oid (in)	      : User OID (unused). TODO: Remove me.
  * n_oid (in)	      : Related objects count.
  * class_oids (in)    : Related objects OID's.
  * class_locks (in)   : Related objects locks.
@@ -1156,7 +1155,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
  * xcache_entry (out) : XASL cache entry.
  */
 int
-xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID * oid,
+xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_STREAM * stream,
 	       int n_oid, const OID * class_oids, const int *class_locks, const int *tcards,
 	       XASL_CACHE_ENTRY ** xcache_entry)
 {
@@ -1455,7 +1454,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
     }
   else
     {
-      if ((xcache_Soft_capacity < xcache_Entry_count || xcache_Entry_count < xcache_mem_threshold
+      if ((xcache_Soft_capacity < xcache_Entry_count || xcache_mem_threshold < xcache_Entry_count
 	   || (clock () - xcache_last_cleaned_time) / CLOCKS_PER_SEC > xcache_time_threshold)
 	  && xcache_Cleanup_flag == 0)
 	{

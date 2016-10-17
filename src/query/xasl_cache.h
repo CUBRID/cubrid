@@ -105,7 +105,7 @@ extern int xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XA
 				XASL_CLONE * xclone);
 extern void xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 extern int xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_STREAM * stream,
-			  const OID * oid, int n_oid, const OID * class_oids, const int *class_locks,
+			  int n_oid, const OID * class_oids, const int *class_locks,
 			  const int *tcards, XASL_CACHE_ENTRY ** xcache_entry);
 extern void xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid);
 extern void xcache_drop_all (THREAD_ENTRY * thread_p);
