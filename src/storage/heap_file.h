@@ -384,6 +384,7 @@ struct heap_get_context
 
 /* Forward definition. */
 struct mvcc_reev_data;
+extern int mvcc_header_size_lookup[8];
 
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid);
 #ifdef DEBUG_CLASSREPR_CACHE
