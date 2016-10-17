@@ -3057,6 +3057,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  goto end;
 	}
 
+      worker->state = VACUUM_WORKER_STATE_EXECUTE;
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, PSTAT_VAC_WORKER_PROCESS_LOG);
+
       if (is_file_dropped)
 	{
 	  /* No need to vacuum */
@@ -3066,9 +3069,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 			 log_vacuum.vfid.fileid, log_record_data.rcvindex);
 	  continue;
 	}
-
-      worker->state = VACUUM_WORKER_STATE_EXECUTE;
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, PSTAT_VAC_WORKER_PROCESS_LOG);
 
 #if !defined (NDEBUG)
       if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid) || MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid)
@@ -3272,6 +3272,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
       assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
       assert (worker->tdes->topops.last == -1);
     }
+
+  assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
+  assert (worker->tdes->topops.last == -1);
 
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
