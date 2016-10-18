@@ -7638,6 +7638,7 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET (db_enum)));
       size += (*(tp_String.data_lengthval)) (&value, 1);
+      pr_clear_value (&value);
     }
 
   return size;
