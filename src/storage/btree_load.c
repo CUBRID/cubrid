@@ -43,6 +43,7 @@
 #include "db.h"
 #include "log_impl.h"
 #include "xserver_interface.h"
+#include "dbval.h"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -3616,12 +3617,12 @@ compare_driver (const void *first, const void *second, void *arg)
       c = btree_compare_key (&val1, &val2, key_type, 0, 1, NULL);
 
       /* Clear the values if it is required */
-      if (!DB_IS_NULL (&val1) && val1.need_clear == true)
+      if (DB_NEED_CLEAR (&val1))
 	{
 	  pr_clear_value (&val1);
 	}
 
-      if (!DB_IS_NULL (&val2) && val2.need_clear == true)
+      if (DB_NEED_CLEAR (&val2))
 	{
 	  pr_clear_value (&val2);
 	}
@@ -3910,7 +3911,6 @@ btree_node_number_of_keys (PAGE_PTR page_ptr)
   return key_cnt;
 }
 
-#if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
 /*
  * btree_get_btree_node_type_from_page () -
  *
@@ -3967,4 +3967,3 @@ btree_get_perf_btree_page_type (PAGE_PTR page_ptr)
     }
   return PERF_PAGE_BTREE_ROOT;
 }
-#endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */

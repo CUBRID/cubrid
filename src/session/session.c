@@ -1025,11 +1025,11 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
     {
       if (DB_GET_INT (value) == 1)
 	{
-	  xmnt_server_start_stats (NULL, false);
+	  perfmon_start_watch (NULL);
 	}
       else if (DB_GET_INT (value) == 0)
 	{
-	  xmnt_server_stop_stats (NULL);
+	  perfmon_stop_watch (NULL);
 	}
     }
   else if (strncasecmp (name_str, "trace_plan", 10) == 0)
@@ -2147,7 +2147,7 @@ session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name
 
   name_str = DB_GET_STRING (name);
 
-  stat_val = mnt_x_get_stats_and_clear (thread_p, name_str);
+  stat_val = perfmon_get_stats_and_clear (thread_p, name_str);
   DB_MAKE_BIGINT (result, stat_val);
 
   return NO_ERROR;
@@ -2437,7 +2437,8 @@ session_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qent
       state_p->queries = sqentry_p;
     }
 
-  mnt_qm_holdable_cursor (thread_p, ++sessions.num_holdable_cursors);
+  sessions.num_holdable_cursors++;
+  perfmon_Sessions_num_holdable_cursors++;
 }
 
 /*
@@ -2466,7 +2467,8 @@ session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_
       qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false);
     }
 
-  mnt_qm_holdable_cursor (thread_p, --sessions.num_holdable_cursors);
+  sessions.num_holdable_cursors--;
+  perfmon_Sessions_num_holdable_cursors--;
 }
 
 /*
@@ -2580,7 +2582,8 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
 	    }
 
 	  free_and_init (sentry_p);
-	  mnt_qm_holdable_cursor (thread_p, --sessions.num_holdable_cursors);
+	  sessions.num_holdable_cursors--;
+	  perfmon_Sessions_num_holdable_cursors--;
 
 	  break;
 	}

@@ -3330,7 +3330,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   LSA_COPY (&tdes->savept_lsa, &tdes->tail_lsa);
 
-  mnt_tran_savepoints (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_SAVEPOINTS);
 
   return &tdes->savept_lsa;
 }
@@ -3528,7 +3528,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, r;
 
   /* 
    * Remember the current tail of the transaction, so we can allow partial
@@ -3569,13 +3569,8 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
       if (LOG_ISRESTARTED ())
 	{
-#if defined(SERVER_MODE)
-	  assert (tdes->cs_topop.cs_index ==
-		  CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	  assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	  csect_enter_critical_section (thread_p, &tdes->cs_topop, INF_WAIT);
+	  r = rmutex_lock (thread_p, &tdes->rmutex_topop);
+	  assert (r == NO_ERROR);
 	}
     }
 
@@ -3586,13 +3581,8 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	  /* Out of memory */
 	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
-#if defined(SERVER_MODE)
-	      assert (tdes->cs_topop.cs_index ==
-		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+	      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+	      assert (r == NO_ERROR);
 	    }
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
@@ -3683,7 +3673,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
-  mnt_tran_start_topops (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
 
   return &tdes->topops.stack[tdes->topops.last].lastparent_lsa;
 }
@@ -3706,7 +3696,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   TRAN_STATE state;
   int tran_index;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, r;
 
   {
     int mod_factor = 5000;	/* 0.02% */
@@ -3947,16 +3937,11 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 
   if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-#if defined(SERVER_MODE)
-      assert (tdes->cs_topop.cs_index ==
-	      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-      assert (tdes->cs_topop.name == csect_Name_tdes);
-#endif
-
-      csect_exit_critical_section (thread_p, &tdes->cs_topop);
+      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
+      assert (r == NO_ERROR);
     }
 
-  mnt_tran_end_topops (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_END_TOPOPS);
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
@@ -5602,7 +5587,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       LOG_CS_EXIT (thread_p);
     }
 
-  mnt_tran_commits (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_COMMITS);
 
   return state;
 }
@@ -5706,7 +5691,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
     }
 
-  mnt_tran_rollbacks (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_ROLLBACKS);
 
   return state;
 }
@@ -9804,6 +9789,9 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   bool is_zipped = false;
   char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_ZIP *log_unzip_ptr = NULL;
+  char *area = NULL;
+  SCAN_CODE scan = S_SUCCESS;
+  bool area_was_mallocated = false;
 
   /* assert log record is not in prior list */
   oldest_prior_lsa = *log_get_append_lsa ();
@@ -9851,7 +9839,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 		      || log_rec_header->type == LOG_UNDOREDO_DATA
 		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_FATAL_ERROR, 1, "Expecting undo/undoredo log record");
-      return S_ERROR;
+      scan = S_ERROR;
+      goto exit;
     }
 
   /* get undo record */
@@ -9877,11 +9866,22 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   else
     {
       /* Need to copy the data into a contiguous area */
-      char *area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
 
-      /* The records processed in this function shouldn't be overflow records because of the different way of 
-       * logging REC_BIGONE updates. In this way, IO_PAGESIZE is the maximum size one can have. */
-      assert (udata_size <= IO_MAX_PAGE_SIZE);
+      if (udata_size <= IO_MAX_PAGE_SIZE)
+	{
+	  area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
+	}
+      else
+	{
+	  area = (char *) malloc (udata_size);
+	  if (area == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, udata_size);
+	      scan = S_ERROR;
+	      goto exit;
+	    }
+	  area_was_mallocated = true;
+	}
 
       /* Copy the data */
       logpb_copy_from_log (thread_p, area, udata_size, &process_lsa, log_page_p);
@@ -9894,7 +9894,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       if (log_unzip_ptr == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_get_undo_record");
-	  return S_ERROR;
+	  scan = S_ERROR;
+	  goto exit;
 	}
 
       if (log_unzip (log_unzip_ptr, udata_size, (char *) undo_data))
@@ -9905,8 +9906,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       else
 	{
 	  assert (false);
-	  log_zip_free (log_unzip_ptr);
-	  return S_ERROR;
+	  scan = S_ERROR;
+	  goto exit;
 	}
     }
 
@@ -9922,19 +9923,22 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
        */
       /* do not use unary minus because slot_p->record_length is unsigned */
       recdes->length *= -1;
-      if (log_unzip_ptr != NULL)
-	{
-	  log_zip_free (log_unzip_ptr);
-	}
 
-      return S_DOESNT_FIT;
+      scan = S_DOESNT_FIT;
+      goto exit;
     }
+
   memcpy (recdes->data, (char *) (undo_data) + sizeof (recdes->type), recdes->length);
 
+exit:
+  if (area_was_mallocated)
+    {
+      free (area);
+    }
   if (log_unzip_ptr != NULL)
     {
       log_zip_free (log_unzip_ptr);
     }
 
-  return S_SUCCESS;
+  return scan;
 }

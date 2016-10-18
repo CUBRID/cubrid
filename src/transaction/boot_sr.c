@@ -3338,6 +3338,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
+
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
@@ -3358,6 +3360,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
+      goto error;
+    }
+
+  error_code = perfmon_initialize (MAX_NTRANS);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -3409,8 +3418,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
-
-  mnt_server_init (MAX_NTRANS);
 
   /* 
    * Compose the full name of the database and find location of logs
@@ -4291,7 +4298,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  (void) xtran_server_abort (thread_p);
 	}
 
-      xmnt_server_stop_stats (thread_p);
+      perfmon_stop_watch (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
       CUBRID_CONN_END (client_id, tdes->client.db_user);
@@ -4780,7 +4787,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catalog_finalize ();
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
-  mnt_server_final ();
+  perfmon_finalize ();
   fileio_dismount_all (thread_p);
   disk_goodvol_decache (thread_p);
   boot_server_status (BOOT_SERVER_DOWN);
@@ -5587,6 +5594,12 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 	}
 
       er_clear ();
+    }
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   /* Find the prefix for the database */

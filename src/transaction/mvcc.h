@@ -37,10 +37,10 @@
   ((header)->mvcc_ins_id = (mvcc_id))
 
 #define MVCC_GET_DELID(header) \
-  ((header)->delid_chn.mvcc_del_id)
+  ((header)->mvcc_del_id)
 
 #define MVCC_SET_DELID(header, mvcc_id) \
-  ((header)->delid_chn.mvcc_del_id = (mvcc_id))
+  ((header)->mvcc_del_id = (mvcc_id))
 
 #define MVCC_GET_REPID(header) \
   ((header)->repid)
@@ -49,10 +49,10 @@
   ((header)->repid = (rep_id))
 
 #define MVCC_GET_CHN(header) \
-  ((header)->delid_chn.chn)
+  ((header)->chn)
 
 #define MVCC_SET_CHN(header, chn_) \
-  ((header)->delid_chn.chn = (chn_))
+  ((header)->chn = (chn_))
 
 #define MVCC_GET_FLAG(header) \
   ((header)->mvcc_flag)
@@ -98,7 +98,7 @@
 
 /* Check if record is deleted by current transaction or its children */
 #define MVCC_IS_REC_DELETED_BY_ME(thread_p, rec_header_p)	\
-  (logtb_is_current_mvccid (thread_p, (rec_header_p)->delid_chn.mvcc_del_id))
+  (logtb_is_current_mvccid (thread_p, (rec_header_p)->mvcc_del_id))
 
 /* Check if record was inserted by the transaction identified by mvcc_id */
 #define MVCC_IS_REC_INSERTED_BY(rec_header_p, mvcc_id) \
@@ -110,14 +110,11 @@
 
 /* Check if given CHN is up-to-date according to MVCC header:
  * 1. Given CHN must be non-NULL.
- * 2. DELID flag is not set (currently this means that header have CHN info)
  * 2. header CHN matches given CHN.
- *  TODO: change this macro after delid and chn are splitted.
  */
 #define MVCC_IS_CHN_UPTODATE(rec_header_p, chn) \
   (chn != NULL_CHN \
-   && (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_DELID) \
-   && (chn == MVCC_GET_CHN (rec_header_p))))
+   && (chn == MVCC_GET_CHN (rec_header_p)))
 
 #define MVCC_GET_BITAREA_ELEMENT_PTR(bitareaptr, position) \
   ((UINT64 *)(bitareaptr) + ((position) >> 6))

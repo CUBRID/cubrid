@@ -216,13 +216,17 @@
 #define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
 
 #if defined(SERVER_MODE)
+#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+#endif
 #define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
   ((thrd) ? (thrd)->tran_index = (index) : \
             thread_set_current_tran_index ((thrd), (index)))
 #else /* SERVER_MODE */
+#if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
+#endif
 #define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
   log_Tran_index = (index)
 #endif /* SERVER_MODE */
@@ -864,7 +868,7 @@ struct log_tdes
   int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
 				 * global transaction and it is prepared to commit. */
   LOG_CLIENTIDS client;		/* Client identification */
-  SYNC_CRITICAL_SECTION cs_topop;	/* critical section to serialize system top operations */
+  SYNC_RMUTEX rmutex_topop;	/* reentrant mutex to serialize system top operations */
   LOG_TOPOPS_STACK topops;	/* Active top system operations. Used for system permanent nested operations which are
 				 * independent from current transaction outcome. */
   LOG_2PC_GTRINFO gtrinfo;	/* Global transaction user information; used to store XID of XA interface. */
@@ -1370,9 +1374,8 @@ enum log_repl_flush
    || ((rcvindex) == RVHF_MVCC_INSERT) \
    || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
    || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_DELETE_NO_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE) \
-   || ((rcvindex) == RVHF_MVCC_UPDATE_OVERFLOW))
+   || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
+   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
 
 /* Is log record for a b-tree MVCC operation */
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
@@ -1903,7 +1906,10 @@ enum log_cs_access_mode
 
 
 #if !defined(SERVER_MODE)
+#if !defined(LOG_TRAN_INDEX)
+#define LOG_TRAN_INDEX
 extern int log_Tran_index;	/* Index onto transaction table for current thread of execution (client) */
+#endif /* !LOG_TRAN_INDEX */
 #endif /* !SERVER_MODE */
 
 extern LOG_GLOBAL log_Gl;
@@ -1953,7 +1959,7 @@ extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
 extern bool logpb_is_pool_initialized (void);
 extern void logpb_invalidate_pool (THREAD_ENTRY * thread_p);
-extern LOG_PAGE *logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
+extern LOG_PAGE *logpb_create_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
 extern void logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);

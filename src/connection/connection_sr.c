@@ -112,6 +112,8 @@ typedef struct wait_queue_search_arg
 
 #define NUM_NORMAL_CLIENTS (prm_get_integer_value(PRM_ID_CSS_MAX_CLIENTS))
 
+#define RMUTEX_NAME_CONN_ENTRY "CONN_ENTRY"
+
 static const int CSS_MAX_CLIENT_ID = INT_MAX - 1;
 
 static int css_Client_id = 0;
@@ -471,7 +473,7 @@ css_init_conn_list (void)
 	  goto error;
 	}
 
-      err = rmutex_initialize (&conn->rmutex, rmutex_Name_conn);
+      err = rmutex_initialize (&conn->rmutex, RMUTEX_NAME_CONN_ENTRY);
       if (err != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);

@@ -2919,10 +2919,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      if (redo->data.rcvindex == RVVAC_COMPLETE)
 		{
+		  LOG_LSA null_lsa = LSA_INITIALIZER;
+
 		  /* Reset log header MVCC info */
 		  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
 		  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
 		  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+
+		  /* Reset vacuum recover LSA */
+		  vacuum_notify_server_crashed (&null_lsa);
 		}
 
 	      /* 
@@ -4513,7 +4518,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 	    }
 	}
 
-      append_pgptr = logpb_create (thread_p, log_Gl.hdr.fpageid);
+      append_pgptr = logpb_create_page (thread_p, log_Gl.hdr.fpageid);
       if (append_pgptr == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
