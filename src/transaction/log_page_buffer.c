@@ -2763,7 +2763,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   VPID *vpid = NULL;
   int error_code = NO_ERROR;
   int i;
-  int ulength, rlength, *data_header_ulength_p, *data_header_rlength_p;
+  int ulength, rlength, *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
   int total_length;
   MVCCID *mvccid_p = NULL;
   LOG_TDES *tdes = NULL;
@@ -2949,68 +2949,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       goto error;
     }
 
-  /* Fill the data header fields */
-  switch (node->log_header.type)
-    {
-    case LOG_MVCC_UNDO_DATA:
-      /* Use undo data from MVCC undo structure */
-      mvcc_undo_p = (LOG_REC_MVCC_UNDO *) node->data_header;
-
-      /* Must also fill vacuum info */
-      vacuum_info_p = &mvcc_undo_p->vacuum_info;
-
-      /* Must also fill MVCCID field */
-      mvccid_p = &mvcc_undo_p->mvccid;
-
-      /* Fall through */
-    case LOG_UNDO_DATA:
-      undo_p = (node->log_header.type == LOG_UNDO_DATA ? (LOG_REC_UNDO *) node->data_header : &mvcc_undo_p->undo);
-
-      data_header_ulength_p = &undo_p->length;
-      log_data_p = &undo_p->data;
-      break;
-
-    case LOG_MVCC_REDO_DATA:
-      /* Use redo data from MVCC redo structure */
-      mvcc_redo_p = (LOG_REC_MVCC_REDO *) node->data_header;
-
-      /* Must also fill MVCCID field */
-      mvccid_p = &mvcc_redo_p->mvccid;
-
-      /* Fall through */
-    case LOG_REDO_DATA:
-      redo_p = (node->log_header.type == LOG_REDO_DATA ? (LOG_REC_REDO *) node->data_header : &mvcc_redo_p->redo);
-
-      data_header_rlength_p = &redo_p->length;
-      log_data_p = &redo_p->data;
-      break;
-
-    case LOG_MVCC_UNDOREDO_DATA:
-    case LOG_MVCC_DIFF_UNDOREDO_DATA:
-      /* Use undoredo data from MVCC undoredo structure */
-      mvcc_undoredo_p = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
-
-      /* Must also fill vacuum info */
-      vacuum_info_p = &mvcc_undoredo_p->vacuum_info;
-
-      /* Must also fill MVCCID field */
-      mvccid_p = &mvcc_undoredo_p->mvccid;
-
-      /* Fall through */
-    case LOG_UNDOREDO_DATA:
-    case LOG_DIFF_UNDOREDO_DATA:
-      undoredo_p = ((node->log_header.type == LOG_UNDOREDO_DATA || node->log_header.type == LOG_DIFF_UNDOREDO_DATA)
-		    ? (LOG_REC_UNDOREDO *) node->data_header : &mvcc_undoredo_p->undoredo);
-
-      data_header_ulength_p = &undoredo_p->ulength;
-      data_header_rlength_p = &undoredo_p->rlength;
-      log_data_p = &undoredo_p->data;
-      break;
-
-    default:
-      assert (0);
-      break;
-    }
+  LOG_NODE_GET_DATAP (node, log_data_p, data_header_ulength_p, data_header_rlength_p, vacuum_info_p, mvccid_p);
 
   /* Fill log data fields */
   assert (log_data_p != NULL);
@@ -3127,19 +3066,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   return error_code;
 
 error:
-  if (node->data_header != NULL)
-    {
-      free_and_init (node->data_header);
-    }
-  if (node->udata != NULL)
-    {
-      free_and_init (node->udata);
-    }
-  if (node->rdata != NULL)
-    {
-      free_and_init (node->rdata);
-    }
-
+  prior_lsa_free_node (node);
   return error_code;
 }
 
@@ -3510,24 +3437,36 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     }
   else
     {
-      if (node != NULL)
-	{
-	  if (node->data_header != NULL)
-	    {
-	      free_and_init (node->data_header);
-	    }
-	  if (node->udata != NULL)
-	    {
-	      free_and_init (node->udata);
-	    }
-	  if (node->rdata != NULL)
-	    {
-	      free_and_init (node->rdata);
-	    }
-	  free_and_init (node);
-	}
-
+      prior_lsa_free_node (node);
       return NULL;
+    }
+}
+
+/*
+ * prior_lsa_free_node - free log node
+ *
+ * return:
+ *
+ *   node(in):	log node 
+ */
+void
+prior_lsa_free_node (LOG_PRIOR_NODE * node)
+{
+  if (node != NULL)
+    {
+      if (node->data_header != NULL)
+	{
+	  free_and_init (node->data_header);
+	}
+      if (node->udata != NULL)
+	{
+	  free_and_init (node->udata);
+	}
+      if (node->rdata != NULL)
+	{
+	  free_and_init (node->rdata);
+	}
+      free_and_init (node);
     }
 }
 
@@ -3596,22 +3535,7 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, 
     }
   else
     {
-      if (node != NULL)
-	{
-	  if (node->data_header != NULL)
-	    {
-	      free_and_init (node->data_header);
-	    }
-	  if (node->udata != NULL)
-	    {
-	      free_and_init (node->udata);
-	    }
-	  if (node->rdata != NULL)
-	    {
-	      free_and_init (node->rdata);
-	    }
-	  free_and_init (node);
-	}
+      prior_lsa_free_node (node);
       return NULL;
     }
 }
@@ -3850,20 +3774,7 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
 
       logpb_append_next_record (thread_p, node);
 
-      if (node->data_header != NULL)
-	{
-	  free_and_init (node->data_header);
-	}
-      if (node->udata != NULL)
-	{
-	  free_and_init (node->udata);
-	}
-      if (node->rdata != NULL)
-	{
-	  free_and_init (node->rdata);
-	}
-
-      free_and_init (node);
+      prior_lsa_free_node (node);
     }
 
   return NO_ERROR;

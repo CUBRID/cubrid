@@ -794,14 +794,11 @@ static int heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCAN
 					      HEAP_SCANCACHE * old_scan_cache, OID * next_row_version);
 static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					  OID * forward_oid, RECDES * recdes);
-static void heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr);
 static void heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex);
 static int heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLOTID slotid, MVCCID mvccid);
 static void heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p, RECDES * old_recdes, RECDES * new_recdes,
 						 LOG_DATA_ADDR * p_addr);
 static void heap_mvcc_log_home_no_change (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr);
-
-static void heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static INLINE int heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
@@ -845,8 +842,12 @@ static int heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, H
 static int heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_context, RECDES * recdes_p,
 				OID * out_oid_p, PGBUF_WATCHER * newhome_pg_watcher);
 static int heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
-static void heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				      RECDES * recdes_p, bool is_mvcc_op, bool is_redistribute_op);
+static int heap_create_log_node_for_physical_insertion (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p,
+							VFID * vfid_p, PGLENGTH offset, RECDES * p_recdes,
+							bool is_mvcc_op, bool is_redistribute_op,
+							LOG_PRIOR_NODE ** node);
+static void heap_append_insert_physical_log_node (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, int offset,
+						  LOG_PRIOR_NODE * insert_physical_log_node);
 
 /* heap delete related functions */
 static void heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, bool need_mvcc_header_max_size);
@@ -15737,71 +15738,6 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * heap_mvcc_log_insert () - Log MVCC insert heap operation.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * p_recdes (in) : Newly inserted record.
- * p_addr (in)	 : Log address data.
- */
-static void
-heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr)
-{
-#define HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS	    4
-
-  int n_redo_crumbs = 0, data_copy_offset = 0, chn_offset;
-  LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS];
-  INT32 mvcc_flags;
-  HEAP_PAGE_VACUUM_STATUS vacuum_status;
-
-  assert (p_recdes != NULL);
-  assert (p_addr != NULL);
-
-  vacuum_status = heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
-
-  /* Update chain. */
-  heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr, logtb_get_current_mvccid (thread_p));
-  if (vacuum_status != heap_page_get_vacuum_status (thread_p, p_addr->pgptr))
-    {
-      /* Mark status change for recovery. */
-      p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
-    }
-
-  /* Build redo crumbs */
-  /* Add record type */
-  redo_crumbs[n_redo_crumbs].length = sizeof (p_recdes->type);
-  redo_crumbs[n_redo_crumbs++].data = &p_recdes->type;
-
-  if (p_recdes->type != REC_BIGONE)
-    {
-      mvcc_flags = (INT32) OR_GET_MVCC_FLAG (p_recdes->data);
-      chn_offset = OR_CHN_OFFSET;
-
-      /* Add representation ID and flags field */
-      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
-      redo_crumbs[n_redo_crumbs++].data = p_recdes->data;
-
-      /* Add CHN */
-      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
-      redo_crumbs[n_redo_crumbs++].data = p_recdes->data + chn_offset;
-
-      /* Set data copy offset after the record header */
-      data_copy_offset = OR_HEADER_SIZE (p_recdes->data);
-    }
-
-  /* Add record data - record may be skipped if the record is not big one */
-  redo_crumbs[n_redo_crumbs].length = p_recdes->length - data_copy_offset;
-  redo_crumbs[n_redo_crumbs++].data = p_recdes->data + data_copy_offset;
-
-  /* Safe guard */
-  assert (n_redo_crumbs <= HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS);
-
-  /* Append redo crumbs; undo crumbs not necessary as the spage_delete physical operation uses the offset field of the
-   * address */
-  log_append_undoredo_crumbs (thread_p, RVHF_MVCC_INSERT, p_addr, 0, n_redo_crumbs, NULL, redo_crumbs);
-}
-
-/*
  * heap_rv_mvcc_redo_insert () - Redo the MVCC insertion of an object
  *   return: int
  *   rcv(in): Recovery structure
@@ -20504,23 +20440,55 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 		     OID * out_oid_p, PGBUF_WATCHER * newhome_pg_watcher)
 {
   HEAP_OPERATION_CONTEXT ins_context;
+  LOG_PRIOR_NODE *node = NULL;
   int error_code = NO_ERROR;
+  LOG_TDES *tdes = NULL;
+  int tran_index;
+  short offset;
 
   /* check input */
   assert (recdes_p != NULL);
   assert (parent_context != NULL);
   assert (parent_context->type == HEAP_OPERATION_DELETE || parent_context->type == HEAP_OPERATION_UPDATE);
 
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+    {
+      /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
+       * instead of system tdes. */
+      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+    }
+  else
+    {
+      /* Find tdes from transaction table. */
+      tdes = LOG_FIND_TDES (tran_index);
+    }
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return ER_LOG_UNKNOWN_TRANINDEX;
+    }
+
   /* build insert context */
   heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL);
+
+  /* Create log node for physical insertion before fixing the page */
+  error_code = heap_create_log_node_for_physical_insertion (thread_p, tdes, NULL, &(ins_context.hfid.vfid),
+							    NULL_SLOTID, ins_context.recdes_p, false, false, &node);
+  if (error_code != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* physical insertion */
   error_code = heap_find_location_and_insert_rec_newhome (thread_p, &ins_context);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error_code;
+      goto exit_on_error;
     }
+
+  offset = ins_context.res_oid.slotid;
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, parent_context);
 
@@ -20528,8 +20496,15 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 
   /* This is a relocation of existing record, be it deleted or updated. Vacuum is not supposed to be notified since he
    * never check REC_NEWHOME type records. An MVCC type logging is not required here, a simple RVHF_INSERT will do. */
-  heap_log_insert_physical (thread_p, ins_context.home_page_watcher_p->pgptr, &ins_context.hfid.vfid,
-			    &ins_context.res_oid, ins_context.recdes_p, false, false);
+  /* 
+   * Operation logging
+   */
+  if (node != NULL)
+    {
+      (void) heap_append_insert_physical_log_node (thread_p, tdes, ins_context.home_page_watcher_p->pgptr, offset,
+						   node);
+      node = NULL;
+    }
 
   HEAP_PERF_TRACK_LOGGING (thread_p, parent_context);
 
@@ -20552,6 +20527,10 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
   heap_unfix_watchers (thread_p, &ins_context);
   /* all ok */
   return NO_ERROR;
+
+exit_on_error:
+  prior_lsa_free_node (node);
+  return (error_code == NO_ERROR) ? ER_FAILED : error_code;
 }
 
 /*
@@ -20613,66 +20592,175 @@ heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 }
 
 /*
- * heap_log_insert_physical () - add logging information for physical insertion
- *   thread_p(in): thread entry
+ * heap_create_log_node_for_physical_insertion () - Create log node for heap physical insertion
+ *   thread_p(in): thread entry 
+ *   tdes(in): transaction descriptor
  *   page_p(in): page where insert was performed
  *   vfid_p(in): virtual file id
- *   oid_p(in): newly inserted object id
- *   recdes_p(in): record descriptor of inserted record
+ *   offset(in): offset
+ *   p_recdes(in): record description
  *   is_mvcc_op(in): specifies type of operation (MVCC/non-MVCC)
  *   is_redistribute_op(in): whether the insertion is due to partition
  *			     redistribute operation and has a valid delid
+ *   node(out): log node 
+ *
+ * NOTE: Is better to call this function before fixing the heap page. In this case page_p will and oid_p will
+ *       be provided later, after insertion in heap page, when log node appending is needed.
  */
-static void
-heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool is_mvcc_op, bool is_redistribute_op)
+static int
+heap_create_log_node_for_physical_insertion (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p,
+					     PGLENGTH offset, RECDES * p_recdes, bool is_mvcc_op,
+					     bool is_redistribute_op, LOG_PRIOR_NODE ** node)
 {
   LOG_DATA_ADDR log_addr;
 
-  /* populate address field */
+  /* Populate address field with valid VFID. The offset and page pointer will be generated later */
   log_addr.vfid = vfid_p;
-  log_addr.offset = oid_p->slotid;
+  log_addr.offset = offset;
   log_addr.pgptr = page_p;
 
   if (is_mvcc_op)
     {
       if (is_redistribute_op)
 	{
-	  /* this is actually a deleted record, inserted due to a PARTITION reorganize operation. Log this operation
-	   * separately */
-	  heap_mvcc_log_redistribute (thread_p, recdes_p, &log_addr);
+#define HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS	    4
+	  int n_redo_crumbs = 0, data_copy_offset = 0;
+	  LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS];
+	  MVCC_REC_HEADER mvcc_rec_header;
+	  MVCCID delid;
+
+	  /* Build redo crumbs */
+	  redo_crumbs[n_redo_crumbs].length = sizeof (p_recdes->type);
+	  redo_crumbs[n_redo_crumbs++].data = &p_recdes->type;
+
+	  if (p_recdes->type != REC_BIGONE)
+	    {
+	      or_mvcc_get_header (p_recdes, &mvcc_rec_header);
+	      assert (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID));
+
+	      /* Add representation ID and flags field */
+	      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
+	      redo_crumbs[n_redo_crumbs++].data = p_recdes->data;
+
+	      redo_crumbs[n_redo_crumbs].length = OR_MVCCID_SIZE;
+	      redo_crumbs[n_redo_crumbs++].data = &delid;
+
+	      /* Set data copy offset after the record header */
+	      data_copy_offset = OR_HEADER_SIZE (p_recdes->data);
+	    }
+
+	  /* Add record data - record may be skipped if the record is not big one */
+	  redo_crumbs[n_redo_crumbs].length = p_recdes->length - data_copy_offset;
+	  redo_crumbs[n_redo_crumbs++].data = p_recdes->data + data_copy_offset;
+
+	  /* Safe guard */
+	  assert (n_redo_crumbs <= HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS);
+
+	  return log_create_log_node_from_undoredo_crumbs (thread_p, tdes, RVHF_MVCC_REDISTRIBUTE, &log_addr, 0,
+							   n_redo_crumbs, NULL, redo_crumbs, node);
 	}
       else
 	{
-	  /* MVCC logging */
-	  heap_mvcc_log_insert (thread_p, recdes_p, &log_addr);
+#define HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS	    4
+
+	  int n_redo_crumbs = 0, data_copy_offset = 0, chn_offset;
+	  LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS];
+	  INT32 mvcc_flags;
+
+	  /* Build redo crumbs */
+	  /* Add record type */
+	  redo_crumbs[n_redo_crumbs].length = sizeof (p_recdes->type);
+	  redo_crumbs[n_redo_crumbs++].data = &p_recdes->type;
+
+	  if (p_recdes->type != REC_BIGONE)
+	    {
+	      mvcc_flags = (INT32) OR_GET_MVCC_FLAG (p_recdes->data);
+	      chn_offset = OR_CHN_OFFSET;
+
+	      /* Add representation ID and flags field */
+	      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
+	      redo_crumbs[n_redo_crumbs++].data = p_recdes->data;
+
+	      /* Add CHN */
+	      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
+	      redo_crumbs[n_redo_crumbs++].data = p_recdes->data + chn_offset;
+
+	      /* Set data copy offset after the record header */
+	      data_copy_offset = OR_HEADER_SIZE (p_recdes->data);
+	    }
+
+	  /* Add record data - record may be skipped if the record is not big one */
+	  redo_crumbs[n_redo_crumbs].length = p_recdes->length - data_copy_offset;
+	  redo_crumbs[n_redo_crumbs++].data = p_recdes->data + data_copy_offset;
+
+	  /* Safe guard */
+	  assert (n_redo_crumbs <= HEAP_LOG_MVCC_INSERT_MAX_REDO_CRUMBS);
+	  return log_create_log_node_from_undoredo_crumbs (thread_p, tdes, RVHF_MVCC_INSERT, &log_addr, 0,
+							   n_redo_crumbs, NULL, redo_crumbs, node);
 	}
     }
   else
     {
+      /* generate new home */
       INT16 bytes_reserved;
       RECDES temp_recdes;
 
-      if (recdes_p->type == REC_ASSIGN_ADDRESS)
+      if (p_recdes->type == REC_ASSIGN_ADDRESS)
 	{
 	  /* special case for REC_ASSIGN */
-	  temp_recdes.type = recdes_p->type;
+	  temp_recdes.type = p_recdes->type;
 	  temp_recdes.area_size = sizeof (bytes_reserved);
 	  temp_recdes.length = sizeof (bytes_reserved);
-	  bytes_reserved = (INT16) recdes_p->length;
+	  bytes_reserved = (INT16) p_recdes->length;
 	  temp_recdes.data = (char *) &bytes_reserved;
-	  log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL, &temp_recdes);
+	  log_create_log_node_from_recdes (thread_p, tdes, RVHF_INSERT, &log_addr, NULL, &temp_recdes, node);
 	}
-      else if (recdes_p->type == REC_NEWHOME)
+      else if (p_recdes->type == REC_NEWHOME)
 	{
 	  /* replication for REC_NEWHOME is performed by following the link (OID) from REC_RELOCATION */
-	  log_append_undoredo_recdes (thread_p, RVHF_INSERT_NEWHOME, &log_addr, NULL, recdes_p);
+	  log_create_log_node_from_recdes (thread_p, tdes, RVHF_INSERT_NEWHOME, &log_addr, NULL, p_recdes, node);
 	}
       else
 	{
-	  log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL, recdes_p);
+	  log_create_log_node_from_recdes (thread_p, tdes, RVHF_INSERT, &log_addr, NULL, p_recdes, node);
 	}
     }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_append_insert_physical_log_node () - append insert physical log node
+ *   thread_p(in): thread entry
+ *   tdes(in): transaction descriptor
+ *   page_p(in): page where insert was performed
+ *   offset(in): offset
+ *   insert_physical_log_node(out): log node 
+ */
+static void
+heap_append_insert_physical_log_node (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, int offset,
+				      LOG_PRIOR_NODE * insert_physical_log_node)
+{
+  LOG_DATA *log_data_p = NULL;
+  int *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
+  LOG_VACUUM_INFO *vacuum_info_p = NULL;
+  MVCCID *mvccid_p = NULL;
+  VPID *vpid;
+
+  assert (page_p != NULL && insert_physical_log_node != NULL);
+
+  LOG_NODE_GET_DATAP (insert_physical_log_node, log_data_p, data_header_ulength_p, data_header_rlength_p,
+		      vacuum_info_p, mvccid_p);
+
+  assert (log_data_p->rcvindex == RVHF_MVCC_INSERT || log_data_p->rcvindex == RVHF_MVCC_REDISTRIBUTE
+	  || log_data_p->rcvindex == RVHF_INSERT || log_data_p->rcvindex == RVHF_INSERT_NEWHOME);
+
+  log_data_p->offset = offset;
+  vpid = pgbuf_get_vpid_ptr (page_p);
+  log_data_p->pageid = vpid->pageid;
+  log_data_p->volid = vpid->volid;
+
+  log_append_prior_node (thread_p, tdes, log_data_p->rcvindex, page_p, insert_physical_log_node);
 }
 
 /*
@@ -20786,7 +20874,11 @@ heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
 static int
 heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
+  MVCC_REC_HEADER overflow_header;
+  VPID overflow_vpid;
+  LOG_DATA_ADDR log_addr;
   OID overflow_oid;
+  MVCCID mvcc_id;
   int rc;
 
   /* check input */
@@ -20806,10 +20898,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
   if (is_mvcc_op)
     {
-      MVCC_REC_HEADER overflow_header;
-      VPID overflow_vpid;
-      LOG_DATA_ADDR log_addr;
-      MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
+      mvcc_id = logtb_get_current_mvccid (thread_p);
 
       /* fix overflow page */
       overflow_vpid.pageid = overflow_oid.pageid;
@@ -20942,6 +21031,20 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 static int
 heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
+  RECDES new_forward_recdes, new_home_recdes;
+  MVCC_REC_HEADER forward_rec_header;
+  MVCCID mvcc_id;
+  char buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
+  OID new_forward_oid;
+  int adjusted_size;
+  bool fits_in_home, fits_in_forward;
+  bool update_old_home = false;
+  bool update_old_forward = false;
+  bool remove_old_forward = false;
+  bool is_adjusted_size_big = false;
+  int delid_offset, repid_and_flag_bits, mvcc_flags;
+  char *build_recdes_data;
+  bool use_optimization;
   RECDES forward_recdes;
   OID forward_oid;
   int rc;
@@ -20973,21 +21076,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   if (is_mvcc_op)
     {
-      RECDES new_forward_recdes, new_home_recdes;
-      MVCC_REC_HEADER forward_rec_header;
-      MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
-      char buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
-      OID new_forward_oid;
-      int adjusted_size;
-      bool fits_in_home, fits_in_forward;
-      bool update_old_home = false;
-      bool update_old_forward = false;
-      bool remove_old_forward = false;
-      bool is_adjusted_size_big = false;
-      int delid_offset, repid_and_flag_bits, mvcc_flags;
-      char *build_recdes_data;
-      bool use_optimization;
-
+      mvcc_id = logtb_get_current_mvccid (thread_p);
       repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data);
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
       adjusted_size = forward_recdes.length;
@@ -21412,6 +21501,18 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 static int
 heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
+  MVCC_REC_HEADER record_header;
+  RECDES built_recdes;
+  RECDES forwarding_recdes;
+  RECDES *home_page_updated_recdes;
+  OID forward_oid;
+  MVCCID mvcc_id;
+  char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
+  int adjusted_size;
+  bool is_adjusted_size_big = false;
+  int delid_offset, repid_and_flag_bits, mvcc_flags;
+  char *build_recdes_data;
+  bool use_optimization;
   int error_code = NO_ERROR;
 
   /* check input */
@@ -21441,19 +21542,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* operation */
   if (is_mvcc_op)
     {
-      MVCC_REC_HEADER record_header;
-      RECDES built_recdes;
-      RECDES forwarding_recdes;
-      RECDES *home_page_updated_recdes;
-      OID forward_oid;
-      MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
-      char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
-      int adjusted_size;
-      bool is_adjusted_size_big = false;
-      int delid_offset, repid_and_flag_bits, mvcc_flags;
-      char *build_recdes_data;
-      bool use_optimization;
-
+      mvcc_id = logtb_get_current_mvccid (thread_p);
       /* Build the new record descriptor. */
       repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (context->home_recdes.data);
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
@@ -22654,6 +22743,11 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
+  LOG_PRIOR_NODE *node = NULL;
+  HEAP_PAGE_VACUUM_STATUS vacuum_status;
+  int tran_index;
+  short offset;
+  LOG_TDES *tdes = NULL;
 
   /* check required input */
   assert (context != NULL);
@@ -22663,6 +22757,26 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+    {
+      /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
+       * instead of system tdes. */
+      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+    }
+  else
+    {
+      /* Find tdes from transaction table. */
+      tdes = LOG_FIND_TDES (tran_index);
+    }
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return ER_LOG_UNKNOWN_TRANINDEX;
+    }
+
 
   /* check scancache */
   if (heap_scancache_check_with_hfid (thread_p, &context->hfid, &context->class_oid, &context->scan_cache_p) !=
@@ -22707,9 +22821,20 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* 
    * Handle multipage object
    */
-  if (heap_insert_handle_multipage_record (thread_p, context) != NO_ERROR)
+  rc = heap_insert_handle_multipage_record (thread_p, context);
+  if (rc != NO_ERROR)
     {
-      rc = ER_FAILED;
+      goto error;
+    }
+
+  /* Generate log data here, before fixing the heap page. Later, we have to complete the log data with 
+   * real page and slot id.
+   */
+  rc = heap_create_log_node_for_physical_insertion (thread_p, tdes, NULL, &context->hfid.vfid, NULL_SLOTID,
+						    context->recdes_p, is_mvcc_op,
+						    context->is_redistribute_insert_with_delid, &node);
+  if (rc != NO_ERROR)
+    {
       goto error;
     }
 
@@ -22719,13 +22844,15 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* make sure we have IX_LOCK on class see [NOTE-1] */
   if (lock_object (thread_p, &context->class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
-      return ER_FAILED;
+      rc = er_errid ();
+      goto error;
     }
 
   /* get insert location (includes locking) */
-  if (heap_get_insert_location_with_lock (thread_p, context, NULL) != NO_ERROR)
+  rc = heap_get_insert_location_with_lock (thread_p, context, NULL);
+  if (rc != NO_ERROR)
     {
-      return ER_FAILED;
+      goto error;
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
@@ -22733,10 +22860,25 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* 
    * Physical insertion
    */
-  if (heap_insert_physical (thread_p, context) != NO_ERROR)
+  rc = heap_insert_physical (thread_p, context);
+  if (rc != NO_ERROR)
     {
-      rc = ER_FAILED;
       goto error;
+    }
+
+  offset = context->res_oid.slotid;
+  if (is_mvcc_op)
+    {
+      vacuum_status = heap_page_get_vacuum_status (thread_p, context->home_page_watcher_p->pgptr);
+
+      /* Update chain. */
+      heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr,
+					    logtb_get_current_mvccid (thread_p));
+      if (vacuum_status != heap_page_get_vacuum_status (thread_p, context->home_page_watcher_p->pgptr))
+	{
+	  /* Mark status change for recovery. */
+	  offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
+	}
     }
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -22744,10 +22886,13 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* 
    * Operation logging
    */
-  heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
-			    context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
-
-  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+  if (node != NULL)
+    {
+      /* Add the node to prior list tail and set node to null. */
+      heap_append_insert_physical_log_node (thread_p, tdes, context->home_page_watcher_p->pgptr, offset, node);
+      node = NULL;
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
+    }
 
   /* mark insert page as dirty */
   pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
@@ -22796,14 +22941,19 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       perfmon_inc_stat (thread_p, PSTAT_HEAP_ASSIGN_INSERTS);
     }
 
-error:
-
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
-  /* all ok */
-  return rc;
+  return NO_ERROR;
+
+error:
+  prior_lsa_free_node (node);
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
+#endif /* ENABLE_SYSTEMTAP */
+
+  return (rc == NO_ERROR) ? ER_FAILED : rc;
 }
 
 /*
@@ -24034,71 +24184,6 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
   HEAP_SCANCACHE_SET_NODE (scan_cache, partition_oid, &hfid);
 
   return NO_ERROR;
-}
-
-/*
- * heap_mvcc_log_redistribute () - Log partition redistribute data
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * p_recdes (in) : Newly inserted record.
- * p_addr (in)	 : Log address data.
- */
-static void
-heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr)
-{
-#define HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS	    4
-
-  int n_redo_crumbs = 0, data_copy_offset = 0;
-  LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS];
-  MVCCID delid;
-  MVCC_REC_HEADER mvcc_rec_header;
-  HEAP_PAGE_VACUUM_STATUS vacuum_status;
-
-  assert (p_recdes != NULL);
-  assert (p_addr != NULL);
-
-  vacuum_status = heap_page_get_vacuum_status (thread_p, p_addr->pgptr);
-
-  /* Update chain. */
-  heap_page_update_chain_after_mvcc_op (thread_p, p_addr->pgptr, logtb_get_current_mvccid (thread_p));
-  if (vacuum_status != heap_page_get_vacuum_status (thread_p, p_addr->pgptr))
-    {
-      /* Mark status change for recovery. */
-      p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
-    }
-
-  /* Build redo crumbs */
-  /* Add record type */
-  redo_crumbs[n_redo_crumbs].length = sizeof (p_recdes->type);
-  redo_crumbs[n_redo_crumbs++].data = &p_recdes->type;
-
-  if (p_recdes->type != REC_BIGONE)
-    {
-      or_mvcc_get_header (p_recdes, &mvcc_rec_header);
-      assert (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID));
-
-      /* Add representation ID and flags field */
-      redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
-      redo_crumbs[n_redo_crumbs++].data = p_recdes->data;
-
-      redo_crumbs[n_redo_crumbs].length = OR_MVCCID_SIZE;
-      redo_crumbs[n_redo_crumbs++].data = &delid;
-
-      /* Set data copy offset after the record header */
-      data_copy_offset = OR_HEADER_SIZE (p_recdes->data);
-    }
-
-  /* Add record data - record may be skipped if the record is not big one */
-  redo_crumbs[n_redo_crumbs].length = p_recdes->length - data_copy_offset;
-  redo_crumbs[n_redo_crumbs++].data = p_recdes->data + data_copy_offset;
-
-  /* Safe guard */
-  assert (n_redo_crumbs <= HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS);
-
-  /* Append redo crumbs; undo crumbs not necessary as the spage_delete physical operation uses the offset field of the
-   * address */
-  log_append_undoredo_crumbs (thread_p, RVHF_MVCC_REDISTRIBUTE, p_addr, 0, n_redo_crumbs, NULL, redo_crumbs);
 }
 
 /*

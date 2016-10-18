@@ -1496,6 +1496,78 @@ struct log_rec_mvcc_redo
   MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 
+#define LOG_NODE_GET_DATAP(node, log_data_p, log_undo_length_p, log_redo_length_p, vacuum_info_p, mvccid_p) \
+  do \
+    { \
+      switch ((node)->log_header.type)  \
+	{ \
+      case LOG_MVCC_UNDO_DATA:	\
+	{ \
+	  LOG_REC_MVCC_UNDO *_mvcc_undo_p = (LOG_REC_MVCC_UNDO *) (node)->data_header; \
+	  LOG_REC_UNDO *_undo_p = &_mvcc_undo_p->undo;  \
+	  (log_data_p) = &_undo_p->data; \
+	  (log_undo_length_p) = &_undo_p->length;  \
+	  (vacuum_info_p) = &_mvcc_undo_p->vacuum_info;  \
+	  (mvccid_p) = &_mvcc_undo_p->mvccid;  \
+	 }  \
+	break;	\
+	  \
+      case LOG_UNDO_DATA: \
+	{ \
+	  LOG_REC_UNDO *_undo_p = (LOG_REC_UNDO *) (node)->data_header;  \
+	  (log_data_p) = &_undo_p->data;	\
+	  (log_undo_length_p) = &_undo_p->length;  \
+	} \
+	break;	\
+	  \
+      case LOG_MVCC_REDO_DATA:	\
+	  { \
+	    LOG_REC_MVCC_REDO *_mvcc_redo_p = (LOG_REC_MVCC_REDO *) (node)->data_header;  \
+	    LOG_REC_REDO *_redo_p = &_mvcc_redo_p->redo;  \
+	    (log_data_p) = &_redo_p->data; \
+	    (log_redo_length_p) = &_redo_p->length;  \
+	    (mvccid_p) = &_mvcc_redo_p->mvccid;  \
+	  } \
+	break;	\
+	  \
+      case LOG_REDO_DATA: \
+	{ \
+	  LOG_REC_REDO *_redo_p = (LOG_REC_REDO *) (node)->data_header;  \
+	  (log_data_p) = &_redo_p->data; \
+	  (log_redo_length_p) = &_redo_p->length;  \
+	} \
+	break;	\
+	  \
+      case LOG_MVCC_UNDOREDO_DATA:  \
+      case LOG_MVCC_DIFF_UNDOREDO_DATA:	\
+	{ \
+	  LOG_REC_MVCC_UNDOREDO *_mvcc_undoredo_p = (LOG_REC_MVCC_UNDOREDO *) (node)->data_header;	\
+	  LOG_REC_UNDOREDO *_undoredo_p = &_mvcc_undoredo_p->undoredo; \
+	  (log_data_p) = &_undoredo_p->data; \
+	  (log_undo_length_p) = &_undoredo_p->ulength;  \
+	  (log_redo_length_p) = &_undoredo_p->rlength;  \
+	  (vacuum_info_p) = &_mvcc_undoredo_p->vacuum_info; \
+	  (mvccid_p) = &_mvcc_undoredo_p->mvccid;	\
+	} \
+	break;	\
+	  \
+      case LOG_UNDOREDO_DATA: \
+      case LOG_DIFF_UNDOREDO_DATA:  \
+	{ \
+	  LOG_REC_UNDOREDO *_undoredo_p = (LOG_REC_UNDOREDO *) (node)->data_header;	\
+	  (log_data_p) = &_undoredo_p->data; \
+	  (log_undo_length_p) = &_undoredo_p->ulength;  \
+	  (log_redo_length_p) = &_undoredo_p->rlength;  \
+	  \
+	} \
+	break;	\
+      default:	\
+	assert (0); \
+	break;	\
+	} \
+    } while (0)
+
+
 /* Information of database external redo log records */
 typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
 struct log_rec_dbout_redo
@@ -1992,6 +2064,7 @@ extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * ls
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int ulength,
 						      char *udata, int rlength, char *rdata);
+extern void prior_lsa_free_node (LOG_PRIOR_NODE * node);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 							LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 							const int num_ucrumbs, const LOG_CRUMB * ucrumbs,

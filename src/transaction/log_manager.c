@@ -1948,6 +1948,135 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
 }
 
 /*
+ * log_create_log_node_from_undoredo_crumbs - Create log node from undo (before) + redo(after) crumbs
+ *
+ * return: nothing
+ *
+ *   thread_p(in): Thread entry
+ *   tdes(in): Transaction descriptor
+ *   rcvindex(in): Index to recovery function
+ *   addr(in): Address (Volume, page, and offset) of data
+ *   num_undo_crumbs(in): Number of undo crumbs
+ *   num_redo_crumbs(in): Number of redo crumbs
+ *   undo_crumbs(in): The undo crumbs
+ *   redo_crumbs(in): The redo crumbs
+ *   node(out): Created log node
+ */
+int
+log_create_log_node_from_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+					  LOG_DATA_ADDR * addr, int num_undo_crumbs, int num_redo_crumbs,
+					  const LOG_CRUMB * undo_crumbs, const LOG_CRUMB * redo_crumbs,
+					  LOG_PRIOR_NODE ** node)
+{
+  int tran_index;
+  int error_code = NO_ERROR;
+  LOG_RECTYPE rectype = LOG_IS_MVCC_OPERATION (rcvindex) ? LOG_MVCC_UNDOREDO_DATA : LOG_UNDOREDO_DATA;
+
+  assert (node != NULL);
+  *node = NULL;
+#if defined(CUBRID_DEBUG)
+  if (RV_fun[rcvindex].undofun == NULL || RV_fun[rcvindex].redofun == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+#endif /* CUBRID_DEBUG */
+
+#if !defined(SERVER_MODE)
+  assert_release (!LOG_IS_MVCC_OPERATION (rcvindex));
+#endif /* SERVER_MODE */
+
+  if (log_No_logging)
+    {
+      /* We are not logging */
+      LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
+      log_skip_logging (thread_p, addr);
+      return NO_ERROR;
+    }
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* 
+   * If we are not in a top system operation, the transaction is unactive, and
+   * the transaction is not in the process of been aborted, we do nothing.
+   */
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+    {
+      /* 
+       * We do not log anything when the transaction is unactive and it is not
+       * in the process of aborting.
+       */
+      return NO_ERROR;
+    }
+
+  /* 
+   * is undo logging needed ?
+   */
+
+  if (log_can_skip_undo_logging (thread_p, rcvindex, tdes, addr) == true)
+    {
+      /* undo logging is ignored at this point */
+      return log_create_log_node_from_redo_crumbs (thread_p, tdes, rcvindex, addr, num_redo_crumbs, redo_crumbs, node);
+    }
+
+  /* 
+   * Now do the UNDO & REDO portion
+   */
+
+  *node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_undo_crumbs, undo_crumbs,
+					   num_redo_crumbs, redo_crumbs);
+  if ((*node) == NULL)
+    {
+      return ((error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * log_append_prior_node -  append log node
+ *
+ * return: nothing
+ *
+ *   thread_p(in): Thread entry
+ *   tdes(in): Transaction descriptor
+ *   rcvindex(in): Index to recovery function
+ *   pgptr(in): Page pointer
+ *   node(in): Log node
+ *
+ */
+void
+log_append_prior_node (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex, PAGE_PTR pgptr,
+		       LOG_PRIOR_NODE * node)
+{
+  LOG_LSA start_lsa;
+
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  if (LOG_NEED_TO_SET_LSA (rcvindex, pgptr))
+    {
+      if (pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
+	{
+	  assert (false);
+	  return;
+	}
+    }
+
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
+    {
+      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM
+	  || rcvindex == RVHF_INSERT_NEWHOME)
+	{
+	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
+	}
+      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
+	{
+	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
+	}
+    }
+}
+
+/*
  * log_append_undoredo_crumbs -  LOG UNDO (BEFORE) + REDO (AFTER) CRUMBS OF DATA
  *
  * return: nothing
@@ -1965,11 +2094,9 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 			    int num_redo_crumbs, const LOG_CRUMB * undo_crumbs, const LOG_CRUMB * redo_crumbs)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
   int error_code = NO_ERROR;
-  LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
-  LOG_RECTYPE rectype = LOG_IS_MVCC_OPERATION (rcvindex) ? LOG_MVCC_UNDOREDO_DATA : LOG_UNDOREDO_DATA;
+  LOG_PRIOR_NODE *node = NULL;
+  int tran_index;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -1982,24 +2109,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       error_code = ER_LOG_REDO_INTERFACE;
       return;
     }
-  if (RV_fun[rcvindex].undofun == NULL || RV_fun[rcvindex].redofun == NULL)
-    {
-      assert (false);
-      return;
-    }
-#endif /* CUBRID_DEBUG */
-
-#if !defined(SERVER_MODE)
-  assert_release (!LOG_IS_MVCC_OPERATION (rcvindex));
-#endif /* SERVER_MODE */
-
-  if (log_No_logging)
-    {
-      /* We are not logging */
-      LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
-      log_skip_logging (thread_p, addr);
-      return;
-    }
+#endif
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -2022,63 +2132,17 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       return;
     }
 
-  /* 
-   * If we are not in a top system operation, the transaction is unactive, and
-   * the transaction is not in the process of been aborted, we do nothing.
-   */
-  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+  /* TO DO - if was not generated yet!!! */
+  if (log_create_log_node_from_undoredo_crumbs (thread_p, tdes, rcvindex, addr, num_undo_crumbs, num_redo_crumbs,
+						undo_crumbs, redo_crumbs, &node) != NO_ERROR)
     {
-      /* 
-       * We do not log anything when the transaction is unactive and it is not
-       * in the process of aborting.
-       */
+      ASSERT_ERROR ();
       return;
     }
 
-  /* 
-   * is undo logging needed ?
-   */
-
-  if (log_can_skip_undo_logging (thread_p, rcvindex, tdes, addr) == true)
+  if (node)
     {
-      /* undo logging is ignored at this point */
-      log_append_redo_crumbs (thread_p, rcvindex, addr, num_redo_crumbs, redo_crumbs);
-      return;
-    }
-
-  /* 
-   * Now do the UNDO & REDO portion
-   */
-
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_undo_crumbs, undo_crumbs,
-					  num_redo_crumbs, redo_crumbs);
-  if (node == NULL)
-    {
-      return;
-    }
-
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-
-  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
-    {
-      if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
-	{
-	  assert (false);
-	  return;
-	}
-    }
-
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
-    {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM
-	  || rcvindex == RVHF_INSERT_NEWHOME)
-	{
-	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
-	}
-      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
-	{
-	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
-	}
+      log_append_prior_node (thread_p, tdes, rcvindex, addr->pgptr, node);
     }
 }
 
@@ -2190,6 +2254,85 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 }
 
 /*
+ * log_create_log_node_from_redo_crumbs - Create log node from redo(after) crumbs
+ *
+ * return: nothing
+ *
+ *   thread_p(in): Thread entry
+ *   tdes(in): Transaction descriptor
+ *   rcvindex(in): Index to recovery function
+ *   addr(in): Address (Volume, page, and offset) of data
+ *   num_crumbs(in): Number of redo crumbs
+ *   crumbs(in): The redo crumbs 
+ *   node(out): Created log node
+ */
+int
+log_create_log_node_from_redo_crumbs (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+				      LOG_DATA_ADDR * addr, int num_crumbs, const LOG_CRUMB * crumbs,
+				      LOG_PRIOR_NODE ** node)
+{
+  int tran_index;
+  int error_code = NO_ERROR;
+  LOG_RECTYPE rectype = LOG_IS_MVCC_OPERATION (rcvindex) ? LOG_MVCC_REDO_DATA : LOG_REDO_DATA;
+
+  assert (node != NULL);
+  *node = NULL;
+#if defined(CUBRID_DEBUG)
+  if (RV_fun[rcvindex].redofun == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+#endif /* CUBRID_DEBUG */
+
+  if (log_No_logging)
+    {
+      /* We are not logging */
+      LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
+      log_skip_logging (thread_p, addr);
+      return NO_ERROR;
+    }
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* 
+   * If we are not in a top system operation, the transaction is unactive, and
+   * the transaction is not in the process of been aborted, we do nothing.
+   */
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+    {
+      /* 
+       * We do not log anything when the transaction is unactive and it is not
+       * in the process of aborting.
+       */
+      return NO_ERROR;
+    }
+
+  /* 
+   * is undo logging needed ?
+   */
+
+  if (log_can_skip_redo_logging (rcvindex, tdes, addr) == true)
+    {
+      return NO_ERROR;
+    }
+
+  /* 
+   * Now do the UNDO & REDO portion
+   */
+
+  *node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, 0, NULL, num_crumbs, crumbs);
+  if ((*node) == NULL)
+    {
+      return ((error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;
+    }
+
+  return NO_ERROR;
+
+}
+
+/*
  * log_append_redo_crumbs - LOG REDO (AFTER) CRUMBS OF DATA
  *
  * return: nothing
@@ -2227,8 +2370,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
   int error_code = NO_ERROR;
-  LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
+  LOG_PRIOR_NODE *node = NULL;
   LOG_RECTYPE rectype = LOG_IS_MVCC_OPERATION (rcvindex) ? LOG_MVCC_REDO_DATA : LOG_REDO_DATA;
 
 #if defined(CUBRID_DEBUG)
@@ -2242,20 +2384,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       error_code = ER_LOG_REDO_INTERFACE;
       return;
     }
-  if (RV_fun[rcvindex].redofun == NULL)
-    {
-      assert (false);
-      return;
-    }
 #endif /* CUBRID_DEBUG */
-
-  if (log_No_logging)
-    {
-      /* We are not logging */
-      LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
-      log_skip_logging (thread_p, addr);
-      return;
-    }
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -2277,59 +2406,122 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  /* 
-   * If we are not in a top system operation, the transaction is unactive, and
-   * the transaction is not in the process of been aborted, we do nothing.
-   */
-  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+  if (log_create_log_node_from_redo_crumbs (thread_p, tdes, rcvindex, addr, num_crumbs, crumbs, &node) != NO_ERROR)
     {
-      /* 
-       * We do not log anything when the transaction is unactive and it is not
-       * in the process of aborting.
-       */
+      assert_release (er_errid () != NULL);
       return;
     }
 
-  if (log_can_skip_redo_logging (rcvindex, tdes, addr) == true)
+  if (node)
     {
+      log_append_prior_node (thread_p, tdes, rcvindex, addr->pgptr, node);
+    }
+}
+
+/*
+ * log_create_log_node_from_recdes - Create log node from undo (before) + redo(after) record descriptor
+ *
+ * return: error code
+ *
+ *   thread_p(in): Thread entry
+ *   tdes(in): Transaction descriptor
+ *   rcvindex(in): Index to recovery function
+ *   addr(in): Address (Volume, page, and offset) of data
+ *   undo_recdes(in): Undo(before) record descriptor
+ *   redo_recdes(in): Redo(after) record descriptor
+ *   node(out): Created log node
+ *
+ */
+int
+log_create_log_node_from_recdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				 const RECDES * undo_recdes, const RECDES * redo_recdes, LOG_PRIOR_NODE ** node)
+{
+  return log_create_log_node_from_recdes2 (thread_p, tdes, rcvindex, addr->vfid, addr->pgptr, addr->offset, undo_recdes,
+					   redo_recdes, node);
+}
+
+int
+log_create_log_node_from_recdes2 (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex, const VFID * vfid,
+				  PAGE_PTR pgptr, PGLENGTH offset, const RECDES * undo_recdes,
+				  const RECDES * redo_recdes, LOG_PRIOR_NODE ** node)
+{
+
+  LOG_CRUMB crumbs[4];
+  LOG_CRUMB *undo_crumbs = &crumbs[0];
+  LOG_CRUMB *redo_crumbs = &crumbs[2];
+  int num_undo_crumbs;
+  int num_redo_crumbs;
+  LOG_DATA_ADDR addr;
+
+  addr.vfid = vfid;
+  addr.pgptr = pgptr;
+  addr.offset = offset;
+
+#if 0
+  if (rcvindex == RVHF_UPDATE)
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      if (tdes && tdes->null_log.is_set && undo_recdes && redo_recdes)
+	{
+	  tdes->null_log.recdes = malloc (sizeof (RECDES));
+	  if (tdes == NULL)
+	    {
+	      return;		/* error */
+	    }
+	  *(tdes->null_log.recdes) = *undo_recdes;
+	  tdes->null_log.recdes->data = malloc (undo_recdes->length);
+	  if (tdes->null_log.recdes->data == NULL)
+	    {
+	      free_and_init (tdes->null_log.recdes);
+	      return;		/* error */
+	    }
+	  (void) memcpy (tdes->null_log.recdes->data, undo_recdes->data, undo_recdes->length);
+	}
+      undo_crumbs[0].length = sizeof (undo_recdes->type);
+      undo_crumbs[0].data = (char *) &undo_recdes->type;
+      undo_crumbs[1].length = 0;
+      undo_crumbs[1].data = NULL;
+      num_undo_crumbs = 2;
+      redo_crumbs[0].length = sizeof (redo_recdes->type);
+      redo_crumbs[0].data = (char *) &redo_recdes->type;
+      redo_crumbs[1].length = 0;
+      redo_crumbs[1].data = NULL;
+      num_redo_crumbs = 2;
+      log_append_undoredo_crumbs (rcvindex, addr, num_undo_crumbs, num_redo_crumbs, undo_crumbs, redo_crumbs);
       return;
     }
+#endif
 
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, 0, NULL, num_crumbs, crumbs);
-  if (node == NULL)
+  if (undo_recdes != NULL)
     {
-      return;
+      undo_crumbs[0].length = sizeof (undo_recdes->type);
+      undo_crumbs[0].data = (char *) &undo_recdes->type;
+      undo_crumbs[1].length = undo_recdes->length;
+      undo_crumbs[1].data = undo_recdes->data;
+      num_undo_crumbs = 2;
+    }
+  else
+    {
+      undo_crumbs = NULL;
+      num_undo_crumbs = 0;
     }
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-
-  /* 
-   * Set the LSA on the data page of the corresponding log record for page
-   * operation logging.
-   *
-   * Make sure that I should log. Page operational logging is not done for
-   * temporary data of temporary files and volumes
-   */
-  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (redo_recdes != NULL)
     {
-      if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
-	{
-	  assert (false);
-	  return;
-	}
+      redo_crumbs[0].length = sizeof (redo_recdes->type);
+      redo_crumbs[0].data = (char *) &redo_recdes->type;
+      redo_crumbs[1].length = redo_recdes->length;
+      redo_crumbs[1].data = redo_recdes->data;
+      num_redo_crumbs = 2;
+    }
+  else
+    {
+      redo_crumbs = NULL;
+      num_redo_crumbs = 0;
     }
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
-    {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
-	{
-	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
-	}
-      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
-	{
-	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
-	}
-    }
+  return log_create_log_node_from_undoredo_crumbs (thread_p, tdes, rcvindex, &addr, num_undo_crumbs, num_redo_crumbs,
+						   undo_crumbs, redo_crumbs, node);
 }
 
 /*
