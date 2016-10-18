@@ -702,9 +702,8 @@ typedef enum
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
-/* TODO[arnia] : remove this struct ? */
-typedef struct out_of_row_recdes OUT_OF_ROW_RECDES;
-struct out_of_row_recdes
+typedef struct out_of_row_atts OUT_OF_ROW_ATTS;
+struct out_of_row_atts
 {
   RECDES *oor_recdes;		/* array of RECDES of out of row values */
   int *att_ids;
@@ -722,11 +721,12 @@ typedef enum
 typedef struct out_of_row_context OUT_OF_ROW_CONTEXT;
 struct out_of_row_context
 {
-  OUT_OF_ROW_RECDES *oor_recdes;
+  OUT_OF_ROW_ATTS *oor_atts;
   HEAPATTR_OOR_MODE oor_mode;
+  RECDES repl_record;
 };
 
-#define OUT_OF_ROW_RECDES_INITILIAZER {NULL, NULL, 0, 0}
+#define OUT_OF_ROW_ATTS_INITILIAZER {NULL, NULL, 0, 0}
 
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);

@@ -1915,11 +1915,7 @@ boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
   recdes.data = (char *) boot_Db_parm;
 
   heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-<<<<<<< HEAD
 			      &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID, false);
-=======
-			      &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
->>>>>>> 4f1000c3f4ecd8107ee57d8876b3d8bcf8c1ce47
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       boot_Db_parm->nvols++;

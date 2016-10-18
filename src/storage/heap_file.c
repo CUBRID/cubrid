@@ -834,7 +834,6 @@ static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERA
 static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context,
 					     bool is_mvcc_op, bool is_mvcc_class);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
-static int heap_insert_handle_out_of_row_records (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					       PGBUF_WATCHER * home_hint_p);
 static int heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
@@ -10214,11 +10213,11 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		  int i, oor_pos = -1;
 
 		  assert (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_OOR_RECDES);
-		  assert (oor_context->oor_recdes != NULL);
+		  assert (oor_context->oor_atts != NULL);
 
-		  for (i = 0; i < oor_context->oor_recdes->recdes_capacity; i++)
+		  for (i = 0; i < oor_context->oor_atts->recdes_capacity; i++)
 		    {
-		      if (oor_context->oor_recdes->att_ids[i] == value->attrid)
+		      if (oor_context->oor_atts->att_ids[i] == value->attrid)
 			{
 			  oor_pos = i;
 			  break;
@@ -10226,7 +10225,7 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		    }
 
 		  assert (oor_pos != -1);
-		  out_of_row_recdes_p = &(oor_context->oor_recdes->oor_recdes[oor_pos]);
+		  out_of_row_recdes_p = &(oor_context->oor_atts->oor_recdes[oor_pos]);
 
 		  OR_BUF_INIT2 (out_of_row_buf, out_of_row_recdes_p->data, out_of_row_recdes_p->length);
 		  pr_type = PR_TYPE_FROM_ID (attrepr->type);
@@ -10521,7 +10520,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
   REPR_ID reprid;		/* The disk representation of the object */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
 
   /* check to make sure the attr_info has been used */
   if (attr_info->num_values == -1)
@@ -10584,7 +10583,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 {
   int i;
   HEAP_ATTRVALUE *value;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
   int ret = NO_ERROR;
 
   assert (attr_info != NULL);
@@ -11743,7 +11742,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   offset_size = tmp;
 
   if (attr_info->num_values > 1
-      && (oor_context != NULL && oor_context->oor_recdes != NULL)
+      && (oor_context != NULL && oor_context->oor_atts != NULL)
       && size_without_overflow_columns < expected_size
       && !heap_is_big_length (size_without_overflow_columns)
       /* TODO[arnia] : remove this line */
@@ -11856,27 +11855,27 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       if (overflow_columns_cnt > 0)
 	{
-	  OUT_OF_ROW_RECDES *out_of_row_recdes = oor_context->oor_recdes;
+	  OUT_OF_ROW_ATTS *out_of_row_atts = oor_context->oor_atts;
 
-	  out_of_row_recdes->recdes_capacity = overflow_columns_cnt;
-	  out_of_row_recdes->recdes_cnt = 0;
-	  out_of_row_recdes->oor_recdes = (RECDES *)
-	    db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->oor_recdes[0]));
-	  if (out_of_row_recdes->oor_recdes == NULL)
+	  out_of_row_atts->recdes_capacity = overflow_columns_cnt;
+	  out_of_row_atts->recdes_cnt = 0;
+	  out_of_row_atts->oor_recdes = (RECDES *)
+	    db_private_alloc (thread_p, out_of_row_atts->recdes_capacity * sizeof (out_of_row_atts->oor_recdes[0]));
+	  if (out_of_row_atts->oor_recdes == NULL)
 	    {
 	      return S_ERROR;
 	    }
-	  memset (out_of_row_recdes->oor_recdes, 0, out_of_row_recdes->recdes_capacity
-		  * sizeof (out_of_row_recdes->oor_recdes[0]));
+	  memset (out_of_row_atts->oor_recdes, 0, out_of_row_atts->recdes_capacity
+		  * sizeof (out_of_row_atts->oor_recdes[0]));
 
-	  out_of_row_recdes->att_ids = (int *) db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity
-								 * sizeof (out_of_row_recdes->att_ids[0]));
-	  if (out_of_row_recdes->att_ids == NULL)
+	  out_of_row_atts->att_ids = (int *) db_private_alloc (thread_p, out_of_row_atts->recdes_capacity
+								 * sizeof (out_of_row_atts->att_ids[0]));
+	  if (out_of_row_atts->att_ids == NULL)
 	    {
 	      return S_ERROR;
 	    }
-	  memset (out_of_row_recdes->att_ids, 0,
-		  out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->att_ids[0]));
+	  memset (out_of_row_atts->att_ids, 0,
+		  out_of_row_atts->recdes_capacity * sizeof (out_of_row_atts->att_ids[0]));
 	}
       else
 	{
@@ -12055,11 +12054,11 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			      return S_ERROR;
 			    }
 
-			  oor_context->oor_recdes->oor_recdes[oor_context->oor_recdes->recdes_cnt].data = overflow_col_data;
-			  oor_context->oor_recdes->oor_recdes[oor_context->oor_recdes->recdes_cnt].area_size = overflow_col_size;
-			  oor_context->oor_recdes->oor_recdes[oor_context->oor_recdes->recdes_cnt].length = overflow_col_size;
-			  oor_context->oor_recdes->att_ids[oor_context->oor_recdes->recdes_cnt] = value->attrid;
-			  oor_context->oor_recdes->recdes_cnt++;
+			  oor_context->oor_atts->oor_recdes[oor_context->oor_atts->recdes_cnt].data = overflow_col_data;
+			  oor_context->oor_atts->oor_recdes[oor_context->oor_atts->recdes_cnt].area_size = overflow_col_size;
+			  oor_context->oor_atts->oor_recdes[oor_context->oor_atts->recdes_cnt].length = overflow_col_size;
+			  oor_context->oor_atts->att_ids[oor_context->oor_atts->recdes_cnt] = value->attrid;
+			  oor_context->oor_atts->recdes_cnt++;
 
 			  db_elo_copy (db_get_elo (&temp_clob_value), &perm_clob_elo);
 
@@ -13610,7 +13609,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
   int cnt;			/* set element count */
   int new_max_oid;
   int i, j;			/* loop counters */
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
 
   /* 
    * We don't support class references in this function
@@ -14482,7 +14481,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   int ret = NO_ERROR;
   PGBUF_WATCHER pg_watcher;
   PGBUF_WATCHER old_pg_watcher;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
@@ -17894,7 +17893,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
   ATTR_ID *atts = NULL;
   bool atts_free = false, attrinfo_clear = false, attrinfo_end = false;
   HEAP_CACHE_ATTRINFO *cache_attr_info = NULL;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
 
   if (func_index_info == NULL && btid_index > -1 && n_atts == -1)
     {
@@ -20075,8 +20074,8 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   OID_SET_NULL (&context->oid);
   OID_SET_NULL (&context->class_oid);
   context->recdes_p = NULL;
-  context->out_of_row_recdes = NULL;
   context->scan_cache_p = NULL;
+  context->oor_context_p = NULL;
 
   context->map_recdes.data = NULL;
   context->map_recdes.length = 0;
@@ -20594,35 +20593,6 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
 
   /* use map_recdes for page insertion */
   context->recdes_p = &context->map_recdes;
-
-  /* all ok */
-  return NO_ERROR;
-}
-
-/*
- * heap_insert_handle_out_of_row_records () - handle a multipage object for insert
- *   thread_p(in): thread entry
- *   context(in): operation context
- *
- * NOTE: In case of multipage records, this function will perform the overflow
- *       insertion and provide a forwarding record descriptor in map_recdes.
- *       recdes_p will point to the map_recdes structure for insertion in home
- *       page.
- */
-static int
-heap_insert_handle_out_of_row_records (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
-{
-  int i;
-  bool use_bigone_maxsize = false;
-
-  assert (context != NULL);
-  assert (context->out_of_row_recdes != NULL);
-  assert (context->out_of_row_recdes->recdes_cnt > 0);
-
-  for (i = 0; i < context->out_of_row_recdes->recdes_cnt; i++)
-    {
-      assert (0);
-    }
 
   /* all ok */
   return NO_ERROR;
@@ -22344,7 +22314,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   bool update_old_home = false;
   bool update_old_forward = false;
   bool remove_old_forward = false;
-  bool insert_oor = false;
   LOG_LSA prev_version_lsa = LSA_INITIALIZER;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
   PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
@@ -22428,17 +22397,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      if (context->out_of_row_recdes != NULL
-	  && context->out_of_row_recdes->recdes_cnt > 0)
-	{
-	  rc = heap_insert_handle_out_of_row_records (thread_p, context);
-	  if (rc != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return rc;
-	    }
-	}
-
       context->recdes_p->type = REC_NEWHOME;
       rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid, newhome_pg_watcher_p);
       if (rc != NO_ERROR)
@@ -22465,7 +22423,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* remove old forward record */
       remove_old_forward = true;
       update_old_home = true;
-      insert_oor = true;
 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_HOME_UPDATES);
     }
@@ -22476,7 +22433,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       /* home record will not be touched */
       update_old_forward = true;
-      insert_oor = true;
 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_UPDATES);
     }
@@ -22493,19 +22449,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   /* Remove rec_newhome only in case of old_home update */
   assert (remove_old_forward == update_old_home);
 
-  if (insert_oor)
-    {
-      if (context->out_of_row_recdes != NULL
-	  && context->out_of_row_recdes->recdes_cnt > 0)
-	{
-	  rc = heap_insert_handle_out_of_row_records (thread_p, context);
-	  if (rc != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return rc;
-	    }
-	}
-    }
   /* 
    * Update old home record (if necessary)
    */
@@ -22935,7 +22878,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
  */
 void
 heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p, RECDES * recdes_p,
-			    OUT_OF_ROW_RECDES *out_of_row_recdes_p, HEAP_SCANCACHE * scancache_p)
+			    OUT_OF_ROW_CONTEXT *oor_context_p, HEAP_SCANCACHE * scancache_p)
 {
   assert (context != NULL);
   assert (hfid_p != NULL);
@@ -22947,8 +22890,8 @@ heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
       COPY_OID (&context->class_oid, class_oid_p);
     }
   context->recdes_p = recdes_p;
-  context->out_of_row_recdes = out_of_row_recdes_p;
   context->scan_cache_p = scancache_p;
+  context->oor_context_p = oor_context_p;
   context->type = HEAP_OPERATION_INSERT;
 }
 
@@ -22974,6 +22917,7 @@ heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   COPY_OID (&context->class_oid, class_oid_p);
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_DELETE;
+  context->oor_context_p = NULL;
 }
 
 /*
@@ -22988,7 +22932,7 @@ heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
  */
 void
 heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
-			    RECDES * recdes_p, OUT_OF_ROW_RECDES *out_of_row_recdes_p, HEAP_SCANCACHE * scancache_p,
+			    RECDES * recdes_p, OUT_OF_ROW_CONTEXT *oor_context_p, HEAP_SCANCACHE * scancache_p,
 			    UPDATE_INPLACE_STYLE in_place)
 {
   assert (context != NULL);
@@ -23001,8 +22945,8 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   COPY_OID (&context->oid, oid_p);
   COPY_OID (&context->class_oid, class_oid_p);
   context->recdes_p = recdes_p;
-  context->out_of_row_recdes = out_of_row_recdes_p;
   context->scan_cache_p = scancache_p;
+  context->oor_context_p = oor_context_p;
   context->type = HEAP_OPERATION_UPDATE;
   context->update_in_place = in_place;
 }
@@ -23134,8 +23078,19 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    * Operation logging
    */
 
-  heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
-			    context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
+  if (context->oor_context_p != NULL
+      && context->oor_context_p->repl_record.data != NULL)
+    {
+      context->oor_context_p->repl_record.type = context->recdes_p->type;
+      heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
+				&context->oor_context_p->repl_record, is_mvcc_op,
+				context->is_redistribute_insert_with_delid);
+    }
+  else
+    {
+      heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
+				context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
+    }
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -25306,38 +25261,43 @@ heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * 
  * oor_context (in/out)	: out of row context
  */
 void
-heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context)
+heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_CONTEXT *oor_context)
 {
-  if (oor_context->recdes_cnt > 0)
+  if (oor_context == NULL || oor_context->oor_atts == NULL)
+    {
+      return ;
+    }
+
+  if (oor_context->oor_atts->recdes_cnt > 0)
     {
       int i;
   
-      for (i = 0; i < oor_context->recdes_cnt; i++)
+      for (i = 0; i < oor_context->oor_atts->recdes_cnt; i++)
 	{
-	  if (oor_context->oor_recdes[i].data != NULL)
+	  if (oor_context->oor_atts->oor_recdes[i].data != NULL)
 	    {
-	      db_private_free (thread_p, oor_context->oor_recdes[i].data);
-	      oor_context->oor_recdes[i].data = NULL;
+	      db_private_free (thread_p, oor_context->oor_atts->oor_recdes[i].data);
+	      oor_context->oor_atts->oor_recdes[i].data = NULL;
 	    }
 
 	}
     }
 
-  if (oor_context->oor_recdes != NULL)
+  if (oor_context->oor_atts->oor_recdes != NULL)
     {
-      db_private_free (thread_p, oor_context->oor_recdes);
-      oor_context->oor_recdes = NULL;
+      db_private_free (thread_p, oor_context->oor_atts->oor_recdes);
+      oor_context->oor_atts->oor_recdes = NULL;
     }
 
-  if (oor_context->att_ids != NULL)
+  if (oor_context->oor_atts->att_ids != NULL)
     {
-      db_private_free (thread_p, oor_context->att_ids);
-      oor_context->att_ids = NULL;
+      db_private_free (thread_p, oor_context->oor_atts->att_ids);
+      oor_context->oor_atts->att_ids = NULL;
     }
 
 
-  oor_context->recdes_cnt = 0;
-  oor_context->recdes_capacity = 0;
+  oor_context->oor_atts->recdes_cnt = 0;
+  oor_context->oor_atts->recdes_capacity = 0;
 }
 
 /*
@@ -25350,8 +25310,8 @@ heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context)
 int
 heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
-  OUT_OF_ROW_CONTEXT expanded_oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+  OUT_OF_ROW_CONTEXT expanded_oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
   int error = NO_ERROR;
   SCAN_CODE scan;
 

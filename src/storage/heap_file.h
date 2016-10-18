@@ -286,8 +286,8 @@ struct heap_operation_context
   OID oid;			/* object identifier */
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
-  OUT_OF_ROW_RECDES *out_of_row_recdes;
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
+  OUT_OF_ROW_CONTEXT *oor_context_p;  /* OOR context */
 
   /* overflow transient data */
   RECDES map_recdes;		/* built record descriptor during multipage insert */
@@ -633,12 +633,12 @@ extern int heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p, 
 extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 							     OID * class_oid);
 extern void heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p,
-					RECDES * recdes_p, OUT_OF_ROW_RECDES *out_of_row_recdes_p,
+					RECDES * recdes_p, OUT_OF_ROW_CONTEXT * oor_context_p,
 					HEAP_SCANCACHE * scancache_p);
 extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
 					HEAP_SCANCACHE * scancache_p);
 extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
-					RECDES * recdes_p, OUT_OF_ROW_RECDES *out_of_row_recdes_p,
+					RECDES * recdes_p, OUT_OF_ROW_CONTEXT * oor_context_p,
 					HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place);
 extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
@@ -682,6 +682,6 @@ extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEA
 extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p,
 					HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern int heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context);
+extern void heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_CONTEXT *oor_context);
 extern int heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 #endif /* _HEAP_FILE_H_ */

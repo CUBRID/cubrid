@@ -2647,7 +2647,7 @@ DB_LOGICAL
 update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification, FILTER_INFO * key_filter,
 		       RECDES * recdes, const OID * oid)
 {
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
   int q;
 
   if (ev_res == V_ERROR)
@@ -2773,7 +2773,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
   SCAN_PRED *scan_predp;
   SCAN_ATTRS *scan_attrsp;
   DB_LOGICAL ev_res;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB };
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
 
   if (!filterp)
     {
