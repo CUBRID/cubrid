@@ -74,8 +74,7 @@ struct xcache
 {
   bool enabled;
   int soft_capacity;
-  int mem_threshold;
-  int last_cleaned_time;
+  struct timeval last_cleaned_time;
   int time_threshold;
   LF_HASH_TABLE ht;
   LF_FREELIST freelist;
@@ -91,9 +90,8 @@ struct xcache
 XCACHE xcache_Global = {
   false,			/* enabled */
   0,				/* soft_capacity */
-  0,				/* mem_threshold */
-  0,				/* last_cleaned_time */
-  24 * 3600,			/* time_threshold */
+  {0},				/* last_cleaned_time */
+  3600,				/* time_threshold */
   LF_HASH_TABLE_INITIALIZER,	/* ht */
   LF_FREELIST_INITIALIZER,	/* freelist */
   0,				/* entry_count */
@@ -121,6 +119,8 @@ XCACHE xcache_Global = {
 /* Statistics */
 #define XCACHE_STAT_GET(name) ATOMIC_LOAD_64 (&xcache_Global.stats.name)
 #define XCACHE_STAT_INC(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 1)
+
+#define TIME_DIFF_SEC(t1, t2) (t1.tv_sec - t2.tv_sec)
 
 /* xcache_Entry_descriptor - used for latch-free hash table.
  * we have to declare member functions before instantiating xcache_Entry_descriptor.
@@ -255,7 +255,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_check_logging ();
 
   xcache_Soft_capacity = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES);
-  xcache_mem_threshold = xcache_Soft_capacity;
+
   if (xcache_Soft_capacity <= 0)
     {
       xcache_log ("disabled.\n");
@@ -1170,7 +1170,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
   char *sql_hash_text = NULL;
   char *sql_user_text = NULL;
   char *sql_plan_text = NULL;
-  struct timeval time_stored;
+  struct timeval time_stored, current_time;
   int sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
   char *strbuf = NULL;
 
@@ -1454,13 +1454,14 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
     }
   else
     {
-      if ((xcache_Soft_capacity < xcache_Entry_count || xcache_mem_threshold < xcache_Entry_count
-	   || (clock () - xcache_last_cleaned_time) / CLOCKS_PER_SEC > xcache_time_threshold)
+      gettimeofday (&current_time, NULL);
+      if ((xcache_Soft_capacity < xcache_Entry_count
+	   || TIME_DIFF_SEC (current_time, xcache_last_cleaned_time) > xcache_time_threshold)
 	  && xcache_Cleanup_flag == 0)
 	{
 	  /* Try to clean up some of the oldest entries. */
 	  xcache_cleanup (thread_p);
-	  xcache_last_cleaned_time = clock ();
+	  gettimeofday (&xcache_last_cleaned_time, NULL);
 	}
 
       /* XASL stream was used. Remove from argument. */
@@ -1861,6 +1862,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   XCACHE_CLEANUP_CANDIDATE candidate;
+  struct timeval current_time;
   int candidate_index;
   int success;
   int cleanup_count;
@@ -1874,7 +1876,10 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       /* Somebody else does the cleanup. */
       return;
     }
-  if (xcache_Entry_count <= xcache_Soft_capacity)
+
+  gettimeofday (&current_time, NULL);
+  if (xcache_Entry_count <= xcache_Soft_capacity
+      && TIME_DIFF_SEC (current_time, xcache_last_cleaned_time) <= xcache_time_threshold)
     {
       /* Already cleaned up. */
       if (!ATOMIC_CAS_32 ((LONG *) & xcache_Cleanup_flag, 1, 0))
@@ -1946,9 +1951,10 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       candidate.xid = xcache_entry->xasl_id;
       candidate.time_last_used = xcache_entry->time_last_used;
 
-      if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
+      if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK || (xcache_Entry_count <= xcache_Soft_capacity && TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_time_threshold))	/*cleanup by time */
 	{
-	  /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
+	  /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. 
+	   * If we do cleanup by the time, we discard those entries which are newer than xcache_time_threshold */
 	  continue;
 	}
 
