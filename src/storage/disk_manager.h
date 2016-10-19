@@ -42,6 +42,7 @@
 #define VSID_SET_NULL(vsidp) (vsidp)->sectid = NULL_SECTID; (vsidp)->volid = NULL_VOLID
 #define VSID_IS_NULL(vsidp) ((vsidp)->sectid == NULL_SECTID || (vsidp)->volid == NULL_VOLID)
 #define VSID_COPY(dest, src) *((VSID *) dest) = *((VSID *) src)
+#define VSID_EQ(first, second) ((first)->volid == (second)->volid && (first)->sectid == (second)->sectid)
 
 #define DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES (NULL_PAGEID - 1)
 

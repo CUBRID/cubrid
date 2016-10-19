@@ -14001,6 +14001,7 @@ struct file_map_context
   bool is_partial;
   PGBUF_LATCH_MODE latch_mode;
   PGBUF_LATCH_CONDITION latch_cond;
+  FILE_FTAB_COLLECTOR ftab_collector;
 
   bool stop;
 
@@ -14249,8 +14250,12 @@ static int file_table_collect_vsid (THREAD_ENTRY * thread_p, const void *item,
 static int file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead);
 static int file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead);
 static int file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VSID * vsid);
-static int file_table_collect_ftab_pages (THREAD_ENTRY * thread_p,
-					  const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args);
+STATIC_INLINE int file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, bool collect_numerable,
+						 FILE_FTAB_COLLECTOR * collector_out) __attribute__ ((ALWAYS_INLINE));
+static int file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+					    void *args);
+STATIC_INLINE bool file_table_collector_has_page (FILE_FTAB_COLLECTOR * collector, VPID * vpid)
+  __attribute__ ((ALWAYS_INLINE));
 static int file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead,
 			    FILE_ALLOC_TYPE alloc_type, VPID * vpid_alloc_out);
 static int file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead,
@@ -14262,9 +14267,8 @@ STATIC_INLINE int file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page
   __attribute__ ((ALWAYS_INLINE));
 static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensate_or_run_postpone);
 
-STATIC_INLINE int flre_create_temp_internal (THREAD_ENTRY * thread_p,
-					     int npages, FILE_TYPE ftype,
-					     bool is_numerable, VFID * vfid_out) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int flre_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable,
+					     VFID * vfid_out) __attribute__ ((ALWAYS_INLINE));
 static int flre_sector_map_pages (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 
 /************************************************************************/
@@ -19408,7 +19412,95 @@ flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp)
 }
 
 /*
- * file_table_collect_ftab_pages () - FILE_EXTDATA_FUNC to collect pages used for file table
+ * file_table_collect_ftab_pages () - collect file table pages
+ *
+ * return                 : error code
+ * thread_p (in)          : thread entry
+ * page_fhead (in)        : file header page
+ * collect_numerable (in) : true to collect also user page table, false otherwise
+ * collector_out (out)    : output collected table pages
+ */
+STATIC_INLINE int
+file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, bool collect_numerable,
+			       FILE_FTAB_COLLECTOR * collector_out)
+{
+  VPID vpid_fhead;
+  FLRE_HEADER *fhead = NULL;
+
+  FILE_EXTENSIBLE_DATA *extdata_ftab;
+
+  int error_code;
+
+  fhead = (FLRE_HEADER *) page_fhead;
+
+  /* init collector */
+  collector_out->partsect_ftab =
+    (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, sizeof (FILE_PARTIAL_SECTOR) * fhead->n_page_ftab);
+  if (collector_out->partsect_ftab == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (FILE_PARTIAL_SECTOR) * fhead->n_page_ftab);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* add page header */
+  pgbuf_get_vpid (page_fhead, &vpid_fhead);
+  VSID_FROM_VPID (&collector_out->partsect_ftab[0].vsid, &vpid_fhead);
+  collector_out->partsect_ftab[0].page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+  file_partsect_set_bit (&collector_out->partsect_ftab[0],
+			 file_partsect_pageid_to_offset (&collector_out->partsect_ftab[0], vpid_fhead.pageid));
+  collector_out->nsects = 1;
+  collector_out->npages = 1;
+
+  file_log ("file_temp_reset_user_pages",
+	    "init collector with page %d|%d \n "
+	    FILE_PARTSECT_MSG ("partsect"), VPID_AS_ARGS (&vpid_fhead),
+	    FILE_PARTSECT_AS_ARGS (collector_out->partsect_ftab));
+
+  /* add other pages in partial sector table */
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, collector_out, NULL,
+			      NULL, false, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_private_free_and_init (thread_p, collector_out->partsect_ftab);
+      return error_code;
+    }
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      /* add other pages from full sector table */
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, collector_out, NULL,
+				  NULL, false, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_private_free_and_init (thread_p, collector_out->partsect_ftab);
+	  return error_code;
+	}
+    }
+  if (collect_numerable && FILE_IS_NUMERABLE (fhead))
+    {
+      /* add other pages from user-page table */
+      FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_ftab);
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, collector_out, NULL,
+				  NULL, false, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_private_free_and_init (thread_p, collector_out->partsect_ftab);
+	  return error_code;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * file_extdata_collect_ftab_pages () - FILE_EXTDATA_FUNC to collect pages used for file table
  *
  * return        : NO_ERROR
  * thread_p (in) : thread entry
@@ -19417,7 +19509,7 @@ flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp)
  * args (in/out) : FILE_FTAB_COLLECTOR * - file table page collector
  */
 static int
-file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
+file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
 {
   FILE_FTAB_COLLECTOR *collect = (FILE_FTAB_COLLECTOR *) args;
   VSID vsid_this;
@@ -19441,19 +19533,45 @@ file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DA
 	  collect->partsect_ftab->page_bitmap = FILE_EMPTY_PAGE_BITMAP;
 	  collect->nsects++;
 
-	  file_log ("file_table_collect_ftab_pages",
+	  file_log ("file_extdata_collect_ftab_pages",
 		    "add new vsid %d|%d, nsects = %d", VSID_AS_ARGS (&vsid_this), collect->nsects);
 	}
       file_partsect_set_bit (&collect->partsect_ftab[idx_sect],
 			     file_partsect_pageid_to_offset (&collect->partsect_ftab[idx_sect],
 							     extdata->vpid_next.pageid));
 
-      file_log ("file_table_collect_ftab_pages",
+      file_log ("file_extdata_collect_ftab_pages",
 		"collect ftab page %d|%d, \n" FILE_PARTSECT_MSG ("partsect"),
 		VPID_AS_ARGS (&extdata->vpid_next), FILE_PARTSECT_AS_ARGS (&collect->partsect_ftab[idx_sect]));
       collect->npages++;
     }
   return NO_ERROR;
+}
+
+/*
+ * file_table_collector_has_page () - check if page is in collected file table pages
+ *
+ * return         : true if page is file table page, false otherwise
+ * collector (in) : file table pages collector
+ * vpid (in)      : page id
+ */
+STATIC_INLINE bool
+file_table_collector_has_page (FILE_FTAB_COLLECTOR * collector, VPID * vpid)
+{
+  int iter;
+  VSID vsid;
+
+  VSID_FROM_VPID (&vsid, vpid);
+  for (iter = 0; iter < collector->nsects; iter++)
+    {
+      if (VSID_EQ (&vsid, &collector->partsect_ftab[iter].vsid))
+	{
+	  return file_partsect_is_bit_set (&collector->partsect_ftab[iter],
+					   file_partsect_pageid_to_offset (&collector->partsect_ftab[iter],
+									   vpid->pageid));
+	}
+    }
+  return false;
 }
 
 /*
@@ -19548,6 +19666,11 @@ flre_sector_map_pages (THREAD_ENTRY * thread_p, const void *data, int index, boo
 	  /* not allocated */
 	  continue;
 	}
+      if (file_table_collector_has_page (&context->ftab_collector, &vpid))
+	{
+	  /* skip table pages */
+	  continue;
+	}
       page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, context->latch_mode, context->latch_cond);
       if (page == NULL)
 	{
@@ -19560,15 +19683,9 @@ flre_sector_map_pages (THREAD_ENTRY * thread_p, const void *data, int index, boo
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
-      if (pgbuf_get_page_ptype (thread_p, page) != PAGE_FTAB)
-	{
-	  /* call map function */
-	  error_code = context->func (thread_p, &page, stop, context->args);
-	}
-      else
-	{
-	  /* not an user page */
-	}
+      assert (pgbuf_get_page_ptype (thread_p, page) != PAGE_FTAB);
+      /* call map function */
+      error_code = context->func (thread_p, &page, stop, context->args);
       if (page != NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, page);
@@ -19607,10 +19724,10 @@ flre_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE lat
   PAGE_PTR page_fhead = NULL;
   FLRE_HEADER *fhead = NULL;
 
-  FILE_MAP_CONTEXT context;
-  int error_code = NO_ERROR;
-
   FILE_EXTENSIBLE_DATA *extdata_ftab;
+  FILE_MAP_CONTEXT context;
+
+  int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (latch_mode == PGBUF_LATCH_READ || latch_mode == PGBUF_LATCH_WRITE);
@@ -19623,6 +19740,9 @@ flre_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE lat
    * note that file header is read-latched during the whole time. this means page allocations/deallocations are blocked
    * during the process. careful when using the function in server-mode. it is not advisable to be used for hot and
    * large files.
+   *
+   * function must be mapped on user pages only. as a first step we have to collect file table pages. while mapping
+   * function on pages, these are skipped.
    */
 
 #if defined (SERVER_MODE)
@@ -19649,6 +19769,15 @@ flre_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE lat
   context.latch_cond = latch_cond;
   context.latch_mode = latch_mode;
   context.stop = false;
+  context.ftab_collector.partsect_ftab = NULL;
+
+  /* collect table pages */
+  error_code = file_table_collect_ftab_pages (thread_p, page_fhead, true, &context.ftab_collector);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
 
   /* map over partial sectors table */
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
@@ -19687,6 +19816,11 @@ exit:
     {
       pgbuf_unfix (thread_p, page_fhead);
     }
+  if (context.ftab_collector.partsect_ftab != NULL)
+    {
+      db_private_free (thread_p, context.ftab_collector.partsect_ftab);
+    }
+
   return error_code;
 }
 
@@ -20572,39 +20706,11 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
       fhead->vpid_last_user_page_ftab = vpid_fhead;
     }
 
-  /* reset partial table */
-  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
-
-  /* collect file table pages */
-  collector.partsect_ftab =
-    (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
-  if (collector.partsect_ftab == NULL)
-    {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
-      goto exit;
-    }
-  /* add page header */
-  VSID_FROM_VPID (&collector.partsect_ftab[0].vsid, &vpid_fhead);
-  collector.partsect_ftab[0].page_bitmap = FILE_EMPTY_PAGE_BITMAP;
-  file_partsect_set_bit (&collector.partsect_ftab[0],
-			 file_partsect_pageid_to_offset (&collector.partsect_ftab[0], vpid_fhead.pageid));
-  collector.nsects = 1;
-  collector.npages = 1;
-
-  file_log ("file_temp_reset_user_pages",
-	    "init collector with page %d|%d \n "
-	    FILE_PARTSECT_MSG ("partsect"), VPID_AS_ARGS (&vpid_fhead),
-	    FILE_PARTSECT_AS_ARGS (collector.partsect_ftab));
-
-  /* add other pages in partial sector table */
-  error_code =
-    file_extdata_apply_funcs (thread_p, extdata_part_ftab,
-			      file_table_collect_ftab_pages, &collector, NULL, NULL, false, NULL, NULL);
+  /* collect table pages */
+  error_code = file_table_collect_ftab_pages (thread_p, page_fhead, false, &collector);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
-      error_code = ER_FAILED;
       goto exit;
     }
 
