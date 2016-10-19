@@ -752,9 +752,14 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size, VPID * page_id_p)
 	  /* we can use cached page. careful, it was moved to context. */
 	  assert (!VPID_ISNULL (&context.vpid_optimal));
 	  assert (context.page_optimal != NULL);
+	  assert (page_p == NULL);
 
 	  *page_id_p = context.vpid_optimal;
 	  return context.page_optimal;
+	}
+      else
+	{
+	  pgbuf_unfix_and_init (thread_p, page_p);
 	}
 
       /* need another page */
