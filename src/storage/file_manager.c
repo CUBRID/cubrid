@@ -20661,7 +20661,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   FLRE_HEADER *fhead = NULL;
 
   FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
-  FILE_EXTENSIBLE_DATA *extdata_part_ftab;
+  FILE_EXTENSIBLE_DATA *extdata_part_ftab = NULL;
   PAGE_PTR page_ftab = NULL;
   FILE_PARTIAL_SECTOR *partsect = NULL;
   int idx_sect = 0;
@@ -20729,6 +20729,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   /* reset partial table sectors, but leave file table pages allocated */
   page_ftab = page_fhead;
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
   while (true)
     {
       assert (extdata_part_ftab != NULL);
