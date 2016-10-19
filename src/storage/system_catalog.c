@@ -281,11 +281,20 @@ static CATALOG_MAX_SPACE catalog_Max_space;	/* Global space information */
 static pthread_mutex_t catalog_Max_space_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool catalog_is_header_initialized = false;
 
+typedef struct catalog_find_optimal_page_context CATALOG_FIND_OPTIMAL_PAGE_CONTEXT;
+struct catalog_find_optimal_page_context
+{
+  int size;
+  int size_optimal_free;
+  VPID vpid_optimal;
+  PAGE_PTR page_optimal;
+};
+
 static void catalog_initialize_max_space (CATALOG_MAX_SPACE * header_p);
 static void catalog_update_max_space (VPID * page_id, PGLENGTH space);
 
 static int catalog_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
-static PAGE_PTR catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id, VPID * nearpg, bool is_overflow_page);
+static PAGE_PTR catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id, bool is_overflow_page);
 static PAGE_PTR catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size, VPID * page_id);
 static int catalog_get_key_list (THREAD_ENTRY * thread_p, void *key, void *val, void *args);
 static void catalog_free_key_list (CATALOG_CLASS_ID_LIST * clsid_list);
@@ -620,9 +629,11 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
  * record for the page.
  */
 static PAGE_PTR
-catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, VPID * near_page_p, bool is_overflow_page)
+catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, bool is_overflow_page)
 {
   PAGE_PTR page_p;
+
+  log_sysop_start (thread_p);
 
   if (flre_alloc_and_init (thread_p, &catalog_Id.vfid, catalog_initialize_new_page, &is_overflow_page, page_id_p)
       != NO_ERROR)
@@ -640,16 +651,61 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, VPID * near_pag
   if (page_p == NULL)
     {
       ASSERT_ERROR ();
-      if (flre_dealloc (thread_p, &catalog_Id.vfid, page_id_p, FILE_CATALOG) != NO_ERROR)
-	{
-	  assert (false);
-	}
+      log_sysop_abort (thread_p);
       return NULL;
     }
 
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
+  log_sysop_commit (thread_p);
 
   return page_p;
+}
+
+/*
+ * catalog_file_map_find_optimal_page () - FILE_MAP_PAGE_FUNC function that checks a catalog page has enough space
+ *                                         for a new record.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * page (in/out) : page to check. if page has enough space, its value is moved to context and the output of this pointer
+ *                 is NULL.
+ * stop (out)    : output true if page has enough space
+ * args (in/out) : find optimal page context
+ */
+static int
+catalog_file_map_find_optimal_page (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args)
+{
+  CATALOG_FIND_OPTIMAL_PAGE_CONTEXT *context = (CATALOG_FIND_OPTIMAL_PAGE_CONTEXT *) args;
+  RECDES record;
+  int dir_count;
+
+  (void) pgbuf_check_page_ptype (thread_p, *page, PAGE_CATALOG);
+
+  if (spage_get_record (*page, CATALOG_HEADER_SLOT, &record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  if (CATALOG_GET_PGHEADER_PG_OVFL (record.data) || CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data) != NULL_PAGEID)
+    {
+      /* overflow page */
+      return NO_ERROR;
+    }
+  context->size_optimal_free = spage_max_space_for_new_record (thread_p, *page) - CATALOG_MAX_SLOT_ID_SIZE;
+  dir_count = CATALOG_GET_PGHEADER_DIR_COUNT (record.data);
+  if (dir_count > 0)
+    {
+      context->size_optimal_free -= (int) (DB_PAGESIZE * (0.25f + (dir_count - 1) * 0.05f));
+    }
+  if (context->size_optimal_free > context->size)
+    {
+      /* found optimal page */
+      pgbuf_get_vpid (*page, &context->vpid_optimal);
+      context->page_optimal = *page;
+      *page = NULL;
+      *stop = true;
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -657,133 +713,96 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, VPID * near_pag
  *   return: PAGE_PTR
  *   size(in): The size requested in the page
  *   page_id(out): Set to the page identifier fetched
- *
- * Note: The routine considers the requested size and hinted catalog
- * space information to find a catalog page optimal for the good
- * catalog storage utilization and returns the page.
  */
 static PAGE_PTR
 catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size, VPID * page_id_p)
 {
   PAGE_PTR page_p;
-  VPID near_vpid;
-  PAGEID overflow_page_id;
-  char data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT], *aligned_data;
-  RECDES record = {
-    CATALOG_PAGE_HEADER_SIZE, CATALOG_PAGE_HEADER_SIZE, REC_HOME, NULL
-  };
-  int dir_count;
-  int free_space;
-  float empty_ratio;
-  int page_count;
-  bool is_overflow_page;
-  int rv;
+  CATALOG_FIND_OPTIMAL_PAGE_CONTEXT context;
 
-  aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
+  assert (page_id_p != NULL);
 
-  rv = pthread_mutex_lock (&catalog_Max_space_lock);
-  recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
+  context.size = size;
+  VPID_SET_NULL (&context.vpid_optimal);
+  context.page_optimal = NULL;
 
-  if (catalog_Max_space.max_page_id.pageid == NULL_PAGEID && false)	/* todo: fix me */
+  pthread_mutex_lock (&catalog_Max_space_lock);
+
+  if (catalog_Max_space.max_page_id.pageid != NULL_PAGEID && catalog_Max_space.max_space > size)
     {
-      /* if catalog has pages, make hinted space information point to the last catalog page, this way, during restarts
-       * the last page of the previous run will not be left around empty. */
-      page_count = file_get_numpages (thread_p, &catalog_Id.vfid);
-      if ((page_count > 0)
-	  && (file_find_nthpages (thread_p, &catalog_Id.vfid, &catalog_Max_space.max_page_id, (page_count - 1), 1) == 1)
-	  && catalog_Max_space.max_page_id.pageid != NULL_PAGEID)
-	{
-	  page_p =
-	    pgbuf_fix (thread_p, &catalog_Max_space.max_page_id, OLD_PAGE, PGBUF_LATCH_WRITE,
-		       PGBUF_UNCONDITIONAL_LATCH);
-	  if (page_p == NULL)
-	    {
-	      pthread_mutex_unlock (&catalog_Max_space_lock);
-	      return NULL;
-	    }
+      /* try to use page hint */
+      bool can_use = false;
 
-	  (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
-
-	  if (spage_get_record (page_p, CATALOG_HEADER_SLOT, &record, COPY) != S_SUCCESS)
-	    {
-	      pgbuf_unfix_and_init (thread_p, page_p);
-	      pthread_mutex_unlock (&catalog_Max_space_lock);
-	      return NULL;
-	    }
-
-	  is_overflow_page = CATALOG_GET_PGHEADER_PG_OVFL (record.data);
-	  if (is_overflow_page)
-	    {
-	      VPID_SET_NULL (&catalog_Max_space.max_page_id);
-	    }
-	  else
-	    {
-	      catalog_Max_space.max_space = spage_max_space_for_new_record (thread_p, page_p);
-	    }
-	  pgbuf_unfix_and_init (thread_p, page_p);
-	}
-    }
-
-  near_vpid.volid = catalog_Id.vfid.volid;
-  near_vpid.pageid = catalog_Id.hpgid;
-
-  if (catalog_Max_space.max_page_id.pageid == NULL_PAGEID || size > catalog_Max_space.max_space)
-    {
-      pthread_mutex_unlock (&catalog_Max_space_lock);
-      return catalog_get_new_page (thread_p, page_id_p, &near_vpid, false);
-    }
-  else
-    {
       *page_id_p = catalog_Max_space.max_page_id;
       pthread_mutex_unlock (&catalog_Max_space_lock);
 
       page_p = pgbuf_fix (thread_p, page_id_p, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_p == NULL)
 	{
+	  ASSERT_ERROR ();
 	  return NULL;
 	}
-
-      (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
-
-      /* if the page is an overflow page or has itself an overflow page, it can only have one record and cannot be used 
-       * for other purposes, so reject to use same page. */
-      if (spage_get_record (page_p, CATALOG_HEADER_SLOT, &record, COPY) != S_SUCCESS)
+      if (catalog_file_map_find_optimal_page (thread_p, &page_p, &can_use, &context) != NO_ERROR)
 	{
-	  pgbuf_unfix_and_init (thread_p, page_p);
+	  ASSERT_ERROR ();
 	  return NULL;
 	}
-
-      overflow_page_id = CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data);
-      is_overflow_page = CATALOG_GET_PGHEADER_PG_OVFL (record.data);
-      if (overflow_page_id != NULL_PAGEID || is_overflow_page)
+      if (can_use)
 	{
-	  pgbuf_unfix_and_init (thread_p, page_p);
-	  return catalog_get_new_page (thread_p, page_id_p, &near_vpid, false);
+	  /* we can use cached page. careful, it was moved to context. */
+	  assert (!VPID_ISNULL (&context.vpid_optimal));
+	  assert (context.page_optimal != NULL);
+
+	  *page_id_p = context.vpid_optimal;
+	  return context.page_optimal;
 	}
 
-      /* if the page contains directories leave enough space for expansion of directories in order not to cause them to
-       * move around. */
-      free_space = spage_max_space_for_new_record (thread_p, page_p) - CATALOG_MAX_SLOT_ID_SIZE;
-      dir_count = CATALOG_GET_PGHEADER_DIR_COUNT (record.data);
-      if (dir_count > 0)
-	{
-	  empty_ratio = dir_count <= 0 ? 0.0f : 0.25f + (dir_count - 1) * 0.05f;
-	  if (free_space <= (DB_PAGESIZE * empty_ratio))
-	    {
-	      /* page needs to be left empty */
-	      pgbuf_unfix_and_init (thread_p, page_p);
-	      return catalog_get_new_page (thread_p, page_id_p, &near_vpid, false);
-	    }
-	}
-
-      if (size >= free_space)
-	{
-	  pgbuf_unfix_and_init (thread_p, page_p);
-	  return catalog_get_new_page (thread_p, page_id_p, &near_vpid, false);
-	}
-
-      return page_p;
+      /* need another page */
+      pthread_mutex_lock (&catalog_Max_space_lock);
     }
+
+  /* todo: search the file table for enough empty space. this system is not ideal at all! but we have no other means
+   *       of reusing free space. we'll need a different design for catalog file or a free space map or anything.
+   *       maybe we'll consider catalog when we'll rethink the best space system of heap file.
+   */
+
+  if (flre_map_pages (thread_p, &catalog_Id.vfid, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH,
+		      catalog_file_map_find_optimal_page, &context) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      pthread_mutex_unlock (&catalog_Max_space_lock);
+      return NULL;
+    }
+
+  if (context.page_optimal != NULL)
+    {
+      if (catalog_Max_space.max_page_id.pageid == NULL_PAGEID
+	  || catalog_Max_space.max_space < context.size_optimal_free - size)
+	{
+	  /* replace entry in max space */
+	  catalog_Max_space.max_page_id = context.vpid_optimal;
+	  catalog_Max_space.max_space = context.size_optimal_free;
+	}
+
+      pthread_mutex_unlock (&catalog_Max_space_lock);
+
+      *page_id_p = context.vpid_optimal;
+      return context.page_optimal;
+    }
+
+  /* no page with enough space was found */
+  page_p = catalog_get_new_page (thread_p, page_id_p, false);
+  if (page_p == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  catalog_Max_space.max_page_id = *page_id_p;
+  catalog_Max_space.max_space = spage_max_space_for_new_record (thread_p, page_p) - CATALOG_MAX_SLOT_ID_SIZE;
+  pthread_mutex_unlock (&catalog_Max_space_lock);
+
+  return page_p;
 }
 
 /*
@@ -1077,7 +1096,7 @@ catalog_put_record_into_page (THREAD_ENTRY * thread_p, CATALOG_RECORD * catalog_
       return NO_ERROR;
     }
 
-  new_page_p = catalog_get_new_page (thread_p, &new_vpid, &catalog_record_p->vpid, true);
+  new_page_p = catalog_get_new_page (thread_p, &new_vpid, true);
   if (new_page_p == NULL)
     {
       pgbuf_unfix_and_init (thread_p, catalog_record_p->page_p);

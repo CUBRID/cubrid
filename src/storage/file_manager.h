@@ -33,6 +33,7 @@
 #include "disk_manager.h"
 #include "log_manager.h"
 #include "oid.h"
+#include "page_buffer.h"
 
 #define FILE_DUMP_DES_AREA_SIZE 100
 
@@ -371,6 +372,7 @@ union file_descriptors
 };
 
 typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+typedef int (*FILE_MAP_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
 
 extern int flre_manager_init (void);
 extern void flre_manager_final (void);
@@ -406,6 +408,8 @@ extern DISK_ISVALID flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid,
 extern int flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
 extern int flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp);
 extern int flre_update_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
+extern int flre_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,
+			   PGBUF_LATCH_CONDITION latch_cond, FILE_MAP_PAGE_FUNC func, void *args);
 
 extern int flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    VPID * vpid_nth);

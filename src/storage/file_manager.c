@@ -13994,6 +13994,20 @@ struct file_ftab_collector
 };
 #define FILE_FTAB_COLLECTOR_INITIALIZER { 0, 0, NULL }
 
+/* FILE_MAP_CONTEXT - context variables for flre_map_pages function. */
+typedef struct file_map_context FILE_MAP_CONTEXT;
+struct file_map_context
+{
+  bool is_partial;
+  PGBUF_LATCH_MODE latch_mode;
+  PGBUF_LATCH_CONDITION latch_cond;
+
+  bool stop;
+
+  FILE_MAP_PAGE_FUNC func;
+  void *args;
+};
+
 /************************************************************************/
 /* Numerable files section                                              */
 /************************************************************************/
@@ -14251,6 +14265,7 @@ static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, boo
 STATIC_INLINE int flre_create_temp_internal (THREAD_ENTRY * thread_p,
 					     int npages, FILE_TYPE ftype,
 					     bool is_numerable, VFID * vfid_out) __attribute__ ((ALWAYS_INLINE));
+static int flre_sector_map_pages (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 
 /************************************************************************/
 /* Numerable files section.                                             */
@@ -19474,6 +19489,205 @@ flre_update_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_ne
   memcpy (&fhead->descriptor, des_new, sizeof (fhead->descriptor));
   pgbuf_set_dirty (thread_p, page_fhead, FREE);
   return NO_ERROR;
+}
+
+/*
+ * flre_sector_map_pages () - FILE_EXTDATA_ITEM_FUNC used for mapping a function on all user pages
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * data (in)     : FILE_PARTIAL_SECTOR or VSID
+ * index (in)    : ignored
+ * stop (out)    : output true when to stop the mapping
+ * args (in)     : map context
+ */
+static int
+flre_sector_map_pages (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
+{
+  FILE_MAP_CONTEXT *context = (FILE_MAP_CONTEXT *) args;
+  FILE_PARTIAL_SECTOR partsect;
+  int iter;
+  VPID vpid;
+  PAGE_PTR page = NULL;
+
+  int error_code = NO_ERROR;
+
+  assert (context != NULL);
+  assert (context->stop == false);
+  assert (context->func != NULL);
+  assert (context->latch_mode == PGBUF_LATCH_WRITE || context->latch_mode == PGBUF_LATCH_READ);
+  assert (context->latch_cond == PGBUF_CONDITIONAL_LATCH || context->latch_cond == PGBUF_UNCONDITIONAL_LATCH);
+
+  /* how this works:
+   * get all allocated pages from sector in file table. data can be either a partial sector (vsid + allocation bitmap)
+   * or a vsid (full sector - all its pages are allocated).
+   * for each page, we have to check first it is not a table page. we only want to map the function for user pages.
+   *
+   * if the page cannot be fixed conditionally, it is simply skipped. careful when using unconditional latch in server
+   * mode. there is a risk of dead-latches.
+   *
+   * map function can keep the page, but it must set the page pointer to NULL.
+   */
+
+  /* hack to know this is partial table or full table */
+  if (context->is_partial)
+    {
+      partsect = *(FILE_PARTIAL_SECTOR *) data;
+    }
+  else
+    {
+      partsect.vsid = *(VSID *) data;
+    }
+
+  vpid.volid = partsect.vsid.volid;
+  for (iter = 0, vpid.pageid = SECTOR_FIRST_PAGEID (partsect.vsid.sectid); iter < FILE_ALLOC_BITMAP_NBITS;
+       iter++, vpid.pageid++)
+    {
+      if (context->is_partial && !file_partsect_is_bit_set (&partsect, iter))
+	{
+	  /* not allocated */
+	  continue;
+	}
+      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, context->latch_mode, context->latch_cond);
+      if (page == NULL)
+	{
+	  if (context->latch_cond == PGBUF_CONDITIONAL_LATCH)
+	    {
+	      /* exit gracefully */
+	      return NO_ERROR;
+	    }
+	  /* error */
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      if (pgbuf_get_page_ptype (thread_p, page) != PAGE_FTAB)
+	{
+	  /* call map function */
+	  error_code = context->func (thread_p, &page, stop, context->args);
+	}
+      else
+	{
+	  /* not an user page */
+	}
+      if (page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page);
+	}
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (*stop)
+	{
+	  /* early out */
+	  context->stop = true;
+	  return NO_ERROR;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * flre_map_pages () - map given function on all user pages
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * vfid (in)       : file identifier
+ * latch_mode (in) : latch mode
+ * latch_cond (in) : latch condition
+ * func (in)       : map function
+ * args (in)       : map function arguments
+ */
+int
+flre_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,
+		PGBUF_LATCH_CONDITION latch_cond, FILE_MAP_PAGE_FUNC func, void *args)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  FILE_MAP_CONTEXT context;
+  int error_code = NO_ERROR;
+
+  FILE_EXTENSIBLE_DATA *extdata_ftab;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+  assert (latch_mode == PGBUF_LATCH_READ || latch_mode == PGBUF_LATCH_WRITE);
+  assert (func != NULL);
+
+  /* how it works:
+   * get all user pages in partial sector table and full sector table and apply function. the flre_sector_map_pages
+   * is first mapped on entries of partial table and then on full table.
+   *
+   * note that file header is read-latched during the whole time. this means page allocations/deallocations are blocked
+   * during the process. careful when using the function in server-mode. it is not advisable to be used for hot and
+   * large files.
+   */
+
+#if defined (SERVER_MODE)
+  /* we cannot use unconditional latch. allocations can sometimes keep latch on a file page and then try to lock
+   * header/table. we may cause dead latch.
+   */
+  assert (latch_cond == PGBUF_CONDITIONAL_LATCH);
+  latch_cond = PGBUF_CONDITIONAL_LATCH;
+#endif /* SERVER_MODE */
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  /* init map context */
+  context.func = func;
+  context.args = args;
+  context.latch_cond = latch_cond;
+  context.latch_mode = latch_mode;
+  context.stop = false;
+
+  /* map over partial sectors table */
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+  context.is_partial = true;
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, flre_sector_map_pages, &context, false, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+  if (context.stop)
+    {
+      goto exit;
+    }
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      /* map over full table */
+      context.is_partial = false;
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, flre_sector_map_pages, &context, false, NULL,
+				  NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+  assert (error_code == NO_ERROR);
+
+exit:
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+  return error_code;
 }
 
 /************************************************************************/
