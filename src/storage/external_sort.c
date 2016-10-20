@@ -1519,17 +1519,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
       file_pg_cnt_est = MAX (1, file_pg_cnt_est);
 
-      if (sort_param->tot_tempfiles > sort_param->half_files)
-	{
-	  error =
-	    file_create_hint_numpages (thread_p, file_pg_cnt_est * (sort_param->tot_tempfiles - sort_param->half_files),
-				       FILE_TEMP);
-	  if (error != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	}
-
       for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
 	{
 	  error = sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true);
