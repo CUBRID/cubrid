@@ -1462,6 +1462,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	  xcache_cleanup (thread_p);
 	  gettimeofday (&xcache_last_cleaned_time, NULL);
 	}
+
       /* XASL stream was used. Remove from argument. */
       stream->xasl_stream = NULL;
     }
@@ -1866,7 +1867,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   int cleanup_count;
   BINARY_HEAP *bh = NULL;
   int save_max_capacity = 0;
-  int cnt = 0;
 
   /* We can allow only one cleanup process at a time. There is no point in duplicating this work. Therefore, anyone
    * trying to do the cleanup should first try to set xcache_Cleanup_flag. */
@@ -1877,7 +1877,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
     }
 
   gettimeofday (&current_time, NULL);
-
   if (xcache_Entry_count <= xcache_Soft_capacity
       && TIME_DIFF_SEC (current_time, xcache_last_cleaned_time) <= xcache_time_threshold)
     {
@@ -1962,7 +1961,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	}
 
       (void) bh_try_insert (bh, &candidate, NULL);
-      cnt++;
     }
 
   xcache_log ("cleanup collected entries = %d \n"
