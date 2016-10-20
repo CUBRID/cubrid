@@ -15299,8 +15299,9 @@ flre_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid,
 		     FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_alloc)
 {
   PAGE_PTR page_alloc = NULL;
-  int error_code;
+  int error_code = NO_ERROR;
 
+  /* allocate new page */
   error_code = flre_alloc (thread_p, vfid, vpid_alloc);
   if (error_code != NO_ERROR)
     {
@@ -15308,22 +15309,22 @@ flre_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid,
       return error_code;
     }
 
-  page_alloc = pgbuf_fix (thread_p, vpid_alloc, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_alloc == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-
   if (f_init)
     {
+      /* initialize page */
+      page_alloc = pgbuf_fix (thread_p, vpid_alloc, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_alloc == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
       error_code = f_init (thread_p, page_alloc, f_init_args);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	}
+      pgbuf_unfix (thread_p, page_alloc);
     }
-  pgbuf_unfix (thread_p, page_alloc);
 
   return error_code;
 }
