@@ -1860,7 +1860,7 @@ xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
  *   to_stats(out): buffer to copy
  */
 void
-xperfmon_server_copy_global_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
+xperfmon_server_copy_global_stats (UINT64 * to_stats)
 {
   if (to_stats)
     {
