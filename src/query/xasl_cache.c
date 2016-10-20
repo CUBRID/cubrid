@@ -1125,8 +1125,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   XCACHE_STAT_INC (deletes);
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
-  perfmon_set_stat_to_global (PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
-
+  
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
 }
@@ -1297,10 +1296,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       if (inserted)
 	{
 	  (*xcache_entry)->free_data_on_uninit = true;
-	  /* new entry added */
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_ADD);
-	  ATOMIC_INC_32 (&xcache_Entry_count, 1);
-	  perfmon_set_stat_to_global (PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
 	}
       else
 	{
@@ -1342,6 +1338,11 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 			  XCACHE_LOG_ENTRY_ARGS (to_be_recompiled), XCACHE_LOG_TRAN_ARGS (thread_p));
 	      xcache_unfix (thread_p, to_be_recompiled);
 	      to_be_recompiled = NULL;
+	    }
+	  else if (inserted)
+	    {
+	      /* new entry added */
+	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
@@ -1971,7 +1972,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  XCACHE_STAT_INC (deletes_at_cleanup);
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
 	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
-	  perfmon_set_stat_to_global (PSTAT_PC_NUM_CACHE_ENTRIES, xcache_Entry_count);
 	}
       else
 	{
@@ -2114,4 +2114,15 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
       catalog_free_class_info (cls_info_p);
     }
   return recompile;
+}
+
+/*
+ * get_xcache_entry_count () - Returns the number of xasl cache entries
+ *					     
+ *
+ * return : the number of xasl cache entries
+ */
+int get_xcache_entry_count ()
+{
+  return xcache_Global.entry_count;
 }
