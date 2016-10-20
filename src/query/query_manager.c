@@ -2082,9 +2082,6 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
 	  QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 	}
 
-      /* Note: In cases of abort, the qm must delete its own tempfiles otherwise the file manager will delete them out
-       * from under us, leaving us with dangling list_id's and such.  See the functions file_new_destroy_all_tmp and
-       * log_abort_local. */
       if (query_p->temp_vfid != NULL)
 	{
 	  (void) qmgr_free_query_temp_file_helper (thread_p, query_p);

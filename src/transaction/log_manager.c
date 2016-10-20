@@ -8476,7 +8476,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	    rv_err = log_undo_rec_restartable (rcvindex, rcv);
 
 	    /* Make sure that a CLR was logged */
-	    if (LSA_EQ (&check_tail_lsa, &tdes->tail_lsa) && rcvindex != RVFL_CREATE_TMPFILE)
+	    if (LSA_EQ (&check_tail_lsa, &tdes->tail_lsa))
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MISSING_COMPENSATING_RECORD, 1,
 			rv_rcvindex_string (rcvindex));

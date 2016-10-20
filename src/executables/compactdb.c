@@ -246,10 +246,12 @@ phase3:
   catalog_reclaim_space (NULL);
   db_commit_transaction ();
 
-  file_reclaim_all_deleted (NULL);
-  db_commit_transaction ();
-
-  file_tracker_compress (NULL);
+  if (flre_tracker_reclaim_marked_deleted (NULL) != NO_ERROR)
+    {
+      /* how to handle error? */
+      ASSERT_ERROR ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
   db_commit_transaction ();
 
   /* 

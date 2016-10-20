@@ -131,12 +131,6 @@ struct file_allnew_files
   FILE_NEWFILE *tail;		/* Tail for the list of new files */
 };
 
-/*
- * During commit/abort, file_new_destroy_all_tmp() is called before
- * file_new_declare_as_old(). Therefore, same VFID can be reused by different
- * transaction.
- * So, we must compare tran_index as well as VFID
- */
 typedef struct file_new_files_hash_key FILE_NEW_FILES_HASH_KEY;
 struct file_new_files_hash_key
 {
@@ -317,8 +311,6 @@ static int file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 static int file_ftabvpid_next (const FILE_HEADER * fhdr, PAGE_PTR current_ftb_pgptr, VPID * next_ftbvpid);
 static int file_find_limits (PAGE_PTR ftb_pgptr,
 			     const FILE_ALLOCSET * allocset, INT32 ** start_ptr, INT32 ** outside_ptr, int what_table);
-static int file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool pb_invalid_temp_called);
-static int file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool put_cache);
 
 static int file_descriptor_insert (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr, const void *file_des);
 static int file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, const void *xfile_des);
@@ -443,9 +435,6 @@ static int file_dump_ftabs (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADE
 
 static const VFID *file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid);
 static const VFID *file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid);
-
-static int file_mark_deleted_file_list_add (VFID * vfid, const FILE_TYPE file_type);
-static int file_mark_deleted_file_list_remove (VFID * vfid, const FILE_TYPE file_type);
 
 static DISK_ISVALID file_check_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
 
@@ -941,77 +930,6 @@ file_new_set_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
 
   csect_exit (thread_p, CSECT_FILE_NEWFILE);
-
-  return ret;
-}
-
-/*
- * file_new_destroy_all_tmp () - Delete all temporary new files
- *   return: void
- *   tmp_type(in):
- *
- * Note: All temporary new files of the current transaction are deleted from
- *       the system.
- */
-int
-file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
-{
-  FILE_NEWFILE *entry, *next_entry;
-  FILE_NEWFILE *p, *delete_list;
-  int tran_index;
-  int ret = NO_ERROR;
-
-  delete_list = NULL;
-
-  /* todo: fix me */
-  assert (false);
-
-  if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  /* Search the list */
-  next_entry = file_Tracker->newfiles.head;
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  while (next_entry != NULL)
-    {
-      entry = next_entry;
-      /* Get next entry before current entry is invalidated */
-      next_entry = entry->next;
-
-      if (entry->tran_index == tran_index && tmp_type == entry->file_type)
-	{
-	  assert (entry->file_type == FILE_TEMP);
-
-	  p = (FILE_NEWFILE *) malloc (sizeof (*entry));
-	  if (p == NULL)
-	    {
-	      ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, sizeof (*entry));
-	    }
-	  else
-	    {
-	      p->vfid.fileid = entry->vfid.fileid;
-	      p->vfid.volid = entry->vfid.volid;
-
-	      p->next = delete_list;
-	      delete_list = p;
-	    }
-	}
-    }
-
-  csect_exit (thread_p, CSECT_FILE_NEWFILE);
-
-  entry = delete_list;
-  while (entry != NULL)
-    {
-      delete_list = delete_list->next;
-      (void) file_destroy (thread_p, &entry->vfid);
-      free_and_init (entry);
-      entry = delete_list;
-    }
 
   return ret;
 }
@@ -2240,995 +2158,6 @@ exit_on_error:
 
   return ret;
 #endif
-}
-
-/*
- * file_destroy_cached_tmp () - Drop cached temp files in temporary temp file
- *   return: NO_ERROR
- *   volid(in):
- */
-int
-file_destroy_cached_tmp (THREAD_ENTRY * thread_p, VOLID volid)
-{
-  FILE_TEMPFILE_CACHE_ENTRY *p;
-  int idx, prev;
-
-  assert (false);
-
-  if (csect_enter (thread_p, CSECT_TEMPFILE_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  idx = file_Tempfile_cache.first_idx;
-  prev = -1;
-  while (idx != -1)
-    {
-      p = &file_Tempfile_cache.entry[idx];
-      if (p->vfid.volid == volid)
-	{
-	  if (prev == -1)
-	    {
-	      file_Tempfile_cache.first_idx = p->next_entry;
-	    }
-	  else
-	    {
-	      file_Tempfile_cache.entry[prev].next_entry = p->next_entry;
-	    }
-
-	  p->next_entry = file_Tempfile_cache.free_idx;
-	  file_Tempfile_cache.free_idx = p->idx;
-
-	  (void) file_destroy_without_reuse (thread_p, &p->vfid);
-	}
-      prev = idx;
-      idx = p->next_entry;
-    }
-
-  csect_exit (thread_p, CSECT_TEMPFILE_CACHE);
-
-  return NO_ERROR;
-}
-
-/*
- * file_destroy () - Destroy a file
- *   return:
- *   vfid(in): Complete file identifier
- *
- * Note: The pages and sectors assigned to the given file are deallocated and
- *       the file is removed.
- */
-int
-file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
-{
-  return file_destroy_internal (thread_p, vfid, true);
-}
-
-static int
-file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool put_cache)
-{
-  VPID allocset_vpid;		/* Page-volume identifier of allocation set */
-  VPID nxftb_vpid;		/* Page-volume identifier of file tables pages. Part of allocation sets. */
-  FILE_HEADER *fhdr;
-  FILE_ALLOCSET *allocset;	/* The first allocation set */
-  PAGE_PTR fhdr_pgptr = NULL;
-  PAGE_PTR allocset_pgptr = NULL;
-  PAGE_PTR pgptr = NULL;
-  INT32 *aid_ptr;		/* Pointer to portion of table of page or sector allocation table */
-  INT32 *outptr;		/* Out of bound pointer. */
-  INT16 allocset_offset;
-  LOG_DATA_ADDR addr;
-
-  INT32 batch_firstid;		/* First sectid in batch */
-  INT32 batch_ndealloc;		/* # of sectors to deallocate in the batch */
-  FILE_TYPE file_type;
-  bool pb_invalid_temp_called = false;
-
-  addr.vfid = vfid;
-
-  allocset_vpid.volid = vfid->volid;
-  allocset_vpid.pageid = vfid->fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-
-  file_type = fhdr->type;
-
-  if ((file_type == FILE_TEMP || file_type == FILE_QUERY_AREA)
-      && fhdr->num_user_pages < prm_get_integer_value (PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE))
-    {
-      if (0 < fhdr->num_user_pages)
-	{
-	  /* We need to invalidate all the pages set */
-	  allocset_offset = offsetof (FILE_HEADER, allocset);
-	  while (!VPID_ISNULL (&allocset_vpid))
-	    {
-	      allocset_pgptr =
-		pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	      if (allocset_pgptr == NULL)
-		{
-		  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-		  return ER_FAILED;
-		}
-
-	      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
-
-	      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
-
-	      nxftb_vpid = allocset->start_pages_vpid;
-	      while (!VPID_ISNULL (&nxftb_vpid))
-		{
-		  pgptr = pgbuf_fix (thread_p, &nxftb_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-		  if (pgptr == NULL)
-		    {
-		      pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-		      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-		      return ER_FAILED;
-		    }
-
-		  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-		  /* Calculate the starting offset and length of the page to check */
-		  if (file_find_limits (pgptr, allocset, &aid_ptr, &outptr, FILE_PAGE_TABLE) != NO_ERROR)
-		    {
-		      pgbuf_unfix_and_init (thread_p, pgptr);
-		      pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-		      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-		      return ER_FAILED;
-		    }
-
-		  batch_firstid = NULL_PAGEID;
-		  batch_ndealloc = 0;
-
-		  for (; aid_ptr < outptr; aid_ptr++)
-		    {
-		      if (*aid_ptr > NULL_PAGEID)
-			{
-			  if (batch_ndealloc == 0)
-			    {
-			      /* Start accumulating contiguous pages */
-			      batch_firstid = *aid_ptr;
-			      batch_ndealloc = 1;
-			    }
-			  else
-			    {
-			      /* Is page contiguous ? */
-			      if (*aid_ptr == batch_firstid + batch_ndealloc)
-				{
-				  /* contiguous */
-				  batch_ndealloc++;
-				}
-			      else
-				{
-				  /* 
-				   * This is not a contiguous page.
-				   * Deallocate any previous pages and start
-				   * accumulating contiguous pages again.
-				   * We do not care if the page deallocation
-				   * failed, since we are destroying the file..
-				   * Deallocate as much as we can.
-				   */
-
-				  pgbuf_invalidate_temporary_file (allocset->volid, batch_firstid, batch_ndealloc,
-								   true);
-
-				  /* Start again */
-				  batch_firstid = *aid_ptr;
-				  batch_ndealloc = 1;
-				}
-			    }
-			}
-		      else
-			{
-			  assert (*aid_ptr == NULL_PAGEID || *aid_ptr == NULL_PAGEID_MARKED_DELETED);
-			}
-		    }
-
-		  if (batch_ndealloc > 0)
-		    {
-		      /* Deallocate any accumulated pages */
-
-		      pgbuf_invalidate_temporary_file (allocset->volid, batch_firstid, batch_ndealloc, true);
-		    }
-
-		  /* Get next page in the allocation set */
-		  if (VPID_EQ (&nxftb_vpid, &allocset->end_pages_vpid))
-		    {
-		      VPID_SET_NULL (&nxftb_vpid);
-		    }
-		  else
-		    {
-		      if (file_ftabvpid_next (fhdr, pgptr, &nxftb_vpid) != NO_ERROR)
-			{
-			  pgbuf_unfix_and_init (thread_p, pgptr);
-			  return ER_FAILED;
-			}
-		    }
-		  pgbuf_unfix_and_init (thread_p, pgptr);
-		}
-
-	      if (VPID_ISNULL (&allocset->next_allocset_vpid))
-		{
-		  VPID_SET_NULL (&allocset_vpid);
-		  allocset_offset = -1;
-		}
-	      else
-		{
-		  if (VPID_EQ (&allocset_vpid, &allocset->next_allocset_vpid)
-		      && allocset_offset == allocset->next_allocset_offset)
-		    {
-		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_FILE_FTB_LOOP, 4, vfid->fileid,
-			      fileio_get_volume_label (vfid->volid, PEEK),
-			      allocset->next_allocset_vpid.volid, allocset->next_allocset_vpid.pageid);
-		      VPID_SET_NULL (&allocset_vpid);
-		      allocset_offset = -1;
-		    }
-		  else
-		    {
-		      allocset_vpid = allocset->next_allocset_vpid;
-		      allocset_offset = allocset->next_allocset_offset;
-		    }
-		}
-	      pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-	    }
-	}
-
-      assert (file_type == FILE_TEMP || file_type == FILE_QUERY_AREA);
-
-      pb_invalid_temp_called = true;
-
-      if (put_cache)
-	{
-	  if (file_tmpfile_cache_put (thread_p, vfid, file_type))
-	    {
-	      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-	      return NO_ERROR;
-	    }
-	}
-    }
-
-  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-  return file_xdestroy (thread_p, vfid, pb_invalid_temp_called);
-}
-
-/*
- * file_rv_postpone_destroy_file () - Execute file destroy during postpone.
- *				      It was added in order to avoid double
- *				      page deallocations because of vacuum
- *				      workers.
- *
- * return	 : Error code.
- * thread_p (in) : Thread entry.
- * rcv (in)	 : Recovery data (file VFID).
- */
-int
-file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  VFID *vfid;
-  BTID btid;
-  int error_code = NO_ERROR;
-  bool is_btid = false;
-  GLOBAL_UNIQUE_STATS *stats = NULL;
-  int num_oids, num_keys = -1, num_nulls;
-  LF_TRAN_ENTRY *t_entry;
-
-  assert (false);
-
-  if (rcv->length == sizeof (*vfid))
-    {
-      vfid = (VFID *) rcv->data;
-    }
-  else
-    {
-      assert (rcv->length == OR_BTID_ALIGNED_SIZE);
-      OR_GET_BTID (rcv->data, &btid);
-      vfid = &btid.vfid;
-      is_btid = true;
-    }
-
-  /* Start postpone type system operation (overrides the normal system operation). */
-  log_start_postpone_system_op (thread_p, &rcv->reference_lsa);
-
-  /* We need to unregister file before deallocating its pages. */
-  if (file_tracker_unregister (thread_p, vfid) == NULL)
-    {
-      assert_release (false);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-      return ER_FAILED;
-    }
-
-  if (is_btid)
-    {
-      /* save global statistics before delete */
-      t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
-      lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, &btid, (void **) &stats);
-      if (stats)
-	{
-	  num_oids = stats->unique_stats.num_oids;
-	  num_keys = stats->unique_stats.num_keys;
-	  num_nulls = stats->unique_stats.num_nulls;
-	  pthread_mutex_unlock (&stats->mutex);
-	}
-
-      /* delete global statistics */
-      (void) logtb_delete_global_unique_stats (thread_p, &btid);
-    }
-
-  /* Destroy file */
-  error_code = file_destroy (thread_p, vfid);
-  if (error_code != NO_ERROR)
-    {
-      assert_release (false);
-
-      if (is_btid)
-	{
-	  if (num_keys != -1)
-	    {
-	      /* restore global statistics for debug purpose */
-	      stats = NULL;
-	      lf_hash_find_or_insert (t_entry,
-				      &log_Gl.unique_stats_table.unique_stats_hash, &btid, (void **) &stats, NULL);
-	      stats->unique_stats.num_oids = num_oids;
-	      stats->unique_stats.num_keys = num_keys;
-	      stats->unique_stats.num_nulls = num_nulls;
-	      pthread_mutex_unlock (&stats->mutex);
-	    }
-	}
-
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-      return error_code;
-    }
-
-  /* Success. */
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-  return NO_ERROR;
-}
-
-/*
- * file_destroy_without_reuse () - Destroy a file not regarding reuse file
- *   return:
- *   vfid(in): Complete file identifier
- *
- * Note: The pages and sectors assigned to the given file are deallocated and
- *       the file is removed.
- */
-int
-file_destroy_without_reuse (THREAD_ENTRY * thread_p, const VFID * vfid)
-{
-  return file_xdestroy (thread_p, vfid, false);
-}
-
-
-static int
-file_xdestroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool pb_invalid_temp_called)
-{
-  VPID allocset_vpid;		/* Page-volume identifier of allocation set */
-  VPID nxftb_vpid;		/* Page-volume identifier of file tables pages. Part of allocation sets. */
-  VPID curftb_vpid;
-  FILE_HEADER *fhdr;
-  FILE_ALLOCSET *allocset;	/* The first allocation set */
-  PAGE_PTR fhdr_pgptr = NULL;
-  PAGE_PTR allocset_pgptr = NULL;
-  PAGE_PTR pgptr = NULL;
-  INT32 *aid_ptr;		/* Pointer to portion of table of page or sector allocation table */
-  INT32 *outptr;		/* Out of bound pointer. */
-  INT16 allocset_offset;
-  LOG_DATA_ADDR addr;
-  INT16 batch_volid;		/* The volume identifier in the batch of contiguous ids */
-  INT32 batch_firstid;		/* First sectid in batch */
-  INT32 batch_ndealloc;		/* # of sectors to deallocate in the batch */
-  FILE_TYPE file_type;
-  bool old_val;
-  int ret = NO_ERROR;
-  int rv;
-  DISK_PAGE_TYPE page_type;
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-  assert (false);
-
-  /* 
-   * Start a TOP SYSTEM OPERATION.
-   * This top system operation will be either ABORTED (case of failure) or
-   * its actions will be attached to its outer parent. That is, the file
-   * cannot be destroyed half way.
-   */
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  assert (tdes != NULL);
-
-  /* Safe guard: postpone system operation is allowed only if transaction state is
-   * TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE. */
-  assert (tdes->topops.type != LOG_TOPOPS_POSTPONE || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
-
-  old_val = thread_set_check_interrupt (thread_p, false);
-
-  ret = file_type_cache_entry_remove (vfid);
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  allocset_vpid.volid = vfid->volid;
-  allocset_vpid.pageid = vfid->fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-  file_type = fhdr->type;
-  page_type = file_get_disk_page_type (file_type);
-
-  if (!VFID_EQ (vfid, &fhdr->vfid))
-    {
-      /* Header of file seems to be corrupted */
-      ret = ER_FILE_TABLE_CORRUPTED;
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ret, 2, vfid->volid, vfid->fileid);
-      goto exit_on_error;
-    }
-
-  /* Deallocate all user pages */
-  if (fhdr->num_user_pages > 0)
-    {
-      FILE_RECV_DELETE_PAGES postpone_data;
-      int num_user_pages;
-      INT32 undo_data, redo_data;
-
-      /* We need to deallocate all the pages and sectors of every allocated set */
-      allocset_offset = offsetof (FILE_HEADER, allocset);
-      while (!VPID_ISNULL (&allocset_vpid))
-	{
-	  /* 
-	   * Fetch the page that describe this allocation set even when it has
-	   * already been fetched as a file header page. This is done to code
-	   * the following easily.
-	   */
-	  allocset_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	  if (allocset_pgptr == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
-
-	  allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
-
-	  /* Deallocate the pages in this allocation set */
-
-	  nxftb_vpid = allocset->start_pages_vpid;
-	  while (!VPID_ISNULL (&nxftb_vpid))
-	    {
-	      /* 
-	       * Fetch the page where the portion of the page table is located.
-	       * Note that we are fetching the page even when it has been
-	       * fetched previously as an allocation set. This is done to make
-	       * the following code easy to write.
-	       */
-	      pgptr = pgbuf_fix (thread_p, &nxftb_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	      if (pgptr == NULL)
-		{
-		  goto exit_on_error;
-		}
-
-	      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-	      /* Calculate the starting offset and length of the page to check */
-	      if (file_find_limits (pgptr, allocset, &aid_ptr, &outptr, FILE_PAGE_TABLE) != NO_ERROR)
-		{
-		  pgbuf_unfix_and_init (thread_p, pgptr);
-		  goto exit_on_error;
-		}
-
-	      /* 
-	       * Deallocate all user pages in this table page of this allocation
-	       * set. The sectors are deallocated in batches by their contiguity
-	       */
-	      batch_firstid = NULL_PAGEID;
-	      batch_ndealloc = 0;
-
-	      for (; aid_ptr < outptr; aid_ptr++)
-		{
-		  if (*aid_ptr > NULL_PAGEID)
-		    {
-		      if (batch_ndealloc == 0)
-			{
-			  /* Start accumulating contiguous pages */
-			  batch_firstid = *aid_ptr;
-			  batch_ndealloc = 1;
-			}
-		      else
-			{
-			  /* Is page contiguous ? */
-			  if (*aid_ptr == batch_firstid + batch_ndealloc)
-			    {
-			      /* contiguous */
-			      batch_ndealloc++;
-			    }
-			  else
-			    {
-			      /* 
-			       * This is not a contiguous page.
-			       * Deallocate any previous pages and start
-			       * accumulating contiguous pages again.
-			       * We do not care if the page deallocation failed,
-			       * since we are destroying the file.. Deallocate
-			       * as much as we can.
-			       */
-
-			      if (file_type == FILE_TEMP && !pb_invalid_temp_called)
-				{
-				  pgbuf_invalidate_temporary_file (allocset->volid, batch_firstid, batch_ndealloc,
-								   false);
-				}
-
-			      (void) disk_dealloc_page (thread_p,
-							allocset->volid, batch_firstid, batch_ndealloc, page_type);
-			      /* Start again */
-			      batch_firstid = *aid_ptr;
-			      batch_ndealloc = 1;
-			    }
-			}
-		    }
-		  else
-		    {
-		      assert (*aid_ptr == NULL_PAGEID || *aid_ptr == NULL_PAGEID_MARKED_DELETED);
-		    }
-		}
-
-	      if (batch_ndealloc > 0)
-		{
-		  /* Deallocate any accumulated pages */
-
-		  if (file_type == FILE_TEMP && !pb_invalid_temp_called)
-		    {
-		      pgbuf_invalidate_temporary_file (allocset->volid, batch_firstid, batch_ndealloc, false);
-		    }
-
-		  (void) disk_dealloc_page (thread_p, allocset->volid, batch_firstid, batch_ndealloc, page_type);
-		}
-
-	      /* Get next page in the allocation set */
-	      if (VPID_EQ (&nxftb_vpid, &allocset->end_pages_vpid))
-		{
-		  VPID_SET_NULL (&nxftb_vpid);
-		}
-	      else
-		{
-		  ret = file_ftabvpid_next (fhdr, pgptr, &nxftb_vpid);
-		  if (ret != NO_ERROR)
-		    {
-		      pgbuf_unfix_and_init (thread_p, pgptr);
-		      goto exit_on_error;
-		    }
-		}
-	      pgbuf_unfix_and_init (thread_p, pgptr);
-	    }
-
-	  /* Deallocate the sectors in this allocation set */
-
-	  if (allocset->num_sects > 0)
-	    {
-	      nxftb_vpid = allocset->start_sects_vpid;
-	      while (!VPID_ISNULL (&nxftb_vpid))
-		{
-		  pgptr = pgbuf_fix (thread_p, &nxftb_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-		  if (pgptr == NULL)
-		    {
-		      goto exit_on_error;
-		    }
-
-		  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-		  /* Calculate the starting offset and length of the page to check */
-		  ret = file_find_limits (pgptr, allocset, &aid_ptr, &outptr, FILE_SECTOR_TABLE);
-		  if (ret != NO_ERROR)
-		    {
-		      pgbuf_unfix_and_init (thread_p, pgptr);
-		      goto exit_on_error;
-		    }
-
-		  /* 
-		   * Deallocate all user sectors in this table page of this
-		   * allocation set. The sectors are deallocated in batches by
-		   * their contiguity
-		   */
-
-		  batch_firstid = NULL_SECTID;
-		  batch_ndealloc = 0;
-
-		  for (; aid_ptr < outptr; aid_ptr++)
-		    {
-		      if (*aid_ptr != NULL_SECTID)
-			{
-			  if (batch_ndealloc == 0)
-			    {
-			      /* Start accumulating contiguous sectors */
-			      batch_firstid = *aid_ptr;
-			      batch_ndealloc = 1;
-			    }
-			  else
-			    {
-			      /* Is sector contiguous ? */
-			      if (*aid_ptr == batch_firstid + batch_ndealloc)
-				{
-				  /* contiguous */
-				  batch_ndealloc++;
-				}
-			      else
-				{
-				  /* 
-				   * This is not a contiguous sector.
-				   * Deallocate any previous sectors and start
-				   * accumulating contiguous sectors again.
-				   * We do not care if the sector deallocation
-				   * failed, since we are destroying the file..
-				   * Deallocate as much as we can.
-				   */
-				  (void) disk_dealloc_sector (thread_p, allocset->volid, batch_firstid, batch_ndealloc);
-				  /* Start again */
-				  batch_firstid = *aid_ptr;
-				  batch_ndealloc = 1;
-				}
-			    }
-			}
-		    }
-
-		  if (batch_ndealloc > 0)
-		    {
-		      /* Deallocate any accumulated sectors */
-		      (void) disk_dealloc_sector (thread_p, allocset->volid, batch_firstid, batch_ndealloc);
-		    }
-
-		  /* Get next page */
-		  if (VPID_EQ (&nxftb_vpid, &allocset->end_sects_vpid))
-		    {
-		      VPID_SET_NULL (&nxftb_vpid);
-		    }
-		  else
-		    {
-		      ret = file_ftabvpid_next (fhdr, pgptr, &nxftb_vpid);
-		      if (ret != NO_ERROR)
-			{
-			  pgbuf_unfix_and_init (thread_p, pgptr);
-			  goto exit_on_error;
-			}
-		    }
-		  pgbuf_unfix_and_init (thread_p, pgptr);
-		}
-	    }
-
-	  /* Next allocation set */
-
-	  if (VPID_ISNULL (&allocset->next_allocset_vpid))
-	    {
-	      VPID_SET_NULL (&allocset_vpid);
-	      allocset_offset = -1;
-	    }
-	  else
-	    {
-	      if (VPID_EQ (&allocset_vpid, &allocset->next_allocset_vpid)
-		  && allocset_offset == allocset->next_allocset_offset)
-		{
-		  ret = ER_FILE_FTB_LOOP;
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ret, 4,
-			  vfid->fileid, fileio_get_volume_label (vfid->volid, PEEK),
-			  allocset->next_allocset_vpid.volid, allocset->next_allocset_vpid.pageid);
-		  VPID_SET_NULL (&allocset_vpid);
-		  allocset_offset = -1;
-		}
-	      else
-		{
-		  allocset_vpid = allocset->next_allocset_vpid;
-		  allocset_offset = allocset->next_allocset_offset;
-		}
-	    }
-	  pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-	}
-
-      num_user_pages = fhdr->num_user_pages;
-      fhdr->num_user_pages = 0;
-
-      addr.vfid = vfid;
-      addr.pgptr = fhdr_pgptr;
-      addr.offset = FILE_HEADER_OFFSET;
-      undo_data = num_user_pages;
-      redo_data = -num_user_pages;
-
-      if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
-	{
-	  fhdr->num_user_pages_mrkdelete += num_user_pages;
-
-	  log_append_undoredo_data (thread_p, RVFL_FHDR_MARK_DELETED_PAGES,
-				    &addr, sizeof (undo_data), sizeof (redo_data), &undo_data, &redo_data);
-
-	  /* Add postpone to compress. */
-	  postpone_data.deleted_npages = num_user_pages;
-	  postpone_data.need_compaction = 0;
-
-	  log_append_postpone (thread_p, RVFL_FHDR_DELETE_PAGES, &addr, sizeof (postpone_data), &postpone_data);
-	}
-      else
-	{
-	  log_append_undoredo_data (thread_p, RVFL_FHDR_UPDATE_NUM_USER_PAGES,
-				    &addr, sizeof (undo_data), sizeof (redo_data), &undo_data, &redo_data);
-	}
-
-      pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
-    }
-
-  /* 
-   * Deallocate all file table pages except the file header page which is
-   * deallocated at the very end. Try to deallocate the pages in batched by
-   * their contiguity
-   */
-
-  nxftb_vpid.volid = vfid->volid;
-  nxftb_vpid.pageid = vfid->fileid;
-
-  batch_volid = NULL_VOLID;
-  batch_firstid = NULL_PAGEID;
-  batch_ndealloc = 0;
-
-  while (!VPID_ISNULL (&nxftb_vpid))
-    {
-      pgptr = pgbuf_fix (thread_p, &nxftb_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (pgptr == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-      /* Find next file table page */
-      curftb_vpid = nxftb_vpid;
-      ret = file_ftabvpid_next (fhdr, pgptr, &nxftb_vpid);
-      if (ret != NO_ERROR)
-	{
-	  pgbuf_unfix_and_init (thread_p, pgptr);
-	  goto exit_on_error;
-	}
-      pgbuf_unfix_and_init (thread_p, pgptr);
-
-      /* Don't deallocate the file header page here */
-      if (!(curftb_vpid.volid == vfid->volid && curftb_vpid.pageid == vfid->fileid))
-	{
-	  if (batch_ndealloc == 0)
-	    {
-	      /* Start accumulating contiguous pages */
-	      batch_volid = curftb_vpid.volid;
-	      batch_firstid = curftb_vpid.pageid;
-	      batch_ndealloc = 1;
-	    }
-	  else
-	    {
-	      /* is this page contiguous to previous page ? */
-	      if (curftb_vpid.pageid == (batch_firstid + batch_ndealloc) && curftb_vpid.volid == batch_volid)
-		{
-		  /* contiguous */
-		  batch_ndealloc++;
-		}
-	      else
-		{
-		  /* 
-		   * This is not a contiguous page.
-		   * Deallocate any previous pages and start accumulating
-		   * contiguous pages again. We do not care if the page
-		   * deallocation failed, since we are destroying the file..
-		   * Deallocate as much as we can.
-		   */
-		  (void) disk_dealloc_page (thread_p, batch_volid, batch_firstid, batch_ndealloc, page_type);
-		  /* Start again */
-		  batch_volid = curftb_vpid.volid;
-		  batch_firstid = curftb_vpid.pageid;
-		  batch_ndealloc = 1;
-		}
-	    }
-	}
-    }
-  if (batch_ndealloc > 0)
-    {
-      (void) disk_dealloc_page (thread_p, batch_volid, batch_firstid, batch_ndealloc, page_type);
-    }
-
-  ret = file_descriptor_destroy_rest_pages (thread_p, fhdr);
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  /* Now deallocate the file header page */
-
-  if (file_type == FILE_TEMP && logtb_is_current_active (thread_p) == true)
-    {
-      /* 
-       * This is a TEMPORARY FILE allocated on volumes with temporary
-       * purposes. The file can be completely removed, including its header
-       * page at this moment since there are not any log records associated
-       * with it.
-       */
-      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-      /* remove header page */
-      if (disk_dealloc_page (thread_p, vfid->volid, vfid->fileid, 1, page_type) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      if (log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT) != TRAN_UNACTIVE_COMMITTED)
-	{
-	  goto exit_on_error;
-	}
-
-      (void) file_new_declare_as_old (thread_p, vfid);
-    }
-  else
-    {
-      /* Normal deletion, attach to outer nested level */
-      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-      /* Now throw away the header page */
-      if (disk_dealloc_page (thread_p, vfid->volid, vfid->fileid, 1, page_type) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-      if (tdes->topops.type != LOG_TOPOPS_POSTPONE)
-	{
-	  /* If this was postpone, it must be already unregistered. */
-	  (void) file_tracker_unregister (thread_p, vfid);
-	}
-
-      /* The responsibility of the removal of the file is given to the outer nested level. */
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-      if (log_is_tran_in_system_op (thread_p) && logtb_is_current_active (thread_p) == true)
-	{
-	  /* 
-	   * Note: we do not declare a new file as nolonger new at this level
-	   *       since we do not have the authority to declare the deletion
-	   *       of the file as committed. That is, we could have a partial
-	   *       rolled back.
-	   */
-	  ;
-	}
-      else
-	{
-	  (void) file_new_declare_as_old (thread_p, vfid);
-	}
-    }
-
-end:
-
-  rv = thread_set_check_interrupt (thread_p, old_val);
-
-  return ret;
-
-exit_on_error:
-
-  if (allocset_pgptr)
-    {
-      pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-    }
-
-  /* ABORT THE TOP SYSTEM OPERATION. That is, the deletion of the file is aborted, all pages that were deallocated are
-   * undone.. */
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-
-  if (fhdr_pgptr)
-    {
-      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-    }
-
-  if (ret == NO_ERROR)
-    {
-      ret = ER_FAILED;
-    }
-  goto end;
-}
-
-/*
- * file_mark_as_deleted () - Mark a file as deleted
- *   return:
- *   thread_p(in):
- *   vfid(in): Complete file identifier
- *   class_oid(in): class OID
- *
- * Note: The given file is marked as deleted. None of its pages are
- *       deallocated. The deallocation of its pages is done when the file is
- *       destroyed (space reclaimed).
- */
-int
-file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid)
-{
-  PAGE_PTR fhdr_pgptr = NULL;
-  LOG_DATA_ADDR addr;
-  VPID vpid;
-  int deleted = 1;
-  char buffer[OR_INT_SIZE + OR_OID_SIZE + MAX_ALIGNMENT];
-  char *buffer_p = NULL;
-
-  addr.vfid = vfid;
-
-  /* 
-   * Lock the file table header in exclusive mode. Unless, an error is found,
-   * the page remains lock until the end of the transaction so that no other
-   * transaction may access the destroyed file.
-   */
-  vpid.volid = vfid->volid;
-  vpid.pageid = vfid->fileid;
-  fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  addr.pgptr = fhdr_pgptr;
-  addr.offset = FILE_HEADER_OFFSET;
-
-  buffer_p = PTR_ALIGN (buffer, MAX_ALIGNMENT);
-
-  OR_PUT_INT (buffer_p, deleted);
-  OR_PUT_OID (buffer_p + OR_INT_SIZE, class_oid);
-
-  log_append_postpone (thread_p, RVFL_MARKED_DELETED, &addr, OR_INT_SIZE + OR_OID_SIZE, buffer_p);
-
-  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-  return NO_ERROR;
-}
-
-/*
- * file_does_marked_as_deleted () - Find if the given file is marked as deleted
- *   return: true or false
- *   vfid(in): Complete file identifier
- */
-bool
-file_does_marked_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
-{
-  FILE_HEADER *fhdr;
-  PAGE_PTR fhdr_pgptr = NULL;
-  VPID vpid;
-  bool deleted;
-
-  /* 
-   * Lock the file table header in shared mode. Unless, an error is found,
-   * the page remains lock until the end of the transaction so that no other
-   * transaction may access the destroyed file.
-   */
-  vpid.volid = vfid->volid;
-  vpid.pageid = vfid->fileid;
-  fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      return false;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-  deleted = fhdr->ismark_as_deleted ? true : false;
-  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-  return deleted;
 }
 
 /* TODO: STL::vector for file_Type_cache.entry */
@@ -10148,6 +9077,8 @@ file_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid)
   VPID vpid;
   DISK_ISVALID valid;
 
+  /* todo: fix me */
+
   if (VFID_ISNULL (vfid) || vfid->fileid == DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES)
     {
       return DISK_INVALID;
@@ -10164,10 +9095,10 @@ file_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid)
   valid = file_isvalid_page_partof (thread_p, &vpid, file_Tracker->vfid);
   if (valid == DISK_VALID)
     {
-      if (file_does_marked_as_deleted (thread_p, vfid) == true)
-	{
-	  valid = DISK_INVALID;
-	}
+      /*if (file_does_marked_as_deleted (thread_p, vfid) == true)
+         {
+         valid = DISK_INVALID;
+         } */
     }
 
   return valid;
@@ -10571,488 +9502,6 @@ file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp)
 }
 
 /*
- * file_tracker_compress () - Compress file table of all files
- *   return: NO_ERROR
- */
-int
-file_tracker_compress (THREAD_ENTRY * thread_p)
-{
-  PAGE_PTR trk_fhdr_pgptr = NULL;
-  int num_files;
-  VPID set_vpids[FILE_SET_NUMVPIDS];	/* Page-volume identifier. Limited to FILE_SET_NUMVPIDS each time */
-  int num_found;		/* Number of files in each cycle */
-  VFID vfid;			/* Identifier of a found file */
-  int i, j;
-  int ret = NO_ERROR;
-
-  /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
-
-  if (file_Tracker->vfid == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /* 
-   * We need to lock the tracker header page in exclusive mode for the
-   * duration of the verification, so that files are not register or
-   * unregister during this operation. The tracker structure is going to
-   * be compressed as well.
-   */
-
-  set_vpids[0].volid = file_Tracker->vfid->volid;
-  set_vpids[0].pageid = file_Tracker->vfid->fileid;
-
-  trk_fhdr_pgptr = pgbuf_fix (thread_p, &set_vpids[0], OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (trk_fhdr_pgptr == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
-
-  /* Compress all the files, but the tracker file at this moment. */
-  num_files = file_get_numpages (thread_p, file_Tracker->vfid);
-  for (i = 0; i < num_files; i += num_found)
-    {
-      num_found =
-	file_find_nthpages (thread_p, file_Tracker->vfid, &set_vpids[0], i,
-			    ((num_files - i < FILE_SET_NUMVPIDS) ? num_files - i : FILE_SET_NUMVPIDS));
-      if (num_found <= 0)
-	{
-	  ret = ER_FAILED;
-	  break;
-	}
-
-      for (j = 0; j < num_found; j++)
-	{
-	  vfid.volid = set_vpids[j].volid;
-	  vfid.fileid = set_vpids[j].pageid;
-
-	  if (VFID_EQ (&vfid, file_Tracker->vfid))
-	    {
-	      continue;
-	    }
-
-	  ret = file_compress (thread_p, &vfid, false);
-	  if (ret != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-    }
-
-  /* Now compress the tracker file itself */
-  if (ret == NO_ERROR)
-    {
-      ret = file_compress (thread_p, file_Tracker->vfid, false);
-    }
-
-  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-
-  return ret;
-}
-
-/*
- * file_mark_deleted_file_list_add () -
- *   return:
- *   vfid(in):
- *   file_type(in):
- */
-static int
-file_mark_deleted_file_list_add (VFID * vfid, const FILE_TYPE file_type)
-{
-  FILE_MARK_DEL_LIST *node;
-
-  /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
-
-  assert (file_type != FILE_HEAP_REUSE_SLOTS);
-  assert (file_Tracker->hint_num_mark_deleted[file_type] >= 0);
-
-  node = (FILE_MARK_DEL_LIST *) malloc (sizeof (FILE_MARK_DEL_LIST));
-  if (node == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (FILE_MARK_DEL_LIST));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  VFID_COPY (&node->vfid, vfid);
-
-  node->next = file_Tracker->mrk_del_list[file_type];	/* push at top */
-  file_Tracker->mrk_del_list[file_type] = node;
-  file_Tracker->hint_num_mark_deleted[file_type]++;
-
-  return NO_ERROR;
-}
-
-/*
- * file_mark_deleted_file_list_remove () -
- *   return:
- *   vfid(in):
- *   file_type(in):
- */
-static int
-file_mark_deleted_file_list_remove (VFID * vfid, const FILE_TYPE file_type)
-{
-  FILE_MARK_DEL_LIST *node;
-
-  /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
-
-  assert (file_type != FILE_HEAP_REUSE_SLOTS);
-
-  if (file_Tracker->mrk_del_list[file_type] == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  node = file_Tracker->mrk_del_list[file_type];	/* pop at top */
-  file_Tracker->mrk_del_list[file_type] = node->next;
-  VFID_COPY (vfid, &node->vfid);
-  free_and_init (node);
-  file_Tracker->hint_num_mark_deleted[file_type]--;
-
-  return NO_ERROR;
-}
-
-/*
- * file_reuse_deleted () - Reuse a mark deleted file of the given type
- *   return: vfid or NULL when there is not a file marked as deleted
- *   vfid(out): Complete file identifier
- *   file_type(in): Type of file
- *   file_des(in): Add the follwing file description to the file
- *
- * note: The file is declared as not deleted. The caller is responsible for
- *       cleaning the contents of the mark deleted file.
- */
-VFID *
-file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type, const void *file_des)
-{
-  PAGE_PTR trk_fhdr_pgptr = NULL;
-  PAGE_PTR fhdr_pgptr = NULL;
-  FILE_HEADER *fhdr;
-  LOG_DATA_ADDR addr;
-  VPID set_vpids[FILE_SET_NUMVPIDS];	/* Page-volume identifier. Limited to FILE_SET_NUMVPIDS each time */
-  int num_files;		/* Number of known files */
-  int num_found;		/* Number of files found in each cycle */
-  INT16 clean;
-  int i, j;
-  int rv;
-  VFID tmp_vfid = {
-    NULL_FILEID, NULL_VOLID
-  };
-  VPID tmp_vpid;
-
-  /* todo: fix me */
-  if (true)
-    {
-      return NULL;
-    }
-
-  assert (file_type != FILE_HEAP_REUSE_SLOTS);
-  assert (file_type <= FILE_LAST);
-
-  /* 
-   * If the table has not been scanned, find the number of deleted files.
-   * Use this number as a hint in the future to avoid searching the table and
-   * the corresponding files for future reuses. We do not use critical
-   * sections when this number is increased when files are marked as deleted..
-   * Thus, it is used as a good approximation that may fail in some cases..
-   */
-
-  rv = pthread_mutex_lock (&file_Num_mark_deleted_hint_lock);
-
-  if (file_Tracker->vfid == NULL || file_Tracker->hint_num_mark_deleted[file_type] == 0)
-    {
-      VFID_SET_NULL (vfid);
-      pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
-      return NULL;
-    }
-
-  if (file_Tracker->hint_num_mark_deleted[file_type] == -1)
-    {
-      assert_release (file_type != FILE_HEAP_REUSE_SLOTS);
-
-      /* 
-       * We need to lock the tracker header page in exclusive mode to scan for
-       * a mark deleted file in a consistent way. For example, we do not want
-       * to reuse a marked deleted file twice.
-       */
-      set_vpids[0].volid = file_Tracker->vfid->volid;
-      set_vpids[0].pageid = file_Tracker->vfid->fileid;
-
-      trk_fhdr_pgptr = pgbuf_fix (thread_p, &set_vpids[0], OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (trk_fhdr_pgptr == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
-
-      num_files = file_get_numpages (thread_p, file_Tracker->vfid);
-
-      /* Find a mark deleted file */
-      file_Tracker->hint_num_mark_deleted[file_type] = 0;
-
-      for (i = 0; i < num_files; i += num_found)
-	{
-	  num_found =
-	    file_find_nthpages (thread_p, file_Tracker->vfid, &set_vpids[0],
-				i, ((num_files - i < FILE_SET_NUMVPIDS) ? num_files - i : FILE_SET_NUMVPIDS));
-	  if (num_found <= 0)
-	    {
-	      break;
-	    }
-
-	  for (j = 0; j < num_found; j++)
-	    {
-	      /* 
-	       * Lock the file table header in exclusive mode. Unless, an error
-	       * is found, the page remains lock until the end of the
-	       * transaction so that no other transaction may access the
-	       * destroyed file.
-	       */
-	      fhdr_pgptr = pgbuf_fix (thread_p, &set_vpids[j], OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	      if (fhdr_pgptr == NULL)
-		{
-		  continue;
-		}
-
-	      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-	      fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-
-	      if (fhdr->ismark_as_deleted == true)
-		{
-		  if (((FILE_TYPE) fhdr->type) == file_type)
-		    {
-		      if (file_mark_deleted_file_list_add (&fhdr->vfid, fhdr->type) != NO_ERROR)
-			{
-			  goto exit_on_error;
-			}
-		    }
-		}
-	      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-	    }
-	}
-      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-    }
-
-  if (file_Tracker->hint_num_mark_deleted[file_type] <= 0)
-    {
-      goto exit_on_error;
-    }
-
-  if (file_mark_deleted_file_list_remove (&tmp_vfid, file_type) != NO_ERROR)
-    {
-      pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
-      VFID_SET_NULL (vfid);
-      return NULL;
-    }
-
-  tmp_vpid.volid = tmp_vfid.volid;
-  tmp_vpid.pageid = tmp_vfid.fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &tmp_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-
-  /* fhdr update */
-  addr.vfid = &fhdr->vfid;
-  addr.pgptr = fhdr_pgptr;
-  addr.offset = FILE_HEADER_OFFSET;
-
-  clean = false;
-  log_append_undoredo_data (thread_p, RVFL_MARKED_DELETED, &addr, sizeof (fhdr->ismark_as_deleted),
-			    sizeof (fhdr->ismark_as_deleted), &fhdr->ismark_as_deleted, &clean);
-  fhdr->ismark_as_deleted = clean;
-  VFID_COPY (vfid, &fhdr->vfid);
-  (void) file_descriptor_update (thread_p, vfid, file_des);
-
-  pgbuf_set_dirty (thread_p, fhdr_pgptr, FREE);
-  fhdr_pgptr = NULL;
-  pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
-
-  return vfid;
-
-exit_on_error:
-
-  if (fhdr_pgptr)
-    {
-      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-    }
-
-  if (trk_fhdr_pgptr)
-    {
-      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-    }
-
-  VFID_SET_NULL (vfid);
-  pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
-
-  return NULL;
-}
-
-/*
- * file_reclaim_all_deleted () - Reclaim space of mark deleted files
- *   return: NO_ERROR
- *
- * Note: This function must be called when there are not more references to
- *       any page of marked deleted files.
- */
-int
-file_reclaim_all_deleted (THREAD_ENTRY * thread_p)
-{
-  PGBUF_LATCH_MODE latch_mode = PGBUF_LATCH_READ;
-  PAGE_PTR trk_fhdr_pgptr = NULL;
-  VFID marked_files[FILE_DESTROY_NUM_MARKED];
-  VPID vpid;
-  int num_files;
-  int num_marked = 0;
-  int i, nth;
-  int ret;
-  bool latch_promoted = false;
-
-  /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
-
-  if (file_Tracker->vfid == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /* 
-   * We need to lock the tracker header page in shared mode for the duration of
-   * the reclaim, so that files are not register or unregister during this
-   * operation
-   */
-restart:
-  ret = NO_ERROR;
-
-  vpid.volid = file_Tracker->vfid->volid;
-  vpid.pageid = file_Tracker->vfid->fileid;
-
-  trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-  if (trk_fhdr_pgptr == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, trk_fhdr_pgptr, PAGE_FTAB);
-
-  nth = 0;
-  num_files = file_get_numpages (thread_p, file_Tracker->vfid);
-
-  /* Destroy all marked as deleted files */
-
-  while (nth < num_files && ret == NO_ERROR)
-    {
-      num_marked = 0;
-      for (i = nth; i < num_files && ret == NO_ERROR; i++)
-	{
-	  if (file_find_nthpages (thread_p, file_Tracker->vfid, &vpid, i, 1) <= 0)
-	    {
-	      nth = num_files + 1;
-	      break;
-	    }
-	  marked_files[num_marked].volid = vpid.volid;
-	  marked_files[num_marked].fileid = vpid.pageid;
-
-	  if (VFID_EQ (file_Tracker->vfid, &marked_files[num_marked]))
-	    {
-	      continue;
-	    }
-
-	  if (file_does_marked_as_deleted (thread_p, &marked_files[num_marked]) == true)
-	    {
-	      /* Remember this file for destruction */
-	      num_marked++;
-
-	      /* Can we keep more.. ? */
-	      if (num_marked >= FILE_DESTROY_NUM_MARKED)
-		{
-		  break;
-		}
-	    }
-	  else
-	    {
-	      ret = file_compress (thread_p, &marked_files[num_marked], false);
-	      if (ret != NO_ERROR)
-		{
-		  break;
-		}
-	    }
-	}
-
-      if (ret == NO_ERROR)
-	{
-	  nth = i + 1 - num_marked;
-	  num_files -= num_marked;
-
-	  if (num_marked > 0)
-	    {
-	      if (!latch_promoted)
-		{
-		  ret = pgbuf_promote_read_latch (thread_p, &trk_fhdr_pgptr, PGBUF_PROMOTE_SHARED_READER);
-		  if (ret == ER_PAGE_LATCH_PROMOTE_FAIL)
-		    {
-		      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-
-		      latch_mode = PGBUF_LATCH_WRITE;
-		      latch_promoted = true;
-		      goto restart;
-		    }
-		  else if (ret != NO_ERROR || trk_fhdr_pgptr == NULL)
-		    {
-		      /* unfix trk_fhdr_pgptr if needed */
-		      ret = (ret == NO_ERROR) ? ER_FAILED : ret;
-		      break;
-		    }
-
-		  latch_promoted = true;
-		}
-
-	      for (i = 0; i < num_marked; i++)
-		{
-		  (void) file_destroy (thread_p, &marked_files[i]);
-		}
-	    }
-	}
-    }
-
-  if (trk_fhdr_pgptr)
-    {
-      /* release latch here, file_compress will request write latch later */
-      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-    }
-
-  if (ret == NO_ERROR)
-    {
-      ret = file_compress (thread_p, file_Tracker->vfid, false);
-    }
-
-  return ret;
-}
-
-/*
  * file_dump_all_capacities () - Dump the capacities of all files
  *   return: NO_ERROR
  */
@@ -11070,6 +9519,12 @@ file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
   int i;
 
   int error_code = NO_ERROR;
+
+  /* todo: fix me */
+  if (true)
+    {
+      return NO_ERROR;
+    }
 
   /* Find number of files */
   num_files = file_get_numfiles (thread_p);
@@ -11120,10 +9575,10 @@ file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 	}
 
       fprintf (fp, "%4d|%4d %5d  %-22s ", vfid.volid, vfid.fileid, num_pages, file_type_to_string (type));
-      if (file_does_marked_as_deleted (thread_p, &vfid) == true)
-	{
-	  fprintf (fp, "Marked as deleted...");
-	}
+      /*if (file_does_marked_as_deleted (thread_p, &vfid) == true)
+         {
+         fprintf (fp, "Marked as deleted...");
+         } */
 
       if (size > 0)
 	{
@@ -11187,92 +9642,6 @@ file_rv_tracker_unregister_logical_undo (THREAD_ENTRY * thread_p, VFID * vfid)
 
   return NO_ERROR;
 
-}
-
-/*
- * file_rv_undo_create_tmp () - Undo the creation of a temporarily file
- *   return: NO_ERROR
- *   rcv(in): Recovery structure
- *
- * Note: The temporary file is destroyed completely
- */
-int
-file_rv_undo_create_tmp (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  VPID vpid;
-  VFID *vfid;
-  PAGE_PTR fhdr_pgptr = NULL;
-  FILE_HEADER *fhdr;
-  int ret = NO_ERROR;
-
-  vfid = (VFID *) rcv->data;
-
-  if (fileio_get_volume_descriptor (vfid->volid) == NULL_VOLDES
-      || disk_is_page_sector_reserved (thread_p, vfid->volid, (INT32) (vfid->fileid)) != DISK_VALID)
-    {
-      ret = file_rv_tracker_unregister_logical_undo (thread_p, vfid);
-    }
-  else
-    {
-      (void) file_new_declare_as_old (thread_p, vfid);
-
-      if (vfid->volid > xboot_find_last_permanent (thread_p))
-	{
-	  /* 
-	   * File in a temporary volume.
-	   * Don't do anything during the restart process since the volumes are
-	   * going to be removed anyway.
-	   */
-	  if (!BO_IS_SERVER_RESTARTED ())
-	    {
-	      ret = ER_FAILED;
-	    }
-	  else
-	    {
-	      vpid.volid = vfid->volid;
-	      vpid.pageid = vfid->fileid;
-
-	      fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	      if (fhdr_pgptr == NULL)
-		{
-		  ret = ER_FAILED;
-		}
-	      else
-		{
-		  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-		  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-		  if (!VFID_EQ (vfid, &fhdr->vfid))
-		    {
-		      ret = ER_FAILED;
-		    }
-		  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-		}
-	    }
-	}
-
-      if (ret != NO_ERROR || file_destroy (thread_p, vfid) != NO_ERROR)
-	{
-	  ret = file_rv_tracker_unregister_logical_undo (thread_p, vfid);
-	}
-    }
-
-  return NO_ERROR;		/* do not permit error */
-}
-
-/*
- * file_rv_dump_create_tmp () - Dump the information to undo the creation of a temporary file
- *   return: void
- *   length_ignore(in): Length of Recovery Data
- *   data(in): The data being logged
- */
-void
-file_rv_dump_create_tmp (FILE * fp, int length_ignore, void *data)
-{
-  VFID *vfid;
-
-  vfid = (VFID *) data;
-  (void) fprintf (fp, "Undo creation of Tmp vfid: %d|%d\n", vfid->volid, vfid->fileid);
 }
 
 /* TODO: list for file_ftab_chain */
@@ -11357,95 +9726,6 @@ file_rv_dump_idtab (FILE * fp, int length, void *data)
       (void) fprintf (fp, "%d ", *aid_ptr);
     }
   (void) fprintf (fp, "\n");
-}
-
-/*
- * file_rv_undoredo_mark_as_deleted () - Recover undo/redo from mark deletion
- *   return: NO_ERROR
- *   rcv(in): Recovery structure
- */
-int
-file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  FILE_HEADER *fhdr;
-  INT16 isdeleted;
-  int rv;
-  int ret = NO_ERROR;
-  int offset = 0;
-  OID class_oid;
-
-  (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_FTAB);
-  OID_SET_NULL (&class_oid);
-
-  assert (rcv->length == 2 || rcv->length == 4 || rcv->length == OR_INT_SIZE + OR_OID_SIZE);
-
-  if (rcv->length == OR_INT_SIZE + OR_OID_SIZE)
-    {
-      /* the file has been deleted */
-      isdeleted = (INT16) OR_GET_INT (rcv->data);
-      offset += OR_INT_SIZE;
-
-      assert (offset < rcv->length);
-
-      OR_GET_OID (rcv->data + offset, &class_oid);
-      offset += OR_OID_SIZE;
-
-      assert (offset == rcv->length);
-    }
-  else
-    {
-      /* the file will no longer be deleted - rollback the is no need to save the class OID in this case, since the
-       * entry will not be removed from the class OID->HFID cache */
-      if (rcv->length == 2)
-	{
-	  isdeleted = *(INT16 *) rcv->data;
-	}
-      else
-	{
-	  /* As safe guard, In old log of RB-8.4.3 or before, the function file_mark_as_deleted() writes 4 bytes as
-	   * isdeleted flag. */
-	  isdeleted = (INT16) (*((INT32 *) rcv->data));
-	}
-    }
-
-  fhdr = (FILE_HEADER *) (rcv->pgptr + FILE_HEADER_OFFSET);
-
-  fhdr->ismark_as_deleted = isdeleted;
-
-  rv = pthread_mutex_lock (&file_Num_mark_deleted_hint_lock);
-  if (file_Tracker->hint_num_mark_deleted[fhdr->type] != -1 && isdeleted == true && fhdr->type == FILE_HEAP)
-    {
-      assert (fhdr->type != FILE_HEAP_REUSE_SLOTS);
-
-      ret = file_mark_deleted_file_list_add (&fhdr->vfid, fhdr->type);
-      if (ret != NO_ERROR)
-	{
-	  pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
-	  return NO_ERROR;	/* do not permit error */
-	}
-    }
-  pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
-
-  if (isdeleted && !OID_ISNULL (&class_oid))
-    {
-      (void) heap_delete_hfid_from_cache (thread_p, &class_oid);
-    }
-
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-
-  return NO_ERROR;
-}
-
-/*
- * file_rv_dump_marked_as_deleted () - Dump information to recover a file from mark deletion
- *   return: void
- *   length_ignore(in): Length of Recovery Data
- *   data(in): The data being logged
- */
-void
-file_rv_dump_marked_as_deleted (FILE * fp, int length_ignore, void *data)
-{
-  (void) fprintf (fp, "Marked_deleted = %d\n", *(INT16 *) data);
 }
 
 /*
@@ -20972,6 +19252,185 @@ flre_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   return flre_tracker_apply_to_file (thread_p, vfid, PGBUF_LATCH_WRITE, flre_tracker_item_mark_heap_deleted, NULL);
 }
+
+#if defined (SA_MODE)
+/*
+ * flre_tracker_reclaim_marked_deleted () - reclaim all files marked as deleted. this can work only in stand-alone
+ *                                          mode.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ */
+int
+flre_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
+{
+  PAGE_PTR page_track_head = NULL;
+  PAGE_PTR page_track_other = NULL;
+
+  PAGE_PTR page_extdata = NULL;
+  FILE_EXTENSIBLE_DATA *extdata = NULL;
+  FLRE_TRACK_ITEM *item = NULL;
+  VPID vpid_next;
+  VFID vfid;
+  int idx_item;
+
+  VPID vpid_merged = VPID_INITIALIZER;
+
+  LOG_LSA save_lsa;
+
+  int error_code = NO_ERROR;
+
+  assert (!VPID_ISNULL (&flre_Tracker_vpid));
+  assert (!VFID_ISNULL (&flre_Tracker_vfid));
+
+  /* how this works:
+   * do two steps:
+   * 1. go through all tracker items and identify heap file entires marked as deleted. deallocate the files and remove
+   *    the items from tracker.
+   * 2. loop through tracker pages and try to merge two-by-two.
+   */
+
+  page_track_head = pgbuf_fix (thread_p, &flre_Tracker_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_track_head == NULL)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  log_sysop_start (thread_p);
+
+  /* first step: process tracker data, search for files marked deleted, destroy them and remove them from tracker */
+  page_extdata = page_track_head;
+
+  while (true)
+    {
+      extdata = (FILE_EXTENSIBLE_DATA *) page_extdata;
+      for (idx_item = 0; idx_item < file_extdata_item_count (extdata);)
+	{
+	  item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, idx_item);
+	  if (item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
+	    {
+	      /* destroy file */
+	      vfid.volid = item->volid;
+	      vfid.fileid = item->fileid;
+	      error_code = flre_destroy (thread_p, &vfid);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit;
+		}
+
+	      /* remove from extdata */
+	      save_lsa = *pgbuf_get_lsa (page_extdata);
+	      file_log_extdata_remove (thread_p, extdata, page_extdata, idx_item, 1);
+	      file_log ("flre_tracker_reclaim_marked_deleted", "remove " FILE_TRACK_ITEM_MSG
+			" from page %d|%d, crt_lsa = %lld|%d prev_lsa = %lld|%d, at position %d",
+			FILE_TRACK_ITEM_AS_ARGS (item), PGBUF_PAGE_VPID_AS_ARGS (page_extdata), LSA_AS_ARGS (&save_lsa),
+			PGBUF_PAGE_LSA_AS_ARGS (page_extdata), idx_item);
+	      file_extdata_remove_at (extdata, idx_item, 1);
+	    }
+	  else
+	    {
+	      /* go to next */
+	      idx_item++;
+	    }
+	}
+
+      /* go to next extensible data page */
+      vpid_next = extdata->vpid_next;
+      if (page_track_other != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_track_other);
+	}
+      if (VPID_ISNULL (&vpid_next))
+	{
+	  /* no next page */
+	  break;
+	}
+      page_track_other = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_track_other == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      /* loop again */
+    }
+
+  /* try merges */
+  assert (page_track_other == NULL);
+  page_extdata = page_track_head;
+  while (true)
+    {
+      extdata = (FILE_EXTENSIBLE_DATA *) page_extdata;
+      error_code =
+	file_extdata_try_merge (thread_p, page_extdata, extdata, file_compare_track_items,
+				RVFL_EXTDATA_MERGE_COMPARE_TRACK_ITEM, &vpid_merged);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      if (VPID_ISNULL (&vpid_merged))
+	{
+	  /* not merged. go to next page */
+	  vpid_next = extdata->vpid_next;
+	  if (page_track_other != NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, page_track_other);
+	    }
+	  if (VPID_ISNULL (&vpid_next))
+	    {
+	      /* no next page */
+	      break;
+	    }
+	  page_track_other = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_track_other == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	}
+      else
+	{
+	  /* pages merged. */
+
+	  /* deallocate merged page */
+	  error_code = flre_dealloc (thread_p, &flre_Tracker_vfid, &vpid_next, FILE_TRACKER);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+
+	  /* we can try to merge into this page again. fall through without advancing */
+	}
+    }
+
+  /* finished successfully */
+  assert (error_code == NO_ERROR);
+
+exit:
+
+  assert (log_check_system_op_is_started (thread_p));
+  if (error_code != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+    }
+  else
+    {
+      log_sysop_commit (thread_p);
+    }
+  if (page_track_other != NULL)
+    {
+      pgbuf_unfix (thread_p, page_track_other);
+    }
+  if (page_track_head != NULL)
+    {
+      pgbuf_unfix (thread_p, page_track_head);
+    }
+  return error_code;
+}
+#endif /* SA_MODE */
 
 /************************************************************************/
 /* End of file                                                          */
