@@ -212,14 +212,8 @@ extern FILE_IS_NEW_FILE file_is_new_file_ext (THREAD_ENTRY * thread_p, const VFI
 					      bool * has_undolog);
 extern int file_new_declare_as_old (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_new_set_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type);
 
-extern int file_destroy_cached_tmp (THREAD_ENTRY * thread_p, VOLID volid);
 extern int file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_destroy_without_reuse (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid);
-extern bool file_does_marked_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern FILE_TYPE file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr);
 extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *area_des, int maxsize);
@@ -240,8 +234,6 @@ extern int file_find_nthfile (THREAD_ENTRY * thread_p, VFID * vfid, int nthfile)
 extern DISK_ISVALID file_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid);
 #endif
 extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid);
-extern VFID *file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type, const void *file_des);
-extern int file_reclaim_all_deleted (THREAD_ENTRY * thread_p);
 extern VPID *file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid, INT32 npages,
 			       const VPID * near_vpid, bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
 								    const FILE_TYPE file_type,
@@ -269,7 +261,6 @@ extern DISK_ISVALID file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_
 
 extern int file_tracker_cache_vfid (VFID * vfid);
 extern VFID *file_get_tracker_vfid (void);
-extern int file_tracker_compress (THREAD_ENTRY * thread_p);
 
 extern int file_typecache_clear (void);
 
@@ -284,17 +275,12 @@ extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
 extern DISK_ISVALID file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p);
 extern int file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
-extern int file_rv_undo_create_tmp (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_dump_create_tmp (FILE * fp, int length_ignore, void *data);
 extern int file_rv_redo_ftab_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void file_rv_dump_ftab_chain (FILE * fp, int length_ignore, void *data);
 extern int file_rv_redo_fhdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void file_rv_dump_fhdr (FILE * fp, int length_ignore, void *data);
 extern void file_rv_dump_idtab (FILE * fp, int length, void *data);
 extern void file_rv_dump_allocset (FILE * fp, int length_ignore, void *data);
-
-extern int file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_dump_marked_as_deleted (FILE * fp, int length_ignore, void *data);
 
 extern int file_rv_fhdr_undoredo_expansion (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void file_rv_fhdr_dump_expansion (FILE * fp, int length_ignore, void *data);
@@ -333,8 +319,6 @@ extern int file_rv_tracker_undo_register (THREAD_ENTRY * thread_p, LOG_RCV * rcv
 extern void file_rv_tracker_dump_undo_register (FILE * fp, int length_ignore, void *data);
 
 extern int file_rv_logical_redo_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-
-extern int file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 /************************************************************************/
 /*                                                                      */
@@ -413,6 +397,9 @@ extern int flre_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out
 extern int flre_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int flre_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out);
 extern int flre_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
+#if defined (SA_MODE)
+extern int flre_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p);
+#endif /* SA_MODE */
 
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -302,7 +302,6 @@ extern void rv_check_rvfuns (void);
    || RCV_IS_BTREE_LOGICAL_LOG (idx) \
    || ((idx) == RVBT_MVCC_INCREMENTS_UPD) \
    || ((idx) == RVBT_CREATE_INDEX) \
-   || ((idx) == RVFL_POSTPONE_DESTROY_FILE) /* TODO: Remove me */\
    || ((idx) == RVPGBUF_FLUSH_PAGE) \
    || ((idx) == RVFL_DESTROY) \
    || ((idx) == RVFL_ALLOC) \
