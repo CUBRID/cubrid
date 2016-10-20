@@ -1953,7 +1953,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       candidate.xid = xcache_entry->xasl_id;
       candidate.time_last_used = xcache_entry->time_last_used;
 
-      if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK || (xcache_Entry_count <= xcache_Soft_capacity && TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_time_threshold))	/*cleanup by time */
+      if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK
+	  || (xcache_Entry_count <= xcache_Soft_capacity
+	      && TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_time_threshold))
 	{
 	  /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. 
 	   * If we do cleanup by the time, we discard those entries which are newer than xcache_time_threshold */
