@@ -1125,7 +1125,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   XCACHE_STAT_INC (deletes);
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
-  
+
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
 }
@@ -2122,7 +2122,8 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
  *
  * return : the number of xasl cache entries
  */
-int get_xcache_entry_count ()
+int
+get_xcache_entry_count ()
 {
   return xcache_Global.entry_count;
 }

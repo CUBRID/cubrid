@@ -4485,10 +4485,7 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 STATIC_INLINE void
 copy_peek_stats (UINT64 * stats)
 {
-  stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset]
-    = get_xcache_entry_count ();
-  stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset]
-    = get_num_stats_entries ();
-  stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset]
-    = get_number_of_holdable_cursors ();
+  stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = get_xcache_entry_count ();
+  stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = get_num_stats_entries ();
+  stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = get_number_of_holdable_cursors ();
 }

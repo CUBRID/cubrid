@@ -2581,7 +2581,7 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
 
 	  free_and_init (sentry_p);
 	  sessions.num_holdable_cursors--;
-	  
+
 	  break;
 	}
       prev = sentry_p;
@@ -2989,7 +2989,8 @@ session_state_decrease_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * state
  * return : the number of holdable cursors
  * 
  */
-int get_number_of_holdable_cursors ()
+int
+get_number_of_holdable_cursors ()
 {
   return sessions.num_holdable_cursors;
 }
