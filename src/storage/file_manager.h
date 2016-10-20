@@ -214,16 +214,7 @@ extern int file_new_declare_as_old (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_new_set_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type);
 
-extern VFID *file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
-					    FILE_TYPE file_type, const void *file_des, VPID * first_prealloc_vpid,
-					    INT32 prealloc_npages);
-extern VFID *file_create (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, FILE_TYPE file_type,
-			  const void *file_des, VPID * first_prealloc_vpid, INT32 prealloc_npages);
-extern VFID *file_create_tmp (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, const void *file_des);
-extern VFID *file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, const void *file_des);
 extern int file_destroy_cached_tmp (THREAD_ENTRY * thread_p, VOLID volid);
-extern VFID *file_create_queryarea (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, const void *file_des);
-extern int file_create_hint_numpages (THREAD_ENTRY * thread_p, INT32 exp_numpages, FILE_TYPE file_type);
 extern int file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_destroy_without_reuse (THREAD_ENTRY * thread_p, const VFID * vfid);
@@ -278,7 +269,6 @@ extern DISK_ISVALID file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_
 
 extern int file_tracker_cache_vfid (VFID * vfid);
 extern VFID *file_get_tracker_vfid (void);
-extern VFID *file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid);
 extern int file_tracker_compress (THREAD_ENTRY * thread_p);
 
 extern int file_typecache_clear (void);

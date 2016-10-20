@@ -1019,13 +1019,6 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
 
   /* Create the first bucket and initialize its header */
 
-  /* 
-   * If the file type is TMP, we must call file_create_tmp, otherwise, if
-   * the file is deleted before the end of the transaction its pages
-   * are not removed immediately. They will be removed at the end of the
-   * transaction.
-   */
-
   bucket_vfid.volid = ehid_p->vfid.volid;
 
   if (flre_create_ehash (thread_p, exp_bucket_pages, is_tmp, &ehdes, &bucket_vfid) != NO_ERROR)
@@ -1060,13 +1053,6 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
     }
 
   /* Create the directory (allocate the first page) and initialize its header */
-
-  /* 
-   * If the file type is TMP, we must call file_create_tmp, otherwise, if
-   * the file is deleted before the end of the transaction its pages
-   * are not removed immediately. They will be removed at the end of the
-   * transaction.
-   */
 
   dir_vfid.volid = bucket_vfid.volid;
 
