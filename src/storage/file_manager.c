@@ -15101,8 +15101,7 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src, FILE_EXTEN
  * position (out)    : Output the right position of item (found or not found).
  */
 static void
-file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata,
-			   const void *item_to_find,
+file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata, const void *item_to_find,
 			   int (*compare_func) (const void *, const void *), bool * found, int *position)
 {
   int min = 0;
@@ -15149,6 +15148,7 @@ file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata,
 	  min = ++mid;
 	}
     }
+
   /* not found. mid is currently the position of first item bigger than given item. */
   *found = false;
   *position = mid;
@@ -15184,8 +15184,10 @@ file_extdata_insert_at (FILE_EXTENSIBLE_DATA * extdata, int position, int count,
     {
       memmove (copy_at + extdata->size_of_item * count, copy_at, memmove_size);
     }
+
   /* copy new items at position */
   memcpy (copy_at, data, extdata->size_of_item * count);
+
   /* update item count */
   extdata->n_items += count;
 }
@@ -15218,6 +15220,7 @@ file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata, int position, int count)
     {
       memmove (remove_at, remove_at + extdata->size_of_item * count, memmove_size);
     }
+
   /* update item count */
   extdata->n_items -= count;
 }
@@ -15238,10 +15241,8 @@ file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata, int position, int count)
  * page_out (out)	   : Output page of current extensible data component if processing is stopped.
  */
 static int
-file_extdata_apply_funcs (THREAD_ENTRY * thread_p,
-			  FILE_EXTENSIBLE_DATA * extdata_in,
-			  FILE_EXTDATA_FUNC f_extdata, void *f_extdata_args,
-			  FILE_EXTDATA_ITEM_FUNC f_item, void *f_item_args,
+file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata_in, FILE_EXTDATA_FUNC f_extdata,
+			  void *f_extdata_args, FILE_EXTDATA_ITEM_FUNC f_item, void *f_item_args,
 			  bool for_write, FILE_EXTENSIBLE_DATA ** extdata_out, PAGE_PTR * page_out)
 {
   int i;
@@ -15317,11 +15318,13 @@ exit:
       /* unfix current page */
       pgbuf_unfix (thread_p, page_extdata);
     }
+
   if (stop && extdata_out != NULL)
     {
       /* output current extensible data component */
       *extdata_out = extdata_in;
     }
+
   return error_code;
 }
 
@@ -15336,19 +15339,20 @@ exit:
  * args (in/out) : Search context.
  */
 static int
-file_extdata_func_for_search_ordered (THREAD_ENTRY * thread_p,
-				      const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
+file_extdata_func_for_search_ordered (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+				      void *args)
 {
   FILE_EXTENSIBLE_DATA_SEARCH_CONTEXT *search_context = (FILE_EXTENSIBLE_DATA_SEARCH_CONTEXT *) args;
 
   assert (search_context != NULL);
 
-  file_extdata_find_ordered (extdata, search_context->item_to_find,
-			     search_context->compare_func, &search_context->found, &search_context->position);
+  file_extdata_find_ordered (extdata, search_context->item_to_find, search_context->compare_func,
+			     &search_context->found, &search_context->position);
   if (search_context->found)
     {
       *stop = true;
     }
+
   return NO_ERROR;
 }
 
@@ -15393,9 +15397,7 @@ file_extdata_item_func_for_search (THREAD_ENTRY * thread_p, const void *item, in
  * page_extdata (out) : Output page of extensible data component where item is found (if found).
  */
 static int
-file_extdata_search_item (THREAD_ENTRY * thread_p,
-			  FILE_EXTENSIBLE_DATA ** extdata,
-			  const void *item_to_find,
+file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extdata, const void *item_to_find,
 			  int (*compare_func) (const void *, const void *),
 			  bool is_ordered, bool for_write, bool * found, int *position, PAGE_PTR * page_extdata)
 {
@@ -15412,8 +15414,7 @@ file_extdata_search_item (THREAD_ENTRY * thread_p,
   if (is_ordered)
     {
       error_code =
-	file_extdata_apply_funcs (thread_p, extdata_in,
-				  file_extdata_func_for_search_ordered,
+	file_extdata_apply_funcs (thread_p, extdata_in, file_extdata_func_for_search_ordered,
 				  &search_context, NULL, NULL, for_write, extdata, page_extdata);
       if (error_code != NO_ERROR)
 	{
@@ -15425,8 +15426,8 @@ file_extdata_search_item (THREAD_ENTRY * thread_p,
   else
     {
       error_code =
-	file_extdata_apply_funcs (thread_p, extdata_in, NULL, NULL,
-				  file_extdata_item_func_for_search, &search_context, for_write, extdata, page_extdata);
+	file_extdata_apply_funcs (thread_p, extdata_in, NULL, NULL, file_extdata_item_func_for_search,
+				  &search_context, for_write, extdata, page_extdata);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -15434,14 +15435,17 @@ file_extdata_search_item (THREAD_ENTRY * thread_p,
 	  return error_code;
 	}
     }
+
   if (found != NULL)
     {
       *found = search_context.found;
     }
+
   if (position != NULL)
     {
       *position = search_context.position;
     }
+
   return NO_ERROR;
 }
 
@@ -15485,19 +15489,23 @@ file_extdata_find_not_full (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** ext
 	  /* Not found. */
 	  return NO_ERROR;
 	}
+
       /* Move to next page */
       if (*page_out != NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, *page_out);
 	}
+
       *page_out = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (*page_out == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
+
       *extdata = (FILE_EXTENSIBLE_DATA *) (*page_out);
     }
+
   /* Found not full */
   *found = true;
   return NO_ERROR;
@@ -15668,7 +15676,7 @@ file_rv_dump_extdata_remove (FILE * fp, int length, void *data)
   offset += sizeof (count);
   assert (length == offset);
 
-  fprintf (fp, "Remove from extensible data at position = %d, count = %d.", pos, count);
+  fprintf (fp, "Remove from extensible data at position = %d, count = %d.\n", pos, count);
 }
 
 /*
@@ -15911,7 +15919,7 @@ file_log_extdata_merge (THREAD_ENTRY * thread_p,
 /*
  * file_extdata_update_item () - Update extensible data item and log the change.
  *
- * return            : error code
+ * return            : void
  * thread_p (in)     : thread entry
  * page_extdata (in) : page of extensible data
  * item_newval (in)  : new item value
@@ -15924,8 +15932,10 @@ file_extdata_update_item (THREAD_ENTRY * thread_p, PAGE_PTR page_extdata, const 
 {
   char *item_in_page = (char *) file_extdata_at (extdata, index_item);
   PGLENGTH offset_in_page = (PGLENGTH) (item_in_page - page_extdata);
+
   log_append_undoredo_data2 (thread_p, RVFL_EXTDATA_UPDATE_ITEM, NULL, page_extdata, offset_in_page,
 			     extdata->size_of_item, extdata->size_of_item, item_in_page, item_newval);
+
   memcpy (item_in_page, item_newval, extdata->size_of_item);
   pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
 }
@@ -15982,6 +15992,7 @@ STATIC_INLINE void
 file_partsect_set_bit (FILE_PARTIAL_SECTOR * partsect, int offset)
 {
   assert (!file_partsect_is_bit_set (partsect, offset));
+
   partsect->page_bitmap = bit64_set (partsect->page_bitmap, offset);
 }
 
@@ -15996,6 +16007,7 @@ STATIC_INLINE void
 file_partsect_clear_bit (FILE_PARTIAL_SECTOR * partsect, int offset)
 {
   assert (file_partsect_is_bit_set (partsect, offset));
+
   partsect->page_bitmap = bit64_clear (partsect->page_bitmap, offset);
 }
 
@@ -16010,10 +16022,12 @@ STATIC_INLINE int
 file_partsect_pageid_to_offset (FILE_PARTIAL_SECTOR * partsect, PAGEID pageid)
 {
   assert (SECTOR_FROM_PAGEID (pageid) == partsect->vsid.sectid);
+
   if (SECTOR_FROM_PAGEID (pageid) != partsect->vsid.sectid)
     {
       return -1;
     }
+
   return (int) (pageid - SECTOR_FIRST_PAGEID (partsect->vsid.sectid));
 }
 
@@ -16029,22 +16043,27 @@ STATIC_INLINE bool
 file_partsect_alloc (FILE_PARTIAL_SECTOR * partsect, VPID * vpid_out, int *offset_out)
 {
   int offset_to_zero = bit64_count_trailing_ones (partsect->page_bitmap);
+
   if (offset_to_zero >= FILE_ALLOC_BITMAP_NBITS)
     {
       assert (file_partsect_is_full (partsect));
       return false;
     }
+
   assert (offset_to_zero >= 0);
+
   file_partsect_set_bit (partsect, offset_to_zero);
   if (offset_out)
     {
       *offset_out = offset_to_zero;
     }
+
   if (vpid_out)
     {
       vpid_out->volid = partsect->vsid.volid;
       vpid_out->pageid = SECTOR_FIRST_PAGEID (partsect->vsid.sectid) + offset_to_zero;
     }
+
   return true;
 }
 
@@ -21514,7 +21533,9 @@ flre_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid)
       ASSERT_ERROR ();
       return error_code;
     }
+
   flre_Tracker_vfid = *vfid;
+
   return NO_ERROR;
 }
 
@@ -21621,6 +21642,7 @@ flre_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
   assert (extdata != NULL);
   assert (extdata == (FILE_EXTENSIBLE_DATA *) page_extdata);
   assert (!file_extdata_is_full (extdata));
+
   file_extdata_find_ordered (extdata, &item, file_compare_track_items, &found, &pos);
   if (found)
     {
@@ -21629,6 +21651,7 @@ flre_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
       error_code = ER_FAILED;
       goto exit;
     }
+
   save_lsa = *pgbuf_get_lsa (page_extdata);
   file_extdata_insert_at (extdata, pos, 1, &item);
   file_log_extdata_add (thread_p, extdata, page_extdata, pos, 1, &item);
@@ -21727,10 +21750,12 @@ flre_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
       ASSERT_ERROR ();
       goto exit;
     }
+
   if (!VPID_ISNULL (&vpid_merged))
     {
       /* merged page. deallocate it */
       file_log ("flre_tracker_unregister", "deallocate page %d|%d ", VPID_AS_ARGS (&vpid_merged));
+
       error_code = flre_dealloc (thread_p, &flre_Tracker_vfid, &vpid_merged, FILE_TRACKER);
       if (error_code != NO_ERROR)
 	{
@@ -21894,6 +21919,7 @@ flre_tracker_map (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode, FILE_TRA
 	      goto exit;
 	    }
 	}
+
       vpid_next = extdata->vpid_next;
       if (page_track_other != NULL)
 	{
@@ -21903,12 +21929,14 @@ flre_tracker_map (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode, FILE_TRA
 	{
 	  break;
 	}
+
       page_track_other = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
       if (page_track_other == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+
       page_extdata = page_track_other;
     }
 
@@ -21956,6 +21984,7 @@ flre_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
     {
       return NO_ERROR;
     }
+
   /* reuse this heap */
   vfid = (VFID *) args;
   vfid->volid = item->volid;
@@ -21987,7 +22016,9 @@ int
 flre_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out)
 {
   assert (vfid_out != NULL);
+
   VFID_SET_NULL (vfid_out);
+
   return flre_tracker_map (thread_p, PGBUF_LATCH_WRITE, flre_tracker_item_reuse_heap, vfid_out);
 }
 
