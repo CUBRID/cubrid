@@ -67,6 +67,9 @@
 #include "log_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
+#include "session.h"
+#include "heap_file.h"
+#include "xasl_cache.h"
 
 #if defined (SERVER_MODE)
 #include "connection_error.h"
@@ -81,14 +84,6 @@ static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-/* 
- * Global variables for the special peek statistics different from the page buffer ones
- * The page buffer peek statistics are computed right before perfmon_server_dump_stats is called
- */
-
-volatile INT32 perfmon_Cache_entry_count;
-volatile int perfmon_Heap_num_stats_entries;
-int perfmon_Sessions_num_holdable_cursors;
 
 /* Custom values. */
 #define PSTAT_VALUE_CUSTOM	      0x00000001
@@ -455,7 +450,7 @@ STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attr
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
 
-static int get_value_from_stat (PERF_STAT_ID perf_id);
+STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
@@ -1835,6 +1830,7 @@ perfmon_server_get_stats (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
+  perfmon_get_peek_stats (pstat_Global.tran_stats[tran_index]);
   return pstat_Global.tran_stats[tran_index];
 }
 
@@ -1864,10 +1860,11 @@ xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
  *   to_stats(out): buffer to copy
  */
 void
-xperfmon_server_copy_global_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
+xperfmon_server_copy_global_stats (UINT64 * to_stats)
 {
   if (to_stats)
     {
+      perfmon_get_peek_stats (pstat_Global.global_stats);
       perfmon_copy_values (to_stats, pstat_Global.global_stats);
       perfmon_server_calc_stats (to_stats);
     }
@@ -2249,21 +2246,8 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  int stat_val = get_value_from_stat (i);
-
-		  if (stat_val == -1)
-		    {
-		      ret =
-			snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+		  ret = snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
 				  (unsigned long long) stats_ptr[offset]);
-		    }
-		  else
-		    {
-		      assert (stat_val >= 0);
-		      ret =
-			snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-				  (unsigned long long) stat_val);
-		    }
 		}
 	      else
 		{
@@ -2358,18 +2342,8 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  int stat_val = get_value_from_stat (i);
-
-		  if (stat_val == -1)
-		    {
-		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			       (unsigned long long) stats_ptr[offset]);
-		    }
-		  else
-		    {
-		      assert (stat_val >= 0);
-		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name, (unsigned long long) stat_val);
-		    }
+		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			   (unsigned long long) stats_ptr[offset]);
 		}
 	      else
 		{
@@ -4502,31 +4476,16 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 }
 
 /*
- * get_value_from_stat - Used to get the value for a peek statistic different from
- *                       the page buffer statistics
+ * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
+ *		         
+ * return: void
  *
- * return: the value for a peek statistic
- *
- *   perf_id (in): statistic id
- *
+ *   stats (in): statistics array
  */
-static int
-get_value_from_stat (PERF_STAT_ID perf_id)
+STATIC_INLINE void
+perfmon_get_peek_stats (UINT64 * stats)
 {
-  int ans = -1;
-
-  switch (perf_id)
-    {
-    case PSTAT_PC_NUM_CACHE_ENTRIES:
-      ans = perfmon_Cache_entry_count;
-      break;
-    case PSTAT_HF_NUM_STATS_ENTRIES:
-      ans = perfmon_Heap_num_stats_entries;
-      break;
-    case PSTAT_QM_NUM_HOLDABLE_CURSORS:
-      ans = perfmon_Sessions_num_holdable_cursors;
-      break;
-    }
-
-  return ans;
+  stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
+  stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
+  stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
 }

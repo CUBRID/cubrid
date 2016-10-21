@@ -1125,7 +1125,6 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   XCACHE_STAT_INC (deletes);
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
-  ATOMIC_TAS_32 (&perfmon_Cache_entry_count, xcache_Entry_count);
 
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
@@ -1344,7 +1343,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	    {
 	      /* new entry added */
 	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
-	      ATOMIC_TAS_32 (&perfmon_Cache_entry_count, xcache_Entry_count);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
@@ -1974,7 +1972,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  XCACHE_STAT_INC (deletes_at_cleanup);
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
 	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
-	  ATOMIC_TAS_32 (&perfmon_Cache_entry_count, xcache_Entry_count);
 	}
       else
 	{
@@ -2117,4 +2114,16 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
       catalog_free_class_info (cls_info_p);
     }
   return recompile;
+}
+
+/*
+ * xcache_get_entry_count () - Returns the number of xasl cache entries
+ *					     
+ *
+ * return : the number of xasl cache entries
+ */
+int
+xcache_get_entry_count (void)
+{
+  return xcache_Global.entry_count;
 }

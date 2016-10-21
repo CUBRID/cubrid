@@ -161,10 +161,6 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif
 #endif
 
-extern volatile INT32 perfmon_Cache_entry_count;
-extern volatile int perfmon_Heap_num_stats_entries;
-extern int perfmon_Sessions_num_holdable_cursors;
-
 typedef enum
 {
   PERF_MODULE_SYSTEM = 0,
@@ -718,6 +714,8 @@ STATIC_INLINE void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid,
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool check_watchers)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
@@ -858,6 +856,45 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool al
       pstat_Global.tran_stats[tran_index][offset] = statval;
     }
 #endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * perfmon_set_stat_to_global () - Set statistic value only for global statistics
+ *
+ * return	 : Void.
+ * psid (in)	 : Statistic ID.
+ * statval (in)  : New statistic value.
+ */
+STATIC_INLINE void
+perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval)
+{
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
+
+  assert (pstat_Metadata[psid].valtype == PSTAT_PEEK_SINGLE_VALUE);
+
+  perfmon_set_at_offset_to_global (pstat_Metadata[psid].start_offset, statval);
+}
+
+/*
+ * perfmon_set_at_offset_to_global () - Set statistic value in global offset.
+ *
+ * return	 : Void.
+ * offset (in)   : Offset to statistic value.
+ * statval (in)	 : New statistic value.
+ */
+STATIC_INLINE void
+perfmon_set_at_offset_to_global (int offset, int statval)
+{
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
+
+  /* Update global statistic. */
+  ATOMIC_TAS_64 (&(pstat_Global.global_stats[offset]), statval);
 }
 
 /*
