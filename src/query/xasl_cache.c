@@ -68,6 +68,14 @@ struct xcache_stats
 };
 #define XCACHE_STATS_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 
+
+typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
+struct xcache_cleanup_candidate
+{
+  XASL_ID xid;
+  struct timeval time_last_used;
+};
+
 /* Structure to include all xasl cache global variable. It is easier to visualize the entire system when debugging. */
 typedef struct xcache XCACHE;
 struct xcache
@@ -83,6 +91,7 @@ struct xcache
   int max_clones;
   INT32 cleanup_flag;
   BINARY_HEAP *cleanup_bh;
+  XCACHE_CLEANUP_CANDIDATE *cleanup_array;
 
   XCACHE_STATS stats;
 };
@@ -99,6 +108,7 @@ XCACHE xcache_Global = {
   0,				/* max_clones */
   0,				/* cleanup_flag */
   NULL,				/* cleanup_bh */
+  NULL,				/* cleanup_array */
   XCACHE_STATS_INITIALIZER
 };
 
@@ -114,6 +124,7 @@ XCACHE xcache_Global = {
 #define xcache_Max_clones xcache_Global.max_clones
 #define xcache_Cleanup_flag xcache_Global.cleanup_flag
 #define xcache_Cleanup_bh xcache_Global.cleanup_bh
+#define xcache_cleanup_array xcache_Global.cleanup_array
 
 /* Statistics */
 #define XCACHE_STAT_GET(name) ATOMIC_LOAD_64 (&xcache_Global.stats.name)
@@ -160,12 +171,6 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 #define XCACHE_CLEANUP_NUM_ENTRIES(capacity) \
   (MAX ((int) (2 * XCACHE_CLEANUP_RATIO * (capacity)), XCACHE_CLEANUP_MIN_NUM_ENTRIES))
 
-typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
-struct xcache_cleanup_candidate
-{
-  XASL_ID xid;
-  struct timeval time_last_used;
-};
 
 /* Recompile threshold */
 #define XCACHE_RT_TIMEDIFF_IN_SEC	360	/* 10 minutes */
@@ -255,6 +260,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
 
   xcache_Soft_capacity = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES);
   xcache_time_threshold = prm_get_integer_value (PRM_ID_XASL_CACHE_TIME_THRESHOLD);
+
   if (xcache_Soft_capacity <= 0)
     {
       xcache_log ("disabled.\n");
@@ -285,6 +291,8 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_Cleanup_flag = 0;
   xcache_Cleanup_bh = bh_create (thread_p, XCACHE_CLEANUP_NUM_ENTRIES (xcache_Soft_capacity),
 				 sizeof (XCACHE_CLEANUP_CANDIDATE), xcache_compare_cleanup_candidates, NULL);
+  xcache_cleanup_array = malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
+
   (void) db_change_private_heap (thread_p, save_heapid);
   if (xcache_Cleanup_bh == NULL)
     {
@@ -1458,7 +1466,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	{
 	  /* Try to clean up some of the oldest entries. */
 	  xcache_cleanup (thread_p);
-	  gettimeofday (&xcache_last_cleaned_time, NULL);
 	}
 
       /* XASL stream was used. Remove from argument. */
@@ -1861,7 +1868,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   XCACHE_CLEANUP_CANDIDATE candidate;
   struct timeval current_time;
   int candidate_index;
-  int success;
+  int success, count;
+  int clean_type;		/* 0 for size, 1 for time */
   int cleanup_count;
   BINARY_HEAP *bh = NULL;
   int save_max_capacity = 0;
@@ -1891,87 +1899,122 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
   /* How many entries do we need to cleanup? */
   if (xcache_Entry_count > xcache_Soft_capacity)
-    cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
-  else
-    cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity);
-  if (cleanup_count <= 0)
     {
-      /* Not enough to cleanup */
-      if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
-	{
-	  assert_release (false);
-	}
-      return;
+      cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
+      clean_type = 0;
+    }
+  else
+    {
+      clean_type = 1;
     }
 
-  /* Can we use preallocated binary heap? */
-  if (cleanup_count <= xcache_Cleanup_bh->max_capacity)
+  if (clean_type == 0)		/* cleanup because there are too many entries */
     {
-      bh = xcache_Cleanup_bh;
-      /* Hack binary heap max capacity to the desired cleanup count. */
-      save_max_capacity = bh->max_capacity;
-      bh->max_capacity = cleanup_count;
-    }
-  else
-    {
-      /* We need a larger binary heap. */
-      bh =
-	bh_create (thread_p, cleanup_count, sizeof (XCACHE_CLEANUP_CANDIDATE), xcache_compare_cleanup_candidates, NULL);
-      if (bh == NULL)
+      if (cleanup_count <= 0)
 	{
-	  /* Not really expected */
-	  assert (false);
+	  /* Not enough to cleanup */
 	  if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
 	    {
 	      assert_release (false);
 	    }
 	  return;
 	}
-    }
-
-  /* The cleanup is a two-step process:
-   * 1. Iterate through hash and select candidates for cleanup. The least recently used entries are sorted into a binary
-   *    heap.
-   *    NOTE: the binary heap does not story references to hash entries; it stores copies from the candidate keys and
-   *    last used timer of course to sort the candidates.
-   * 2. Remove collected candidates from hash. Entries must be unfix and no flags must be set.
-   */
-
-  assert (bh->element_count == 0);
-  bh->element_count = 0;
-
-  xcache_log ("cleanup start: entries = %d \n"
-	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
-
-  /* Collect candidates for cleanup. */
-  lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
-
-  while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
-    {
-      candidate.xid = xcache_entry->xasl_id;
-      candidate.time_last_used = xcache_entry->time_last_used;
-
-      if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK
-	  || (xcache_Entry_count <= xcache_Soft_capacity
-	      && TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_time_threshold))
+      /* Can we use preallocated binary heap? */
+      if (cleanup_count <= xcache_Cleanup_bh->max_capacity)
 	{
-	  /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. 
-	   * If we do cleanup by the time, we discard those entries which are newer than xcache_time_threshold */
-	  continue;
+	  bh = xcache_Cleanup_bh;
+	  /* Hack binary heap max capacity to the desired cleanup count. */
+	  save_max_capacity = bh->max_capacity;
+	  bh->max_capacity = cleanup_count;
+	}
+      else
+	{
+	  /* We need a larger binary heap. */
+	  bh =
+	    bh_create (thread_p, cleanup_count, sizeof (XCACHE_CLEANUP_CANDIDATE), xcache_compare_cleanup_candidates,
+		       NULL);
+	  if (bh == NULL)
+	    {
+	      /* Not really expected */
+	      assert (false);
+	      if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+		{
+		  assert_release (false);
+		}
+	      return;
+	    }
 	}
 
-      (void) bh_try_insert (bh, &candidate, NULL);
+      /* The cleanup is a two-step process:
+       * 1. Iterate through hash and select candidates for cleanup. The least recently used entries are sorted into a binary
+       *    heap.
+       *    NOTE: the binary heap does not story references to hash entries; it stores copies from the candidate keys and
+       *    last used timer of course to sort the candidates.
+       * 2. Remove collected candidates from hash. Entries must be unfix and no flags must be set.
+       */
+
+      assert (bh->element_count == 0);
+      bh->element_count = 0;
+
+      xcache_log ("cleanup start: entries = %d \n"
+		  XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
+
+      /* Collect candidates for cleanup. */
+      lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+
+      while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
+	{
+	  candidate.xid = xcache_entry->xasl_id;
+	  candidate.time_last_used = xcache_entry->time_last_used;
+
+	  if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
+	    {
+	      /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
+	      continue;
+	    }
+
+	  (void) bh_try_insert (bh, &candidate, NULL);
+	}
+
+      count = bh->element_count;
+    }
+  else
+    {
+      xcache_log ("cleanup start: entries = %d \n"
+		  XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
+      count = 0;
+      /* Collect candidates for cleanup. */
+      lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+
+      while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
+	{
+	  candidate.xid = xcache_entry->xasl_id;
+	  candidate.time_last_used = xcache_entry->time_last_used;
+
+	  if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK
+	      || TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_time_threshold)
+	    {
+	      continue;
+	    }
+	  xcache_cleanup_array[count] = candidate;
+	  count++;
+	}
     }
 
-  xcache_log ("cleanup collected entries = %d \n"
-	      XCACHE_LOG_TRAN_TEXT, xcache_Cleanup_bh->element_count, XCACHE_LOG_TRAN_ARGS (thread_p));
+  xcache_log ("cleanup collected entries = %d \n" XCACHE_LOG_TRAN_TEXT, count, XCACHE_LOG_TRAN_ARGS (thread_p));
 
   /* Remove candidates from cache. */
-  for (candidate_index = 0; candidate_index < bh->element_count; candidate_index++)
+  for (candidate_index = 0; candidate_index < count; candidate_index++)
     {
-      /* Get candidate at candidate_index. */
-      bh_element_at (bh, candidate_index, &candidate);
-
+      if (clean_type == 0)	/* binary heap for candidates */
+	{
+	  /* Get candidate at candidate_index. */
+	  bh_element_at (bh, candidate_index, &candidate);
+	}
+      else
+	{
+	  candidate = xcache_cleanup_array[candidate_index];
+	}
       /* Set intention to cleanup the entry. */
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
 
@@ -2002,25 +2045,29 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 		      XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_XASL_ID_ARGS (&candidate.xid), XCACHE_LOG_TRAN_ARGS (thread_p));
 	}
     }
-
-  /* Reset binary heap. */
-  bh->element_count = 0;
-
-  if (bh != xcache_Cleanup_bh)
+  if (clean_type == 0)
     {
-      /* Destroy bh */
-      bh_destroy (thread_p, bh);
-    }
-  else
-    {
-      /* Reset binary heap max capacity. */
-      xcache_Cleanup_bh->max_capacity = save_max_capacity;
+      /* Reset binary heap. */
+      bh->element_count = 0;
+
+      if (bh != xcache_Cleanup_bh)
+	{
+	  /* Destroy bh */
+	  bh_destroy (thread_p, bh);
+	}
+      else
+	{
+	  /* Reset binary heap max capacity. */
+	  xcache_Cleanup_bh->max_capacity = save_max_capacity;
+	}
     }
 
   xcache_log ("cleanup finished: entries = %d \n"
 	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
 
   XCACHE_STAT_INC (cleanups);
+
+  gettimeofday (&xcache_last_cleaned_time, NULL);
   if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
     {
       assert_release (false);
