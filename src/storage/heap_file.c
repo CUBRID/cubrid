@@ -24878,12 +24878,12 @@ heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * get_num_stats_entries - Returns the number of num_stats_entries 
+ * heap_get_best_space_num_stats_entries - Returns the number of num_stats_entries 
  * return : the number of entries in the heap
  *
  */
 int
-get_num_stats_entries ()
+heap_get_best_space_num_stats_entries (void)
 {
   return heap_Bestspace->num_stats_entries;
 }

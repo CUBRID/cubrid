@@ -450,7 +450,7 @@ STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attr
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE void copy_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
@@ -1830,7 +1830,7 @@ perfmon_server_get_stats (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
-  copy_peek_stats (pstat_Global.tran_stats[tran_index]);
+  perfmon_get_peek_stats (pstat_Global.tran_stats[tran_index]);
   return pstat_Global.tran_stats[tran_index];
 }
 
@@ -1864,7 +1864,7 @@ xperfmon_server_copy_global_stats (UINT64 * to_stats)
 {
   if (to_stats)
     {
-      copy_peek_stats (pstat_Global.global_stats);
+      perfmon_get_peek_stats (pstat_Global.global_stats);
       perfmon_copy_values (to_stats, pstat_Global.global_stats);
       perfmon_server_calc_stats (to_stats);
     }
@@ -4476,16 +4476,16 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 }
 
 /*
- * copy_peek_stats - Copy into the statistics array the values of the peek statistics
+ * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
  *		         
  * return: void
  *
  *   stats (in): statistics array
  */
 STATIC_INLINE void
-copy_peek_stats (UINT64 * stats)
+perfmon_get_peek_stats (UINT64 * stats)
 {
-  stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = get_xcache_entry_count ();
-  stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = get_num_stats_entries ();
-  stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = get_number_of_holdable_cursors ();
+  stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
+  stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
+  stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
 }

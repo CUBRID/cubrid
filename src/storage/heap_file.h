@@ -669,6 +669,6 @@ extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEA
 extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p,
 					HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern int heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int get_num_stats_entries ();
+extern int heap_get_best_space_num_stats_entries (void);
 
 #endif /* _HEAP_FILE_H_ */

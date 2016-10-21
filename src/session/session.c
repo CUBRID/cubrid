@@ -2984,13 +2984,13 @@ session_state_decrease_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * state
 #endif
 
 /*
- * get_number_of_holdable_cursors () - return the number of holdable cursors
+ * session_get_number_of_holdable_cursors () - return the number of holdable cursors
  *	                              
  * return : the number of holdable cursors
  * 
  */
 int
-get_number_of_holdable_cursors ()
+session_get_number_of_holdable_cursors (void)
 {
   return sessions.num_holdable_cursors;
 }

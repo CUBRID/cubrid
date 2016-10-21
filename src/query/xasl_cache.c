@@ -2117,13 +2117,13 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 }
 
 /*
- * get_xcache_entry_count () - Returns the number of xasl cache entries
+ * xcache_get_entry_count () - Returns the number of xasl cache entries
  *					     
  *
  * return : the number of xasl cache entries
  */
 int
-get_xcache_entry_count ()
+xcache_get_entry_count (void)
 {
   return xcache_Global.entry_count;
 }
