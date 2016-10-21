@@ -1106,7 +1106,6 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
     }
 
   heap_Bestspace->num_stats_entries++;
-  perfmon_Heap_num_stats_entries++;
 
 end:
 
@@ -1145,7 +1144,6 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
   assert (del_cnt <= heap_Bestspace->num_stats_entries);
 
   heap_Bestspace->num_stats_entries -= del_cnt;
-  perfmon_Heap_num_stats_entries -= del_cnt;
 
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
@@ -1179,7 +1177,6 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
   ent = NULL;
 
   heap_Bestspace->num_stats_entries -= 1;
-  perfmon_Heap_num_stats_entries -= 1;
 
 end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
@@ -3172,7 +3169,6 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	      ent = NULL;
 
 	      heap_Bestspace->num_stats_entries--;
-	      perfmon_Heap_num_stats_entries--;
 
 	      notfound_cnt++;
 	    }
@@ -24879,4 +24875,15 @@ heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return error_code;
+}
+
+/*
+ * heap_get_best_space_num_stats_entries - Returns the number of num_stats_entries 
+ * return : the number of entries in the heap
+ *
+ */
+int
+heap_get_best_space_num_stats_entries (void)
+{
+  return heap_Bestspace->num_stats_entries;
 }
