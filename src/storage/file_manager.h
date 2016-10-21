@@ -204,16 +204,6 @@ struct file_alloc_iterator
   int num_pages;
 };
 
-extern int file_manager_initialize (THREAD_ENTRY * thread_p);
-extern int file_manager_finalize (THREAD_ENTRY * thread_p);
-
-extern FILE_IS_NEW_FILE file_is_new_file (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern FILE_IS_NEW_FILE file_is_new_file_ext (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * file_type,
-					      bool * has_undolog);
-extern int file_new_declare_as_old (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_new_set_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid);
-
-extern int file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern FILE_TYPE file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr);
 extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *area_des, int maxsize);

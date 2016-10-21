@@ -74,7 +74,6 @@ static const char *csect_Names[] = {
   "WFG",
   "LOG",
   "LOCATOR_CLASSNAME_TABLE",
-  "FILE_NEWFILE",
   "QPROC_QUERY_TABLE",
   "QPROC_LIST_CACHE",
   "DISK_CHECK",
