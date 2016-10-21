@@ -255,6 +255,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_check_logging ();
 
   xcache_Soft_capacity = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES);
+  xcache_time_threshold = prm_get_integer_value (PRM_ID_XASL_CACHE_TIME_THRESHOLD);
   if (xcache_Soft_capacity <= 0)
     {
       xcache_log ("disabled.\n");

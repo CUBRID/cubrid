@@ -618,6 +618,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ENABLE_STRING_COMPRESSION "enable_string_compression"
 
+#define PRM_NAME_XASL_CACHE_TIME_THRESHOLD "xasl_cache_time_threshold"
+
 #define PRM_NAME_EXTENDED_STATISTICS_ACTIVATION "extended_statistics_activation"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
@@ -2035,6 +2037,12 @@ static int prm_extended_statistics_lower = 0;
 bool PRM_ENABLE_STRING_COMPRESSION = true;
 static bool prm_enable_string_compression_default = true;
 static unsigned int prm_enable_string_compression_flag = 0;
+
+int PRM_XASL_CACHE_TIME_THRESHOLD = 360;
+static unsigned int prm_xasl_cache_time_threshold_flag = 0;
+static int prm_xasl_cache_time_threshold_default = 360;
+static int prm_xasl_cache_time_threshold_upper = INT_MAX;
+static int prm_xasl_cache_time_threshold_lower = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4939,6 +4947,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_enable_string_compression_default,
    (void *) &PRM_ENABLE_STRING_COMPRESSION,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_XASL_CACHE_TIME_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   (void *) &prm_xasl_cache_time_threshold_flag,
+   (void *) &prm_xasl_cache_time_threshold_default,
+   (void *) &PRM_XASL_CACHE_TIME_THRESHOLD,
+   (void *) &prm_xasl_cache_time_threshold_upper,
+   (void *) &prm_xasl_cache_time_threshold_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
