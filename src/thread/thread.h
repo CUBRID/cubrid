@@ -331,6 +331,8 @@ struct thread_entry
   void *log_zip_redo;
   char *log_data_ptr;
   int log_data_length;
+  bool disable_zip_undo;
+  bool allow_log_diff;
 
   int net_request_index;	/* request index of net server functions */
 

@@ -1142,6 +1142,8 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->log_zip_redo = NULL;
   entry_p->log_data_length = 0;
   entry_p->log_data_ptr = NULL;
+  entry_p->disable_zip_undo = false;
+  entry_p->allow_log_diff = true;
 
   (void) thread_rc_track_initialize (entry_p);
   thread_clear_recursion_depth (entry_p);
@@ -1245,6 +1247,8 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
       free_and_init (entry_p->log_data_ptr);
       entry_p->log_data_length = 0;
     }
+  entry_p->disable_zip_undo = false;
+  entry_p->allow_log_diff = true;
 
   /* Vacuum worker resources are released by vacuum */
   entry_p->vacuum_worker = NULL;

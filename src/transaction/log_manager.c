@@ -2492,33 +2492,8 @@ log_create_log_node_from_recdes2 (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_
     }
 #endif
 
-  if (undo_recdes != NULL)
-    {
-      undo_crumbs[0].length = sizeof (undo_recdes->type);
-      undo_crumbs[0].data = (char *) &undo_recdes->type;
-      undo_crumbs[1].length = undo_recdes->length;
-      undo_crumbs[1].data = undo_recdes->data;
-      num_undo_crumbs = 2;
-    }
-  else
-    {
-      undo_crumbs = NULL;
-      num_undo_crumbs = 0;
-    }
-
-  if (redo_recdes != NULL)
-    {
-      redo_crumbs[0].length = sizeof (redo_recdes->type);
-      redo_crumbs[0].data = (char *) &redo_recdes->type;
-      redo_crumbs[1].length = redo_recdes->length;
-      redo_crumbs[1].data = redo_recdes->data;
-      num_redo_crumbs = 2;
-    }
-  else
-    {
-      redo_crumbs = NULL;
-      num_redo_crumbs = 0;
-    }
+  LOG_GET_CRUMBS_FROM_RECDES (undo_recdes, 2, undo_crumbs, num_undo_crumbs);
+  LOG_GET_CRUMBS_FROM_RECDES (redo_recdes, 2, redo_crumbs, num_redo_crumbs);
 
   return log_create_log_node_from_undoredo_crumbs (thread_p, tdes, rcvindex, &addr, num_undo_crumbs, num_redo_crumbs,
 						   undo_crumbs, redo_crumbs, node);

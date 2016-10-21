@@ -1496,6 +1496,27 @@ struct log_rec_mvcc_redo
   MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 
+#define LOG_GET_RECDES_CRUMBS_SIZE(recdes_p) ((recdes_p)->length + sizeof ((recdes_p)->type))
+#define LOG_GET_CRUMBS_FROM_RECDES(recdes_p, crumbs_capacity, crumbs, num_crumbs) \
+  do \
+    { \
+      if (recdes_p != NULL)	\
+	{ \
+	  (crumbs)[0].length = sizeof ((recdes_p)->type); \
+	  (crumbs)[0].data = (char *) &(recdes_p)->type;  \
+	  (crumbs)[1].length = (recdes_p)->length;	\
+	  (crumbs)[1].data = (recdes_p)->data;  \
+	  (num_crumbs) = 2; \
+	} \
+      else  \
+	{ \
+	  (crumbs) = NULL; \
+	  (num_crumbs) = 0; \
+	} \
+      assert (num_crumbs <= crumbs_capacity); \
+    } \
+  while (0)
+
 #define LOG_NODE_GET_DATAP(node, log_data_p, log_undo_length_p, log_redo_length_p, vacuum_info_p, mvccid_p) \
   do \
     { \
@@ -2065,6 +2086,8 @@ extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, L
 						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int ulength,
 						      char *udata, int rlength, char *rdata);
 extern void prior_lsa_free_node (LOG_PRIOR_NODE * node);
+extern int prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
+					   LOG_DATA_ADDR * addr, RECDES * old_recdes_p, RECDES * new_recdes_p);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 							LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 							const int num_ucrumbs, const LOG_CRUMB * ucrumbs,
