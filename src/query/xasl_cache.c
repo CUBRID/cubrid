@@ -105,7 +105,6 @@ XCACHE xcache_Global = {
 /* Create macro's for xcache_Global fields to access them as if they were global variables. */
 #define xcache_Enabled xcache_Global.enabled
 #define xcache_Soft_capacity xcache_Global.soft_capacity
-#define xcache_mem_threshold xcache_Global.mem_threshold
 #define xcache_time_threshold xcache_Global.time_threshold
 #define xcache_last_cleaned_time xcache_Global.last_cleaned_time
 #define xcache_Ht xcache_Global.ht
