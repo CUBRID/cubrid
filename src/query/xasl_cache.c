@@ -259,7 +259,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_check_logging ();
 
   xcache_Soft_capacity = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES);
-  xcache_time_threshold = prm_get_integer_value (PRM_ID_XASL_CACHE_TIME_THRESHOLD);
+  xcache_time_threshold = prm_get_integer_value (PRM_ID_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES) * 60;
 
   if (xcache_Soft_capacity <= 0)
     {
@@ -1869,7 +1869,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   struct timeval current_time;
   int candidate_index;
   int success, count;
-  int clean_type;		/* 0 for size, 1 for time */
+  bool is_capacity_exceeded;
   int cleanup_count;
   BINARY_HEAP *bh = NULL;
   int save_max_capacity = 0;
@@ -1901,14 +1901,17 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   if (xcache_Entry_count > xcache_Soft_capacity)
     {
       cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
-      clean_type = 0;
+      is_capacity_exceeded = 1;
     }
   else
     {
-      clean_type = 1;
+      is_capacity_exceeded = 0;
     }
 
-  if (clean_type == 0)		/* cleanup because there are too many entries */
+  xcache_log ("cleanup start: entries = %d \n"
+	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
+
+  if (is_capacity_exceeded)	/* cleanup because there are too many entries */
     {
       if (cleanup_count <= 0)
 	{
@@ -1956,9 +1959,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       assert (bh->element_count == 0);
       bh->element_count = 0;
 
-      xcache_log ("cleanup start: entries = %d \n"
-		  XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
-
       /* Collect candidates for cleanup. */
       lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
 
@@ -1980,8 +1980,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
     }
   else
     {
-      xcache_log ("cleanup start: entries = %d \n"
-		  XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
       count = 0;
       /* Collect candidates for cleanup. */
       lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
@@ -2006,7 +2004,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   /* Remove candidates from cache. */
   for (candidate_index = 0; candidate_index < count; candidate_index++)
     {
-      if (clean_type == 0)	/* binary heap for candidates */
+      if (is_capacity_exceeded)	/* binary heap for candidates */
 	{
 	  /* Get candidate at candidate_index. */
 	  bh_element_at (bh, candidate_index, &candidate);
@@ -2045,7 +2043,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 		      XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_XASL_ID_ARGS (&candidate.xid), XCACHE_LOG_TRAN_ARGS (thread_p));
 	}
     }
-  if (clean_type == 0)
+  if (is_capacity_exceeded)
     {
       /* Reset binary heap. */
       bh->element_count = 0;
