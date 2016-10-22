@@ -1966,8 +1966,8 @@ file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid, FILE_ALLOC_ITERA
   INT32 npages = 0;
   VPID vpid;
 
-  assert (vfid);
-  assert (iter);
+  assert (vfid != NULL);
+  assert (iter != NULL);
 
   npages = file_get_numpages (thread_p, vfid);
 
@@ -1997,8 +1997,8 @@ file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid, FILE_ALLOC_ITERA
 VPID *
 file_alloc_iterator_get_current_page (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter, VPID * vpid)
 {
-  assert (iter);
-  assert (vpid);
+  assert (iter != NULL);
+  assert (vpid != NULL);
 
   VPID_SET_NULL (vpid);
 
@@ -2025,7 +2025,7 @@ file_alloc_iterator_next (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter)
   VPID vpid;
   int num_pages;
 
-  assert (iter);
+  assert (iter != NULL);
 
   num_pages = file_get_numpages (thread_p, iter->vfid);
 
@@ -2112,8 +2112,8 @@ file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 
       /* Get the number of bytes that we need to store */
       num_overhead_pages = (nsects + npages) * sizeof (INT32);
 
-      /* Find how many entries can be stored in the current allocation set Lock the file header page in shared mode and 
-       * then fetch the page. */
+      /* Find how many entries can be stored in the current allocation set.
+       * Lock the file header page in shared mode and then fetch the page. */
 
       vpid.volid = vfid->volid;
       vpid.pageid = vfid->fileid;
@@ -4186,8 +4186,8 @@ file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * fi
        * Create a new allocation set and try to allocate the pages from there
        * If first_alloc_vpid->volid == NULL_VOLID, there was an error...
        */
-      if (file_allocset_new_set
-	  (thread_p, first_alloc_vpid->volid, fhdr_pgptr, npages, DISK_CONTIGUOUS_PAGES) != NO_ERROR)
+      if (file_allocset_new_set (thread_p, first_alloc_vpid->volid, fhdr_pgptr, npages,
+				 DISK_CONTIGUOUS_PAGES) != NO_ERROR)
 	{
 	  break;
 	}
@@ -7346,10 +7346,8 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid, bool validate_
 	{
 	  if (valid == DISK_INVALID)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_FILE_INCONSISTENT_ALLOCATION, 6, set_vpids[0].volid,
-		      set_vpids[0].pageid,
-		      fileio_get_volume_label (set_vpids[0].volid, PEEK),
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_INCONSISTENT_ALLOCATION, 6, set_vpids[0].volid,
+		      set_vpids[0].pageid, fileio_get_volume_label (set_vpids[0].volid, PEEK),
 		      vfid->volid, vfid->fileid, fileio_get_volume_label (vfid->volid, PEEK));
 	    }
 
@@ -9919,8 +9917,8 @@ file_print_class_name_index_name_with_attrid (THREAD_ENTRY * thread_p, FILE * fp
   /* index_name root_pageid doesn't matter here, see BTID_IS_EQUAL */
   btid.vfid = *vfid;
   btid.root_pageid = NULL_PAGEID;
-  if (heap_get_indexinfo_of_btid
-      (thread_p, (OID *) class_oid_p, &btid, NULL, NULL, NULL, NULL, &index_name_p, NULL) != NO_ERROR)
+  if (heap_get_indexinfo_of_btid (thread_p, (OID *) class_oid_p, &btid, NULL, NULL, NULL, NULL, &index_name_p,
+				  NULL) != NO_ERROR)
     {
       goto end;
     }
@@ -11402,6 +11400,7 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src, FILE_EXTEN
 	    }
 	}
     }
+
   if (src_ptr < src_end_ptr)
     {
       /* end of destination reached. append remaining source items into destination. */
@@ -11445,6 +11444,8 @@ file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata, const void *ite
 
   *found = false;
   *position = -1;
+
+  /* TODO: to compare with the upper bound to early out */
 
   /* binary search */
   /* keep searching while range is still valid. */
@@ -11584,7 +11585,7 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
 
   while (true)
     {
-      if (f_extdata)
+      if (f_extdata != NULL)
 	{
 	  /* apply f_extdata */
 	  error_code = f_extdata (thread_p, extdata_in, &stop, f_extdata_args);
@@ -11599,6 +11600,7 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
 	      goto exit;
 	    }
 	}
+
       if (f_item != NULL)
 	{
 	  /* iterate through all items in current page. */
@@ -11617,11 +11619,13 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
 		}
 	    }
 	}
+
       if (VPID_ISNULL (&extdata_in->vpid_next))
 	{
 	  /* end of extensible data. */
 	  break;
 	}
+
       /* advance to next page */
       if (page_extdata != NULL)
 	{
@@ -12482,6 +12486,7 @@ file_compare_vsids (const void *first, const void *second)
 {
   VSID *first_vsid = (VSID *) first;
   VSID *second_vsid = (VSID *) second;
+
   if (first_vsid->volid > second_vsid->volid)
     {
       return 1;
@@ -12740,7 +12745,6 @@ flre_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_
   return flre_create (thread_p, FILE_EXTENDIBLE_HASH, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp, true, vfid);
 }
 
-
 /*
  * flre_create_ehash_dir () - Create a permanent or temporary file for extensible hash directory. This file will have
  *			      the numerable property.
@@ -12762,8 +12766,8 @@ flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EH
   /* todo: use temporary file cache? */
 
   FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
-  return flre_create (thread_p, FILE_EXTENDIBLE_HASH_DIRECTORY, &tablespace,
-		      (FILE_DESCRIPTORS *) des_ehash, is_tmp, true, vfid);
+  return flre_create (thread_p, FILE_EXTENDIBLE_HASH_DIRECTORY, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp,
+		      true, vfid);
 }
 
 /* TODO: Rename as file_create. */
@@ -13555,6 +13559,7 @@ flre_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid)
       /* cached */
       return NO_ERROR;
     }
+
   /* was not cached. destroy */
   /* don't allow interrupt to avoid file leak */
   save_interrupt = thread_set_check_interrupt (thread_p, false);
@@ -14686,8 +14691,10 @@ flre_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
   if (VPID_ISNULL (vpid_out))
     {
       assert_release (false);
+      pgbuf_unfix (thread_p, page_fhead);
       return ER_FAILED;
     }
+
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
@@ -14821,6 +14828,7 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
       error_code = ER_FAILED;
       goto exit;
     }
+
   /* check not marked as deleted */
   vpid_found = (VPID *) file_extdata_at (extdata_user_page_ftab, pos);
   if (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_found))
@@ -14840,6 +14848,7 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
     {
       /* log it */
       LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+
       addr.pgptr = page_extdata;
       addr.offset = (PGLENGTH) (((char *) vpid_found) - addr.pgptr);
       log_append_undoredo_data (thread_p, RVFL_USER_PAGE_MARK_DELETE, &addr, LOG_DATA_SIZE, 0, log_data, NULL);
@@ -14878,12 +14887,13 @@ exit:
 /*
  * file_extdata_try_merge () - Try to merge extensible data components.
  *
- * return	     : Error code
- * thread_p (in)     : Thread entry
- * page_dest (in)    : Merge destination page
- * extdata_dest (in) : Merge destination extensible 
- * compare_func (in) : NULL to merge unordered, not NULL to merge ordered
- * rcvindex (in)     : Recovery index used in case merge is executed
+ * return	         : Error code
+ * thread_p (in)         : Thread entry
+ * page_dest (in)        : Merge destination page
+ * extdata_dest (in)     : Merge destination extensible
+ * compare_func (in)     : NULL to merge unordered, not NULL to merge ordered
+ * rcvindex (in)         : Recovery index used in case merge is executed
+ * merged_vpid_out (out) : VPID to be deallocated
  */
 STATIC_INLINE int
 file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest, FILE_EXTENSIBLE_DATA * extdata_dest,
@@ -14969,6 +14979,7 @@ file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest, FILE_EXTENS
     {
       pgbuf_unfix_and_init (thread_p, page_next);
     }
+
   return NO_ERROR;
 }
 
@@ -15054,8 +15065,8 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
 
       log_append_undoredo_data (thread_p, RVFL_PARTSECT_DEALLOC, &addr,
-				sizeof (offset_to_dealloc_bit),
-				sizeof (offset_to_dealloc_bit), &offset_to_dealloc_bit, &offset_to_dealloc_bit);
+				sizeof (offset_to_dealloc_bit), sizeof (offset_to_dealloc_bit),
+				&offset_to_dealloc_bit, &offset_to_dealloc_bit);
 
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 
@@ -15565,9 +15576,8 @@ flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
   VSID_FROM_VPID (&vsid_lookup, vpid_lookup);
 
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
-  if (file_extdata_search_item
-      (thread_p, &extdata_part_ftab, &vsid_lookup, file_compare_vsids, true,
-       false, &found, &pos, &page_ftab) != NO_ERROR)
+  if (file_extdata_search_item (thread_p, &extdata_part_ftab, &vsid_lookup, file_compare_vsids, true, false, &found,
+				&pos, &page_ftab) != NO_ERROR)
     {
       ASSERT_ERROR ();
       isvalid = DISK_ERROR;
@@ -15599,9 +15609,8 @@ flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
 	  pgbuf_unfix_and_init (thread_p, page_ftab);
 	}
       FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
-      if (file_extdata_search_item
-	  (thread_p, &extdata_full_ftab, &vsid_lookup, file_compare_vsids,
-	   true, false, &found, &pos, &page_ftab) != NO_ERROR)
+      if (file_extdata_search_item (thread_p, &extdata_full_ftab, &vsid_lookup, file_compare_vsids, true, false,
+				    &found, &pos, &page_ftab) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  isvalid = DISK_ERROR;
@@ -15626,9 +15635,8 @@ flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       VPID *vpid_in_table;
 
       FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
-      if (file_extdata_search_item
-	  (thread_p, &extdata_user_page_ftab, vpid_lookup, file_compare_vpids,
-	   false, false, &found, &pos, &page_ftab) != NO_ERROR)
+      if (file_extdata_search_item (thread_p, &extdata_user_page_ftab, vpid_lookup, file_compare_vpids, false, false,
+				    &found, &pos, &page_ftab) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  isvalid = DISK_ERROR;
@@ -15730,7 +15738,6 @@ flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp)
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (is_temp != NULL);
-
 
   ftype = file_type_cache_check (vfid);
   if (FILE_TYPE_IS_ALWAYS_TEMP (ftype))
@@ -16521,11 +16528,13 @@ flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+
       error_code = flre_alloc (thread_p, vfid, vpid_nth);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	}
+
       goto exit;
     }
 
@@ -17084,8 +17093,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       assert (extdata_part_ftab != NULL);
 
-      for (partsect =
-	   (FILE_PARTIAL_SECTOR *) file_extdata_start (extdata_part_ftab);
+      for (partsect = (FILE_PARTIAL_SECTOR *) file_extdata_start (extdata_part_ftab);
 	   partsect < (FILE_PARTIAL_SECTOR *) file_extdata_end (extdata_part_ftab); partsect++)
 	{
 	  /* does it have file table pages? */
@@ -17184,6 +17192,7 @@ flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   /* to preserve the file, we need to remove it from transaction list */
   FLRE_TEMPCACHE_ENTRY *entry = flre_tempcache_pop_tran_file (thread_p, vfid);
+
   if (entry == NULL)
     {
       assert_release (false);
@@ -17335,6 +17344,7 @@ STATIC_INLINE int
 flre_tempcache_alloc_entry (FLRE_TEMPCACHE_ENTRY ** entry)
 {
   flre_tempcache_check_lock ();
+
   if (flre_Tempcache->free_entries != NULL)
     {
       assert (flre_Tempcache->nfree_entries > 0);
@@ -17352,9 +17362,11 @@ flre_tempcache_alloc_entry (FLRE_TEMPCACHE_ENTRY ** entry)
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
+
   (*entry)->next = NULL;
   VFID_SET_NULL (&(*entry)->vfid);
   (*entry)->ftype = FILE_UNKNOWN_TYPE;
+
   return NO_ERROR;
 }
 
@@ -17369,6 +17381,7 @@ flre_tempcache_retire_entry (FLRE_TEMPCACHE_ENTRY * entry)
 {
   /* we lock to change free entry list */
   flre_tempcache_lock ();
+
   if (flre_Tempcache->nfree_entries < flre_Tempcache->nfree_entries_max)
     {
       entry->next = flre_Tempcache->free_entries;
@@ -17379,6 +17392,7 @@ flre_tempcache_retire_entry (FLRE_TEMPCACHE_ENTRY * entry)
     {
       free (entry);
     }
+
   flre_tempcache_unlock ();
 }
 
@@ -17457,6 +17471,7 @@ flre_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FL
 	  (*entry)->ftype = ftype;
 	}
     }
+
   if (*entry != NULL)
     {
       /* remove from cache */
@@ -17493,12 +17508,15 @@ flre_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FL
       flre_tempcache_unlock ();
       return error_code;
     }
+
   /* init new entry */
   assert (*entry != NULL);
   (*entry)->next = NULL;
   (*entry)->ftype = ftype;
   VFID_SET_NULL (&(*entry)->vfid);
+
   flre_tempcache_unlock ();
+
   return NO_ERROR;
 }
 
@@ -17608,10 +17626,13 @@ file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
 void
 flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
-  file_log ("flre_tempcache_drop_tran_temp_files",
-	    "drop %d transaction temporary files", flre_get_tran_num_temp_files (thread_p));
-  file_tempcache_cache_or_drop_entries (thread_p,
-					&flre_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)]);
+  if (flre_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
+    {
+      file_log ("flre_tempcache_drop_tran_temp_files",
+		"drop %d transaction temporary files", flre_get_tran_num_temp_files (thread_p));
+      file_tempcache_cache_or_drop_entries (thread_p,
+					    &flre_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)]);
+    }
 }
 
 /*
@@ -17687,6 +17708,7 @@ flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 	}
       prev_entry = entry;
     }
+
   /* should have found it */
   assert_release (false);
   return NULL;
@@ -17711,6 +17733,12 @@ flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * e
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
 }
 
+/*
+ * flre_get_tran_num_temp_files () - returns the number of temp file entries of the given transaction
+ *
+ * return        : the number of temp files of the given transaction
+ * thread_p (in) : thread entry
+ */
 int
 flre_get_tran_num_temp_files (THREAD_ENTRY * thread_p)
 {
@@ -17735,6 +17763,7 @@ STATIC_INLINE void
 flre_tempcache_dump (FILE * fp)
 {
   FLRE_TEMPCACHE_ENTRY *cached_files;
+
   flre_tempcache_lock ();
 
   fprintf (fp, "DUMPING file manager's temporary files cache.\n");
