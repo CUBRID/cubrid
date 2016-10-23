@@ -1931,8 +1931,8 @@ file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid, FILE_ALLOC_ITERA
   INT32 npages = 0;
   VPID vpid;
 
-  assert (vfid);
-  assert (iter);
+  assert (vfid != NULL);
+  assert (iter != NULL);
 
   npages = file_get_numpages (thread_p, vfid);
 
@@ -1962,8 +1962,8 @@ file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid, FILE_ALLOC_ITERA
 VPID *
 file_alloc_iterator_get_current_page (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter, VPID * vpid)
 {
-  assert (iter);
-  assert (vpid);
+  assert (iter != NULL);
+  assert (vpid != NULL);
 
   VPID_SET_NULL (vpid);
 
@@ -1990,7 +1990,7 @@ file_alloc_iterator_next (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter)
   VPID vpid;
   int num_pages;
 
-  assert (iter);
+  assert (iter != NULL);
 
   num_pages = file_get_numpages (thread_p, iter->vfid);
 
@@ -2077,8 +2077,8 @@ file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 
       /* Get the number of bytes that we need to store */
       num_overhead_pages = (nsects + npages) * sizeof (INT32);
 
-      /* Find how many entries can be stored in the current allocation set Lock the file header page in shared mode and 
-       * then fetch the page. */
+      /* Find how many entries can be stored in the current allocation set.
+       * Lock the file header page in shared mode and then fetch the page. */
 
       vpid.volid = vfid->volid;
       vpid.pageid = vfid->fileid;
@@ -4151,8 +4151,8 @@ file_alloc_pages_internal (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * fi
        * Create a new allocation set and try to allocate the pages from there
        * If first_alloc_vpid->volid == NULL_VOLID, there was an error...
        */
-      if (file_allocset_new_set
-	  (thread_p, first_alloc_vpid->volid, fhdr_pgptr, npages, DISK_CONTIGUOUS_PAGES) != NO_ERROR)
+      if (file_allocset_new_set (thread_p, first_alloc_vpid->volid, fhdr_pgptr, npages,
+				 DISK_CONTIGUOUS_PAGES) != NO_ERROR)
 	{
 	  break;
 	}
@@ -8350,8 +8350,8 @@ file_print_class_name_index_name_with_attrid (THREAD_ENTRY * thread_p, FILE * fp
   /* index_name root_pageid doesn't matter here, see BTID_IS_EQUAL */
   btid.vfid = *vfid;
   btid.root_pageid = NULL_PAGEID;
-  if (heap_get_indexinfo_of_btid
-      (thread_p, (OID *) class_oid_p, &btid, NULL, NULL, NULL, NULL, &index_name_p, NULL) != NO_ERROR)
+  if (heap_get_indexinfo_of_btid (thread_p, (OID *) class_oid_p, &btid, NULL, NULL, NULL, NULL, &index_name_p,
+				  NULL) != NO_ERROR)
     {
       goto end;
     }
@@ -8879,19 +8879,13 @@ typedef int (*FILE_TRACK_ITEM_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
 /************************************************************************/
 
 STATIC_INLINE void file_header_sanity_check (FLRE_HEADER * fhead) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_header_alloc (FLRE_HEADER * fhead,
-				      FILE_ALLOC_TYPE alloc_type,
+STATIC_INLINE void file_header_alloc (FLRE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type,
 				      bool was_empty, bool is_full) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_header_dealloc (FLRE_HEADER * fhead,
-					FILE_ALLOC_TYPE alloc_type,
+STATIC_INLINE void file_header_dealloc (FLRE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type,
 					bool is_empty, bool was_full) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_log_fhead_alloc (THREAD_ENTRY * thread_p,
-					 PAGE_PTR page_fhead,
-					 FILE_ALLOC_TYPE alloc_type,
+STATIC_INLINE void file_log_fhead_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 					 bool was_empty, bool is_full) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_log_fhead_dealloc (THREAD_ENTRY * thread_p,
-					   PAGE_PTR page_fhead,
-					   FILE_ALLOC_TYPE alloc_type,
+STATIC_INLINE void file_log_fhead_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 					   bool is_empty, bool was_full) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_header_update_mark_deleted (THREAD_ENTRY * thread_p,
 						    PAGE_PTR page_fhead, int delta) __attribute__ ((ALWAYS_INLINE));
@@ -8920,61 +8914,49 @@ STATIC_INLINE void file_extdata_append (FILE_EXTENSIBLE_DATA * extdata,
 STATIC_INLINE void file_extdata_append_array (FILE_EXTENSIBLE_DATA * extdata,
 					      const void *append_data, INT16 count) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void *file_extdata_at (const FILE_EXTENSIBLE_DATA * extdata, int index) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool file_extdata_can_merge (const FILE_EXTENSIBLE_DATA *
-					   extdata_src,
+STATIC_INLINE bool file_extdata_can_merge (const FILE_EXTENSIBLE_DATA * extdata_src,
 					   const FILE_EXTENSIBLE_DATA * extdata_dest) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_extdata_merge_unordered (const FILE_EXTENSIBLE_DATA *
-						 extdata_src,
+STATIC_INLINE void file_extdata_merge_unordered (const FILE_EXTENSIBLE_DATA * extdata_src,
 						 FILE_EXTENSIBLE_DATA * extdata_dest) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
 					       FILE_EXTENSIBLE_DATA * extdata_dest,
 					       int (*compare_func) (const void *, const void *))
   __attribute__ ((ALWAYS_INLINE));
-static void file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata,
-				       const void *item_to_find,
+static void file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata, const void *item_to_find,
 				       int (*compare_func) (const void *, const void *), bool * found, int *position);
 STATIC_INLINE void file_extdata_insert_at (FILE_EXTENSIBLE_DATA * extdata,
 					   int position, int count, const void *data) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata,
 					   int position, int count) __attribute__ ((ALWAYS_INLINE));
-static int file_extdata_apply_funcs (THREAD_ENTRY * thread_p,
-				     FILE_EXTENSIBLE_DATA * extdata_in,
-				     FILE_EXTDATA_FUNC f_extdata,
-				     void *f_extdata_args,
-				     FILE_EXTDATA_ITEM_FUNC f_item,
-				     void *f_item_args, bool for_write,
-				     FILE_EXTENSIBLE_DATA ** extdata_out, PAGE_PTR * page_out);
+static int file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata_in,
+				     FILE_EXTDATA_FUNC f_extdata, void *f_extdata_args, FILE_EXTDATA_ITEM_FUNC f_item,
+				     void *f_item_args, bool for_write, FILE_EXTENSIBLE_DATA ** extdata_out,
+				     PAGE_PTR * page_out);
 static int file_extdata_item_func_for_search (THREAD_ENTRY * thread_p,
 					      const void *item, int index, bool * stop, void *args);
 static int file_extdata_func_for_search_ordered (THREAD_ENTRY * thread_p,
 						 const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args);
-static int file_extdata_search_item (THREAD_ENTRY * thread_p,
-				     FILE_EXTENSIBLE_DATA ** extdata,
+static int file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extdata,
 				     const void *item_to_find,
-				     int (*compare_func) (const void *,
-							  const void *),
-				     bool is_ordered, bool for_write,
-				     bool * found, int *position, PAGE_PTR * page_extdata);
+				     int (*compare_func) (const void *, const void *),
+				     bool is_ordered, bool for_write, bool * found, int *position,
+				     PAGE_PTR * page_extdata);
 static int file_extdata_find_not_full (THREAD_ENTRY * thread_p,
 				       FILE_EXTENSIBLE_DATA ** extdata, PAGE_PTR * page_out, bool * found);
 STATIC_INLINE void file_log_extdata_add (THREAD_ENTRY * thread_p,
-					 const FILE_EXTENSIBLE_DATA * extdata,
-					 PAGE_PTR page, int position,
+					 const FILE_EXTENSIBLE_DATA * extdata, PAGE_PTR page, int position,
 					 int count, const void *data) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_log_extdata_remove (THREAD_ENTRY * thread_p,
-					    const FILE_EXTENSIBLE_DATA *
-					    extdata, PAGE_PTR page,
+					    const FILE_EXTENSIBLE_DATA * extdata, PAGE_PTR page,
 					    int position, int count) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_log_extdata_set_next (THREAD_ENTRY * thread_p,
-					      const FILE_EXTENSIBLE_DATA *
-					      extdata, PAGE_PTR page, VPID * vpid_next) __attribute__ ((ALWAYS_INLINE));
+					      const FILE_EXTENSIBLE_DATA * extdata, PAGE_PTR page,
+					      VPID * vpid_next) __attribute__ ((ALWAYS_INLINE));
 static int file_rv_extdata_merge_redo_internal (THREAD_ENTRY * thread_p,
 						LOG_RCV * rcv, int (*compare_func) (const void *, const void *));
-STATIC_INLINE void file_log_extdata_merge (THREAD_ENTRY * thread_p,
-					   const FILE_EXTENSIBLE_DATA *
-					   extdata_dest, PAGE_PTR page_dest,
-					   const FILE_EXTENSIBLE_DATA *
-					   extdata_src, LOG_RCVINDEX rcvindex) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_log_extdata_merge (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_dest,
+					   PAGE_PTR page_dest, const FILE_EXTENSIBLE_DATA * extdata_src,
+					   LOG_RCVINDEX rcvindex) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_update_item (THREAD_ENTRY * thread_p, PAGE_PTR page_extdata, const void *item_newval,
 					     int index_item, FILE_EXTENSIBLE_DATA * extdata)
   __attribute__ ((ALWAYS_INLINE));
@@ -8989,8 +8971,8 @@ STATIC_INLINE bool file_partsect_is_bit_set (FILE_PARTIAL_SECTOR * partsect,
 					     int offset) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_partsect_set_bit (FILE_PARTIAL_SECTOR * partsect, int offset) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_partsect_clear_bit (FILE_PARTIAL_SECTOR * partsect, int offset) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int file_partsect_pageid_to_offset (FILE_PARTIAL_SECTOR *
-						  partsect, PAGEID pageid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_partsect_pageid_to_offset (FILE_PARTIAL_SECTOR * partsect,
+						  PAGEID pageid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool file_partsect_alloc (FILE_PARTIAL_SECTOR * partsect,
 					VPID * vpid_out, int *offset_out) __attribute__ ((ALWAYS_INLINE));
 
@@ -9020,10 +9002,10 @@ static int file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_
 					    void *args);
 STATIC_INLINE bool file_table_collector_has_page (FILE_FTAB_COLLECTOR * collector, VPID * vpid)
   __attribute__ ((ALWAYS_INLINE));
-static int file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead,
-			    FILE_ALLOC_TYPE alloc_type, VPID * vpid_alloc_out);
-static int file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead,
-			      const VPID * vpid_dealloc, FILE_ALLOC_TYPE alloc_type);
+static int file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
+			    VPID * vpid_alloc_out);
+static int file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid_dealloc,
+			      FILE_ALLOC_TYPE alloc_type);
 STATIC_INLINE int file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest,
 					  FILE_EXTENSIBLE_DATA * extdata_dest,
 					  int (*compare_func) (const void *, const void *),
@@ -9056,23 +9038,23 @@ static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *
 static int file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid);
 static int file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p,
 				       const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args);
-static int file_extdata_find_nth_vpid_and_skip_marked (THREAD_ENTRY *
-						       thread_p, const void *data, int index, bool * stop, void *args);
+static int file_extdata_find_nth_vpid_and_skip_marked (THREAD_ENTRY * thread_p, const void *data, int index,
+						       bool * stop, void *args);
 static int file_table_check_page_is_in_sectors (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 						void *args);
 
 /************************************************************************/
-/* Temporary files section                                               */
+/* Temporary files section                                              */
 /************************************************************************/
 
-static int file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead,
-			    FILE_ALLOC_TYPE alloc_type, VPID * vpid_alloc_out);
+static int file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
+			    VPID * vpid_alloc_out);
 STATIC_INLINE int flre_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid,
 				      FILE_TYPE ftype) __attribute__ ((ALWAYS_INLINE));
 static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid);
 
 /************************************************************************/
-/* Temporary cache section                                               */
+/* Temporary cache section                                              */
 /************************************************************************/
 
 static int flre_tempcache_init (void);
@@ -9083,20 +9065,18 @@ STATIC_INLINE void flre_tempcache_check_lock (void) __attribute__ ((ALWAYS_INLIN
 STATIC_INLINE void flre_tempcache_free_entry_list (FLRE_TEMPCACHE_ENTRY ** list) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int flre_tempcache_alloc_entry (FLRE_TEMPCACHE_ENTRY ** entry) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void flre_tempcache_retire_entry (FLRE_TEMPCACHE_ENTRY * entry) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int flre_tempcache_get (THREAD_ENTRY * thread_p,
-				      FILE_TYPE ftype, bool numerable,
+STATIC_INLINE int flre_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable,
 				      FLRE_TEMPCACHE_ENTRY ** entry) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool flre_tempcache_put (THREAD_ENTRY * thread_p,
 				       FLRE_TEMPCACHE_ENTRY * entry) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_tempcache_cache_or_drop_entries (THREAD_ENTRY *
-							 thread_p,
-							 FLRE_TEMPCACHE_ENTRY
-							 ** entries) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE FLRE_TEMPCACHE_ENTRY *flre_tempcache_pop_tran_file (THREAD_ENTRY
-								  * thread_p,
-								  const VFID * vfid) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p,
-						  FLRE_TEMPCACHE_ENTRY * entry) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_get_tempcache_entry_index (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p,
+							 FLRE_TEMPCACHE_ENTRY ** entries)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE FLRE_TEMPCACHE_ENTRY *flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void flre_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
@@ -9885,6 +9865,7 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src, FILE_EXTEN
 	    }
 	}
     }
+
   if (src_ptr < src_end_ptr)
     {
       /* end of destination reached. append remaining source items into destination. */
@@ -9914,8 +9895,7 @@ file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src, FILE_EXTEN
  * position (out)    : Output the right position of item (found or not found).
  */
 static void
-file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata,
-			   const void *item_to_find,
+file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata, const void *item_to_find,
 			   int (*compare_func) (const void *, const void *), bool * found, int *position)
 {
   int min = 0;
@@ -9929,6 +9909,8 @@ file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata,
 
   *found = false;
   *position = -1;
+
+  /* TODO: to compare with the upper bound to early out */
 
   /* binary search */
   /* keep searching while range is still valid. */
@@ -9962,6 +9944,7 @@ file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata,
 	  min = ++mid;
 	}
     }
+
   /* not found. mid is currently the position of first item bigger than given item. */
   *found = false;
   *position = mid;
@@ -9997,8 +9980,10 @@ file_extdata_insert_at (FILE_EXTENSIBLE_DATA * extdata, int position, int count,
     {
       memmove (copy_at + extdata->size_of_item * count, copy_at, memmove_size);
     }
+
   /* copy new items at position */
   memcpy (copy_at, data, extdata->size_of_item * count);
+
   /* update item count */
   extdata->n_items += count;
 }
@@ -10031,6 +10016,7 @@ file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata, int position, int count)
     {
       memmove (remove_at, remove_at + extdata->size_of_item * count, memmove_size);
     }
+
   /* update item count */
   extdata->n_items -= count;
 }
@@ -10051,10 +10037,8 @@ file_extdata_remove_at (FILE_EXTENSIBLE_DATA * extdata, int position, int count)
  * page_out (out)	   : Output page of current extensible data component if processing is stopped.
  */
 static int
-file_extdata_apply_funcs (THREAD_ENTRY * thread_p,
-			  FILE_EXTENSIBLE_DATA * extdata_in,
-			  FILE_EXTDATA_FUNC f_extdata, void *f_extdata_args,
-			  FILE_EXTDATA_ITEM_FUNC f_item, void *f_item_args,
+file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata_in, FILE_EXTDATA_FUNC f_extdata,
+			  void *f_extdata_args, FILE_EXTDATA_ITEM_FUNC f_item, void *f_item_args,
 			  bool for_write, FILE_EXTENSIBLE_DATA ** extdata_out, PAGE_PTR * page_out)
 {
   int i;
@@ -10066,7 +10050,7 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p,
 
   while (true)
     {
-      if (f_extdata)
+      if (f_extdata != NULL)
 	{
 	  /* apply f_extdata */
 	  error_code = f_extdata (thread_p, extdata_in, &stop, f_extdata_args);
@@ -10081,6 +10065,7 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p,
 	      goto exit;
 	    }
 	}
+
       if (f_item != NULL)
 	{
 	  /* iterate through all items in current page. */
@@ -10099,11 +10084,13 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p,
 		}
 	    }
 	}
+
       if (VPID_ISNULL (&extdata_in->vpid_next))
 	{
 	  /* end of extensible data. */
 	  break;
 	}
+
       /* advance to next page */
       if (page_extdata != NULL)
 	{
@@ -10130,11 +10117,13 @@ exit:
       /* unfix current page */
       pgbuf_unfix (thread_p, page_extdata);
     }
+
   if (stop && extdata_out != NULL)
     {
       /* output current extensible data component */
       *extdata_out = extdata_in;
     }
+
   return error_code;
 }
 
@@ -10149,19 +10138,20 @@ exit:
  * args (in/out) : Search context.
  */
 static int
-file_extdata_func_for_search_ordered (THREAD_ENTRY * thread_p,
-				      const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
+file_extdata_func_for_search_ordered (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+				      void *args)
 {
   FILE_EXTENSIBLE_DATA_SEARCH_CONTEXT *search_context = (FILE_EXTENSIBLE_DATA_SEARCH_CONTEXT *) args;
 
   assert (search_context != NULL);
 
-  file_extdata_find_ordered (extdata, search_context->item_to_find,
-			     search_context->compare_func, &search_context->found, &search_context->position);
+  file_extdata_find_ordered (extdata, search_context->item_to_find, search_context->compare_func,
+			     &search_context->found, &search_context->position);
   if (search_context->found)
     {
       *stop = true;
     }
+
   return NO_ERROR;
 }
 
@@ -10206,9 +10196,7 @@ file_extdata_item_func_for_search (THREAD_ENTRY * thread_p, const void *item, in
  * page_extdata (out) : Output page of extensible data component where item is found (if found).
  */
 static int
-file_extdata_search_item (THREAD_ENTRY * thread_p,
-			  FILE_EXTENSIBLE_DATA ** extdata,
-			  const void *item_to_find,
+file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extdata, const void *item_to_find,
 			  int (*compare_func) (const void *, const void *),
 			  bool is_ordered, bool for_write, bool * found, int *position, PAGE_PTR * page_extdata)
 {
@@ -10225,8 +10213,7 @@ file_extdata_search_item (THREAD_ENTRY * thread_p,
   if (is_ordered)
     {
       error_code =
-	file_extdata_apply_funcs (thread_p, extdata_in,
-				  file_extdata_func_for_search_ordered,
+	file_extdata_apply_funcs (thread_p, extdata_in, file_extdata_func_for_search_ordered,
 				  &search_context, NULL, NULL, for_write, extdata, page_extdata);
       if (error_code != NO_ERROR)
 	{
@@ -10238,8 +10225,8 @@ file_extdata_search_item (THREAD_ENTRY * thread_p,
   else
     {
       error_code =
-	file_extdata_apply_funcs (thread_p, extdata_in, NULL, NULL,
-				  file_extdata_item_func_for_search, &search_context, for_write, extdata, page_extdata);
+	file_extdata_apply_funcs (thread_p, extdata_in, NULL, NULL, file_extdata_item_func_for_search,
+				  &search_context, for_write, extdata, page_extdata);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -10247,14 +10234,17 @@ file_extdata_search_item (THREAD_ENTRY * thread_p,
 	  return error_code;
 	}
     }
+
   if (found != NULL)
     {
       *found = search_context.found;
     }
+
   if (position != NULL)
     {
       *position = search_context.position;
     }
+
   return NO_ERROR;
 }
 
@@ -10298,19 +10288,23 @@ file_extdata_find_not_full (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** ext
 	  /* Not found. */
 	  return NO_ERROR;
 	}
+
       /* Move to next page */
       if (*page_out != NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, *page_out);
 	}
+
       *page_out = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (*page_out == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
+
       *extdata = (FILE_EXTENSIBLE_DATA *) (*page_out);
     }
+
   /* Found not full */
   *found = true;
   return NO_ERROR;
@@ -10481,7 +10475,7 @@ file_rv_dump_extdata_remove (FILE * fp, int length, void *data)
   offset += sizeof (count);
   assert (length == offset);
 
-  fprintf (fp, "Remove from extensible data at position = %d, count = %d.", pos, count);
+  fprintf (fp, "Remove from extensible data at position = %d, count = %d.\n", pos, count);
 }
 
 /*
@@ -10724,7 +10718,7 @@ file_log_extdata_merge (THREAD_ENTRY * thread_p,
 /*
  * file_extdata_update_item () - Update extensible data item and log the change.
  *
- * return            : error code
+ * return            : void
  * thread_p (in)     : thread entry
  * page_extdata (in) : page of extensible data
  * item_newval (in)  : new item value
@@ -10737,8 +10731,10 @@ file_extdata_update_item (THREAD_ENTRY * thread_p, PAGE_PTR page_extdata, const 
 {
   char *item_in_page = (char *) file_extdata_at (extdata, index_item);
   PGLENGTH offset_in_page = (PGLENGTH) (item_in_page - page_extdata);
+
   log_append_undoredo_data2 (thread_p, RVFL_EXTDATA_UPDATE_ITEM, NULL, page_extdata, offset_in_page,
 			     extdata->size_of_item, extdata->size_of_item, item_in_page, item_newval);
+
   memcpy (item_in_page, item_newval, extdata->size_of_item);
   pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
 }
@@ -10795,6 +10791,7 @@ STATIC_INLINE void
 file_partsect_set_bit (FILE_PARTIAL_SECTOR * partsect, int offset)
 {
   assert (!file_partsect_is_bit_set (partsect, offset));
+
   partsect->page_bitmap = bit64_set (partsect->page_bitmap, offset);
 }
 
@@ -10809,6 +10806,7 @@ STATIC_INLINE void
 file_partsect_clear_bit (FILE_PARTIAL_SECTOR * partsect, int offset)
 {
   assert (file_partsect_is_bit_set (partsect, offset));
+
   partsect->page_bitmap = bit64_clear (partsect->page_bitmap, offset);
 }
 
@@ -10823,10 +10821,12 @@ STATIC_INLINE int
 file_partsect_pageid_to_offset (FILE_PARTIAL_SECTOR * partsect, PAGEID pageid)
 {
   assert (SECTOR_FROM_PAGEID (pageid) == partsect->vsid.sectid);
+
   if (SECTOR_FROM_PAGEID (pageid) != partsect->vsid.sectid)
     {
       return -1;
     }
+
   return (int) (pageid - SECTOR_FIRST_PAGEID (partsect->vsid.sectid));
 }
 
@@ -10842,22 +10842,27 @@ STATIC_INLINE bool
 file_partsect_alloc (FILE_PARTIAL_SECTOR * partsect, VPID * vpid_out, int *offset_out)
 {
   int offset_to_zero = bit64_count_trailing_ones (partsect->page_bitmap);
+
   if (offset_to_zero >= FILE_ALLOC_BITMAP_NBITS)
     {
       assert (file_partsect_is_full (partsect));
       return false;
     }
+
   assert (offset_to_zero >= 0);
+
   file_partsect_set_bit (partsect, offset_to_zero);
   if (offset_out)
     {
       *offset_out = offset_to_zero;
     }
+
   if (vpid_out)
     {
       vpid_out->volid = partsect->vsid.volid;
       vpid_out->pageid = SECTOR_FIRST_PAGEID (partsect->vsid.sectid) + offset_to_zero;
     }
+
   return true;
 }
 
@@ -10946,6 +10951,7 @@ file_compare_vsids (const void *first, const void *second)
 {
   VSID *first_vsid = (VSID *) first;
   VSID *second_vsid = (VSID *) second;
+
   if (first_vsid->volid > second_vsid->volid)
     {
       return 1;
@@ -11204,7 +11210,6 @@ flre_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_
   return flre_create (thread_p, FILE_EXTENDIBLE_HASH, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp, true, vfid);
 }
 
-
 /*
  * flre_create_ehash_dir () - Create a permanent or temporary file for extensible hash directory. This file will have
  *			      the numerable property.
@@ -11226,8 +11231,8 @@ flre_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EH
   /* todo: use temporary file cache? */
 
   FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
-  return flre_create (thread_p, FILE_EXTENDIBLE_HASH_DIRECTORY, &tablespace,
-		      (FILE_DESCRIPTORS *) des_ehash, is_tmp, true, vfid);
+  return flre_create (thread_p, FILE_EXTENDIBLE_HASH_DIRECTORY, &tablespace, (FILE_DESCRIPTORS *) des_ehash, is_tmp,
+		      true, vfid);
 }
 
 /* TODO: Rename as file_create. */
@@ -12038,6 +12043,7 @@ flre_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid)
       /* cached */
       return NO_ERROR;
     }
+
   /* was not cached. destroy */
   /* don't allow interrupt to avoid file leak */
   save_interrupt = thread_set_check_interrupt (thread_p, false);
@@ -13169,8 +13175,10 @@ flre_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
   if (VPID_ISNULL (vpid_out))
     {
       assert_release (false);
+      pgbuf_unfix (thread_p, page_fhead);
       return ER_FAILED;
     }
+
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
@@ -13304,6 +13312,7 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
       error_code = ER_FAILED;
       goto exit;
     }
+
   /* check not marked as deleted */
   vpid_found = (VPID *) file_extdata_at (extdata_user_page_ftab, pos);
   if (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_found))
@@ -13323,6 +13332,7 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
     {
       /* log it */
       LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+
       addr.pgptr = page_extdata;
       addr.offset = (PGLENGTH) (((char *) vpid_found) - addr.pgptr);
       log_append_undoredo_data (thread_p, RVFL_USER_PAGE_MARK_DELETE, &addr, LOG_DATA_SIZE, 0, log_data, NULL);
@@ -13361,12 +13371,13 @@ exit:
 /*
  * file_extdata_try_merge () - Try to merge extensible data components.
  *
- * return	     : Error code
- * thread_p (in)     : Thread entry
- * page_dest (in)    : Merge destination page
- * extdata_dest (in) : Merge destination extensible 
- * compare_func (in) : NULL to merge unordered, not NULL to merge ordered
- * rcvindex (in)     : Recovery index used in case merge is executed
+ * return	         : Error code
+ * thread_p (in)         : Thread entry
+ * page_dest (in)        : Merge destination page
+ * extdata_dest (in)     : Merge destination extensible
+ * compare_func (in)     : NULL to merge unordered, not NULL to merge ordered
+ * rcvindex (in)         : Recovery index used in case merge is executed
+ * merged_vpid_out (out) : VPID to be deallocated
  */
 STATIC_INLINE int
 file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest, FILE_EXTENSIBLE_DATA * extdata_dest,
@@ -13452,6 +13463,7 @@ file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest, FILE_EXTENS
     {
       pgbuf_unfix_and_init (thread_p, page_next);
     }
+
   return NO_ERROR;
 }
 
@@ -13537,8 +13549,8 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
 
       log_append_undoredo_data (thread_p, RVFL_PARTSECT_DEALLOC, &addr,
-				sizeof (offset_to_dealloc_bit),
-				sizeof (offset_to_dealloc_bit), &offset_to_dealloc_bit, &offset_to_dealloc_bit);
+				sizeof (offset_to_dealloc_bit), sizeof (offset_to_dealloc_bit),
+				&offset_to_dealloc_bit, &offset_to_dealloc_bit);
 
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 
@@ -14048,9 +14060,8 @@ flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
   VSID_FROM_VPID (&vsid_lookup, vpid_lookup);
 
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
-  if (file_extdata_search_item
-      (thread_p, &extdata_part_ftab, &vsid_lookup, file_compare_vsids, true,
-       false, &found, &pos, &page_ftab) != NO_ERROR)
+  if (file_extdata_search_item (thread_p, &extdata_part_ftab, &vsid_lookup, file_compare_vsids, true, false, &found,
+				&pos, &page_ftab) != NO_ERROR)
     {
       ASSERT_ERROR ();
       isvalid = DISK_ERROR;
@@ -14082,9 +14093,8 @@ flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
 	  pgbuf_unfix_and_init (thread_p, page_ftab);
 	}
       FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
-      if (file_extdata_search_item
-	  (thread_p, &extdata_full_ftab, &vsid_lookup, file_compare_vsids,
-	   true, false, &found, &pos, &page_ftab) != NO_ERROR)
+      if (file_extdata_search_item (thread_p, &extdata_full_ftab, &vsid_lookup, file_compare_vsids, true, false,
+				    &found, &pos, &page_ftab) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  isvalid = DISK_ERROR;
@@ -14109,9 +14119,8 @@ flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       VPID *vpid_in_table;
 
       FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
-      if (file_extdata_search_item
-	  (thread_p, &extdata_user_page_ftab, vpid_lookup, file_compare_vpids,
-	   false, false, &found, &pos, &page_ftab) != NO_ERROR)
+      if (file_extdata_search_item (thread_p, &extdata_user_page_ftab, vpid_lookup, file_compare_vpids, false, false,
+				    &found, &pos, &page_ftab) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  isvalid = DISK_ERROR;
@@ -14213,7 +14222,6 @@ flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp)
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (is_temp != NULL);
-
 
   ftype = file_type_cache_check (vfid);
   if (FILE_TYPE_IS_ALWAYS_TEMP (ftype))
@@ -14735,7 +14743,7 @@ file_table_check (THREAD_ENTRY * thread_p, const VFID * vfid, DISK_VOLMAP_CLONE 
     {
       allvalid = valid;
     }
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   for (iter_vsid = 0; iter_vsid < collector.n_vsids; iter_vsid++)
     {
       valid = disk_map_clone_clear (&collector.vsids[iter_vsid], disk_map_clone);
@@ -15375,11 +15383,13 @@ flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+
       error_code = flre_alloc (thread_p, vfid, vpid_nth);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	}
+
       goto exit;
     }
 
@@ -15968,8 +15978,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
     {
       assert (extdata_part_ftab != NULL);
 
-      for (partsect =
-	   (FILE_PARTIAL_SECTOR *) file_extdata_start (extdata_part_ftab);
+      for (partsect = (FILE_PARTIAL_SECTOR *) file_extdata_start (extdata_part_ftab);
 	   partsect < (FILE_PARTIAL_SECTOR *) file_extdata_end (extdata_part_ftab); partsect++)
 	{
 	  /* does it have file table pages? */
@@ -16068,6 +16077,7 @@ flre_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   /* to preserve the file, we need to remove it from transaction list */
   FLRE_TEMPCACHE_ENTRY *entry = flre_tempcache_pop_tran_file (thread_p, vfid);
+
   if (entry == NULL)
     {
       assert_release (false);
@@ -16219,6 +16229,7 @@ STATIC_INLINE int
 flre_tempcache_alloc_entry (FLRE_TEMPCACHE_ENTRY ** entry)
 {
   flre_tempcache_check_lock ();
+
   if (flre_Tempcache->free_entries != NULL)
     {
       assert (flre_Tempcache->nfree_entries > 0);
@@ -16236,9 +16247,11 @@ flre_tempcache_alloc_entry (FLRE_TEMPCACHE_ENTRY ** entry)
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
+
   (*entry)->next = NULL;
   VFID_SET_NULL (&(*entry)->vfid);
   (*entry)->ftype = FILE_UNKNOWN_TYPE;
+
   return NO_ERROR;
 }
 
@@ -16253,6 +16266,7 @@ flre_tempcache_retire_entry (FLRE_TEMPCACHE_ENTRY * entry)
 {
   /* we lock to change free entry list */
   flre_tempcache_lock ();
+
   if (flre_Tempcache->nfree_entries < flre_Tempcache->nfree_entries_max)
     {
       entry->next = flre_Tempcache->free_entries;
@@ -16263,6 +16277,7 @@ flre_tempcache_retire_entry (FLRE_TEMPCACHE_ENTRY * entry)
     {
       free (entry);
     }
+
   flre_tempcache_unlock ();
 }
 
@@ -16341,6 +16356,7 @@ flre_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FL
 	  (*entry)->ftype = ftype;
 	}
     }
+
   if (*entry != NULL)
     {
       /* remove from cache */
@@ -16377,12 +16393,15 @@ flre_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FL
       flre_tempcache_unlock ();
       return error_code;
     }
+
   /* init new entry */
   assert (*entry != NULL);
   (*entry)->next = NULL;
   (*entry)->ftype = ftype;
   VFID_SET_NULL (&(*entry)->vfid);
+
   flre_tempcache_unlock ();
+
   return NO_ERROR;
 }
 
@@ -16468,6 +16487,22 @@ flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
 }
 
 /*
+ * file_get_tempcache_entry_index () - returns entry index of tempcache
+ *
+ * return        : int
+ * thread_p (in) : thread entry
+ */
+STATIC_INLINE int
+file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return thread_get_current_tran_index ();
+#else
+  return 0;
+#endif
+}
+
+/*
  * flre_tempcache_drop_tran_temp_files () - drop all temporary files created by current transaction
  *
  * return        : void
@@ -16476,13 +16511,13 @@ flre_tempcache_put (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
 void
 flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
-  file_log ("flre_tempcache_drop_tran_temp_files",
-	    "drop %d transaction temporary files", flre_get_tran_num_temp_files (thread_p));
-#if defined (SERVER_MODE)
-  file_tempcache_cache_or_drop_entries (thread_p, &flre_Tempcache->tran_files[thread_get_current_tran_index ()]);
-#else
-  file_tempcache_cache_or_drop_entries (thread_p, &flre_Tempcache->tran_files[0]);
-#endif
+  if (flre_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
+    {
+      file_log ("flre_tempcache_drop_tran_temp_files",
+		"drop %d transaction temporary files", flre_get_tran_num_temp_files (thread_p));
+      file_tempcache_cache_or_drop_entries (thread_p,
+					    &flre_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)]);
+    }
 }
 
 /*
@@ -16533,12 +16568,7 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_EN
 STATIC_INLINE FLRE_TEMPCACHE_ENTRY *
 flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  FLRE_TEMPCACHE_ENTRY **tran_files_p =
-#if defined (SERVER_MODE)
-    &flre_Tempcache->tran_files[thread_get_current_tran_index ()];
-#else
-    &flre_Tempcache->tran_files[0];
-#endif
+  FLRE_TEMPCACHE_ENTRY **tran_files_p = &flre_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)];
   FLRE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
 
   for (entry = *tran_files_p; entry != NULL; entry = entry->next)
@@ -16563,6 +16593,7 @@ flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 	}
       prev_entry = entry;
     }
+
   /* should have found it */
   assert_release (false);
   return NULL;
@@ -16578,12 +16609,7 @@ flre_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 STATIC_INLINE void
 flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * entry)
 {
-  FLRE_TEMPCACHE_ENTRY **tran_files_p =
-#if defined (SERVER_MODE)
-    &flre_Tempcache->tran_files[thread_get_current_tran_index ()];
-#else
-    &flre_Tempcache->tran_files[0];
-#endif
+  FLRE_TEMPCACHE_ENTRY **tran_files_p = &flre_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)];
 
   entry->next = *tran_files_p;
   *tran_files_p = entry;
@@ -16592,15 +16618,16 @@ flre_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FLRE_TEMPCACHE_ENTRY * e
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
 }
 
+/*
+ * flre_get_tran_num_temp_files () - returns the number of temp file entries of the given transaction
+ *
+ * return        : the number of temp files of the given transaction
+ * thread_p (in) : thread entry
+ */
 int
 flre_get_tran_num_temp_files (THREAD_ENTRY * thread_p)
 {
-  FLRE_TEMPCACHE_ENTRY **tran_files_p =
-#if defined (SERVER_MODE)
-    &flre_Tempcache->tran_files[thread_get_current_tran_index ()];
-#else
-    &flre_Tempcache->tran_files[0];
-#endif
+  FLRE_TEMPCACHE_ENTRY **tran_files_p = &flre_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)];
   FLRE_TEMPCACHE_ENTRY *entry;
   int num = 0;
 
@@ -16621,6 +16648,7 @@ STATIC_INLINE void
 flre_tempcache_dump (FILE * fp)
 {
   FLRE_TEMPCACHE_ENTRY *cached_files;
+
   flre_tempcache_lock ();
 
   fprintf (fp, "DUMPING file manager's temporary files cache.\n");
@@ -16748,7 +16776,9 @@ flre_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid)
       ASSERT_ERROR ();
       return error_code;
     }
+
   flre_Tracker_vfid = *vfid;
+
   return NO_ERROR;
 }
 
@@ -16855,6 +16885,7 @@ flre_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
   assert (extdata != NULL);
   assert (extdata == (FILE_EXTENSIBLE_DATA *) page_extdata);
   assert (!file_extdata_is_full (extdata));
+
   file_extdata_find_ordered (extdata, &item, file_compare_track_items, &found, &pos);
   if (found)
     {
@@ -16863,6 +16894,7 @@ flre_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
       error_code = ER_FAILED;
       goto exit;
     }
+
   save_lsa = *pgbuf_get_lsa (page_extdata);
   file_extdata_insert_at (extdata, pos, 1, &item);
   file_log_extdata_add (thread_p, extdata, page_extdata, pos, 1, &item);
@@ -16961,10 +16993,12 @@ flre_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
       ASSERT_ERROR ();
       goto exit;
     }
+
   if (!VPID_ISNULL (&vpid_merged))
     {
       /* merged page. deallocate it */
       file_log ("flre_tracker_unregister", "deallocate page %d|%d ", VPID_AS_ARGS (&vpid_merged));
+
       error_code = flre_dealloc (thread_p, &flre_Tracker_vfid, &vpid_merged, FILE_TRACKER);
       if (error_code != NO_ERROR)
 	{
@@ -17128,6 +17162,7 @@ flre_tracker_map (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode, FILE_TRA
 	      goto exit;
 	    }
 	}
+
       vpid_next = extdata->vpid_next;
       if (page_track_other != NULL)
 	{
@@ -17137,12 +17172,14 @@ flre_tracker_map (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode, FILE_TRA
 	{
 	  break;
 	}
+
       page_track_other = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
       if (page_track_other == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+
       page_extdata = page_track_other;
     }
 
@@ -17190,6 +17227,7 @@ flre_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
     {
       return NO_ERROR;
     }
+
   /* reuse this heap */
   vfid = (VFID *) args;
   vfid->volid = item->volid;
@@ -17221,7 +17259,9 @@ int
 flre_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out)
 {
   assert (vfid_out != NULL);
+
   VFID_SET_NULL (vfid_out);
+
   return flre_tracker_map (thread_p, PGBUF_LATCH_WRITE, flre_tracker_item_reuse_heap, vfid_out);
 }
 
@@ -18072,7 +18112,7 @@ flre_tracker_check (THREAD_ENTRY * thread_p)
     {
       lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
     }
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   DISK_VOLMAP_CLONE *disk_map_clone = NULL;
 
   error_code = disk_map_clone_create (thread_p, &disk_map_clone);
