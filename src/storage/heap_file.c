@@ -5350,7 +5350,6 @@ error_exit:
 static const HFID *
 heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool reuse_oid)
 {
-  VFID vfid;
   VPID vpid;			/* Volume and page identifiers */
   PAGE_PTR hdr_pgptr = NULL;	/* Page pointer to header page */
   PAGE_PTR pgptr = NULL;	/* Page pointer */
@@ -6543,24 +6542,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
     }
   else
     {
-#if defined(CUBRID_DEBUG)
-      DISK_ISVALID valid_file;
-
-      valid_file = file_isvalid (&hfid->vfid);
-      if (valid_file != DISK_VALID)
-	{
-	  if (class_oid != NULL && is_queryscan == true)
-	    {
-	      lock_unlock_scan (thread_p, class_oid, END_SCAN);
-	    }
-	  if (valid_file != DISK_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_HEAP, 3,
-		      fileio_get_volume_label (hfid->vfid.volid, PEEK), hfid->vfid.fileid, hfid->hpgid);
-	    }
-	  goto exit_on_error;
-	}
-#endif
       scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
       scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
       scan_cache->node.hfid.hpgid = hfid->hpgid;
@@ -13819,124 +13800,52 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
 DISK_ISVALID
 heap_check_all_heaps (THREAD_ENTRY * thread_p)
 {
-  int error_code;
+  int error_code = NO_ERROR;
   HFID hfid;
-  int num_files;
-  int curr_num_files;
   DISK_ISVALID allvalid = DISK_VALID;
   DISK_ISVALID valid = DISK_VALID;
-  FILE_TYPE file_type;
-  VPID vpid;
-  VFID *trk_vfid = NULL;
-  FILE_HEAP_DES hfdes;
-  PAGE_PTR trk_fhdr_pgptr = NULL;
-  HEAP_SCANCACHE scan_cache;
-  RECDES peek_recdes;
-  int i;
+  VFID vfid = VFID_INITIALIZER;
+  OID class_oid = OID_INITIALIZER;
 
-  trk_vfid = file_get_tracker_vfid ();
-
-  /* check file tracker */
-  if (trk_vfid == NULL)
+  while (true)
     {
-      goto exit_on_error;
-    }
-
-  vpid.volid = trk_vfid->volid;
-  vpid.pageid = trk_vfid->fileid;
-
-  /* Find number of files */
-  num_files = file_get_numfiles (thread_p);
-  if (num_files < 0)
-    {
-      goto exit_on_error;
-    }
-
-  /* Go to each file, check only the heap files */
-  for (i = 0; i < num_files && allvalid != DISK_ERROR; i++)
-    {
-      /* check # of file, check file type, get file descriptor */
-      trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (trk_fhdr_pgptr == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      curr_num_files = file_get_numfiles (thread_p);
-
-      if (curr_num_files <= i)
-	{
-	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-	  break;
-	}
-
-      if (file_find_nthfile (thread_p, &hfid.vfid, i) != 1)
-	{
-	  goto exit_on_error;
-	}
-
-      if (flre_get_type (thread_p, &hfid.vfid, &file_type) != NO_ERROR)
+      /* Go to each file, check only the heap files */
+      error_code = flre_tracker_interruptable_iterate (thread_p, FILE_HEAP, &vfid, &class_oid);
+      if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-      if (file_type == FILE_UNKNOWN_TYPE)
+      if (VFID_ISNULL (&vfid))
+	{
+	  /* no more heap files */
+	  break;
+	}
+      if (OID_ISNULL (&class_oid))
 	{
 	  assert_release (false);
+	  error_code = ER_FAILED;
 	  goto exit_on_error;
 	}
-
-      if (file_type != FILE_HEAP && file_type != FILE_HEAP_REUSE_SLOTS)
-	{
-	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-	  continue;
-	}
-
-      if ((file_get_descriptor (thread_p, &hfid.vfid, &hfdes, sizeof (FILE_HEAP_DES)) <= 0)
-	  || OID_ISNULL (&hfdes.class_oid))
-	{
-	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-	  continue;
-	}
-      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-
-      if (lock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid, IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-	{
-	  goto exit_on_error;
-	}
-
-      error_code = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
-      if (error_code != NO_ERROR)
-	{
-	  lock_unlock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
-	  goto exit_on_error;
-	}
-
-      /* Check heap file is really exist. It can be removed */
-      if (heap_get_class_record (thread_p, &hfdes.class_oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
-	{
-	  heap_scancache_end (thread_p, &scan_cache);
-	  lock_unlock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
-	  continue;
-	}
-      heap_scancache_end (thread_p, &scan_cache);
-
+      hfid.vfid = vfid;
       valid = heap_check_heap_file (thread_p, &hfid);
+      if (valid == DISK_ERROR)
+	{
+	  goto exit_on_error;
+	}
       if (valid != DISK_VALID)
 	{
 	  allvalid = valid;
 	}
-
-      lock_unlock_object (thread_p, &hfdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
     }
-  assert (trk_fhdr_pgptr == NULL);
+  assert (OID_ISNULL (&class_oid));
 
   return allvalid;
 
 exit_on_error:
-  if (trk_fhdr_pgptr != NULL)
+  if (!OID_ISNULL (&class_oid))
     {
-      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
     }
 
   return ((allvalid == DISK_VALID) ? DISK_ERROR : allvalid);
@@ -14092,8 +14001,9 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   assert (pg_watcher.pgptr == NULL);
 
   /* Dump file table configuration */
-  if (file_dump (thread_p, fp, &hfid->vfid) != NO_ERROR)
+  if (flre_dump (thread_p, &hfid->vfid, fp) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return;
     }
 
@@ -14101,8 +14011,9 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
     {
       /* There is an overflow file for this heap file */
       fprintf (fp, "\nOVERFLOW FILE INFORMATION FOR HEAP FILE\n\n");
-      if (file_dump (thread_p, fp, &ovf_vfid) != NO_ERROR)
+      if (flre_dump (thread_p, &ovf_vfid, fp) != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return;
 	}
     }
@@ -14160,65 +14071,16 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 }
 
 /*
- * heap_dump_all () - Dump all heap files
- *   return:
- *   dump_records(in): If true, objects are printed in ascii format, otherwise, the
- *              objects are not printed.
+ * heap_dump_capacity () - dump heap file capacity
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * fp (in)       : output file
+ * hfid (in)     : heap file identifier
  */
-void
-heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records)
+int
+heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 {
-  int num_files;
-  HFID hfid;
-  VPID vpid;
-  int i;
-
-  /* Find number of files */
-  num_files = file_get_numfiles (thread_p);
-  if (num_files <= 0)
-    {
-      return;
-    }
-
-  /* Dump each heap file */
-  for (i = 0; i < num_files; i++)
-    {
-      FILE_TYPE file_type = FILE_UNKNOWN_TYPE;
-
-      if (file_find_nthfile (thread_p, &hfid.vfid, i) != 1)
-	{
-	  break;
-	}
-
-      if (flre_get_type (thread_p, &hfid.vfid, &file_type) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  break;
-	}
-      if (file_type != FILE_HEAP && file_type != FILE_HEAP_REUSE_SLOTS)
-	{
-	  continue;
-	}
-
-      if (heap_get_header_page (thread_p, &hfid, &vpid) == NO_ERROR)
-	{
-	  hfid.hpgid = vpid.pageid;
-	  heap_dump (thread_p, fp, &hfid, dump_records);
-	}
-    }
-}
-
-/*
- * heap_dump_all_capacities () - Dump the capacities of all heap files.
- *   return:
- */
-void
-heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
-{
-  HFID hfid;
-  VPID vpid;
-  int i;
-  int num_files = 0;
   INT64 num_recs = 0;
   INT64 num_recs_relocated = 0;
   INT64 num_recs_inovf = 0;
@@ -14230,62 +14092,35 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
   FILE_HEAP_DES hfdes;
   HEAP_CACHE_ATTRINFO attr_info;
 
-  /* Find number of files */
-  num_files = file_get_numfiles (thread_p);
-  if (num_files <= 0)
-    {
-      return;
-    }
+  int error_code = NO_ERROR;
 
   fprintf (fp, "IO_PAGESIZE = %d, DB_PAGESIZE = %d, Recv_overhead = %d\n", IO_PAGESIZE, DB_PAGESIZE,
 	   IO_PAGESIZE - DB_PAGESIZE);
 
   /* Go to each file, check only the heap files */
-  for (i = 0; i < num_files; i++)
+  error_code =
+    heap_get_capacity (thread_p, hfid, &num_recs, &num_recs_relocated, &num_recs_inovf, &num_pages, &avg_freespace,
+		       &avg_freespace_nolast, &avg_reclength, &avg_overhead);
+  if (error_code != NO_ERROR)
     {
-      FILE_TYPE file_type = FILE_UNKNOWN_TYPE;
-
-      if (file_find_nthfile (thread_p, &hfid.vfid, i) != 1)
-	{
-	  break;
-	}
-
-      if (flre_get_type (thread_p, &hfid.vfid, &file_type) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  break;
-	}
-      if (file_type != FILE_HEAP && file_type != FILE_HEAP_REUSE_SLOTS)
-	{
-	  continue;
-	}
-
-      if (heap_get_header_page (thread_p, &hfid, &vpid) == NO_ERROR)
-	{
-	  hfid.hpgid = vpid.pageid;
-	  if (heap_get_capacity (thread_p, &hfid, &num_recs, &num_recs_relocated, &num_recs_inovf, &num_pages,
-				 &avg_freespace, &avg_freespace_nolast, &avg_reclength, &avg_overhead) == NO_ERROR)
-	    {
-	      fprintf (fp,
-		       "HFID:%d|%d|%d, Num_recs = %" PRId64 ", Num_reloc_recs = %" PRId64 ",\n    Num_recs_inovf = %"
-		       PRId64 ", Avg_reclength = %d,\n    Num_pages = %" PRId64 ", Avg_free_space_per_page = %d,\n"
-		       "    Avg_free_space_per_page_without_lastpage = %d\n    Avg_overhead_per_page = %d\n",
-		       (int) hfid.vfid.volid, hfid.vfid.fileid, hfid.hpgid, num_recs, num_recs_relocated,
-		       num_recs_inovf, avg_reclength, num_pages, avg_freespace, avg_freespace_nolast, avg_overhead);
-	      /* 
-	       * Dump schema definition
-	       */
-	      if (file_get_descriptor (thread_p, &hfid.vfid, &hfdes, sizeof (FILE_HEAP_DES)) > 0
-		  && !OID_ISNULL (&hfdes.class_oid)
-		  && heap_attrinfo_start (thread_p, &hfdes.class_oid, -1, NULL, &attr_info) == NO_ERROR)
-		{
-		  (void) heap_classrepr_dump (thread_p, fp, &hfdes.class_oid, attr_info.last_classrepr);
-		  heap_attrinfo_end (thread_p, &attr_info);
-		}
-	      fprintf (fp, "\n");
-	    }
-	}
+      ASSERT_ERROR ();
+      return error_code;
     }
+  fprintf (fp, "HFID:%d|%d|%d, Num_recs = %" PRId64 ", Num_reloc_recs = %" PRId64 ",\n    Num_recs_inovf = %" PRId64
+	   ", Avg_reclength = %d,\n    Num_pages = %" PRId64 ", Avg_free_space_per_page = %d,\n"
+	   "    Avg_free_space_per_page_without_lastpage = %d\n    Avg_overhead_per_page = %d\n",
+	   (int) hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, num_recs, num_recs_relocated, num_recs_inovf,
+	   avg_reclength, num_pages, avg_freespace, avg_freespace_nolast, avg_overhead);
+
+  /* Dump schema definition */
+  if (file_get_descriptor (thread_p, &hfid->vfid, &hfdes, sizeof (FILE_HEAP_DES)) > 0 && !OID_ISNULL (&hfdes.class_oid)
+      && heap_attrinfo_start (thread_p, &hfdes.class_oid, -1, NULL, &attr_info) == NO_ERROR)
+    {
+      (void) heap_classrepr_dump (thread_p, fp, &hfdes.class_oid, attr_info.last_classrepr);
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  fprintf (fp, "\n");
+  return NO_ERROR;
 }
 
 /*
@@ -24471,4 +24306,31 @@ heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * 
 #endif /* !NDEBUG */
 
   return scan;
+}
+
+/*
+ * heap_get_hfid_from_vfid () - Get hfid for file. Caller must be sure this file belong to a heap.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ * hfid (out)    : heap identifier
+ */
+int
+heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid)
+{
+  VPID vpid_header;
+  int error_code = NO_ERROR;
+
+  hfid->vfid = *vfid;
+  error_code = heap_get_header_page (thread_p, hfid, &vpid_header);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      VFID_SET_NULL (&hfid->vfid);
+      return error_code;
+    }
+  assert (hfid->vfid.volid == vpid_header.volid);
+  hfid->hpgid = vpid_header.pageid;
+  return NO_ERROR;
 }

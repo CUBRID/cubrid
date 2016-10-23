@@ -214,15 +214,10 @@ extern INT32 file_get_numpages_plus_numpages_overhead (THREAD_ENTRY * thread_p, 
 						       INT32 * overhead_numpages);
 #endif
 extern VPID *file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_vpid);
-extern int file_get_numfiles (THREAD_ENTRY * thread_p);
 extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 npages);
 extern int file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * nth_vpids, INT32 start_nthpage,
 			       INT32 num_desired_pages);
 extern VPID *file_find_last_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * last_vpid);
-extern int file_find_nthfile (THREAD_ENTRY * thread_p, VFID * vfid, int nthfile);
-#if defined(CUBRID_DEBUG)
-extern DISK_ISVALID file_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid);
-#endif
 extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid);
 extern VPID *file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid, INT32 npages,
 			       const VPID * near_vpid, bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
@@ -249,9 +244,6 @@ extern int file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID *
 extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 keep_first_npages);
 extern DISK_ISVALID file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p);
 
-extern int file_tracker_cache_vfid (VFID * vfid);
-extern VFID *file_get_tracker_vfid (void);
-
 extern int file_typecache_clear (void);
 
 extern FILE_ALLOC_ITERATOR *file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid, FILE_ALLOC_ITERATOR * iter);
@@ -259,11 +251,6 @@ extern VPID *file_alloc_iterator_get_current_page (THREAD_ENTRY * thread_p, FILE
 extern FILE_ALLOC_ITERATOR *file_alloc_iterator_next (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter);
 
 /* This are for debugging purposes */
-extern int file_dump (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
-extern int file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp);
-extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
-extern DISK_ISVALID file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p);
-extern int file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
 extern int file_rv_redo_ftab_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void file_rv_dump_ftab_chain (FILE * fp, int length_ignore, void *data);
@@ -304,9 +291,6 @@ extern void file_rv_descriptor_dump_firstrest_nextvpid (FILE * fp, int length_ig
 extern int file_rv_descriptor_undoredo_nrest_nextvpid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void file_rv_descriptor_dump_nrest_nextvpid (FILE * fp, int length_ignore, void *data);
 extern int file_rv_descriptor_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-
-extern int file_rv_tracker_undo_register (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_tracker_dump_undo_register (FILE * fp, int length_ignore, void *data);
 
 extern int file_rv_logical_redo_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
@@ -374,6 +358,7 @@ extern int flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_t
 extern int flre_update_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
 extern int flre_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,
 			   PGBUF_LATCH_CONDITION latch_cond, FILE_MAP_PAGE_FUNC func, void *args);
+extern int flre_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 
 extern int flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    VPID * vpid_nth);
@@ -387,6 +372,14 @@ extern int flre_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out
 extern int flre_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int flre_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out);
 extern int flre_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int flre_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_ftype, VFID * vfid,
+					       OID * class_oid);
+extern DISK_ISVALID flre_tracker_check (THREAD_ENTRY * thread_p);
+extern int flre_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp);
+extern int flre_tracker_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+extern int flre_tracker_dump_all_heap (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records);
+extern int flre_tracker_dump_all_heap_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+extern int flre_tracker_dump_all_btree_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 #if defined (SA_MODE)
 extern int flre_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p);
 #endif /* SA_MODE */

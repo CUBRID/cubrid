@@ -3832,14 +3832,11 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids,
     {
       if (isvalid != DISK_ERROR)
 	{
-#if defined (SERVER_MODE)
-	  isvalid = file_tracker_check (thread_p);
-#else
-	  isvalid = file_tracker_cross_check_with_disk_idsmap (thread_p);
-#endif
+	  isvalid = flre_tracker_check (thread_p);
 	  if (isvalid != DISK_VALID)
 	    {
-	      error_code = ER_FAILED;
+	      assert (isvalid != DISK_INVALID);
+	      ASSERT_ERROR_AND_SET (error_code);
 	    }
 	}
     }

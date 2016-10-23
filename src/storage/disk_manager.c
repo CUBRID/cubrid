@@ -372,6 +372,9 @@ STATIC_INLINE void disk_reserve_from_cache_volume (VOLID volid, DISK_RESERVE_CON
 STATIC_INLINE void disk_cache_free_reserved (DISK_RESERVE_CONTEXT * context) __attribute__ ((ALWAYS_INLINE));
 static int disk_unreserve_sectors_from_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_RESERVE_CONTEXT * context);
 static int disk_stab_unit_unreserve (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
+static DISK_ISVALID disk_check_sectors_are_reserved_in_volume (THREAD_ENTRY * thread_p, VOLID volid,
+							       DISK_RESERVE_CONTEXT * context);
+static int disk_stab_unit_check_reserved (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
 
 /************************************************************************/
 /* Other                                                                */
@@ -5441,3 +5444,329 @@ disk_check_own_reserve_for_purpose (DB_VOLPURPOSE purpose)
 	      ? disk_Cache->perm_purpose_info.extend_info.owner_reserve
 	      : disk_Cache->temp_purpose_info.extend_info.owner_reserve));
 }
+
+/*
+ * disk_check_sectors_are_reserved () - check all given sectors are reserved
+ *
+ * return        : DISK_INVALID for unexpected flaws, DISK_ERROR for expected errors, DISK_VALID for successful check
+ * thread_p (in) : thread entry
+ * vsids (in)    : VSID array
+ * nsects (in)   : VSID number
+ */
+DISK_ISVALID
+disk_check_sectors_are_reserved (THREAD_ENTRY * thread_p, VSID * vsids, int nsects)
+{
+  int start_index = 0;
+  int end_index = 0;
+  int index;
+  VOLID volid = NULL_VOLID;
+  DISK_RESERVE_CONTEXT context;
+
+  DISK_ISVALID valid = DISK_VALID;
+  DISK_ISVALID allvalid = DISK_VALID;
+  int error_code = NO_ERROR;
+
+  context.nsect_total = nsects;
+  context.n_cache_vol_reserve = 0;
+  context.vsidp = vsids;
+  /* purpose is not relevant */
+  context.purpose = DISK_UNKNOWN_PURPOSE;
+
+  /* note: vsids are ordered */
+  for (start_index = 0; start_index < nsects; start_index = end_index)
+    {
+      assert (volid < vsids[start_index].volid);
+      volid = vsids[start_index].volid;
+      for (end_index = start_index + 1; end_index < nsects && vsids[end_index].volid == volid; end_index++)
+	{
+	  assert (vsids[end_index].sectid > vsids[end_index - 1].sectid);
+	}
+      context.cache_vol_reserve[context.n_cache_vol_reserve].nsect = end_index - start_index;
+      context.cache_vol_reserve[context.n_cache_vol_reserve].volid = volid;
+      context.n_cache_vol_reserve++;
+    }
+  assert (end_index == nsects);
+
+  for (index = 0; index < context.n_cache_vol_reserve; index++)
+    {
+      /* unreserve volume sectors */
+      context.nsects_lastvol_remaining = context.cache_vol_reserve[index].nsect;
+
+      valid = disk_check_sectors_are_reserved_in_volume (thread_p, context.cache_vol_reserve[index].volid, &context);
+      if (valid == DISK_INVALID)
+	{
+	  allvalid = DISK_INVALID;
+	  /* continue checking */
+	}
+      else if (valid == DISK_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return valid;
+	}
+    }
+
+  return allvalid;
+}
+
+/*
+ * disk_check_sectors_are_reserved_in_volume () - check that sectors in reserve context for given volume are reserved
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * volid (in)    : volume identifier
+ * context (in)  : reserve context
+ */
+static DISK_ISVALID
+disk_check_sectors_are_reserved_in_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_RESERVE_CONTEXT * context)
+{
+  PAGE_PTR page_volheader = NULL;
+  DISK_VAR_HEADER *volheader = NULL;
+  SECTID sectid_start_cursor;
+  DISK_STAB_CURSOR start_cursor, end_cursor;
+
+  int error_code = NO_ERROR;
+
+  assert (context != NULL && context->nsects_lastvol_remaining > 0);
+
+  if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &page_volheader, &volheader) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return DISK_ERROR;
+    }
+
+  sectid_start_cursor = DISK_SECTS_ROUND_DOWN (context->vsidp->sectid);
+  disk_stab_cursor_set_at_sectid (volheader, sectid_start_cursor, &start_cursor);
+  disk_stab_cursor_set_at_end (volheader, &end_cursor);
+  error_code =
+    disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_READ, &start_cursor, &end_cursor,
+			     disk_stab_unit_check_reserved, context);
+  if (error_code == ER_FAILED)
+    {
+      return DISK_INVALID;
+    }
+  else if (error_code != NO_ERROR)
+    {
+      return DISK_ERROR;
+    }
+  return DISK_VALID;
+}
+
+/*
+ * disk_stab_unit_check_reserved () - check unit for reserved sectors
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * cursor (in)   : sector table cursor
+ * stop (out)    : output true when no sectors are left to check
+ * args (in/out) : reserve context
+ */
+static int
+disk_stab_unit_check_reserved (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args)
+{
+  DISK_RESERVE_CONTEXT *context = (DISK_RESERVE_CONTEXT *) args;
+  DISK_STAB_UNIT bits_check_reserved = 0;
+
+  while (context->nsects_lastvol_remaining > 0 && context->vsidp->sectid < cursor->sectid + DISK_STAB_UNIT_BIT_COUNT)
+    {
+      bits_check_reserved = bit64_set (bits_check_reserved, context->vsidp->sectid - cursor->sectid);
+      context->nsects_lastvol_remaining--;
+
+      disk_log ("disk_stab_unit_unreserve", "unreserve sectid %d from volume %d.", context->vsidp->sectid,
+		context->vsidp->volid);
+
+      context->vsidp++;
+    }
+
+  /* all bits must be set */
+  if ((bits_check_reserved & (*cursor->unit)) != bits_check_reserved)
+    {
+      /* not all bits are set */
+      assert_release (false);
+
+      /* todo: relevant notification error */
+      return ER_FAILED;
+    }
+  if (context->nsects_lastvol_remaining <= 0)
+    {
+      assert (context->nsects_lastvol_remaining == 0);
+      *stop = true;
+    }
+  return NO_ERROR;
+}
+
+#if defined (SA_MODE)
+/*
+ * disk_map_clone_create () - create a clone of all permanent volumes sector table maps
+ *
+ * return               : error code
+ * thread_p (in)        : thread entry
+ * disk_map_clone (out) : disk sector table maps clone
+ */
+int
+disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_clone)
+{
+  VOLID iter;
+
+  PAGE_PTR page_volheader = NULL;
+  DISK_VAR_HEADER *volheader = NULL;
+
+  VPID vpid_stab;
+  PAGE_PTR page_stab = NULL;
+  DKNSECTS nsects;
+  int memsize;
+  char *ptr_map = NULL;
+
+  int error_code = NO_ERROR;
+
+  *disk_map_clone = (DISK_VOLMAP_CLONE *) calloc (disk_Cache->nvols_perm, sizeof (DISK_VOLMAP_CLONE));
+  if (*disk_map_clone == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, disk_Cache->nvols_perm * sizeof (char *));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (iter = 0; iter < disk_Cache->nvols_perm; iter++)
+    {
+      error_code = disk_get_volheader (thread_p, iter, PGBUF_LATCH_READ, &page_volheader, &volheader);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      disk_map_clone[iter]->size_map = volheader->nsect_total / CHAR_BIT;
+      disk_map_clone[iter]->map = (char *) malloc (disk_map_clone[iter]->size_map);
+      if (disk_map_clone[iter]->map == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, disk_map_clone[iter]->size_map);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+      /* copy map */
+      vpid_stab.volid = iter;
+      vpid_stab.pageid = volheader->stab_first_page;
+      ptr_map = disk_map_clone[iter]->map;
+      for (nsects = volheader->nsect_total; nsects >= 0; nsects -= DISK_STAB_PAGE_BIT_COUNT)
+	{
+	  memsize = MIN (DB_PAGESIZE, nsects / CHAR_BIT);
+
+	  page_stab = pgbuf_fix (thread_p, &vpid_stab, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_stab == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+
+	  memcpy (ptr_map, page_stab, memsize);
+	  pgbuf_unfix_and_init (thread_p, page_stab);
+	  ptr_map += memsize;
+	  vpid_stab.pageid++;
+	}
+      assert (ptr_map == disk_map_clone[iter]->map + disk_map_clone[iter]->size_map);
+      assert (vpid_stab.pageid < volheader->stab_first_page + volheader->stab_npages);
+
+      /* clear sectors used by system */
+      ptr_map = disk_map_clone[iter]->map;
+      for (nsects = SECTOR_FROM_PAGEID (volheader->sys_lastpage) + 1; nsects >= DISK_STAB_UNIT_BIT_COUNT;
+	   nsects -= DISK_STAB_UNIT_BIT_COUNT)
+	{
+	  *(DISK_STAB_UNIT *) ptr_map = 0;
+	  ptr_map += DISK_STAB_UNIT_SIZE_OF;
+	}
+      /* clear trailing bits */
+      *(DISK_STAB_UNIT *) ptr_map &= ~bit64_set_trailing_bits (0, nsects);
+    }
+
+  /* disk map clone successfully created */
+  assert (error_code == NO_ERROR);
+
+exit:
+  if (error_code != NO_ERROR)
+    {
+      disk_map_clone_free (disk_map_clone);
+    }
+  if (page_stab != NULL)
+    {
+      pgbuf_unfix (thread_p, page_stab);
+    }
+  if (page_volheader != NULL)
+    {
+      pgbuf_unfix (thread_p, page_volheader);
+    }
+  return error_code;
+}
+
+/*
+ * disk_map_clone_free () - free sector table maps clone
+ *
+ * return                  : void
+ * disk_map_clone (in/out) : sector table maps clone. it is set to NULL.
+ */
+void
+disk_map_clone_free (DISK_VOLMAP_CLONE ** disk_map_clone)
+{
+  VOLID iter;
+
+  for (iter = 0; iter < disk_Cache->nvols_perm; iter++)
+    {
+      free (disk_map_clone[iter]->map);
+    }
+  free_and_init (*disk_map_clone);
+}
+
+/*
+ * disk_map_clone_clear () - clear the bit for given VSID in sector table map clone
+ *
+ * return                  : DISK_VALID if all checks pass, DISK_INVALID otherwise
+ * disk_map_clone (in/out) : sector table maps clone
+ * vsid (in)               : VSID
+ */
+DISK_ISVALID
+disk_map_clone_clear (VSID * vsid, DISK_VOLMAP_CLONE * disk_map_clone)
+{
+  int offset_unit = vsid->sectid / DISK_STAB_UNIT_BIT_COUNT;
+  int offset_bit = vsid->sectid % DISK_STAB_UNIT_BIT_COUNT;
+  DISK_STAB_UNIT *unit = ((DISK_STAB_UNIT *) disk_map_clone[vsid->volid].map) + offset_unit;
+
+  if (vsid->sectid > disk_map_clone->size_map * CHAR_BIT)
+    {
+      /* overflow */
+      assert_release (false);
+      return DISK_INVALID;
+    }
+  if (!bit64_is_set (*unit, offset_bit))
+    {
+      /* not reserved */
+      assert_release (false);
+      return DISK_INVALID;
+    }
+  *unit = bit64_clear (*unit, offset_bit);
+  return DISK_VALID;
+}
+
+/*
+ * disk_map_clone_check_leaks () - check disk map clone for sector leaks
+ *
+ * return              : DISK_VALID if no leak, DISK_INVALID otherwise
+ * disk_map_clone (in) : disk map clone
+ */
+DISK_ISVALID
+disk_map_clone_check_leaks (DISK_VOLMAP_CLONE * disk_map_clone)
+{
+  DISK_STAB_UNIT *unit;
+  VOLID volid;
+
+  for (volid = 0; volid < disk_Cache->nvols_perm; volid++)
+    {
+      for (unit = (DISK_STAB_UNIT *) disk_map_clone->map;
+	   (char *) unit < disk_map_clone->map + disk_map_clone->size_map; unit++)
+	{
+	  if (*unit != 0)
+	    {
+	      /* leaked sectors */
+	      assert_release (false);
+	      return DISK_INVALID;
+	    }
+	}
+    }
+  return DISK_VALID;
+}
+#endif /* SA_MODE */

@@ -535,12 +535,11 @@ extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 					 HEAP_SCANCACHE * scan_cache, int *is_set);
 
 extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records);
-extern void heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records);
 extern void heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp, HEAP_CACHE_ATTRINFO * attr_info, bool dump_schema);
 #if defined (CUBRID_DEBUG)
 extern void heap_chnguess_dump (FILE * fp);
 #endif /* CUBRID_DEBUG */
-extern void heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+extern int heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid);
 
 /* partition-support */
 extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes, REPR_ID reprid,
@@ -666,4 +665,5 @@ extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEA
 extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p,
 					HEAP_SCANCACHE * scan_cache, int ispeeking);
 
+extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 #endif /* _HEAP_FILE_H_ */

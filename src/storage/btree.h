@@ -578,8 +578,6 @@ extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);
 
 /* Dump routines */
 extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid);
-extern int btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp);
-
 extern void btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level);
 /* Recovery routines */
 extern int btree_rv_util_save_page_records (PAGE_PTR page_ptr, INT16 first_slotid, int rec_cnt, INT16 ins_slotid,

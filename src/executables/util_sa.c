@@ -1490,28 +1490,28 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE STATISTICS ***\n");
-      file_tracker_dump (NULL, outfp);
+      (void) flre_tracker_dump (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_CAPACITIES)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE DESCRIPTIONS ***\n");
-      file_dump_all_capacities (NULL, outfp);
+      (void) flre_tracker_dump_all_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all heaps */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL HEAPS ***\n");
-      heap_dump_all_capacities (NULL, outfp);
+      (void) flre_tracker_dump_all_heap_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_INDEX_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all indices */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL INDICES ***\n");
-      btree_dump_capacity_all (NULL, outfp);
+      (void) flre_tracker_dump_all_btree_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CLASSNAMES)
@@ -1606,7 +1606,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       /* this dumps the contents of all heaps */
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
       fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-      heap_dump_all (NULL, outfp, dump_records);
+      (void) flre_tracker_dump_all_heap (NULL, outfp, dump_records);
     }
 
   db_shutdown ();

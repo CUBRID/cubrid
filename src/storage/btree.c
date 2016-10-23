@@ -8022,112 +8022,56 @@ btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * 
 DISK_ISVALID
 btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, bool repair)
 {
-  int num_files;
   BTID btid;
-  FILE_TYPE file_type;
   DISK_ISVALID valid;
-  int i;
-  char *index_name;
+  char *index_name = NULL;
   VPID vpid;
-
-  /* todo: fix me */
-  if (true)
-    {
-      return DISK_VALID;
-    }
+  OID class_oid = OID_INITIALIZER;
 
   if (oid != NULL && !OID_ISNULL (oid))
     {
       return btree_repair_prev_link_by_class_oid (thread_p, oid, index_btid, repair);
     }
 
-  /* Find number of files */
-  num_files = file_get_numfiles (thread_p);
-  if (num_files < 0)
-    {
-      return DISK_ERROR;
-    }
-
   valid = DISK_VALID;
 
   /* Go to each file, check only the btree files */
-  for (i = 0; i < num_files && valid != DISK_ERROR; i++)
+  VFID_SET_NULL (&btid.vfid);
+  while (true)
     {
-      INT64 fix_count = 0;
-      char area[FILE_DUMP_DES_AREA_SIZE];
-      char *fd = area;
-      int fd_size = FILE_DUMP_DES_AREA_SIZE, size;
-      FILE_BTREE_DES *btree_des;
-
-      if (file_find_nthfile (thread_p, &btid.vfid, i) != 1)
+      if (flre_tracker_interruptable_iterate (thread_p, FILE_BTREE, &btid.vfid, &class_oid) != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  valid = DISK_ERROR;
 	  break;
 	}
-
-      if (flre_get_type (thread_p, &btid.vfid, &file_type) != NO_ERROR)
+      if (VFID_ISNULL (&btid.vfid))
 	{
-	  valid = DISK_ERROR;
+	  /* no more b-trees */
 	  break;
 	}
-      if (file_type == FILE_UNKNOWN_TYPE)
-	{
-	  valid = DISK_INVALID;
-	  break;
-	}
-
-      if (file_type != FILE_BTREE)
-	{
-	  continue;
-	}
-
-      size = file_get_descriptor (thread_p, &btid.vfid, fd, fd_size);
-      if (size < 0)
-	{
-	  fd_size = -size;
-	  fd = (char *) malloc (fd_size);
-	  if (fd == NULL)
-	    {
-	      return DISK_ERROR;
-	    }
-	  size = file_get_descriptor (thread_p, &btid.vfid, fd, fd_size);
-	}
-      btree_des = (FILE_BTREE_DES *) fd;
 
       /* get the index name of the index key */
-      if (heap_get_indexinfo_of_btid (thread_p, &(btree_des->class_oid), &btid, NULL, NULL, NULL, NULL, &index_name,
-				      NULL) != NO_ERROR)
+      if (heap_get_indexinfo_of_btid (thread_p, &class_oid, &btid, NULL, NULL, NULL, NULL, &index_name, NULL)
+	  != NO_ERROR)
 	{
-	  if (fd != area)
-	    {
-	      free_and_init (fd);
-	    }
-	  return DISK_ERROR;
+	  valid = DISK_ERROR;
+	  break;
 	}
 
-      if (lock_object (thread_p, &btree_des->class_oid, oid_Root_class_oid, IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-	{
-	  if (fd != area)
-	    {
-	      free_and_init (fd);
-	    }
-	  return DISK_ERROR;
-	}
       btree_get_root_page (thread_p, &btid, &vpid);
 
       btid.root_pageid = vpid.pageid;
       valid = btree_repair_prev_link_by_btid (thread_p, &btid, repair, index_name);
-
-      lock_unlock_object (thread_p, &btree_des->class_oid, oid_Root_class_oid, IS_LOCK, true);
-
-      if (fd != area)
+      if (valid == DISK_ERROR)
 	{
-	  free_and_init (fd);
+	  ASSERT_ERROR ();
+	  break;
 	}
-      if (index_name)
-	{
-	  free_and_init (index_name);
-	}
+    }
+  if (!OID_ISNULL (&class_oid))
+    {
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
     }
 
   return valid;
@@ -8142,166 +8086,54 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
 DISK_ISVALID
 btree_check_all (THREAD_ENTRY * thread_p)
 {
-  int num_files;		/* Number of files in the system */
-  int curr_num_files;
   DISK_ISVALID valid, allvalid;	/* Validation return code */
-  FILE_TYPE file_type;		/* TYpe of file */
-  int i;			/* Loop counter */
-  int error_code;
-  VPID vpid;
-  VFID *trk_vfid;
   BTID btid;
-  FILE_BTREE_DES btdes;
-  PAGE_PTR trk_fhdr_pgptr = NULL;
   HEAP_SCANCACHE scan_cache;
   RECDES peek_recdes;
 
-  /* todo: fix me */
-  if (true)
-    {
-      return DISK_VALID;
-    }
+  OID class_oid = OID_INITIALIZER;
 
-  trk_vfid = file_get_tracker_vfid ();
-
-  /* check file tracker */
-  if (trk_vfid == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  vpid.volid = trk_vfid->volid;
-  vpid.pageid = trk_vfid->fileid;
-
-  /* Find number of files */
-  num_files = file_get_numfiles (thread_p);
-  if (num_files < 0)
-    {
-      goto exit_on_error;
-    }
+  int error_code = NO_ERROR;
 
   allvalid = DISK_VALID;
   /* Go to each file, check only the btree files */
-  for (i = 0; i < num_files && allvalid != DISK_ERROR; i++)
+  VFID_SET_NULL (&btid.vfid);
+  while (true)
     {
-      OR_CLASSREP *or_rep = NULL;
-      OR_INDEX *or_index = NULL;
-      bool btid_found = false;
-      int j;
-
-      /* check # of file, check file type, get file descriptor */
-      trk_fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (trk_fhdr_pgptr == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      curr_num_files = file_get_numfiles (thread_p);
-      if (curr_num_files <= i)
-	{
-	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-	  break;
-	}
-
-      if (file_find_nthfile (thread_p, &btid.vfid, i) != 1)
-	{
-	  goto exit_on_error;
-	}
-
-      if (flre_get_type (thread_p, &btid.vfid, &file_type) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-      if (file_type == FILE_UNKNOWN_TYPE)
-	{
-	  goto exit_on_error;
-	}
-
-      if (file_type != FILE_BTREE)
-	{
-	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-	  continue;
-	}
-
-      if ((file_get_descriptor (thread_p, &btid.vfid, &btdes, sizeof (FILE_BTREE_DES)) <= 0)
-	  || OID_ISNULL (&btdes.class_oid))
-	{
-	  pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-	  continue;
-	}
-      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
-
-      if (lock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-	{
-	  goto exit_on_error;
-	}
-
-      error_code = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+      error_code = flre_tracker_interruptable_iterate (thread_p, FILE_BTREE, &btid.vfid, &class_oid);
       if (error_code != NO_ERROR)
 	{
-	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
-	  goto exit_on_error;
+	  ASSERT_ERROR ();
+	  allvalid = (allvalid == DISK_VALID) ? DISK_ERROR : allvalid;
+	  break;
 	}
-
-      /* Check heap file is really exist. It can be removed. */
-      if (heap_get_class_record (thread_p, &btdes.class_oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
+      if (VFID_ISNULL (&btid.vfid))
 	{
-	  heap_scancache_end (thread_p, &scan_cache);
-	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
-	  continue;
+	  /* no more b-tree files */
+	  break;
 	}
-
-      or_rep = or_get_classrep (&peek_recdes, NULL_REPRID);
-      if (or_rep == NULL)
-	{
-	  heap_scancache_end (thread_p, &scan_cache);
-	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
-	  continue;
-	}
-
-      /* search if BTID is still in class repr */
-      for (or_index = or_rep->indexes, j = 0; j < or_rep->n_indexes; or_index++, j++)
-	{
-	  if (BTID_IS_EQUAL (&btid, &or_index->btid))
-	    {
-	      btid_found = true;
-	      break;
-	    }
-	}
-
-      or_free_classrep (or_rep);
-      or_rep = NULL;
-
-      if (btid_found == false)
-	{
-	  heap_scancache_end (thread_p, &scan_cache);
-	  lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
-	  continue;
-	}
-
-      heap_scancache_end (thread_p, &scan_cache);
+      assert (!OID_ISNULL (&class_oid));
 
       /* Check BTree file */
       valid = btree_check_by_btid (thread_p, &btid);
-      if (valid != DISK_VALID)
+      if (valid == DISK_ERROR)
 	{
+	  ASSERT_ERROR ();
+	  allvalid = (allvalid == DISK_VALID) ? DISK_ERROR : allvalid;
+	  break;
+	}
+      if (valid == DISK_INVALID)
+	{
+	  assert_release (false);
 	  allvalid = valid;
 	}
-
-      lock_unlock_object (thread_p, &btdes.class_oid, oid_Root_class_oid, IS_LOCK, true);
     }
 
-  assert (trk_fhdr_pgptr == NULL);
-
-  return allvalid;
-
-exit_on_error:
-  if (trk_fhdr_pgptr != NULL)
+  if (!OID_ISNULL (&class_oid))
     {
-      pgbuf_unfix_and_init (thread_p, trk_fhdr_pgptr);
+      lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
     }
-
-  return ((allvalid == DISK_VALID) ? DISK_ERROR : allvalid);
+  return allvalid;
 }
 
 /*
@@ -8804,73 +8636,6 @@ exit_on_error:
 }
 
 /*
- * btree_dump_capacity_all () -
- *   return: NO_ERROR
- *
- * Note: Dump the capacity/space information of all indices.
- */
-int
-btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp)
-{
-  int num_files;		/* Number of files in the system */
-  BTID btid;			/* Btree index identifier */
-  VPID vpid;			/* Index root page identifier */
-  int i;			/* Loop counter */
-  FILE_TYPE file_type;
-
-  int ret = NO_ERROR;
-
-  /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
-
-  /* Find number of files */
-  num_files = file_get_numfiles (thread_p);
-  if (num_files < 0)
-    {
-      goto exit_on_error;
-    }
-
-  /* Go to each file, check only the btree files */
-  for (i = 0; i < num_files; i++)
-    {
-      if (file_find_nthfile (thread_p, &btid.vfid, i) != 1)
-	{
-	  break;
-	}
-
-      ret = flre_get_type (thread_p, &btid.vfid, &file_type);
-      if (ret != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      if (file_type != FILE_BTREE)
-	{
-	  continue;
-	}
-
-      btree_get_root_page (thread_p, &btid, &vpid);
-
-      btid.root_pageid = vpid.pageid;
-
-      ret = btree_dump_capacity (thread_p, fp, &btid);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }				/* for */
-
-  return ret;
-
-exit_on_error:
-
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-}
-
-/*
  * b+tree dump routines
  */
 
@@ -9081,6 +8846,8 @@ btree_dump_page_with_subtree (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * bti
  * of the tree. Total key count refers only to those keys that
  * are stored in the leaf pages of the tree. The index key type
  * is also stored in the root header.
+ *
+ * NOTE: never used
  */
 void
 btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level)
@@ -19440,69 +19207,12 @@ btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
 
 #if defined(MIGRATE_90BETA_TO_91)
 
-extern int btree_fix_overflow_oid_page_all_btrees (void);
-
 static int btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid);
 static int btree_fix_ovfl_oid_pages_tree (THREAD_ENTRY * thread_p, BTID * btid, char *btname);
 static int btree_fix_ovfl_oid_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, char *btname);
 static int btree_compare_oid (const void *oid_mem1, const void *oid_mem2);
 
 static int fixed_pages;
-
-int
-btree_fix_overflow_oid_page_all_btrees (void)
-{
-  int num_files, i;
-  BTID btid;
-  FILE_TYPE file_type;
-  THREAD_ENTRY *thread_p;
-
-  /* todo: fix me */
-  if (true)
-    {
-      return NO_ERROR;
-    }
-
-  printf ("Start to fix BTREE Overflow OID pages\n\n");
-
-  thread_p = thread_get_thread_entry_info ();
-
-  num_files = file_get_numfiles (thread_p);
-  if (num_files < 0)
-    {
-      return ER_FAILED;
-    }
-
-  for (i = 0; i < num_files; i++)
-    {
-      if (file_find_nthfile (thread_p, &btid.vfid, i) != 1)
-	{
-	  break;
-	}
-
-      if (flre_get_type (thread_p, &btid.vfid, &file_type) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return ER_FAILED;
-	}
-      if (file_type == FILE_UNKNOWN_TYPE)
-	{
-	  return ER_FAILED;
-	}
-
-      if (file_type != FILE_BTREE)
-	{
-	  continue;
-	}
-
-      if (btree_fix_ovfl_oid_pages_by_btid (thread_p, &btid) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  return NO_ERROR;
-}
 
 static int
 btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid)

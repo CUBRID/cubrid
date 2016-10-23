@@ -235,6 +235,13 @@ extern void disk_rv_dump_init_pages (FILE * fp, int length_ignore, void *data);
 /*                                                                      */
 /************************************************************************/
 
+typedef struct disk_volmap_clone DISK_VOLMAP_CLONE;
+struct disk_volmap_clone
+{
+  int size_map;
+  char *map;
+};
+
 extern int disk_manager_init (THREAD_ENTRY * thread_p, bool load_form_disk);
 extern void disk_manager_final (void);
 
@@ -255,10 +262,18 @@ extern int disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE pur
 				      const char *path, const char *name, const char *comments,
 				      int max_write_size_in_sec, bool overwrite, VOLID * volid_out);
 extern int disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, int nsects, VSID * vsids);
+extern DISK_ISVALID disk_check_sectors_are_reserved (THREAD_ENTRY * thread_p, VSID * vsids, int nsects);
 
 extern void disk_lock_extend (void);
 extern void disk_unlock_extend (void);
 #if defined (SERVER_MODE)
 extern int disk_auto_expand (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
+
+#if defined (SA_MODE)
+extern int disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_clone);
+extern void disk_map_clone_free (DISK_VOLMAP_CLONE ** disk_map_clone);
+extern DISK_ISVALID disk_map_clone_clear (VSID * vsid, DISK_VOLMAP_CLONE * disk_map_clone);
+extern DISK_ISVALID disk_map_clone_check_leaks (DISK_VOLMAP_CLONE * disk_map_clone);
+#endif /* SA_MODE */
 #endif /* _DISK_MANAGER_H_ */
