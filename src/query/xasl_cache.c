@@ -115,8 +115,8 @@ XCACHE xcache_Global = {
 /* Create macro's for xcache_Global fields to access them as if they were global variables. */
 #define xcache_Enabled xcache_Global.enabled
 #define xcache_Soft_capacity xcache_Global.soft_capacity
-#define xcache_time_threshold xcache_Global.time_threshold
-#define xcache_last_cleaned_time xcache_Global.last_cleaned_time
+#define xcache_Time_threshold xcache_Global.time_threshold
+#define xcache_Last_cleaned_time xcache_Global.last_cleaned_time
 #define xcache_Ht xcache_Global.ht
 #define xcache_Ht_freelist xcache_Global.freelist
 #define xcache_Entry_count xcache_Global.entry_count
@@ -124,7 +124,7 @@ XCACHE xcache_Global = {
 #define xcache_Max_clones xcache_Global.max_clones
 #define xcache_Cleanup_flag xcache_Global.cleanup_flag
 #define xcache_Cleanup_bh xcache_Global.cleanup_bh
-#define xcache_cleanup_array xcache_Global.cleanup_array
+#define xcache_Cleanup_array xcache_Global.cleanup_array
 
 /* Statistics */
 #define XCACHE_STAT_GET(name) ATOMIC_LOAD_64 (&xcache_Global.stats.name)
@@ -241,6 +241,7 @@ static bool xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_
 static void xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, void *),
 				       void *arg);
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg);
+static XCACHE_CLEANUP_REASON xcache_need_cleanup (void);
 
 /*
  * xcache_initialize () - Initialize XASL cache.
@@ -259,7 +260,7 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_check_logging ();
 
   xcache_Soft_capacity = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES);
-  xcache_time_threshold = prm_get_integer_value (PRM_ID_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES) * 60;
+  xcache_Time_threshold = prm_get_integer_value (PRM_ID_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES) * 60;
 
   if (xcache_Soft_capacity <= 0)
     {
@@ -291,8 +292,6 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_Cleanup_flag = 0;
   xcache_Cleanup_bh = bh_create (thread_p, XCACHE_CLEANUP_NUM_ENTRIES (xcache_Soft_capacity),
 				 sizeof (XCACHE_CLEANUP_CANDIDATE), xcache_compare_cleanup_candidates, NULL);
-  xcache_cleanup_array = malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
-
   (void) db_change_private_heap (thread_p, save_heapid);
   if (xcache_Cleanup_bh == NULL)
     {
@@ -300,6 +299,15 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       lf_hash_destroy (&xcache_Ht);
       xcache_log_error ("could not init hash table.\n");
       ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  xcache_Cleanup_array = malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
+  if (xcache_Cleanup_array == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       return error_code;
     }
 
@@ -1147,6 +1155,26 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
 }
 
+static XCACHE_CLEANUP_REASON
+xcache_need_cleanup (void)
+{
+  struct timeval current_time;
+  if (xcache_Soft_capacity < xcache_Entry_count)
+    {
+      return XCACHE_CLEANUP_FULL;
+    }
+  else
+    {
+      gettimeofday (&current_time, NULL);
+      if (TIME_DIFF_SEC (current_time, xcache_Last_cleaned_time) > xcache_Time_threshold)
+	{
+	  return XCACHE_CLEANUP_TIMEOUT;
+	}
+    }
+
+  return XCACHE_CLEANUP_NONE;
+}
+
 /*
  * xcache_insert () - Insert or recompile XASL cache entry.
  *
@@ -1460,9 +1488,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
   else
     {
       gettimeofday (&current_time, NULL);
-      if ((xcache_Soft_capacity < xcache_Entry_count
-	   || TIME_DIFF_SEC (current_time, xcache_last_cleaned_time) > xcache_time_threshold)
-	  && xcache_Cleanup_flag == 0)
+      if (xcache_need_cleanup () != XCACHE_CLEANUP_NONE && xcache_Cleanup_flag == 0)
 	{
 	  /* Try to clean up some of the oldest entries. */
 	  xcache_cleanup (thread_p);
@@ -1867,9 +1893,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   XCACHE_CLEANUP_CANDIDATE candidate;
   struct timeval current_time;
+  int need_cleanup;
   int candidate_index;
   int success, count;
-  bool is_capacity_exceeded;
   int cleanup_count;
   BINARY_HEAP *bh = NULL;
   int save_max_capacity = 0;
@@ -1882,9 +1908,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       return;
     }
 
-  gettimeofday (&current_time, NULL);
-  if (xcache_Entry_count <= xcache_Soft_capacity
-      && TIME_DIFF_SEC (current_time, xcache_last_cleaned_time) <= xcache_time_threshold)
+  need_cleanup = xcache_need_cleanup ();
+  if (need_cleanup == XCACHE_CLEANUP_NONE)
     {
       /* Already cleaned up. */
       if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
@@ -1894,25 +1919,21 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       return;
     }
 
-  /* Start cleanup. */
-  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_FULL);
 
   /* How many entries do we need to cleanup? */
   if (xcache_Entry_count > xcache_Soft_capacity)
     {
       cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
-      is_capacity_exceeded = 1;
-    }
-  else
-    {
-      is_capacity_exceeded = 0;
     }
 
   xcache_log ("cleanup start: entries = %d \n"
 	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
 
-  if (is_capacity_exceeded)	/* cleanup because there are too many entries */
+  if (need_cleanup == XCACHE_CLEANUP_FULL)	/* cleanup because there are too many entries */
     {
+      /* Start cleanup. */
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_FULL);
+
       if (cleanup_count <= 0)
 	{
 	  /* Not enough to cleanup */
@@ -1984,17 +2005,17 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       /* Collect candidates for cleanup. */
       lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
 
-      while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
+      while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL && count < xcache_Soft_capacity)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
 	  candidate.time_last_used = xcache_entry->time_last_used;
 
 	  if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK
-	      || TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_time_threshold)
+	      || TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_Time_threshold)
 	    {
 	      continue;
 	    }
-	  xcache_cleanup_array[count] = candidate;
+	  xcache_Cleanup_array[count] = candidate;
 	  count++;
 	}
     }
@@ -2004,14 +2025,14 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   /* Remove candidates from cache. */
   for (candidate_index = 0; candidate_index < count; candidate_index++)
     {
-      if (is_capacity_exceeded)	/* binary heap for candidates */
+      if (need_cleanup == XCACHE_CLEANUP_FULL)	/* binary heap for candidates */
 	{
 	  /* Get candidate at candidate_index. */
 	  bh_element_at (bh, candidate_index, &candidate);
 	}
       else
 	{
-	  candidate = xcache_cleanup_array[candidate_index];
+	  candidate = xcache_Cleanup_array[candidate_index];
 	}
       /* Set intention to cleanup the entry. */
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
@@ -2043,7 +2064,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 		      XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_XASL_ID_ARGS (&candidate.xid), XCACHE_LOG_TRAN_ARGS (thread_p));
 	}
     }
-  if (is_capacity_exceeded)
+  if (need_cleanup == XCACHE_CLEANUP_FULL)
     {
       /* Reset binary heap. */
       bh->element_count = 0;
@@ -2065,7 +2086,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
   XCACHE_STAT_INC (cleanups);
 
-  gettimeofday (&xcache_last_cleaned_time, NULL);
+  gettimeofday (&xcache_Last_cleaned_time, NULL);
   if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
     {
       assert_release (false);
