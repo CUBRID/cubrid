@@ -62,9 +62,6 @@
 
 #include "fault_injection.h"
 
-#define FILE_SET_NUMVPIDS     10
-#define FILE_NUM_EMPTY_SECTS  500
-
 #define FILE_HEADER_OFFSET      0
 #define FILE_FTAB_CHAIN_OFFSET  0
 
@@ -1093,71 +1090,6 @@ file_get_type_internal (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhd
     {
       file_type = FILE_UNKNOWN_TYPE;
     }
-
-  return file_type;
-}
-
-/*
- * file_get_type () - Find type of the given file
- *   return: file_type
- *   vfid(in): Complete file identifier
- */
-FILE_TYPE
-file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid)
-{
-  PAGE_PTR fhdr_pgptr = NULL;
-  VPID vpid;
-  FILE_TYPE file_type;
-
-  assert (false);
-
-  /* First check to see if this is something we've already looked at recently.  If so, it will save us having to
-   * pgbuf_fix the header, which can reduce the pressure on the page buffer pool. */
-  file_type = file_type_cache_check (vfid);
-  if (file_type != FILE_UNKNOWN_TYPE)
-    {
-      return file_type;
-    }
-
-  vpid.volid = vfid->volid;
-  vpid.pageid = vfid->fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      return FILE_UNKNOWN_TYPE;
-    }
-
-  file_type = file_get_type_internal (thread_p, vfid, fhdr_pgptr);
-
-  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-  return file_type;
-}
-
-/*
- * file_get_type_by_fhdr_pgptr () - Find type of the given file by fhdr pgptr
- *   return: file_type
- *   vfid(in): Complete file identifier
- *   fhdr_pgtr(in): file hdr pgptr
- */
-FILE_TYPE
-file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr)
-{
-  FILE_TYPE file_type;
-
-  assert (false);
-  assert (fhdr_pgptr != NULL);
-
-  /* First check to see if this is something we've already looked at recently.  If so, it will save us having to
-   * pgbuf_fix the header, which can reduce the pressure on the page buffer pool. */
-  file_type = file_type_cache_check (vfid);
-  if (file_type != FILE_UNKNOWN_TYPE)
-    {
-      return file_type;
-    }
-
-  file_type = file_get_type_internal (thread_p, vfid, fhdr_pgptr);
 
   return file_type;
 }

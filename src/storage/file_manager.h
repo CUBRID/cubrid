@@ -195,9 +195,6 @@ struct file_alloc_vpids
   int index;
 };
 
-extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern FILE_TYPE file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr);
-
 extern int file_typecache_clear (void);
 
 /* This are for debugging purposes */
