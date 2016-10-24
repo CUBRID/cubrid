@@ -201,27 +201,6 @@ extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void
 extern VPID *file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_vpid);
 extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 npages);
 extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid);
-extern VPID *file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid, INT32 npages,
-			       const VPID * near_vpid, bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
-								    const FILE_TYPE file_type,
-								    const VPID * first_alloc_vpid, INT32 npages,
-								    void *args), void *args);
-extern VPID *file_alloc_pages_with_outer_sys_op (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid,
-						 INT32 npages, const VPID * near_vpid, FILE_TYPE * p_file_type,
-						 bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
-							      const FILE_TYPE file_type, const VPID * first_alloc_vpid,
-							      INT32 npages, void *args), void *args);
-extern VPID *file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid,
-						INT32 * first_alloc_nthpage, INT32 npages, const VPID * near_vpid,
-						bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
-							     const FILE_TYPE file_type, const VPID * first_alloc_vpid,
-							     const INT32 * first_alloc_nthpage, INT32 npages,
-							     void *args), void *args, FILE_ALLOC_VPIDS * alloc_vpids);
-extern VPID *file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid,
-					INT32 npages, const VPID * near_vpid, INT16 desired_volid,
-					bool (*fun) (const VFID * vfid, const FILE_TYPE file_type,
-						     const VPID * first_alloc_vpid, INT32 npages, void *args),
-					void *args);
 extern int file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * dealloc_vpid, FILE_TYPE file_type);
 extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 keep_first_npages);
 extern DISK_ISVALID file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p);
