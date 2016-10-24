@@ -47,7 +47,6 @@ extern SCAN_CODE overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_
 				      int max_nbytes, int *remaining_length, MVCC_SNAPSHOT * mvcc_snapshot);
 extern int overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, int *ovf_length, int *ovf_num_pages,
 				  int *ovf_overhead, int *ovf_free_space);
-extern int overflow_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_novf_sets, int avg_ovfdata_size);
 #if defined (CUBRID_DEBUG)
 extern int overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid);
 #endif

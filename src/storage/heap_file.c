@@ -13445,7 +13445,7 @@ heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_CH
     {
       npages++;
 
-      valid_pg = file_isvalid_page_partof (thread_p, &vpid, &hfid->vfid);
+      valid_pg = flre_check_vpid (thread_p, &hfid->vfid, &vpid);
       if (valid_pg != DISK_VALID)
 	{
 	  break;
@@ -13699,7 +13699,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	{
 	  if (!VPID_ISNULL (&heap_hdr->estimates.best[i].vpid))
 	    {
-	      valid = file_isvalid_page_partof (thread_p, &heap_hdr->estimates.best[i].vpid, &hfid->vfid);
+	      valid = flre_check_vpid (thread_p, &hfid->vfid, &heap_hdr->estimates.best[i].vpid);
 	      if (valid != DISK_VALID)
 		{
 		  valid_pg = valid;
@@ -13723,7 +13723,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	      assert_release (!VPID_ISNULL (&ent->best.vpid));
 	      if (!VPID_ISNULL (&ent->best.vpid))
 		{
-		  valid_pg = file_isvalid_page_partof (thread_p, &ent->best.vpid, &hfid->vfid);
+		  valid_pg = flre_check_vpid (thread_p, &hfid->vfid, &ent->best.vpid);
 		  if (valid_pg != DISK_VALID)
 		    {
 		      break;
@@ -14148,92 +14148,6 @@ heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 
   fprintf (fp, "\n");
   return NO_ERROR;
-}
-
-/*
- * heap_estimate_num_pages_needed () - Guess the number of pages needed to store a
- *                                set of instances
- *   return: int
- *   total_nobjs(in): Number of object to insert
- *   avg_obj_size(in): Average size of object
- *   num_attrs(in): Number of attributes
- *   num_var_attrs(in): Number of variable attributes
- *
- */
-INT32
-heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs, int avg_obj_size, int num_attrs,
-				int num_var_attrs)
-{
-  int nobj_page;
-  INT32 npages;
-
-
-  avg_obj_size += (4 + 8) /* MVCC constant */ ;
-
-  if (num_attrs > 0)
-    {
-      avg_obj_size += CEIL_PTVDIV (num_attrs, 32) * sizeof (int);
-    }
-  if (num_var_attrs > 0)
-    {
-      avg_obj_size += (num_var_attrs + 1) * sizeof (int);
-      /* Assume max padding of 3 bytes... */
-      avg_obj_size += num_var_attrs * (sizeof (int) - 1);
-    }
-
-  avg_obj_size = DB_ALIGN (avg_obj_size, HEAP_MAX_ALIGN);
-
-  /* 
-   * Find size of page available to store objects:
-   * USER_SPACE_IN_PAGES = (DB_PAGESIZE * (1 - unfill_factor)
-   *                        - SLOTTED PAGE HDR size overhead
-   *                        - link of pages(i.e., sizeof(chain))
-   *                        - slot overhead to store the link chain)
-   */
-
-  nobj_page = ((int) (DB_PAGESIZE * (1 - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR))) - spage_header_size ()
-	       - sizeof (HEAP_CHAIN) - spage_slot_size ());
-  /* 
-   * Find the number of objects per page
-   */
-
-  nobj_page = nobj_page / (avg_obj_size + spage_slot_size ());
-
-  /* 
-   * Find the number of pages. Add one page for file manager overhead
-   */
-
-  if (nobj_page > 0)
-    {
-      npages = CEIL_PTVDIV (total_nobjs, nobj_page);
-      npages += file_guess_numpages_overhead (thread_p, NULL, npages);
-    }
-  else
-    {
-      /* 
-       * Overflow insertion
-       */
-      npages = overflow_estimate_npages_needed (thread_p, total_nobjs, avg_obj_size);
-
-      /* 
-       * Find number of pages for the indirect record references (OIDs) to
-       * overflow records
-       */
-      nobj_page = ((int) (DB_PAGESIZE * (1 - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR))) - spage_header_size ()
-		   - sizeof (HEAP_CHAIN) - spage_slot_size ());
-      nobj_page = nobj_page / (sizeof (OID) + spage_slot_size ());
-      /* 
-       * Now calculate the number of pages
-       */
-      nobj_page += CEIL_PTVDIV (total_nobjs, nobj_page);
-      nobj_page += file_guess_numpages_overhead (thread_p, NULL, nobj_page);
-      /* 
-       * Add the number of overflow pages and non-heap pages
-       */
-      npages = npages + nobj_page;
-    }
-
-  return npages;
 }
 
 /*

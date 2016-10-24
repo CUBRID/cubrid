@@ -1108,36 +1108,6 @@ overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
 #endif
 
 /*
- * overflow_estimate_npages_needed () - Guess the number of pages needed to insert a set of overflow data
- *   return: npages
- *   total_novf_sets(in): Number of set of overflow data
- *   avg_ovfdata_size(in): Average size of overflow data
- */
-int
-overflow_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_novf_sets, int avg_ovfdata_size)
-{
-  int npages;
-
-  /* Overflow insertion First page.. Subtract length for insertion in first page */
-  avg_ovfdata_size -= (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
-  if (avg_ovfdata_size > 0)
-    {
-      /* The rest of the pages */
-      npages = DB_PAGESIZE - offsetof (OVERFLOW_REST_PART, data);
-      npages = CEIL_PTVDIV (avg_ovfdata_size, npages);
-    }
-  else
-    {
-      npages = 1;
-    }
-
-  npages *= total_novf_sets;
-  npages += file_guess_numpages_overhead (thread_p, NULL, npages);
-
-  return npages;
-}
-
-/*
  * overflow_rv_newpage_insert_redo () -
  *   return: 0 if no error, or error code
  *   rcv(in): Recovery structure

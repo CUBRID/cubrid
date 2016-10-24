@@ -1720,135 +1720,6 @@ file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid)
 }
 
 /*
- * file_get_first_alloc_vpid () - get the page identifier of the first allocated page of
- *                   the given file
- *   return: pageid or NULL_PAGEID
- *   vfid(in): Complete file identifier
- *   first_vpid(out):
- */
-VPID *
-file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_vpid)
-{
-  VPID vpid;
-  FILE_HEADER *fhdr;
-  PAGE_PTR fhdr_pgptr = NULL;
-
-  vpid.volid = vfid->volid;
-  vpid.pageid = vfid->fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      return NULL;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-
-  assert (!VPID_ISNULL (&fhdr->first_alloc_vpid));
-  VPID_COPY (first_vpid, &fhdr->first_alloc_vpid);
-
-  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-  return first_vpid;
-}
-
-/*
- * file_guess_numpages_overhead () - Guess the number of additonal overhead
- *                                     pages that are needed to store the given
- *                                     number of pages
- *   return: Number of overhead pages or -1 in case of error
- *   vfid(in): Complete file identifier OR NULL
- *   npages(in): Number of pages that we are guessing for allocation
- *
- * Note: This is only an approximation, the actual number of pages will depend
- *       upon on from what volume and sectors the pages are allocated. The
- *       function assumes that all pages can be allocated in a single volume.
- *       It is likely that the approximation will not be off more that one
- *       page.
- */
-INT32
-file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 npages)
-{
-  PAGE_PTR fhdr_pgptr = NULL;
-  FILE_HEADER *fhdr;
-  FILE_ALLOCSET *allocset;
-  PAGE_PTR allocset_pgptr = NULL;
-
-  VPID vpid;
-  int nsects;
-  INT32 num_overhead_pages = 0;
-
-  if (npages <= 0)
-    {
-      return 0;
-    }
-
-  nsects = CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES);
-  /* Don't use more than 10% of the page in sectors.... This is just a guess we don't quite know if the special sector
-   * will be assigned to us. */
-  if ((nsects * SSIZEOF (nsects)) > (DB_PAGESIZE / 10))
-    {
-      nsects = (DB_PAGESIZE / 10) / sizeof (nsects);
-    }
-
-  if (vfid == NULL)
-    {
-      /* A new file... Get the number of bytes that we need to store.. */
-      num_overhead_pages = (((nsects + npages) * sizeof (INT32)) + sizeof (*fhdr));
-    }
-  else
-    {
-      num_overhead_pages = disk_get_total_numsectors (thread_p, vfid->volid);
-      if (num_overhead_pages < nsects)
-	{
-	  nsects = num_overhead_pages;
-	}
-
-      /* Get the number of bytes that we need to store */
-      num_overhead_pages = (nsects + npages) * sizeof (INT32);
-
-      /* Find how many entries can be stored in the current allocation set.
-       * Lock the file header page in shared mode and then fetch the page. */
-
-      vpid.volid = vfid->volid;
-      vpid.pageid = vfid->fileid;
-      fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (fhdr_pgptr == NULL)
-	{
-	  return -1;
-	}
-
-      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-      fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-
-      allocset_pgptr =
-	pgbuf_fix (thread_p, &fhdr->last_allocset_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (allocset_pgptr == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-	  return -1;
-	}
-
-      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
-
-      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + fhdr->last_allocset_offset);
-      num_overhead_pages = DB_PAGESIZE - allocset->end_pages_offset;
-      if (num_overhead_pages < 0)
-	{
-	  num_overhead_pages = 0;
-	}
-
-      pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-    }
-
-  return CEIL_PTVDIV (num_overhead_pages, DB_PAGESIZE);
-}
-
-/*
  * file_allocset_nthpage () - Find nth allocated pageid of allocated set
  *   return: number of returned vpids or -1 on error
  *   fhdr(in): Pointer to file header
@@ -1991,136 +1862,6 @@ file_allocset_look_for_last_page (THREAD_ENTRY * thread_p, const FILE_HEADER * f
 
   pgbuf_unfix_and_init (thread_p, allocset_pgptr);
   return last_vpid;
-}
-
-/*
- * file_isvalid_page_partof () - Find if the given page is a valid page for the given file
- *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
- *   vpid(in): The page identifier
- *   vfid(in): The file identifier
- *
- * Note: That is, check that the page is valid and that if it belongs to given
- *       file. The function assumes that the file vfid is valid.
- */
-DISK_ISVALID
-file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid)
-{
-  FILE_ALLOCSET *allocset;
-  VPID allocset_vpid;
-  INT16 allocset_offset;
-  PAGE_PTR allocset_pgptr = NULL;
-  PAGE_PTR fhdr_pgptr = NULL;
-  DISK_ISVALID isfound = DISK_INVALID;
-  DISK_ISVALID valid;
-
-  /* todo: update for new design */
-  if (true)
-    {
-      return DISK_VALID;
-    }
-
-  if (VPID_ISNULL (vpid))
-    {
-      return DISK_INVALID;
-    }
-
-  valid = disk_is_page_sector_reserved (thread_p, vpid->volid, vpid->pageid);
-  if (valid != DISK_VALID)
-    {
-      if (valid != DISK_ERROR)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2,
-		  vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
-	}
-      return valid;
-    }
-
-  allocset_vpid.volid = vfid->volid;
-  allocset_vpid.pageid = vfid->fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      return DISK_ERROR;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  allocset_offset = offsetof (FILE_HEADER, allocset);
-
-  /* Go over each allocation set until the file is found */
-  while (!VPID_ISNULL (&allocset_vpid))
-    {
-      /* Fetch the file for the allocation set description */
-      allocset_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (allocset_pgptr == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-	  return DISK_ERROR;
-	}
-
-      (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
-
-      /* Get the allocation set */
-      allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
-      if (allocset->volid == vpid->volid)
-	{
-	  /* The page may be located in this set */
-	  isfound =
-	    file_allocset_find_page (thread_p, fhdr_pgptr, allocset_pgptr, allocset_offset, vpid->pageid, NULL, NULL);
-	}
-      if (isfound == DISK_ERROR)
-	{
-	  pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-	  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-	  return DISK_ERROR;
-	}
-      else if (isfound == DISK_INVALID)
-	{
-	  /* We did not find it in the current allocation set. Get the next allocation set */
-	  if (VPID_ISNULL (&allocset->next_allocset_vpid))
-	    {
-	      VPID_SET_NULL (&allocset_vpid);
-	      allocset_offset = -1;
-	    }
-	  else
-	    {
-	      if (VPID_EQ (&allocset_vpid, &allocset->next_allocset_vpid)
-		  && allocset_offset == allocset->next_allocset_offset)
-		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_FTB_LOOP, 4, vfid->fileid,
-			  fileio_get_volume_label (vfid->volid, PEEK), allocset_vpid.volid, allocset_vpid.pageid);
-		  VPID_SET_NULL (&allocset_vpid);
-		  allocset_offset = -1;
-		}
-	      else
-		{
-		  allocset_vpid = allocset->next_allocset_vpid;
-		  allocset_offset = allocset->next_allocset_offset;
-		}
-	    }
-	}
-      else
-	{
-	  VPID_SET_NULL (&allocset_vpid);
-	  allocset_offset = -1;
-	}
-      pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-    }
-
-  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-  if (isfound == DISK_VALID)
-    {
-      return DISK_VALID;
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_PAGE_ISNOT_PARTOF, 6,
-	      vpid->volid, vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK),
-	      vfid->volid, vfid->fileid, fileio_get_volume_label (vfid->volid, PEEK));
-      return DISK_INVALID;
-    }
 }
 
 /*
@@ -4013,283 +3754,6 @@ exit_on_error:
   *num_marked_deleted = -1;
 
   return -1;
-}
-
-/*
- * file_truncate_to_numpages () - Truncate the file to the given number of pages
- *   return: NO_ERROR
- *   vfid(in): Complete file identifier
- *   keep_first_numpages(in): Number of pages to keep
- *
- * Note: The given file is truncated to the given number of pages. If the file
- *       has more than the number of given pages, those last pages are
- *       deallocated.
- */
-int
-file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 keep_first_numpages)
-{
-  VPID allocset_vpid;		/* Page-volume identifier of allocset */
-  VPID ftb_vpid;		/* File table in allocation set */
-  FILE_HEADER *fhdr;
-  FILE_ALLOCSET *allocset;	/* The first allocation set */
-  PAGE_PTR fhdr_pgptr = NULL;
-  PAGE_PTR allocset_pgptr = NULL;
-  PAGE_PTR pgptr = NULL;
-  INT32 *aid_ptr;		/* Pointer to portion of table of page or sector allocation table */
-  INT32 *outptr;		/* Out of bound pointer. */
-  INT16 allocset_offset;
-  INT32 *batch_first_aid_ptr;	/* First aid_ptr in batch of contiguous pages */
-  INT32 batch_ndealloc;		/* Number of sectors to deallocate in the batch */
-  int ret = NO_ERROR;
-
-  /* 
-   * Start a TOP SYSTEM OPERATION.
-   * This top system operation will be either ABORTED (case of failure) or
-   * its actions will be attached to its outer parent. That is, the file
-   * cannot be destroyed half way.
-   */
-
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  allocset_vpid.volid = vfid->volid;
-  allocset_vpid.pageid = vfid->fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-
-  if (fhdr->num_user_pages > keep_first_numpages)
-    {
-      allocset_offset = offsetof (FILE_HEADER, allocset);
-
-      while (!VPID_ISNULL (&allocset_vpid))
-	{
-	  /* 
-	   * Fetch the page that describe this allocation set even when it has
-	   * already been fetched as a header page. This is done to code the
-	   * following easily.
-	   */
-	  allocset_pgptr = pgbuf_fix (thread_p, &allocset_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	  if (allocset_pgptr == NULL)
-	    {
-	      /* Something went wrong */
-	      /* Cancel the lock and free the page */
-	      goto exit_on_error;
-	    }
-
-	  (void) pgbuf_check_page_ptype (thread_p, allocset_pgptr, PAGE_FTAB);
-
-	  allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
-
-	  if (allocset->num_pages <= keep_first_numpages)
-	    {
-	      keep_first_numpages -= allocset->num_pages;
-	    }
-	  else
-	    {
-	      ftb_vpid = allocset->start_pages_vpid;
-	      while (!VPID_ISNULL (&ftb_vpid))
-		{
-		  /* 
-		   * Fetch the page where the portion of the page table is
-		   * located. Note that we are fetching the page even when it
-		   * has been fetched previously as an allocation set. This is
-		   * done to make the following code easy to write.
-		   */
-		  pgptr = pgbuf_fix (thread_p, &ftb_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-		  if (pgptr == NULL)
-		    {
-		      /* Something went wrong */
-		      /* Cancel the lock and free the page */
-		      goto exit_on_error;
-		    }
-
-		  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-		  /* Calculate the starting offset and length of the page to check */
-		  ret = file_find_limits (pgptr, allocset, &aid_ptr, &outptr, FILE_PAGE_TABLE);
-		  if (ret != NO_ERROR)
-		    {
-		      pgbuf_unfix_and_init (thread_p, pgptr);
-
-		      /* Something went wrong */
-		      /* Cancel the lock and free the page */
-		      goto exit_on_error;
-		    }
-
-		  /* Deallocate the user pages in this table page of this allocation set. */
-
-		  batch_first_aid_ptr = NULL;
-		  batch_ndealloc = 0;
-
-		  for (; aid_ptr < outptr; aid_ptr++)
-		    {
-		      if (*aid_ptr != NULL_PAGEID && *aid_ptr != NULL_PAGEID_MARKED_DELETED)
-			{
-			  if (keep_first_numpages > 0)
-			    {
-			      keep_first_numpages--;
-			      continue;
-			    }
-
-			  if (batch_ndealloc == 0)
-			    {
-			      /* Start accumulating contiguous pages */
-			      batch_first_aid_ptr = aid_ptr;
-			      batch_ndealloc = 1;
-			      continue;
-			    }
-			}
-		      else if (batch_ndealloc == 0)
-			{
-			  continue;
-			}
-
-		      /* Is page contiguous and is it stored contiguous in allocation set */
-
-		      if (*aid_ptr != NULL_PAGEID
-			  && *aid_ptr != NULL_PAGEID_MARKED_DELETED
-			  && batch_first_aid_ptr != NULL && (*aid_ptr == *batch_first_aid_ptr + batch_ndealloc))
-			{
-			  /* contiguous */
-			  batch_ndealloc++;
-			}
-		      else if (batch_first_aid_ptr != NULL)
-			{
-			  /* 
-			   * This is not a contiguous page.
-			   * Deallocate any previous pages and start
-			   * accumulating contiguous pages again.
-			   * We do not care if the page deallocation failed,
-			   * since we are truncating the file.. Deallocate as
-			   * much as we can.
-			   */
-
-			  ret = file_allocset_dealloc_contiguous_pages (thread_p, fhdr, allocset, fhdr_pgptr,
-									allocset_pgptr, allocset_offset, pgptr,
-									batch_first_aid_ptr, batch_ndealloc);
-			  if (ret != NO_ERROR)
-			    {
-			      pgbuf_unfix_and_init (thread_p, pgptr);
-			      goto exit_on_error;
-			    }
-
-			  /* Start again */
-			  if (*aid_ptr != NULL_PAGEID && *aid_ptr != NULL_PAGEID_MARKED_DELETED)
-			    {
-			      batch_first_aid_ptr = aid_ptr;
-			      batch_ndealloc = 1;
-			    }
-			  else
-			    {
-			      batch_first_aid_ptr = NULL;
-			      batch_ndealloc = 0;
-			    }
-
-			}
-		    }
-
-		  if (batch_ndealloc > 0 && batch_first_aid_ptr != NULL)
-		    {
-		      /* Deallocate any accumulated pages We do not care if the page deallocation failed, since we are
-		       * truncating the file.. Deallocate as much as we can. */
-
-		      ret = file_allocset_dealloc_contiguous_pages (thread_p, fhdr, allocset, fhdr_pgptr,
-								    allocset_pgptr, allocset_offset, pgptr,
-								    batch_first_aid_ptr, batch_ndealloc);
-		      if (ret != NO_ERROR)
-			{
-			  pgbuf_unfix_and_init (thread_p, pgptr);
-			  goto exit_on_error;
-			}
-		    }
-
-		  /* Get next page */
-		  if (VPID_EQ (&ftb_vpid, &allocset->end_pages_vpid))
-		    {
-		      VPID_SET_NULL (&ftb_vpid);
-		    }
-		  else
-		    {
-		      ret = file_ftabvpid_next (fhdr, pgptr, &ftb_vpid);
-		      if (ret != NO_ERROR)
-			{
-			  pgbuf_unfix_and_init (thread_p, pgptr);
-			  goto exit_on_error;
-			}
-		    }
-
-		  pgbuf_unfix_and_init (thread_p, pgptr);
-		}
-	    }
-
-	  /* Next allocation set */
-	  if (VPID_ISNULL (&allocset->next_allocset_vpid))
-	    {
-	      VPID_SET_NULL (&allocset_vpid);
-	      allocset_offset = -1;
-	    }
-	  else
-	    {
-	      if (VPID_EQ (&allocset_vpid, &allocset->next_allocset_vpid)
-		  && allocset_offset == allocset->next_allocset_offset)
-		{
-		  /* System error. It looks like we are in a loop */
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_FILE_FTB_LOOP, 4, vfid->fileid,
-			  fileio_get_volume_label (vfid->volid, PEEK),
-			  allocset->next_allocset_vpid.volid, allocset->next_allocset_vpid.pageid);
-		  VPID_SET_NULL (&allocset_vpid);
-		  allocset_offset = -1;
-		}
-	      else
-		{
-		  allocset_vpid = allocset->next_allocset_vpid;
-		  allocset_offset = allocset->next_allocset_offset;
-		}
-	    }
-	  pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-	}
-    }
-
-  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-  /* The responsability of the deallocation of the pages is given to the outer nested level */
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-
-  return ret;
-
-exit_on_error:
-
-  if (allocset_pgptr)
-    {
-      pgbuf_unfix_and_init (thread_p, allocset_pgptr);
-    }
-
-  /* ABORT THE TOP SYSTEM OPERATION. That is, the deletion of the file is aborted, all pages that were deallocated are
-   * undone..  */
-  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-
-  if (fhdr_pgptr)
-    {
-      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-    }
-
-  if (ret == NO_ERROR)
-    {
-      ret = ER_FAILED;
-    }
-
-  return ret;
 }
 
 /*
@@ -7021,28 +6485,6 @@ end:
     {
       free_and_init (index_name_p);
     }
-}
-
-/*
- * file_update_used_pages_of_vol_header () -
- *   This function is used in migration tool (migration_91_to_92).
- *   Calculates used_data_npages and used_index_npages
- *   of each volume with fileTracker and Updates volume header.
- *
- *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
- *
- * Note:
- */
-DISK_ISVALID
-file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p)
-{
-#if defined (SA_MODE)
-  /* the data/index/temp is not tracked anymore. */
-  /* todo: remove me */
-  return DISK_VALID;
-#else /* !SA_MODE */
-  return DISK_ERROR;
-#endif /* !SA_MODE */
 }
 
 /************************************************************************/
@@ -12672,6 +12114,15 @@ flre_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user
   return NO_ERROR;
 }
 
+/*
+ * flre_check_vpid () - check vpid is one of the file's user pages
+ *
+ * return           : DISK_INVALID if page does not belong to file, DISK_ERROR for errors and DISK_VALID for successful
+ *                    check
+ * thread_p (in)    : thread entry
+ * vfid (in)        : file identifier
+ * vpid_lookup (in) : checked VPID
+ */
 DISK_ISVALID
 flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
 {
@@ -14254,6 +13705,75 @@ file_table_check_page_is_in_sectors (THREAD_ENTRY * thread_p, const void *data, 
       return ER_FAILED;
     }
   return NO_ERROR;
+}
+
+/*
+ * flre_numerable_truncate () - truncate numerable files to a smaller number of pages
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ * npages (in)   : desired number of pages
+ */
+int
+flre_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, DKNPAGES npages)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead;
+
+  VPID vpid;
+
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return ER_FAILED;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+
+  if (!FILE_IS_NUMERABLE (fhead))
+    {
+      /* cannot truncate */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+  if (fhead->n_page_mark_delete != 0)
+    {
+      /* I am not sure what we should do in this case. We give up truncating and in debug it will crash. */
+      assert (false);
+      return NO_ERROR;
+    }
+
+  while (fhead->n_page_user > npages)
+    {
+      /* maybe this can be done in a more optimal way... but for now it will have to do */
+      error_code = flre_numerable_find_nth (thread_p, vfid, npages, false, &vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      error_code = flre_dealloc (thread_p, vfid, &vpid, fhead->type);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+  assert (fhead->n_page_user == npages);
+  assert (error_code == NO_ERROR);
+
+exit:
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+  return error_code;
 }
 
 /************************************************************************/

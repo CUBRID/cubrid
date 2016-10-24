@@ -4019,7 +4019,11 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
   /* remove unwanted part of directory. */
   new_end_offset = new_ptrs - 1;
   ehash_dir_locate (&new_pages, &new_end_offset);
-  ret = file_truncate_to_numpages (thread_p, &ehid_p->vfid, new_pages + 1);
+  ret = flre_numerable_truncate (thread_p, &ehid_p->vfid, new_pages + 1);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
 }
 
 static EHASH_HASH_KEY
@@ -4041,7 +4045,7 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
 
   if (length > 0)
     {
-      /* Eliminate any traling space characters */
+      /* Eliminate any trailing space characters */
       if (char_isspace (*(char *) (key_p + length - 1)))
 	{
 	  for (p = key_p + length - 1; char_isspace (*p) && (p > key_p); p--)
@@ -4525,76 +4529,6 @@ exit_on_error:
   return ER_FAILED;
 }
 #endif
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * ehash_estimate_npages_needed () - Estimate number of hash pages needed
- *   return: int npages
- *   total_nkeys(in): Total number of keys
- *   avg_key_size(in): Average key size
- *
- * Note: Find the number of needed pages to populate a hash with a set
- * of keys of the given length.
- *
- * The aproximation formulas has been taken from the book:
- * Algorithms by Robert Sedgewick, Second Edition
- *
- * With pages that can hold M records, extendible hashing may be
- * expected to require about 1.44(N/M)pages for a set of N
- * instances. The directory may be expected to have about
- * (N ** (1 + 1/M)) / M entries.
- */
-int
-ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_keys, int avg_key_size)
-{
-  int user_area;
-  int record_pages;
-  int bucket_pages;
-  int dir_pages;
-
-  avg_key_size += sizeof (OID);
-  avg_key_size = DB_ALIGN (avg_key_size, MAX_ALIGNMENT);
-
-  user_area = DB_PAGESIZE - spage_header_size () - sizeof (EHASH_BUCKET_HEADER) + spage_slot_size ();
-
-  record_pages = user_area / (avg_key_size + spage_slot_size ());
-  if (record_pages > 0)
-    {
-      bucket_pages = CEIL_PTVDIV (total_keys, record_pages);
-    }
-  else
-    {
-      /* Overflow insertion */
-      avg_key_size -= DB_PAGESIZE;
-      if (avg_key_size > 0)
-	{
-	  /* The rest of the pages */
-	  bucket_pages = DB_PAGESIZE;
-	  bucket_pages = CEIL_PTVDIV (avg_key_size, bucket_pages);
-	}
-      else
-	{
-	  bucket_pages = 1;
-	}
-
-      bucket_pages = bucket_pages + user_area / (sizeof (VPID) + spage_slot_size ());
-    }
-
-  bucket_pages = (int) ceil (1.44 * bucket_pages);
-  bucket_pages += file_guess_numpages_overhead (thread_p, NULL, bucket_pages);
-
-  /* Find directory pages */
-
-  user_area = DB_PAGESIZE - spage_header_size () - sizeof (EHASH_DIR_HEADER) + spage_slot_size ();
-
-  record_pages = user_area / sizeof (EHASH_DIR_RECORD);
-  record_pages = (int) (pow ((double) total_keys, (1.0 + 1.0 / record_pages)) / record_pages);
-  dir_pages = CEIL_PTVDIV (record_pages, user_area) + 1;
-  dir_pages += file_guess_numpages_overhead (thread_p, NULL, dir_pages);
-
-  return bucket_pages + dir_pages;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 static int
 ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_TYPE key_type, char *bucket_record_p,

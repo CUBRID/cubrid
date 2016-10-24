@@ -197,11 +197,6 @@ struct file_alloc_vpids
 
 extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern FILE_TYPE file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr);
-extern VPID *file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_vpid);
-extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 npages);
-extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid);
-extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 keep_first_npages);
-extern DISK_ISVALID file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p);
 
 extern int file_typecache_clear (void);
 
@@ -316,6 +311,7 @@ extern int flre_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 
 extern int flre_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    VPID * vpid_nth);
+extern int flre_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, DKNPAGES npages);
 
 extern void flre_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
 
