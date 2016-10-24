@@ -201,7 +201,6 @@ extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void
 extern VPID *file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_vpid);
 extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 npages);
 extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid);
-extern int file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * dealloc_vpid, FILE_TYPE file_type);
 extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 keep_first_npages);
 extern DISK_ISVALID file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p);
 
