@@ -13099,41 +13099,6 @@ file_table_collector_has_page (FILE_FTAB_COLLECTOR * collector, VPID * vpid)
 }
 
 /*
- * flre_update_descriptor () - Update file descriptor
- *
- * return        : error code
- * thread_p (in) : thread entry
- * vfid (in)     : file identifier
- * des_new (in)  : new file descriptor
- */
-int
-flre_update_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new)
-{
-  VPID vpid_fhead;
-  PAGE_PTR page_fhead = NULL;
-  FLRE_HEADER *fhead = NULL;
-
-  int error_code = NO_ERROR;
-
-  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_fhead == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-  fhead = (FLRE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
-
-  log_append_undoredo_data2 (thread_p, RVFL_FILEDESC_UPD, NULL, page_fhead,
-			     (PGLENGTH) ((char *) &fhead->descriptor - page_fhead), sizeof (fhead->descriptor),
-			     sizeof (fhead->descriptor), &fhead->descriptor, des_new);
-  memcpy (&fhead->descriptor, des_new, sizeof (fhead->descriptor));
-  pgbuf_set_dirty (thread_p, page_fhead, FREE);
-  return NO_ERROR;
-}
-
-/*
  * flre_sector_map_pages () - FILE_EXTDATA_ITEM_FUNC used for mapping a function on all user pages
  *
  * return        : error code
@@ -16869,6 +16834,77 @@ flre_tracker_item_check (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EX
   return NO_ERROR;
 }
 #endif /* SA_MODE */
+
+/************************************************************************/
+/* File descriptor section                                              */
+/************************************************************************/
+
+/*
+ * flre_get_descriptor () - get file descriptor from header
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ * desc_out (in) : output file descriptor
+ */
+int
+flre_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_DESCRIPTORS * desc_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead;
+
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  *desc_out = fhead->descriptor;
+  pgbuf_unfix (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
+ * flre_descriptor_update () - Update file descriptor
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ * des_new (in)  : new file descriptor
+ */
+int
+flre_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  log_append_undoredo_data2 (thread_p, RVFL_FILEDESC_UPD, NULL, page_fhead,
+			     (PGLENGTH) ((char *) &fhead->descriptor - page_fhead), sizeof (fhead->descriptor),
+			     sizeof (fhead->descriptor), &fhead->descriptor, des_new);
+  memcpy (&fhead->descriptor, des_new, sizeof (fhead->descriptor));
+  pgbuf_set_dirty (thread_p, page_fhead, FREE);
+  return NO_ERROR;
+}
 
 /************************************************************************/
 /* End of file                                                          */

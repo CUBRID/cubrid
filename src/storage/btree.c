@@ -7601,32 +7601,18 @@ DISK_ISVALID
 btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 {
   DISK_ISVALID valid = DISK_ERROR;
-  char area[FILE_DUMP_DES_AREA_SIZE];
-  char *fd = area;
-  int fd_size = FILE_DUMP_DES_AREA_SIZE, size;
-  FILE_BTREE_DES *btree_des;
   char *btname;
   VPID vpid;
+  FILE_DESCRIPTORS fdes;
 
-  size = file_get_descriptor (thread_p, &btid->vfid, fd, fd_size);
-  if (size < 0)
+  if (flre_descriptor_get (thread_p, &btid->vfid, &fdes) != NO_ERROR)
     {
-      fd_size = -size;
-      fd = (char *) db_private_alloc (thread_p, fd_size);
-      if (fd == NULL)
-	{
-	  fd = area;
-	  fd_size = FILE_DUMP_DES_AREA_SIZE;
-	}
-      else
-	{
-	  size = file_get_descriptor (thread_p, &btid->vfid, fd, fd_size);
-	}
+      ASSERT_ERROR ();
+      return DISK_ERROR;
     }
-  btree_des = (FILE_BTREE_DES *) fd;
 
   /* get the index name of the index key */
-  if (heap_get_indexinfo_of_btid (thread_p, &(btree_des->class_oid), btid, NULL, NULL, NULL, NULL, &btname, NULL) !=
+  if (heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &btname, NULL) !=
       NO_ERROR)
     {
       goto exit_on_end;
@@ -7636,13 +7622,9 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 
   btid->root_pageid = vpid.pageid;
 
-  valid = btree_check_tree (thread_p, &(btree_des->class_oid), btid, btname);
+  valid = btree_check_tree (thread_p, &fdes.btree.class_oid, btid, btname);
 
 exit_on_end:
-  if (fd != area)
-    {
-      db_private_free_and_init (thread_p, fd);
-    }
   if (btname)
     {
       free_and_init (btname);
@@ -8551,13 +8533,9 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 {
   BTREE_CAPACITY cpc;
   int ret = NO_ERROR;
-  char area[FILE_DUMP_DES_AREA_SIZE];
-  char *file_des = NULL;
   char *index_name = NULL;
   char *class_name = NULL;
-  int file_des_size = 0;
-  int size = 0;
-  OID class_oid;
+  FILE_DESCRIPTORS fdes;
 
   assert (fp != NULL && btid != NULL);
 
@@ -8565,27 +8543,25 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   ret = btree_index_capacity (thread_p, btid, &cpc);
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      goto exit;
     }
 
-  /* get class_name and index_name */
-  file_des = area;
-  file_des_size = FILE_DUMP_DES_AREA_SIZE;
-
-  size = file_get_descriptor (thread_p, &btid->vfid, file_des, file_des_size);
-  if (size <= 0)
+  ret = flre_descriptor_get (thread_p, &btid->vfid, &fdes);
+  if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      goto exit;
     }
 
-  class_oid = ((FILE_HEAP_DES *) file_des)->class_oid;
-
-  class_name = heap_get_class_name (thread_p, &class_oid);
+  class_name = heap_get_class_name (thread_p, &fdes.btree.class_oid);
 
   /* get index name */
-  if (heap_get_indexinfo_of_btid (thread_p, &class_oid, btid, NULL, NULL, NULL, NULL, &index_name, NULL) != NO_ERROR)
+  ret = heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &index_name, NULL);
+  if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      ASSERT_ERROR ();
+      goto exit;
     }
 
   fprintf (fp, "\n-------------------------------------------------------------\n");
@@ -8610,7 +8586,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "Average Page Key Count: %d\n", cpc.avg_pg_key_cnt);
   fprintf (fp, "-------------------------------------------------------------\n");
 
-end:
+exit:
 
   if (class_name != NULL)
     {
@@ -8623,16 +8599,6 @@ end:
     }
 
   return ret;
-
-exit_on_error:
-
-  assert (ret != NO_ERROR);
-  if (ret == NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (ret);
-    }
-
-  goto end;
 }
 
 /*
@@ -19217,48 +19183,36 @@ static int fixed_pages;
 static int
 btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 {
-  char area[FILE_DUMP_DES_AREA_SIZE];
-  char *fd = area;
-  int fd_size = FILE_DUMP_DES_AREA_SIZE, size;
-  FILE_BTREE_DES *btree_des;
   char *btname;
+  FILE_DESCRIPTORS fdes;
   int ret = NO_ERROR;
 
   assert (!BTID_IS_NULL (btid));
   assert (btid->root_pageid != NULL_PAGEID);
 
-  size = file_get_descriptor (thread_p, &btid->vfid, fd, fd_size);
-  if (size < 0)
-    {
-      fd_size = -size;
-      fd = (char *) db_private_alloc (thread_p, fd_size);
-      if (fd == NULL)
-	{
-	  fd = area;
-	  fd_size = FILE_DUMP_DES_AREA_SIZE;
-	}
-      else
-	{
-	  size = file_get_descriptor (thread_p, &btid->vfid, fd, fd_size);
-	}
-    }
-
-  btree_des = (FILE_BTREE_DES *) fd;
-
-  /* get the index name of the index key */
-  ret = heap_get_indexinfo_of_btid (thread_p, &(btree_des->class_oid), btid, NULL, NULL, NULL, NULL, &btname, NULL);
+  ret = flre_descriptor_get (thread_p, &btid->vfid, &fdes);
   if (ret != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto exit_on_end;
     }
+
+  /* get the index name of the index key */
+  ret = heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &btname, NULL);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_end;
+    }
+
   ret = btree_fix_ovfl_oid_pages_tree (thread_p, btid, btname);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_end;
+    }
 
 exit_on_end:
-
-  if (fd != area)
-    {
-      db_private_free_and_init (thread_p, fd);
-    }
 
   if (btname)
     {

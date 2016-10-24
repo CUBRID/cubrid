@@ -311,7 +311,6 @@ extern int flre_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern DISK_ISVALID flre_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
 extern int flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
 extern int flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp);
-extern int flre_update_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
 extern int flre_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,
 			   PGBUF_LATCH_CONDITION latch_cond, FILE_MAP_PAGE_FUNC func, void *args);
 extern int flre_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
@@ -339,6 +338,9 @@ extern int flre_tracker_dump_all_btree_capacities (THREAD_ENTRY * thread_p, FILE
 #if defined (SA_MODE)
 extern int flre_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p);
 #endif /* SA_MODE */
+
+extern int flre_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_DESCRIPTORS * desc_out);
+extern int flre_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
 
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

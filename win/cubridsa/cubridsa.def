@@ -74,8 +74,6 @@ EXPORTS
     do_is_partitioned_subclass
     er_errid
     er_errid_if_has_error
-    file_alloc_pages
-    file_dealloc_page
     fileio_make_volume_info_name
     file_update_used_pages_of_vol_header
     locator_has_heap
