@@ -305,6 +305,7 @@ struct hfid
 };
 #define HFID_INITIALIZER \
   { VFID_INITIALIZER, NULL_PAGEID }
+#define HFID_AS_ARGS(hfid) (hfid)->hpgid, VFID_AS_ARGS (&(hfid)->vfid))
 
 typedef struct btid BTID;	/* B+tree identifier */
 struct btid
@@ -314,6 +315,7 @@ struct btid
 };
 #define BTID_INITIALIZER \
   { VFID_INITIALIZER, NULL_PAGEID }
+#define BTID_AS_ARGS(btid) (btid)->root_pageid, VFID_AS_ARGS (&(btid)->vfid)
 
 typedef struct ehid EHID;	/* EXTENDIBLE HASHING IDENTIFIER */
 struct ehid

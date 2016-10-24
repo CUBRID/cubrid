@@ -501,9 +501,9 @@ extern int heap_indexinfo_get_attrids (int btid_index, HEAP_CACHE_ATTRINFO * att
 extern int heap_indexinfo_get_attrs_prefix_length (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo,
 						   int *attrs_prefix_length, int len_attrs_prefix_length);
 extern int heap_get_index_with_name (THREAD_ENTRY * thread_p, OID * class_oid, const char *index_name, BTID * btid);
-extern int heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, BTREE_TYPE * type,
-				       int *num_attrs, ATTR_ID ** attr_ids, int **attrs_prefix_length, char **btnamepp,
-				       int *func_index_col_id);
+extern int heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, const OID * class_oid, const BTID * btid,
+				       BTREE_TYPE * type, int *num_attrs, ATTR_ID ** attr_ids,
+				       int **attrs_prefix_length, char **btnamepp, int *func_index_col_id);
 extern int heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * obj_oid, RECDES * obj,
 				   int *max_oid_cnt, OID ** oid_list);
 
@@ -540,11 +540,11 @@ extern void heap_chnguess_dump (FILE * fp);
 extern int heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid);
 
 /* partition-support */
-extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes, REPR_ID reprid,
-					int *idx_incache);
+extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * class_recdes,
+					REPR_ID reprid, int *idx_incache);
 extern int heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache);
 extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid);
-extern int heap_classrepr_find_index_id (OR_CLASSREP * classrepr, BTID * btid);
+extern int heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid);
 extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 						   HEAP_CACHE_ATTRINFO * attr_info);
 

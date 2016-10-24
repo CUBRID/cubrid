@@ -197,9 +197,6 @@ struct file_alloc_vpids
 
 extern int file_typecache_clear (void);
 
-/* This are for debugging purposes */
-extern int file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
-
 /************************************************************************/
 /*                                                                      */
 /* FILE MANAGER REDESIGN                                                */
@@ -292,6 +289,7 @@ extern int flre_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p);
 
 extern int flre_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_DESCRIPTORS * desc_out);
 extern int flre_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
+extern int flre_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

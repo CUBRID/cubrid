@@ -206,41 +206,14 @@ static int file_ftabvpid_next (const FILE_HEADER * fhdr, PAGE_PTR current_ftb_pg
 static int file_find_limits (PAGE_PTR ftb_pgptr,
 			     const FILE_ALLOCSET * allocset, INT32 ** start_ptr, INT32 ** outside_ptr, int what_table);
 
-static int file_descriptor_get (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr, void *file_des, int maxsize);
-static int file_descriptor_destroy_rest_pages (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr);
-#if defined (ENABLE_UNUSED_FUNCTION)
-static int file_descriptor_find_num_rest_pages (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr);
-#endif
-static int file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr);
-
-static int file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr);
-
 static FILE_TYPE file_type_cache_check (const VFID * vfid);
 static int file_type_cache_add_entry (const VFID * vfid, FILE_TYPE type);
 static int file_type_cache_entry_remove (const VFID * vfid);
-static FILE_TYPE file_get_type_internal (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr);
 
 static int file_rv_fhdr_last_allocset_helper (THREAD_ENTRY * thread_p, LOG_RCV * rcv, int delta);
 
-static void file_descriptor_dump_heap (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEAP_DES * heap_file_des_p);
-static void file_descriptor_dump_multi_page_object_heap (FILE * fp, const FILE_OVF_HEAP_DES * ovf_hfile_des_p);
-static void file_descriptor_dump_btree (THREAD_ENTRY * thread_p, FILE * fp,
-					const FILE_BTREE_DES * btree_des_p, const VFID * vfid);
-static void file_descriptor_dump_btree_overflow_key (FILE * fp, const FILE_OVF_BTREE_DES * btree_ovf_des_p);
-static void file_descriptor_dump_extendible_hash (THREAD_ENTRY * thread_p,
-						  FILE * fp, const FILE_EHASH_DES * ext_hash_des_p);
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p);
-static void file_print_class_name_of_instance (THREAD_ENTRY * thread_p, FILE * fp, const OID * inst_oid_p);
-static void file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p,
-						  FILE * fp, const OID * class_oid_p, const int attr_id);
-static void file_print_class_name_index_name_with_attrid (THREAD_ENTRY *
-							  thread_p, FILE * fp,
-							  const OID *
-							  class_oid_p, const VFID * vfid, const int attr_id);
 
-static int file_descriptor_get_length (const FILE_TYPE file_type);
-static void file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
-				  const FILE_TYPE file_type, const void *file_descriptor_p, const VFID * vfid);
 static DISK_PAGE_TYPE file_get_disk_page_type (FILE_TYPE ftype);
 
 /*
@@ -568,357 +541,6 @@ file_ftabvpid_next (const FILE_HEADER * fhdr, PAGE_PTR current_ftb_pgptr, VPID *
   return ret;
 }
 
-/*
- * file_descriptor_get () - Get descriptor comments of file
- *   return: length
- *   fhdr(in): File header
- *   xfile_des(out): The comments included in the file descriptor
- *   maxsize(in):
- *
- * Note: Fetch the descriptor comments for this file into file_des The length
- *       of the file descriptor is returned. If the desc_commnets area is not
- *       large enough, the comments are not retrieved, an a negative value is
- *       returned. The absolute value of the return value can be used to get
- *       a bigger* area and call again.
- */
-static int
-file_descriptor_get (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr, void *xfile_des, int maxsize)
-{
-  char *file_des = (char *) xfile_des;
-#if defined (ENABLE_UNUSED_FUNCTION)
-  VPID vpid;
-  PAGE_PTR pgptr = NULL;
-  int rest_length, copy_length;
-  FILE_REST_DES *rest;
-#endif
-
-  if (maxsize < fhdr->des.total_length || fhdr->des.total_length <= 0)
-    {
-      /* Does not fit */
-      MEM_REGION_INIT (file_des, maxsize);
-      return (-fhdr->des.total_length);
-    }
-
-  /* First part */
-  if (maxsize < fhdr->des.first_length)
-    {
-      /* This is an error.. we have already check for the total length */
-      er_log_debug (ARG_FILE_LINE,
-		    "file_descriptor_get: **SYSTEM_ERROR: First length = %d > total length = %d of file descriptor"
-		    " for file VFID = %d|%d\n", fhdr->des.first_length,
-		    fhdr->des.total_length, fhdr->vfid.fileid, fhdr->vfid.volid);
-      file_des[0] = '\0';
-      return 0;
-    }
-
-  memcpy (file_des, fhdr->des.piece, fhdr->des.first_length);
-  file_des += fhdr->des.first_length;
-
-  if (VPID_ISNULL (&fhdr->des.next_part_vpid))
-    {
-      return fhdr->des.total_length;
-    }
-
-  assert (false);
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-  /* The rest if any ... */
-  rest_length = fhdr->des.total_length - fhdr->des.first_length;
-  copy_length = DB_PAGESIZE - sizeof (*rest) + 1;
-  vpid = fhdr->des.next_part_vpid;
-
-  while (rest_length > 0 && !VPID_ISNULL (&vpid))
-    {
-      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (pgptr == NULL)
-	{
-	  file_des[0] = '\0';
-	  return 0;
-	}
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-      rest = (FILE_REST_DES *) pgptr;
-      /* Copy as much as you can */
-
-      if (rest_length < copy_length)
-	{
-	  copy_length = rest_length;
-	}
-
-      memcpy (file_des, rest->piece, copy_length);
-      file_des += copy_length;
-      rest_length -= copy_length;
-      vpid = rest->next_part_vpid;
-      pgbuf_unfix_and_init (thread_p, pgptr);
-    }
-#endif
-
-  return fhdr->des.total_length;
-}
-
-/*
- * file_descriptor_destroy_rest_pages () - Destory rest of pages of file descriptor
- *   return:
- *   fhdr(in): File header
- *
- * Note: If the descriptor comments are stored in several pages. The rest of the pages are removed.
- */
-static int
-file_descriptor_destroy_rest_pages (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr)
-{
-#if defined (ENABLE_UNUSED_FUNCTION)
-  VPID rest_vpid;
-  PAGE_PTR pgptr = NULL;
-  FILE_REST_DES *rest;
-  VPID batch_vpid;
-  int batch_ndealloc;
-#endif
-
-  if (VPID_ISNULL (&fhdr->des.next_part_vpid))
-    {
-      return NO_ERROR;		/* nop */
-    }
-
-  assert (false);
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-  /* Any rest pages ? */
-
-  VPID_SET_NULL (&batch_vpid);
-  rest_vpid = fhdr->des.next_part_vpid;
-  /* Deallocate the pages is set of contiguous pages */
-  batch_ndealloc = 0;
-
-  while (!VPID_ISNULL (&rest_vpid))
-    {
-      pgptr = pgbuf_fix (thread_p, &rest_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (pgptr == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-      rest = (FILE_REST_DES *) pgptr;
-      if (batch_ndealloc == 0)
-	{
-	  /* Start accumulating contiguous pages */
-	  batch_vpid = rest->next_part_vpid;
-	  batch_ndealloc = 1;
-	}
-      else
-	{
-	  /* Is page contiguous ? */
-	  if (rest_vpid.volid == batch_vpid.volid && rest_vpid.pageid == (batch_vpid.pageid + batch_ndealloc))
-	    {
-	      /* contiguous */
-	      batch_ndealloc++;
-	    }
-	  else
-	    {
-	      /* 
-	       * This is not a contiguous page.
-	       * Deallocate any previous pages and start accumulating
-	       * contiguous pages again.
-	       * We do not care if the page deallocation failed,
-	       * since we are destroying the file.. Deallocate as much
-	       * as we can.
-	       */
-	      (void) disk_dealloc_page (thread_p, batch_vpid.volid, batch_vpid.pageid, batch_ndealloc);
-	      /* Start again */
-	      batch_vpid = rest->next_part_vpid;
-	      batch_ndealloc = 1;
-	    }
-	}
-      rest_vpid = rest->next_part_vpid;
-      pgbuf_unfix_and_init (thread_p, pgptr);
-    }
-
-  if (batch_ndealloc > 0)
-    {
-      (void) disk_dealloc_page (thread_p, batch_vpid.volid, batch_vpid.pageid, batch_ndealloc);
-    }
-#endif
-
-  return NO_ERROR;
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * file_descriptor_find_num_rest_pages () - Find th enumber of rest pages needed to store
- *                            the current descriptor of file
- *   return: number of rest pages or -1 in case of error
- *   fhdr(in): File header
- */
-static int
-file_descriptor_find_num_rest_pages (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr)
-{
-  VPID rest_vpid;
-  PAGE_PTR pgptr = NULL;
-  FILE_REST_DES *rest;
-  int num_rest_pages = 0;
-
-  /* Any rest pages ? */
-  if (!VPID_ISNULL (&fhdr->des.next_part_vpid))
-    {
-      rest_vpid = fhdr->des.next_part_vpid;
-
-      while (!VPID_ISNULL (&rest_vpid))
-	{
-	  pgptr = pgbuf_fix (thread_p, &rest_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (pgptr == NULL)
-	    {
-	      return -1;
-	    }
-
-	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-	  num_rest_pages++;
-	  rest = (FILE_REST_DES *) pgptr;
-	  rest_vpid = rest->next_part_vpid;
-	  pgbuf_unfix_and_init (thread_p, pgptr);
-	}
-    }
-
-  return num_rest_pages;
-}
-#endif
-
-/*
- * file_descriptor_dump_internal () - Dump the descriptor comments for this file
- *   return: void
- *   fhdr(out): File header
- */
-static int
-file_descriptor_dump_internal (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
-{
-#if defined (ENABLE_UNUSED_FUNCTION)
-  int rest_length, dump_length;
-  const char *dumpfrom;
-  char *file_des;
-  int i;
-  FILE_REST_DES *rest;
-  VPID vpid;
-#endif
-  PAGE_PTR pgptr = NULL;
-  int ret = NO_ERROR;
-
-  if (fhdr->des.total_length <= 0)
-    {
-      fprintf (fp, "\n");
-      return NO_ERROR;
-    }
-
-  assert (fhdr->des.total_length == fhdr->des.first_length);
-
-  if (fhdr->des.total_length == fhdr->des.first_length)
-    {
-      file_descriptor_dump (thread_p, fp, fhdr->type, fhdr->des.piece, &fhdr->vfid);
-
-    }
-#if defined (ENABLE_UNUSED_FUNCTION)
-  else
-    {
-      file_des = (char *) malloc (fhdr->des.total_length);
-      if (file_des == NULL)
-	{
-	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, fhdr->des.total_length);
-	  goto exit_on_error;
-	}
-
-      if (file_descriptor_get (thread_p, fhdr, file_des, fhdr->des.total_length) <= 0)
-	{
-	  free_and_init (file_des);
-	  goto exit_on_error;
-	}
-
-      switch (fhdr->type)
-	{
-	case FILE_HEAP:
-	case FILE_HEAP_REUSE_SLOTS:
-	case FILE_MULTIPAGE_OBJECT_HEAP:
-	case FILE_TRACKER:
-	case FILE_BTREE:
-	case FILE_BTREE_OVERFLOW_KEY:
-	case FILE_EXTENDIBLE_HASH:
-	case FILE_EXTENDIBLE_HASH_DIRECTORY:
-	  break;
-
-	case FILE_CATALOG:
-	case FILE_DROPPED_FILES:
-	case FILE_VACUUM_DATA:
-	case FILE_QUERY_AREA:
-	case FILE_TEMP:
-	case FILE_UNKNOWN_TYPE:
-	  /* This does not really exist */
-	default:
-	  /* Dump the first part */
-	  for (i = 0, dumpfrom = fhdr->des.piece; i < fhdr->des.first_length; i++)
-	    {
-	      (void) fputc (*dumpfrom++, fp);
-	    }
-
-	  /* The rest if any */
-	  if (!VPID_ISNULL (&fhdr->des.next_part_vpid))
-	    {
-	      rest_length = fhdr->des.total_length - fhdr->des.first_length;
-	      dump_length = DB_PAGESIZE - sizeof (*rest) + 1;
-	      vpid = fhdr->des.next_part_vpid;
-	      while (rest_length > 0 && !VPID_ISNULL (&vpid))
-		{
-		  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-		  if (pgptr == NULL)
-		    {
-		      free_and_init (file_des);
-		      goto exit_on_error;
-		    }
-
-		  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_FTAB);
-
-		  rest = (FILE_REST_DES *) pgptr;
-		  /* Dump as much as you can */
-
-		  if (rest_length < dump_length)
-		    {
-		      dump_length = rest_length;
-		    }
-
-		  for (i = 0, dumpfrom = rest->piece; i < dump_length; i++)
-		    {
-		      (void) fputc (*dumpfrom++, fp);
-		    }
-		  vpid = rest->next_part_vpid;
-		  pgbuf_unfix_and_init (thread_p, pgptr);
-		}
-	    }
-	  fprintf (fp, "\n");
-	  break;
-	}
-      free_and_init (file_des);
-    }
-#endif
-
-  return ret;
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-exit_on_error:
-
-  if (pgptr)
-    {
-      pgbuf_unfix_and_init (thread_p, pgptr);
-    }
-
-  if (ret == NO_ERROR)
-    {
-      ret = ER_FAILED;
-    }
-
-  return ret;
-#endif
-}
-
 /* TODO: STL::vector for file_Type_cache.entry */
 /*
  * file_type_cache_check () - Find type of the given file if it has already been
@@ -1067,227 +689,6 @@ file_typecache_clear (void)
   return ret;
 }
 
-/*
- * file_get_type_internal () - helper function to retrieve file_type
- *   return: file_type
- *   vfid(in): Complete file identifier
- *   fhdr_pgptr(in): file header pgptr
- */
-static FILE_TYPE
-file_get_type_internal (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr)
-{
-  FILE_HEADER *fhdr;
-  FILE_TYPE file_type;
-
-  assert (fhdr_pgptr != NULL);
-
-  (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-  file_type = fhdr->type;
-
-  if (file_type_cache_add_entry (vfid, file_type) != NO_ERROR)
-    {
-      file_type = FILE_UNKNOWN_TYPE;
-    }
-
-  return file_type;
-}
-
-/*
- * file_dump_descriptor () - Dump the file descriptor associated with given file
- *   return: NO_ERROR
- *   vfid(in): Complete file identifier
- */
-int
-file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid)
-{
-  PAGE_PTR fhdr_pgptr = NULL;
-  FILE_HEADER *fhdr;
-  VPID vpid;
-  int ret;
-
-  vpid.volid = vfid->volid;
-  vpid.pageid = vfid->fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-  ret = file_descriptor_dump_internal (thread_p, fp, fhdr);
-
-  pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-
-  return ret;
-}
-
-/*
- * file_dump_fhdr () - Dump the given file header
- *   return: NO_ERROR
- *   fhdr(in): Dump the given file header
- */
-static int
-file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
-{
-
-  char time_val[CTIME_MAX];
-  int ret = NO_ERROR;
-  time_t tmp_time;
-
-  (void) fprintf (fp, "*** FILE HEADER TABLE DUMP FOR FILE IDENTIFIER = %d ON VOLUME = %d ***\n",
-		  fhdr->vfid.fileid, fhdr->vfid.volid);
-
-  tmp_time = (time_t) fhdr->creation;
-  (void) ctime_r (&tmp_time, time_val);
-  (void) fprintf (fp, "File_type = %s, Ismark_as_deleted = %s,\nCreation_time = %s",
-		  file_type_to_string (fhdr->type), (fhdr->ismark_as_deleted == true) ? "true" : "false", time_val);
-  (void) fprintf (fp, "File Descriptor comments = ");
-  ret = file_descriptor_dump_internal (thread_p, fp, fhdr);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
-  (void) fprintf (fp, "Num_allocsets = %d, Num_user_pages = %d, Num_mark_deleted = %d\n",
-		  fhdr->num_allocsets, fhdr->num_user_pages, fhdr->num_user_pages_mrkdelete);
-  (void) fprintf (fp, "Num_ftb_pages = %d, Next_ftb_page = %d|%d, Last_ftb_page = %d|%d,\n",
-		  fhdr->num_table_vpids, fhdr->next_table_vpid.volid,
-		  fhdr->next_table_vpid.pageid, fhdr->last_table_vpid.volid, fhdr->last_table_vpid.pageid);
-  (void) fprintf (fp, "Last allocset at VPID: %d|%d, offset = %d\n",
-		  fhdr->last_allocset_vpid.volid, fhdr->last_allocset_vpid.pageid, fhdr->last_allocset_offset);
-
-  return ret;
-}
-
-/* Recovery functions */
-
-/*
- * file_descriptor_get_length():
- *
- *   returns: the size of the file descriptor of the given file type.
- *   file_type(IN): file_type
- *
- */
-static int
-file_descriptor_get_length (const FILE_TYPE file_type)
-{
-  switch (file_type)
-    {
-    case FILE_HEAP:
-    case FILE_HEAP_REUSE_SLOTS:
-      return sizeof (FILE_HEAP_DES);
-    case FILE_MULTIPAGE_OBJECT_HEAP:
-      return sizeof (FILE_OVF_HEAP_DES);
-    case FILE_BTREE:
-      return sizeof (FILE_BTREE_DES);
-    case FILE_BTREE_OVERFLOW_KEY:
-      return sizeof (FILE_OVF_BTREE_DES);
-    case FILE_EXTENDIBLE_HASH:
-    case FILE_EXTENDIBLE_HASH_DIRECTORY:
-      return sizeof (FILE_EHASH_DES);
-    case FILE_DROPPED_FILES:
-    case FILE_VACUUM_DATA:
-    case FILE_TRACKER:
-    case FILE_CATALOG:
-    case FILE_QUERY_AREA:
-    case FILE_TEMP:
-    case FILE_UNKNOWN_TYPE:
-    default:
-      return 0;
-    }
-}
-
-/*
- * file_descriptor_dump():
- *      dump the file descriptor of the given file type.
- *
- *   returns: none
- *   file_type(IN): file_type
- *   file_des_p(IN): ptr to the file descritor
- *
- */
-
-static void
-file_descriptor_dump (THREAD_ENTRY * thread_p, FILE * fp,
-		      const FILE_TYPE file_type, const void *file_des_p, const VFID * vfid)
-{
-  if (file_des_p == NULL)
-    {
-      return;
-    }
-
-  switch (file_type)
-    {
-    case FILE_TRACKER:
-      break;
-
-    case FILE_HEAP:
-    case FILE_HEAP_REUSE_SLOTS:
-      file_descriptor_dump_heap (thread_p, fp, (const FILE_HEAP_DES *) file_des_p);
-      break;
-
-    case FILE_MULTIPAGE_OBJECT_HEAP:
-      file_descriptor_dump_multi_page_object_heap (fp, (const FILE_OVF_HEAP_DES *) file_des_p);
-      break;
-
-    case FILE_BTREE:
-      file_descriptor_dump_btree (thread_p, fp, (const FILE_BTREE_DES *) file_des_p, vfid);
-      break;
-
-    case FILE_BTREE_OVERFLOW_KEY:
-      file_descriptor_dump_btree_overflow_key (fp, (const FILE_OVF_BTREE_DES *) file_des_p);
-      break;
-
-    case FILE_EXTENDIBLE_HASH:
-    case FILE_EXTENDIBLE_HASH_DIRECTORY:
-      file_descriptor_dump_extendible_hash (thread_p, fp, (const FILE_EHASH_DES *) file_des_p);
-      break;
-    case FILE_CATALOG:
-    case FILE_QUERY_AREA:
-    case FILE_TEMP:
-    case FILE_UNKNOWN_TYPE:
-    case FILE_DROPPED_FILES:
-    case FILE_VACUUM_DATA:
-    default:
-      fprintf (fp, "....Don't know how to dump desc..\n");
-      break;
-    }
-}
-
-static void
-file_descriptor_dump_heap (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEAP_DES * heap_file_des_p)
-{
-  file_print_name_of_class (thread_p, fp, &heap_file_des_p->class_oid);
-}
-
-static void
-file_descriptor_dump_multi_page_object_heap (FILE * fp, const FILE_OVF_HEAP_DES * ovf_hfile_des_p)
-{
-  fprintf (fp, "Overflow for HFID: %2d|%4d|%4d\n",
-	   ovf_hfile_des_p->hfid.vfid.volid, ovf_hfile_des_p->hfid.vfid.fileid, ovf_hfile_des_p->hfid.hpgid);
-}
-
-static void
-file_descriptor_dump_btree (THREAD_ENTRY * thread_p, FILE * fp, const FILE_BTREE_DES * btree_des_p, const VFID * vfid)
-{
-  file_print_class_name_index_name_with_attrid (thread_p, fp, &btree_des_p->class_oid, vfid, btree_des_p->attr_id);
-}
-
-static void
-file_descriptor_dump_btree_overflow_key (FILE * fp, const FILE_OVF_BTREE_DES * btree_ovf_des_p)
-{
-  fprintf (fp, "Overflow keys for BTID: %2d|%4d|%4d\n",
-	   btree_ovf_des_p->btid.vfid.volid, btree_ovf_des_p->btid.vfid.fileid, btree_ovf_des_p->btid.root_pageid);
-}
-
-static void
-file_descriptor_dump_extendible_hash (THREAD_ENTRY * thread_p, FILE * fp, const FILE_EHASH_DES * ext_hash_des_p)
-{
-  file_print_name_of_class_with_attrid (thread_p, fp, &ext_hash_des_p->class_oid, ext_hash_des_p->attr_id);
-}
-
 static void
 file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p)
 {
@@ -1296,119 +697,12 @@ file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_
   if (!OID_ISNULL (class_oid_p))
     {
       class_name_p = heap_get_class_name (thread_p, class_oid_p);
-      fprintf (fp, "CLASS_OID:%2d|%4d|%2d (%s)\n", class_oid_p->volid,
-	       class_oid_p->pageid, class_oid_p->slotid, (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*");
-      if (class_name_p)
+      fprintf (fp, "CLASS_OID: %5d|%10d|%5d (%s)", OID_AS_ARGS (class_oid_p),
+	       class_name_p != NULL ? class_name_p : "*UNKNOWN-CLASS*");
+      if (class_name_p != NULL)
 	{
 	  free_and_init (class_name_p);
 	}
-    }
-  else
-    {
-      fprintf (fp, "\n");
-    }
-}
-
-static void
-file_print_class_name_of_instance (THREAD_ENTRY * thread_p, FILE * fp, const OID * inst_oid_p)
-{
-  char *class_name_p = NULL;
-
-  if (!OID_ISNULL (inst_oid_p))
-    {
-      class_name_p = heap_get_class_name_of_instance (thread_p, inst_oid_p);
-      fprintf (fp, "CLASS_OID:%2d|%4d|%2d (%s)\n", inst_oid_p->volid,
-	       inst_oid_p->pageid, inst_oid_p->slotid, (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*");
-      if (class_name_p)
-	{
-	  free_and_init (class_name_p);
-	}
-    }
-  else
-    {
-      fprintf (fp, "\n");
-    }
-}
-
-static void
-file_print_name_of_class_with_attrid (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, const int attr_id)
-{
-  char *class_name_p = NULL;
-
-  if (!OID_ISNULL (class_oid_p))
-    {
-      class_name_p = heap_get_class_name (thread_p, class_oid_p);
-      fprintf (fp, "CLASS_OID:%2d|%4d|%2d (%s), ATTRID: %2d\n",
-	       class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
-	       (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*", attr_id);
-      if (class_name_p)
-	{
-	  free_and_init (class_name_p);
-	}
-    }
-  else
-    {
-      fprintf (fp, "\n");
-    }
-}
-
-/*
- * file_print_class_name_index_name_with_attrid () -\
- * return: void
- * thread_p(in):
- * fp(in):
- * class_oid_p(in):
- * vfid(in):
- * attr_id(in);
- *
- * Note:
- */
-static void
-file_print_class_name_index_name_with_attrid (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p,
-					      const VFID * vfid, const int attr_id)
-{
-  char *class_name_p = NULL;
-  char *index_name_p = NULL;
-  BTID btid;
-
-  assert (fp != NULL && class_oid_p != NULL && vfid != NULL);
-
-  if (OID_ISNULL (class_oid_p) || VFID_ISNULL (vfid))
-    {
-      goto end;
-    }
-
-  /* class_name */
-  class_name_p = heap_get_class_name (thread_p, class_oid_p);
-
-  /* index_name root_pageid doesn't matter here, see BTID_IS_EQUAL */
-  btid.vfid = *vfid;
-  btid.root_pageid = NULL_PAGEID;
-  if (heap_get_indexinfo_of_btid (thread_p, (OID *) class_oid_p, &btid, NULL, NULL, NULL, NULL, &index_name_p,
-				  NULL) != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* print */
-  fprintf (fp, "CLASS_OID:%2d|%4d|%2d (%s), %s, ATTRID: %2d",
-	   class_oid_p->volid, class_oid_p->pageid, class_oid_p->slotid,
-	   (class_name_p == NULL) ? "*UNKNOWN-CLASS*" : class_name_p,
-	   (index_name_p == NULL) ? "*UNKNOWN-INDEX*" : index_name_p, attr_id);
-
-end:
-
-  fprintf (fp, "\n");
-
-  /* cleanup */
-  if (class_name_p != NULL)
-    {
-      free_and_init (class_name_p);
-    }
-
-  if (index_name_p != NULL)
-    {
-      free_and_init (index_name_p);
     }
 }
 
@@ -1904,6 +1198,8 @@ STATIC_INLINE void file_header_update_mark_deleted (THREAD_ENTRY * thread_p,
 STATIC_INLINE int file_header_copy (THREAD_ENTRY * thread_p,
 				    const VFID * vfid, FLRE_HEADER * fhead_copy) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void flre_header_dump (THREAD_ENTRY * thread_p, const FLRE_HEADER * fhead, FILE * fp)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void flre_header_dump_descriptor (THREAD_ENTRY * thread_p, const FLRE_HEADER * fhead, FILE * fp)
   __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
@@ -2590,7 +1886,69 @@ STATIC_INLINE void
 flre_header_dump (THREAD_ENTRY * thread_p, const FLRE_HEADER * fhead, FILE * fp)
 {
   fprintf (fp, FILE_HEAD_FULL_MSG, FILE_HEAD_FULL_AS_ARGS (fhead));
-  file_descriptor_dump (thread_p, fp, fhead->type, &fhead->descriptor, &fhead->self);
+  flre_header_dump_descriptor (thread_p, fhead, fp);
+}
+
+/*
+ * flre_header_dump_descriptor () - dump descriptor in file header
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * fhead (in)    : file header
+ * fp (in)       : output file
+ */
+STATIC_INLINE void
+flre_header_dump_descriptor (THREAD_ENTRY * thread_p, const FLRE_HEADER * fhead, FILE * fp)
+{
+  switch (fhead->type)
+    {
+    case FILE_HEAP:
+    case FILE_HEAP_REUSE_SLOTS:
+      file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap.class_oid);
+      fprintf (fp, "\n");
+      break;
+
+    case FILE_MULTIPAGE_OBJECT_HEAP:
+      fprintf (fp, "Overflow for HFID: %10d|%5d|%10d\n", HFID_AS_ARGS (&fhead->descriptor.heap_overflow.hfid));
+      break;
+
+    case FILE_BTREE:
+      {
+	BTID btid;
+	char *index_name = NULL;
+	btid.vfid = fhead->self;
+	btid.root_pageid = fhead->vpid_sticky_first.pageid;
+
+	if (heap_get_indexinfo_of_btid (thread_p, &fhead->descriptor.btree.class_oid, &btid, NULL, NULL, NULL, NULL,
+					&index_name, NULL) == NO_ERROR)
+	  {
+	    file_print_name_of_class (thread_p, fp, &fhead->descriptor.btree.class_oid);
+	    fprintf (fp, ", %s, ATTRID: %5d \n", index_name != NULL ? index_name : "*UNKNOWN-INDEX*",
+		     fhead->descriptor.btree.attr_id);
+	  }
+      }
+      break;
+
+    case FILE_BTREE_OVERFLOW_KEY:
+      fprintf (fp, "Overflow keys for BTID: %10d|%5|%10d\n", BTID_AS_ARGS (&fhead->descriptor.btree_key_overflow.btid));
+      break;
+
+    case FILE_EXTENDIBLE_HASH:
+    case FILE_EXTENDIBLE_HASH_DIRECTORY:
+      file_print_name_of_class (thread_p, fp, &fhead->descriptor.ehash.class_oid);
+      fprintf (fp, ", ATTRID: %5d \n", fhead->descriptor.ehash.attr_id);
+      break;
+
+    case FILE_TRACKER:
+    case FILE_CATALOG:
+    case FILE_QUERY_AREA:
+    case FILE_TEMP:
+    case FILE_UNKNOWN_TYPE:
+    case FILE_DROPPED_FILES:
+    case FILE_VACUUM_DATA:
+    default:
+      break;
+    }
 }
 
 /************************************************************************/
@@ -10878,7 +10236,6 @@ flre_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
   FLRE_HEADER *fhead = NULL;
-  VFID vfid;
 
   FILE *fp = (FILE *) args;
 
@@ -10903,9 +10260,7 @@ flre_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
       fprintf (fp, "Marked as deleted... ");
     }
 
-  vfid.volid = item->volid;
-  vfid.fileid = item->fileid;
-  file_descriptor_dump (thread_p, fp, fhead->type, &fhead->descriptor, &vfid);
+  flre_header_dump_descriptor (thread_p, fhead, fp);
 
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
@@ -11310,6 +10665,38 @@ flre_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_ne
 			     sizeof (fhead->descriptor), &fhead->descriptor, des_new);
   memcpy (&fhead->descriptor, des_new, sizeof (fhead->descriptor));
   pgbuf_set_dirty (thread_p, page_fhead, FREE);
+  return NO_ERROR;
+}
+
+/*
+ * flre_descriptor_dump () - dump file descriptor
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ * fp (in)       : output file
+ */
+int
+flre_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FLRE_HEADER *fhead = NULL;
+
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FLRE_HEADER *) page_fhead;
+  file_header_sanity_check (fhead);
+
+  flre_header_dump_descriptor (thread_p, fhead, fp);
+  pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
 

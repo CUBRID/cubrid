@@ -602,8 +602,9 @@ static int heap_classrepr_initialize_cache (void);
 static int heap_classrepr_finalize_cache (void);
 static int heap_classrepr_decache_guessed_last (const OID * class_oid);
 #ifdef SERVER_MODE
-static int heap_classrepr_lock_class (THREAD_ENTRY * thread_p, HEAP_CLASSREPR_HASH * hash_anchor, OID * class_oid);
-static int heap_classrepr_unlock_class (HEAP_CLASSREPR_HASH * hash_anchor, OID * class_oid, int need_hash_mutex);
+static int heap_classrepr_lock_class (THREAD_ENTRY * thread_p, HEAP_CLASSREPR_HASH * hash_anchor,
+				      const OID * class_oid);
+static int heap_classrepr_unlock_class (HEAP_CLASSREPR_HASH * hash_anchor, const OID * class_oid, int need_hash_mutex);
 #endif
 
 static int heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, const OR_CLASSREP * repr);
@@ -616,8 +617,8 @@ static int heap_classrepr_entry_remove_from_LRU (HEAP_CLASSREPR_ENTRY * cache_en
 static HEAP_CLASSREPR_ENTRY *heap_classrepr_entry_alloc (void);
 static int heap_classrepr_entry_free (HEAP_CLASSREPR_ENTRY * cache_entry);
 
-static OR_CLASSREP *heap_classrepr_get_from_record (THREAD_ENTRY * thread_p, REPR_ID * last_reprid, OID * class_oid,
-						    RECDES * class_recdes, REPR_ID reprid);
+static OR_CLASSREP *heap_classrepr_get_from_record (THREAD_ENTRY * thread_p, REPR_ID * last_reprid,
+						    const OID * class_oid, RECDES * class_recdes, REPR_ID reprid);
 static int heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr);
 static int heap_stats_update_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * lotspace_vpid,
 				       int free_space);
@@ -1930,7 +1931,7 @@ enum
  *   class_oid(in):
  */
 static int
-heap_classrepr_lock_class (THREAD_ENTRY * thread_p, HEAP_CLASSREPR_HASH * hash_anchor, OID * class_oid)
+heap_classrepr_lock_class (THREAD_ENTRY * thread_p, HEAP_CLASSREPR_HASH * hash_anchor, const OID * class_oid)
 {
   HEAP_CLASSREPR_LOCK *cur_lock_entry;
   THREAD_ENTRY *cur_thrd_entry;
@@ -1988,7 +1989,7 @@ heap_classrepr_lock_class (THREAD_ENTRY * thread_p, HEAP_CLASSREPR_HASH * hash_a
  *   need_hash_mutex(in):
  */
 static int
-heap_classrepr_unlock_class (HEAP_CLASSREPR_HASH * hash_anchor, OID * class_oid, int need_hash_mutex)
+heap_classrepr_unlock_class (HEAP_CLASSREPR_HASH * hash_anchor, const OID * class_oid, int need_hash_mutex)
 {
   HEAP_CLASSREPR_LOCK *prev_lock_entry, *cur_lock_entry;
   THREAD_ENTRY *cur_thrd_entry;
@@ -2197,8 +2198,8 @@ heap_classrepr_entry_free (HEAP_CLASSREPR_ENTRY * cache_entry)
  *   reprid(in): Representation of the class or NULL_REPRID for last one
  */
 static OR_CLASSREP *
-heap_classrepr_get_from_record (THREAD_ENTRY * thread_p, REPR_ID * last_reprid, OID * class_oid, RECDES * class_recdes,
-				REPR_ID reprid)
+heap_classrepr_get_from_record (THREAD_ENTRY * thread_p, REPR_ID * last_reprid, const OID * class_oid,
+				RECDES * class_recdes, REPR_ID reprid)
 {
   RECDES peek_recdes;
   RECDES *recdes = NULL;
@@ -2250,7 +2251,8 @@ end:
  * Note: Obtain the desired class representation for the given class.
  */
 OR_CLASSREP *
-heap_classrepr_get (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes, REPR_ID reprid, int *idx_incache)
+heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * class_recdes, REPR_ID reprid,
+		    int *idx_incache)
 {
   HEAP_CLASSREPR_ENTRY *cache_entry;
   HEAP_CLASSREPR_HASH *hash_anchor;
@@ -11996,7 +11998,7 @@ error:
  * Return the ID of the index if found.
  */
 int
-heap_classrepr_find_index_id (OR_CLASSREP * classrepr, BTID * btid)
+heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
 {
   int i;
   int id = -1;
@@ -12933,8 +12935,9 @@ heap_get_index_with_name (THREAD_ENTRY * thread_p, OID * class_oid, const char *
  *   btnamepp(in);
  */
 int
-heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, BTREE_TYPE * type, int *num_attrs,
-			    ATTR_ID ** attr_ids, int **attrs_prefix_length, char **btnamepp, int *func_index_col_id)
+heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, const OID * class_oid, const BTID * btid, BTREE_TYPE * type,
+			    int *num_attrs, ATTR_ID ** attr_ids, int **attrs_prefix_length, char **btnamepp,
+			    int *func_index_col_id)
 {
   OR_CLASSREP *classrepp;
   OR_INDEX *indexp;
@@ -13946,7 +13949,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 
   fprintf (fp, "\n\n*** DUMPING HEAP FILE: ");
   fprintf (fp, "volid = %d, Fileid = %d, Header-pageid = %d ***\n", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-  (void) file_dump_descriptor (thread_p, fp, &hfid->vfid);
+  (void) flre_descriptor_dump (thread_p, &hfid->vfid, fp);
 
   /* Fetch the header page of the heap file */
 
