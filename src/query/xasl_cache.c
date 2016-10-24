@@ -1921,7 +1921,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
 
   /* How many entries do we need to cleanup? */
-  if (xcache_Entry_count > xcache_Soft_capacity)
+  if (need_cleanup == XCACHE_CLEANUP_FULL)
     {
       cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
     }
