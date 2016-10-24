@@ -1690,44 +1690,6 @@ file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PT
 }
 
 /*
- * file_get_descriptor () - Get the file descriptor associated with the given file
- *   return: Actual size of file descriptor
- *   vfid(in): Complete file identifier
- *   area_des(out): The area where the file description is placed
- *   maxsize(in): Max size of file descriptor area
- *
- * Note: If the file descriptor does not fit in the given area, the needed
- *       size is returned as a negative value
- */
-int
-file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *area_des, int maxsize)
-{
-  PAGE_PTR fhdr_pgptr = NULL;
-  FILE_HEADER *fhdr;
-  VPID vpid;
-
-  vpid.volid = vfid->volid;
-  vpid.pageid = vfid->fileid;
-
-  fhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (fhdr_pgptr != NULL)
-    {
-      (void) pgbuf_check_page_ptype (thread_p, fhdr_pgptr, PAGE_FTAB);
-
-      fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
-      maxsize = file_descriptor_get (thread_p, fhdr, area_des, maxsize);
-
-      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
-    }
-  else
-    {
-      maxsize = 0;
-    }
-
-  return maxsize;
-}
-
-/*
  * file_dump_descriptor () - Dump the file descriptor associated with given file
  *   return: NO_ERROR
  *   vfid(in): Complete file identifier

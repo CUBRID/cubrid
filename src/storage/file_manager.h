@@ -197,7 +197,6 @@ struct file_alloc_vpids
 
 extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern FILE_TYPE file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr);
-extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *area_des, int maxsize);
 extern VPID *file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_vpid);
 extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 npages);
 extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid);
