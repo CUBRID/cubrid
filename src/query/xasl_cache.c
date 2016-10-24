@@ -1919,18 +1919,12 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       return;
     }
 
-
-  /* How many entries do we need to cleanup? */
-  if (need_cleanup == XCACHE_CLEANUP_FULL)
-    {
-      cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
-    }
-
   xcache_log ("cleanup start: entries = %d \n"
 	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
 
   if (need_cleanup == XCACHE_CLEANUP_FULL)	/* cleanup because there are too many entries */
     {
+      cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
       /* Start cleanup. */
       perfmon_inc_stat (thread_p, PSTAT_PC_NUM_FULL);
 
