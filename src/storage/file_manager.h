@@ -202,47 +202,6 @@ extern int file_typecache_clear (void);
 
 /* This are for debugging purposes */
 extern int file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
-extern int file_rv_redo_ftab_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_dump_ftab_chain (FILE * fp, int length_ignore, void *data);
-extern int file_rv_redo_fhdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_dump_fhdr (FILE * fp, int length_ignore, void *data);
-extern void file_rv_dump_idtab (FILE * fp, int length, void *data);
-extern void file_rv_dump_allocset (FILE * fp, int length_ignore, void *data);
-
-extern int file_rv_fhdr_undoredo_expansion (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_dump_expansion (FILE * fp, int length_ignore, void *data);
-extern int file_rv_fhdr_add_last_allocset (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhdr_remove_last_allocset (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhdr_change_last_allocset (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_dump_last_allocset (FILE * fp, int length_ignore, void *data);
-extern int file_rv_fhdr_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_dump_add_pages (FILE * fp, int length_ignore, void *data);
-extern int file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_delete_pages_dump (FILE * fp, int length, void *data);
-extern int file_rv_fhdr_undoredo_mark_deleted_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_dump_mark_deleted_pages (FILE * fp, int length_ignore, void *data);
-extern int file_rv_fhdr_undoredo_update_num_user_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-
-extern int file_rv_allocset_undoredo_sector (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_sector (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_page (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_link (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_add_pages (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_delete_pages (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_sectortab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_sectortab (FILE * fp, int length_ignore, void *data);
-
-extern int file_rv_descriptor_undoredo_firstrest_nextvpid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_descriptor_dump_firstrest_nextvpid (FILE * fp, int length_ignore, void *data);
-extern int file_rv_descriptor_undoredo_nrest_nextvpid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_descriptor_dump_nrest_nextvpid (FILE * fp, int length_ignore, void *data);
-extern int file_rv_descriptor_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-
-extern int file_rv_logical_redo_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 /************************************************************************/
 /*                                                                      */
