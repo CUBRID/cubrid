@@ -2057,6 +2057,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
   PERF_HOLDER_LATCH perf_holder_latch;
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
   PGBUF_HOLDER_STAT holder_perf_stat;
   PERF_PAGE_TYPE perf_page_type;
   bool is_perf_tracking;
@@ -2066,15 +2068,28 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #endif /* CUBRID_DEBUG */
 
 #if !defined (NDEBUG)
-  assert (pgptr != NULL);
+  {
+    assert (pgptr != NULL);
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
-    {
-      if (pgbuf_is_valid_page_ptr (pgptr) == false)
-	{
-	  return;
-	}
-    }
+    if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
+      {
+	if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	  {
+	    return;
+	  }
+
+	holder = pgbuf_get_holder (thread_p, pgptr);
+
+	assert_release (holder != NULL);
+
+	watcher = holder->last_watcher;
+	while (watcher != NULL)
+	  {
+	    assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+	    watcher = watcher->prev;
+	  }
+      }
+  }
 #else /* !NDEBUG */
   if (pgptr == NULL)
     {
@@ -11329,15 +11344,6 @@ pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
   assert_release (holder != NULL);
 
   watcher = holder->last_watcher;
-#if !defined(NDEBUG)
-  while (watcher != NULL)
-    {
-      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
-      watcher = watcher->prev;
-    }
-  watcher = holder->last_watcher;
-#endif
-
   while (watcher != NULL)
     {
       if (watcher == watcher_object)
@@ -11701,9 +11707,7 @@ void
 pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file, const int caller_line, bool add)
 {
   char *p;
-#if !defined(NDEBUG)
-  assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
-#endif
+
   p = (char *) caller_file + strlen (caller_file);
   while (p)
     {
