@@ -712,8 +712,11 @@ static int heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INF
 static DISK_ISVALID heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid,
 						       HEAP_CHKALL_RELOCOIDS * chk_objs, INT32 * num_checked);
 
-static DISK_ISVALID heap_check_all_pages_by_allocset (THREAD_ENTRY * thread_p, HFID * hfid,
-						      HEAP_CHKALL_RELOCOIDS * chk_objs, INT32 * num_checked);
+#if defined (SA_MODE)
+static DISK_ISVALID heap_check_all_pages_by_file_table (THREAD_ENTRY * thread_p, HFID * hfid,
+							HEAP_CHKALL_RELOCOIDS * chk_objs);
+static int heap_file_map_chkreloc (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
+#endif /* SA_MODE */
 
 static DISK_ISVALID heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk);
 static DISK_ISVALID heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk);
@@ -13503,80 +13506,67 @@ heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_CH
   return (spg_error == true) ? DISK_ERROR : valid_pg;
 }
 
-static DISK_ISVALID
-heap_check_all_pages_by_allocset (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_CHKALL_RELOCOIDS * chk_objs,
-				  int *num_checked)
+#if defined (SA_MODE)
+/*
+ * heap_file_map_chkreloc () - FILE_MAP_PAGE_FUNC to check relocations.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * page (in)     : heap page pointer
+ * stop (in)     : not used
+ * args (in)     : HEAP_CHKALL_RELOCOIDS *
+ */
+static int
+heap_file_map_chkreloc (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args)
 {
-  INT32 checked = 0;
-  PAGE_PTR pgptr;
-  VPID vpid;
-  DISK_ISVALID valid_pg = DISK_VALID;
-  FILE_ALLOC_ITERATOR iter;
-  FILE_ALLOC_ITERATOR *iter_p = &iter;
+  HEAP_CHKALL_RELOCOIDS *chk_objs = (HEAP_CHKALL_RELOCOIDS *) args;
 
-  /* todo: file iterator */
-  if (true)
+  DISK_ISVALID valid = DISK_VALID;
+  int error_code = NO_ERROR;
+
+  valid = heap_chkreloc_next (thread_p, chk_objs, *page);
+  if (valid == DISK_INVALID)
     {
-      return DISK_VALID;
+      assert_release (false);
+      return ER_FAILED;
     }
-
-  /* create the iterator of heap pages */
-  if (file_alloc_iterator_init (thread_p, &hfid->vfid, iter_p) == NULL)
+  else if (valid == DISK_ERROR)
     {
-      /* heap header page should be exist */
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * heap_check_all_pages_by_file_table () - check relocations using file table
+ *
+ * return        : DISK_INVALID for unexpected errors, DISK_ERROR for expected errors, DISK_VALID for successful check
+ * thread_p (in) : thread entry
+ * hfid (in)     : heap file identifier
+ * chk_objs (in) : check relocation context
+ */
+static DISK_ISVALID
+heap_check_all_pages_by_file_table (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_CHKALL_RELOCOIDS * chk_objs)
+{
+  int error_code = NO_ERROR;
+
+  error_code =
+    flre_map_pages (thread_p, &hfid->vfid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, heap_file_map_chkreloc,
+		    chk_objs);
+  if (error_code == ER_FAILED)
+    {
+      assert_release (false);
+      return DISK_INVALID;
+    }
+  else if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       return DISK_ERROR;
     }
-
-  while (iter_p)
-    {
-      checked++;
-
-      if (file_alloc_iterator_get_current_page (thread_p, &iter, &vpid) == NULL)
-	{
-	  valid_pg = DISK_ERROR;
-	  break;
-	}
-
-      assert (!VPID_ISNULL (&vpid));
-
-      if (file_isvalid_page_partof (thread_p, &vpid, &hfid->vfid) != DISK_VALID)
-	{
-	  valid_pg = DISK_ERROR;
-	  iter_p = file_alloc_iterator_next (thread_p, iter_p);
-	  continue;
-	}
-
-      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL, NULL);
-      if (pgptr == NULL)
-	{
-	  valid_pg = DISK_ERROR;
-	  iter_p = file_alloc_iterator_next (thread_p, iter_p);
-	  continue;
-	}
-
-#ifdef SPAGE_DEBUG
-      if (spage_check (thread_p, pgptr) != NO_ERROR)
-	{
-	  valid_pg = DISK_ERROR;
-	}
-#endif
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
-
-      if (chk_objs != NULL)
-	{
-	  valid_pg = heap_chkreloc_next (thread_p, chk_objs, pgptr);
-	}
-
-      pgbuf_unfix_and_init (thread_p, pgptr);
-
-      iter_p = file_alloc_iterator_next (thread_p, iter_p);
-    }
-
-  *num_checked = checked;
-
-  return valid_pg;
+  return DISK_VALID;
 }
+#endif /* SA_MODE */
 
 /*
  * heap_check_all_pages () - Validate all pages known by given heap vs file manger
@@ -13598,9 +13588,11 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
   DISK_ISVALID tmp_valid_pg = DISK_VALID;
   INT32 npages = 0, tmp_npages;
   int i;
-  int file_numpages;
   HEAP_CHKALL_RELOCOIDS chk;
   HEAP_CHKALL_RELOCOIDS *chk_objs = &chk;
+#if defined (SA_MODE)
+  int file_numpages;
+#endif /* SA_MODE */
 
   /* todo: update for new design */
   if (true)
@@ -13621,8 +13613,12 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
   /* Scan every page of the heap to find out if they are valid */
   valid_pg = heap_check_all_pages_by_heapchain (thread_p, hfid, chk_objs, &npages);
 
-  file_numpages = file_get_numpages (thread_p, &hfid->vfid);
-
+#if defined (SA_MODE)
+  if (flre_get_num_user_pages (thread_p, &hfid->vfid, &file_numpages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return valid_pg == DISK_VALID ? DISK_ERROR : valid_pg;
+    }
   if (file_numpages != -1 && file_numpages != npages)
     {
       if (chk_objs != NULL)
@@ -13637,7 +13633,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
        * Scan every page of the heap using allocset.
        * This is for getting more information of the corrupted pages.
        */
-      tmp_valid_pg = heap_check_all_pages_by_allocset (thread_p, hfid, chk_objs, &tmp_npages);
+      tmp_valid_pg = heap_check_all_pages_by_file_table (thread_p, hfid, chk_objs);
 
       if (chk_objs != NULL)
 	{
@@ -13653,6 +13649,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	}
     }
   else
+#endif /* SA_MODE */
     {
       if (chk_objs != NULL)
 	{

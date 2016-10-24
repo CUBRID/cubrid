@@ -195,29 +195,11 @@ struct file_alloc_vpids
   int index;
 };
 
-typedef struct file_alloc_iterator FILE_ALLOC_ITERATOR;
-struct file_alloc_iterator
-{
-  VFID *vfid;
-  VPID current_vpid;
-  int current_index;
-  int num_pages;
-};
-
 extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern FILE_TYPE file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr);
 extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *area_des, int maxsize);
-extern INT32 file_get_numpages (THREAD_ENTRY * thread_p, const VFID * vfid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern INT32 file_get_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern INT32 file_get_numpages_plus_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 * numpages,
-						       INT32 * overhead_numpages);
-#endif
 extern VPID *file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_vpid);
 extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 npages);
-extern int file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * nth_vpids, INT32 start_nthpage,
-			       INT32 num_desired_pages);
-extern VPID *file_find_last_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * last_vpid);
 extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid);
 extern VPID *file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid, INT32 npages,
 			       const VPID * near_vpid, bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
@@ -245,10 +227,6 @@ extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid
 extern DISK_ISVALID file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p);
 
 extern int file_typecache_clear (void);
-
-extern FILE_ALLOC_ITERATOR *file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid, FILE_ALLOC_ITERATOR * iter);
-extern VPID *file_alloc_iterator_get_current_page (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter, VPID * vpid);
-extern FILE_ALLOC_ITERATOR *file_alloc_iterator_next (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter);
 
 /* This are for debugging purposes */
 extern int file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
