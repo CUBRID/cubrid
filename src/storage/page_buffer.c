@@ -11329,6 +11329,15 @@ pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
   assert_release (holder != NULL);
 
   watcher = holder->last_watcher;
+#if !defined(NDEBUG)
+  while (watcher != NULL)
+    {
+      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+      watcher = watcher->prev;
+    }
+  watcher = holder->last_watcher;
+#endif
+
   while (watcher != NULL)
     {
       if (watcher == watcher_object)
@@ -11692,7 +11701,9 @@ void
 pgbuf_watcher_init_debug (PGBUF_WATCHER * watcher, const char *caller_file, const int caller_line, bool add)
 {
   char *p;
-
+#if !defined(NDEBUG)
+  assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+#endif
   p = (char *) caller_file + strlen (caller_file);
   while (p)
     {
