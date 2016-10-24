@@ -1204,7 +1204,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
   char *sql_hash_text = NULL;
   char *sql_user_text = NULL;
   char *sql_plan_text = NULL;
-  struct timeval time_stored, current_time;
+  struct timeval time_stored;
   int sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
   char *strbuf = NULL;
 
@@ -1487,7 +1487,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
     }
   else
     {
-      gettimeofday (&current_time, NULL);
       if (xcache_need_cleanup () != XCACHE_CLEANUP_NONE && xcache_Cleanup_flag == 0)
 	{
 	  /* Try to clean up some of the oldest entries. */
@@ -1998,6 +1997,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       count = 0;
       /* Collect candidates for cleanup. */
       lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+      gettimeofday (&current_time, NULL);
 
       while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL && count < xcache_Soft_capacity)
 	{
