@@ -99,7 +99,7 @@ struct xcache
 XCACHE xcache_Global = {
   false,			/* enabled */
   0,				/* soft_capacity */
-  {0},				/* last_cleaned_time */
+  {0, 0},			/* last_cleaned_time */
   360,				/* time_threshold */
   LF_HASH_TABLE_INITIALIZER,	/* ht */
   LF_FREELIST_INITIALIZER,	/* freelist */
@@ -310,6 +310,9 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       return error_code;
     }
+
+  /* set last_cleaned_time as current */
+  gettimeofday (&xcache_Last_cleaned_time, NULL);
 
   xcache_log ("init successful.\n");
 
@@ -1717,7 +1720,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Deletes:                    %ld\n", XCACHE_STAT_GET (deletes));
   fprintf (fp, "Fix:                        %ld\n", XCACHE_STAT_GET (fix));
   fprintf (fp, "Unfix:                      %ld\n", XCACHE_STAT_GET (unfix));
-  fprintf (fp, "Full cache cleanups:        %ld\n", XCACHE_STAT_GET (cleanups));
+  fprintf (fp, "Cache cleanups:             %ld\n", XCACHE_STAT_GET (cleanups));
   fprintf (fp, "Deletes at cleanup:	    %ld\n", XCACHE_STAT_GET (deletes_at_cleanup));
   /* add overflow, RT checks. */
 
