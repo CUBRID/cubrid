@@ -248,6 +248,7 @@ static void boot_shutdown_server_at_exit (void);
 #endif /* SERVER_MODE */
 
 static int boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path, const char *log_prefix);
+STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ (ALWAYS_INLINE);
 
 /*
  * bo_server) -set server's status, UP or DOWN
@@ -556,8 +557,6 @@ boot_max_pages_new_volume (void)
 static int
 boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_ACTION delete_action)
 {
-  HEAP_OPERATION_CONTEXT update_context;
-  RECDES recdes;		/* Record descriptor which describe the volume. */
   char *vlabel = NULL;
   int vol_fd;
   int error_code = NO_ERROR;
@@ -621,13 +620,10 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
 
   if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
     {
-      recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
-      recdes.data = (char *) boot_Db_parm;
-
-      heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+      error_code = boot_db_parm_update_heap (thread_p);
+      if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  boot_Db_parm->temp_nvols++;
 	  if (boot_Db_parm->temp_nvols == 1)
 	    {
@@ -638,7 +634,6 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
 	      boot_Db_parm->temp_last_volid = volid;
 	    }
 	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-	  error_code = ER_FAILED;
 	  goto end;
 	}
 
@@ -1067,7 +1062,6 @@ boot_get_temp_temp_vol_max_npages (void)
 static int
 boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action)
 {
-  RECDES recdes;
   int error_code = NO_ERROR;
   REMOVE_TEMP_VOL_ACTION delete_action_arg;
 
@@ -1099,18 +1093,19 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
 
   if (boot_Db_parm->temp_nvols != 0 || boot_Db_parm->temp_last_volid != NULL_VOLID)
     {
-      HEAP_OPERATION_CONTEXT update_context;
       boot_Db_parm->temp_nvols = 0;
       boot_Db_parm->temp_last_volid = NULL_VOLID;
-      recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
-      recdes.data = (char *) boot_Db_parm;
 
-      heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-      if (heap_update_logical (thread_p, &update_context) != NO_ERROR
-	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+      error_code = boot_db_parm_update_heap (thread_p);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
 	}
     }
   else
@@ -2339,7 +2334,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   int tran_index = NULL_TRAN_INDEX;
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
-  RECDES recdes;
 #if defined(SERVER_MODE)
   int common_ha_mode;
 #endif
@@ -2855,21 +2849,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* If there is an existing query area, delete it. */
   if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
     {
-      HEAP_OPERATION_CONTEXT update_context;
-
       (void) flre_destroy (thread_p, &boot_Db_parm->query_vfid);
       boot_Db_parm->query_vfid.fileid = NULL_FILEID;
       boot_Db_parm->query_vfid.volid = NULL_VOLID;
 
-      recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
-      recdes.data = (char *) boot_Db_parm;
-
-      heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-      if (heap_update_logical (thread_p, &update_context) != NO_ERROR
-	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+      error_code = boot_db_parm_update_heap (thread_p);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+	{
+	  assert_release (false);
 	  goto error;
 	}
     }
@@ -4941,7 +4933,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   RECDES recdes;
   int error_code;
   DBDEF_VOL_EXT_INFO ext_info;
-  HEAP_OPERATION_CONTEXT heapop_context, update_context;
+  HEAP_OPERATION_CONTEXT heapop_context;
+  HEAP_SCANCACHE scan_cache_boot;
 
   assert (client_credential != NULL);
 
@@ -5055,6 +5048,14 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
+  /* we need to manually add root class HFID to cache. the record is not yet ready and cannot be read from there */
+  error_code =
+    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
 #if 1				/* TODO */
   if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING, -1, &boot_Db_parm->rootclass_oid, -1,
@@ -5110,10 +5111,10 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
 
   /* Update boot_Db_parm */
-  heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-			      &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+  error_code = boot_db_parm_update_heap (thread_p);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -6094,9 +6095,7 @@ int
 boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID volid)
 {
   VPID vpid_boot_bp_parm;
-  RECDES recdes_boot_db_parm;
   BOOT_DB_PARM save_boot_db_parm = *boot_Db_parm;
-  HEAP_OPERATION_CONTEXT update_context;
 
   int error_code = NO_ERROR;
 
@@ -6132,12 +6131,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
   log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm), &vpid_boot_bp_parm);
 
-  recdes_boot_db_parm.length = sizeof (*boot_Db_parm);
-  recdes_boot_db_parm.data = (char *) boot_Db_parm;
-  recdes_boot_db_parm.type = REC_HOME;
-  heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-			      &recdes_boot_db_parm, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-  error_code = heap_update_logical (thread_p, &update_context);
+  error_code = boot_db_parm_update_heap (thread_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -6151,5 +6145,40 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);	/* label? */
 
 exit:
+  return error_code;
+}
+
+/*
+ * boot_db_parm_update_heap () - update heap record for boot_Db_parm
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ */
+STATIC_INLINE int
+boot_db_parm_update_heap (THREAD_ENTRY * thread_p)
+{
+  HEAP_SCANCACHE scan_cache;
+  HEAP_OPERATION_CONTEXT update_context;
+  RECDES recdes;
+
+  int error_code = NO_ERROR;
+
+  recdes.length = recdes.area_size = sizeof (*boot_Db_parm);
+  recdes.data = (char *) boot_Db_parm;
+
+  /* note that we start a scan cache with NULL class_oid. That's because boot_Db_parm_oid doesn't really have a class!
+   * we have to start the scan cache this way so it can cache also cache file type for heap_update_logical.
+   * otherwise it will try to read it from cache using root class OID. which actually has its own heap file and its own
+   * heap file type.
+   */
+  heap_scancache_start_modify (thread_p, &scan_cache, &boot_Db_parm->hfid, NULL, SINGLE_ROW_UPDATE, NULL);
+  heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
+			      &recdes, &scan_cache, UPDATE_INPLACE_CURRENT_MVCCID);
+  error_code = heap_update_logical (thread_p, &update_context);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  heap_scancache_end (thread_p, &scan_cache);
   return error_code;
 }

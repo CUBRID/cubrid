@@ -862,8 +862,6 @@ static int heap_hfid_table_entry_init (void *unique_stat);
 static int heap_hfid_table_entry_key_copy (void *src, void *dest);
 static unsigned int heap_hfid_table_entry_key_hash (void *key, int hash_table_size);
 static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
-static int heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
-					   FILE_TYPE ftype);
 static int heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE * ftype_out);
 static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
 
@@ -23306,7 +23304,7 @@ exit:
  * hfid (in)	  : Heap file ID.
  * ftype (in)     : FILE_HEAP or FILE_HEAP_REUSE_SLOTS.
  */
-static int
+int
 heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE ftype)
 {
   int error_code = NO_ERROR;
