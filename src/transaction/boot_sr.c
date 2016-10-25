@@ -248,7 +248,7 @@ static void boot_shutdown_server_at_exit (void);
 #endif /* SERVER_MODE */
 
 static int boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path, const char *log_prefix);
-STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ (ALWAYS_INLINE);
+STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * bo_server) -set server's status, UP or DOWN
