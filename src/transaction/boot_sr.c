@@ -6172,6 +6172,8 @@ boot_db_parm_update_heap (THREAD_ENTRY * thread_p)
    * heap file type.
    */
   heap_scancache_start_modify (thread_p, &scan_cache, &boot_Db_parm->hfid, NULL, SINGLE_ROW_UPDATE, NULL);
+  /* hack the class to avoid heap_scancache_check_with_hfid. */
+  scan_cache.node.class_oid = *oid_Root_class_oid;
   heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
 			      &recdes, &scan_cache, UPDATE_INPLACE_CURRENT_MVCCID);
   error_code = heap_update_logical (thread_p, &update_context);

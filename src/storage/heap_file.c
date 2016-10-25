@@ -6475,6 +6475,10 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
 	  int r;
 
 	  /* scancache is not on our heap file, reinitialize it */
+	  /* this is a very dangerous thing to do and is very risky. the caller may have done a big mistake.
+	   * we could use it as backup for release run, but we should catch it on debug.
+	   * todo: add assert (false); here
+	   */
 	  r = heap_scancache_reset_modify (thread_p, *scan_cache, hfid, class_oid);
 	  if (r != NO_ERROR)
 	    {
