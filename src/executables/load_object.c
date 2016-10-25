@@ -1008,7 +1008,7 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	{
 	  /* skip prev version lsa */
-	  or_advance (buf, sizeof (LOG_LSA));
+	  or_advance (buf, OR_MVCC_PREV_VERSION_LSA_SIZE);
 	}
 
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;

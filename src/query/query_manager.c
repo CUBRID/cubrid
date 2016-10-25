@@ -995,8 +995,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
     }
 
   error_code =
-    xcache_insert (thread_p, context, stream, &creator_oid, n_oid_list, class_oid_list_p, class_locks, tcard_list_p,
-		   &cache_entry_p);
+    xcache_insert (thread_p, context, stream, n_oid_list, class_oid_list_p, class_locks, tcard_list_p, &cache_entry_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

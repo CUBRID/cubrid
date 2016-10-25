@@ -10582,6 +10582,9 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   bool is_zipped = false;
   char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_ZIP *log_unzip_ptr = NULL;
+  char *area = NULL;
+  SCAN_CODE scan = S_SUCCESS;
+  bool area_was_mallocated = false;
 
   /* assert log record is not in prior list */
   oldest_prior_lsa = *log_get_append_lsa ();
@@ -10629,7 +10632,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 		      || log_rec_header->type == LOG_UNDOREDO_DATA
 		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_FATAL_ERROR, 1, "Expecting undo/undoredo log record");
-      return S_ERROR;
+      scan = S_ERROR;
+      goto exit;
     }
 
   /* get undo record */
@@ -10655,11 +10659,22 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   else
     {
       /* Need to copy the data into a contiguous area */
-      char *area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
 
-      /* The records processed in this function shouldn't be overflow records because of the different way of 
-       * logging REC_BIGONE updates. In this way, IO_PAGESIZE is the maximum size one can have. */
-      assert (udata_size <= IO_MAX_PAGE_SIZE);
+      if (udata_size <= IO_MAX_PAGE_SIZE)
+	{
+	  area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
+	}
+      else
+	{
+	  area = (char *) malloc (udata_size);
+	  if (area == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, udata_size);
+	      scan = S_ERROR;
+	      goto exit;
+	    }
+	  area_was_mallocated = true;
+	}
 
       /* Copy the data */
       logpb_copy_from_log (thread_p, area, udata_size, &process_lsa, log_page_p);
@@ -10672,7 +10687,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       if (log_unzip_ptr == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_get_undo_record");
-	  return S_ERROR;
+	  scan = S_ERROR;
+	  goto exit;
 	}
 
       if (log_unzip (log_unzip_ptr, udata_size, (char *) undo_data))
@@ -10683,8 +10699,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       else
 	{
 	  assert (false);
-	  log_zip_free (log_unzip_ptr);
-	  return S_ERROR;
+	  scan = S_ERROR;
+	  goto exit;
 	}
     }
 
@@ -10700,19 +10716,22 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
        */
       /* do not use unary minus because slot_p->record_length is unsigned */
       recdes->length *= -1;
-      if (log_unzip_ptr != NULL)
-	{
-	  log_zip_free (log_unzip_ptr);
-	}
 
-      return S_DOESNT_FIT;
+      scan = S_DOESNT_FIT;
+      goto exit;
     }
+
   memcpy (recdes->data, (char *) (undo_data) + sizeof (recdes->type), recdes->length);
 
+exit:
+  if (area_was_mallocated)
+    {
+      free (area);
+    }
   if (log_unzip_ptr != NULL)
     {
       log_zip_free (log_unzip_ptr);
     }
 
-  return S_SUCCESS;
+  return scan;
 }

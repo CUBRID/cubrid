@@ -5987,7 +5987,7 @@ smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *
       return;
     }
 
-  xperfmon_server_copy_global_stats (thread_p, stats);
+  xperfmon_server_copy_global_stats (stats);
   perfmon_pack_stats (reply, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, nr_statistic_values * sizeof (UINT64));
   free_and_init (stats);

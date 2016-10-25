@@ -2775,12 +2775,14 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
   } info;
   struct
   {
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     unsigned char size;
     char buf[DB_SMALL_CHAR_BUF_SIZE];
   } sm;
@@ -2789,6 +2791,7 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     int size;
     char *buf;
   } medium;
@@ -2797,6 +2800,7 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     DB_LARGE_STRING *str;
   } large;
 };
