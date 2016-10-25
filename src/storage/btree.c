@@ -8070,8 +8070,6 @@ btree_check_all (THREAD_ENTRY * thread_p)
 {
   DISK_ISVALID valid, allvalid;	/* Validation return code */
   BTID btid;
-  HEAP_SCANCACHE scan_cache;
-  RECDES peek_recdes;
 
   OID class_oid = OID_INITIALIZER;
 

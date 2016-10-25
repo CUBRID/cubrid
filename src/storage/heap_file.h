@@ -168,6 +168,7 @@ struct heap_hfid_table_entry
   UINT64 del_id;		/* delete transaction ID (for lock free) */
 
   HFID hfid;			/* value - HFID */
+  FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS */
 };
 
 typedef enum
@@ -574,6 +575,8 @@ extern int heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p, LOG_RCV *
 extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length, void *data);
 
 extern int heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
+extern int heap_get_hfid_and_file_type_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
+						       FILE_TYPE * ftype_out);
 extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
 
 extern void heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid);

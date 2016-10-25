@@ -62,33 +62,7 @@
 
 #include "fault_injection.h"
 
-#define FILE_TYPE_CACHE_SIZE 512
-
-
-/* TODO: STL::vector for file_Type_cache.entry */
-typedef struct file_type_cache FILE_TYPE_CACHE;
-struct file_type_cache
-{
-  struct
-  {
-    VFID vfid;
-    FILE_TYPE file_type;
-    int timestamp;
-  } entry[FILE_TYPE_CACHE_SIZE];
-  int max;
-  int clock;
-};
-
-/* TODO: STL::vector for file_Type_cache.entry */
-static FILE_TYPE_CACHE file_Type_cache;
-static pthread_mutex_t file_Type_cache_lock = PTHREAD_MUTEX_INITIALIZER;
-
 static const char *file_type_to_string (FILE_TYPE fstruct_type);
-
-static FILE_TYPE file_type_cache_check (const VFID * vfid);
-static int file_type_cache_add_entry (const VFID * vfid, FILE_TYPE type);
-static int file_type_cache_entry_remove (const VFID * vfid);
-
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p);
 
 /*
@@ -131,154 +105,6 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "HEAP_REUSE_SLOTS";
     }
   return "UNKNOWN";
-}
-
-/* TODO: STL::vector for file_Type_cache.entry */
-/*
- * file_type_cache_check () - Find type of the given file if it has already been
- *                          cached
- *   return: file_type
- *   vfid(in): Complete file identifier
- */
-static FILE_TYPE
-file_type_cache_check (const VFID * vfid)
-{
-  FILE_TYPE file_type = FILE_UNKNOWN_TYPE;
-  int i;
-  int rv;
-
-  rv = pthread_mutex_lock (&file_Type_cache_lock);
-
-  for (i = 0; i < file_Type_cache.max; i++)
-    {
-      if (VFID_EQ (vfid, &file_Type_cache.entry[i].vfid))
-	{
-	  file_Type_cache.entry[i].timestamp = file_Type_cache.clock++;
-	  file_type = file_Type_cache.entry[i].file_type;
-	  break;
-	}
-    }
-
-  pthread_mutex_unlock (&file_Type_cache_lock);
-
-  return file_type;
-}
-
-/* TODO: STL::vector for file_Type_cache.entry */
-/*
- * file_type_cache_add_entry () - Adds an entry to the cache
- *   return: NO_ERROR
- *   vfid(in): Complete file identifier
- *   type(in): File type
- *
- * Note: This may cause the eviction of a previous entry if the cache is full.
- */
-static int
-file_type_cache_add_entry (const VFID * vfid, FILE_TYPE type)
-{
-  int candidate;
-  int rv;
-  int ret = NO_ERROR;
-
-  rv = pthread_mutex_lock (&file_Type_cache_lock);
-
-  if (file_Type_cache.max < FILE_TYPE_CACHE_SIZE)
-    {
-      /* There's room at the inn, and we'll just add this to the end of the array of the entries. */
-      candidate = file_Type_cache.max;
-      file_Type_cache.max += 1;
-    }
-  else
-    {
-      /* The inn is full, and we have to evict someone.  Search for the least recently used entry and kick it out. */
-      int i, timestamp;
-
-      candidate = 0;
-      timestamp = file_Type_cache.entry[0].timestamp;
-      for (i = 1; i < FILE_TYPE_CACHE_SIZE; i++)
-	{
-	  if (file_Type_cache.entry[i].timestamp < timestamp)
-	    {
-	      candidate = i;
-	      timestamp = file_Type_cache.entry[i].timestamp;
-	    }
-	}
-    }
-
-  file_Type_cache.entry[candidate].vfid = *vfid;
-  file_Type_cache.entry[candidate].file_type = type;
-  file_Type_cache.entry[candidate].timestamp = file_Type_cache.clock++;
-
-  pthread_mutex_unlock (&file_Type_cache_lock);
-
-  return ret;
-}
-
-/* TODO: STL::vector for file_Type_cache.entry */
-/*
- * file_type_cache_entry_remove () - Removes the cache entry associated with the
- *                                 given vfid
- *   return: NO_ERROR
- *   vfid(in): Complete file identifier
- *
- * Note: Does so by "pulling down" the last entry in the cache array to
- *       overwrite the selected entry (if present, or if not already the last
- *       entry in the array).
- */
-static int
-file_type_cache_entry_remove (const VFID * vfid)
-{
-  int i;
-  int rv;
-  int ret = NO_ERROR;
-
-  rv = pthread_mutex_lock (&file_Type_cache_lock);
-
-  for (i = 0; i < file_Type_cache.max; i++)
-    {
-      if (VFID_EQ (vfid, &file_Type_cache.entry[i].vfid))
-	{
-	  file_Type_cache.max -= 1;
-	  /* Don't bother pulling down the last entry in the array if it's the one we're removing. */
-	  if (file_Type_cache.max > i)
-	    {
-	      file_Type_cache.entry[i] = file_Type_cache.entry[file_Type_cache.max];
-	    }
-
-	  break;
-	}
-    }
-
-  pthread_mutex_unlock (&file_Type_cache_lock);
-
-  return ret;
-}
-
-/*
- * file_typecache_clear () - Clear out the file type cache
- *   return: NO_ERROR
- *
- * Note: Ought to be private, but needs to be called at abort time (from
- *       log_abort_local) because it's possible to have files destroyed then
- *       without calling file_destroy, and so there's a possibility of leaving
- *       stale info in the cache unless we clobber all of it.  Could probably
- *       still be private if we had a way of registering anonymous callbacks
- *       with log_abort_local.
- */
-int
-file_typecache_clear (void)
-{
-  int rv;
-  int ret = NO_ERROR;
-
-  rv = pthread_mutex_lock (&file_Type_cache_lock);
-
-  file_Type_cache.max = 0;
-  file_Type_cache.clock = 0;
-
-  pthread_mutex_unlock (&file_Type_cache_lock);
-
-  return ret;
 }
 
 static void
@@ -6149,12 +5975,6 @@ flre_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (ftype_out != NULL);
 
-  *ftype_out = file_type_cache_check (vfid);
-  if (*ftype_out != FILE_UNKNOWN_TYPE)
-    {
-      return NO_ERROR;
-    }
-
   /* read from file header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
@@ -6189,22 +6009,9 @@ flre_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp)
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
   FLRE_HEADER *fhead = NULL;
-  FILE_TYPE ftype;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (is_temp != NULL);
-
-  ftype = file_type_cache_check (vfid);
-  if (FILE_TYPE_IS_ALWAYS_TEMP (ftype))
-    {
-      *is_temp = false;
-      return NO_ERROR;
-    }
-  else if (FILE_TYPE_IS_NEVER_TEMP (ftype))
-    {
-      *is_temp = true;
-      return NO_ERROR;
-    }
 
   /* read from file header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);

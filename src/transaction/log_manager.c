@@ -6063,8 +6063,6 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
   /* destroy transaction's temporary files */
   flre_tempcache_drop_tran_temp_files (thread_p);
 
-  (void) file_typecache_clear ();
-
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
       /* 

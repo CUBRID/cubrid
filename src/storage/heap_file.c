@@ -862,8 +862,9 @@ static int heap_hfid_table_entry_init (void *unique_stat);
 static int heap_hfid_table_entry_key_copy (void *src, void *dest);
 static unsigned int heap_hfid_table_entry_key_hash (void *key, int hash_table_size);
 static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
-static int heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
-static int heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
+static int heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
+					   FILE_TYPE ftype);
+static int heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE * ftype_out);
 static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
 
 static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid);
@@ -5079,7 +5080,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
 	    }
-	  error_code = heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid);
+	  error_code = heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid, file_type);
 	  if (error_code != NO_ERROR)
 	    {
 	      /* could not cache */
@@ -5129,7 +5130,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
   hfid->hpgid = vpid.pageid;
 
-  if (heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid) != NO_ERROR)
+  if (heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid, file_type) != NO_ERROR)
     {
       /* Failed to cache HFID. */
       assert_release (false);
@@ -6530,6 +6531,17 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	      goto exit_on_error;
 	    }
 	}
+
+      ret =
+	heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &scan_cache->node.hfid,
+						    &scan_cache->file_type);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return ret;
+	}
+      assert (hfid == NULL || HFID_EQ (hfid, &scan_cache->node.hfid));
+      assert (scan_cache->file_type == FILE_HEAP || scan_cache->file_type == FILE_HEAP_REUSE_SLOTS);
     }
   else
     {
@@ -6537,29 +6549,28 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
        * Scanning the instances of any class in the heap
        */
       OID_SET_NULL (&scan_cache->node.class_oid);
-    }
 
-
-  if (hfid == NULL)
-    {
-      HFID_SET_NULL (&scan_cache->node.hfid);
-      scan_cache->node.hfid.vfid.volid = NULL_VOLID;
-      scan_cache->file_type = FILE_UNKNOWN_TYPE;
-    }
-  else
-    {
-      scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
-      scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
-      scan_cache->node.hfid.hpgid = hfid->hpgid;
-      if (flre_get_type (thread_p, &hfid->vfid, &scan_cache->file_type) != NO_ERROR)
+      if (hfid == NULL)
 	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
+	  HFID_SET_NULL (&scan_cache->node.hfid);
+	  scan_cache->node.hfid.vfid.volid = NULL_VOLID;
+	  scan_cache->file_type = FILE_UNKNOWN_TYPE;
 	}
-      if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
+      else
 	{
-	  assert_release (false);
-	  goto exit_on_error;
+	  scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
+	  scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
+	  scan_cache->node.hfid.hpgid = hfid->hpgid;
+	  if (flre_get_type (thread_p, &hfid->vfid, &scan_cache->file_type) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
+	  if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
+	    {
+	      assert_release (false);
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -6775,32 +6786,43 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 
   if (class_oid != NULL)
     {
-      scan_cache->node.class_oid = *class_oid;
+      if (!OID_EQ (class_oid, &scan_cache->node.class_oid))
+	{
+	  ret =
+	    heap_get_hfid_and_file_type_from_class_oid (thread_p, class_oid, &scan_cache->node.hfid,
+							&scan_cache->file_type);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return ret;
+	    }
+	  assert (HFID_EQ (&scan_cache->node.hfid, hfid));
+	  scan_cache->node.class_oid = *class_oid;
+	}
     }
   else
     {
       OID_SET_NULL (&scan_cache->node.class_oid);
-    }
 
-  if (!HFID_EQ (&scan_cache->node.hfid, hfid))
-    {
-      scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
-      scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
-      scan_cache->node.hfid.hpgid = hfid->hpgid;
-
-      ret = flre_get_type (thread_p, &hfid->vfid, &scan_cache->file_type);
-      if (ret != NO_ERROR)
+      if (!HFID_EQ (&scan_cache->node.hfid, hfid))
 	{
-	  ASSERT_ERROR ();
-	  return ret;
-	}
-      if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
-	{
-	  assert_release (false);
-	  return ER_FAILED;
+	  scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
+	  scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
+	  scan_cache->node.hfid.hpgid = hfid->hpgid;
+
+	  ret = flre_get_type (thread_p, &hfid->vfid, &scan_cache->file_type);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return ret;
+	    }
+	  if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
 	}
     }
-
   scan_cache->page_latch = X_LOCK;
 
   return ret;
@@ -16002,6 +16024,7 @@ heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  INT16 slotid;
   INT16 recdes_type;
   int error_code;
 
@@ -16569,9 +16592,35 @@ heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HF
 {
   int error_code = NO_ERROR;
 
-  error_code = heap_get_hfid_from_cache (thread_p, class_oid, hfid);
+  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid, NULL);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return error_code;
+}
+
+/*
+ * heap_get_hfid_and_file_type_from_class_oid () - get HFID and file type for class.
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * class_oid (in)  : class OID
+ * hfid_out (out)  : output heap file identifier
+ * ftype_out (out) : output heap file type
+ */
+int
+heap_get_hfid_and_file_type_from_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
+					    FILE_TYPE * ftype_out)
+{
+  int error_code = NO_ERROR;
+
+  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       return error_code;
     }
 
@@ -19465,11 +19514,12 @@ heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
   else
     {
-      if (flre_get_type (thread_p, &context->hfid.vfid, &file_type) != NO_ERROR)
+      if (heap_get_hfid_and_file_type_from_class_oid (thread_p, &context->class_oid, NULL, &file_type) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return FILE_UNKNOWN_TYPE;
 	}
+      assert (file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS);
       return file_type;
     }
 }
@@ -22968,6 +23018,7 @@ heap_hfid_table_entry_init (void *entry)
   entry_p->hfid.vfid.fileid = NULL_FILEID;
   entry_p->hfid.vfid.volid = NULL_VOLID;
   entry_p->hfid.hpgid = NULL_PAGEID;
+  entry_p->ftype = FILE_UNKNOWN_TYPE;
 
   return NO_ERROR;
 }
@@ -23218,7 +23269,8 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
 	    }
 
 	  error_code =
-	    vacuum_heap_page (thread_p, worker.heap_objects, worker.n_heap_objects, threshold_mvccid, reusable, false);
+	    vacuum_heap_page (thread_p, worker.heap_objects, worker.n_heap_objects, threshold_mvccid,
+			      &upd_scancache->node.hfid, &reusable, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto exit;
@@ -23252,15 +23304,17 @@ exit:
  * thread_p (in)  : Thread entry.
  * class_oid (in) : Class OID.
  * hfid (in)	  : Heap file ID.
+ * ftype (in)     : FILE_HEAP or FILE_HEAP_REUSE_SLOTS.
  */
 static int
-heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid)
+heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE ftype)
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
+  assert (ftype == FILE_HEAP || ftype == FILE_HEAP_REUSE_SLOTS);
 
   if (class_oid == NULL || OID_ISNULL (class_oid))
     {
@@ -23278,6 +23332,7 @@ heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, 
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
   HFID_COPY (&entry->hfid, hfid);
+  entry->ftype = ftype;
   lf_tran_end_with_mb (t_entry);
 
   /* Successfully cached. */
@@ -23285,18 +23340,18 @@ heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, 
 }
 
 /*
- * heap_get_hfid_from_cache () - returns the HFID of the
+ * heap_hfid_cache_get () - returns the HFID of the
  *			      class with the given class OID
  *   return: error code
  *   thread_p  (in) :
  *   class OID (in) : the class OID for which the entry will be returned
- *   hfid      (out): 
+ *   hfid_out  (out): 
  *
  *   Note: if the entry is not found, one will be inserted and the HFID is
  *	retrieved from the class record.
  */
 static int
-heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid)
+heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out)
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
@@ -23308,26 +23363,49 @@ heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid, HFID *
     lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, NULL);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return error_code;
     }
   assert (entry != NULL);
 
+
   if (entry->hfid.hpgid == NULL_PAGEID || entry->hfid.vfid.fileid == NULL_FILEID
       || entry->hfid.vfid.volid == NULL_VOLID)
     {
+      HFID hfid_local = HFID_INITIALIZER;
       /* this is either a newly inserted entry or one with incomplete information that is currently being filled by
        * another transaction. We need to retrieve the HFID from the class record. We do not care that we are
        * overwriting the information, since it must be always the same (the HFID never changes for the same class OID). */
-      error_code = heap_get_hfid_from_class_record (thread_p, class_oid, &entry->hfid);
+      error_code = heap_get_hfid_from_class_record (thread_p, class_oid, &hfid_local);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      entry->hfid = hfid_local;
     }
+  assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
+	  && entry->hfid.vfid.volid != NULL_VOLID);
+  if (entry->ftype == FILE_UNKNOWN_TYPE)
+    {
+      FILE_TYPE ftype_local;
+      error_code = flre_get_type (thread_p, &entry->hfid.vfid, &ftype_local);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      entry->ftype = ftype_local;
+    }
+  assert (entry->ftype == FILE_HEAP || entry->ftype == FILE_HEAP_REUSE_SLOTS);
 
-  if (error_code == NO_ERROR)
+  if (hfid_out != NULL)
     {
-      HFID_COPY (hfid, &entry->hfid);
+      *hfid_out = entry->hfid;
     }
-  else
+  if (ftype_out != NULL)
     {
-      HFID_SET_NULL (hfid);
+      *ftype_out = entry->ftype;
     }
 
   lf_tran_end_with_mb (t_entry);

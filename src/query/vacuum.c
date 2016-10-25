@@ -613,7 +613,7 @@ static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID 
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
 static void vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slots, PGSLOTID * slots,
@@ -1019,6 +1019,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
   VACUUM_HEAP_OBJECT *obj_ptr;
   int error_code = NO_ERROR;
   VFID vfid = VFID_INITIALIZER;
+  HFID hfid = HFID_INITIALIZER;
   bool reusable = false;
   int object_count = 0;
 
@@ -1040,18 +1041,9 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
     {
       if (!VFID_EQ (&vfid, &page_ptr->vfid))
 	{
-	  FILE_TYPE type;
-	  /* Update VFID. */
 	  VFID_COPY (&vfid, &page_ptr->vfid);
-	  /* Update reusable. */
-	  error_code = flre_get_type (thread_p, &vfid, &type);
-	  if (error_code != NO_ERROR)
-	    {
-	      assert_release (false);
-	      er_clear ();
-	      error_code = NO_ERROR;
-	    }
-	  reusable = (type == FILE_HEAP_REUSE_SLOTS);
+	  /* Reset HFID */
+	  HFID_SET_NULL (&hfid);
 	}
 
       /* Find all objects for this page. */
@@ -1063,7 +1055,8 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	  object_count++;
 	}
       /* Vacuum page. */
-      error_code = vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, reusable, was_interrupted);
+      error_code =
+	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
@@ -1089,12 +1082,13 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
  * heap_objects (in)	 : Array of objects to vacuum.
  * n_heap_objects (in)	 : Number of objects.
  * threshold_mvccid (in) : Threshold MVCCID used to vacuum.
- * reusable (in)	 : True if object slots are reusable.
+ * hfid (in/out)         : Heap file identifier
+ * reusable (in/out)	 : True if object slots are reusable.
  * was_interrutped (in)  : True if same job was executed and interrupted.
  */
 int
 vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
-		  MVCCID threshold_mvccid, bool reusable, bool was_interrupted)
+		  MVCCID threshold_mvccid, HFID * hfid, bool * reusable, bool was_interrupted)
 {
   VACUUM_HEAP_HELPER helper;	/* Vacuum heap helper. */
   HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
@@ -1145,13 +1139,11 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 #endif /* !NDEBUG */
 
   /* Initialize helper. */
-  helper.reusable = reusable;
   helper.home_page = NULL;
   helper.forward_page = NULL;
   helper.n_vacuumed = 0;
   helper.n_bulk_vacuumed = 0;
   helper.initial_home_free_space = -1;
-  HFID_SET_NULL (&helper.hfid);
   VFID_SET_NULL (&helper.overflow_vfid);
 
   /* Fix heap page. */
@@ -1166,6 +1158,26 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 
   helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page, NULL);
+
+  if (HFID_IS_NULL (hfid))
+    {
+      /* file has changed and we must get HFID and file type */
+      error_code = vacuum_heap_get_hfid_and_file_type (thread_p, &helper);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to get hfid.\n");
+	  return error_code;
+	}
+      /* we need to also output to avoid checking again for other objects */
+      *reusable = helper.reusable;
+      *hfid = helper.hfid;
+    }
+  else
+    {
+      helper.reusable = *reusable;
+      helper.hfid = *hfid;
+    }
 
   helper.crt_slotid = -1;
   for (obj_index = 0; obj_index < n_heap_objects; obj_index++)
@@ -1304,13 +1316,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	      /* Try to remove page from heap. */
 
 	      /* HFID is required. */
-	      error_code = vacuum_heap_get_hfid (thread_p, &helper);
-	      if (error_code != NO_ERROR)
-		{
-		  /* Give up. */
-		  pgbuf_unfix_and_init (thread_p, helper.home_page);
-		  goto end;
-		}
 	      assert (!HFID_IS_NULL (&helper.hfid));
 	      VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, &helper);
 
@@ -1322,8 +1327,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 
 		  vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
 				 "VACUUM: Successfully removed page %d|%d from heap file (%d, %d|%d).\n",
-				 helper.home_vpid.volid, helper.home_vpid.pageid, helper.hfid.hpgid,
-				 helper.hfid.vfid.volid, helper.hfid.vfid.fileid);
+				 VPID_AS_ARGS (&helper.home_vpid), HFID_AS_ARGS (&helper.hfid));
 
 		  VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, &helper);
 		  goto end;
@@ -1421,14 +1425,6 @@ retry_prepare:
     {
     case REC_RELOCATION:
       /* Required info: forward page, forward OID, REC_NEWHOME record, MVCC header and HFID. */
-
-      /* Before getting forward page, we need to get HFID. It must be known to help deciding the order of fixing pages. */
-      error_code = vacuum_heap_get_hfid (thread_p, helper);
-      if (error_code != NO_ERROR)
-	{
-	  /* Debug should have hit assert. Release should give up. */
-	  return error_code;
-	}
       assert (!HFID_IS_NULL (&helper->hfid));
 
       /* Get forward OID. */
@@ -1460,7 +1456,9 @@ retry_prepare:
 	  /* The condition used to fix forward page depends on its VPID and home page VPID. Unconditional latch can be
 	   * used if the order is home before forward. If the order is forward before home, try conditional latch, and
 	   * if it fails, fix pages in reversed order. */
-	  fwd_condition = pgbuf_get_condition_for_ordered_fix (&forward_vpid, &helper->home_vpid, &helper->hfid);
+	  fwd_condition =
+	    (PGBUF_LATCH_CONDITION) pgbuf_get_condition_for_ordered_fix (&forward_vpid, &helper->home_vpid,
+									 &helper->hfid);
 	  helper->forward_page = pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, fwd_condition);
 	}
       if (helper->forward_page == NULL)
@@ -1537,20 +1535,13 @@ retry_prepare:
 	  pgbuf_unfix_and_init (thread_p, helper->forward_page);
 	}
 
-      /* HFID is required to obtain overflow VFID. */
-      error_code = vacuum_heap_get_hfid (thread_p, helper);
-      if (error_code != NO_ERROR)
-	{
-	  /* Debug should have hit assert. Release should give up. */
-	  return error_code;
-	}
       assert (!HFID_IS_NULL (&helper->hfid));
 
       /* Overflow VFID is required to remove overflow pages. */
       if (VFID_ISNULL (&helper->overflow_vfid))
 	{
-	  if (heap_ovf_find_vfid (thread_p, &helper->hfid, &helper->overflow_vfid, false, PGBUF_CONDITIONAL_LATCH) ==
-	      NULL)
+	  if (heap_ovf_find_vfid (thread_p, &helper->hfid, &helper->overflow_vfid, false, PGBUF_CONDITIONAL_LATCH)
+	      == NULL)
 	    {
 	      /* Failed conditional latch. Unfix heap page and try again using unconditional latch. */
 	      VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
@@ -1987,19 +1978,14 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
  * helper (in)	 : Vacuum heap helper.
  */
 static int
-vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
   int error_code = NO_ERROR;	/* Error code. */
   OID class_oid = OID_INITIALIZER;	/* Class OID. */
+  FILE_TYPE ftype;
 
   assert (helper != NULL);
   assert (helper->home_page != NULL);
-
-  if (!HFID_IS_NULL (&helper->hfid))
-    {
-      /* HFID is already known. */
-      return NO_ERROR;
-    }
 
   /* Get class OID from heap page. */
   error_code = heap_get_class_oid_from_page (thread_p, helper->home_page, &class_oid);
@@ -2015,7 +2001,7 @@ vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (!OID_ISNULL (&class_oid));
 
   /* Get HFID for class OID. */
-  error_code = heap_get_hfid_from_class_oid (thread_p, &class_oid, &helper->hfid);
+  error_code = heap_get_hfid_and_file_type_from_class_oid (thread_p, &class_oid, &helper->hfid, &ftype);
   if (error_code != NO_ERROR)
     {
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
@@ -2025,6 +2011,7 @@ vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert_release (false);
       return error_code;
     }
+  helper->reusable = ftype == FILE_HEAP_REUSE_SLOTS;
 
   /* Success. */
   return NO_ERROR;
@@ -2067,21 +2054,8 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
    * OIDs and their statistics are updated in that context */
   if (update_best_space_stat == true && helper->initial_home_free_space != -1)
     {
-      if (HFID_IS_NULL (&helper->hfid))
-	{
-	  int freespace;
-
-	  freespace = spage_get_free_space_without_saving (thread_p, helper->home_page, NULL);
-	  if (heap_should_try_update_stat (freespace, helper->initial_home_free_space) == true)
-	    {
-	      (void) vacuum_heap_get_hfid (thread_p, helper);
-	    }
-	}
-
-      if (!HFID_IS_NULL (&helper->hfid))
-	{
-	  heap_stats_update (thread_p, helper->home_page, &helper->hfid, helper->initial_home_free_space);
-	}
+      assert (!HFID_IS_NULL (&helper->hfid));
+      heap_stats_update (thread_p, helper->home_page, &helper->hfid, helper->initial_home_free_space);
     }
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
