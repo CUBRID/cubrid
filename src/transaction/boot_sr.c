@@ -2649,6 +2649,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+  /* we need to manually add root class HFID to cache */
+  error_code =
+    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   db_charset_db_header = boot_get_db_charset_from_header (thread_p, log_path, log_prefix);
   if (db_charset_db_header <= INTL_CODESET_NONE || INTL_CODESET_LAST < db_charset_db_header)
@@ -5048,7 +5056,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
-  /* we need to manually add root class HFID to cache. the record is not yet ready and cannot be read from there */
+  /* we need to manually add root class HFID to cache */
   error_code =
     heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)

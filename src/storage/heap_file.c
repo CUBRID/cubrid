@@ -23359,7 +23359,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
 
-  assert (class_oid != NULL);
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
   error_code =
     lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, NULL);
@@ -23375,6 +23375,16 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
       || entry->hfid.vfid.volid == NULL_VOLID)
     {
       HFID hfid_local = HFID_INITIALIZER;
+
+      /* root HFID should already be added. */
+      if (OID_IS_ROOTOID (class_oid))
+	{
+	  assert_release (false);
+	  boot_find_root_heap (&entry->hfid);
+	  entry->ftype = FILE_HEAP;
+	  return NO_ERROR;
+	}
+
       /* this is either a newly inserted entry or one with incomplete information that is currently being filled by
        * another transaction. We need to retrieve the HFID from the class record. We do not care that we are
        * overwriting the information, since it must be always the same (the HFID never changes for the same class OID). */
