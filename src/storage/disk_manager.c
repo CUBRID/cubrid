@@ -3744,8 +3744,10 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   DISK_ISVALID isvalid = DISK_VALID;
   SECTID sectid;
   bool old_check_interrupt;
+  int old_wait_msecs;
 
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
@@ -3785,6 +3787,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
 
 exit:
+  xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (page_volheader)
