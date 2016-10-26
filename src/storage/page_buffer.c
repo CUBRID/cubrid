@@ -1312,6 +1312,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   PERF_HOLDER_LATCH perf_latch_mode;
   PERF_CONDITIONAL_FIX_TYPE perf_cond_type;
   TSC_TICKS start_tick, end_tick, start_holder_tick;
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time, holder_wait_time, fix_wait_time;
   bool is_perf_tracking;
@@ -1688,6 +1690,16 @@ try_again:
     }
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+  holder = pgbuf_get_holder (thread_p, pgptr);
+
+  assert_release (holder != NULL);
+
+  watcher = holder->last_watcher;
+  while (watcher != NULL)
+    {
+      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+      watcher = watcher->prev;
+    }
 
   if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
     {
