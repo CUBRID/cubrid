@@ -5138,7 +5138,7 @@ la_apply_insert_log (LA_ITEM * item)
       goto end;
     }
 
-  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT)
+  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT && rcvindex != RVREPL_OOR_INSERT)
     {
       er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
