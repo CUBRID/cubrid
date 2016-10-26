@@ -807,9 +807,9 @@ void *
 db_private_realloc_external (void *thrd, void *ptr, size_t size)
 {
 #if !defined(NDEBUG)
-  db_private_realloc_debug (thrd, ptr, size, true, __FILE__, __LINE__);
+  return db_private_realloc_debug (thrd, ptr, size, true, __FILE__, __LINE__);
 #else /* NDEBUG */
-  db_private_realloc_release (thrd, ptr, size, false);
+  return db_private_realloc_release (thrd, ptr, size, false);
 #endif /* NDEBUG */
 }
 
