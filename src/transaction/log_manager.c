@@ -2328,7 +2328,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	}
-      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
+      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT || rcvindex == RVREPL_OOR_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	}
