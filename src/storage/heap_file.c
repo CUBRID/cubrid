@@ -12002,6 +12002,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		  DB_MAKE_NULL (&temp_clob_value);
 		  DB_MAKE_NULL (&perm_clob_value);
 
+		  _er_log_debug (ARG_FILE_LINE, "heap_attrinfo_transform_to_disk_internal : att_id:%d, type:%d, oor:%d",
+		    value->attrid, pr_type->id, is_oor);
+
+
 		  if (is_oor)
 		    {
 		      int overflow_col_size;
