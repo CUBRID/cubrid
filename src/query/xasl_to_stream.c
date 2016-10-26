@@ -146,6 +146,8 @@ static char *xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update
 static char *xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_proc);
 static char *xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_proc);
 static char *xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE * merge_info);
+static char *xts_process_cte_proc (char *ptr, const CTE_PROC_NODE * cte_proc);
+
 static char *xts_process_outptr_list (char *ptr, const OUTPTR_LIST * outptr_list);
 static char *xts_process_selupd_list (char *ptr, const SELUPD_LIST * selupd_list);
 static char *xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr);
@@ -237,6 +239,7 @@ static int xts_sizeof_method_sig_list (const METHOD_SIG_LIST * ptr);
 static int xts_sizeof_method_sig (const METHOD_SIG * ptr);
 static int xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * ptr);
 static int xts_sizeof_regu_value_list (const REGU_VALUE_LIST * regu_value_list);
+static int xts_sizeof_cte_proc (const CTE_PROC_NODE * ptr);
 
 static int xts_mark_ptr_visited (const void *ptr, int offset);
 static int xts_get_offset_visited_ptr (const void *ptr);
@@ -3080,6 +3083,10 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     case BUILD_SCHEMA_PROC:
       break;
 
+    case CTE_PROC:
+      ptr = xts_process_cte_proc (ptr, &xasl->proc.cte);
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
@@ -3514,6 +3521,42 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
   ptr = or_pack_int (ptr, offset);
 
   return xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
+}
+
+static char *
+xts_process_cte_proc (char *ptr, const CTE_PROC_NODE * cte_proc)
+{
+  int offset;
+
+  offset = xts_save_xasl_node (cte_proc->non_rec_part);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_xasl_node (cte_proc->rec_part);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  if (cte_proc->list_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_list_id (cte_proc->list_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  return ptr;
 }
 
 static char *
@@ -5730,6 +5773,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       size += xts_sizeof_merge_proc (&xasl->proc.merge);
       break;
 
+    case CTE_PROC:
+      size += xts_sizeof_cte_proc (&xasl->proc.cte);
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return ER_FAILED;
@@ -6087,6 +6134,23 @@ xts_sizeof_merge_proc (const MERGE_PROC_NODE * merge_info)
   size += (PTR_SIZE		/* update_xasl */
 	   + PTR_SIZE		/* insert_xasl */
 	   + OR_INT_SIZE);	/* has_delete */
+
+  return size;
+}
+
+/*
+ * xts_sizeof_cte_proc () -
+ * return 
+ * ptr(in)  :
+ */
+static int
+xts_sizeof_cte_proc (const CTE_PROC_NODE * cte_info)
+{
+  int size = 0;
+
+  size += PTR_SIZE +		/* non_rec_part */
+    PTR_SIZE +			/* rec_part */
+    PTR_SIZE;			/* list_id */
 
   return size;
 }

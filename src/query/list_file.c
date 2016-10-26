@@ -205,7 +205,6 @@ static int qfile_Max_tuple_page_size;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
 static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2, TP_DOMAIN * domain, int *cmp);
-static int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
 #if defined (CUBRID_DEBUG)
 static void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
 #endif
@@ -731,7 +730,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
  *       set it to the source type.
  *       This should probably set an error for non-null mismatches.
  */
-static int
+int
 qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 {
   int i;

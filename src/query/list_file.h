@@ -177,6 +177,7 @@ extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIS
 extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * tpl_descr,
 					    QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
+extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
 #if defined (CUBRID_DEBUG)
 extern void qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 #endif

@@ -1260,7 +1260,8 @@ $ LOADDB
 1191 Ejecucion stand-alone de aspirar finalizada.
 1192 La precision de %1$zu del valor excede lo maximo permitido %2$d
 1193 La longitud de la expresion de particion procesada excede lo maximo permitido (%1$d).
-1194 Ultimo error
+1194 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1195 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

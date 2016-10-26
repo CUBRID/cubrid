@@ -221,6 +221,8 @@ static PT_NODE *pt_apply_query_trace (PARSER_CONTEXT * parser, PT_NODE * p, PT_N
 static PT_NODE *pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * P, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -320,6 +322,8 @@ static PT_NODE *pt_init_query_trace (PT_NODE * p);
 static PT_NODE *pt_init_insert_value (PT_NODE * p);
 static PT_NODE *pt_init_kill (PT_NODE * p);
 static PT_NODE *pt_init_vacuum (PT_NODE * p);
+static PT_NODE *pt_init_with_clause (PT_NODE * p);
+static PT_NODE *pt_init_cte (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
@@ -425,6 +429,8 @@ static PARSER_VARCHAR *pt_print_query_trace (PARSER_CONTEXT * parser, PT_NODE * 
 static PARSER_VARCHAR *pt_print_insert_value (PARSER_CONTEXT * parser, PT_NODE * p);
 
 static PARSER_VARCHAR *pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_init_use (PT_NODE * p);
@@ -2948,6 +2954,10 @@ pt_show_node_type (PT_NODE * node)
       return "NODE_LIST";
     case PT_VACUUM:
       return "VACUUM";
+    case PT_WITH_CLAUSE:
+      return "WITH";
+    case PT_CTE:
+      return "CTE";
     default:
       return "NODE: type unknown";
     }
@@ -4921,6 +4931,8 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_INSERT_VALUE] = pt_apply_insert_value;
   pt_apply_func_array[PT_KILL_STMT] = pt_apply_kill;
   pt_apply_func_array[PT_VACUUM] = pt_apply_vacuum;
+  pt_apply_func_array[PT_WITH_CLAUSE] = pt_apply_with_clause;
+  pt_apply_func_array[PT_CTE] = pt_apply_cte;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5035,6 +5047,8 @@ pt_init_init_f (void)
   pt_init_func_array[PT_INSERT_VALUE] = pt_init_insert_value;
   pt_init_func_array[PT_KILL_STMT] = pt_init_kill;
   pt_init_func_array[PT_VACUUM] = pt_init_vacuum;
+  pt_init_func_array[PT_WITH_CLAUSE] = pt_init_with_clause;
+  pt_init_func_array[PT_CTE] = pt_init_cte;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5147,6 +5161,8 @@ pt_init_print_f (void)
   pt_print_func_array[PT_QUERY_TRACE] = pt_print_query_trace;
   pt_print_func_array[PT_INSERT_VALUE] = pt_print_insert_value;
   pt_print_func_array[PT_VACUUM] = pt_print_vacuum;
+  pt_print_func_array[PT_WITH_CLAUSE] = pt_print_with_clause;
+  pt_print_func_array[PT_CTE] = pt_print_cte;
 
   pt_print_f = pt_print_func_array;
 }
@@ -8742,6 +8758,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.query.with = g (parser, p->info.query.with, arg);
   p->info.query.q.union_.arg1 = g (parser, p->info.query.q.union_.arg1, arg);
   p->info.query.q.union_.arg2 = g (parser, p->info.query.q.union_.arg2, arg);
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
@@ -9196,6 +9213,8 @@ static PT_NODE *
 pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   p->info.spec.entity_name = g (parser, p->info.spec.entity_name, arg);
+  p->info.spec.cte_name = g (parser, p->info.spec.cte_name, arg);
+  p->info.spec.cte_pointer = g (parser, p->info.spec.cte_pointer, arg);
   p->info.spec.except_list = g (parser, p->info.spec.except_list, arg);
   p->info.spec.derived_table = g (parser, p->info.spec.derived_table, arg);
   p->info.spec.range_var = g (parser, p->info.spec.range_var, arg);
@@ -12870,6 +12889,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.query.with = g (parser, p->info.query.with, arg);
   p->info.query.q.union_.arg1 = g (parser, p->info.query.q.union_.arg1, arg);
   p->info.query.q.union_.arg2 = g (parser, p->info.query.q.union_.arg2, arg);
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
@@ -13955,6 +13975,7 @@ pt_print_scope (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.query.with = g (parser, p->info.query.with, arg);
   p->info.query.q.select.list = g (parser, p->info.query.q.select.list, arg);
   p->info.query.q.select.from = g (parser, p->info.query.q.select.from, arg);
   p->info.query.q.select.where = g (parser, p->info.query.q.select.where, arg);
@@ -14155,6 +14176,12 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   else
     {
+      if (p->info.query.with != NULL)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.query.with);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
       q = pt_append_nulstring (parser, q, "select ");
 
       if (p->info.query.q.select.hint != PT_HINT_NONE
@@ -15292,6 +15319,7 @@ pt_print_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.query.with = g (parser, p->info.query.with, arg);
   p->info.query.q.union_.arg1 = g (parser, p->info.query.q.union_.arg1, arg);
   p->info.query.q.union_.arg2 = g (parser, p->info.query.q.union_.arg2, arg);
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
@@ -16811,7 +16839,11 @@ pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_pointer (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
-  p->info.pointer.node = g (parser, p->info.pointer.node, arg);
+  if (p->info.pointer.do_walk)
+    {
+      p->info.pointer.node = g (parser, p->info.pointer.node, arg);
+    }
+
   return p;
 }
 
@@ -16829,6 +16861,7 @@ pt_init_pointer (PT_NODE * node)
       node->info.pointer.sel = 0;
       node->info.pointer.rank = 0;
       node->info.pointer.type = PT_POINTER_NORMAL;
+      node->info.pointer.do_walk = true;
     }
 
   return node;
@@ -17165,6 +17198,69 @@ pt_init_kill (PT_NODE * p)
   return p;
 }
 
+/* WITH CLAUSE */
+/*
+ * pt_apply_with_clause () -
+ * return:
+ * parser(in):
+ * p(in):
+ * g(in):
+ * arg(in):
+ */
+static PT_NODE *
+pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.with_clause.cte_definition_list = g (parser, p->info.with_clause.cte_definition_list, arg);
+
+  return p;
+}
+
+/*
+ * pt_init_with_clause ()
+ * return :
+ * parser (in) :
+ * p (in) :
+ */
+static PT_NODE *
+pt_init_with_clause (PT_NODE * p)
+{
+  p->info.with_clause.cte_definition_list = NULL;
+  p->info.with_clause.recursive = NULL;
+}
+
+/* CTE */
+/* 
+ * pt_apply_cte() -
+ * return:
+ * parser(in):
+ * p(in):
+ * g(in):
+ * arg(in):
+ */
+static PT_NODE *
+pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.cte.non_rec_part = g (parser, p->info.cte.non_rec_part, arg);
+  p->info.cte.rec_part = g (parser, p->info.cte.rec_part, arg);
+
+  return p;
+}
+
+/*
+ * pt_init_cte ()
+ * return :
+ * parser (in) :
+ * p (in) :
+ */
+static PT_NODE *
+pt_init_cte (PT_NODE * p)
+{
+  p->info.cte.name = NULL;
+  p->info.cte.as_attr_list = NULL;
+  p->info.cte.rec_part = NULL;
+  p->info.cte.non_rec_part = NULL;
+}
+
 /*
  * pt_print_insert_value ()
  * return :
@@ -17189,6 +17285,88 @@ pt_print_insert_value (PARSER_CONTEXT * parser, PT_NODE * p)
       assert (false);
       return NULL;
     }
+}
+
+/*
+ * pt_print_with_clause ()
+ * return :
+ * parser (in) :
+ * p (in) :
+ */
+static PARSER_VARCHAR *
+pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0;
+  PT_NODE *cte;
+
+  q = pt_append_nulstring (parser, q, "with ");
+  if (p->info.with_clause.recursive)
+    {
+      q = pt_append_nulstring (parser, q, "recursive ");
+    }
+
+  for (cte = p->info.with_clause.cte_definition_list; cte != NULL; cte = cte->next)
+    {
+      PARSER_VARCHAR *r = pt_print_cte (parser, cte);
+      q = pt_append_varchar (parser, q, r);
+    }
+
+  return q;
+}
+
+/*
+ * pt_print_with_cte ()
+ * return :
+ * parser (in) :
+ * p (in) :
+ */
+static PARSER_VARCHAR *
+pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0, *r1;
+  PT_NODE *list;
+
+  /* name of cte */
+  r1 = pt_print_bytes_l (parser, p->info.cte.name);
+  q = pt_append_varchar (parser, q, r1);
+
+  /* attribute list */
+  q = pt_append_nulstring (parser, q, "(");
+  for (list = p->info.cte.as_attr_list; list != NULL; list = list->next)
+    {
+      r1 = pt_print_bytes_l (parser, list);
+      q = pt_append_varchar (parser, q, r1);
+      if (list->next != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, ", ");
+	}
+    }
+  q = pt_append_nulstring (parser, q, ")");
+
+  /* AS keyword */
+  q = pt_append_nulstring (parser, q, " as ");
+
+  /* cte definition */
+  q = pt_append_nulstring (parser, q, "(");
+
+  r1 = pt_print_bytes_l (parser, p->info.cte.non_rec_part);
+  q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.cte.rec_part)
+    {
+      q = pt_append_nulstring (parser, q, " union ");
+      if (p->info.cte.only_all == PT_ALL)
+	{
+	  q = pt_append_nulstring (parser, q, "all ");
+	}
+
+      r1 = pt_print_bytes_l (parser, p->info.cte.rec_part);
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  q = pt_append_nulstring (parser, q, ")");
+
+  return q;
 }
 
 /*

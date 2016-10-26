@@ -4687,6 +4687,11 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       ptr->proc.merge.insert_xasl = NULL;
       break;
 
+    case CTE_PROC:
+      ptr->proc.cte.rec_part = NULL;
+      ptr->proc.cte.non_rec_part = NULL;
+      break;
+
     default:
       /* BUILD_SCHEMA_PROC */
       break;

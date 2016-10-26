@@ -177,6 +177,7 @@ static char *stx_build_update_proc (THREAD_ENTRY * thread_p, char *tmp, UPDATE_P
 static char *stx_build_delete_proc (THREAD_ENTRY * thread_p, char *tmp, DELETE_PROC_NODE * ptr);
 static char *stx_build_insert_proc (THREAD_ENTRY * thread_p, char *tmp, INSERT_PROC_NODE * ptr);
 static char *stx_build_merge_proc (THREAD_ENTRY * thread_p, char *tmp, MERGE_PROC_NODE * ptr);
+static char *stx_build_cte_proc (THREAD_ENTRY * thread_p, char *tmp, CTE_PROC_NODE * ptr);
 static char *stx_build_outptr_list (THREAD_ENTRY * thread_p, char *tmp, OUTPTR_LIST * ptr);
 static char *stx_build_selupd_list (THREAD_ENTRY * thread_p, char *tmp, SELUPD_LIST * ptr);
 static char *stx_build_pred_expr (THREAD_ENTRY * thread_p, char *tmp, PRED_EXPR * ptr);
@@ -2319,6 +2320,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       ptr = stx_build_merge_proc (thread_p, ptr, &xasl->proc.merge);
       break;
 
+    case CTE_PROC:
+      ptr = stx_build_cte_proc (thread_p, ptr, &xasl->proc.cte);
+      break;
+
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
       return NULL;
@@ -3956,6 +3961,61 @@ stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr, MERGE_PROC_NODE * merg
   ptr = or_unpack_int (ptr, &tmp);
   merge_info->has_delete = (bool) tmp;
 
+  return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+static char *
+stx_build_cte_proc (THREAD_ENTRY * thread_p, char *ptr, CTE_PROC_NODE * cte_info)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      cte_info->non_rec_part = NULL;	/* may have false_where */
+    }
+  else
+    {
+      cte_info->non_rec_part = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+
+      if (cte_info->non_rec_part == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      cte_info->rec_part = NULL;
+    }
+  else
+    {
+      cte_info->rec_part = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (cte_info->rec_part == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      cte_info->list_id = NULL;
+    }
+  else
+    {
+      cte_info->list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (cte_info->list_id == NULL)
+	{
+	  goto error;
+	}
+    }
   return ptr;
 
 error:

@@ -2643,15 +2643,28 @@ PT_NODE *
 pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *attrs1, *attrs2, *result = node;
+  PT_NODE *arg1, *arg2;
   int cnt1, cnt2;
   SEMAN_COMPATIBLE_INFO *cinfo = NULL;
   bool need_cast;
 
   assert (parser != NULL);
 
-  if (!node || !(node->node_type == PT_UNION || node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE)
-      || !(attrs1 = pt_get_select_list (parser, node->info.query.q.union_.arg1))
-      || !(attrs2 = pt_get_select_list (parser, node->info.query.q.union_.arg2)))
+  if (node->node_type == PT_CTE)
+    {
+      arg1 = node->info.cte.non_rec_part;
+      arg2 = node->info.cte.rec_part;
+    }
+  else
+    {
+      arg1 = node->info.query.q.union_.arg1;
+      arg2 = node->info.query.q.union_.arg2;
+    }
+
+  if (!node
+      || !(node->node_type == PT_UNION || node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE
+	   || node->node_type == PT_CTE) || !(attrs1 = pt_get_select_list (parser, arg1))
+      || !(attrs2 = pt_get_select_list (parser, arg2)))
     {
       return NULL;
     }
@@ -2675,8 +2688,7 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
   /* convert attrs type to compatible type */
   if (result && need_cast == true)
     {
-      if (!pt_to_compatible_cast (parser, node->info.query.q.union_.arg1, cinfo, cnt1)
-	  || !pt_to_compatible_cast (parser, node->info.query.q.union_.arg2, cinfo, cnt1))
+      if (!pt_to_compatible_cast (parser, arg1, cinfo, cnt1) || !pt_to_compatible_cast (parser, arg2, cinfo, cnt1))
 	{
 	  result = NULL;
 	}
@@ -2688,7 +2700,7 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
 	      parser_free_tree (parser, node->data_type);
 	    }
 
-	  node->data_type = parser_copy_tree (parser, node->info.query.q.union_.arg1->data_type);
+	  node->data_type = parser_copy_tree (parser, arg1->data_type);
 	}
     }
 
@@ -9904,36 +9916,33 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	int attr_cnt, col_cnt, i, j;
 
 	/* check ambiguity in as_attr_list of derived-query */
-	if (node->info.spec.derived_table_type == PT_IS_SUBQUERY && (derived_table = node->info.spec.derived_table))
+	for (a = node->info.spec.as_attr_list; a && !pt_has_error (parser); a = a->next)
 	  {
-	    a = node->info.spec.as_attr_list;
-	    for (; a && !pt_has_error (parser); a = a->next)
+	    for (b = a->next; b && !pt_has_error (parser); b = b->next)
 	      {
-		for (b = a->next; b && !pt_has_error (parser); b = b->next)
+		if (a->node_type == PT_NAME && b->node_type == PT_NAME
+		    && !pt_str_compare (a->info.name.original, b->info.name.original, CASE_INSENSITIVE))
 		  {
-		    if (a->node_type == PT_NAME && b->node_type == PT_NAME
-			&& !pt_str_compare (a->info.name.original, b->info.name.original, CASE_INSENSITIVE))
-		      {
-			PT_ERRORmf (parser, b, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO,
-				    b->info.name.original);
-		      }
+		    PT_ERRORmf (parser, b, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO,
+				b->info.name.original);
 		  }
 	      }
+	  }
 
-	    /* check hidden column of subquery-derived table */
-	    if (!pt_has_error (parser) && derived_table->node_type == PT_SELECT && derived_table->info.query.order_by
-		&& (select_list = pt_get_select_list (parser, derived_table)))
+	/* check hidden column of subquery-derived table */
+	if (!pt_has_error (parser) && node->info.spec.derived_table_type == PT_IS_SUBQUERY
+	    && (derived_table = node->info.spec.derived_table) && derived_table->node_type == PT_SELECT
+	    && derived_table->info.query.order_by && (select_list = pt_get_select_list (parser, derived_table)))
+	  {
+	    attr_cnt = pt_length_of_list (node->info.spec.as_attr_list);
+	    col_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+	    if (col_cnt - attr_cnt > 0)
 	      {
-		attr_cnt = pt_length_of_list (node->info.spec.as_attr_list);
-		col_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
-		if (col_cnt - attr_cnt > 0)
+		/* make hidden column attrs */
+		for (i = attr_cnt, j = attr_cnt; i < col_cnt; i++)
 		  {
-		    /* make hidden column attrs */
-		    for (i = attr_cnt, j = attr_cnt; i < col_cnt; i++)
-		      {
-			t_node = pt_name (parser, mq_generate_name (parser, "ha", &j));
-			node->info.spec.as_attr_list = parser_append_node (t_node, node->info.spec.as_attr_list);
-		      }
+		    t_node = pt_name (parser, mq_generate_name (parser, "ha", &j));
+		    node->info.spec.as_attr_list = parser_append_node (t_node, node->info.spec.as_attr_list);
 		  }
 	      }
 	  }

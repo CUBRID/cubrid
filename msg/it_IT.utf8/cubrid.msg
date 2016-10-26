@@ -1260,7 +1260,8 @@ $ LOADDB
 1191 Stand-alone vacuum esecuzione è finita.
 1192 La precisione di valore di %1$zu supera il massimo consentito %2$d
 1193 La lunghezza dell'espressione partizione trasformati supera il massimo consentito(%1$d).
-1194 Ultimo errore
+1194 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1195 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

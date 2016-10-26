@@ -165,6 +165,9 @@ qdump_print_xasl_type (XASL_NODE * xasl_p)
     case MERGE_PROC:
       type_string_p = "merge_proc";
       break;
+    case CTE_PROC:
+      type_string_p = "cte_proc";
+      break;
     default:
       return false;
     }

@@ -1260,7 +1260,8 @@ $ LOADDB
 1191 독립 모드의 vacuum 작업 종료
 1192 %1$zu의 값 정밀도가 최대 허용치인 %2$s를 초과했습니다.
 1193 분할 표현식의 길이가 최대 허용치인 %1$s를 초과했습니다.
-1194 마지막 에러
+1194 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1195 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

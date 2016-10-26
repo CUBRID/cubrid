@@ -887,6 +887,7 @@ enum pt_node_type
   PT_AUTO_INCREMENT,
   PT_CHECK_OPTION,
   PT_CONSTRAINT,
+  PT_CTE,
   PT_DATA_DEFAULT,
   PT_DATA_TYPE,
   PT_DOT_,
@@ -923,6 +924,7 @@ enum pt_node_type
   PT_SHOWSTMT,
   PT_KILL_STMT,
   PT_VACUUM,
+  PT_WITH_CLAUSE,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1163,7 +1165,9 @@ typedef enum
   PT_TRACE_FORMAT_TEXT,
   PT_TRACE_FORMAT_JSON,
 
-  PT_IS_SHOWSTMT		/* query is SHOWSTMT */
+  PT_IS_SHOWSTMT,		/* query is SHOWSTMT */
+  PT_IS_CTE_REC_SUBQUERY,
+  PT_IS_CTE_NON_REC_SUBQUERY
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1594,6 +1598,7 @@ typedef struct pt_create_entity_info PT_CREATE_ENTITY_INFO;
 typedef struct pt_index_info PT_INDEX_INFO;
 typedef struct pt_create_user_info PT_CREATE_USER_INFO;
 typedef struct pt_create_trigger_info PT_CREATE_TRIGGER_INFO;
+typedef struct pt_cte_info PT_CTE_INFO;
 typedef struct pt_serial_info PT_SERIAL_INFO;
 typedef struct pt_data_default_info PT_DATA_DEFAULT_INFO;
 typedef struct pt_auto_increment_info PT_AUTO_INCREMENT_INFO;
@@ -1693,6 +1698,8 @@ typedef struct pt_set_names_info PT_SET_NAMES_INFO;
 typedef struct pt_trace_info PT_TRACE_INFO;
 
 typedef struct pt_tuple_value_info PT_TUPLE_VALUE_INFO;
+
+typedef struct pt_with_clause_info PT_WITH_CLAUSE_INFO;
 
 typedef struct pt_insert_value_info PT_INSERT_VALUE_INFO;
 
@@ -1993,6 +2000,18 @@ struct pt_create_trigger_info
   PT_NODE *comment;		/* PT_VALUE */
 };
 
+/* CTE(Common Table Expression) INFO */
+struct pt_cte_info
+{
+  PT_NODE *name;		/* PT_NAME */
+  PT_NODE *as_attr_list;	/* PT_NAME */
+  PT_NODE *non_rec_part;	/* the non-recursive subquery */
+  PT_NODE *rec_part;		/* a recursive subquery */
+  PT_MISC_TYPE only_all;	/* Type of UNION between 
+				   non-recursive and recursive parts */
+  void *xasl;			/* xasl proc pointer */
+};
+
 /* CREATE SERIAL INFO */
 struct pt_serial_info
 {
@@ -2140,6 +2159,8 @@ struct pt_drop_session_var_info
 struct pt_spec_info
 {
   PT_NODE *entity_name;		/* PT_NAME */
+  PT_NODE *cte_name;		/* PT_NAME */
+  PT_NODE *cte_pointer;		/* PT_POINTER - points to the cte_definition */
   PT_NODE *except_list;		/* PT_SPEC */
   PT_NODE *derived_table;	/* a subquery */
   PT_NODE *range_var;		/* PT_NAME */
@@ -2778,6 +2799,7 @@ struct pt_query_info
   UINTPTR id;			/* query unique id # */
   PT_HINT_ENUM hint;		/* hint flag */
   bool is_order_dependent;	/* true if query is order dependent */
+  PT_NODE *with;		/* PT_WITH_CLAUSE */
   union
   {
     PT_SELECT_INFO select;
@@ -3139,6 +3161,7 @@ struct pt_pointer_info
   PT_POINTER_TYPE type;		/* pointer type (normal pointer/reference) */
   double sel;			/* selectivity factor of the predicate */
   int rank;			/* rank factor for the same selectivity */
+  bool do_walk;			/* apply walk on node bool */
 };
 
 struct pt_stored_proc_info
@@ -3220,6 +3243,14 @@ struct pt_trace_info
   PT_MISC_TYPE format;
 };
 
+/* pt_with_clause_info - 
+ * Parse tree node info which contains CTEs data(used by DML statements) */
+struct pt_with_clause_info
+{
+  int recursive;
+  PT_NODE *cte_definition_list;	/* PT_CTE (list) */
+};
+
 /* pt_insert_value_info -
  * Parse tree node info used to replace nodes in insert value list after being
  * evaluated.
@@ -3256,6 +3287,7 @@ union pt_statement_info
   PT_CREATE_ENTITY_INFO create_entity;
   PT_CREATE_TRIGGER_INFO create_trigger;
   PT_CREATE_USER_INFO create_user;
+  PT_CTE_INFO cte;
   PT_DATA_DEFAULT_INFO data_default;
   PT_DATA_TYPE_INFO data_type;
   PT_DELETE_INFO delete_;
@@ -3332,6 +3364,7 @@ union pt_statement_info
   PT_POINTER_INFO pointer;
   PT_TRACE_INFO trace;
   PT_KILLSTMT_INFO killstmt;
+  PT_WITH_CLAUSE_INFO with_clause;
 };
 
 

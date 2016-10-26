@@ -2121,7 +2121,23 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 {
   bool natural_desc_index = false;
 
-  fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "class:");
+  if (plan->plan_un.scan.node->entity_spec->info.spec.cte_pointer)
+    {
+      PT_NODE *spec = plan->plan_un.scan.node->entity_spec;
+      if (spec->info.spec.cte_pointer->info.pointer.node->info.cte.rec_part)
+	{
+	  fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "recursive CTE: ");
+	}
+      else
+	{
+	  fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "simple CTE:");
+	}
+    }
+  else
+    {
+      fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "class:");
+    }
+
   qo_node_fprint (plan->plan_un.scan.node, f);
 
   if (qo_is_interesting_order_scan (plan))

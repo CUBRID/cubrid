@@ -27,8 +27,8 @@
 
 #define FLEX_SCANNER
 #define YY_FLEX_MAJOR_VERSION 2
-#define YY_FLEX_MINOR_VERSION 6
-#define YY_FLEX_SUBMINOR_VERSION 1
+#define YY_FLEX_MINOR_VERSION 5
+#define YY_FLEX_SUBMINOR_VERSION 39
 #if YY_FLEX_SUBMINOR_VERSION > 0
 #define FLEX_BETA
 #endif
@@ -107,13 +107,25 @@ typedef unsigned int flex_uint32_t;
 
 #endif /* ! FLEXINT_H */
 
-/* TODO: this is always defined, so inline it */
-#define yyconst const
+#ifdef __cplusplus
 
-#if defined(__GNUC__) && __GNUC__ >= 3
-#define yynoreturn __attribute__((__noreturn__))
+/* The "const" storage-class-modifier is valid. */
+#define YY_USE_CONST
+
+#else /* ! __cplusplus */
+
+/* C99 requires __STDC__ to be defined as 1. */
+#if defined (__STDC__)
+
+#define YY_USE_CONST
+
+#endif /* defined (__STDC__) */
+#endif /* ! __cplusplus */
+
+#ifdef YY_USE_CONST
+#define yyconst const
 #else
-#define yynoreturn
+#define yyconst
 #endif
 
 /* Returned upon end-of-file. */
@@ -149,15 +161,7 @@ typedef unsigned int flex_uint32_t;
 
 /* Size of default input buffer. */
 #ifndef YY_BUF_SIZE
-#ifdef __ia64__
-/* On IA-64, the buffer size is 16k, not 8k.
- * Moreover, YY_BUF_SIZE is 2*YY_READ_BUF_SIZE in the general case.
- * Ditto for the __ia64__ case accordingly.
- */
-#define YY_BUF_SIZE 32768
-#else
 #define YY_BUF_SIZE 16384
-#endif /* __ia64__ */
 #endif
 
 /* The state buf must be large enough to hold one state per character in the main buffer.
@@ -174,7 +178,7 @@ typedef struct yy_buffer_state *YY_BUFFER_STATE;
 typedef size_t yy_size_t;
 #endif
 
-extern int csql_yyleng;
+extern yy_size_t csql_yyleng;
 
 extern FILE *csql_yyin, *csql_yyout;
 
@@ -213,12 +217,12 @@ struct yy_buffer_state
   /* Size of input buffer in bytes, not including room for EOB
    * characters.
    */
-  int yy_buf_size;
+  yy_size_t yy_buf_size;
 
   /* Number of characters read into yy_ch_buf, not including EOB
    * characters.
    */
-  int yy_n_chars;
+  yy_size_t yy_n_chars;
 
   /* Whether we "own" the buffer - i.e., we know we created it,
    * and can realloc() it to grow it, and should free() it to
@@ -269,7 +273,7 @@ struct yy_buffer_state
 /* Stack of input buffers. */
 static size_t yy_buffer_stack_top = 0; /**< index of top of stack. */
 static size_t yy_buffer_stack_max = 0; /**< capacity of stack. */
-static YY_BUFFER_STATE *yy_buffer_stack = NULL;	 /**< Stack as an array. */
+static YY_BUFFER_STATE *yy_buffer_stack = 0;  /**< Stack as an array. */
 
 /* We provide macros for accessing buffer states in case in the
  * future we want to put the buffer states in a more general
@@ -288,11 +292,11 @@ static YY_BUFFER_STATE *yy_buffer_stack = NULL;	 /**< Stack as an array. */
 
 /* yy_hold_char holds the character lost when csql_yytext is formed. */
 static char yy_hold_char;
-static int yy_n_chars;		/* number of characters read into yy_ch_buf */
-int csql_yyleng;
+static yy_size_t yy_n_chars;	/* number of characters read into yy_ch_buf */
+yy_size_t csql_yyleng;
 
 /* Points to current character in buffer. */
-static char *yy_c_buf_p = NULL;
+static char *yy_c_buf_p = (char *) 0;
 static int yy_init = 0;		/* whether we need to initialize */
 static int yy_start = 0;	/* start state number */
 
@@ -317,7 +321,7 @@ static void csql_yy_init_buffer (YY_BUFFER_STATE b, FILE * file);
 
 YY_BUFFER_STATE csql_yy_scan_buffer (char *base, yy_size_t size);
 YY_BUFFER_STATE csql_yy_scan_string (yyconst char *yy_str);
-YY_BUFFER_STATE csql_yy_scan_bytes (yyconst char *bytes, int len);
+YY_BUFFER_STATE csql_yy_scan_bytes (yyconst char *bytes, yy_size_t len);
 
 void *csql_yyalloc (yy_size_t);
 void *csql_yyrealloc (void *, yy_size_t);
@@ -351,7 +355,7 @@ void csql_yyfree (void *);
 
 typedef unsigned char YY_CHAR;
 
-FILE *csql_yyin = NULL, *csql_yyout = NULL;
+FILE *csql_yyin = (FILE *) 0, *csql_yyout = (FILE *) 0;
 
 typedef int yy_state_type;
 
@@ -360,22 +364,19 @@ extern int csql_yylineno;
 int csql_yylineno = 1;
 
 extern char *csql_yytext;
-#ifdef yytext_ptr
-#undef yytext_ptr
-#endif
 #define yytext_ptr csql_yytext
 
 static yy_state_type yy_get_previous_state (void);
 static yy_state_type yy_try_NUL_trans (yy_state_type current_state);
 static int yy_get_next_buffer (void);
-static void yynoreturn yy_fatal_error (yyconst char *msg);
+static void yy_fatal_error (yyconst char msg[]);
 
 /* Done after the current pattern has been matched and before the
  * corresponding action - sets up csql_yytext.
  */
 #define YY_DO_BEFORE_ACTION \
 	(yytext_ptr) = yy_bp; \
-	csql_yyleng = (int) (yy_cp - yy_bp); \
+	csql_yyleng = (size_t) (yy_cp - yy_bp); \
 	(yy_hold_char) = *yy_cp; \
 	*yy_cp = '\0'; \
 	(yy_c_buf_p) = yy_cp;
@@ -647,7 +648,7 @@ static yyconst flex_int16_t yy_accept[2315] = { 0,
   532, 429, 244, 0
 };
 
-static yyconst YY_CHAR yy_ec[256] = { 0,
+static yyconst flex_int32_t yy_ec[256] = { 0,
   1, 1, 1, 1, 1, 1, 1, 1, 2, 3,
   1, 1, 2, 1, 1, 1, 1, 1, 1, 1,
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -678,7 +679,7 @@ static yyconst YY_CHAR yy_ec[256] = { 0,
   85, 85, 85, 85, 1
 };
 
-static yyconst YY_CHAR yy_meta[87] = { 0,
+static yyconst flex_int32_t yy_meta[87] = { 0,
   1, 2, 3, 1, 4, 5, 1, 1, 1, 6,
   1, 1, 1, 1, 1, 7, 7, 7, 7, 7,
   7, 1, 1, 1, 1, 1, 8, 8, 8, 8,
@@ -690,7 +691,7 @@ static yyconst YY_CHAR yy_meta[87] = { 0,
   5, 1, 12, 12, 5, 5
 };
 
-static yyconst flex_uint16_t yy_base[2334] = { 0,
+static yyconst flex_int16_t yy_base[2334] = { 0,
   0, 0, 84, 85, 86, 87, 88, 89, 90, 98,
   99, 100, 104, 107, 103, 108, 110, 111, 112, 115,
   116, 117, 118, 120, 121, 126, 3298, 4669, 3136, 4669,
@@ -1210,7 +1211,7 @@ static yyconst flex_int16_t yy_def[2334] = { 0,
   2314, 2314, 2314
 };
 
-static yyconst flex_uint16_t yy_nxt[4756] = { 0,
+static yyconst flex_int16_t yy_nxt[4756] = { 0,
   28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
   28, 28, 38, 39, 40, 41, 42, 42, 42, 42,
   42, 43, 44, 28, 45, 46, 47, 48, 49, 50,
@@ -2353,7 +2354,7 @@ int yybuffer_pos;
 
 
 
-#line 2364 "../../src/parser/csql_lexer.c"
+#line 2365 "../../src/parser/csql_lexer.c"
 
 #define INITIAL 0
 #define QUOTED_NCHAR_STRING 1
@@ -2398,19 +2399,19 @@ void csql_yyset_extra (YY_EXTRA_TYPE user_defined);
 
 FILE *csql_yyget_in (void);
 
-void csql_yyset_in (FILE * _in_str);
+void csql_yyset_in (FILE * in_str);
 
 FILE *csql_yyget_out (void);
 
-void csql_yyset_out (FILE * _out_str);
+void csql_yyset_out (FILE * out_str);
 
-int csql_yyget_leng (void);
+yy_size_t csql_yyget_leng (void);
 
 char *csql_yyget_text (void);
 
 int csql_yyget_lineno (void);
 
-void csql_yyset_lineno (int _line_number);
+void csql_yyset_lineno (int line_number);
 
 /* Macros after this point can all be overridden by user definitions in
  * section 1.
@@ -2424,11 +2425,7 @@ extern int csql_yywrap (void);
 #endif
 #endif
 
-#ifndef YY_NO_UNPUT
-
 static void yyunput (int c, char *buf_ptr);
-
-#endif
 
 #ifndef yytext_ptr
 static void yy_flex_strncpy (char *, yyconst char *, int);
@@ -2450,12 +2447,7 @@ static int input (void);
 
 /* Amount of stuff to slurp up with each read. */
 #ifndef YY_READ_BUF_SIZE
-#ifdef __ia64__
-/* On IA-64, the buffer size is 16k, not 8k */
-#define YY_READ_BUF_SIZE 16384
-#else
 #define YY_READ_BUF_SIZE 8192
-#endif /* __ia64__ */
 #endif
 
 /* Copy whatever the last rule matched to the standard output. */
@@ -2463,7 +2455,7 @@ static int input (void);
 /* This used to be an fputs(), but since the string might contain NUL's,
  * we now use fwrite().
  */
-#define ECHO do { if (fwrite( csql_yytext, (size_t) csql_yyleng, 1, csql_yyout )) {} } while (0)
+#define ECHO do { if (fwrite( csql_yytext, csql_yyleng, 1, csql_yyout )) {} } while (0)
 #endif
 
 /* Gets input and stuffs it into "buf".  number of characters read, or YY_NULL,
@@ -2487,7 +2479,7 @@ static int input (void);
 	else \
 		{ \
 		errno=0; \
-		while ( (result = (int) fread(buf, 1, max_size, csql_yyin))==0 && ferror(csql_yyin)) \
+		while ( (result = fread(buf, 1, max_size, csql_yyin))==0 && ferror(csql_yyin)) \
 			{ \
 			if( errno != EINTR) \
 				{ \
@@ -2542,7 +2534,7 @@ extern int csql_yylex (void);
 
 /* Code executed at the end of each rule. */
 #ifndef YY_BREAK
-#define YY_BREAK /*LINTED*/break;
+#define YY_BREAK break;
 #endif
 
 #define YY_RULE_SETUP \
@@ -2552,9 +2544,9 @@ extern int csql_yylex (void);
  */
 YY_DECL
 {
-  yy_state_type yy_current_state;
-  char *yy_cp, *yy_bp;
-  int yy_act;
+  register yy_state_type yy_current_state;
+  register char *yy_cp, *yy_bp;
+  register int yy_act;
 
   if (!(yy_init))
     {
@@ -2576,7 +2568,8 @@ YY_DECL
       if (!YY_CURRENT_BUFFER)
 	{
 	  csql_yyensure_buffer_stack ();
-	  YY_CURRENT_BUFFER_LVALUE = csql_yy_create_buffer (csql_yyin, YY_BUF_SIZE);
+	  YY_CURRENT_BUFFER_LVALUE =
+	    csql_yy_create_buffer (csql_yyin, YY_BUF_SIZE);
 	}
 
       csql_yy_load_buffer_state ();
@@ -2586,9 +2579,9 @@ YY_DECL
 #line 90 "../../src/parser/csql_lexer.l"
 
 
-#line 2597 "../../src/parser/csql_lexer.c"
+#line 2589 "../../src/parser/csql_lexer.c"
 
-    while ( /*CONSTCOND*/ 1)	/* loops until end-of-file is reached */
+    while (1)			/* loops until end-of-file is reached */
       {
 	yy_cp = (yy_c_buf_p);
 
@@ -2604,19 +2597,21 @@ YY_DECL
       yy_match:
 	do
 	  {
-	    YY_CHAR yy_c = yy_ec[YY_SC_TO_UI (*yy_cp)];
+	    register YY_CHAR yy_c = yy_ec[YY_SC_TO_UI (*yy_cp)];
 	    if (yy_accept[yy_current_state])
 	      {
 		(yy_last_accepting_state) = yy_current_state;
 		(yy_last_accepting_cpos) = yy_cp;
 	      }
-	    while (yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state)
+	    while (yy_chk[yy_base[yy_current_state] + yy_c] !=
+		   yy_current_state)
 	      {
 		yy_current_state = (int) yy_def[yy_current_state];
 		if (yy_current_state >= 2315)
 		  yy_c = yy_meta[(unsigned int) yy_c];
 	      }
-	    yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
+	    yy_current_state =
+	      yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
 	    ++yy_cp;
 	  }
 	while (yy_base[yy_current_state] != 4669);
@@ -2649,3727 +2644,3215 @@ YY_DECL
 	    {
 	      begin_token (csql_yytext);
 	    }
-	  YY_BREAK case 2:
+	    YY_BREAK case 2:
 /* rule 2 can match eol */
-	    YY_RULE_SETUP
+	      YY_RULE_SETUP
 #line 93 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      this_parser->line = yyline++;
 	      this_parser->column = yycolumn = yycolumn_end = 1;
 	    }
-	  YY_BREAK case 3:
-	    YY_RULE_SETUP
+	    YY_BREAK case 3:YY_RULE_SETUP
 #line 101 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ABSOLUTE_;
 	    }
-	  YY_BREAK case 4:
-	    YY_RULE_SETUP
+	    YY_BREAK case 4:YY_RULE_SETUP
 #line 102 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ACCESS;
 	    }
-	  YY_BREAK case 5:
-	    YY_RULE_SETUP
+	    YY_BREAK case 5:YY_RULE_SETUP
 #line 103 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ACTION;
 	    }
-	  YY_BREAK case 6:
-	    YY_RULE_SETUP
+	    YY_BREAK case 6:YY_RULE_SETUP
 #line 104 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return ACTIVE;
 	    }
-	  YY_BREAK case 7:
-	    YY_RULE_SETUP
+	    YY_BREAK case 7:YY_RULE_SETUP
 #line 107 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ADD;
 	    }
-	  YY_BREAK case 8:
-	    YY_RULE_SETUP
+	    YY_BREAK case 8:YY_RULE_SETUP
 #line 108 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return ADDDATE;
 	    }
-	  YY_BREAK case 9:
-	    YY_RULE_SETUP
+	    YY_BREAK case 9:YY_RULE_SETUP
 #line 111 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ADD_MONTHS;
 	    }
-	  YY_BREAK case 10:
-	    YY_RULE_SETUP
+	    YY_BREAK case 10:YY_RULE_SETUP
 #line 112 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return AFTER;
 	    }
-	  YY_BREAK case 11:
-	    YY_RULE_SETUP
+	    YY_BREAK case 11:YY_RULE_SETUP
 #line 113 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ALL;
 	    }
-	  YY_BREAK case 12:
-	    YY_RULE_SETUP
+	    YY_BREAK case 12:YY_RULE_SETUP
 #line 114 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ALLOCATE;
 	    }
-	  YY_BREAK case 13:
-	    YY_RULE_SETUP
+	    YY_BREAK case 13:YY_RULE_SETUP
 #line 115 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ALTER;
 	    }
-	  YY_BREAK case 14:
-	    YY_RULE_SETUP
+	    YY_BREAK case 14:YY_RULE_SETUP
 #line 116 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return ANALYZE;
 	    }
-	  YY_BREAK case 15:
-	    YY_RULE_SETUP
+	    YY_BREAK case 15:YY_RULE_SETUP
 #line 119 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return AND;
 	    }
-	  YY_BREAK case 16:
-	    YY_RULE_SETUP
+	    YY_BREAK case 16:YY_RULE_SETUP
 #line 120 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ANY;
 	    }
-	  YY_BREAK case 17:
-	    YY_RULE_SETUP
+	    YY_BREAK case 17:YY_RULE_SETUP
 #line 121 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return ARCHIVE;
 	    }
-	  YY_BREAK case 18:
-	    YY_RULE_SETUP
+	    YY_BREAK case 18:YY_RULE_SETUP
 #line 124 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ARE;
 	    }
-	  YY_BREAK case 19:
-	    YY_RULE_SETUP
+	    YY_BREAK case 19:YY_RULE_SETUP
 #line 125 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return AS;
 	    }
-	  YY_BREAK case 20:
-	    YY_RULE_SETUP
+	    YY_BREAK case 20:YY_RULE_SETUP
 #line 126 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ASC;
 	    }
-	  YY_BREAK case 21:
-	    YY_RULE_SETUP
+	    YY_BREAK case 21:YY_RULE_SETUP
 #line 127 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ASSERTION;
 	    }
-	  YY_BREAK case 22:
-	    YY_RULE_SETUP
+	    YY_BREAK case 22:YY_RULE_SETUP
 #line 128 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ASYNC;
 	    }
-	  YY_BREAK case 23:
-	    YY_RULE_SETUP
+	    YY_BREAK case 23:YY_RULE_SETUP
 #line 129 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return AT;
 	    }
-	  YY_BREAK case 24:
-	    YY_RULE_SETUP
+	    YY_BREAK case 24:YY_RULE_SETUP
 #line 130 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ATTACH;
 	    }
-	  YY_BREAK case 25:
-	    YY_RULE_SETUP
+	    YY_BREAK case 25:YY_RULE_SETUP
 #line 131 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ATTRIBUTE;
 	    }
-	  YY_BREAK case 26:
-	    YY_RULE_SETUP
+	    YY_BREAK case 26:YY_RULE_SETUP
 #line 132 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return AUTO_INCREMENT;
 	    }
-	  YY_BREAK case 27:
-	    YY_RULE_SETUP
+	    YY_BREAK case 27:YY_RULE_SETUP
 #line 135 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return AVG;
 	    }
-	  YY_BREAK case 28:
-	    YY_RULE_SETUP
+	    YY_BREAK case 28:YY_RULE_SETUP
 #line 136 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BEFORE;
 	    }
-	  YY_BREAK case 29:
-	    YY_RULE_SETUP
+	    YY_BREAK case 29:YY_RULE_SETUP
 #line 137 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BETWEEN;
 	    }
-	  YY_BREAK case 30:
-	    YY_RULE_SETUP
+	    YY_BREAK case 30:YY_RULE_SETUP
 #line 138 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BIGINT;
 	    }
-	  YY_BREAK case 31:
-	    YY_RULE_SETUP
+	    YY_BREAK case 31:YY_RULE_SETUP
 #line 139 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BINARY;
 	    }
-	  YY_BREAK case 32:
-	    YY_RULE_SETUP
+	    YY_BREAK case 32:YY_RULE_SETUP
 #line 140 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BIT;
 	    }
-	  YY_BREAK case 33:
-	    YY_RULE_SETUP
+	    YY_BREAK case 33:YY_RULE_SETUP
 #line 141 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BIT_LENGTH;
 	    }
-	  YY_BREAK case 34:
-	    YY_RULE_SETUP
+	    YY_BREAK case 34:YY_RULE_SETUP
 #line 142 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return BIT_AND;
 	    }
-	  YY_BREAK case 35:
-	    YY_RULE_SETUP
+	    YY_BREAK case 35:YY_RULE_SETUP
 #line 145 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return BIT_OR;
 	    }
-	  YY_BREAK case 36:
-	    YY_RULE_SETUP
+	    YY_BREAK case 36:YY_RULE_SETUP
 #line 148 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return BIT_XOR;
 	    }
-	  YY_BREAK case 37:
-	    YY_RULE_SETUP
+	    YY_BREAK case 37:YY_RULE_SETUP
 #line 151 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BLOB_;
 	    }
-	  YY_BREAK case 38:
-	    YY_RULE_SETUP
+	    YY_BREAK case 38:YY_RULE_SETUP
 #line 152 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BOOLEAN_;
 	    }
-	  YY_BREAK case 39:
-	    YY_RULE_SETUP
+	    YY_BREAK case 39:YY_RULE_SETUP
 #line 153 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BOTH_;
 	    }
-	  YY_BREAK case 40:
-	    YY_RULE_SETUP
+	    YY_BREAK case 40:YY_RULE_SETUP
 #line 154 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BREADTH;
 	    }
-	  YY_BREAK case 41:
-	    YY_RULE_SETUP
+	    YY_BREAK case 41:YY_RULE_SETUP
 #line 155 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BY;
 	    }
-	  YY_BREAK case 42:
-	    YY_RULE_SETUP
+	    YY_BREAK case 42:YY_RULE_SETUP
 #line 156 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CALL;
 	    }
-	  YY_BREAK case 43:
-	    YY_RULE_SETUP
+	    YY_BREAK case 43:YY_RULE_SETUP
 #line 157 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return CACHE;
 	    }
-	  YY_BREAK case 44:
-	    YY_RULE_SETUP
+	    YY_BREAK case 44:YY_RULE_SETUP
 #line 160 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return CAPACITY;
 	    }
-	  YY_BREAK case 45:
-	    YY_RULE_SETUP
+	    YY_BREAK case 45:YY_RULE_SETUP
 #line 163 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CASCADE;
 	    }
-	  YY_BREAK case 46:
-	    YY_RULE_SETUP
+	    YY_BREAK case 46:YY_RULE_SETUP
 #line 164 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CASCADED;
 	    }
-	  YY_BREAK case 47:
-	    YY_RULE_SETUP
+	    YY_BREAK case 47:YY_RULE_SETUP
 #line 165 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CASE;
 	    }
-	  YY_BREAK case 48:
-	    YY_RULE_SETUP
+	    YY_BREAK case 48:YY_RULE_SETUP
 #line 166 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CAST;
 	    }
-	  YY_BREAK case 49:
-	    YY_RULE_SETUP
+	    YY_BREAK case 49:YY_RULE_SETUP
 #line 167 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CATALOG;
 	    }
-	  YY_BREAK case 50:
-	    YY_RULE_SETUP
+	    YY_BREAK case 50:YY_RULE_SETUP
 #line 168 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CHANGE;
 	    }
-	  YY_BREAK case 51:
-	    YY_RULE_SETUP
+	    YY_BREAK case 51:YY_RULE_SETUP
 #line 169 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CHAR_;
 	    }
-	  YY_BREAK case 52:
-	    YY_RULE_SETUP
+	    YY_BREAK case 52:YY_RULE_SETUP
 #line 170 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return CHARACTER_SET_;
 	    }
-	  YY_BREAK case 53:
-	    YY_RULE_SETUP
+	    YY_BREAK case 53:YY_RULE_SETUP
 #line 173 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return CHARSET;
 	    }
-	  YY_BREAK case 54:
-	    YY_RULE_SETUP
+	    YY_BREAK case 54:YY_RULE_SETUP
 #line 176 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CHECK;
 	    }
-	  YY_BREAK case 55:
-	    YY_RULE_SETUP
+	    YY_BREAK case 55:YY_RULE_SETUP
 #line 177 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return CHR;
 	    }
-	  YY_BREAK case 56:
-	    YY_RULE_SETUP
+	    YY_BREAK case 56:YY_RULE_SETUP
 #line 180 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CLASS;
 	    }
-	  YY_BREAK case 57:
-	    YY_RULE_SETUP
+	    YY_BREAK case 57:YY_RULE_SETUP
 #line 181 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CLASSES;
 	    }
-	  YY_BREAK case 58:
-	    YY_RULE_SETUP
+	    YY_BREAK case 58:YY_RULE_SETUP
 #line 182 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CLOB_;
 	    }
-	  YY_BREAK case 59:
-	    YY_RULE_SETUP
+	    YY_BREAK case 59:YY_RULE_SETUP
 #line 183 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return CLOB_TO_CHAR;
 	    }
-	  YY_BREAK case 60:
-	    YY_RULE_SETUP
+	    YY_BREAK case 60:YY_RULE_SETUP
 #line 186 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CLOSE;
 	    }
-	  YY_BREAK case 61:
-	    YY_RULE_SETUP
+	    YY_BREAK case 61:YY_RULE_SETUP
 #line 187 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COALESCE;
 	    }
-	  YY_BREAK case 62:
-	    YY_RULE_SETUP
+	    YY_BREAK case 62:YY_RULE_SETUP
 #line 188 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COLLATE;
 	    }
-	  YY_BREAK case 63:
-	    YY_RULE_SETUP
+	    YY_BREAK case 63:YY_RULE_SETUP
 #line 189 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return COLLATION;
 	    }
-	  YY_BREAK case 64:
-	    YY_RULE_SETUP
+	    YY_BREAK case 64:YY_RULE_SETUP
 #line 192 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COLUMN;
 	    }
-	  YY_BREAK case 65:
-	    YY_RULE_SETUP
+	    YY_BREAK case 65:YY_RULE_SETUP
 #line 193 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return COLUMNS;
 	    }
-	  YY_BREAK case 66:
-	    YY_RULE_SETUP
+	    YY_BREAK case 66:YY_RULE_SETUP
 #line 196 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return COMMENT;
 	    }
-	  YY_BREAK case 67:
-	    YY_RULE_SETUP
+	    YY_BREAK case 67:YY_RULE_SETUP
 #line 199 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COMMIT;
 	    }
-	  YY_BREAK case 68:
-	    YY_RULE_SETUP
+	    YY_BREAK case 68:YY_RULE_SETUP
 #line 200 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return COMMITTED;
 	    }
-	  YY_BREAK case 69:
-	    YY_RULE_SETUP
+	    YY_BREAK case 69:YY_RULE_SETUP
 #line 203 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONNECT;
 	    }
-	  YY_BREAK case 70:
-	    YY_RULE_SETUP
+	    YY_BREAK case 70:YY_RULE_SETUP
 #line 204 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONNECT_BY_ISCYCLE;
 	    }
-	  YY_BREAK case 71:
-	    YY_RULE_SETUP
+	    YY_BREAK case 71:YY_RULE_SETUP
 #line 205 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONNECT_BY_ISLEAF;
 	    }
-	  YY_BREAK case 72:
-	    YY_RULE_SETUP
+	    YY_BREAK case 72:YY_RULE_SETUP
 #line 206 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONNECT_BY_ROOT;
 	    }
-	  YY_BREAK case 73:
-	    YY_RULE_SETUP
+	    YY_BREAK case 73:YY_RULE_SETUP
 #line 207 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONNECTION;
 	    }
-	  YY_BREAK case 74:
-	    YY_RULE_SETUP
+	    YY_BREAK case 74:YY_RULE_SETUP
 #line 208 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONSTRAINT;
 	    }
-	  YY_BREAK case 75:
-	    YY_RULE_SETUP
+	    YY_BREAK case 75:YY_RULE_SETUP
 #line 209 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONSTRAINTS;
 	    }
-	  YY_BREAK case 76:
-	    YY_RULE_SETUP
+	    YY_BREAK case 76:YY_RULE_SETUP
 #line 210 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONTINUE;
 	    }
-	  YY_BREAK case 77:
-	    YY_RULE_SETUP
+	    YY_BREAK case 77:YY_RULE_SETUP
 #line 211 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CONVERT;
 	    }
-	  YY_BREAK case 78:
-	    YY_RULE_SETUP
+	    YY_BREAK case 78:YY_RULE_SETUP
 #line 212 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CORRESPONDING;
 	    }
-	  YY_BREAK case 79:
-	    YY_RULE_SETUP
+	    YY_BREAK case 79:YY_RULE_SETUP
 #line 213 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return COST;
 	    }
-	  YY_BREAK case 80:
-	    YY_RULE_SETUP
+	    YY_BREAK case 80:YY_RULE_SETUP
 #line 217 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COUNT;
 	    }
-	  YY_BREAK case 81:
-	    YY_RULE_SETUP
+	    YY_BREAK case 81:YY_RULE_SETUP
 #line 218 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CREATE;
 	    }
-	  YY_BREAK case 82:
-	    YY_RULE_SETUP
+	    YY_BREAK case 82:YY_RULE_SETUP
 #line 219 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CROSS;
 	    }
-	  YY_BREAK case 83:
-	    YY_RULE_SETUP
+	    YY_BREAK case 83:YY_RULE_SETUP
 #line 220 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return CRITICAL;
 	    }
-	  YY_BREAK case 84:
-	    YY_RULE_SETUP
+	    YY_BREAK case 84:YY_RULE_SETUP
 #line 223 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return CUME_DIST;
 	    }
-	  YY_BREAK case 85:
-	    YY_RULE_SETUP
+	    YY_BREAK case 85:YY_RULE_SETUP
 #line 226 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CURRENT;
 	    }
-	  YY_BREAK case 86:
-	    YY_RULE_SETUP
+	    YY_BREAK case 86:YY_RULE_SETUP
 #line 227 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CURRENT_DATE;
 	    }
-	  YY_BREAK case 87:
-	    YY_RULE_SETUP
+	    YY_BREAK case 87:YY_RULE_SETUP
 #line 228 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CURRENT_TIME;
 	    }
-	  YY_BREAK case 88:
-	    YY_RULE_SETUP
+	    YY_BREAK case 88:YY_RULE_SETUP
 #line 229 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CURRENT_TIMESTAMP;
 	    }
-	  YY_BREAK case 89:
-	    YY_RULE_SETUP
+	    YY_BREAK case 89:YY_RULE_SETUP
 #line 230 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CURRENT_DATETIME;
 	    }
-	  YY_BREAK case 90:
-	    YY_RULE_SETUP
+	    YY_BREAK case 90:YY_RULE_SETUP
 #line 231 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CURRENT_USER;
 	    }
-	  YY_BREAK case 91:
-	    YY_RULE_SETUP
+	    YY_BREAK case 91:YY_RULE_SETUP
 #line 232 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CURSOR;
 	    }
-	  YY_BREAK case 92:
-	    YY_RULE_SETUP
+	    YY_BREAK case 92:YY_RULE_SETUP
 #line 233 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CYCLE;
 	    }
-	  YY_BREAK case 93:
-	    YY_RULE_SETUP
+	    YY_BREAK case 93:YY_RULE_SETUP
 #line 234 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CHAR_;
 	    }
-	  YY_BREAK case 94:
-	    YY_RULE_SETUP
+	    YY_BREAK case 94:YY_RULE_SETUP
 #line 235 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DATA;
 	    }
-	  YY_BREAK case 95:
-	    YY_RULE_SETUP
+	    YY_BREAK case 95:YY_RULE_SETUP
 #line 236 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DATABASE;
 	    }
-	  YY_BREAK case 96:
-	    YY_RULE_SETUP
+	    YY_BREAK case 96:YY_RULE_SETUP
 #line 237 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DATA_TYPE_;
 	    }
-	  YY_BREAK case 97:
-	    YY_RULE_SETUP
+	    YY_BREAK case 97:YY_RULE_SETUP
 #line 238 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return DATE_ADD;
 	    }
-	  YY_BREAK case 98:
-	    YY_RULE_SETUP
+	    YY_BREAK case 98:YY_RULE_SETUP
 #line 241 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return DATE_SUB;
 	    }
-	  YY_BREAK case 99:
-	    YY_RULE_SETUP
+	    YY_BREAK case 99:YY_RULE_SETUP
 #line 244 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DATETIME;
 	    }
-	  YY_BREAK case 100:
-	    YY_RULE_SETUP
+	    YY_BREAK case 100:YY_RULE_SETUP
 #line 245 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DATETIMETZ;
 	    }
-	  YY_BREAK case 101:
-	    YY_RULE_SETUP
+	    YY_BREAK case 101:YY_RULE_SETUP
 #line 246 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DATETIMELTZ;
 	    }
-	  YY_BREAK case 102:
-	    YY_RULE_SETUP
+	    YY_BREAK case 102:YY_RULE_SETUP
 #line 247 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DAY_;
 	    }
-	  YY_BREAK case 103:
-	    YY_RULE_SETUP
+	    YY_BREAK case 103:YY_RULE_SETUP
 #line 248 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DAY_MILLISECOND;
 	    }
-	  YY_BREAK case 104:
-	    YY_RULE_SETUP
+	    YY_BREAK case 104:YY_RULE_SETUP
 #line 249 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DAY_SECOND;
 	    }
-	  YY_BREAK case 105:
-	    YY_RULE_SETUP
+	    YY_BREAK case 105:YY_RULE_SETUP
 #line 250 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DAY_MINUTE;
 	    }
-	  YY_BREAK case 106:
-	    YY_RULE_SETUP
+	    YY_BREAK case 106:YY_RULE_SETUP
 #line 251 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DAY_HOUR;
 	    }
-	  YY_BREAK case 107:
-	    YY_RULE_SETUP
+	    YY_BREAK case 107:YY_RULE_SETUP
 #line 252 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DB_TIMEZONE;
 	    }
-	  YY_BREAK case 108:
-	    YY_RULE_SETUP
+	    YY_BREAK case 108:YY_RULE_SETUP
 #line 253 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DEALLOCATE;
 	    }
-	  YY_BREAK case 109:
-	    YY_RULE_SETUP
+	    YY_BREAK case 109:YY_RULE_SETUP
 #line 254 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NUMERIC;
 	    }
-	  YY_BREAK case 110:
-	    YY_RULE_SETUP
+	    YY_BREAK case 110:YY_RULE_SETUP
 #line 255 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NUMERIC;
 	    }
-	  YY_BREAK case 111:
-	    YY_RULE_SETUP
+	    YY_BREAK case 111:YY_RULE_SETUP
 #line 256 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DECLARE;
 	    }
-	  YY_BREAK case 112:
-	    YY_RULE_SETUP
+	    YY_BREAK case 112:YY_RULE_SETUP
 #line 257 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return DECREMENT;
 	    }
-	  YY_BREAK case 113:
-	    YY_RULE_SETUP
+	    YY_BREAK case 113:YY_RULE_SETUP
 #line 260 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DEFAULT;
 	    }
-	  YY_BREAK case 114:
-	    YY_RULE_SETUP
+	    YY_BREAK case 114:YY_RULE_SETUP
 #line 261 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DEFERRABLE;
 	    }
-	  YY_BREAK case 115:
-	    YY_RULE_SETUP
+	    YY_BREAK case 115:YY_RULE_SETUP
 #line 262 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DEFERRED;
 	    }
-	  YY_BREAK case 116:
-	    YY_RULE_SETUP
+	    YY_BREAK case 116:YY_RULE_SETUP
 #line 263 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DELETE_;
 	    }
-	  YY_BREAK case 117:
-	    YY_RULE_SETUP
+	    YY_BREAK case 117:YY_RULE_SETUP
 #line 264 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return DENSE_RANK;
 	    }
-	  YY_BREAK case 118:
-	    YY_RULE_SETUP
+	    YY_BREAK case 118:YY_RULE_SETUP
 #line 267 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DEPTH;
 	    }
-	  YY_BREAK case 119:
-	    YY_RULE_SETUP
+	    YY_BREAK case 119:YY_RULE_SETUP
 #line 268 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DESC;
 	    }
-	  YY_BREAK case 120:
-	    YY_RULE_SETUP
+	    YY_BREAK case 120:YY_RULE_SETUP
 #line 269 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DESCRIBE;
 	    }
-	  YY_BREAK case 121:
-	    YY_RULE_SETUP
+	    YY_BREAK case 121:YY_RULE_SETUP
 #line 270 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DESCRIPTOR;
 	    }
-	  YY_BREAK case 122:
-	    YY_RULE_SETUP
+	    YY_BREAK case 122:YY_RULE_SETUP
 #line 271 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DIAGNOSTICS;
 	    }
-	  YY_BREAK case 123:
-	    YY_RULE_SETUP
+	    YY_BREAK case 123:YY_RULE_SETUP
 #line 272 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DIFFERENCE_;
 	    }
-	  YY_BREAK case 124:
-	    YY_RULE_SETUP
+	    YY_BREAK case 124:YY_RULE_SETUP
 #line 273 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DISCONNECT;
 	    }
-	  YY_BREAK case 125:
-	    YY_RULE_SETUP
+	    YY_BREAK case 125:YY_RULE_SETUP
 #line 274 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DISTINCT;
 	    }
-	  YY_BREAK case 126:
-	    YY_RULE_SETUP
+	    YY_BREAK case 126:YY_RULE_SETUP
 #line 275 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DISTINCT;
 	    }
-	  YY_BREAK case 127:
-	    YY_RULE_SETUP
+	    YY_BREAK case 127:YY_RULE_SETUP
 #line 276 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DIV;
 	    }
-	  YY_BREAK case 128:
-	    YY_RULE_SETUP
+	    YY_BREAK case 128:YY_RULE_SETUP
 #line 277 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DO;
 	    }
-	  YY_BREAK case 129:
-	    YY_RULE_SETUP
+	    YY_BREAK case 129:YY_RULE_SETUP
 #line 278 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Domain;
 	    }
-	  YY_BREAK case 130:
-	    YY_RULE_SETUP
+	    YY_BREAK case 130:YY_RULE_SETUP
 #line 279 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DROP;
 	    }
-	  YY_BREAK case 131:
-	    YY_RULE_SETUP
+	    YY_BREAK case 131:YY_RULE_SETUP
 #line 280 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DUPLICATE_;
 	    }
-	  YY_BREAK case 132:
-	    YY_RULE_SETUP
+	    YY_BREAK case 132:YY_RULE_SETUP
 #line 281 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Date;
 	    }
-	  YY_BREAK case 133:
-	    YY_RULE_SETUP
+	    YY_BREAK case 133:YY_RULE_SETUP
 #line 282 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Double;
 	    }
-	  YY_BREAK case 134:
-	    YY_RULE_SETUP
+	    YY_BREAK case 134:YY_RULE_SETUP
 #line 283 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EACH;
 	    }
-	  YY_BREAK case 135:
-	    YY_RULE_SETUP
+	    YY_BREAK case 135:YY_RULE_SETUP
 #line 284 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ELSE;
 	    }
-	  YY_BREAK case 136:
-	    YY_RULE_SETUP
+	    YY_BREAK case 136:YY_RULE_SETUP
 #line 285 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ELSEIF;
 	    }
-	  YY_BREAK case 137:
-	    YY_RULE_SETUP
+	    YY_BREAK case 137:YY_RULE_SETUP
 #line 286 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return ELT;
 	    }
-	  YY_BREAK case 138:
-	    YY_RULE_SETUP
+	    YY_BREAK case 138:YY_RULE_SETUP
 #line 289 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return END;
 	    }
-	  YY_BREAK case 139:
-	    YY_RULE_SETUP
+	    YY_BREAK case 139:YY_RULE_SETUP
 #line 290 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ENUM;
 	    }
-	  YY_BREAK case 140:
-	    YY_RULE_SETUP
+	    YY_BREAK case 140:YY_RULE_SETUP
 #line 291 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EQUALS;
 	    }
-	  YY_BREAK case 141:
-	    YY_RULE_SETUP
+	    YY_BREAK case 141:YY_RULE_SETUP
 #line 292 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ESCAPE;
 	    }
-	  YY_BREAK case 142:
-	    YY_RULE_SETUP
+	    YY_BREAK case 142:YY_RULE_SETUP
 #line 293 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EVALUATE;
 	    }
-	  YY_BREAK case 143:
-	    YY_RULE_SETUP
+	    YY_BREAK case 143:YY_RULE_SETUP
 #line 294 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EXCEPT;
 	    }
-	  YY_BREAK case 144:
-	    YY_RULE_SETUP
+	    YY_BREAK case 144:YY_RULE_SETUP
 #line 295 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EXCEPTION;
 	    }
-	  YY_BREAK case 145:
-	    YY_RULE_SETUP
+	    YY_BREAK case 145:YY_RULE_SETUP
 #line 296 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EXEC;
 	    }
-	  YY_BREAK case 146:
-	    YY_RULE_SETUP
+	    YY_BREAK case 146:YY_RULE_SETUP
 #line 297 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EXECUTE;
 	    }
-	  YY_BREAK case 147:
-	    YY_RULE_SETUP
+	    YY_BREAK case 147:YY_RULE_SETUP
 #line 298 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EXISTS;
 	    }
-	  YY_BREAK case 148:
-	    YY_RULE_SETUP
+	    YY_BREAK case 148:YY_RULE_SETUP
 #line 299 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return EXPLAIN;
 	    }
-	  YY_BREAK case 149:
-	    YY_RULE_SETUP
+	    YY_BREAK case 149:YY_RULE_SETUP
 #line 302 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EXTERNAL;
 	    }
-	  YY_BREAK case 150:
-	    YY_RULE_SETUP
+	    YY_BREAK case 150:YY_RULE_SETUP
 #line 303 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EXTRACT;
 	    }
-	  YY_BREAK case 151:
-	    YY_RULE_SETUP
+	    YY_BREAK case 151:YY_RULE_SETUP
 #line 304 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FETCH;
 	    }
-	  YY_BREAK case 152:
-	    YY_RULE_SETUP
+	    YY_BREAK case 152:YY_RULE_SETUP
 #line 305 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FIRST;
 	    }
-	  YY_BREAK case 153:
-	    YY_RULE_SETUP
+	    YY_BREAK case 153:YY_RULE_SETUP
 #line 306 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return FIRST_VALUE;
 	    }
-	  YY_BREAK case 154:
-	    YY_RULE_SETUP
+	    YY_BREAK case 154:YY_RULE_SETUP
 #line 309 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FORCE;
 	    }
-	  YY_BREAK case 155:
-	    YY_RULE_SETUP
+	    YY_BREAK case 155:YY_RULE_SETUP
 #line 310 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FOREIGN;
 	    }
-	  YY_BREAK case 156:
-	    YY_RULE_SETUP
+	    YY_BREAK case 156:YY_RULE_SETUP
 #line 311 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FOUND;
 	    }
-	  YY_BREAK case 157:
-	    YY_RULE_SETUP
+	    YY_BREAK case 157:YY_RULE_SETUP
 #line 312 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FROM;
 	    }
-	  YY_BREAK case 158:
-	    YY_RULE_SETUP
+	    YY_BREAK case 158:YY_RULE_SETUP
 #line 313 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FULL;
 	    }
-	  YY_BREAK case 159:
-	    YY_RULE_SETUP
+	    YY_BREAK case 159:YY_RULE_SETUP
 #line 314 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return FULLSCAN;
 	    }
-	  YY_BREAK case 160:
-	    YY_RULE_SETUP
+	    YY_BREAK case 160:YY_RULE_SETUP
 #line 317 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FUNCTION;
 	    }
-	  YY_BREAK case 161:
-	    YY_RULE_SETUP
+	    YY_BREAK case 161:YY_RULE_SETUP
 #line 318 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return False;
 	    }
-	  YY_BREAK case 162:
-	    YY_RULE_SETUP
+	    YY_BREAK case 162:YY_RULE_SETUP
 #line 319 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return File;
 	    }
-	  YY_BREAK case 163:
-	    YY_RULE_SETUP
+	    YY_BREAK case 163:YY_RULE_SETUP
 #line 320 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FLOAT_;
 	    }
-	  YY_BREAK case 164:
-	    YY_RULE_SETUP
+	    YY_BREAK case 164:YY_RULE_SETUP
 #line 321 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return For;
 	    }
-	  YY_BREAK case 165:
-	    YY_RULE_SETUP
+	    YY_BREAK case 165:YY_RULE_SETUP
 #line 322 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return GENERAL;
 	    }
-	  YY_BREAK case 166:
-	    YY_RULE_SETUP
+	    YY_BREAK case 166:YY_RULE_SETUP
 #line 323 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return GET;
 	    }
-	  YY_BREAK case 167:
-	    YY_RULE_SETUP
+	    YY_BREAK case 167:YY_RULE_SETUP
 #line 324 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GE_INF_;
 	    }
-	  YY_BREAK case 168:
-	    YY_RULE_SETUP
+	    YY_BREAK case 168:YY_RULE_SETUP
 #line 327 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GE_LE_;
 	    }
-	  YY_BREAK case 169:
-	    YY_RULE_SETUP
+	    YY_BREAK case 169:YY_RULE_SETUP
 #line 330 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GE_LT_;
 	    }
-	  YY_BREAK case 170:
-	    YY_RULE_SETUP
+	    YY_BREAK case 170:YY_RULE_SETUP
 #line 333 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return GLOBAL;
 	    }
-	  YY_BREAK case 171:
-	    YY_RULE_SETUP
+	    YY_BREAK case 171:YY_RULE_SETUP
 #line 334 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return GO;
 	    }
-	  YY_BREAK case 172:
-	    YY_RULE_SETUP
+	    YY_BREAK case 172:YY_RULE_SETUP
 #line 335 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return GOTO;
 	    }
-	  YY_BREAK case 173:
-	    YY_RULE_SETUP
+	    YY_BREAK case 173:YY_RULE_SETUP
 #line 336 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return GRANT;
 	    }
-	  YY_BREAK case 174:
-	    YY_RULE_SETUP
+	    YY_BREAK case 174:YY_RULE_SETUP
 #line 337 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GRANTS;
 	    }
-	  YY_BREAK case 175:
-	    YY_RULE_SETUP
+	    YY_BREAK case 175:YY_RULE_SETUP
 #line 340 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return GROUP_;
 	    }
-	  YY_BREAK case 176:
-	    YY_RULE_SETUP
+	    YY_BREAK case 176:YY_RULE_SETUP
 #line 341 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GROUP_CONCAT;
 	    }
-	  YY_BREAK case 177:
-	    YY_RULE_SETUP
+	    YY_BREAK case 177:YY_RULE_SETUP
 #line 344 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GROUPS;
 	    }
-	  YY_BREAK case 178:
-	    YY_RULE_SETUP
+	    YY_BREAK case 178:YY_RULE_SETUP
 #line 347 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GT_INF_;
 	    }
-	  YY_BREAK case 179:
-	    YY_RULE_SETUP
+	    YY_BREAK case 179:YY_RULE_SETUP
 #line 350 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GT_LE_;
 	    }
-	  YY_BREAK case 180:
-	    YY_RULE_SETUP
+	    YY_BREAK case 180:YY_RULE_SETUP
 #line 353 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return GT_LT_;
 	    }
-	  YY_BREAK case 181:
-	    YY_RULE_SETUP
+	    YY_BREAK case 181:YY_RULE_SETUP
 #line 356 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return HASH;
 	    }
-	  YY_BREAK case 182:
-	    YY_RULE_SETUP
+	    YY_BREAK case 182:YY_RULE_SETUP
 #line 359 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return HAVING;
 	    }
-	  YY_BREAK case 183:
-	    YY_RULE_SETUP
+	    YY_BREAK case 183:YY_RULE_SETUP
 #line 360 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return HEADER;
 	    }
-	  YY_BREAK case 184:
-	    YY_RULE_SETUP
+	    YY_BREAK case 184:YY_RULE_SETUP
 #line 363 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return HEAP;
 	    }
-	  YY_BREAK case 185:
-	    YY_RULE_SETUP
+	    YY_BREAK case 185:YY_RULE_SETUP
 #line 366 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return HOUR_;
 	    }
-	  YY_BREAK case 186:
-	    YY_RULE_SETUP
+	    YY_BREAK case 186:YY_RULE_SETUP
 #line 367 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return HOUR_MILLISECOND;
 	    }
-	  YY_BREAK case 187:
-	    YY_RULE_SETUP
+	    YY_BREAK case 187:YY_RULE_SETUP
 #line 368 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return HOUR_SECOND;
 	    }
-	  YY_BREAK case 188:
-	    YY_RULE_SETUP
+	    YY_BREAK case 188:YY_RULE_SETUP
 #line 369 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return HOUR_MINUTE;
 	    }
-	  YY_BREAK case 189:
-	    YY_RULE_SETUP
+	    YY_BREAK case 189:YY_RULE_SETUP
 #line 370 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return IDENTITY;
 	    }
-	  YY_BREAK case 190:
-	    YY_RULE_SETUP
+	    YY_BREAK case 190:YY_RULE_SETUP
 #line 371 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return IF;
 	    }
-	  YY_BREAK case 191:
-	    YY_RULE_SETUP
+	    YY_BREAK case 191:YY_RULE_SETUP
 #line 372 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return IFNULL;
 	    }
-	  YY_BREAK case 192:
-	    YY_RULE_SETUP
+	    YY_BREAK case 192:YY_RULE_SETUP
 #line 375 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return ISNULL;
 	    }
-	  YY_BREAK case 193:
-	    YY_RULE_SETUP
+	    YY_BREAK case 193:YY_RULE_SETUP
 #line 378 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return IGNORE_;
 	    }
-	  YY_BREAK case 194:
-	    YY_RULE_SETUP
+	    YY_BREAK case 194:YY_RULE_SETUP
 #line 379 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return IMMEDIATE;
 	    }
-	  YY_BREAK case 195:
-	    YY_RULE_SETUP
+	    YY_BREAK case 195:YY_RULE_SETUP
 #line 380 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return IN_;
 	    }
-	  YY_BREAK case 196:
-	    YY_RULE_SETUP
+	    YY_BREAK case 196:YY_RULE_SETUP
 #line 381 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return INACTIVE;
 	    }
-	  YY_BREAK case 197:
-	    YY_RULE_SETUP
+	    YY_BREAK case 197:YY_RULE_SETUP
 #line 384 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return INCREMENT;
 	    }
-	  YY_BREAK case 198:
-	    YY_RULE_SETUP
+	    YY_BREAK case 198:YY_RULE_SETUP
 #line 387 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INDEX;
 	    }
-	  YY_BREAK case 199:
-	    YY_RULE_SETUP
+	    YY_BREAK case 199:YY_RULE_SETUP
 #line 388 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INDEX_PREFIX;
 	    }
-	  YY_BREAK case 200:
-	    YY_RULE_SETUP
+	    YY_BREAK case 200:YY_RULE_SETUP
 #line 389 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return INDEXES;
 	    }
-	  YY_BREAK case 201:
-	    YY_RULE_SETUP
+	    YY_BREAK case 201:YY_RULE_SETUP
 #line 392 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INDICATOR;
 	    }
-	  YY_BREAK case 202:
-	    YY_RULE_SETUP
+	    YY_BREAK case 202:YY_RULE_SETUP
 #line 393 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return INFINITE_;
 	    }
-	  YY_BREAK case 203:
-	    YY_RULE_SETUP
+	    YY_BREAK case 203:YY_RULE_SETUP
 #line 396 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return INF_LE_;
 	    }
-	  YY_BREAK case 204:
-	    YY_RULE_SETUP
+	    YY_BREAK case 204:YY_RULE_SETUP
 #line 399 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return INF_LT_;
 	    }
-	  YY_BREAK case 205:
-	    YY_RULE_SETUP
+	    YY_BREAK case 205:YY_RULE_SETUP
 #line 402 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INHERIT;
 	    }
-	  YY_BREAK case 206:
-	    YY_RULE_SETUP
+	    YY_BREAK case 206:YY_RULE_SETUP
 #line 403 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INITIALLY;
 	    }
-	  YY_BREAK case 207:
-	    YY_RULE_SETUP
+	    YY_BREAK case 207:YY_RULE_SETUP
 #line 404 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INNER;
 	    }
-	  YY_BREAK case 208:
-	    YY_RULE_SETUP
+	    YY_BREAK case 208:YY_RULE_SETUP
 #line 405 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INOUT;
 	    }
-	  YY_BREAK case 209:
-	    YY_RULE_SETUP
+	    YY_BREAK case 209:YY_RULE_SETUP
 #line 406 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INPUT_;
 	    }
-	  YY_BREAK case 210:
-	    YY_RULE_SETUP
+	    YY_BREAK case 210:YY_RULE_SETUP
 #line 407 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INSERT;
 	    }
-	  YY_BREAK case 211:
-	    YY_RULE_SETUP
+	    YY_BREAK case 211:YY_RULE_SETUP
 #line 408 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return INSTANCES;
 	    }
-	  YY_BREAK case 212:
-	    YY_RULE_SETUP
+	    YY_BREAK case 212:YY_RULE_SETUP
 #line 411 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INTERSECT;
 	    }
-	  YY_BREAK case 213:
-	    YY_RULE_SETUP
+	    YY_BREAK case 213:YY_RULE_SETUP
 #line 412 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INTERSECTION;
 	    }
-	  YY_BREAK case 214:
-	    YY_RULE_SETUP
+	    YY_BREAK case 214:YY_RULE_SETUP
 #line 413 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INTERVAL;
 	    }
-	  YY_BREAK case 215:
-	    YY_RULE_SETUP
+	    YY_BREAK case 215:YY_RULE_SETUP
 #line 414 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INTO;
 	    }
-	  YY_BREAK case 216:
-	    YY_RULE_SETUP
+	    YY_BREAK case 216:YY_RULE_SETUP
 #line 415 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return INVALIDATE;
 	    }
-	  YY_BREAK case 217:
-	    YY_RULE_SETUP
+	    YY_BREAK case 217:YY_RULE_SETUP
 #line 418 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return IS;
 	    }
-	  YY_BREAK case 218:
-	    YY_RULE_SETUP
+	    YY_BREAK case 218:YY_RULE_SETUP
 #line 419 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ISOLATION;
 	    }
-	  YY_BREAK case 219:
-	    YY_RULE_SETUP
+	    YY_BREAK case 219:YY_RULE_SETUP
 #line 420 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INTEGER;
 	    }
-	  YY_BREAK case 220:
-	    YY_RULE_SETUP
+	    YY_BREAK case 220:YY_RULE_SETUP
 #line 421 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INTEGER;
 	    }
-	  YY_BREAK case 221:
-	    YY_RULE_SETUP
+	    YY_BREAK case 221:YY_RULE_SETUP
 #line 422 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return JAVA;
 	    }
-	  YY_BREAK case 222:
-	    YY_RULE_SETUP
+	    YY_BREAK case 222:YY_RULE_SETUP
 #line 425 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return JOIN;
 	    }
-	  YY_BREAK case 223:
-	    YY_RULE_SETUP
+	    YY_BREAK case 223:YY_RULE_SETUP
 #line 426 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return JOB;
 	    }
-	  YY_BREAK case 224:
-	    YY_RULE_SETUP
+	    YY_BREAK case 224:YY_RULE_SETUP
 #line 429 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return JSON;
 	    }
-	  YY_BREAK case 225:
-	    YY_RULE_SETUP
+	    YY_BREAK case 225:YY_RULE_SETUP
 #line 432 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return KEY;
 	    }
-	  YY_BREAK case 226:
-	    YY_RULE_SETUP
+	    YY_BREAK case 226:YY_RULE_SETUP
 #line 433 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return KEYS;
 	    }
-	  YY_BREAK case 227:
-	    YY_RULE_SETUP
+	    YY_BREAK case 227:YY_RULE_SETUP
 #line 436 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return KILL;
 	    }
-	  YY_BREAK case 228:
-	    YY_RULE_SETUP
+	    YY_BREAK case 228:YY_RULE_SETUP
 #line 437 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LANGUAGE;
 	    }
-	  YY_BREAK case 229:
-	    YY_RULE_SETUP
+	    YY_BREAK case 229:YY_RULE_SETUP
 #line 438 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return KEYLIMIT;
 	    }
-	  YY_BREAK case 230:
-	    YY_RULE_SETUP
+	    YY_BREAK case 230:YY_RULE_SETUP
 #line 439 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return LAG;
 	    }
-	  YY_BREAK case 231:
-	    YY_RULE_SETUP
+	    YY_BREAK case 231:YY_RULE_SETUP
 #line 442 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LAST;
 	    }
-	  YY_BREAK case 232:
-	    YY_RULE_SETUP
+	    YY_BREAK case 232:YY_RULE_SETUP
 #line 443 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return LAST_VALUE;
 	    }
-	  YY_BREAK case 233:
-	    YY_RULE_SETUP
+	    YY_BREAK case 233:YY_RULE_SETUP
 #line 446 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return LCASE;
 	    }
-	  YY_BREAK case 234:
-	    YY_RULE_SETUP
+	    YY_BREAK case 234:YY_RULE_SETUP
 #line 449 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return LEAD;
 	    }
-	  YY_BREAK case 235:
-	    YY_RULE_SETUP
+	    YY_BREAK case 235:YY_RULE_SETUP
 #line 452 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LEADING_;
 	    }
-	  YY_BREAK case 236:
-	    YY_RULE_SETUP
+	    YY_BREAK case 236:YY_RULE_SETUP
 #line 453 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LEAVE;
 	    }
-	  YY_BREAK case 237:
-	    YY_RULE_SETUP
+	    YY_BREAK case 237:YY_RULE_SETUP
 #line 454 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LEFT;
 	    }
-	  YY_BREAK case 238:
-	    YY_RULE_SETUP
+	    YY_BREAK case 238:YY_RULE_SETUP
 #line 455 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LESS;
 	    }
-	  YY_BREAK case 239:
-	    YY_RULE_SETUP
+	    YY_BREAK case 239:YY_RULE_SETUP
 #line 456 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LEVEL;
 	    }
-	  YY_BREAK case 240:
-	    YY_RULE_SETUP
+	    YY_BREAK case 240:YY_RULE_SETUP
 #line 457 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LIKE;
 	    }
-	  YY_BREAK case 241:
-	    YY_RULE_SETUP
+	    YY_BREAK case 241:YY_RULE_SETUP
 #line 458 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LIMIT;
 	    }
-	  YY_BREAK case 242:
-	    YY_RULE_SETUP
+	    YY_BREAK case 242:YY_RULE_SETUP
 #line 459 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LIST;
 	    }
-	  YY_BREAK case 243:
-	    YY_RULE_SETUP
+	    YY_BREAK case 243:YY_RULE_SETUP
 #line 460 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LOCAL;
 	    }
-	  YY_BREAK case 244:
-	    YY_RULE_SETUP
+	    YY_BREAK case 244:YY_RULE_SETUP
 #line 461 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LOCAL_TRANSACTION_ID;
 	    }
-	  YY_BREAK case 245:
-	    YY_RULE_SETUP
+	    YY_BREAK case 245:YY_RULE_SETUP
 #line 462 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LOCALTIME;
 	    }
-	  YY_BREAK case 246:
-	    YY_RULE_SETUP
+	    YY_BREAK case 246:YY_RULE_SETUP
 #line 463 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LOCALTIMESTAMP;
 	    }
-	  YY_BREAK case 247:
-	    YY_RULE_SETUP
+	    YY_BREAK case 247:YY_RULE_SETUP
 #line 464 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return LOCK_;
 	    }
-	  YY_BREAK case 248:
-	    YY_RULE_SETUP
+	    YY_BREAK case 248:YY_RULE_SETUP
 #line 467 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return LOG;
 	    }
-	  YY_BREAK case 249:
-	    YY_RULE_SETUP
+	    YY_BREAK case 249:YY_RULE_SETUP
 #line 470 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LOOP;
 	    }
-	  YY_BREAK case 250:
-	    YY_RULE_SETUP
+	    YY_BREAK case 250:YY_RULE_SETUP
 #line 471 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return LOWER;
 	    }
-	  YY_BREAK case 251:
-	    YY_RULE_SETUP
+	    YY_BREAK case 251:YY_RULE_SETUP
 #line 472 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MATCH;
 	    }
-	  YY_BREAK case 252:
-	    YY_RULE_SETUP
+	    YY_BREAK case 252:YY_RULE_SETUP
 #line 473 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MATCHED;
 	    }
-	  YY_BREAK case 253:
-	    YY_RULE_SETUP
+	    YY_BREAK case 253:YY_RULE_SETUP
 #line 474 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return MAXIMUM;
 	    }
-	  YY_BREAK case 254:
-	    YY_RULE_SETUP
+	    YY_BREAK case 254:YY_RULE_SETUP
 #line 477 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return MAXVALUE;
 	    }
-	  YY_BREAK case 255:
-	    YY_RULE_SETUP
+	    YY_BREAK case 255:YY_RULE_SETUP
 #line 480 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INTEGER;
 	    }
-	  YY_BREAK case 256:
-	    YY_RULE_SETUP
+	    YY_BREAK case 256:YY_RULE_SETUP
 #line 481 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return MEDIAN;
 	    }
-	  YY_BREAK case 257:
-	    YY_RULE_SETUP
+	    YY_BREAK case 257:YY_RULE_SETUP
 #line 484 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return MEMBERS;
 	    }
-	  YY_BREAK case 258:
-	    YY_RULE_SETUP
+	    YY_BREAK case 258:YY_RULE_SETUP
 #line 487 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MERGE;
 	    }
-	  YY_BREAK case 259:
-	    YY_RULE_SETUP
+	    YY_BREAK case 259:YY_RULE_SETUP
 #line 488 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return METHOD;
 	    }
-	  YY_BREAK case 260:
-	    YY_RULE_SETUP
+	    YY_BREAK case 260:YY_RULE_SETUP
 #line 489 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MILLISECOND_;
 	    }
-	  YY_BREAK case 261:
-	    YY_RULE_SETUP
+	    YY_BREAK case 261:YY_RULE_SETUP
 #line 490 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MINUTE_;
 	    }
-	  YY_BREAK case 262:
-	    YY_RULE_SETUP
+	    YY_BREAK case 262:YY_RULE_SETUP
 #line 491 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MINUTE_MILLISECOND;
 	    }
-	  YY_BREAK case 263:
-	    YY_RULE_SETUP
+	    YY_BREAK case 263:YY_RULE_SETUP
 #line 492 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MINUTE_SECOND;
 	    }
-	  YY_BREAK case 264:
-	    YY_RULE_SETUP
+	    YY_BREAK case 264:YY_RULE_SETUP
 #line 493 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return MINVALUE;
 	    }
-	  YY_BREAK case 265:
-	    YY_RULE_SETUP
+	    YY_BREAK case 265:YY_RULE_SETUP
 #line 496 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MOD;
 	    }
-	  YY_BREAK case 266:
-	    YY_RULE_SETUP
+	    YY_BREAK case 266:YY_RULE_SETUP
 #line 497 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MODIFY;
 	    }
-	  YY_BREAK case 267:
-	    YY_RULE_SETUP
+	    YY_BREAK case 267:YY_RULE_SETUP
 #line 498 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MODULE;
 	    }
-	  YY_BREAK case 268:
-	    YY_RULE_SETUP
+	    YY_BREAK case 268:YY_RULE_SETUP
 #line 499 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MONTH_;
 	    }
-	  YY_BREAK case 269:
-	    YY_RULE_SETUP
+	    YY_BREAK case 269:YY_RULE_SETUP
 #line 500 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MULTISET;
 	    }
-	  YY_BREAK case 270:
-	    YY_RULE_SETUP
+	    YY_BREAK case 270:YY_RULE_SETUP
 #line 501 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MULTISET_OF;
 	    }
-	  YY_BREAK case 271:
-	    YY_RULE_SETUP
+	    YY_BREAK case 271:YY_RULE_SETUP
 #line 502 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Max;
 	    }
-	  YY_BREAK case 272:
-	    YY_RULE_SETUP
+	    YY_BREAK case 272:YY_RULE_SETUP
 #line 503 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Min;
 	    }
-	  YY_BREAK case 273:
-	    YY_RULE_SETUP
+	    YY_BREAK case 273:YY_RULE_SETUP
 #line 504 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Monetary;
 	    }
-	  YY_BREAK case 274:
-	    YY_RULE_SETUP
+	    YY_BREAK case 274:YY_RULE_SETUP
 #line 505 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NA;
 	    }
-	  YY_BREAK case 275:
-	    YY_RULE_SETUP
+	    YY_BREAK case 275:YY_RULE_SETUP
 #line 506 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return NAME;
 	    }
-	  YY_BREAK case 276:
-	    YY_RULE_SETUP
+	    YY_BREAK case 276:YY_RULE_SETUP
 #line 509 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NAMES;
 	    }
-	  YY_BREAK case 277:
-	    YY_RULE_SETUP
+	    YY_BREAK case 277:YY_RULE_SETUP
 #line 510 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NATIONAL;
 	    }
-	  YY_BREAK case 278:
-	    YY_RULE_SETUP
+	    YY_BREAK case 278:YY_RULE_SETUP
 #line 511 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NATURAL;
 	    }
-	  YY_BREAK case 279:
-	    YY_RULE_SETUP
+	    YY_BREAK case 279:YY_RULE_SETUP
 #line 512 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NCHAR;
 	    }
-	  YY_BREAK case 280:
-	    YY_RULE_SETUP
+	    YY_BREAK case 280:YY_RULE_SETUP
 #line 513 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NEXT;
 	    }
-	  YY_BREAK case 281:
-	    YY_RULE_SETUP
+	    YY_BREAK case 281:YY_RULE_SETUP
 #line 514 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NO;
 	    }
-	  YY_BREAK case 282:
-	    YY_RULE_SETUP
+	    YY_BREAK case 282:YY_RULE_SETUP
 #line 515 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return NOCACHE;
 	    }
-	  YY_BREAK case 283:
-	    YY_RULE_SETUP
+	    YY_BREAK case 283:YY_RULE_SETUP
 #line 518 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return NOCYCLE;
 	    }
-	  YY_BREAK case 284:
-	    YY_RULE_SETUP
+	    YY_BREAK case 284:YY_RULE_SETUP
 #line 521 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return NOMAXVALUE;
 	    }
-	  YY_BREAK case 285:
-	    YY_RULE_SETUP
+	    YY_BREAK case 285:YY_RULE_SETUP
 #line 524 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return NOMINVALUE;
 	    }
-	  YY_BREAK case 286:
-	    YY_RULE_SETUP
+	    YY_BREAK case 286:YY_RULE_SETUP
 #line 527 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NONE;
 	    }
-	  YY_BREAK case 287:
-	    YY_RULE_SETUP
+	    YY_BREAK case 287:YY_RULE_SETUP
 #line 528 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NOT;
 	    }
-	  YY_BREAK case 288:
-	    YY_RULE_SETUP
+	    YY_BREAK case 288:YY_RULE_SETUP
 #line 529 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return NTH_VALUE;
 	    }
-	  YY_BREAK case 289:
-	    YY_RULE_SETUP
+	    YY_BREAK case 289:YY_RULE_SETUP
 #line 532 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return NTILE;
 	    }
-	  YY_BREAK case 290:
-	    YY_RULE_SETUP
+	    YY_BREAK case 290:YY_RULE_SETUP
 #line 535 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NULLIF;
 	    }
-	  YY_BREAK case 291:
-	    YY_RULE_SETUP
+	    YY_BREAK case 291:YY_RULE_SETUP
 #line 536 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NUMERIC;
 	    }
-	  YY_BREAK case 292:
-	    YY_RULE_SETUP
+	    YY_BREAK case 292:YY_RULE_SETUP
 #line 537 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Null;
 	    }
-	  YY_BREAK case 293:
-	    YY_RULE_SETUP
+	    YY_BREAK case 293:YY_RULE_SETUP
 #line 538 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return NULLS;
 	    }
-	  YY_BREAK case 294:
-	    YY_RULE_SETUP
+	    YY_BREAK case 294:YY_RULE_SETUP
 #line 541 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OBJECT;
 	    }
-	  YY_BREAK case 295:
-	    YY_RULE_SETUP
+	    YY_BREAK case 295:YY_RULE_SETUP
 #line 542 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OCTET_LENGTH;
 	    }
-	  YY_BREAK case 296:
-	    YY_RULE_SETUP
+	    YY_BREAK case 296:YY_RULE_SETUP
 #line 543 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OF;
 	    }
-	  YY_BREAK case 297:
-	    YY_RULE_SETUP
+	    YY_BREAK case 297:YY_RULE_SETUP
 #line 544 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OFF_;
 	    }
-	  YY_BREAK case 298:
-	    YY_RULE_SETUP
+	    YY_BREAK case 298:YY_RULE_SETUP
 #line 545 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return OFFSET;
 	    }
-	  YY_BREAK case 299:
-	    YY_RULE_SETUP
+	    YY_BREAK case 299:YY_RULE_SETUP
 #line 548 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ON_;
 	    }
-	  YY_BREAK case 300:
-	    YY_RULE_SETUP
+	    YY_BREAK case 300:YY_RULE_SETUP
 #line 549 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ONLY;
 	    }
-	  YY_BREAK case 301:
-	    YY_RULE_SETUP
+	    YY_BREAK case 301:YY_RULE_SETUP
 #line 550 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OPEN;
 	    }
-	  YY_BREAK case 302:
-	    YY_RULE_SETUP
+	    YY_BREAK case 302:YY_RULE_SETUP
 #line 551 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OPTIMIZATION;
 	    }
-	  YY_BREAK case 303:
-	    YY_RULE_SETUP
+	    YY_BREAK case 303:YY_RULE_SETUP
 #line 552 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OPTION;
 	    }
-	  YY_BREAK case 304:
-	    YY_RULE_SETUP
+	    YY_BREAK case 304:YY_RULE_SETUP
 #line 553 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OR;
 	    }
-	  YY_BREAK case 305:
-	    YY_RULE_SETUP
+	    YY_BREAK case 305:YY_RULE_SETUP
 #line 554 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ORDER;
 	    }
-	  YY_BREAK case 306:
-	    YY_RULE_SETUP
+	    YY_BREAK case 306:YY_RULE_SETUP
 #line 555 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OUT_;
 	    }
-	  YY_BREAK case 307:
-	    YY_RULE_SETUP
+	    YY_BREAK case 307:YY_RULE_SETUP
 #line 556 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OUTER;
 	    }
-	  YY_BREAK case 308:
-	    YY_RULE_SETUP
+	    YY_BREAK case 308:YY_RULE_SETUP
 #line 557 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OUTPUT;
 	    }
-	  YY_BREAK case 309:
-	    YY_RULE_SETUP
+	    YY_BREAK case 309:YY_RULE_SETUP
 #line 558 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OVER;
 	    }
-	  YY_BREAK case 310:
-	    YY_RULE_SETUP
+	    YY_BREAK case 310:YY_RULE_SETUP
 #line 559 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return OVERLAPS;
 	    }
-	  YY_BREAK case 311:
-	    YY_RULE_SETUP
+	    YY_BREAK case 311:YY_RULE_SETUP
 #line 560 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return OWNER;
 	    }
-	  YY_BREAK case 312:
-	    YY_RULE_SETUP
+	    YY_BREAK case 312:YY_RULE_SETUP
 #line 563 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PAGE;
 	    }
-	  YY_BREAK case 313:
-	    YY_RULE_SETUP
+	    YY_BREAK case 313:YY_RULE_SETUP
 #line 566 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PARAMETERS;
 	    }
-	  YY_BREAK case 314:
-	    YY_RULE_SETUP
+	    YY_BREAK case 314:YY_RULE_SETUP
 #line 567 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PARTIAL;
 	    }
-	  YY_BREAK case 315:
-	    YY_RULE_SETUP
+	    YY_BREAK case 315:YY_RULE_SETUP
 #line 568 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PARTITION;
 	    }
-	  YY_BREAK case 316:
-	    YY_RULE_SETUP
+	    YY_BREAK case 316:YY_RULE_SETUP
 #line 571 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PARTITIONING;
 	    }
-	  YY_BREAK case 317:
-	    YY_RULE_SETUP
+	    YY_BREAK case 317:YY_RULE_SETUP
 #line 574 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PARTITIONS;
 	    }
-	  YY_BREAK case 318:
-	    YY_RULE_SETUP
+	    YY_BREAK case 318:YY_RULE_SETUP
 #line 577 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PASSWORD;
 	    }
-	  YY_BREAK case 319:
-	    YY_RULE_SETUP
+	    YY_BREAK case 319:YY_RULE_SETUP
 #line 580 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PERCENT_RANK;
 	    }
-	  YY_BREAK case 320:
-	    YY_RULE_SETUP
+	    YY_BREAK case 320:YY_RULE_SETUP
 #line 583 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PERCENTILE_CONT;
 	    }
-	  YY_BREAK case 321:
-	    YY_RULE_SETUP
+	    YY_BREAK case 321:YY_RULE_SETUP
 #line 586 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PERCENTILE_DISC;
 	    }
-	  YY_BREAK case 322:
-	    YY_RULE_SETUP
+	    YY_BREAK case 322:YY_RULE_SETUP
 #line 589 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return POSITION;
 	    }
-	  YY_BREAK case 323:
-	    YY_RULE_SETUP
+	    YY_BREAK case 323:YY_RULE_SETUP
 #line 590 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PRECISION;
 	    }
-	  YY_BREAK case 324:
-	    YY_RULE_SETUP
+	    YY_BREAK case 324:YY_RULE_SETUP
 #line 591 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PREPARE;
 	    }
-	  YY_BREAK case 325:
-	    YY_RULE_SETUP
+	    YY_BREAK case 325:YY_RULE_SETUP
 #line 592 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PRESERVE;
 	    }
-	  YY_BREAK case 326:
-	    YY_RULE_SETUP
+	    YY_BREAK case 326:YY_RULE_SETUP
 #line 593 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PRIMARY;
 	    }
-	  YY_BREAK case 327:
-	    YY_RULE_SETUP
+	    YY_BREAK case 327:YY_RULE_SETUP
 #line 594 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PRINT;
 	    }
-	  YY_BREAK case 328:
-	    YY_RULE_SETUP
+	    YY_BREAK case 328:YY_RULE_SETUP
 #line 597 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PRIOR;
 	    }
-	  YY_BREAK case 329:
-	    YY_RULE_SETUP
+	    YY_BREAK case 329:YY_RULE_SETUP
 #line 598 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return PRIORITY;
 	    }
-	  YY_BREAK case 330:
-	    YY_RULE_SETUP
+	    YY_BREAK case 330:YY_RULE_SETUP
 #line 601 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PRIVILEGES;
 	    }
-	  YY_BREAK case 331:
-	    YY_RULE_SETUP
+	    YY_BREAK case 331:YY_RULE_SETUP
 #line 602 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PROCEDURE;
 	    }
-	  YY_BREAK case 332:
-	    YY_RULE_SETUP
+	    YY_BREAK case 332:YY_RULE_SETUP
 #line 603 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PROMOTE;
 	    }
-	  YY_BREAK case 333:
-	    YY_RULE_SETUP
+	    YY_BREAK case 333:YY_RULE_SETUP
 #line 604 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return QUARTER;
 	    }
-	  YY_BREAK case 334:
-	    YY_RULE_SETUP
+	    YY_BREAK case 334:YY_RULE_SETUP
 #line 607 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return QUERY;
 	    }
-	  YY_BREAK case 335:
-	    YY_RULE_SETUP
+	    YY_BREAK case 335:YY_RULE_SETUP
 #line 608 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return QUEUES;
 	    }
-	  YY_BREAK case 336:
-	    YY_RULE_SETUP
+	    YY_BREAK case 336:YY_RULE_SETUP
 #line 611 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return RANK;
 	    }
-	  YY_BREAK case 337:
-	    YY_RULE_SETUP
+	    YY_BREAK case 337:YY_RULE_SETUP
 #line 614 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return RANGE_;
 	    }
-	  YY_BREAK case 338:
-	    YY_RULE_SETUP
+	    YY_BREAK case 338:YY_RULE_SETUP
 #line 617 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return READ;
 	    }
-	  YY_BREAK case 339:
-	    YY_RULE_SETUP
+	    YY_BREAK case 339:YY_RULE_SETUP
 #line 618 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return FLOAT_;
 	    }
-	  YY_BREAK case 340:
-	    YY_RULE_SETUP
+	    YY_BREAK case 340:YY_RULE_SETUP
 #line 619 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return REBUILD;
 	    }
-	  YY_BREAK case 341:
-	    YY_RULE_SETUP
+	    YY_BREAK case 341:YY_RULE_SETUP
 #line 620 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RECURSIVE;
 	    }
-	  YY_BREAK case 342:
-	    YY_RULE_SETUP
+	    YY_BREAK case 342:YY_RULE_SETUP
 #line 621 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return REF;
 	    }
-	  YY_BREAK case 343:
-	    YY_RULE_SETUP
+	    YY_BREAK case 343:YY_RULE_SETUP
 #line 622 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return REFERENCES;
 	    }
-	  YY_BREAK case 344:
-	    YY_RULE_SETUP
+	    YY_BREAK case 344:YY_RULE_SETUP
 #line 623 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return REFERENCING;
 	    }
-	  YY_BREAK case 345:
-	    YY_RULE_SETUP
+	    YY_BREAK case 345:YY_RULE_SETUP
 #line 624 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return REGEXP;
 	    }
-	  YY_BREAK case 346:
-	    YY_RULE_SETUP
+	    YY_BREAK case 346:YY_RULE_SETUP
 #line 625 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return REJECT_;
 	    }
-	  YY_BREAK case 347:
-	    YY_RULE_SETUP
+	    YY_BREAK case 347:YY_RULE_SETUP
 #line 628 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RELATIVE_;
 	    }
-	  YY_BREAK case 348:
-	    YY_RULE_SETUP
+	    YY_BREAK case 348:YY_RULE_SETUP
 #line 629 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return REMOVE;
 	    }
-	  YY_BREAK case 349:
-	    YY_RULE_SETUP
+	    YY_BREAK case 349:YY_RULE_SETUP
 #line 632 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RENAME;
 	    }
-	  YY_BREAK case 350:
-	    YY_RULE_SETUP
+	    YY_BREAK case 350:YY_RULE_SETUP
 #line 633 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return REORGANIZE;
 	    }
-	  YY_BREAK case 351:
-	    YY_RULE_SETUP
+	    YY_BREAK case 351:YY_RULE_SETUP
 #line 636 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return REPEATABLE;
 	    }
-	  YY_BREAK case 352:
-	    YY_RULE_SETUP
+	    YY_BREAK case 352:YY_RULE_SETUP
 #line 639 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return REPLACE;
 	    }
-	  YY_BREAK case 353:
-	    YY_RULE_SETUP
+	    YY_BREAK case 353:YY_RULE_SETUP
 #line 640 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RESIGNAL;
 	    }
-	  YY_BREAK case 354:
-	    YY_RULE_SETUP
+	    YY_BREAK case 354:YY_RULE_SETUP
 #line 641 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return RESPECT;
 	    }
-	  YY_BREAK case 355:
-	    YY_RULE_SETUP
+	    YY_BREAK case 355:YY_RULE_SETUP
 #line 644 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RESTRICT;
 	    }
-	  YY_BREAK case 356:
-	    YY_RULE_SETUP
+	    YY_BREAK case 356:YY_RULE_SETUP
 #line 645 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return RETAIN;
 	    }
-	  YY_BREAK case 357:
-	    YY_RULE_SETUP
+	    YY_BREAK case 357:YY_RULE_SETUP
 #line 648 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RETURN;
 	    }
-	  YY_BREAK case 358:
-	    YY_RULE_SETUP
+	    YY_BREAK case 358:YY_RULE_SETUP
 #line 649 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RETURNS;
 	    }
-	  YY_BREAK case 359:
-	    YY_RULE_SETUP
+	    YY_BREAK case 359:YY_RULE_SETUP
 #line 650 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return REUSE_OID;
 	    }
-	  YY_BREAK case 360:
-	    YY_RULE_SETUP
+	    YY_BREAK case 360:YY_RULE_SETUP
 #line 653 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return REVERSE;
 	    }
-	  YY_BREAK case 361:
-	    YY_RULE_SETUP
+	    YY_BREAK case 361:YY_RULE_SETUP
 #line 656 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return DISK_SIZE;
 	    }
-	  YY_BREAK case 362:
-	    YY_RULE_SETUP
+	    YY_BREAK case 362:YY_RULE_SETUP
 #line 659 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return REVOKE;
 	    }
-	  YY_BREAK case 363:
-	    YY_RULE_SETUP
+	    YY_BREAK case 363:YY_RULE_SETUP
 #line 660 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RIGHT;
 	    }
-	  YY_BREAK case 364:
-	    YY_RULE_SETUP
+	    YY_BREAK case 364:YY_RULE_SETUP
 #line 661 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RLIKE;
 	    }
-	  YY_BREAK case 365:
-	    YY_RULE_SETUP
+	    YY_BREAK case 365:YY_RULE_SETUP
 #line 662 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ROLE;
 	    }
-	  YY_BREAK case 366:
-	    YY_RULE_SETUP
+	    YY_BREAK case 366:YY_RULE_SETUP
 #line 663 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ROLLBACK;
 	    }
-	  YY_BREAK case 367:
-	    YY_RULE_SETUP
+	    YY_BREAK case 367:YY_RULE_SETUP
 #line 664 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ROLLUP;
 	    }
-	  YY_BREAK case 368:
-	    YY_RULE_SETUP
+	    YY_BREAK case 368:YY_RULE_SETUP
 #line 665 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ROUTINE;
 	    }
-	  YY_BREAK case 369:
-	    YY_RULE_SETUP
+	    YY_BREAK case 369:YY_RULE_SETUP
 #line 666 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ROW;
 	    }
-	  YY_BREAK case 370:
-	    YY_RULE_SETUP
+	    YY_BREAK case 370:YY_RULE_SETUP
 #line 667 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return ROW_NUMBER;
 	    }
-	  YY_BREAK case 371:
-	    YY_RULE_SETUP
+	    YY_BREAK case 371:YY_RULE_SETUP
 #line 670 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ROWNUM;
 	    }
-	  YY_BREAK case 372:
-	    YY_RULE_SETUP
+	    YY_BREAK case 372:YY_RULE_SETUP
 #line 671 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ROWS;
 	    }
-	  YY_BREAK case 373:
-	    YY_RULE_SETUP
+	    YY_BREAK case 373:YY_RULE_SETUP
 #line 672 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SAVEPOINT;
 	    }
-	  YY_BREAK case 374:
-	    YY_RULE_SETUP
+	    YY_BREAK case 374:YY_RULE_SETUP
 #line 673 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SCHEMA;
 	    }
-	  YY_BREAK case 375:
-	    YY_RULE_SETUP
+	    YY_BREAK case 375:YY_RULE_SETUP
 #line 674 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SCOPE;
 	    }
-	  YY_BREAK case 376:
-	    YY_RULE_SETUP
+	    YY_BREAK case 376:YY_RULE_SETUP
 #line 675 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SCROLL;
 	    }
-	  YY_BREAK case 377:
-	    YY_RULE_SETUP
+	    YY_BREAK case 377:YY_RULE_SETUP
 #line 676 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SEARCH;
 	    }
-	  YY_BREAK case 378:
-	    YY_RULE_SETUP
+	    YY_BREAK case 378:YY_RULE_SETUP
 #line 677 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SECOND_;
 	    }
-	  YY_BREAK case 379:
-	    YY_RULE_SETUP
+	    YY_BREAK case 379:YY_RULE_SETUP
 #line 678 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SECOND_MILLISECOND;
 	    }
-	  YY_BREAK case 380:
-	    YY_RULE_SETUP
+	    YY_BREAK case 380:YY_RULE_SETUP
 #line 679 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SECTION;
 	    }
-	  YY_BREAK case 381:
-	    YY_RULE_SETUP
+	    YY_BREAK case 381:YY_RULE_SETUP
 #line 680 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return SECTIONS;
 	    }
-	  YY_BREAK case 382:
-	    YY_RULE_SETUP
+	    YY_BREAK case 382:YY_RULE_SETUP
 #line 683 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SELECT;
 	    }
-	  YY_BREAK case 383:
-	    YY_RULE_SETUP
+	    YY_BREAK case 383:YY_RULE_SETUP
 #line 684 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SENSITIVE;
 	    }
-	  YY_BREAK case 384:
-	    YY_RULE_SETUP
+	    YY_BREAK case 384:YY_RULE_SETUP
 #line 685 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return SEPARATOR;
 	    }
-	  YY_BREAK case 385:
-	    YY_RULE_SETUP
+	    YY_BREAK case 385:YY_RULE_SETUP
 #line 688 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SEQUENCE;
 	    }
-	  YY_BREAK case 386:
-	    YY_RULE_SETUP
+	    YY_BREAK case 386:YY_RULE_SETUP
 #line 689 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SEQUENCE_OF;
 	    }
-	  YY_BREAK case 387:
-	    YY_RULE_SETUP
+	    YY_BREAK case 387:YY_RULE_SETUP
 #line 690 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return SERIAL;
 	    }
-	  YY_BREAK case 388:
-	    YY_RULE_SETUP
+	    YY_BREAK case 388:YY_RULE_SETUP
 #line 693 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SERIALIZABLE;
 	    }
-	  YY_BREAK case 389:
-	    YY_RULE_SETUP
+	    YY_BREAK case 389:YY_RULE_SETUP
 #line 694 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SESSION;
 	    }
-	  YY_BREAK case 390:
-	    YY_RULE_SETUP
+	    YY_BREAK case 390:YY_RULE_SETUP
 #line 695 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SESSION_TIMEZONE;
 	    }
-	  YY_BREAK case 391:
-	    YY_RULE_SETUP
+	    YY_BREAK case 391:YY_RULE_SETUP
 #line 696 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SESSION_USER;
 	    }
-	  YY_BREAK case 392:
-	    YY_RULE_SETUP
+	    YY_BREAK case 392:YY_RULE_SETUP
 #line 697 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SET;
 	    }
-	  YY_BREAK case 393:
-	    YY_RULE_SETUP
+	    YY_BREAK case 393:YY_RULE_SETUP
 #line 698 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SETEQ;
 	    }
-	  YY_BREAK case 394:
-	    YY_RULE_SETUP
+	    YY_BREAK case 394:YY_RULE_SETUP
 #line 699 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SETNEQ;
 	    }
-	  YY_BREAK case 395:
-	    YY_RULE_SETUP
+	    YY_BREAK case 395:YY_RULE_SETUP
 #line 700 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SET_OF;
 	    }
-	  YY_BREAK case 396:
-	    YY_RULE_SETUP
+	    YY_BREAK case 396:YY_RULE_SETUP
 #line 701 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SHARED;
 	    }
-	  YY_BREAK case 397:
-	    YY_RULE_SETUP
+	    YY_BREAK case 397:YY_RULE_SETUP
 #line 702 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return SHOW;
 	    }
-	  YY_BREAK case 398:
-	    YY_RULE_SETUP
+	    YY_BREAK case 398:YY_RULE_SETUP
 #line 705 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SIBLINGS;
 	    }
-	  YY_BREAK case 399:
-	    YY_RULE_SETUP
+	    YY_BREAK case 399:YY_RULE_SETUP
 #line 706 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SmallInt;
 	    }
-	  YY_BREAK case 400:
-	    YY_RULE_SETUP
+	    YY_BREAK case 400:YY_RULE_SETUP
 #line 707 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SIMILAR;
 	    }
-	  YY_BREAK case 401:
-	    YY_RULE_SETUP
+	    YY_BREAK case 401:YY_RULE_SETUP
 #line 708 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SIZE_;
 	    }
-	  YY_BREAK case 402:
-	    YY_RULE_SETUP
+	    YY_BREAK case 402:YY_RULE_SETUP
 #line 709 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return SLOTS;
 	    }
-	  YY_BREAK case 403:
-	    YY_RULE_SETUP
+	    YY_BREAK case 403:YY_RULE_SETUP
 #line 712 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return SLOTTED;
 	    }
-	  YY_BREAK case 404:
-	    YY_RULE_SETUP
+	    YY_BREAK case 404:YY_RULE_SETUP
 #line 716 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SOME;
 	    }
-	  YY_BREAK case 405:
-	    YY_RULE_SETUP
+	    YY_BREAK case 405:YY_RULE_SETUP
 #line 717 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SQL;
 	    }
-	  YY_BREAK case 406:
-	    YY_RULE_SETUP
+	    YY_BREAK case 406:YY_RULE_SETUP
 #line 718 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SQLCODE;
 	    }
-	  YY_BREAK case 407:
-	    YY_RULE_SETUP
+	    YY_BREAK case 407:YY_RULE_SETUP
 #line 719 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SQLERROR;
 	    }
-	  YY_BREAK case 408:
-	    YY_RULE_SETUP
+	    YY_BREAK case 408:YY_RULE_SETUP
 #line 720 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SQLEXCEPTION;
 	    }
-	  YY_BREAK case 409:
-	    YY_RULE_SETUP
+	    YY_BREAK case 409:YY_RULE_SETUP
 #line 721 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SQLSTATE;
 	    }
-	  YY_BREAK case 410:
-	    YY_RULE_SETUP
+	    YY_BREAK case 410:YY_RULE_SETUP
 #line 722 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SQLWARNING;
 	    }
-	  YY_BREAK case 411:
-	    YY_RULE_SETUP
+	    YY_BREAK case 411:YY_RULE_SETUP
 #line 723 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return STABILITY;
 	    }
-	  YY_BREAK case 412:
-	    YY_RULE_SETUP
+	    YY_BREAK case 412:YY_RULE_SETUP
 #line 726 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return START_;
 	    }
-	  YY_BREAK case 413:
-	    YY_RULE_SETUP
+	    YY_BREAK case 413:YY_RULE_SETUP
 #line 729 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return STATEMENT;
 	    }
-	  YY_BREAK case 414:
-	    YY_RULE_SETUP
+	    YY_BREAK case 414:YY_RULE_SETUP
 #line 732 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return STATISTICS;
 	    }
-	  YY_BREAK case 415:
-	    YY_RULE_SETUP
+	    YY_BREAK case 415:YY_RULE_SETUP
 #line 733 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return STATUS;
 	    }
-	  YY_BREAK case 416:
-	    YY_RULE_SETUP
+	    YY_BREAK case 416:YY_RULE_SETUP
 #line 736 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return STDDEV;
 	    }
-	  YY_BREAK case 417:
-	    YY_RULE_SETUP
+	    YY_BREAK case 417:YY_RULE_SETUP
 #line 739 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return STDDEV_POP;
 	    }
-	  YY_BREAK case 418:
-	    YY_RULE_SETUP
+	    YY_BREAK case 418:YY_RULE_SETUP
 #line 742 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return STDDEV_SAMP;
 	    }
-	  YY_BREAK case 419:
-	    YY_RULE_SETUP
+	    YY_BREAK case 419:YY_RULE_SETUP
 #line 745 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return STR_TO_DATE;
 	    }
-	  YY_BREAK case 420:
-	    YY_RULE_SETUP
+	    YY_BREAK case 420:YY_RULE_SETUP
 #line 748 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SUBCLASS;
 	    }
-	  YY_BREAK case 421:
-	    YY_RULE_SETUP
+	    YY_BREAK case 421:YY_RULE_SETUP
 #line 749 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return SUBDATE;
 	    }
-	  YY_BREAK case 422:
-	    YY_RULE_SETUP
+	    YY_BREAK case 422:YY_RULE_SETUP
 #line 752 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SUBSET;
 	    }
-	  YY_BREAK case 423:
-	    YY_RULE_SETUP
+	    YY_BREAK case 423:YY_RULE_SETUP
 #line 753 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SUBSETEQ;
 	    }
-	  YY_BREAK case 424:
-	    YY_RULE_SETUP
+	    YY_BREAK case 424:YY_RULE_SETUP
 #line 754 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SUBSTRING_;
 	    }
-	  YY_BREAK case 425:
-	    YY_RULE_SETUP
+	    YY_BREAK case 425:YY_RULE_SETUP
 #line 755 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SUM;
 	    }
-	  YY_BREAK case 426:
-	    YY_RULE_SETUP
+	    YY_BREAK case 426:YY_RULE_SETUP
 #line 756 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SUPERCLASS;
 	    }
-	  YY_BREAK case 427:
-	    YY_RULE_SETUP
+	    YY_BREAK case 427:YY_RULE_SETUP
 #line 757 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SUPERSET;
 	    }
-	  YY_BREAK case 428:
-	    YY_RULE_SETUP
+	    YY_BREAK case 428:YY_RULE_SETUP
 #line 758 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SUPERSETEQ;
 	    }
-	  YY_BREAK case 429:
-	    YY_RULE_SETUP
+	    YY_BREAK case 429:YY_RULE_SETUP
 #line 759 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_CONNECT_BY_PATH;
 	    }
-	  YY_BREAK case 430:
-	    YY_RULE_SETUP
+	    YY_BREAK case 430:YY_RULE_SETUP
 #line 760 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_DATE;
 	    }
-	  YY_BREAK case 431:
-	    YY_RULE_SETUP
+	    YY_BREAK case 431:YY_RULE_SETUP
 #line 761 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_DATE;
 	    }
-	  YY_BREAK case 432:
-	    YY_RULE_SETUP
+	    YY_BREAK case 432:YY_RULE_SETUP
 #line 762 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_TIME_;
 	    }
-	  YY_BREAK case 433:
-	    YY_RULE_SETUP
+	    YY_BREAK case 433:YY_RULE_SETUP
 #line 763 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_TIME_;
 	    }
-	  YY_BREAK case 434:
-	    YY_RULE_SETUP
+	    YY_BREAK case 434:YY_RULE_SETUP
 #line 764 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_TIMESTAMP;
 	    }
-	  YY_BREAK case 435:
-	    YY_RULE_SETUP
+	    YY_BREAK case 435:YY_RULE_SETUP
 #line 765 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_TIMESTAMP;
 	    }
-	  YY_BREAK case 436:
-	    YY_RULE_SETUP
+	    YY_BREAK case 436:YY_RULE_SETUP
 #line 766 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_DATETIME;
 	    }
-	  YY_BREAK case 437:
-	    YY_RULE_SETUP
+	    YY_BREAK case 437:YY_RULE_SETUP
 #line 767 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYS_DATETIME;
 	    }
-	  YY_BREAK case 438:
-	    YY_RULE_SETUP
+	    YY_BREAK case 438:YY_RULE_SETUP
 #line 768 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return SYSTEM;
 	    }
-	  YY_BREAK case 439:
-	    YY_RULE_SETUP
+	    YY_BREAK case 439:YY_RULE_SETUP
 #line 771 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SYSTEM_USER;
 	    }
-	  YY_BREAK case 440:
-	    YY_RULE_SETUP
+	    YY_BREAK case 440:YY_RULE_SETUP
 #line 772 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SmallInt;
 	    }
-	  YY_BREAK case 441:
-	    YY_RULE_SETUP
+	    YY_BREAK case 441:YY_RULE_SETUP
 #line 773 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return String;
 	    }
-	  YY_BREAK case 442:
-	    YY_RULE_SETUP
+	    YY_BREAK case 442:YY_RULE_SETUP
 #line 774 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TABLE;
 	    }
-	  YY_BREAK case 443:
-	    YY_RULE_SETUP
+	    YY_BREAK case 443:YY_RULE_SETUP
 #line 775 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return TABLES;
 	    }
-	  YY_BREAK case 444:
-	    YY_RULE_SETUP
+	    YY_BREAK case 444:YY_RULE_SETUP
 #line 778 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TEMPORARY;
 	    }
-	  YY_BREAK case 445:
-	    YY_RULE_SETUP
+	    YY_BREAK case 445:YY_RULE_SETUP
 #line 779 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return TEXT;
 	    }
-	  YY_BREAK case 446:
-	    YY_RULE_SETUP
+	    YY_BREAK case 446:YY_RULE_SETUP
 #line 782 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return THEN;
 	    }
-	  YY_BREAK case 447:
-	    YY_RULE_SETUP
+	    YY_BREAK case 447:YY_RULE_SETUP
 #line 783 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return THREADS;
 	    }
-	  YY_BREAK case 448:
-	    YY_RULE_SETUP
+	    YY_BREAK case 448:YY_RULE_SETUP
 #line 786 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return TIMEOUT;
 	    }
-	  YY_BREAK case 449:
-	    YY_RULE_SETUP
+	    YY_BREAK case 449:YY_RULE_SETUP
 #line 789 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TIMESTAMP;
 	    }
-	  YY_BREAK case 450:
-	    YY_RULE_SETUP
+	    YY_BREAK case 450:YY_RULE_SETUP
 #line 790 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TIMESTAMPTZ;
 	    }
-	  YY_BREAK case 451:
-	    YY_RULE_SETUP
+	    YY_BREAK case 451:YY_RULE_SETUP
 #line 791 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TIMESTAMPLTZ;
 	    }
-	  YY_BREAK case 452:
-	    YY_RULE_SETUP
+	    YY_BREAK case 452:YY_RULE_SETUP
 #line 792 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TIMEZONE;
 	    }
-	  YY_BREAK case 453:
-	    YY_RULE_SETUP
+	    YY_BREAK case 453:YY_RULE_SETUP
 #line 793 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TIMEZONES;
 	    }
-	  YY_BREAK case 454:
-	    YY_RULE_SETUP
+	    YY_BREAK case 454:YY_RULE_SETUP
 #line 794 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TIMEZONE_HOUR;
 	    }
-	  YY_BREAK case 455:
-	    YY_RULE_SETUP
+	    YY_BREAK case 455:YY_RULE_SETUP
 #line 795 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TIMEZONE_MINUTE;
 	    }
-	  YY_BREAK case 456:
-	    YY_RULE_SETUP
+	    YY_BREAK case 456:YY_RULE_SETUP
 #line 796 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TO;
 	    }
-	  YY_BREAK case 457:
-	    YY_RULE_SETUP
+	    YY_BREAK case 457:YY_RULE_SETUP
 #line 797 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return TRACE;
 	    }
-	  YY_BREAK case 458:
-	    YY_RULE_SETUP
+	    YY_BREAK case 458:YY_RULE_SETUP
 #line 800 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TRAILING_;
 	    }
-	  YY_BREAK case 459:
-	    YY_RULE_SETUP
+	    YY_BREAK case 459:YY_RULE_SETUP
 #line 801 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return TRAN;
 	    }
-	  YY_BREAK case 460:
-	    YY_RULE_SETUP
+	    YY_BREAK case 460:YY_RULE_SETUP
 #line 804 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TRANSACTION;
 	    }
-	  YY_BREAK case 461:
-	    YY_RULE_SETUP
+	    YY_BREAK case 461:YY_RULE_SETUP
 #line 805 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TRANSLATE;
 	    }
-	  YY_BREAK case 462:
-	    YY_RULE_SETUP
+	    YY_BREAK case 462:YY_RULE_SETUP
 #line 806 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TRANSLATION;
 	    }
-	  YY_BREAK case 463:
-	    YY_RULE_SETUP
+	    YY_BREAK case 463:YY_RULE_SETUP
 #line 807 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TRIGGER;
 	    }
-	  YY_BREAK case 464:
-	    YY_RULE_SETUP
+	    YY_BREAK case 464:YY_RULE_SETUP
 #line 808 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return TRIGGERS;
 	    }
-	  YY_BREAK case 465:
-	    YY_RULE_SETUP
+	    YY_BREAK case 465:YY_RULE_SETUP
 #line 811 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TRIM;
 	    }
-	  YY_BREAK case 466:
-	    YY_RULE_SETUP
+	    YY_BREAK case 466:YY_RULE_SETUP
 #line 812 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return THAN;
 	    }
-	  YY_BREAK case 467:
-	    YY_RULE_SETUP
+	    YY_BREAK case 467:YY_RULE_SETUP
 #line 815 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Time;
 	    }
-	  YY_BREAK case 468:
-	    YY_RULE_SETUP
+	    YY_BREAK case 468:YY_RULE_SETUP
 #line 816 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SmallInt;
 	    }
-	  YY_BREAK case 469:
-	    YY_RULE_SETUP
+	    YY_BREAK case 469:YY_RULE_SETUP
 #line 817 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return True;
 	    }
-	  YY_BREAK case 470:
-	    YY_RULE_SETUP
+	    YY_BREAK case 470:YY_RULE_SETUP
 #line 818 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TRUNCATE;
 	    }
-	  YY_BREAK case 471:
-	    YY_RULE_SETUP
+	    YY_BREAK case 471:YY_RULE_SETUP
 #line 819 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return UCASE;
 	    }
-	  YY_BREAK case 472:
-	    YY_RULE_SETUP
+	    YY_BREAK case 472:YY_RULE_SETUP
 #line 822 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return UNCOMMITTED;
 	    }
-	  YY_BREAK case 473:
-	    YY_RULE_SETUP
+	    YY_BREAK case 473:YY_RULE_SETUP
 #line 825 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return UNDER;
 	    }
-	  YY_BREAK case 474:
-	    YY_RULE_SETUP
+	    YY_BREAK case 474:YY_RULE_SETUP
 #line 826 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return UNIQUE;
 	    }
-	  YY_BREAK case 475:
-	    YY_RULE_SETUP
+	    YY_BREAK case 475:YY_RULE_SETUP
 #line 827 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return UNKNOWN;
 	    }
-	  YY_BREAK case 476:
-	    YY_RULE_SETUP
+	    YY_BREAK case 476:YY_RULE_SETUP
 #line 828 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return UPDATE;
 	    }
-	  YY_BREAK case 477:
-	    YY_RULE_SETUP
+	    YY_BREAK case 477:YY_RULE_SETUP
 #line 829 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return UPPER;
 	    }
-	  YY_BREAK case 478:
-	    YY_RULE_SETUP
+	    YY_BREAK case 478:YY_RULE_SETUP
 #line 830 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return USAGE;
 	    }
-	  YY_BREAK case 479:
-	    YY_RULE_SETUP
+	    YY_BREAK case 479:YY_RULE_SETUP
 #line 831 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return USE;
 	    }
-	  YY_BREAK case 480:
-	    YY_RULE_SETUP
+	    YY_BREAK case 480:YY_RULE_SETUP
 #line 832 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return USER;
 	    }
-	  YY_BREAK case 481:
-	    YY_RULE_SETUP
+	    YY_BREAK case 481:YY_RULE_SETUP
 #line 833 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return USING;
 	    }
-	  YY_BREAK case 482:
-	    YY_RULE_SETUP
+	    YY_BREAK case 482:YY_RULE_SETUP
 #line 834 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Union;
 	    }
-	  YY_BREAK case 483:
-	    YY_RULE_SETUP
+	    YY_BREAK case 483:YY_RULE_SETUP
 #line 835 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Utime;
 	    }
-	  YY_BREAK case 484:
-	    YY_RULE_SETUP
+	    YY_BREAK case 484:YY_RULE_SETUP
 #line 836 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VACUUM;
 	    }
-	  YY_BREAK case 485:
-	    YY_RULE_SETUP
+	    YY_BREAK case 485:YY_RULE_SETUP
 #line 837 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VALUE;
 	    }
-	  YY_BREAK case 486:
-	    YY_RULE_SETUP
+	    YY_BREAK case 486:YY_RULE_SETUP
 #line 838 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VALUES;
 	    }
-	  YY_BREAK case 487:
-	    YY_RULE_SETUP
+	    YY_BREAK case 487:YY_RULE_SETUP
 #line 839 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return VAR_POP;
 	    }
-	  YY_BREAK case 488:
-	    YY_RULE_SETUP
+	    YY_BREAK case 488:YY_RULE_SETUP
 #line 842 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return VAR_SAMP;
 	    }
-	  YY_BREAK case 489:
-	    YY_RULE_SETUP
+	    YY_BREAK case 489:YY_RULE_SETUP
 #line 845 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VARCHAR;
 	    }
-	  YY_BREAK case 490:
-	    YY_RULE_SETUP
+	    YY_BREAK case 490:YY_RULE_SETUP
 #line 846 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VARIABLE_;
 	    }
-	  YY_BREAK case 491:
-	    YY_RULE_SETUP
+	    YY_BREAK case 491:YY_RULE_SETUP
 #line 847 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return VARIANCE;
 	    }
-	  YY_BREAK case 492:
-	    YY_RULE_SETUP
+	    YY_BREAK case 492:YY_RULE_SETUP
 #line 850 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VARYING;
 	    }
-	  YY_BREAK case 493:
-	    YY_RULE_SETUP
+	    YY_BREAK case 493:YY_RULE_SETUP
 #line 851 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VCLASS;
 	    }
-	  YY_BREAK case 494:
-	    YY_RULE_SETUP
+	    YY_BREAK case 494:YY_RULE_SETUP
 #line 852 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VIEW;
 	    }
-	  YY_BREAK case 495:
-	    YY_RULE_SETUP
+	    YY_BREAK case 495:YY_RULE_SETUP
 #line 853 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return VOLUME;
 	    }
-	  YY_BREAK case 496:
-	    YY_RULE_SETUP
+	    YY_BREAK case 496:YY_RULE_SETUP
 #line 856 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return WEEK;
 	    }
-	  YY_BREAK case 497:
-	    YY_RULE_SETUP
+	    YY_BREAK case 497:YY_RULE_SETUP
 #line 859 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WHEN;
 	    }
-	  YY_BREAK case 498:
-	    YY_RULE_SETUP
+	    YY_BREAK case 498:YY_RULE_SETUP
 #line 860 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WHENEVER;
 	    }
-	  YY_BREAK case 499:
-	    YY_RULE_SETUP
+	    YY_BREAK case 499:YY_RULE_SETUP
 #line 861 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WHERE;
 	    }
-	  YY_BREAK case 500:
-	    YY_RULE_SETUP
+	    YY_BREAK case 500:YY_RULE_SETUP
 #line 862 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WHILE;
 	    }
-	  YY_BREAK case 501:
-	    YY_RULE_SETUP
+	    YY_BREAK case 501:YY_RULE_SETUP
 #line 863 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WITH;
 	    }
-	  YY_BREAK case 502:
-	    YY_RULE_SETUP
+	    YY_BREAK case 502:YY_RULE_SETUP
 #line 864 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return WITHIN;
 	    }
-	  YY_BREAK case 503:
-	    YY_RULE_SETUP
+	    YY_BREAK case 503:YY_RULE_SETUP
 #line 867 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WITHOUT;
 	    }
-	  YY_BREAK case 504:
-	    YY_RULE_SETUP
+	    YY_BREAK case 504:YY_RULE_SETUP
 #line 868 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WORK;
 	    }
-	  YY_BREAK case 505:
-	    YY_RULE_SETUP
+	    YY_BREAK case 505:YY_RULE_SETUP
 #line 869 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return WORKSPACE;
 	    }
-	  YY_BREAK case 506:
-	    YY_RULE_SETUP
+	    YY_BREAK case 506:YY_RULE_SETUP
 #line 872 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WRITE;
 	    }
-	  YY_BREAK case 507:
-	    YY_RULE_SETUP
+	    YY_BREAK case 507:YY_RULE_SETUP
 #line 873 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return XOR;
 	    }
-	  YY_BREAK case 508:
-	    YY_RULE_SETUP
+	    YY_BREAK case 508:YY_RULE_SETUP
 #line 874 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return YEAR_;
 	    }
-	  YY_BREAK case 509:
-	    YY_RULE_SETUP
+	    YY_BREAK case 509:YY_RULE_SETUP
 #line 875 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return YEAR_MONTH;
 	    }
-	  YY_BREAK case 510:
-	    YY_RULE_SETUP
+	    YY_BREAK case 510:YY_RULE_SETUP
 #line 876 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ZONE;
 	    }
-	  YY_BREAK case 511:
-	    YY_RULE_SETUP
+	    YY_BREAK case 511:YY_RULE_SETUP
 #line 879 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return Null;
 	    }
-	  YY_BREAK case 512:
-	    YY_RULE_SETUP
+	    YY_BREAK case 512:YY_RULE_SETUP
 #line 881 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RIGHT_ARROW;
 	    }
-	  YY_BREAK case 513:
-	    YY_RULE_SETUP
+	    YY_BREAK case 513:YY_RULE_SETUP
 #line 882 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DOT;
 	    }
-	  YY_BREAK case 514:
-	    YY_RULE_SETUP
+	    YY_BREAK case 514:YY_RULE_SETUP
 #line 883 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
@@ -6378,113 +5861,100 @@ YY_DECL
 	      else
 		return STRCAT;
 	    }
-	  YY_BREAK case 515:
-	    YY_RULE_SETUP
+	    YY_BREAK case 515:YY_RULE_SETUP
 #line 891 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COMP_NOT_EQ;
 	    }
-	  YY_BREAK case 516:
-	    YY_RULE_SETUP
+	    YY_BREAK case 516:YY_RULE_SETUP
 #line 892 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COMP_GE;
 	    }
-	  YY_BREAK case 517:
-	    YY_RULE_SETUP
+	    YY_BREAK case 517:YY_RULE_SETUP
 #line 893 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COMP_LE;
 	    }
-	  YY_BREAK case 518:
-	    YY_RULE_SETUP
+	    YY_BREAK case 518:YY_RULE_SETUP
 #line 894 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return PARAM_HEADER;
 	    }
-	  YY_BREAK case 519:
-	    YY_RULE_SETUP
+	    YY_BREAK case 519:YY_RULE_SETUP
 #line 895 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COMP_NOT_EQ;
 	    }
-	  YY_BREAK case 520:
-	    YY_RULE_SETUP
+	    YY_BREAK case 520:YY_RULE_SETUP
 #line 896 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BITSHIFT_LEFT;
 	    }
-	  YY_BREAK case 521:
-	    YY_RULE_SETUP
+	    YY_BREAK case 521:YY_RULE_SETUP
 #line 897 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BITSHIFT_RIGHT;
 	    }
-	  YY_BREAK case 522:
-	    YY_RULE_SETUP
+	    YY_BREAK case 522:YY_RULE_SETUP
 #line 898 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return MOD;
 	    }
-	  YY_BREAK case 523:
-	    YY_RULE_SETUP
+	    YY_BREAK case 523:YY_RULE_SETUP
 #line 899 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return COMP_NULLSAFE_EQ;
 	    }
-	  YY_BREAK case 524:
-	    YY_RULE_SETUP
+	    YY_BREAK case 524:YY_RULE_SETUP
 #line 900 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return AND;
 	    }
-	  YY_BREAK case 525:
-	    YY_RULE_SETUP
+	    YY_BREAK case 525:YY_RULE_SETUP
 #line 901 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VAR_ASSIGN;
 	    }
-	  YY_BREAK case 526:
-	    YY_RULE_SETUP
+	    YY_BREAK case 526:YY_RULE_SETUP
 #line 904 "../../src/parser/csql_lexer.l"
 	    {
 	      int i = 0;
 	      int len = 0;
 
-	      begin_token (csql_yytext);
-	      len = strlen (csql_yytext);
+	        begin_token (csql_yytext);
+	        len = strlen (csql_yytext);
 	      if (len >= 254)
-		csql_yytext[254] = 0;
+		  csql_yytext[254] = 0;
 
 	      /* loop until len - 1, in case of 0000000000000000000000 */
 	      for (i = 0; i < len - 1 && csql_yytext[i] == '0'; i++)
-		;
+		 ;
 
-	      csql_yylval.cptr = pt_makename (&csql_yytext[i]);
-	      return UNSIGNED_INTEGER;
+	        csql_yylval.cptr = pt_makename (&csql_yytext[i]);
+	        return UNSIGNED_INTEGER;
 	    }
-	  YY_BREAK case 527:
-	    YY_RULE_SETUP
+	    YY_BREAK case 527:YY_RULE_SETUP
 #line 923 "../../src/parser/csql_lexer.l"
 	    {
 	      char buff[256];
 	      int len;
 
-	      begin_token (csql_yytext);
-	      len = strlen (csql_yytext);
+	        begin_token (csql_yytext);
+	        len = strlen (csql_yytext);
 	      if (len >= 254)
-		csql_yytext[254] = 0;
+		  csql_yytext[254] = 0;
 
 	      if (len < 253 && csql_yytext[len - 1] == '.')
 		{
@@ -6499,36 +5969,31 @@ YY_DECL
 		}
 	      return UNSIGNED_REAL;
 	    }
-	  YY_BREAK case 528:
-	    YY_RULE_SETUP
+	    YY_BREAK case 528:YY_RULE_SETUP
 #line 946 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (QUOTED_EUCKR_STRING);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 529:
-	    YY_RULE_SETUP
+	    YY_BREAK case 529:YY_RULE_SETUP
 #line 951 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (QUOTED_ISO_STRING);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 530:
-	    YY_RULE_SETUP
+	    YY_BREAK case 530:YY_RULE_SETUP
 #line 956 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (QUOTED_BINARY_STRING);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 531:
-	    YY_RULE_SETUP
+	    YY_BREAK case 531:YY_RULE_SETUP
 #line 961 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (QUOTED_UTF8_STRING);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 532:
-	    YY_RULE_SETUP
+	    YY_BREAK case 532:YY_RULE_SETUP
 #line 966 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
@@ -6537,9 +6002,9 @@ YY_DECL
 	      csql_yylval.cptr = pt_makename (csql_yytext);
 	      return IdName;
 	    }
-	  YY_BREAK case 533:
+	    YY_BREAK case 533:
 /* rule 533 can match eol */
-	    YY_RULE_SETUP
+	      YY_RULE_SETUP
 #line 973 "../../src/parser/csql_lexer.l"
 	    {
 	      int i = 0;
@@ -6561,7 +6026,8 @@ YY_DECL
 		      csql_yytext[254] = 0;
 		    }
 
-		  for (i = 1; i < len - 1 && IS_BLANK_CHAR (csql_yytext[i]); i++)
+		  for (i = 1; i < len - 1 && IS_BLANK_CHAR (csql_yytext[i]);
+		       i++)
 		    ;
 
 		  csql_yylval.cptr = pt_makename (&csql_yytext[i]);
@@ -6586,9 +6052,9 @@ YY_DECL
 		  return IdName;
 		}
 	    }
-	  YY_BREAK case 534:
+	    YY_BREAK case 534:
 /* rule 534 can match eol */
-	    YY_RULE_SETUP
+	      YY_RULE_SETUP
 #line 1019 "../../src/parser/csql_lexer.l"
 	    {
 	      int i = 0;
@@ -6610,7 +6076,8 @@ YY_DECL
 		      csql_yytext[254] = 0;
 		    }
 
-		  for (i = 2; i < len - 1 && IS_BLANK_CHAR (csql_yytext[i]); i++)
+		  for (i = 2; i < len - 1 && IS_BLANK_CHAR (csql_yytext[i]);
+		       i++)
 		    ;
 
 		  csql_yylval.cptr = pt_makename (&csql_yytext[i]);
@@ -6635,50 +6102,45 @@ YY_DECL
 		  return IdName;
 		}
 	    }
-	  YY_BREAK case 535:
-	    YY_RULE_SETUP
+	    YY_BREAK case 535:YY_RULE_SETUP
 #line 1065 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, NULL, csql_yytext + 2);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, NULL, csql_yytext + 2);
 	      return BIT_STRING;
 	    }
-	  YY_BREAK case 536:
-	    YY_RULE_SETUP
+	    YY_BREAK case 536:YY_RULE_SETUP
 #line 1070 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, NULL, csql_yytext + 2);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, NULL, csql_yytext + 2);
 	      return HEX_STRING;
 	    }
-	  YY_BREAK case 537:
-	    YY_RULE_SETUP
+	    YY_BREAK case 537:YY_RULE_SETUP
 #line 1075 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (QUOTED_NCHAR_STRING);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 538:
-	    YY_RULE_SETUP
+	    YY_BREAK case 538:YY_RULE_SETUP
 #line 1080 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (QUOTED_BIT_STRING);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 539:
-	    YY_RULE_SETUP
+	    YY_BREAK case 539:YY_RULE_SETUP
 #line 1085 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (QUOTED_HEX_STRING);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 540:
-	    YY_RULE_SETUP
+	    YY_BREAK case 540:YY_RULE_SETUP
 #line 1090 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (QUOTED_CHAR_STRING);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 541:
-	    YY_RULE_SETUP
+	    YY_BREAK case 541:YY_RULE_SETUP
 #line 1095 "../../src/parser/csql_lexer.l"
 	    {
 	      if (prm_get_bool_value (PRM_ID_ANSI_QUOTES))
@@ -6691,85 +6153,73 @@ YY_DECL
 		}
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 542:
-	    YY_RULE_SETUP
+	    YY_BREAK case 542:YY_RULE_SETUP
 #line 1107 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (BRACKET_ID_NAME);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 543:
-	    YY_RULE_SETUP
+	    YY_BREAK case 543:YY_RULE_SETUP
 #line 1112 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (BACKTICK_ID_NAME);
 	      csql_yylval.cptr = pt_append_string (this_parser, NULL, "");
 	    }
-	  YY_BREAK case 544:
-	    YY_RULE_SETUP
+	    YY_BREAK case 544:YY_RULE_SETUP
 #line 1117 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return EUCKR_STRING;
 	    }
-	  YY_BREAK case 545:
-	    YY_RULE_SETUP
+	    YY_BREAK case 545:YY_RULE_SETUP
 #line 1122 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return ISO_STRING;
 	    }
-	  YY_BREAK case 546:
-	    YY_RULE_SETUP
+	    YY_BREAK case 546:YY_RULE_SETUP
 #line 1127 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return BINARY_STRING;
 	    }
-	  YY_BREAK case 547:
-	    YY_RULE_SETUP
+	    YY_BREAK case 547:YY_RULE_SETUP
 #line 1132 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return UTF8_STRING;
 	    }
-	  YY_BREAK case 548:
-	    YY_RULE_SETUP
+	    YY_BREAK case 548:YY_RULE_SETUP
 #line 1137 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return NCHAR_STRING;
 	    }
-	  YY_BREAK case 549:
-	    YY_RULE_SETUP
+	    YY_BREAK case 549:YY_RULE_SETUP
 #line 1142 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return BIT_STRING;
 	    }
-	  YY_BREAK case 550:
-	    YY_RULE_SETUP
+	    YY_BREAK case 550:YY_RULE_SETUP
 #line 1147 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return HEX_STRING;
 	    }
-	  YY_BREAK case 551:
-	    YY_RULE_SETUP
+	    YY_BREAK case 551:YY_RULE_SETUP
 #line 1152 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return CHAR_STRING;
 	    }
-	  YY_BREAK case 552:
-	    YY_RULE_SETUP
+	    YY_BREAK case 552:YY_RULE_SETUP
 #line 1157 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      return CHAR_STRING;
 	    }
-	  YY_BREAK case 553:
-	    YY_RULE_SETUP
+	    YY_BREAK case 553:YY_RULE_SETUP
 #line 1162 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
@@ -6779,8 +6229,7 @@ YY_DECL
 		}
 	      return DelimitedIdName;
 	    }
-	  YY_BREAK case 554:
-	    YY_RULE_SETUP
+	    YY_BREAK case 554:YY_RULE_SETUP
 #line 1171 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
@@ -6790,8 +6239,7 @@ YY_DECL
 		}
 	      return BracketDelimitedIdName;
 	    }
-	  YY_BREAK case 555:
-	    YY_RULE_SETUP
+	    YY_BREAK case 555:YY_RULE_SETUP
 #line 1180 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
@@ -6801,172 +6249,186 @@ YY_DECL
 		}
 	      return BacktickDelimitedIdName;
 	    }
-	  YY_BREAK case 556:
+	    YY_BREAK case 556:
 /* rule 556 can match eol */
-	    YY_RULE_SETUP
+	      YY_RULE_SETUP
 #line 1189 "../../src/parser/csql_lexer.l"
 	    {
 	      this_parser->line = yyline++;
 	      this_parser->column = yycolumn = yycolumn_end = 0;
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\n");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "\n");
 	    }
-	  YY_BREAK case YY_STATE_EOF (QUOTED_NCHAR_STRING):
-	  case YY_STATE_EOF (QUOTED_BIT_STRING):
-	  case YY_STATE_EOF (QUOTED_HEX_STRING):
-	  case YY_STATE_EOF (QUOTED_CHAR_STRING):
-	  case YY_STATE_EOF (DOUBLY_QUOTED_CHAR_STRING):
-	  case YY_STATE_EOF (QUOTED_EUCKR_STRING):
-	  case YY_STATE_EOF (QUOTED_ISO_STRING):
-	  case YY_STATE_EOF (QUOTED_BINARY_STRING):
-	  case YY_STATE_EOF (QUOTED_UTF8_STRING):
+	    YY_BREAK case YY_STATE_EOF (QUOTED_NCHAR_STRING):case
+	      YY_STATE_EOF (QUOTED_BIT_STRING):case
+	      YY_STATE_EOF (QUOTED_HEX_STRING):case
+	      YY_STATE_EOF (QUOTED_CHAR_STRING):case
+	      YY_STATE_EOF (DOUBLY_QUOTED_CHAR_STRING):case
+	      YY_STATE_EOF (QUOTED_EUCKR_STRING):case
+	      YY_STATE_EOF (QUOTED_ISO_STRING):case
+	      YY_STATE_EOF (QUOTED_BINARY_STRING):case
+	      YY_STATE_EOF (QUOTED_UTF8_STRING):
 #line 1195 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      csql_yyerror ("unterminated string");
 	      return UNTERMINATED_STRING;
 	    }
-	  YY_BREAK case YY_STATE_EOF (DELIMITED_ID_NAME):
-	  case YY_STATE_EOF (BRACKET_ID_NAME):
-	  case YY_STATE_EOF (BACKTICK_ID_NAME):
+	    YY_BREAK case YY_STATE_EOF (DELIMITED_ID_NAME):case
+	      YY_STATE_EOF (BRACKET_ID_NAME):case
+	      YY_STATE_EOF (BACKTICK_ID_NAME):
 #line 1201 "../../src/parser/csql_lexer.l"
 	    {
 	      BEGIN (INITIAL);
 	      csql_yyerror ("unterminated identifier");
 	      return UNTERMINATED_IDENTIFIER;
 	    }
-	  YY_BREAK case 557:
-	    YY_RULE_SETUP
+	    YY_BREAK case 557:YY_RULE_SETUP
 #line 1207 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
-	  YY_BREAK case 558:
-	    YY_RULE_SETUP
+	    YY_BREAK case 558:YY_RULE_SETUP
 #line 1211 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
-	  YY_BREAK case 559:
-	    YY_RULE_SETUP
+	    YY_BREAK case 559:YY_RULE_SETUP
 #line 1215 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
-	  YY_BREAK case 560:
-	    YY_RULE_SETUP
+	    YY_BREAK case 560:YY_RULE_SETUP
 #line 1219 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
-	  YY_BREAK case 561:
-	    YY_RULE_SETUP
+	    YY_BREAK case 561:YY_RULE_SETUP
 #line 1223 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
-	  YY_BREAK case 562:
-	    YY_RULE_SETUP
+	    YY_BREAK case 562:YY_RULE_SETUP
 #line 1227 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
-	  YY_BREAK case 563:
-	    YY_RULE_SETUP
+	    YY_BREAK case 563:YY_RULE_SETUP
 #line 1231 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "'");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "'");
 	    }
-	  YY_BREAK case 564:
-	    YY_RULE_SETUP
+	    YY_BREAK case 564:YY_RULE_SETUP
 #line 1235 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\"");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "\"");
 	    }
-	  YY_BREAK case 565:
-	    YY_RULE_SETUP
+	    YY_BREAK case 565:YY_RULE_SETUP
 #line 1239 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "`");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "`");
 	    }
-	  YY_BREAK case 566:
-	    YY_RULE_SETUP
+	    YY_BREAK case 566:YY_RULE_SETUP
 #line 1245 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr,
-						   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
-						    || this_parser->strings_have_no_escapes) ? "\\n" : "\n");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr,
+				  (prm_get_bool_value
+				   (PRM_ID_NO_BACKSLASH_ESCAPES)
+				   || this_parser->
+				   strings_have_no_escapes) ? "\\n" : "\n");
 	    }
-	  YY_BREAK case 567:
-	    YY_RULE_SETUP
+	    YY_BREAK case 567:YY_RULE_SETUP
 #line 1250 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr,
-						   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
-						    || this_parser->strings_have_no_escapes) ? "\\r" : "\r");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr,
+				  (prm_get_bool_value
+				   (PRM_ID_NO_BACKSLASH_ESCAPES)
+				   || this_parser->
+				   strings_have_no_escapes) ? "\\r" : "\r");
 	    }
-	  YY_BREAK case 568:
-	    YY_RULE_SETUP
+	    YY_BREAK case 568:YY_RULE_SETUP
 #line 1255 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr,
-						   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
-						    || this_parser->strings_have_no_escapes) ? "\\t" : "\t");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr,
+				  (prm_get_bool_value
+				   (PRM_ID_NO_BACKSLASH_ESCAPES)
+				   || this_parser->
+				   strings_have_no_escapes) ? "\\t" : "\t");
 	    }
-	  YY_BREAK case 569:
-	    YY_RULE_SETUP
+	    YY_BREAK case 569:YY_RULE_SETUP
 #line 1260 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\\%");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "\\%");
 	    }
-	  YY_BREAK case 570:
-	    YY_RULE_SETUP
+	    YY_BREAK case 570:YY_RULE_SETUP
 #line 1264 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\\_");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "\\_");
 	    }
-	  YY_BREAK case 571:
-	    YY_RULE_SETUP
+	    YY_BREAK case 571:YY_RULE_SETUP
 #line 1268 "../../src/parser/csql_lexer.l"
 	    {
-	      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes)
+	      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
+		  || this_parser->strings_have_no_escapes)
 		{
-		  csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\\");
+		  csql_yylval.cptr =
+		    pt_append_string (this_parser, csql_yylval.cptr, "\\");
 		  unput (*(csql_yytext + 1));
 		  yybuffer_pos--;
 		}
 	      else
 		{
-		  csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext + 1);
+		  csql_yylval.cptr =
+		    pt_append_string (this_parser, csql_yylval.cptr,
+				      csql_yytext + 1);
 		}
 	    }
-	  YY_BREAK case 572:
-	    YY_RULE_SETUP
+	    YY_BREAK case 572:YY_RULE_SETUP
 #line 1281 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr,
-						   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
-						    || this_parser->
-						    strings_have_no_escapes) ? csql_yytext : csql_yytext + 1);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr,
+				  (prm_get_bool_value
+				   (PRM_ID_NO_BACKSLASH_ESCAPES)
+				   || this_parser->
+				   strings_have_no_escapes) ? csql_yytext :
+				  csql_yytext + 1);
 	    }
-	  YY_BREAK case 573:
+	    YY_BREAK case 573:
 /* rule 573 can match eol */
-	    YY_RULE_SETUP
+	      YY_RULE_SETUP
 #line 1286 "../../src/parser/csql_lexer.l"
 	    {
 	      this_parser->line = yyline++;
 	      this_parser->column = yycolumn = yycolumn_end = 0;
 
-	      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes)
+	      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
+		  || this_parser->strings_have_no_escapes)
 		{
-		  csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\\\n");
+		  csql_yylval.cptr =
+		    pt_append_string (this_parser, csql_yylval.cptr, "\\\n");
 		}
 	      else
 		{
-		  csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\n");
+		  csql_yylval.cptr =
+		    pt_append_string (this_parser, csql_yylval.cptr, "\n");
 		}
 	    }
-	  YY_BREAK case 574:
-	    YY_RULE_SETUP
+	    YY_BREAK case 574:YY_RULE_SETUP
 #line 1302 "../../src/parser/csql_lexer.l"
 	    {
 	      char *cp = parser_line_hint ();
@@ -6976,8 +6438,7 @@ YY_DECL
 		  return CPP_STYLE_HINT;
 		}
 	    }
-	  YY_BREAK case 575:
-	    YY_RULE_SETUP
+	    YY_BREAK case 575:YY_RULE_SETUP
 #line 1312 "../../src/parser/csql_lexer.l"
 	    {
 	      char *cp = parser_c_hint ();
@@ -6987,8 +6448,7 @@ YY_DECL
 		  return C_STYLE_HINT;
 		}
 	    }
-	  YY_BREAK case 576:
-	    YY_RULE_SETUP
+	    YY_BREAK case 576:YY_RULE_SETUP
 #line 1323 "../../src/parser/csql_lexer.l"
 	    {
 	      char *cp = parser_line_hint ();
@@ -6998,226 +6458,199 @@ YY_DECL
 		  return SQL_STYLE_HINT;
 		}
 	    }
-	  YY_BREAK case 577:
-	    YY_RULE_SETUP
+	    YY_BREAK case 577:YY_RULE_SETUP
 #line 1332 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return YEN_SIGN;
 	    }
-	  YY_BREAK case 578:
-	    YY_RULE_SETUP
+	    YY_BREAK case 578:YY_RULE_SETUP
 #line 1333 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DOLLAR_SIGN;
 	    }
-	  YY_BREAK case 579:
-	    YY_RULE_SETUP
+	    YY_BREAK case 579:YY_RULE_SETUP
 #line 1334 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WON_SIGN;
 	    }
-	  YY_BREAK case 580:
-	    YY_RULE_SETUP
+	    YY_BREAK case 580:YY_RULE_SETUP
 #line 1335 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TURKISH_LIRA_SIGN;
 	    }
-	  YY_BREAK case 581:
-	    YY_RULE_SETUP
+	    YY_BREAK case 581:YY_RULE_SETUP
 #line 1336 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return YEN_SIGN;
 	    }
-	  YY_BREAK case 582:
-	    YY_RULE_SETUP
+	    YY_BREAK case 582:YY_RULE_SETUP
 #line 1337 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DOLLAR_SIGN;
 	    }
-	  YY_BREAK case 583:
-	    YY_RULE_SETUP
+	    YY_BREAK case 583:YY_RULE_SETUP
 #line 1338 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return WON_SIGN;
 	    }
-	  YY_BREAK case 584:
-	    YY_RULE_SETUP
+	    YY_BREAK case 584:YY_RULE_SETUP
 #line 1339 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return TURKISH_LIRA_SIGN;
 	    }
-	  YY_BREAK case 585:
-	    YY_RULE_SETUP
+	    YY_BREAK case 585:YY_RULE_SETUP
 #line 1340 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CAMBODIAN_RIEL_SIGN;
 	    }
-	  YY_BREAK case 586:
-	    YY_RULE_SETUP
+	    YY_BREAK case 586:YY_RULE_SETUP
 #line 1341 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CHINESE_RENMINBI_SIGN;
 	    }
-	  YY_BREAK case 587:
-	    YY_RULE_SETUP
+	    YY_BREAK case 587:YY_RULE_SETUP
 #line 1342 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return INDIAN_RUPEE_SIGN;
 	    }
-	  YY_BREAK case 588:
-	    YY_RULE_SETUP
+	    YY_BREAK case 588:YY_RULE_SETUP
 #line 1343 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return RUSSIAN_RUBLE_SIGN;
 	    }
-	  YY_BREAK case 589:
-	    YY_RULE_SETUP
+	    YY_BREAK case 589:YY_RULE_SETUP
 #line 1344 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return AUSTRALIAN_DOLLAR_SIGN;
 	    }
-	  YY_BREAK case 590:
-	    YY_RULE_SETUP
+	    YY_BREAK case 590:YY_RULE_SETUP
 #line 1345 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CANADIAN_DOLLAR_SIGN;
 	    }
-	  YY_BREAK case 591:
-	    YY_RULE_SETUP
+	    YY_BREAK case 591:YY_RULE_SETUP
 #line 1346 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BRASILIAN_REAL_SIGN;
 	    }
-	  YY_BREAK case 592:
-	    YY_RULE_SETUP
+	    YY_BREAK case 592:YY_RULE_SETUP
 #line 1347 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return ROMANIAN_LEU_SIGN;
 	    }
-	  YY_BREAK case 593:
-	    YY_RULE_SETUP
+	    YY_BREAK case 593:YY_RULE_SETUP
 #line 1348 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return EURO_SIGN;
 	    }
-	  YY_BREAK case 594:
-	    YY_RULE_SETUP
+	    YY_BREAK case 594:YY_RULE_SETUP
 #line 1349 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SWISS_FRANC_SIGN;
 	    }
-	  YY_BREAK case 595:
-	    YY_RULE_SETUP
+	    YY_BREAK case 595:YY_RULE_SETUP
 #line 1350 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return DANISH_KRONE_SIGN;
 	    }
-	  YY_BREAK case 596:
-	    YY_RULE_SETUP
+	    YY_BREAK case 596:YY_RULE_SETUP
 #line 1351 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return NORWEGIAN_KRONE_SIGN;
 	    }
-	  YY_BREAK case 597:
-	    YY_RULE_SETUP
+	    YY_BREAK case 597:YY_RULE_SETUP
 #line 1352 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BULGARIAN_LEV_SIGN;
 	    }
-	  YY_BREAK case 598:
-	    YY_RULE_SETUP
+	    YY_BREAK case 598:YY_RULE_SETUP
 #line 1353 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return BRITISH_POUND_SIGN;
 	    }
-	  YY_BREAK case 599:
-	    YY_RULE_SETUP
+	    YY_BREAK case 599:YY_RULE_SETUP
 #line 1354 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return VIETNAMESE_DONG_SIGN;
 	    }
-	  YY_BREAK case 600:
-	    YY_RULE_SETUP
+	    YY_BREAK case 600:YY_RULE_SETUP
 #line 1355 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CZECH_KORUNA_SIGN;
 	    }
-	  YY_BREAK case 601:
-	    YY_RULE_SETUP
+	    YY_BREAK case 601:YY_RULE_SETUP
 #line 1356 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return POLISH_ZLOTY_SIGN;
 	    }
-	  YY_BREAK case 602:
-	    YY_RULE_SETUP
+	    YY_BREAK case 602:YY_RULE_SETUP
 #line 1357 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SWEDISH_KRONA_SIGN;
 	    }
-	  YY_BREAK case 603:
-	    YY_RULE_SETUP
+	    YY_BREAK case 603:YY_RULE_SETUP
 #line 1358 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return CROATIAN_KUNA_SIGN;
 	    }
-	  YY_BREAK case 604:
-	    YY_RULE_SETUP
+	    YY_BREAK case 604:YY_RULE_SETUP
 #line 1359 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return SERBIAN_DINAR_SIGN;
 	    }
-	  YY_BREAK case 605:
-	    YY_RULE_SETUP
+	    YY_BREAK case 605:YY_RULE_SETUP
 #line 1361 "../../src/parser/csql_lexer.l"
 	    {
 	      begin_token (csql_yytext);
 	      return csql_yytext[0];
 	    }
-	  YY_BREAK case 606:
-	    YY_RULE_SETUP
+	    YY_BREAK case 606:YY_RULE_SETUP
 #line 1362 "../../src/parser/csql_lexer.l"
 	      ECHO;
 	    YY_BREAK
-#line 6299 "../../src/parser/csql_lexer.c"
+#line 6291 "../../src/parser/csql_lexer.c"
 	  case YY_STATE_EOF (INITIAL):
 	    yyterminate ();
 
 	  case YY_END_OF_BUFFER:
 	    {
 	      /* Amount of text matched not including the EOB char. */
-	      int yy_amount_of_matched_text = (int) (yy_cp - (yytext_ptr)) - 1;
+	      int yy_amount_of_matched_text =
+		(int) (yy_cp - (yytext_ptr)) - 1;
 
 	      /* Undo the effects of YY_DO_BEFORE_ACTION. */
 	      *yy_cp = (yy_hold_char);
-	      YY_RESTORE_YY_MORE_OFFSET if (YY_CURRENT_BUFFER_LVALUE->yy_buffer_status == YY_BUFFER_NEW)
+	      YY_RESTORE_YY_MORE_OFFSET
+		if (YY_CURRENT_BUFFER_LVALUE->yy_buffer_status ==
+		    YY_BUFFER_NEW)
 		{
 		  /* We're scanning a new file or input source.  It's
 		   * possible that this happened because the user
@@ -7230,7 +6663,8 @@ YY_DECL
 		   */
 		  (yy_n_chars) = YY_CURRENT_BUFFER_LVALUE->yy_n_chars;
 		  YY_CURRENT_BUFFER_LVALUE->yy_input_file = csql_yyin;
-		  YY_CURRENT_BUFFER_LVALUE->yy_buffer_status = YY_BUFFER_NORMAL;
+		  YY_CURRENT_BUFFER_LVALUE->yy_buffer_status =
+		    YY_BUFFER_NORMAL;
 		}
 
 	      /* Note that here we test for yy_c_buf_p "<=" to the position
@@ -7240,7 +6674,8 @@ YY_DECL
 	       * end-of-buffer state).  Contrast this with the test
 	       * in input().
 	       */
-	      if ((yy_c_buf_p) <= &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)])
+	      if ((yy_c_buf_p) <=
+		  &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)])
 		{		/* This was really a NUL. */
 		  yy_state_type yy_next_state;
 
@@ -7318,7 +6753,8 @@ YY_DECL
 		    goto yy_match;
 
 		  case EOB_ACT_LAST_MATCH:
-		    (yy_c_buf_p) = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)];
+		    (yy_c_buf_p) =
+		      &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)];
 
 		    yy_current_state = yy_get_previous_state ();
 
@@ -7330,7 +6766,8 @@ YY_DECL
 	    }
 
 	  default:
-	    YY_FATAL_ERROR ("fatal flex scanner internal error--no action found");
+	    YY_FATAL_ERROR
+	      ("fatal flex scanner internal error--no action found");
 	  }			/* end of action switch */
       }				/* end of scanning one token */
   }				/* end of user's declarations */
@@ -7346,13 +6783,14 @@ YY_DECL
 static int
 yy_get_next_buffer (void)
 {
-  char *dest = YY_CURRENT_BUFFER_LVALUE->yy_ch_buf;
-  char *source = (yytext_ptr);
-  yy_size_t number_to_move, i;
+  register char *dest = YY_CURRENT_BUFFER_LVALUE->yy_ch_buf;
+  register char *source = (yytext_ptr);
+  register int number_to_move, i;
   int ret_val;
 
   if ((yy_c_buf_p) > &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars) + 1])
-    YY_FATAL_ERROR ("fatal flex scanner internal error--end of buffer missed");
+    YY_FATAL_ERROR
+      ("fatal flex scanner internal error--end of buffer missed");
 
   if (YY_CURRENT_BUFFER_LVALUE->yy_fill_buffer == 0)
     {				/* Don't try to fill the buffer, so this is an EOF. */
@@ -7376,7 +6814,7 @@ yy_get_next_buffer (void)
   /* Try to read more data. */
 
   /* First move last chars to start of buffer. */
-  number_to_move = (yy_size_t) ((yy_c_buf_p) - (yytext_ptr)) - 1;
+  number_to_move = (int) ((yy_c_buf_p) - (yytext_ptr)) - 1;
 
   for (i = 0; i < number_to_move; ++i)
     *(dest++) = *(source++);
@@ -7389,7 +6827,8 @@ yy_get_next_buffer (void)
 
   else
     {
-      int num_to_read = YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
+      yy_size_t num_to_read =
+	YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
 
       while (num_to_read <= 0)
 	{			/* Not enough room in the buffer - grow it. */
@@ -7401,7 +6840,7 @@ yy_get_next_buffer (void)
 
 	  if (b->yy_is_our_buffer)
 	    {
-	      int new_size = b->yy_buf_size * 2;
+	      yy_size_t new_size = b->yy_buf_size * 2;
 
 	      if (new_size <= 0)
 		b->yy_buf_size += b->yy_buf_size / 8;
@@ -7414,14 +6853,15 @@ yy_get_next_buffer (void)
 	    }
 	  else
 	    /* Can't grow it, we don't own it. */
-	    b->yy_ch_buf = NULL;
+	    b->yy_ch_buf = 0;
 
 	  if (!b->yy_ch_buf)
 	    YY_FATAL_ERROR ("fatal error - scanner input buffer overflow");
 
 	  (yy_c_buf_p) = &b->yy_ch_buf[yy_c_buf_p_offset];
 
-	  num_to_read = YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
+	  num_to_read = YY_CURRENT_BUFFER_LVALUE->yy_buf_size -
+	    number_to_move - 1;
 
 	}
 
@@ -7429,7 +6869,8 @@ yy_get_next_buffer (void)
 	num_to_read = YY_READ_BUF_SIZE;
 
       /* Read in more data. */
-      YY_INPUT ((&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move]), (yy_n_chars), num_to_read);
+      YY_INPUT ((&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move]),
+		(yy_n_chars), num_to_read);
 
       YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars);
     }
@@ -7452,19 +6893,23 @@ yy_get_next_buffer (void)
   else
     ret_val = EOB_ACT_CONTINUE_SCAN;
 
-  if ((int) ((yy_n_chars) + number_to_move) > YY_CURRENT_BUFFER_LVALUE->yy_buf_size)
+  if ((yy_size_t) ((yy_n_chars) + number_to_move) >
+      YY_CURRENT_BUFFER_LVALUE->yy_buf_size)
     {
       /* Extend the array by 50%, plus the number we really need. */
-      int new_size = (yy_n_chars) + number_to_move + ((yy_n_chars) >> 1);
+      yy_size_t new_size =
+	(yy_n_chars) + number_to_move + ((yy_n_chars) >> 1);
       YY_CURRENT_BUFFER_LVALUE->yy_ch_buf =
-	(char *) csql_yyrealloc ((void *) YY_CURRENT_BUFFER_LVALUE->yy_ch_buf, new_size);
+	(char *) csql_yyrealloc ((void *) YY_CURRENT_BUFFER_LVALUE->yy_ch_buf,
+				 new_size);
       if (!YY_CURRENT_BUFFER_LVALUE->yy_ch_buf)
 	YY_FATAL_ERROR ("out of dynamic memory in yy_get_next_buffer()");
     }
 
   (yy_n_chars) += number_to_move;
   YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)] = YY_END_OF_BUFFER_CHAR;
-  YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars) + 1] = YY_END_OF_BUFFER_CHAR;
+  YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars) + 1] =
+    YY_END_OF_BUFFER_CHAR;
 
   (yytext_ptr) = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[0];
 
@@ -7476,14 +6921,14 @@ yy_get_next_buffer (void)
 static yy_state_type
 yy_get_previous_state (void)
 {
-  yy_state_type yy_current_state;
-  char *yy_cp;
+  register yy_state_type yy_current_state;
+  register char *yy_cp;
 
   yy_current_state = (yy_start);
 
   for (yy_cp = (yytext_ptr) + YY_MORE_ADJ; yy_cp < (yy_c_buf_p); ++yy_cp)
     {
-      YY_CHAR yy_c = (*yy_cp ? yy_ec[YY_SC_TO_UI (*yy_cp)] : 1);
+      register YY_CHAR yy_c = (*yy_cp ? yy_ec[YY_SC_TO_UI (*yy_cp)] : 1);
       if (yy_accept[yy_current_state])
 	{
 	  (yy_last_accepting_state) = yy_current_state;
@@ -7495,7 +6940,8 @@ yy_get_previous_state (void)
 	  if (yy_current_state >= 2315)
 	    yy_c = yy_meta[(unsigned int) yy_c];
 	}
-      yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
+      yy_current_state =
+	yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
     }
 
   return yy_current_state;
@@ -7509,10 +6955,10 @@ yy_get_previous_state (void)
 static yy_state_type
 yy_try_NUL_trans (yy_state_type yy_current_state)
 {
-  int yy_is_jam;
-  char *yy_cp = (yy_c_buf_p);
+  register int yy_is_jam;
+  register char *yy_cp = (yy_c_buf_p);
 
-  YY_CHAR yy_c = 1;
+  register YY_CHAR yy_c = 1;
   if (yy_accept[yy_current_state])
     {
       (yy_last_accepting_state) = yy_current_state;
@@ -7524,18 +6970,16 @@ yy_try_NUL_trans (yy_state_type yy_current_state)
       if (yy_current_state >= 2315)
 	yy_c = yy_meta[(unsigned int) yy_c];
     }
-  yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
+  yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
   yy_is_jam = (yy_current_state == 2314);
 
   return yy_is_jam ? 0 : yy_current_state;
 }
 
-#ifndef YY_NO_UNPUT
-
 static void
-yyunput (int c, char *yy_bp)
+yyunput (int c, register char *yy_bp)
 {
-  char *yy_cp;
+  register char *yy_cp;
 
   yy_cp = (yy_c_buf_p);
 
@@ -7545,16 +6989,20 @@ yyunput (int c, char *yy_bp)
   if (yy_cp < YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + 2)
     {				/* need to shift things up to make room */
       /* +2 for EOB chars. */
-      int number_to_move = (yy_n_chars) + 2;
-      char *dest = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[YY_CURRENT_BUFFER_LVALUE->yy_buf_size + 2];
-      char *source = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move];
+      register yy_size_t number_to_move = (yy_n_chars) + 2;
+      register char *dest =
+	&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[YY_CURRENT_BUFFER_LVALUE->
+					     yy_buf_size + 2];
+      register char *source =
+	&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move];
 
       while (source > YY_CURRENT_BUFFER_LVALUE->yy_ch_buf)
 	*--dest = *--source;
 
       yy_cp += (int) (dest - source);
       yy_bp += (int) (dest - source);
-      YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars) = (int) YY_CURRENT_BUFFER_LVALUE->yy_buf_size;
+      YY_CURRENT_BUFFER_LVALUE->yy_n_chars =
+	(yy_n_chars) = YY_CURRENT_BUFFER_LVALUE->yy_buf_size;
 
       if (yy_cp < YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + 2)
 	YY_FATAL_ERROR ("flex scanner push-back overflow");
@@ -7566,8 +7014,6 @@ yyunput (int c, char *yy_bp)
   (yy_hold_char) = *yy_cp;
   (yy_c_buf_p) = yy_cp;
 }
-
-#endif
 
 #ifndef YY_NO_INPUT
 #ifdef __cplusplus
@@ -7594,7 +7040,7 @@ input (void)
 
       else
 	{			/* need more input */
-	  int offset = (yy_c_buf_p) - (yytext_ptr);
+	  yy_size_t offset = (yy_c_buf_p) - (yytext_ptr);
 	  ++(yy_c_buf_p);
 
 	  switch (yy_get_next_buffer ())
@@ -7616,7 +7062,7 @@ input (void)
 	     /*FALLTHROUGH*/ case EOB_ACT_END_OF_FILE:
 	      {
 		if (csql_yywrap ())
-		  return 0;
+		  return EOF;
 
 		if (!(yy_did_buffer_switch_on_eof))
 		  YY_NEW_FILE;
@@ -7654,7 +7100,8 @@ csql_yyrestart (FILE * input_file)
   if (!YY_CURRENT_BUFFER)
     {
       csql_yyensure_buffer_stack ();
-      YY_CURRENT_BUFFER_LVALUE = csql_yy_create_buffer (csql_yyin, YY_BUF_SIZE);
+      YY_CURRENT_BUFFER_LVALUE =
+	csql_yy_create_buffer (csql_yyin, YY_BUF_SIZE);
     }
 
   csql_yy_init_buffer (YY_CURRENT_BUFFER, input_file);
@@ -7721,7 +7168,7 @@ csql_yy_create_buffer (FILE * file, int size)
   if (!b)
     YY_FATAL_ERROR ("out of dynamic memory in csql_yy_create_buffer()");
 
-  b->yy_buf_size = (yy_size_t) size;
+  b->yy_buf_size = size;
 
   /* yy_ch_buf has to be 2 characters longer than the size given because
    * we need to put in 2 end-of-buffer characters.
@@ -7875,7 +7322,7 @@ csql_yypop_buffer_state (void)
 static void
 csql_yyensure_buffer_stack (void)
 {
-  int num_to_alloc;
+  yy_size_t num_to_alloc;
 
   if (!(yy_buffer_stack))
     {
@@ -7884,12 +7331,15 @@ csql_yyensure_buffer_stack (void)
        * scanner will even need a stack. We use 2 instead of 1 to avoid an
        * immediate realloc on the next call.
        */
-      num_to_alloc = 1;		/* After all that talk, this was set to 1 anyways... */
-      (yy_buffer_stack) = (struct yy_buffer_state **) csql_yyalloc (num_to_alloc * sizeof (struct yy_buffer_state *));
+      num_to_alloc = 1;
+      (yy_buffer_stack) = (struct yy_buffer_state **) csql_yyalloc
+	(num_to_alloc * sizeof (struct yy_buffer_state *));
       if (!(yy_buffer_stack))
-	YY_FATAL_ERROR ("out of dynamic memory in csql_yyensure_buffer_stack()");
+	YY_FATAL_ERROR
+	  ("out of dynamic memory in csql_yyensure_buffer_stack()");
 
-      memset ((yy_buffer_stack), 0, num_to_alloc * sizeof (struct yy_buffer_state *));
+      memset ((yy_buffer_stack), 0,
+	      num_to_alloc * sizeof (struct yy_buffer_state *));
 
       (yy_buffer_stack_max) = num_to_alloc;
       (yy_buffer_stack_top) = 0;
@@ -7900,16 +7350,18 @@ csql_yyensure_buffer_stack (void)
     {
 
       /* Increase the buffer to prepare for a possible push. */
-      yy_size_t grow_size = 8 /* arbitrary grow size */ ;
+      int grow_size = 8 /* arbitrary grow size */ ;
 
       num_to_alloc = (yy_buffer_stack_max) + grow_size;
       (yy_buffer_stack) = (struct yy_buffer_state **) csql_yyrealloc
 	((yy_buffer_stack), num_to_alloc * sizeof (struct yy_buffer_state *));
       if (!(yy_buffer_stack))
-	YY_FATAL_ERROR ("out of dynamic memory in csql_yyensure_buffer_stack()");
+	YY_FATAL_ERROR
+	  ("out of dynamic memory in csql_yyensure_buffer_stack()");
 
       /* zero only the new slots. */
-      memset ((yy_buffer_stack) + (yy_buffer_stack_max), 0, grow_size * sizeof (struct yy_buffer_state *));
+      memset ((yy_buffer_stack) + (yy_buffer_stack_max), 0,
+	      grow_size * sizeof (struct yy_buffer_state *));
       (yy_buffer_stack_max) = num_to_alloc;
     }
 }
@@ -7925,9 +7377,11 @@ csql_yy_scan_buffer (char *base, yy_size_t size)
 {
   YY_BUFFER_STATE b;
 
-  if (size < 2 || base[size - 2] != YY_END_OF_BUFFER_CHAR || base[size - 1] != YY_END_OF_BUFFER_CHAR)
+  if (size < 2 ||
+      base[size - 2] != YY_END_OF_BUFFER_CHAR ||
+      base[size - 1] != YY_END_OF_BUFFER_CHAR)
     /* They forgot to leave room for the EOB's. */
-    return NULL;
+    return 0;
 
   b = (YY_BUFFER_STATE) csql_yyalloc (sizeof (struct yy_buffer_state));
   if (!b)
@@ -7936,7 +7390,7 @@ csql_yy_scan_buffer (char *base, yy_size_t size)
   b->yy_buf_size = size - 2;	/* "- 2" to take care of EOB's */
   b->yy_buf_pos = b->yy_ch_buf = base;
   b->yy_is_our_buffer = 0;
-  b->yy_input_file = NULL;
+  b->yy_input_file = 0;
   b->yy_n_chars = b->yy_buf_size;
   b->yy_is_interactive = 0;
   b->yy_at_bol = 1;
@@ -7960,7 +7414,7 @@ YY_BUFFER_STATE
 csql_yy_scan_string (yyconst char *yystr)
 {
 
-  return csql_yy_scan_bytes (yystr, (int) strlen (yystr));
+  return csql_yy_scan_bytes (yystr, strlen (yystr));
 }
 
 /** Setup the input buffer state to scan the given bytes. The next call to csql_yylex() will
@@ -7971,7 +7425,7 @@ csql_yy_scan_string (yyconst char *yystr)
  * @return the newly allocated buffer state object.
  */
 YY_BUFFER_STATE
-csql_yy_scan_bytes (yyconst char *yybytes, int _yybytes_len)
+csql_yy_scan_bytes (yyconst char *yybytes, yy_size_t _yybytes_len)
 {
   YY_BUFFER_STATE b;
   char *buf;
@@ -7979,7 +7433,7 @@ csql_yy_scan_bytes (yyconst char *yybytes, int _yybytes_len)
   yy_size_t i;
 
   /* Get memory for full buffer, including space for trailing EOB's. */
-  n = (yy_size_t) _yybytes_len + 2;
+  n = _yybytes_len + 2;
   buf = (char *) csql_yyalloc (n);
   if (!buf)
     YY_FATAL_ERROR ("out of dynamic memory in csql_yy_scan_bytes()");
@@ -8005,7 +7459,7 @@ csql_yy_scan_bytes (yyconst char *yybytes, int _yybytes_len)
 #define YY_EXIT_FAILURE 2
 #endif
 
-static void yynoreturn
+static void
 yy_fatal_error (yyconst char *msg)
 {
   (void) fprintf (stderr, "%s\n", msg);
@@ -8062,7 +7516,7 @@ csql_yyget_out (void)
 /** Get the length of the current token.
  * 
  */
-int
+yy_size_t
 csql_yyget_leng (void)
 {
   return csql_yyleng;
@@ -8079,32 +7533,32 @@ csql_yyget_text (void)
 }
 
 /** Set the current line number.
- * @param _line_number line number
+ * @param line_number
  * 
  */
 void
-csql_yyset_lineno (int _line_number)
+csql_yyset_lineno (int line_number)
 {
 
-  csql_yylineno = _line_number;
+  csql_yylineno = line_number;
 }
 
 /** Set the input stream. This does not discard the current
  * input buffer.
- * @param _in_str A readable stream.
+ * @param in_str A readable stream.
  * 
  * @see csql_yy_switch_to_buffer
  */
 void
-csql_yyset_in (FILE * _in_str)
+csql_yyset_in (FILE * in_str)
 {
-  csql_yyin = _in_str;
+  csql_yyin = in_str;
 }
 
 void
-csql_yyset_out (FILE * _out_str)
+csql_yyset_out (FILE * out_str)
 {
-  csql_yyout = _out_str;
+  csql_yyout = out_str;
 }
 
 int
@@ -8114,9 +7568,9 @@ csql_yyget_debug (void)
 }
 
 void
-csql_yyset_debug (int _bdebug)
+csql_yyset_debug (int bdebug)
 {
-  csql_yy_flex_debug = _bdebug;
+  csql_yy_flex_debug = bdebug;
 }
 
 static int
@@ -8126,10 +7580,10 @@ yy_init_globals (void)
    * This function is called from csql_yylex_destroy(), so don't allocate here.
    */
 
-  (yy_buffer_stack) = NULL;
+  (yy_buffer_stack) = 0;
   (yy_buffer_stack_top) = 0;
   (yy_buffer_stack_max) = 0;
-  (yy_c_buf_p) = NULL;
+  (yy_c_buf_p) = (char *) 0;
   (yy_init) = 0;
   (yy_start) = 0;
 
@@ -8138,8 +7592,8 @@ yy_init_globals (void)
   csql_yyin = stdin;
   csql_yyout = stdout;
 #else
-  csql_yyin = NULL;
-  csql_yyout = NULL;
+  csql_yyin = (FILE *) 0;
+  csql_yyout = (FILE *) 0;
 #endif
 
   /* For future reference: Set errno on error, since we are called by
@@ -8180,8 +7634,7 @@ csql_yylex_destroy (void)
 static void
 yy_flex_strncpy (char *s1, yyconst char *s2, int n)
 {
-
-  int i;
+  register int i;
   for (i = 0; i < n; ++i)
     s1[i] = s2[i];
 }
@@ -8191,7 +7644,7 @@ yy_flex_strncpy (char *s1, yyconst char *s2, int n)
 static int
 yy_flex_strlen (yyconst char *s)
 {
-  int n;
+  register int n;
   for (n = 0; s[n]; ++n)
     ;
 
@@ -8202,13 +7655,12 @@ yy_flex_strlen (yyconst char *s)
 void *
 csql_yyalloc (yy_size_t size)
 {
-  return malloc (size);
+  return (void *) malloc (size);
 }
 
 void *
 csql_yyrealloc (void *ptr, yy_size_t size)
 {
-
   /* The cast to (char *) in the following accommodates both
    * implementations that use char* generic pointers, and those
    * that use void* generic pointers.  It works with the latter
@@ -8216,7 +7668,7 @@ csql_yyrealloc (void *ptr, yy_size_t size)
    * any pointer type to void*, and deal with argument conversions
    * as though doing an assignment.
    */
-  return realloc (ptr, size);
+  return (void *) realloc ((char *) ptr, size);
 }
 
 void
@@ -8268,9 +7720,12 @@ csql_yyerror (const char *s)
     }
   snprintf (token_val, token_len, "%s", csql_yyget_text ());
 
-  end_of_stmt_str = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_END_OF_STMT);
+  end_of_stmt_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				    MSGCAT_SET_PARSER_SYNTAX,
+				    MSGCAT_SYNTAX_END_OF_STMT);
   context_saved_char_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_CONTEXT_SAVED_CHAR);
+					   MSGCAT_SET_PARSER_SYNTAX,
+					   MSGCAT_SYNTAX_CONTEXT_SAVED_CHAR);
 
   next_ptr_len = strlen (next_ptr);
   if (next_ptr_len == 0)
@@ -8293,7 +7748,8 @@ csql_yyerror (const char *s)
   if (msg_ptr)
     {
       PT_NODE *dummy = parser_new_node (this_parser, PT_EXPR);
-      PT_ERRORm (this_parser, dummy, MSGCAT_SET_PARSER_SYNTAX, g_msg[msg_ptr - 1]);
+      PT_ERRORm (this_parser, dummy, MSGCAT_SET_PARSER_SYNTAX,
+		 g_msg[msg_ptr - 1]);
       parser_free_tree (this_parser, dummy);
     }
   else
@@ -8309,20 +7765,24 @@ csql_yyerror (const char *s)
       const char *before_token = msgcat_message (MSGCAT_CATALOG_CUBRID,
 						 MSGCAT_SET_PARSER_SYNTAX,
 						 MSGCAT_SYNTAX_YYERROR);
-      const char *after_token = strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
-							   MSGCAT_SET_PARSER_SYNTAX,
-							   MSGCAT_SYNTAX_EXPECTING));
-      const char *token_type = strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
-							  MSGCAT_SET_PARSER_SYNTAX,
-							  MSGCAT_SYNTAX_UNEXPECTED));
+      const char *after_token =
+	strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_PARSER_SYNTAX,
+				   MSGCAT_SYNTAX_EXPECTING));
+      const char *token_type =
+	strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_PARSER_SYNTAX,
+				   MSGCAT_SYNTAX_UNEXPECTED));
       int len = 0;
       PT_NODE *dummy;
 
-      if ((strlen (s) > strlen (cmp_str)) && (strcmp (&s[strlen (s) - strlen (cmp_str)], cmp_str) == 0))
+      if ((strlen (s) > strlen (cmp_str)) &&
+	  (strcmp (&s[strlen (s) - strlen (cmp_str)], cmp_str) == 0))
 	{
 	  *(char *) &s[strlen (s) - strlen (cmp_str)] = 0;
 	}
-      else if ((strlen (s) > strlen (cmp_str2)) && (strcmp (&s[strlen (s) - strlen (cmp_str2)], cmp_str2) == 0))
+      else if ((strlen (s) > strlen (cmp_str2)) &&
+	       (strcmp (&s[strlen (s) - strlen (cmp_str2)], cmp_str2) == 0))
 	{
 	  *(char *) &s[strlen (s) - strlen (cmp_str2)] = 0;
 	}
@@ -8336,7 +7796,8 @@ csql_yyerror (const char *s)
 	  char *msg_context = NULL;
 	  int fixed_len = 11 * 2;	/* maximum size of printed line number and
 					   column number */
-	  int msg_size = fixed_len + next_ptr_len + strlen (before_token) + strlen (token_val) + 4;
+	  int msg_size = fixed_len + next_ptr_len + strlen (before_token)
+	    + strlen (token_val) + 4;
 	  /* 4 = 3 more characters when printing before_token
 	   * and 'token_val' + the string terminator */
 
@@ -8347,7 +7808,9 @@ csql_yyerror (const char *s)
 	    }
 	  else
 	    {
-	      msg_context = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_CONTEXT);
+	      msg_context = msgcat_message (MSGCAT_CATALOG_CUBRID,
+					    MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_CONTEXT);
 	      msg_size += strlen (msg_context);
 	    }
 
@@ -8366,12 +7829,15 @@ csql_yyerror (const char *s)
 	  if (end_statement == 0)
 	    {
 	      snprintf (msg, msg_size, context_saved_char_str,
-			csql_yylloc.first_line, csql_yylloc.first_column, (saved_char ? saved_char : ' '), next_ptr);
+			csql_yylloc.first_line, csql_yylloc.first_column,
+			(saved_char ? saved_char : ' '), next_ptr);
 	    }
 	  else
 	    {
 	      assert (msg_context != NULL);
-	      snprintf (msg, msg_size, msg_context, csql_yylloc.first_line, csql_yylloc.first_column, next_ptr);
+	      snprintf (msg, msg_size, msg_context,
+			csql_yylloc.first_line, csql_yylloc.first_column,
+			next_ptr);
 	    }
 
 	  len = strlen (msg);
@@ -8492,7 +7958,9 @@ parser_yyinput_single_line (char *buff, int max_size)
 		  return i;
 		}
 
-	      if (c == '\\' && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
+	      if (c == '\\'
+		  && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) ==
+		      false))
 		{
 		  /* if escape character */
 		  c = pt_nextchar ();	/* read one more */
@@ -8685,7 +8153,8 @@ loop:
   if (i < (CSQL_MAXNAME - 1) && (c = input_internal ()) == '+')
     {				/* hint */
       buff[i++] = '+';
-      while ((c = input_internal ()) != '\r' && c != '\n' && c != 0 && c != -1)
+      while ((c = input_internal ()) != '\r' && c != '\n' && c != 0
+	     && c != -1)
 	{
 	  if (i >= (CSQL_MAXNAME - 1))
 	    goto loop;
@@ -8706,7 +8175,8 @@ loop:
     {				/* comment */
       yybuffer_pos += i;
       unput (c);
-      while ((c = input_internal ()) != '\r' && c != '\n' && c != 0 && c != -1)
+      while ((c = input_internal ()) != '\r' && c != '\n' && c != 0
+	     && c != -1)
 	{
 	  yybuffer_pos++;
 	}

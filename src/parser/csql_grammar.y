@@ -676,6 +676,7 @@ int g_original_buffer_len;
 %type <number> opt_trace_output_format
 %type <number> opt_if_not_exists
 %type <number> opt_if_exists
+%type <number> opt_recursive
 %type <number> show_type
 %type <number> show_type_of_like
 %type <number> show_type_of_where
@@ -817,12 +818,14 @@ int g_original_buffer_len;
 %type <node> esql_query_stmt
 %type <node> csql_query
 %type <node> csql_query_without_values_query
+%type <node> select_expression_opt_with
 %type <node> select_expression
 %type <node> select_expression_without_values_query
 %type <node> table_op
 %type <node> select_or_subquery
 %type <node> select_or_subquery_without_values_query
 %type <node> select_stmt
+%type <node> opt_with_clause
 %type <node> opt_select_param_list
 %type <node> opt_from_clause
 %type <node> select_list
@@ -895,6 +898,7 @@ int g_original_buffer_len;
 %type <node> constant_set
 %type <node> file_path_name
 %type <node> identifier_list
+%type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
 %type <node> identifier
 %type <node> index_column_identifier
@@ -998,6 +1002,9 @@ int g_original_buffer_len;
 %type <node> kill_stmt
 %type <node> vacuum_stmt
 %type <node> opt_owner_clause
+%type <node> cte_definition_list
+%type <node> cte_definition
+%type <node> cte_query_list
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -11473,7 +11480,7 @@ csql_query
 			parser_save_and_set_pseudoc (1);
 
 		DBG_PRINT}}
-	  select_expression
+	  select_expression_opt_with
 		{{
 
 			PT_NODE *node = $2;
@@ -11631,6 +11638,23 @@ csql_query_without_values_query
 
 		DBG_PRINT}}
 	;
+
+select_expression_opt_with
+	: opt_with_clause
+	  select_expression
+		{{
+
+			PT_NODE *with_clause = $1;
+			PT_NODE *stmt = $2;
+			if (stmt && with_clause)
+			  {
+			    stmt->info.query.with = with_clause;
+			  }
+
+			$$ = stmt;
+
+		DBG_PRINT}} 
+	;   
 
 select_expression
 	: select_expression
@@ -12071,6 +12095,116 @@ select_stmt
 			$$ = $8;
 		}}
 	;
+
+opt_with_clause
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}    
+	| WITH            /* $1 */
+	opt_recursive   /* $2 */
+	cte_definition_list   /* $3 */  
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_WITH_CLAUSE);
+			if (node)
+			  {
+			    PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
+			    node->info.with_clause.recursive = $2;
+			    if ($3)
+			      { 
+			        node->info.with_clause.cte_definition_list = $3;
+			      }
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}} 
+	;
+
+opt_recursive
+	: /* empty */
+		{{
+			$$ = 0;
+
+		DBG_PRINT}}   
+	| RECURSIVE
+		{{ 
+			$$ = 1;
+
+		DBG_PRINT}}  
+	;  
+
+cte_definition_list
+	: cte_definition_list ',' cte_definition
+		{{
+
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| cte_definition
+		{{
+      
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT($$, @$.buffer_pos)
+
+		DBG_PRINT}}    
+  	;
+
+cte_definition
+	: identifier   /* $1 */
+	opt_bracketed_identifier_list  /* $2 */
+	AS               /* $3 */ 
+	cte_query_list	/* $4 */
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_CTE);
+			if (node)
+			  {
+			    PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
+			    node->info.cte.name = $1;
+			    if ($2)
+			      {
+			        node->info.cte.as_attr_list = $2;
+			      }          
+			    node->info.cte.non_rec_part = $4;
+			    node->info.cte.rec_part = NULL;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}  
+  	;    
+
+cte_query_list
+	: cte_query_list
+	table_op
+	select_or_subquery  
+		{{
+
+			PT_NODE *stmt = $2;
+			PT_NODE *arg1 = $1, *arg2 = $3;
+			if (stmt)
+			  {
+			    stmt->info.query.id = (UINTPTR) stmt;
+			    stmt->info.query.q.union_.arg1 = arg1;
+		            stmt->info.query.q.union_.arg2 = arg2;
+			  }
+
+			$$ = stmt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| select_or_subquery
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT($$, @$.buffer_pos);
+
+		DBG_PRINT}}  
+	; 
 
 opt_from_clause
 	: /* empty */
@@ -19834,6 +19968,17 @@ identifier_list
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+	;
+
+opt_bracketed_identifier_list
+	:	/* EMPTY */
+		{{
+			$$ = NULL;
+		DBG_PRINT}}
+	| '(' identifier_list ')'
+		{{
+			$$ = $2;
 		DBG_PRINT}}
 	;
 

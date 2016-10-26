@@ -1260,7 +1260,8 @@ $ LOADDB
 1191 Stand-alone vakum yürütme sona erer.
 1192 Değeri hassas %1$zu izin verilen maksimum %2$d aşıyor.
 1193 İşlenmiş bölüm ifade uzunluğu izin verilen sınırı (%1$d) aşıyor.
-1194 Son Hata
+1194 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1195 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
