@@ -7652,12 +7652,11 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
 
       if (oor_context.oor_atts->recdes_cnt > 0 &&
-	 LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	  !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	   copyarea_expanded_oor =
-	     locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes,
-						      &oor_context.repl_record, -1, NULL,
-						      LOB_FLAG_EXCLUDE_LOB);
+	     locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &oor_context.repl_record, -1,
+						      NULL, LOB_FLAG_EXCLUDE_LOB);
 	    if (copyarea_expanded_oor == NULL)
 	      {
 		error_code = ER_FAILED;
@@ -13457,6 +13456,7 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
     }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn);
+  context.is_fetch_context = true;
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))

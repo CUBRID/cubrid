@@ -997,6 +997,14 @@ struct rvfun RV_fun[] = {
    elo_rv_rename_elo,
    NULL,
    NULL,
+   NULL},
+
+  {RVREPL_OOR_INSERT,
+   "RVREPL_OOR_INSERT",
+   /* TODO[arnia] : undo redo functions */
+   NULL,
+   NULL,
+   NULL,
    NULL}
 };
 

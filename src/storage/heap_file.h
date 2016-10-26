@@ -376,6 +376,7 @@ struct heap_get_context
   
   HEAP_CACHE_ATTRINFO attr_info;  /* attribute info (required to expand OOR attributes) */
   bool attr_info_inited;
+  bool is_fetch_context;
 
   /* physical page watchers  */
   PGBUF_WATCHER home_page_watcher;	/* home page */

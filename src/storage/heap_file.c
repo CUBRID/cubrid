@@ -7644,9 +7644,12 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  return scan;
 	}
 
-      if (heap_expand_oor_attributes (thread_p, context) != NO_ERROR)
+      if (context->is_fetch_context)
 	{
-	  return S_ERROR;
+	  if (heap_expand_oor_attributes (thread_p, context) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
 	}
 
       return S_SUCCESS;
@@ -20996,6 +20999,27 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 }
 
 /*
+ * heap_log_insert_physical_oor () - add logging information for physical insertion
+ *   thread_p(in): thread entry
+ *   page_p(in): page where insert was performed
+ *   vfid_p(in): virtual file id
+ *   oid_p(in): newly inserted object id
+ *   recdes_p(in): record descriptor of inserted record
+ */
+static void
+heap_log_insert_physical_oor (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p)
+{
+  LOG_DATA_ADDR log_addr;
+
+  /* populate address field */
+  log_addr.vfid = vfid_p;
+  log_addr.offset = oid_p->slotid;
+  log_addr.pgptr = page_p;
+
+  log_append_redo_recdes (thread_p, RVREPL_OOR_INSERT, &log_addr, recdes_p);
+}
+
+/*
  * heap_delete_adjust_header () - adjust MVCC record header for delete operation
  *
  *   header_p(in): MVCC record header
@@ -23078,18 +23102,14 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    * Operation logging
    */
 
+  heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
+			    context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
+
   if (context->oor_context_p != NULL
       && context->oor_context_p->repl_record.data != NULL)
     {
-      context->oor_context_p->repl_record.type = context->recdes_p->type;
-      heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
-				&context->oor_context_p->repl_record, is_mvcc_op,
-				context->is_redistribute_insert_with_delid);
-    }
-  else
-    {
-      heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
-				context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
+      heap_log_insert_physical_oor (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
+				    &context->res_oid, &context->oor_context_p->repl_record);
     }
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -25181,6 +25201,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
       context->latch_mode = PGBUF_LATCH_READ;
     }
   context->attr_info_inited = false;
+  context->is_fetch_context = false;
 }
 
 
