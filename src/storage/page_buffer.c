@@ -2080,28 +2080,26 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #endif /* CUBRID_DEBUG */
 
 #if !defined (NDEBUG)
-  {
-    assert (pgptr != NULL);
+  assert (pgptr != NULL);
 
-    if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
-      {
-	if (pgbuf_is_valid_page_ptr (pgptr) == false)
-	  {
-	    return;
-	  }
+  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
+    {
+      if (pgbuf_is_valid_page_ptr (pgptr) == false)
+	{
+	  return;
+	}
 
-	holder = pgbuf_get_holder (thread_p, pgptr);
+      holder = pgbuf_get_holder (thread_p, pgptr);
 
-	assert_release (holder != NULL);
+      assert_release (holder != NULL);
 
-	watcher = holder->last_watcher;
-	while (watcher != NULL)
-	  {
-	    assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
-	    watcher = watcher->prev;
-	  }
-      }
-  }
+      watcher = holder->last_watcher;
+      while (watcher != NULL)
+	{
+	  assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+	  watcher = watcher->prev;
+	}
+    }
 #else /* !NDEBUG */
   if (pgptr == NULL)
     {
