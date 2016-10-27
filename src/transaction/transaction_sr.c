@@ -275,6 +275,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
 TRAN_STATE
 xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LSA * topop_lsa)
 {
+  TRAN_STATE state;
   bool drop_transient_class = false;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -303,10 +304,12 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
       if (result == LOG_RESULT_TOPOP_COMMIT)
 	{
 	  log_sysop_commit (thread_p);
+	  state = TRAN_UNACTIVE_COMMITTED;
 	}
       else
 	{
 	  log_sysop_abort (thread_p);
+	  state = TRAN_UNACTIVE_ABORTED;
 	}
       if (drop_transient_class)
 	{
@@ -321,9 +324,10 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
     case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:
     default:
       log_sysop_attach_to_outer (thread_p);
+      state = tdes->state;
       break;
     }
-  return tdes->state;
+  return state;
 }
 
 /*

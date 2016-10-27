@@ -5820,7 +5820,6 @@ TRAN_STATE
 log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA * savept_lsa)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
-  TRAN_STATE state;
   int tran_index;
 
   /* Find current transaction descriptor */
@@ -5856,7 +5855,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
     {
       /* 
        * This is likely a system error since the transaction is being partially
-       * aborted when there are nested top system permananet operations
+       * aborted when there are nested top system permanent operations
        * attached to it. Abort those operations too.
        */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT, 2, tdes->trid,
@@ -5896,7 +5895,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
    * get undefined and cannot get call by the user any longer.
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
-  return state;
+  return TRAN_UNACTIVE_ABORTED;
 }
 
 /*
