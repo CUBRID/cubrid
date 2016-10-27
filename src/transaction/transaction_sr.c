@@ -241,7 +241,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
    */
 
   log_sysop_start (thread_p);
-  if (log_get_parent_lsa_system_op (thread_p, topop_lsa) == NULL || LSA_ISNULL (topop_lsa))
+  if (log_get_parent_lsa_system_op (thread_p, topop_lsa) == NULL)
     {
       assert_release (false);
       return ER_FAILED;
