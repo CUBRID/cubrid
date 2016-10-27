@@ -1690,8 +1690,11 @@ try_again:
     }
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-  holder = pgbuf_get_holder (thread_p, pgptr);
 
+#if !defined (NDEBUG)
+  assert (pgptr != NULL);
+
+  holder = pgbuf_get_holder (thread_p, pgptr);
   assert_release (holder != NULL);
 
   watcher = holder->last_watcher;
@@ -1700,6 +1703,7 @@ try_again:
       assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
       watcher = watcher->prev;
     }
+#endif
 
   if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
     {
