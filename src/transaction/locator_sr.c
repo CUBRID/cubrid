@@ -6895,6 +6895,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
   RECDES new_recdes = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info;
+  bool repack_with_oor = false;
+  int i;
 
   assert (copyarea != NULL);
 
@@ -6975,6 +6977,21 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       return error_code;
     }
 
+  for (i = 0; i < attr_info.last_classrepr->n_attributes; i++)
+    {
+      if (TP_IS_OOR_TYPE (attr_info.last_classrepr->attributes[i].type))
+	{
+	  repack_with_oor = true;
+	  break;
+	}
+    }
+
+  if (repack_with_oor == false)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      return error_code;
+    }
+
   error_code = heap_attrinfo_read_dbvalues (thread_p, NULL, recdes, NULL, &attr_info, &oor_context);
   if (error_code != NO_ERROR)
     {
@@ -6982,18 +6999,30 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       return error_code;
     }
 
-  *copyarea =
-    locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, old_recdes, &new_recdes, -1, &oor_context,
-					     LOB_FLAG_INCLUDE_LOB);
-  if (*copyarea == NULL)
+  for (i = 0; i < attr_info.num_values; i++)
     {
-      error_code = ER_FAILED;
+      if (pr_is_oor_value (&attr_info.values[i].dbvalue))
+	{
+	  repack_with_oor = true;
+	  break;
+	}
     }
-  else
+
+  if (repack_with_oor)
     {
-      *recdes = new_recdes;
+      *copyarea =
+	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, NULL, &new_recdes, -1, &oor_context,
+						 LOB_FLAG_INCLUDE_LOB);
+      if (*copyarea == NULL)
+	{
+	  error_code = ER_FAILED;
+	}
+      else
+	{
+	  *recdes = new_recdes;
+	}
     }
-  
+
   heap_attrinfo_end (thread_p, &attr_info);
 
   return NO_ERROR;
@@ -8462,8 +8491,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
   int tran_index;
-  OUT_OF_ROW_CONTEXT oor_context_old = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
-  OUT_OF_ROW_CONTEXT oor_context_new = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+  OUT_OF_ROW_CONTEXT oor_context_old = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  OUT_OF_ROW_CONTEXT oor_context_new = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));

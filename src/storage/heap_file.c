@@ -10203,6 +10203,7 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		  pr_type = PR_TYPE_FROM_ID (attrepr->type);
 		  if (pr_type)
 		    {
+		      /* TODO[arnia] : read with copy ? */
 		      (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
 						  true, NULL, 0);
 		    }
