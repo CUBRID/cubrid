@@ -7035,6 +7035,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
   LC_RECDES_IN_COPYAREA (*reply_area, &reply_recdes);
 
+  _er_log_debug (ARG_FILE_LINE, "xlocator_repl_force : num_objs:%d, force_area->length:%d",  mobjs->num_objs, force_area->length);
+
   for (i = 0; i < mobjs->num_objs; i++)
     {
       er_clear ();

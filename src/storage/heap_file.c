@@ -11744,6 +11744,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   expected_size = heap_attrinfo_get_disksize (attr_info, &tmp, &size_without_overflow_columns);
   offset_size = tmp;
 
+  _er_log_debug (ARG_FILE_LINE, "heap_attrinfo_transform_to_disk_internal : num_values:%d"
+    "oor_context:%p, size_without_overflow_columns:%d, expected_size:%d",
+    attr_info->num_values, oor_context, size_without_overflow_columns, expected_size);
+
   if (attr_info->num_values > 1
       && (oor_context != NULL && oor_context->oor_atts != NULL)
       && size_without_overflow_columns < expected_size
