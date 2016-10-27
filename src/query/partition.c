@@ -2918,7 +2918,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   int error = NO_ERROR, count = 0, pos;
   PRUNING_OP op = PO_EQ;
   REPR_ID repr_id = NULL_REPRID;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER};
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   assert (partition_oid != NULL);
   assert (partition_hfid != NULL);

@@ -207,7 +207,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   ATTR_ID attrid;
   DB_VALUE *cur_val;
   OID serial_class_oid;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
@@ -513,7 +513,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   DB_VALUE key_val;
   ATTR_ID attrid;
   OID serial_class_oid;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   DB_MAKE_NULL (&key_val);
 
@@ -628,7 +628,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   SERIAL_CACHE_ENTRY *entry = NULL;
   ATTR_ID attrid;
   OID serial_class_oid;
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   DB_MAKE_NULL (&key_val);
 

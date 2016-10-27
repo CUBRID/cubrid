@@ -298,7 +298,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 static int
 desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   if (oid == NULL || recdes == NULL || attr_info == NULL)
     {

@@ -4480,7 +4480,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
   while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
     {
       HEAP_ATTRVALUE *heap_value = NULL;
-      OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+      OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
       if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info, &oor_context) != NO_ERROR)
 	{
@@ -4931,7 +4931,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
     {
       HEAP_ATTRVALUE *heap_value = NULL;
       LANG_COLL_COMPAT *curr_coll;
-      OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+      OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
       if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info, &oor_context) != NO_ERROR)
 	{
@@ -5142,7 +5142,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
   while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
     {
       HEAP_ATTRVALUE *heap_value = NULL;
-      OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_LOB, RECDES_INITIALIZER };
+      OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
       if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info, &oor_context) != NO_ERROR)
 	{
