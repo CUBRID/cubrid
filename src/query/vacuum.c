@@ -1842,12 +1842,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       /* HOME record of rel/big records are performed as a single operation: flush all existing vacuumed slots before
        * starting a system op for current record */
       vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
-
-      if (log_start_system_op (thread_p) == NULL)
-	{
-	  assert_release (false);
-	  return ER_FAILED;
-	}
+      log_sysop_start (thread_p);
     }
   else
     {
@@ -1862,7 +1857,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
     {
       if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	}
       return ER_FAILED;
     }
@@ -1897,7 +1892,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       if (spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true) != NO_ERROR)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	  return ER_FAILED;
 	}
 
@@ -1910,7 +1905,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
@@ -1936,13 +1931,13 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	{
 	  /* Failed to delete. */
 	  assert_release (false);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	  return ER_FAILED;
 	}
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
@@ -4566,7 +4561,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	  return;
 	}
 
-      (void) log_start_system_op (thread_p);
+      log_sysop_start (thread_p);
 
       /* Log log_Gl.hdr.vacuum_data_first_vpid change. We need to log it in new first page, since old first page is
        * being deallocated. When redo recovery is run, we need to make sure the page for redo log record is not
@@ -4591,7 +4586,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
 			 "VACUUM ERROR: Failed to deallocate first page from vacuum data - %d|%d!!!\n",
 			 save_first_vpid.volid, save_first_vpid.pageid);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 
 	  /* Revert first page change
 	   * - this is just to handle somehow the case in release. Should never happen anyway.
@@ -4602,7 +4597,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	  *data_page = vacuum_Data.first_page;
 	  return;
 	}
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
 
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Changed first VPID from %d|%d to %d|%d.\n",
 		     save_first_vpid.volid, save_first_vpid.pageid, log_Gl.hdr.vacuum_data_first_vpid.volid,
@@ -4633,7 +4628,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	  return;
 	}
 
-      (void) log_start_system_op (thread_p);
+      log_sysop_start (thread_p);
 
       /* Save link to next page. */
       VPID_COPY (&save_next_vpid, &(*data_page)->next_page);
@@ -4648,7 +4643,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
 			 "VACUUM ERROR: Failed to deallocate page from vacuum data - %d|%d!!!\n",
 			 save_page_vpid.volid, save_page_vpid.pageid);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	  return;
 	}
 
@@ -4658,7 +4653,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       VPID_COPY (&prev_data_page->next_page, &save_next_vpid);
       vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
 
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
 
       assert (*data_page == NULL);
       /* Move *data_page to next page. */

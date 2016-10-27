@@ -1466,10 +1466,7 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
   init_bucket_data[1] = dir_header_p->depth - found_depth;
   bucket_header.local_depth = init_bucket_data[1];
 
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
+  log_sysop_start (thread_p);
 
   error_code =
     flre_alloc_and_init (thread_p, &dir_header_p->bucket_file, ehash_initialize_bucket_new_page, init_bucket_data,
@@ -1477,27 +1474,27 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
       return ER_FAILED;
     }
 
   bucket_page_p = ehash_fix_old_page (thread_p, &dir_header_p->bucket_file, bucket_vpid_p, PGBUF_LATCH_WRITE);
   if (bucket_page_p == NULL)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
       return ER_FAILED;
     }
 
   if (ehash_connect_bucket (thread_p, ehid_p, bucket_header.local_depth, hash_key, bucket_vpid_p) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
       return ER_FAILED;
     }
 
   ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, (int) bucket_header.local_depth, 1);
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  log_sysop_commit (thread_p);
 
   ins_result =
     ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
@@ -1526,17 +1523,14 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
   int old_local_depth;
   int new_local_depth;
 
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return NULL;
-    }
+  log_sysop_start (thread_p);
 
   sibling_page_p =
     ehash_split_bucket (thread_p, dir_header_p, bucket_page_p, key_p, &old_local_depth, &new_local_depth,
 			&sibling_vpid);
   if (sibling_page_p == NULL)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
       return NULL;
     }
 
@@ -1553,7 +1547,7 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
       if (ehash_expand_directory (thread_p, ehid_p, new_local_depth) != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	  return NULL;
 	}
     }
@@ -1565,7 +1559,7 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
       if (ehash_connect_bucket (thread_p, ehid_p, old_local_depth, hash_key, &null_vpid) != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	  return NULL;
 	}
 
@@ -1574,7 +1568,7 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
       if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, bucket_vpid) != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	  return NULL;
 	}
     }
@@ -1584,11 +1578,11 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
   if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, &sibling_vpid) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
       return NULL;
     }
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  log_sysop_commit (thread_p);
   return sibling_page_p;
 }
 
@@ -3764,7 +3758,7 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 	      if ((bucket_status == EHASH_BUCKET_EMPTY) && (old_local_depth != 0))
 		{
-		  log_start_system_op (thread_p);
+		  log_sysop_start (thread_p);
 
 		  if (flre_dealloc (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH)
 		      != NO_ERROR)
@@ -3776,13 +3770,13 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 		  if (ehash_connect_bucket (thread_p, ehid_p, old_local_depth, hash_key, &null_vpid) != NO_ERROR)
 		    {
 		      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
-		      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		      log_sysop_abort (thread_p);
 		      return;
 		    }
 
 		  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -1);
 		  ehash_shrink_directory_if_need (thread_p, ehid_p, dir_header_p);
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+		  log_sysop_commit (thread_p);
 		}
 	      break;
 
@@ -3794,7 +3788,7 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 	    case EHASH_SUCCESSFUL_COMPLETION:
 	      /* Perform actual merge operation */
-	      log_start_system_op (thread_p);
+	      log_sysop_start (thread_p);
 
 	      if (ehash_merge_permanent (thread_p, ehid_p, dir_root_page_p, dir_header_p, bucket_page_p, sibling_page_p,
 					 &bucket_vpid, &sibling_vpid, num_records, sibling_location, first_slot_id,
@@ -3803,7 +3797,7 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 		  pgbuf_unfix_and_init (thread_p, sibling_page_p);
 		  pgbuf_unfix_and_init (thread_p, bucket_page_p);
 		  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  log_sysop_abort (thread_p);
 		  return;
 		}
 
@@ -3823,11 +3817,11 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	      if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, &sibling_vpid) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  log_sysop_abort (thread_p);
 		  return;
 		}
 
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      log_sysop_commit (thread_p);
 	      break;
 
 	    case EHASH_ERROR_OCCURRED:

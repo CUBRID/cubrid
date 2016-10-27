@@ -597,11 +597,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
        * COMMITTED independently of the current transaction, so that the volume
        * is removed immediately.
        */
-      if (log_start_system_op (thread_p) == NULL)
-	{
-	  error_code = ER_FAILED;
-	  goto end;
-	}
+      log_sysop_start (thread_p);
     }
 
   /* 
@@ -633,7 +629,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
 	    {
 	      boot_Db_parm->temp_last_volid = volid;
 	    }
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	  goto end;
 	}
 
@@ -664,7 +660,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
 
   if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
     }
 
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);

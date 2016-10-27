@@ -4636,14 +4636,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     }
 
   /* Start changes under the protection of system operation. */
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      assert_release (false);
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
-		     page_vpid.pageid);
-      goto error;
-    }
+  log_sysop_start (thread_p);
   is_system_op_started = true;
 
   /* Remove page from statistics in header page. */
@@ -4780,7 +4773,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   (void) heap_stats_del_bestspace_by_vpid (thread_p, &page_vpid);
 
   /* Finished. */
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  log_sysop_commit (thread_p);
   is_system_op_started = false;
 
   /* Unfix all pages. */
@@ -4802,7 +4795,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 error:
   if (is_system_op_started)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
     }
   if (next_watcher.pgptr != NULL)
     {

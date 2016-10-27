@@ -7876,16 +7876,16 @@ retry_repair:
 	    {
 	      BTID_INT bint;
 
-	      log_start_system_op (thread_p);
+	      log_sysop_start (thread_p);
 	      bint.sys_btid = btid;
 	      if (btree_set_vpid_previous_vpid (thread_p, &bint, next_pgptr, &current_vpid) != NO_ERROR)
 		{
 		  valid = DISK_ERROR;
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  log_sysop_abort (thread_p);
 		  goto exit_repair;
 		}
 	      valid = DISK_INVALID;
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      log_sysop_commit (thread_p);
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BTREE_REPAIR_PREV_LINK, 3, index_name,
 		      next_vpid.volid, next_vpid.pageid);
 	    }
@@ -8926,20 +8926,13 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   /* If this is undo of inserted object, overflow key deletion will be handled automatically. Don't delete here. */
   if (leafrec_pnt->key_len < 0 && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT)
     {
-      if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT)
+      if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
+	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
 	{
 	  /* Vacuum. Since there is no transaction, delete atomicity must be provided by a system operation. */
-	  assert (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
-	  if (log_start_system_op (thread_p) == NULL)
-	    {
-	      assert_release (false);
-	      return ER_FAILED;
-	    }
-	  is_system_op_started = true;
-	}
-      else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-	{
-	  log_start_postpone_system_op (thread_p, &delete_helper->reference_lsa);
+	  assert (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
+		  || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+	  log_sysop_start (thread_p);
 	  is_system_op_started = true;
 	}
       /* Delete overflow key. */
@@ -9062,7 +9055,14 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
 
   if (is_system_op_started)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+	{
+	  log_sysop_end_logical_run_postpone (thread_p, &delete_helper->reference_lsa);
+	}
+      else
+	{
+	  log_sysop_commit (thread_p);
+	}
     }
 
 #if !defined(NDEBUG)
@@ -9075,7 +9075,7 @@ exit_on_error:
 
   if (is_system_op_started)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
     }
 
   assert_release (ret != NO_ERROR);
@@ -9183,12 +9183,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Swap operation must use system op. */
   save_system_op_started = delete_helper->is_system_op_started;
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      assert_release (false);
-      ret = ER_FAILED;
-      goto exit_on_error;
-    }
+  log_sysop_start (thread_p);
   is_sytem_op_started = true;
   delete_helper->is_system_op_started = true;
 
@@ -9263,7 +9258,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Swap execute successfully. Commit it. */
   /* Commit swap. */
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  log_sysop_commit (thread_p);
   is_sytem_op_started = false;
   delete_helper->is_system_op_started = save_system_op_started;
 
@@ -9296,7 +9291,7 @@ exit_on_error:
     }
   if (is_sytem_op_started)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
     }
   delete_helper->is_system_op_started = save_system_op_started;
   if (ovfl_page != NULL)
@@ -10740,7 +10735,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
     {
       assert (insert_helper->is_system_op_started == false);
-      log_start_compensate_system_op (thread_p, &insert_helper->compensate_undo_nxlsa);
+      log_sysop_start (thread_p);
       insert_helper->is_system_op_started = true;
     }
   if (insert_helper->is_system_op_started)
@@ -10795,7 +10790,8 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
       if (!was_system_op_started)
 	{
 	  /* End system operation. */
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  assert (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+	  log_sysop_end_logical_compensate (thread_p, &insert_helper->compensate_undo_nxlsa);
 	}
     }
   else
@@ -10838,7 +10834,7 @@ error:
     {
       /* This might be a problem since compensate was not successfully executed. */
       assert_release (false);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_end_logical_compensate (thread_p, &insert_helper->compensate_undo_nxlsa);
     }
   if (ovfl_page != NULL)
     {
@@ -26633,12 +26629,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	  assert (key_count >= 3);
 
 	  /* Start system operation. */
-	  if (log_start_system_op (thread_p) == NULL)
-	    {
-	      assert_release (false);
-	      error_code = ER_FAILED;
-	      goto error;
-	    }
+	  log_sysop_start (thread_p);
 	  is_system_op_started = true;
 
 	  /* Create two new b-tree pages. */
@@ -26698,7 +26689,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      pgbuf_unfix_and_init (thread_p, new_page2);
 
 	      /* End opened system operation. */
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      log_sysop_commit (thread_p);
 	      is_system_op_started = false;
 
 	      /* Choose child 1 to advance. */
@@ -26716,7 +26707,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	      pgbuf_unfix_and_init (thread_p, new_page1);
 
 	      /* End opened system operation. */
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      log_sysop_commit (thread_p);
 	      is_system_op_started = false;
 
 	      /* Choose child 2 to advance. */
@@ -26930,12 +26921,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   if (need_split)
     {
-      if (log_start_system_op (thread_p) == NULL)
-	{
-	  /* Failed starting system operation! */
-	  assert_release (false);
-	  goto error;
-	}
+      log_sysop_start (thread_p);
       is_system_op_started = true;
 
       /* Get a new page */
@@ -26975,7 +26961,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	  pgbuf_unfix_and_init (thread_p, new_page1);
 
 	  /* End opened system operation. */
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_commit (thread_p);
 	  is_system_op_started = false;
 
 	  *advance_to_page = child_page;
@@ -26991,7 +26977,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	  pgbuf_unfix_and_init (thread_p, child_page);
 
 	  /* End opened system operation. */
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_commit (thread_p);
 	  is_system_op_started = false;
 
 	  *advance_to_page = new_page1;
@@ -27029,7 +27015,7 @@ error:
   /* Error. */
   if (is_system_op_started)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
     }
   if (new_page1 != NULL)
     {
@@ -28204,12 +28190,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (offset_to_last_object > 0);
 
   /* We need to change leaf page and at least one overflow page. Start a system operation. */
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      assert_release (false);
-      error_code = ER_FAILED;
-      goto exit;
-    }
+  log_sysop_start (thread_p);
   insert_helper->is_system_op_started = true;
 
   /* Copy last object into an overflow page. */
@@ -28305,11 +28286,12 @@ exit:
     {
       if (error_code == NO_ERROR)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_commit (thread_p);
 	}
       else
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
 	}
     }
 
@@ -30177,12 +30159,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		      && (pgbuf_get_latch_mode (right_page) >= PGBUF_LATCH_WRITE));
 
 	      /* Start system operation. */
-	      if (log_start_system_op (thread_p) == NULL)
-		{
-		  assert_release (false);
-		  error_code = ER_FAILED;
-		  goto error;
-		}
+	      log_sysop_start (thread_p);
 	      is_system_op_started = true;
 
 	      /* Merge the three nodes into root node. */
@@ -30212,7 +30189,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		}
 
 	      /* Merge successfully finished. */
-	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      log_sysop_commit (thread_p);
 	      is_system_op_started = false;
 
 	      /* Nodes have been merged into root. Repeat loop in case we can merge root again. */
@@ -30389,12 +30366,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		      && (pgbuf_get_latch_mode (right_page) >= PGBUF_LATCH_WRITE));
 
 	      /* Start system operation. */
-	      if (log_start_system_op (thread_p) == NULL)
-		{
-		  assert_release (false);
-		  error_code = ER_FAILED;
-		  goto error;
-		}
+	      log_sysop_start (thread_p);
 	      is_system_op_started = true;
 
 	      /* Merge children and update parent. */
@@ -30431,7 +30403,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		  goto error;
 		}
 
-	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      log_sysop_commit (thread_p);
 	      is_system_op_started = false;
 
 	      /* Advance to child page. */
@@ -30548,12 +30520,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		      && (pgbuf_get_latch_mode (left_page) >= PGBUF_LATCH_WRITE));
 
 	      /* Start system operation. */
-	      if (log_start_system_op (thread_p) == NULL)
-		{
-		  assert_release (false);
-		  error_code = ER_FAILED;
-		  goto error;
-		}
+	      log_sysop_start (thread_p);
 	      is_system_op_started = true;
 
 	      /* Merge left page and child page and update parent. */
@@ -30591,7 +30558,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		  goto error;
 		}
 
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      log_sysop_commit (thread_p);
 	      is_system_op_started = false;
 
 	      /* Choose to advance to left page. */
@@ -30621,7 +30588,7 @@ error:
   if (is_system_op_started)
     {
       /* Abort system operation. */
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
     }
 
   /* Unfix used pages. */
@@ -31117,7 +31084,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   else
     {
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
-      log_start_compensate_system_op (thread_p, &delete_helper->reference_lsa);
+      log_sysop_start (thread_p);
       delete_helper->is_system_op_started = true;
 
 
@@ -31209,14 +31176,8 @@ exit:
 
   if (delete_helper->is_system_op_started)
     {
-      if (error_code == NO_ERROR)
-	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-	}
-      else
-	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-	}
+      assert_release (error_code == NO_ERROR);
+      log_sysop_end_logical_compensate (thread_p, &delete_helper->reference_lsa);
     }
   if (found_page != NULL && found_page != *leaf_page)
     {
@@ -31716,24 +31677,13 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* Vacuum needs system operation to deallocate pages. */
       if (!delete_helper->is_system_op_started)
 	{
-	  if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT)
+	  if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
+	      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
+	      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
+	      || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
 	    {
-	      if (log_start_system_op (thread_p) == NULL)
-		{
-		  assert_release (false);
-		  return ER_FAILED;
-		}
-	      delete_helper->is_system_op_started = true;
-	    }
-	  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-		   || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
-	    {
-	      log_start_compensate_system_op (thread_p, &delete_helper->reference_lsa);
-	      delete_helper->is_system_op_started = true;
-	    }
-	  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-	    {
-	      log_start_postpone_system_op (thread_p, &delete_helper->reference_lsa);
+	      /* requires system op */
+	      log_sysop_start (thread_p);
 	      delete_helper->is_system_op_started = true;
 	    }
 	}
@@ -31790,7 +31740,20 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* End system operation. */
       if (delete_helper->is_system_op_started && !save_system_op_started)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
+	      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
+	    {
+	      log_sysop_end_logical_compensate (thread_p, &delete_helper->reference_lsa);
+	    }
+	  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+	    {
+	      log_sysop_end_logical_run_postpone (thread_p, &delete_helper->reference_lsa);
+	    }
+	  else
+	    {
+	      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
+	      log_sysop_commit (thread_p);
+	    }
 	}
       delete_helper->is_system_op_started = save_system_op_started;
     }
@@ -31820,15 +31783,20 @@ error:
   if (delete_helper->is_system_op_started && !save_system_op_started)
     {
       if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
 	{
 	  assert_release (false);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_end_logical_compensate (thread_p, &delete_helper->reference_lsa);
+	}
+      else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
+	{
+	  assert_release (false);
+	  log_sysop_end_logical_run_postpone (thread_p, &delete_helper->reference_lsa);
 	}
       else
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
+	  log_sysop_abort (thread_p);
 	}
     }
   delete_helper->is_system_op_started = save_system_op_started;
@@ -32390,7 +32358,7 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
   if (node_type == BTREE_OVERFLOW_NODE)
     {
       /* Two pages will be modified, system operation is required and undoredo logging. */
-      log_start_compensate_system_op (thread_p, &delete_helper->reference_lsa);
+      log_sysop_start (thread_p);
       delete_helper->is_system_op_started = true;
       rv_undo_data_ptr = rv_undo_data;
     }
@@ -32411,9 +32379,9 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
       assert_release (false);
       if (delete_helper->is_system_op_started)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	}
-      return ER_FAILED;
+      return error_code;
     }
 
   /* Update in page. */
@@ -32422,7 +32390,7 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
       assert_release (false);
       if (delete_helper->is_system_op_started)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	}
       return ER_FAILED;
     }
@@ -32443,7 +32411,7 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
       log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &leaf_addr, rv_undo_data_length,
 				rv_redo_data_length, rv_undo_data, delete_helper->rv_redo_data);
 
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_end_logical_compensate (thread_p, &delete_helper->reference_lsa);
     }
   else
     {

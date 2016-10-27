@@ -204,6 +204,10 @@ static bool log_No_logging = false;
 
 extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
+#define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
+#define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
+#define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
+
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
@@ -239,8 +243,6 @@ static int lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTR
 /* RB_PROTOTYPE_STATIC declares red-black tree functions. see base/rb_tree.h */
 RB_PROTOTYPE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 
-static TRAN_STATE log_complete_system_op (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result,
-					  TRAN_STATE back_to_state);
 static void log_dump_record_header_to_string (LOG_RECORD_HEADER * log, char *buf, size_t len);
 static void log_ascii_dump (FILE * out_fp, int length, void *data);
 static void log_hexa_dump (FILE * out_fp, int length, void *data);
@@ -303,8 +305,6 @@ static int log_undo_rec_restartable (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa_ptr);
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
-static TRAN_STATE log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result);
-static void log_complete_topop_attach (LOG_TDES * tdes);
 
 static int log_is_valid_locator (const char *locator);
 
@@ -316,8 +316,6 @@ static void log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tde
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
 
-static LOG_LSA *log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type,
-					      LOG_LSA * compensate_undo_nxlsa);
 static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
 					    LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
@@ -3518,227 +3516,6 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
  */
 
 /*
- * log_start_system_op - Start a macro system operation
- *
- * return: lsa of parent  or NULL in case of error.
- *
- */
-LOG_LSA *
-log_start_system_op (THREAD_ENTRY * thread_p)
-{
-  return log_start_system_op_internal (thread_p, LOG_TOPOPS_NORMAL, NULL);
-}
-
-/*
- * log_start_compensate_system_op - Start a macro system operation for log
- *				    compensate.
- *
- * return		      : Void.
- * thread_p (in)	      : Thread entry.
- * compensate_undo_nxlsa (in) : Log lsa to 
- */
-void
-log_start_compensate_system_op (THREAD_ENTRY * thread_p, LOG_LSA * compensate_undo_nxlsa)
-{
-  if (log_start_system_op_internal (thread_p, LOG_TOPOPS_COMPENSATE_TRAN_ABORT, compensate_undo_nxlsa) == NULL)
-    {
-      assert (false);
-    }
-}
-
-/*
- * log_start_postpone_system_op () - Start a macro system operation for
- *				     postpone.
- *
- * return	      : Void.
- * thread_p (in)      : Thread entry.
- * reference_lsa (in) : Postpone reference lsa.
- */
-void
-log_start_postpone_system_op (THREAD_ENTRY * thread_p, LOG_LSA * reference_lsa)
-{
-  if (log_start_system_op_internal (thread_p, LOG_TOPOPS_POSTPONE, reference_lsa) == NULL)
-    {
-      assert (false);
-    }
-}
-
-/*
- * log_start_system_op_internal - Start a macro system operation
- *
- * return: lsa of parent  or NULL in case of error.
- *
- */
-static LOG_LSA *
-log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG_LSA * reference_lsa)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-  int error_code = NO_ERROR, r;
-
-  /* 
-   * Remember the current tail of the transaction, so we can allow partial
-   * aborts or commits of nested top actions
-   */
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* System operations must be isolated and allow undo. It is impossible to use system tdes for more than one
-       * thread, so vacuum workers use a reserved tdes instead. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
-
-      /* Vacuum worker state should be either VACUUM_WORKER_STATE_EXECUTE or VACUUM_WORKER_STATE_TOPOP (or
-       * VACUUM_WORKER_STATE_RECOVERY during database recovery phase). */
-      assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p) || VACUUM_WORKER_STATE_IS_TOPOP (thread_p)
-	      || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-
-      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid, tdes->topops.last,
-		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-		     VACUUM_GET_WORKER_STATE (thread_p));
-
-      /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
-      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_TOPOP);
-    }
-  else
-    {
-      /* Active transaction */
-      tdes = LOG_FIND_TDES (tran_index);
-      if (tdes == NULL)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-	  error_code = ER_LOG_UNKNOWN_TRANINDEX;
-	  return NULL;
-	}
-
-      if (LOG_ISRESTARTED ())
-	{
-	  r = rmutex_lock (thread_p, &tdes->rmutex_topop);
-	  assert (r == NO_ERROR);
-	}
-    }
-
-  if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
-    {
-      if (logtb_realloc_topops_stack (tdes, 1) == NULL)
-	{
-	  /* Out of memory */
-	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
-	    {
-	      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
-	      assert (r == NO_ERROR);
-	    }
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-	    {
-	      /* Restore state */
-	      if (tdes->topops.last < 0)
-		{
-		  VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_EXECUTE);
-		}
-	      /* Else */
-	      /* Leave state as VACUUM_WORKER_STATE_TOPOP */
-	    }
-	  return NULL;
-	}
-    }
-
-  /* Is system op started to execute log compensate? */
-  if (type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT)
-    {
-      bool compensate_debug = prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG);
-
-      assert (!LOG_ISTRAN_ACTIVE (tdes));
-      assert (reference_lsa != NULL);
-
-      if (tdes->topops.last == -1)
-	{
-	  /* Transaction rollback. */
-	  tdes->topops.type = LOG_TOPOPS_COMPENSATE_TRAN_ABORT;
-
-	  if (compensate_debug)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Start compensate system op for transaction rollback. Tran_ID=%d. "
-			     "Undo_nxlsa=%llu|%d\n", tdes->trid, (long long int) reference_lsa->pageid,
-			     (int) reference_lsa->offset);
-	    }
-	}
-      else
-	{
-	  /* System op is aborted. */
-	  assert (tdes->topops.type == LOG_TOPOPS_NORMAL);
-	  tdes->topops.type = LOG_TOPOPS_COMPENSATE_SYSOP_ABORT;
-	  /* Set compensate level. It must be known in order to: 1. Attach all top operations with higher level to
-	   * their parent. 2. Commit the top operation with the same level. Initially, only level -1 and 0 were
-	   * allowed here. However, it seems there can be nested qexec_execute_insert calls, each opening a different
-	   * system operation. If one of the nested calls is aborted, we require to compensate its changes (among
-	   * others updating unique statistics, which is a logical operation and which requires a logical compensation
-	   * using system operation). Remember the level here, and it will be used by log_end_system_op. */
-	  tdes->topops.compensate_level = tdes->topops.last + 1;
-
-	  if (compensate_debug)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Start compensate system op for system op abort. Tran_ID=%d. "
-			     "Undo_nxlsa=%llu|%d\n", tdes->trid, (long long int) reference_lsa->pageid,
-			     (int) reference_lsa->offset);
-	    }
-	}
-      LSA_COPY (&tdes->topops.ref_lsa, reference_lsa);
-    }
-  else if (type == LOG_TOPOPS_POSTPONE)
-    {
-      assert (tdes->topops.last == -1);
-      assert (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
-      assert (reference_lsa != NULL);
-
-      tdes->topops.type = LOG_TOPOPS_POSTPONE;
-      LSA_COPY (&tdes->topops.ref_lsa, reference_lsa);
-
-      if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "POSTPONE_DEBUG: Start postpone system op. Tran_ID=%d. Ref_lsa=%lld|%d.\n",
-			 tdes->trid, (long long int) reference_lsa->pageid, (int) reference_lsa->offset);
-	}
-    }
-  else if (tdes->topops.last == -1)
-    {
-      tdes->topops.type = LOG_TOPOPS_NORMAL;
-    }
-
-  /* 
-   * NOTE if tdes->topops.last >= 0, there is an already defined
-   * top system operation.
-   */
-  tdes->topops.last++;
-  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
-  LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
-
-  LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
-
-  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
-
-  return &tdes->topops.stack[tdes->topops.last].lastparent_lsa;
-}
-
-/* System operation commit extended functionality: attach a log record to define system operations with undo, with
- * compensate and with run postpone.
- * TODO: Replace all log_start_sytem_op and log_end_system_op calls.
- * TODO: Remove topop complete.
- * TODO: Cleanup all unused vars from old topops hacks.
- * TODO: Refactoring: let's use a consistent naming convention for top system operations. Let's call them system
- *	 operations (since only one is top) and shorten as sysop. Top system operation means level 0 system operation,
- *	 while nested system operations are any level greater or equal to 1.
- */
-
-#define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
-#define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
-#define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
-
-/*
  * log_sysop_end_type_string () - string for log sys op end type
  *
  * return        : string for log sys op end type
@@ -4333,321 +4110,6 @@ log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
       assert_release (false);
       return;
     }
-}
-
-/*
- * log_end_system_op - END A MACRO SYSTEM OPERATION
- *
- * return: state of end of the system operation
- *
- *   result(in): Result of the nested top action
- *
- * NOTE: Make a macro system operation either permanent (commit) or
- *              forget about it (abort). The system operation is not
- *              associated with the current transaction.
- */
-TRAN_STATE
-log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
-  TRAN_STATE state;
-  int tran_index;
-  int error_code = NO_ERROR, r;
-
-  {
-    int mod_factor = 5000;	/* 0.02% */
-
-    FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
-  }
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
-
-      if (tdes->topops.last == 0)
-	{
-	  /* Do not allow to attach to vacuum worker's parent tdes since it will be never committed. */
-	  if (result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
-	    {
-	      assert (result != LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-	      result = LOG_RESULT_TOPOP_COMMIT;
-	    }
-	}
-      else
-	{
-	  if (result == LOG_RESULT_TOPOP_COMMIT)
-	    {
-	      /* Do not commit nested top operations. */
-	      result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
-	    }
-	}
-
-      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
-	{
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-			 "VACUUM: End system operation. Worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-			 "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). Worker state=%d."
-			 "LOG_RESULT_TOPOP=%d.\n", tdes->trid, tdes->topops.last,
-			 (long long int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.pageid,
-			 (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
-			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-			 VACUUM_GET_WORKER_STATE (thread_p), result);
-	}
-      else
-	{
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_MASTER,
-			 "VACUUM: End system operation for master. tdes->trid=%d, tdes->topops.last=%d, "
-			 "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). LOG_RESULT_TOPOP=%d.\n",
-			 tdes->trid, tdes->topops.last,
-			 (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
-			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, result);
-	}
-    }
-  else
-    {
-      tdes = LOG_FIND_TDES (tran_index);
-      if (tdes == NULL)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-	  error_code = ER_LOG_UNKNOWN_TRANINDEX;
-	  return TRAN_UNACTIVE_UNKNOWN;
-	}
-    }
-
-  if (tdes->topops.last < 0)
-    {
-      /* There is not any active top system operation */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_NOTACTIVE_TOPOPS, 0);
-      error_code = ER_LOG_NOTACTIVE_TOPOPS;
-      return TRAN_UNACTIVE_UNKNOWN;
-    }
-
-  save_state = tdes->state;
-
-  /* 
-   * A top system operation should not have any distributed transaction stuff
-   */
-
-  if (!LOG_ISTRAN_ACTIVE (tdes))
-    {
-      /* 
-       * The transaction is not active. That is, it is in the process of commit
-       * or abort. It is possible that the fate of the top system operation can
-       * be decided at this moment.  Nested topops, however, must still be
-       * allowed to attach to their parents.
-       */
-      bool compensate_debug = prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG);
-      bool postpone_debug = prm_get_bool_value (PRM_ID_POSTPONE_DEBUG);
-
-      if (tdes->topops.last == 0 && result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
-	{
-	  /* 
-	   *
-	   * This could be the case of in the middle of an abort. The top system
-	   * operation must be committed to undo whatever we were doing.
-	   */
-	  result = LOG_RESULT_TOPOP_COMMIT;
-
-	  /* TODO: It would be useful to print a call-stack here. */
-	  _er_log_debug (ARG_FILE_LINE,
-			 "WARNING: Attach to outer is used for top system "
-			 "operation, even though transaction is not active.Tran_ID=%d", tdes->trid);
-	}
-      else if (tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
-	       && tdes->topops.compensate_level == tdes->topops.last)
-	{
-	  /* This is a compensate system op. It must be committed. */
-	  if (compensate_debug && result != LOG_RESULT_TOPOP_COMMIT)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
-			     result, LOG_RESULT_TOPOP_COMMIT, tdes->trid, tdes->topops.last);
-	    }
-	  result = LOG_RESULT_TOPOP_COMMIT;
-	}
-      else if (tdes->topops.type != LOG_TOPOPS_NORMAL && tdes->topops.last > 0 && result == LOG_RESULT_TOPOP_COMMIT)
-	{
-	  /* Compensate/Postpone will no longer work correctly if nested system operations are committed. All
-	   * operations inside a compensate/postpone system operation should be committed together. */
-	  if (tdes->topops.type != LOG_TOPOPS_POSTPONE && compensate_debug)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
-			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, tdes->trid, tdes->topops.last);
-	    }
-	  if (tdes->topops.type == LOG_TOPOPS_POSTPONE && postpone_debug)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "POSTPONE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
-			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, tdes->trid, tdes->topops.last);
-	    }
-	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
-	}
-      if (compensate_debug
-	  && (tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
-	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "COMPENSATE_DEBUG: End system operation under compensate. Tran_ID=%d, system op depth=%d, "
-			 "result=%d.\n", tdes->trid, tdes->topops.last, result);
-	}
-      if (postpone_debug && tdes->topops.type == LOG_TOPOPS_POSTPONE)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "POSTPONE_DEBUG: End system operation under postpone. Tran_ID=%d, system op depth=%d, "
-			 "result=%d.\n", tdes->trid, tdes->topops.last, result);
-	}
-    }
-  else
-    {
-      assert (tdes->topops.type == LOG_TOPOPS_NORMAL);
-    }
-
-  if (result != LOG_RESULT_TOPOP_ATTACH_TO_OUTER && !LSA_ISNULL (&tdes->tail_lsa)
-      && (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last].lastparent_lsa)
-	  || LSA_GT (&tdes->tail_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa)))
-    {
-      /* 
-       * A top system operation executed something and it is not attached back
-       * to its parent, therefore, the top system operation is either committed
-       * or aborted at this point and will not depend on the outcome of the
-       * parent
-       */
-      if (result == LOG_RESULT_TOPOP_COMMIT)
-	{
-	  LOG_REC_SYSOP_END sysop_end;
-
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
-	      && log_does_allow_replication () == true)
-	    {
-	      /* for the replication agent guarantee the order of transaction */
-	      /* for CC(Click Counter) : at here */
-	      log_append_repl_info (thread_p, tdes, false);
-	    }
-
-	  /* 
-	   * The top system operation may have some commit postpone
-	   * operations to do. If it does, we need to execute them at this
-	   * point. We need to remove postpone operations of nested top system
-	   * operations.
-	   */
-	  sysop_end.lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
-	  sysop_end.prv_topresult_lsa = tdes->tail_topresult_lsa;
-	  sysop_end.type = LOG_SYSOP_END_COMMIT;
-	  log_sysop_do_postpone (thread_p, tdes, &sysop_end);
-	  state = log_complete_system_op (thread_p, tdes, result, save_state);
-	}
-      else
-	{
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
-	      && log_does_allow_replication () == true)
-	    {
-	      repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-	    }
-
-	  /* Abort the top system operation */
-	  tdes->state = TRAN_UNACTIVE_ABORTED;
-	  log_rollback (thread_p, tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-
-	  log_rollback_classrepr_cache (thread_p, tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-
-	  state = log_complete_system_op (thread_p, tdes, result, save_state);
-	}
-    }
-  else
-    {
-      /* 
-       * The top system operation did not do anything, or the result is to
-       * attach the transaction to back to its parent
-       */
-
-      if (result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
-	{
-	  state = save_state;
-	}
-      else if (result == LOG_RESULT_TOPOP_COMMIT)
-	{
-	  state = TRAN_UNACTIVE_COMMITTED;
-	}
-      else
-	{
-	  state = TRAN_UNACTIVE_ABORTED;
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
-	      && log_does_allow_replication () == true)
-	    {
-	      repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-	    }
-	}
-
-      if (tdes->topops.type == LOG_TOPOPS_NORMAL)
-	{
-	  /* Always attach to parent. */
-	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
-	}
-      else
-	{
-	  /* Even if inside compensation nothing was executed, we need to complete system operation in order to
-	   * "compensate" and to reset type. */
-	  /* Don't attach to outer. */
-	}
-      (void) log_complete_system_op (thread_p, tdes, result, save_state);
-    }
-
-  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
-      assert (r == NO_ERROR);
-    }
-
-  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_END_TOPOPS);
-
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      if (tdes->topops.last < 0)
-	{
-	  if (LOG_ISRESTARTED ())
-	    {
-	      /* Change the worker state back to VACUUM_WORKER_STATE_EXECUTE. */
-	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_EXECUTE);
-	    }
-	  else
-	    {
-	      /* Change the worker state back to VACUUM_WORKER_STATE_RECOVERY. */
-	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_RECOVERY);
-	    }
-
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
-			 "VACUUM: Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
-			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
-			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid,
-			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
-			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
-			 (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
-			 VACUUM_GET_WORKER_STATE (thread_p));
-
-	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
-	   * are not  nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
-	   * records to undo will process all system operations until the first one. Since vacuum workers.master never
-	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
-	   * system operations will not be linked between them. */
-	  LSA_SET_NULL (&tdes->head_lsa);
-	  LSA_SET_NULL (&tdes->tail_lsa);
-	  LSA_SET_NULL (&tdes->undo_nxlsa);
-	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
-	}
-    }
-
-  {
-    int mod_factor = 5000;	/* 0.02% */
-
-    FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
-  }
-
-  return state;
 }
 
 /*
@@ -6168,9 +5630,10 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
        * operations attached to it. Commit those operations too */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT, 2, tdes->trid,
 	      tdes->tran_index);
+      assert (false);
       while (tdes->topops.last >= 0)
 	{
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
@@ -6293,9 +5756,10 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
        */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT, 2, tdes->trid,
 	      tdes->tran_index);
+      assert (false);
       while (tdes->topops.last >= 0)
 	{
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
@@ -6397,16 +5861,14 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
        */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT, 2, tdes->trid,
 	      tdes->tran_index);
+      assert (false);
       while (tdes->topops.last >= 0)
 	{
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return TRAN_UNACTIVE_UNKNOWN;
-    }
+  log_sysop_start (thread_p);
 
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, savept_lsa);
 
@@ -6423,7 +5885,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
 	}
     }
 
-  state = log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+  log_sysop_abort (thread_p);
 
   log_cleanup_modified_class_list (thread_p, tdes, savept_lsa, false, true);
 
@@ -6851,179 +6313,6 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
       /* Finish the append operation and flush the log */
     }
 
-  if (LOG_ISCHECKPOINT_TIME ())
-    {
-#if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
-#else /* SERVER_MODE */
-      (void) logpb_checkpoint (thread_p);
-#endif /* SERVER_MODE */
-    }
-
-  return state;
-}
-
-static TRAN_STATE
-log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result)
-{
-  TRAN_STATE state;
-  LOG_REC_SYSOP_END *top_result;	/* Partial outcome */
-  LOG_RECTYPE rectype;
-  LOG_PRIOR_NODE *node;
-
-  assert (tdes != NULL);
-
-  {
-    int mod_factor = 5000;	/* 0.02% */
-
-    FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
-  }
-
-  if (result == LOG_RESULT_TOPOP_COMMIT)
-    {
-      state = TRAN_UNACTIVE_COMMITTED;
-    }
-  else
-    {
-      state = TRAN_UNACTIVE_ABORTED;
-    }
-
-  rectype = LOG_SYSOP_END;
-  node = prior_lsa_alloc_and_copy_data (thread_p, rectype, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
-  if (node == NULL)
-    {
-      return state;
-    }
-
-  top_result = (LOG_REC_SYSOP_END *) node->data_header;
-  if (result == LOG_RESULT_TOPOP_COMMIT)
-    {
-      top_result->type = LOG_SYSOP_END_COMMIT;
-    }
-  else
-    {
-      top_result->type = LOG_SYSOP_END_ABORT;
-    }
-
-  if (result == LOG_RESULT_TOPOP_COMMIT && tdes->topops.type != LOG_TOPOPS_NORMAL)
-    {
-      assert (tdes->topops.last == 0 || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
-
-      /* Overwrite lastparent_lsa with compensate/postpone ref_lsa. */
-      LSA_COPY (&top_result->lastparent_lsa, &tdes->topops.ref_lsa);
-
-      /* Reset type field. */
-      tdes->topops.type = LOG_TOPOPS_NORMAL;
-
-      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG)
-	  && (tdes->topops.type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT
-	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "COMPENSATE_DEBUG: Successfully completed compensate. Tran_ID=%d, system op depth=%d.\n",
-			 tdes->trid, tdes->topops.last);
-	}
-      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG) && tdes->topops.type == LOG_TOPOPS_POSTPONE)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "POSTPONE_DEBUG: Successfully completed postpone. Tran_ID=%d, system op depth=%d.\n",
-			 tdes->trid, tdes->topops.last);
-	}
-    }
-  else
-    {
-      if (result != LOG_RESULT_TOPOP_COMMIT && tdes->topops.type != LOG_TOPOPS_NORMAL)
-	{
-	  /* Failed to compensate/postpone. */
-	  assert (false);
-
-	  /* Reset type field. */
-	  tdes->topops.type = LOG_TOPOPS_NORMAL;
-	}
-      LSA_COPY (&top_result->lastparent_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-    }
-  LSA_COPY (&top_result->prv_topresult_lsa, &tdes->tail_topresult_lsa);
-
-  (void) prior_lsa_next_record (thread_p, node, tdes);
-
-  /* Remember last partial result */
-  LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
-
-  return state;
-}
-
-static void
-log_complete_topop_attach (LOG_TDES * tdes)
-{
-  if (tdes->topops.last - 1 >= 0)
-    {
-      if (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa))
-	{
-	  LSA_COPY (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa,
-		    &tdes->topops.stack[tdes->topops.last].posp_lsa);
-	}
-    }
-  else
-    {
-      if (LSA_ISNULL (&tdes->posp_nxlsa))
-	{
-	  LSA_COPY (&tdes->posp_nxlsa, &tdes->topops.stack[tdes->topops.last].posp_lsa);
-	}
-    }
-}
-
-/*
- * log_complete_system_op - Complete a system top operation
- *
- * return: state of transaction
- *
- *   tdes(in/out): State structure of transaction of the log record
- *   result(in): Result of the top system operation
- *   back_to_state(in): The outter sysop (or transaction) returns to this state.
- *
- * Note:Declare the system top operation as completely finished. A top
- *              is finished by logging a top system commit or abort log
- *              record (depending upon the result flag).
- */
-static TRAN_STATE
-log_complete_system_op (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result, TRAN_STATE back_to_state)
-{
-  TRAN_STATE state;
-
-  {
-    int mod_factor = 5000;	/* 0.02% */
-
-    FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
-  }
-
-  state = tdes->state;
-
-  switch (result)
-    {
-    case LOG_RESULT_TOPOP_COMMIT:
-    case LOG_RESULT_TOPOP_ABORT:
-      state = log_complete_topop (thread_p, tdes, result);
-      break;
-
-    case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:
-      log_complete_topop_attach (tdes);
-      break;
-    }
-
-  /* 
-   * Release the top system operation from the transaction and
-   * return to normal transaction state
-   */
-  tdes->topops.last--;
-  if (tdes->topops.last >= 0)
-    {
-      LSA_COPY (&tdes->topop_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-    }
-  else
-    {
-      LSA_SET_NULL (&tdes->topop_lsa);
-    }
-  tdes->state = back_to_state;
   if (LOG_ISCHECKPOINT_TIME ())
     {
 #if defined(SERVER_MODE)

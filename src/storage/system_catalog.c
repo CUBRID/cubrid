@@ -5843,10 +5843,7 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
 
   if (lock_mode == X_LOCK)
     {
-      if (log_start_system_op (thread_p) == NULL)
-	{
-	  goto error;
-	}
+      log_sysop_start (thread_p);
 #if !defined (NDEBUG)
       catalog_access_info->is_systemop_started = true;
 #endif
@@ -5862,7 +5859,7 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
 
       if (lock_mode == X_LOCK)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	}
 
       error_code = ER_FAILED;
@@ -5887,7 +5884,7 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
 
       if (lock_mode == X_LOCK)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	}
 
 #if !defined (NDEBUG)
@@ -5948,7 +5945,7 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * 
     {
       if (error != NO_ERROR)
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  log_sysop_abort (thread_p);
 	}
       else
 	{
@@ -5960,15 +5957,15 @@ catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * 
 	  if (current_lock == SCH_M_LOCK)
 	    {
 	      /* when class was created or schema was changed commit the statistics changes along with schema change */
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	      log_sysop_attach_to_outer (thread_p);
 	    }
 	  else
 	    {
 	      /* this case applies with UPDATE STATISTICS */
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      log_sysop_commit (thread_p);
 	    }
 #else
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 #endif /* SERVER_MODE */
 	}
 #if !defined (NDEBUG)

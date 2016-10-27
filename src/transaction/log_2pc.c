@@ -1381,9 +1381,10 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 		    " to it.\n Will attach those system operations to the" " transaction\n", tdes->trid,
 		    tdes->tran_index);
 #endif /* CUBRID_DEBUG */
+      assert (false);
       while (tdes->topops.last >= 0)
 	{
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
