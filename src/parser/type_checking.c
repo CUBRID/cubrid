@@ -23715,7 +23715,6 @@ coerce_result:
     case PT_TIMEF:
     case PT_IF:
     case PT_REVERSE:
-    case PT_DISK_SIZE:
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
     case PT_QPRIOR:
