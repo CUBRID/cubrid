@@ -5955,7 +5955,7 @@ exit:
     {
       pgbuf_unfix (thread_p, page_fhead);
     }
-  return DISK_ERROR;
+  return isvalid;
 }
 
 /*
