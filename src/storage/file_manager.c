@@ -6512,6 +6512,11 @@ exit:
     {
       allvalid = DISK_ERROR;
     }
+
+  if (collector.vsids != NULL)
+    {
+      db_private_free (thread_p, collector.vsids);
+    }
   return allvalid;
 }
 
