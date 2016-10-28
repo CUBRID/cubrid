@@ -4945,7 +4945,7 @@ flre_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -9404,6 +9404,8 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     {
       *class_oid = fhead->descriptor.heap.class_oid;
     }
+  pgbuf_unfix (thread_p, page_fhead);
+
   if (OID_ISNULL (class_oid))
     {
       /* this must be boot_Db_parm file; cannot be deleted so we don't need lock. */
@@ -9423,7 +9425,6 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       /* stop at this file */
       *stop = true;
     }
-  pgbuf_unfix (thread_p, page_fhead);
 
   /* finished */
   return NO_ERROR;
