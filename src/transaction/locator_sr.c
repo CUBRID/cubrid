@@ -6897,6 +6897,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   HEAP_CACHE_ATTRINFO attr_info;
   bool repack_with_oor = false;
   int i;
+  OID dummy_oid = oid_Null_oid;
 
   assert (copyarea != NULL);
 
@@ -6997,7 +6998,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       return error_code;
     }
 
-  error_code = heap_attrinfo_read_dbvalues (thread_p, NULL, recdes, NULL, &attr_info, &oor_context);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, &dummy_oid, recdes, NULL, &attr_info, &oor_context);
   if (error_code != NO_ERROR)
     {
       heap_attrinfo_end (thread_p, &attr_info);
