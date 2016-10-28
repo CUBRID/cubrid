@@ -13829,9 +13829,8 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
       hfid->hpgid = vpid.pageid;
 
 #if !defined (NDEBUG)
-      if (flre_descriptor_get (thread_p, &hfid->vfid, &fdes) == NO_ERROR)
+      if (flre_descriptor_get (thread_p, &hfid->vfid, &fdes) == NO_ERROR && !OID_ISNULL (&fdes.heap.class_oid))
 	{
-	  assert (!OID_ISNULL (&fdes.heap.class_oid));
 	  assert (lock_has_lock_on_object (&fdes.heap.class_oid, oid_Root_class_oid,
 					   LOG_FIND_THREAD_TRAN_INDEX (thread_p), SCH_S_LOCK) == 1);
 	}
