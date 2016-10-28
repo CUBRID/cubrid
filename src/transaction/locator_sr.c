@@ -6900,6 +6900,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 
   assert (copyarea != NULL);
 
+  *copyarea = NULL;
+
   if (obj->operation == LC_FLUSH_DELETE)
     {
       scan_op_type = S_DELETE;
@@ -6986,6 +6988,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	}
     }
 
+  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: repack_with_oor:%d", repack_with_oor);
+
   if (repack_with_oor == false)
     {
       heap_attrinfo_end (thread_p, &attr_info);
@@ -6999,6 +7003,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       return error_code;
     }
 
+  repack_with_oor = false;
+
   for (i = 0; i < attr_info.num_values; i++)
     {
       if (pr_is_oor_value (&attr_info.values[i].dbvalue))
@@ -7007,6 +7013,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	  break;
 	}
     }
+
+ _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: repack_with_oor:%d", repack_with_oor);
 
   if (repack_with_oor)
     {
@@ -7022,6 +7030,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	  *recdes = new_recdes;
 	}
     }
+
+  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: new_recdes.new_recdes:%d", new_recdes.length);
 
   heap_attrinfo_end (thread_p, &attr_info);
 
