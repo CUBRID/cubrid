@@ -426,7 +426,7 @@ static bool file_Logging = false;
 
 #define FILE_PARTSECT_MSG(name) \
   "\t" name ": { vsid = %d|%d, page bitmap = " BIT64_HEXA_PRINT_FORMAT " } \n"
-#define FILE_PARTSECT_AS_ARGS(ps) VSID_AS_ARGS (&(ps)->vsid), (ps)->page_bitmap
+#define FILE_PARTSECT_AS_ARGS(ps) VSID_AS_ARGS (&(ps)->vsid), (long long unsigned int) (ps)->page_bitmap
 
 #define FILE_ALLOC_TYPE_STRING(alloc_type) \
   ((alloc_type) == FILE_ALLOC_USER_PAGE ? "alloc user page" : "alloc table page")
@@ -1348,7 +1348,8 @@ flre_header_dump_descriptor (THREAD_ENTRY * thread_p, const FLRE_HEADER * fhead,
       break;
 
     case FILE_BTREE_OVERFLOW_KEY:
-      fprintf (fp, "Overflow keys for BTID: %10d|%5|%10d\n", BTID_AS_ARGS (&fhead->descriptor.btree_key_overflow.btid));
+      fprintf (fp, "Overflow keys for BTID: %10d|%5d|%10d\n",
+	       BTID_AS_ARGS (&fhead->descriptor.btree_key_overflow.btid));
       break;
 
     case FILE_EXTENDIBLE_HASH:
@@ -6777,6 +6778,8 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
       fprintf (fp, "\n WARNING: page %d|%d is marked as deleted!! \n\t\t\t", VPID_AS_ARGS (vpid));
     }
   fprintf (fp, "%5d|%10d ", VPID_AS_ARGS (vpid));
+
+  return NO_ERROR;
 }
 
 /************************************************************************/
@@ -9096,7 +9099,7 @@ flre_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
 
   LOG_LSA save_lsa;
 
-  assert (item_old->type == FILE_HEAP);
+  assert ((FILE_TYPE) item_old->type == FILE_HEAP);
   assert (!item_old->metadata.heap.is_marked_deleted);
 
   item_new = *item_old;
@@ -9181,7 +9184,7 @@ flre_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
       for (idx_item = 0; idx_item < file_extdata_item_count (extdata);)
 	{
 	  item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, idx_item);
-	  if (item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
+	  if ((FILE_TYPE) item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
 	    {
 	      /* destroy file */
 	      vfid.volid = item->volid;
@@ -9344,7 +9347,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       /* accept heap or heap reuse slots */
-      if (item->type != FILE_HEAP && item->type != FILE_HEAP_REUSE_SLOTS)
+      if ((FILE_TYPE) item->type != FILE_HEAP && (FILE_TYPE) item->type != FILE_HEAP_REUSE_SLOTS)
 	{
 	  /* reject */
 	  return NO_ERROR;
@@ -9352,7 +9355,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       break;
     default:
       /* accept the exact file type */
-      if (item->type != desired_type)
+      if ((FILE_TYPE) item->type != desired_type)
 	{
 	  /* reject */
 	  return NO_ERROR;
@@ -9362,7 +9365,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 
   /* now we need to make sure the file is protected. most types are not mutable (cannot be created or destroyed during
    * run-time), but b-tree and heap files must be protected by lock. */
-  if (item->type == FILE_HEAP)
+  if ((FILE_TYPE) item->type == FILE_HEAP)
     {
       /* these files may be marked for delete. check this is not a deleted file */
       if (item->metadata.heap.is_marked_deleted)
@@ -9372,7 +9375,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 	}
       /* we need to protect with lock. fall through */
     }
-  else if (item->type == FILE_HEAP_REUSE_SLOTS || item->type == FILE_BTREE)
+  else if ((FILE_TYPE) item->type == FILE_HEAP_REUSE_SLOTS || (FILE_TYPE) item->type == FILE_BTREE)
     {
       /* we need to protect with lock. fall through */
     }
@@ -9396,7 +9399,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   file_header_sanity_check (fhead);
 
   /* read class OID */
-  if (item->type == FILE_BTREE)
+  if ((FILE_TYPE) item->type == FILE_BTREE)
     {
       *class_oid = fhead->descriptor.btree.class_oid;
     }
@@ -9661,7 +9664,7 @@ flre_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
   file_header_sanity_check (fhead);
 
   fprintf (fp, "%4d|%4d %5d  %-22s ", item->volid, item->fileid, fhead->n_page_user, file_type_to_string (fhead->type));
-  if (item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
+  if ((FILE_TYPE) item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
     {
       fprintf (fp, "Marked as deleted... ");
     }
@@ -9717,7 +9720,7 @@ flre_tracker_item_dump_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FIL
   int error_code = NO_ERROR;
 
   item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
-  if (item->type != FILE_HEAP && item->type != FILE_HEAP_REUSE_SLOTS)
+  if ((FILE_TYPE) item->type != FILE_HEAP && (FILE_TYPE) item->type != FILE_HEAP_REUSE_SLOTS)
     {
       return NO_ERROR;
     }
@@ -9783,7 +9786,7 @@ flre_tracker_item_dump_heap_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
   int error_code = NO_ERROR;
 
   item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
-  if (item->type != FILE_HEAP && item->type != FILE_HEAP_REUSE_SLOTS)
+  if ((FILE_TYPE) item->type != FILE_HEAP && (FILE_TYPE) item->type != FILE_HEAP_REUSE_SLOTS)
     {
       return NO_ERROR;
     }
@@ -9843,7 +9846,7 @@ flre_tracker_item_dump_btree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of
   int error_code = NO_ERROR;
 
   item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
-  if (item->type != FILE_BTREE)
+  if ((FILE_TYPE) item->type != FILE_BTREE)
     {
       return NO_ERROR;
     }
