@@ -5399,7 +5399,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
       ASSERT_ERROR ();
       goto error;
     }
-  btree_get_root_page (thread_p, btid, &root_vpid);
+  btree_get_root_vpid_from_btid (thread_p, btid, &root_vpid);
 
   page_ptr = pgbuf_fix (thread_p, &root_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
@@ -6772,7 +6772,7 @@ exit_on_error:
 }
 
 /*
- * btree_get_root_page () -
+ * btree_get_root_vpid_from_btid () -
  *   return: pageid or NULL_PAGEID
  *   btid(in): B+tree index identifier
  *   first_vpid(out):
@@ -6780,13 +6780,41 @@ exit_on_error:
  * Note: get the page identifier of the first allocated page of the given file.
  */
 void
-btree_get_root_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid)
+btree_get_root_vpid_from_btid (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid)
 {
   assert (btid != NULL);
   assert (root_vpid != NULL);
   assert (!VFID_ISNULL (&btid->vfid));
   root_vpid->volid = btid->vfid.volid;
   root_vpid->pageid = btid->root_pageid;
+}
+
+/*
+ * btree_get_btid_from_file () - get btid for file (caller must make sure this is indeed a b-tree file
+ *
+ * return         : error code
+ * thread_p (in)  : thread entry
+ * vfid (in)      : file identifier
+ * btid_out (out) : b-tree identifier
+ */
+int
+btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * btid_out)
+{
+  VPID vpid_sticky;
+
+  int error_code = NO_ERROR;
+
+  error_code = flre_get_sticky_first_page (thread_p, vfid, &vpid_sticky);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  assert (!VPID_ISNULL (&vpid_sticky));
+  assert (vfid->volid == vpid_sticky.volid);
+  btid_out->vfid = *vfid;
+  btid_out->root_pageid = vpid_sticky.pageid;
+  return NO_ERROR;
 }
 
 /*
@@ -7605,7 +7633,15 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   VPID vpid;
   FILE_DESCRIPTORS fdes;
 
+  assert (!VFID_ISNULL (&btid->vfid));
+
   if (flre_descriptor_get (thread_p, &btid->vfid, &fdes) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return DISK_ERROR;
+    }
+
+  if (btree_get_btid_from_file (thread_p, &btid->vfid, btid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return DISK_ERROR;
@@ -7617,10 +7653,6 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
     {
       goto exit_on_end;
     }
-
-  btree_get_root_page (thread_p, btid, &vpid);
-
-  btid->root_pageid = vpid.pageid;
 
   valid = btree_check_tree (thread_p, &fdes.btree.class_oid, btid, btname);
 
@@ -8007,7 +8039,6 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
   BTID btid;
   DISK_ISVALID valid;
   char *index_name = NULL;
-  VPID vpid;
   OID class_oid = OID_INITIALIZER;
 
   if (oid != NULL && !OID_ISNULL (oid))
@@ -8024,7 +8055,7 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
       if (flre_tracker_interruptable_iterate (thread_p, FILE_BTREE, &btid.vfid, &class_oid) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  valid = DISK_ERROR;
+	  valid = valid == DISK_VALID ? DISK_ERROR : valid;
 	  break;
 	}
       if (VFID_ISNULL (&btid.vfid))
@@ -8033,15 +8064,21 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
 	  break;
 	}
 
+      if (btree_get_btid_from_file (thread_p, &btid.vfid, &btid) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  valid = valid == DISK_VALID ? DISK_ERROR : valid;
+	  break;
+	}
+
       /* get the index name of the index key */
       if (heap_get_indexinfo_of_btid (thread_p, &class_oid, &btid, NULL, NULL, NULL, NULL, &index_name, NULL)
 	  != NO_ERROR)
 	{
-	  valid = DISK_ERROR;
+	  ASSERT_ERROR ();
+	  valid = valid == DISK_VALID ? DISK_ERROR : valid;
 	  break;
 	}
-
-      btree_get_root_page (thread_p, &btid, &vpid);
 
       btid.root_pageid = vpid.pageid;
       valid = btree_repair_prev_link_by_btid (thread_p, &btid, repair, index_name);
@@ -33315,7 +33352,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
       ASSERT_ERROR ();
       return error_code;
     }
-  error_code = flre_alloc (thread_p, &btid->vfid, &vpid_root);
+  error_code = flre_alloc_sticky_first_page (thread_p, &btid->vfid, &vpid_root);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

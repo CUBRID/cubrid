@@ -9855,10 +9855,12 @@ flre_tracker_item_dump_btree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of
   /* get btid */
   btid.vfid.volid = item->volid;
   btid.vfid.fileid = item->fileid;
-  btree_get_root_page (thread_p, &btid, &vpid_btree_header);
-  assert (btid.vfid.volid == vpid_btree_header.volid);
-  btid.root_pageid = vpid_btree_header.pageid;
-
+  error_code = btree_get_btid_from_file (thread_p, &btid.vfid, &btid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
   /* dump */
   error_code = btree_dump_capacity (thread_p, fp, &btid);
   if (error_code != NO_ERROR)
