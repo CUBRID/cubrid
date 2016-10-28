@@ -10619,6 +10619,10 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
+
+      _er_log_debug (ARG_FILE_LINE, "heap_attrinfo_delete_lob: value->attrid:%d, value->last_attrepr->type:%d",
+	value->attrid, value->last_attrepr->type);
+
       if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
 	{
 	  if (value->state == HEAP_UNINIT_ATTRVALUE && recdes != NULL)
