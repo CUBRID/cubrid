@@ -5664,7 +5664,7 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
 	  vpid_stab.pageid++;
 	}
       assert (ptr_map == disk_map_clone[iter]->map + disk_map_clone[iter]->size_map);
-      assert (vpid_stab.pageid < volheader->stab_first_page + volheader->stab_npages);
+      assert (vpid_stab.pageid <= volheader->stab_first_page + volheader->stab_npages);
 
       /* clear sectors used by system */
       ptr_map = disk_map_clone[iter]->map;

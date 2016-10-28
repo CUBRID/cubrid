@@ -13885,12 +13885,7 @@ heap_check_all_heaps (THREAD_ENTRY * thread_p)
 	  /* no more heap files */
 	  break;
 	}
-      if (OID_ISNULL (&class_oid))
-	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto exit_on_error;
-	}
+
       hfid.vfid = vfid;
       valid = heap_check_heap_file (thread_p, &hfid);
       if (valid == DISK_ERROR)

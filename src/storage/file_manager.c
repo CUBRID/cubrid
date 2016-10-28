@@ -9404,6 +9404,12 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     {
       *class_oid = fhead->descriptor.heap.class_oid;
     }
+  if (OID_ISNULL (class_oid))
+    {
+      /* this must be boot_Db_parm file; cannot be deleted so we don't need lock. */
+      *stop = true;
+      return NO_ERROR;
+    }
 
   /* try conditional lock */
   if (lock_object (thread_p, class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
