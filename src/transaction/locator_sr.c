@@ -6892,6 +6892,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   BTID btid;
   SCAN_CODE scan;
   SCAN_OPERATION_TYPE scan_op_type;
+  OUT_OF_ROW_ATTS oor_atts;
   OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
   RECDES new_recdes = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -6902,6 +6903,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   assert (copyarea != NULL);
 
   *copyarea = NULL;
+  oor_context.oor_atts = &oor_atts;
 
   if (obj->operation == LC_FLUSH_DELETE)
     {
@@ -7039,7 +7041,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	}
     }
 
-  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: new_recdes.new_recdes:%d", new_recdes.length);
+  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: recdes->length:%d", recdes->length);
 
   heap_attrinfo_end (thread_p, &attr_info);
 
