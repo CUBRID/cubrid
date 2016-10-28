@@ -9558,10 +9558,10 @@ flre_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
 
   /* end of tracker */
   VFID_SET_NULL (vfid);
+  assert (OID_ISNULL (class_oid));
   assert (error_code == NO_ERROR);
 
 exit:
-  assert (OID_ISNULL (class_oid));
   if (page_track_other != NULL)
     {
       pgbuf_unfix (thread_p, page_track_other);
