@@ -6988,7 +6988,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	}
     }
 
-  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: repack_with_oor:%d", repack_with_oor);
+  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: repack_with_oor:%d, recdes->length:%d",
+    repack_with_oor, recdes->length);
 
   if (repack_with_oor == false)
     {
@@ -7007,9 +7008,10 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 
   for (i = 0; i < attr_info.num_values; i++)
     {
-      _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: attr_info.values[i].dbvalue.type:%d, attr_info.values[i].dbvalue.size:%d",
+      _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: attr_info.values[i].dbvalue.type:%d, attr_info.values[i].dbvalue.size:%d, state:%d",
 	DB_VALUE_TYPE (&attr_info.values[i].dbvalue),
-	TP_IS_OOR_TYPE (DB_VALUE_TYPE (&attr_info.values[i].dbvalue)) ? DB_GET_STRING_SIZE (&attr_info.values[i].dbvalue): -1);
+	TP_IS_OOR_TYPE (DB_VALUE_TYPE (&attr_info.values[i].dbvalue)) ? DB_GET_STRING_SIZE (&attr_info.values[i].dbvalue): -1,
+	attr_info.values[i].state);
 
       if (pr_is_oor_value (&attr_info.values[i].dbvalue))
 	{
