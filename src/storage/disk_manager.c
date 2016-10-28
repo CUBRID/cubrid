@@ -387,9 +387,18 @@ STATIC_INLINE void disk_set_alloctables (DB_VOLPURPOSE vol_purpose, DISK_VAR_HEA
 static int disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid, DBDEF_VOL_EXT_INFO * ext_info,
 			DKNSECTS * nsect_free_out);
 
-STATIC_INLINE int disk_get_volheader (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_MODE latch_mode,
-				      PAGE_PTR * page_volheader_out, DISK_VAR_HEADER ** volheader_out)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_MODE latch_mode,
+					       PAGE_PTR * page_volheader_out, DISK_VAR_HEADER ** volheader_out
+#if !defined (NDEBUG)
+					       , const char *file, int line
+#endif				/* !NDEBUG */
+  ) __attribute__ ((ALWAYS_INLINE));
+#if defined (NDEBUG)
+#define disk_get_volheader disk_get_volheader_internal
+#else /* !NDEBUG */
+#define disk_get_volheader(...) disk_get_volheader_internal (__VA_ARGS__, ARG_FILE_LINE)
+#endif /* !NDEBUG */
+
 static int disk_cache_init (void);
 STATIC_INLINE bool disk_is_valid_volid (VOLID volid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_VOLPURPOSE disk_get_volpurpose (VOLID volid) __attribute__ ((ALWAYS_INLINE));
@@ -5290,9 +5299,25 @@ disk_auto_expand (THREAD_ENTRY * thread_p)
 }
 #endif /* SERVER_MODE */
 
+/*
+ * disk_get_volheader_internal () - get volume header page and header
+ *
+ * return                   : error code
+ * thread_p (in)            : thread entry
+ * volid (in)               : volume id
+ * latch_mode (in)          : latch mode for volume header page
+ * page_volheader_out (out) : output volume header page
+ * volheader_out (out)      : output volume header
+ * file (in)                : (debug only) caller file
+ * line (in)                : (debug only) caller line
+ */
 STATIC_INLINE int
-disk_get_volheader (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_MODE latch_mode, PAGE_PTR * page_volheader_out,
-		    DISK_VAR_HEADER ** volheader_out)
+disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_MODE latch_mode,
+			     PAGE_PTR * page_volheader_out, DISK_VAR_HEADER ** volheader_out
+#if !defined (NDEBUG)
+			     , const char *file, int line
+#endif				/* !NDEBUG */
+  )
 {
   VPID vpid_volheader;
   int error_code = NO_ERROR;
@@ -5300,7 +5325,12 @@ disk_get_volheader (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_MODE latch
   vpid_volheader.volid = volid;
   vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
 
-  *page_volheader_out = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+#if defined (NDEBUG)
+  *page_volheader_out = pgbuf_fix_release (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+#else /* !NDEBUG */
+  *page_volheader_out =
+    pgbuf_fix_debug (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH, ARG_FILE_LINE);
+#endif /* NDEBUG */
   if (*page_volheader_out == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -5543,6 +5573,7 @@ disk_check_sectors_are_reserved_in_volume (THREAD_ENTRY * thread_p, VOLID volid,
   error_code =
     disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_READ, &start_cursor, &end_cursor,
 			     disk_stab_unit_check_reserved, context);
+  pgbuf_unfix (thread_p, page_volheader);
   if (error_code == ER_FAILED)
     {
       return DISK_INVALID;
