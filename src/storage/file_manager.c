@@ -9481,6 +9481,7 @@ flre_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
     {
       /* now that we fixed tracker header page, we no longer need lock protection. */
       lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      OID_SET_NULL (class_oid);
     }
 
   extdata = (FILE_EXTENSIBLE_DATA *) page_track_head;
