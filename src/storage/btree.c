@@ -8080,7 +8080,6 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
 	  break;
 	}
 
-      btid.root_pageid = vpid.pageid;
       valid = btree_repair_prev_link_by_btid (thread_p, &btid, repair, index_name);
       if (valid == DISK_ERROR)
 	{
