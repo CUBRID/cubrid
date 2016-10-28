@@ -7044,6 +7044,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: recdes->length:%d", recdes->length);
 
   heap_attrinfo_end (thread_p, &attr_info);
+  heap_free_oor_context (thread_p, &oor_context);
 
   return NO_ERROR;
 }
