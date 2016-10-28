@@ -1695,7 +1695,7 @@ try_again:
   assert (pgptr != NULL);
 
   holder = pgbuf_get_holder (thread_p, pgptr);
-  assert_release (holder != NULL);
+  assert (holder != NULL);
 
   watcher = holder->last_watcher;
   while (watcher != NULL)
@@ -2092,17 +2092,17 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	{
 	  return;
 	}
+    }
 
-      holder = pgbuf_get_holder (thread_p, pgptr);
+  holder = pgbuf_get_holder (thread_p, pgptr);
 
-      assert_release (holder != NULL);
+  assert (holder != NULL);
 
-      watcher = holder->last_watcher;
-      while (watcher != NULL)
-	{
-	  assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
-	  watcher = watcher->prev;
-	}
+  watcher = holder->last_watcher;
+  while (watcher != NULL)
+    {
+      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+      watcher = watcher->prev;
     }
 #else /* !NDEBUG */
   if (pgptr == NULL)
