@@ -6975,6 +6975,11 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	}
     }
 
+  if (obj->operation == LC_FLUSH_DELETE)
+    {
+      return error_code;
+    }
+
   /* transform expanded recdes into a recdes + OOR LOBs */
   error_code = heap_attrinfo_start (thread_p, &obj->class_oid, -1, NULL, &attr_info);
   if (error_code != NO_ERROR)
