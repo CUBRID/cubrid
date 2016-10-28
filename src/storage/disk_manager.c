@@ -5629,6 +5629,11 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
     }
   for (iter = 0; iter < disk_Cache->nvols_perm; iter++)
     {
+      if (disk_Cache->vols[iter].purpose == DB_TEMPORARY_DATA_PURPOSE)
+	{
+	  /* we don't consider volumes with temporary purpose here */
+	  continue;
+	}
       error_code = disk_get_volheader (thread_p, iter, PGBUF_LATCH_READ, &page_volheader, &volheader);
       if (error_code != NO_ERROR)
 	{

@@ -9888,13 +9888,24 @@ DISK_ISVALID
 flre_tracker_check (THREAD_ENTRY * thread_p)
 {
   DISK_ISVALID allvalid = DISK_VALID;
+  DISK_ISVALID valid = DISK_VALID;
   int error_code = NO_ERROR;
 
 #if defined (SERVER_MODE)
-
-  DISK_ISVALID valid = DISK_VALID;
   VFID vfid = VFID_INITIALIZER;
   OID class_oid = OID_INITIALIZER;
+
+  valid = file_table_check (thread_p, &flre_Tracker_vfid, NULL);
+  if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+      return DISK_ERROR;
+    }
+  else if (valid == DISK_INVALID)
+    {
+      assert_release (false);
+      allvalid = DISK_INVALID;
+    }
 
   while (true)
     {
@@ -9913,6 +9924,7 @@ flre_tracker_check (THREAD_ENTRY * thread_p)
       valid = file_table_check (thread_p, &vfid, NULL);
       if (valid == DISK_INVALID)
 	{
+	  assert (false);
 	  allvalid = DISK_INVALID;
 	}
       else if (valid == DISK_ERROR)
@@ -9937,23 +9949,46 @@ flre_tracker_check (THREAD_ENTRY * thread_p)
       return DISK_ERROR;
     }
 
+  valid = file_table_check (thread_p, &flre_Tracker_vfid, disk_map_clone);
+  if (valid == DISK_INVALID)
+    {
+      assert_release (false);
+      allvalid = DISK_INVALID
+	/* continue checks */
+    }
+  else if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+      return DISK_ERROR;
+    }
+
   error_code = flre_tracker_map (thread_p, PGBUF_LATCH_READ, flre_tracker_item_check, disk_map_clone);
   if (error_code == ER_FAILED)
     {
       assert_release (false);
       disk_map_clone_free (&disk_map_clone);
-      return DISK_INVALID;
+      allvalid = DISK_INVALID;
     }
   else if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       disk_map_clone_free (&disk_map_clone);
-      return DISK_ERROR;
+      return allvalid == DISK_VALID ? DISK_ERROR : allvalid;
     }
 
   /* check all sectors have been cleared */
-  allvalid = disk_map_clone_check_leaks (disk_map_clone);
-  assert (allvalid != DISK_INVALID);
+  valid = disk_map_clone_check_leaks (disk_map_clone);
+  if (valid == DISK_INVALID)
+    {
+      assert_release (false);
+      allvalid = DISK_INVALID;
+    }
+  else if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+      allvalid = allvalid == DISK_VALID ? DISK_ERROR : allvalid;
+    }
+
   disk_map_clone_free (&disk_map_clone);
 #endif /* SA_MODE */
 
