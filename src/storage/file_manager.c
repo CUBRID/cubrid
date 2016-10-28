@@ -9953,8 +9953,8 @@ flre_tracker_check (THREAD_ENTRY * thread_p)
   if (valid == DISK_INVALID)
     {
       assert_release (false);
-      allvalid = DISK_INVALID
-	/* continue checks */
+      allvalid = DISK_INVALID;
+      /* continue checks */
     }
   else if (valid == DISK_ERROR)
     {
