@@ -1839,6 +1839,8 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
 
   while (true)
     {
+      /* catch infinite loop, if any */
+      assert (page_extdata == NULL || !VPID_EQ (pgbuf_get_vpid_ptr (page_extdata), &extdata_in->vpid_next));
       if (f_extdata != NULL)
 	{
 	  /* apply f_extdata */
