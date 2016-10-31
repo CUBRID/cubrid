@@ -5048,7 +5048,7 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
       VPID_COPY ((VPID *) (log_data + sizeof (VFID)), vpid);
       log_append_postpone (thread_p, RVFL_DEALLOC, &log_addr, LOG_DATA_SIZE, log_data);
 
-      file_log ("file_dealloc", "file %s %d|%d dealloc vpid %|%d postponed",
+      file_log ("file_dealloc", "file %s %d|%d dealloc vpid %d|%d postponed",
 		file_type_to_string (file_type_hint), VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
     }
   else
@@ -5767,6 +5767,7 @@ exit:
 int
 file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  file_log ("file_rv_dealloc_on_undo", "lsa = %lld|%d", LSA_AS_ARGS (&rcv->reference_lsa));
   return file_rv_dealloc_internal (thread_p, rcv, FILE_RV_DEALLOC_COMPENSATE);
 }
 
@@ -5780,6 +5781,7 @@ file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  file_log ("file_rv_dealloc_on_postpone", "lsa = %lld|%d", LSA_AS_ARGS (&rcv->reference_lsa));
   return file_rv_dealloc_internal (thread_p, rcv, FILE_RV_DEALLOC_RUN_POSTPONE);
 }
 
@@ -9846,7 +9848,6 @@ flre_tracker_item_dump_btree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of
 {
   FLRE_TRACK_ITEM *item;
   BTID btid;
-  VPID vpid_btree_header;
   FILE *fp = (FILE *) args;
 
   int error_code = NO_ERROR;

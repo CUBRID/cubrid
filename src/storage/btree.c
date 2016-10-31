@@ -1614,6 +1614,11 @@ static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * bti
 					 BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
 					 int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
 
+STATIC_INLINE void btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
+  __attribute__ ((ALWAYS_INLINE));
+
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID,
  *				 header and b-tree info if requested.
@@ -7630,7 +7635,6 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 {
   DISK_ISVALID valid = DISK_ERROR;
   char *btname;
-  VPID vpid;
   FILE_DESCRIPTORS fdes;
 
   assert (!VFID_ISNULL (&btid->vfid));
@@ -8949,7 +8953,6 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   int ret = NO_ERROR;		/* Error code. */
   int key_cnt;			/* Node key count. */
   BTREE_NODE_HEADER *header = NULL;	/* Node header. */
-  bool is_system_op_started = false;	/* Set to true if system operation is started to provide atomicity. */
   LOG_LSA prev_lsa;
   char leaf_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   RECDES leaf_record;
@@ -8962,15 +8965,10 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   /* If this is undo of inserted object, overflow key deletion will be handled automatically. Don't delete here. */
   if (leafrec_pnt->key_len < 0 && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT)
     {
-      if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-	{
-	  /* Vacuum. Since there is no transaction, delete atomicity must be provided by a system operation. */
-	  assert (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
-		  || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
-	  log_sysop_start (thread_p);
-	  is_system_op_started = true;
-	}
+      assert (delete_helper->purpose != BTREE_OP_DELETE_VACUUM_OBJECT || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+      log_sysop_start (thread_p);
+      delete_helper->is_system_op_started = true;
+
       /* Delete overflow key. */
       ret = btree_delete_overflow_key (thread_p, btid, leaf_pg, search_key->slotid, BTREE_LEAF_NODE);
       if (ret != NO_ERROR)
@@ -8991,7 +8989,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
       goto exit_on_error;
     }
 
-  if (is_system_op_started)
+  if (delete_helper->is_system_op_started)
     {
       /* Before deleting the slot, we will need the record data for undo logging. */
       leaf_record.area_size = DB_PAGESIZE;
@@ -9036,7 +9034,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   assert (!BTREE_RV_HAS_DEBUG_INFO (delete_helper->leaf_addr.offset));
 
   /* Add logging. */
-  if (is_system_op_started)
+  if (delete_helper->is_system_op_started)
     {
       /* We need undoredo logging. */
       assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
@@ -9067,6 +9065,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
     {
       /* We now know everything is successfully executed. Vacuum no longer needs undo logging. */
+      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
       log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr, 0, NULL);
     }
   pgbuf_set_dirty (thread_p, leaf_pg, DONT_FREE);
@@ -9089,16 +9088,9 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
 		     btid->sys_btid->vfid.fileid);
     }
 
-  if (is_system_op_started)
+  if (delete_helper->is_system_op_started)
     {
-      if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-	{
-	  log_sysop_end_logical_run_postpone (thread_p, &delete_helper->reference_lsa);
-	}
-      else
-	{
-	  log_sysop_commit (thread_p);
-	}
+      btree_delete_sysop_end (thread_p, delete_helper);
     }
 
 #if !defined(NDEBUG)
@@ -9109,9 +9101,10 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
 
 exit_on_error:
 
-  if (is_system_op_started)
+  if (delete_helper->is_system_op_started)
     {
       log_sysop_abort (thread_p);
+      delete_helper->is_system_op_started = false;
     }
 
   assert_release (ret != NO_ERROR);
@@ -9294,6 +9287,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Swap execute successfully. Commit it. */
   /* Commit swap. */
+  /* todo: with new system op we can get rid of this swapping hack and use logical undo */
   log_sysop_commit (thread_p);
   is_sytem_op_started = false;
   delete_helper->is_system_op_started = save_system_op_started;
@@ -10752,7 +10746,6 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   char *rv_undo_data_ptr = NULL;
   int rv_undo_data_length = 0;
   int rv_redo_data_length = 0;
-  bool was_system_op_started = insert_helper->is_system_op_started;
 
   LOG_LSA prev_lsa;
 
@@ -10768,16 +10761,10 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
 	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
 
-  if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
-    {
-      assert (insert_helper->is_system_op_started == false);
-      log_sysop_start (thread_p);
-      insert_helper->is_system_op_started = true;
-    }
-  if (insert_helper->is_system_op_started)
-    {
-      rv_undo_data_ptr = rv_undo_data;
-    }
+  assert (insert_helper->is_system_op_started == false);
+  log_sysop_start (thread_p);
+  insert_helper->is_system_op_started = true;
+  rv_undo_data_ptr = rv_undo_data;
 
   /* Create overflow page. */
   /* Note that this page may be leaked if server crashes before changing the link in leaf page. */
@@ -10815,31 +10802,15 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   /* Logging changes on leaf. */
   BTREE_RV_GET_DATA_LENGTH (insert_helper->rv_redo_data_ptr, insert_helper->rv_redo_data, rv_redo_data_length);
-  if (insert_helper->is_system_op_started)
-    {
-      assert (rv_undo_data_ptr != NULL);
-      /* Undo redo the operation. */
-      /* Undo is physical in this case. */
-      BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &insert_helper->leaf_addr, rv_undo_data_length,
-				rv_redo_data_length, rv_undo_data, insert_helper->rv_redo_data);
-      if (!was_system_op_started)
-	{
-	  /* End system operation. */
-	  assert (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
-	  log_sysop_end_logical_compensate (thread_p, &insert_helper->compensate_undo_nxlsa);
-	}
-    }
-  else
-    {
-      /* BTREE_OP_INSERT_NEW_OBJECT, non-unique. */
-      /* Undo is logical ins this case. (kept in insert_helper->rv_keyval_data). */
-      assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
-      assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
-      log_append_undoredo_data (thread_p, insert_helper->rcvindex, &insert_helper->leaf_addr,
-				insert_helper->rv_keyval_data_length, rv_redo_data_length,
-				insert_helper->rv_keyval_data, insert_helper->rv_redo_data);
-    }
+  assert (rv_undo_data_ptr != NULL);
+  /* Undo redo the operation. */
+  /* Undo is physical in this case. */
+  BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
+  log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &insert_helper->leaf_addr, rv_undo_data_length,
+			    rv_redo_data_length, rv_undo_data, insert_helper->rv_redo_data);
+
+  /* End system operation. */
+  btree_insert_sysop_end (thread_p, insert_helper);
 
   if (insert_helper->log_operations)
     {
@@ -10866,11 +10837,12 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   return NO_ERROR;
 
 error:
-  if (insert_helper->is_system_op_started && !was_system_op_started)
+  if (insert_helper->is_system_op_started)
     {
       /* This might be a problem since compensate was not successfully executed. */
-      assert_release (false);
-      log_sysop_end_logical_compensate (thread_p, &insert_helper->compensate_undo_nxlsa);
+      assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
+      log_sysop_abort (thread_p);
+      insert_helper->is_system_op_started = false;
     }
   if (ovfl_page != NULL)
     {
@@ -31213,7 +31185,7 @@ exit:
   if (delete_helper->is_system_op_started)
     {
       assert_release (error_code == NO_ERROR);
-      log_sysop_end_logical_compensate (thread_p, &delete_helper->reference_lsa);
+      btree_delete_sysop_end (thread_p, delete_helper);
     }
   if (found_page != NULL && found_page != *leaf_page)
     {
@@ -31710,18 +31682,11 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       pgbuf_get_vpid (*overflow_page, &overflow_vpid);
       pgbuf_unfix_and_init (thread_p, *overflow_page);
 
-      /* Vacuum needs system operation to deallocate pages. */
+      /* we need system op to deallocate pages. */
       if (!delete_helper->is_system_op_started)
 	{
-	  if (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-	      || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-	    {
-	      /* requires system op */
-	      log_sysop_start (thread_p);
-	      delete_helper->is_system_op_started = true;
-	    }
+	  log_sysop_start (thread_p);
+	  delete_helper->is_system_op_started = true;
 	}
 
       /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
@@ -31776,22 +31741,8 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* End system operation. */
       if (delete_helper->is_system_op_started && !save_system_op_started)
 	{
-	  if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
-	    {
-	      log_sysop_end_logical_compensate (thread_p, &delete_helper->reference_lsa);
-	    }
-	  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-	    {
-	      log_sysop_end_logical_run_postpone (thread_p, &delete_helper->reference_lsa);
-	    }
-	  else
-	    {
-	      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
-	      log_sysop_commit (thread_p);
-	    }
+	  btree_delete_sysop_end (thread_p, delete_helper);
 	}
-      delete_helper->is_system_op_started = save_system_op_started;
     }
   else
     {
@@ -31818,24 +31769,11 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 error:
   if (delete_helper->is_system_op_started && !save_system_op_started)
     {
-      if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
-	{
-	  assert_release (false);
-	  log_sysop_end_logical_compensate (thread_p, &delete_helper->reference_lsa);
-	}
-      else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-	{
-	  assert_release (false);
-	  log_sysop_end_logical_run_postpone (thread_p, &delete_helper->reference_lsa);
-	}
-      else
-	{
-	  assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
-	  log_sysop_abort (thread_p);
-	}
+      assert (delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT
+	      && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
+	      && delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
+      btree_delete_sysop_end (thread_p, delete_helper);
     }
-  delete_helper->is_system_op_started = save_system_op_started;
   assert_release (error_code != NO_ERROR);
   return error_code;
 }
@@ -32447,7 +32385,7 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
       log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &leaf_addr, rv_undo_data_length,
 				rv_redo_data_length, rv_undo_data, delete_helper->rv_redo_data);
 
-      log_sysop_end_logical_compensate (thread_p, &delete_helper->reference_lsa);
+      btree_delete_sysop_end (thread_p, delete_helper);
     }
   else
     {
@@ -33365,4 +33303,82 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
     }
   btid->root_pageid = vpid_root.pageid;
   return NO_ERROR;
+}
+
+/*
+ * btree_delete_sysop_end () - end system op used for b-tree delete based on purpose.
+ *
+ * return          : void
+ * thread_p (in)   : thread entry
+ * helper (in/out) : delete helper
+ */
+STATIC_INLINE void
+btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
+{
+  if (!helper->is_system_op_started)
+    {
+      assert_release (false);
+      return;
+    }
+  switch (helper->purpose)
+    {
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL:
+      log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, helper->rv_keyval_data_length,
+				  helper->rv_keyval_data);
+      break;
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
+      log_sysop_end_logical_run_postpone (thread_p, &helper->reference_lsa);
+      break;
+    case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+    case BTREE_OP_DELETE_UNDO_INSERT_DELID:
+      log_sysop_end_logical_compensate (thread_p, &helper->reference_lsa);
+      break;
+    case BTREE_OP_DELETE_VACUUM_INSID:
+      /* system op to just vacuum insert MVCCID? not really expected. */
+      assert (false);
+      /* fall through to commit on release */
+    case BTREE_OP_DELETE_VACUUM_OBJECT:
+      log_sysop_commit (thread_p);
+      break;
+    default:
+      assert_release (false);
+      log_sysop_abort (thread_p);
+      break;
+    }
+  helper->is_system_op_started = false;
+}
+
+/*
+ * btree_insert_sysop_end () - end system op used for b-tree insert based on purpose.
+ *
+ * return          : void
+ * thread_p (in)   : thread entry
+ * helper (in/out) : insert helper
+ */
+STATIC_INLINE void
+btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
+{
+  if (!helper->is_system_op_started)
+    {
+      assert_release (false);
+      return;
+    }
+  switch (helper->purpose)
+    {
+    case BTREE_OP_INSERT_NEW_OBJECT:
+      log_sysop_end_logical_undo (thread_p, helper->rcvindex, helper->rv_keyval_data_length, helper->rv_keyval_data);
+      break;
+    case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
+      log_sysop_end_logical_compensate (thread_p, &helper->compensate_undo_nxlsa);
+      break;
+    case BTREE_OP_INSERT_MVCC_DELID:
+    case BTREE_OP_INSERT_MARK_DELETED:
+      /* no system ops are expected! */
+    default:
+      assert_release (false);
+      log_sysop_abort (thread_p);
+      break;
+    }
+  helper->is_system_op_started = false;
 }
