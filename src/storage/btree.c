@@ -33323,7 +33323,7 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
-      log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, helper->rv_keyval_data_length,
+      log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, NULL, helper->rv_keyval_data_length,
 				  helper->rv_keyval_data);
       break;
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
@@ -33367,7 +33367,8 @@ btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_INSERT_NEW_OBJECT:
-      log_sysop_end_logical_undo (thread_p, helper->rcvindex, helper->rv_keyval_data_length, helper->rv_keyval_data);
+      log_sysop_end_logical_undo (thread_p, helper->rcvindex, helper->leaf_addr.vfid, helper->rv_keyval_data_length,
+				  helper->rv_keyval_data);
       break;
     case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
       log_sysop_end_logical_compensate (thread_p, &helper->compensate_undo_nxlsa);

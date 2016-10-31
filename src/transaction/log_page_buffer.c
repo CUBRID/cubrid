@@ -3646,7 +3646,9 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
   /* Is this a valid MVCC operations: 1. node must be undoredo/undo type and must have undo data. 2. record index must
    * the index of MVCC operations. */
   if (node->log_header.type == LOG_MVCC_UNDO_DATA || node->log_header.type == LOG_MVCC_UNDOREDO_DATA
-      || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+      || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA
+      || (node->log_header.type == LOG_SYSOP_END
+	  && ((LOG_REC_SYSOP_END *) node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
     {
       /* Link the log record to previous MVCC delete/update log record */
       /* Will be used by vacuum */
@@ -3654,6 +3656,13 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	{
 	  /* Read from mvcc_undo structure */
 	  mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
+	  vacuum_info = &mvcc_undo->vacuum_info;
+	  mvccid = mvcc_undo->mvccid;
+	}
+      else if (node->log_header.type == LOG_SYSOP_END)
+	{
+	  /* Read from mvcc_undo structure */
+	  mvcc_undo = &((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
 	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 	}

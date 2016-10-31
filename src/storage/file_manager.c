@@ -3559,7 +3559,7 @@ exit:
       else
 	{
 	  ASSERT_NO_ERROR ();
-	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, sizeof (*vfid), (char *) vfid);
+	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, NULL, sizeof (*vfid), (char *) vfid);
 	}
     }
 
@@ -4685,7 +4685,7 @@ exit:
       else
 	{
 	  /* commit and undo (to deallocate) */
-	  log_sysop_end_logical_undo (thread_p, RVFL_ALLOC, UNDO_DATA_SIZE, undo_log_data);
+	  log_sysop_end_logical_undo (thread_p, RVFL_ALLOC, NULL, UNDO_DATA_SIZE, undo_log_data);
 	}
     }
 
