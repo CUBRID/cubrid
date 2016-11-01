@@ -7653,6 +7653,8 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+      extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
+
       fhead->vpid_last_temp_alloc = vpid_next;
       fhead->offset_to_last_temp_alloc = 0;
     }
