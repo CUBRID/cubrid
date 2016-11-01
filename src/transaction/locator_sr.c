@@ -6023,7 +6023,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      /* TODO[arnia] : out_of_row */
       heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, oor_context_p, local_scan_cache,
 				  force_in_place);
       error_code = heap_update_logical (thread_p, &update_context);
@@ -7209,9 +7208,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
-	      /* TODO[arnia] : oor columns */
 	      error_code =
-		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, NULL,
+		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, &oor_context,
 				      has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
 				      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
 
@@ -7281,9 +7279,13 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
       return ER_LC_PARTIALLY_FAILED_TO_FLUSH;
     }
 
+  heap_free_oor_context (thread_p, &oor_context);
+
   return error_code;
 
 exit_on_error:
+
+  heap_free_oor_context (thread_p, &oor_context);
 
   if (copyarea_without_oor != NULL)
     {
