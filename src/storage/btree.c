@@ -33283,7 +33283,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   des.class_oid = *class_oid;
   des.attr_id = attrid;
 
-  error_code = flre_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) & des, &btid->vfid);
+  error_code = flre_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) (&des), &btid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -33320,32 +33320,39 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
       assert_release (false);
       return;
     }
+
   switch (helper->purpose)
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
       log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, NULL, helper->rv_keyval_data_length,
 				  helper->rv_keyval_data);
       break;
+
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
       log_sysop_end_logical_run_postpone (thread_p, &helper->reference_lsa);
       break;
+
     case BTREE_OP_DELETE_UNDO_INSERT:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
       log_sysop_end_logical_compensate (thread_p, &helper->reference_lsa);
       break;
+
     case BTREE_OP_DELETE_VACUUM_INSID:
       /* system op to just vacuum insert MVCCID? not really expected. */
       assert (false);
       /* fall through to commit on release */
+
     case BTREE_OP_DELETE_VACUUM_OBJECT:
       log_sysop_commit (thread_p);
       break;
+
     default:
       assert_release (false);
       log_sysop_abort (thread_p);
       break;
     }
+
   helper->is_system_op_started = false;
 }
 
@@ -33364,22 +33371,27 @@ btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
       assert_release (false);
       return;
     }
+
   switch (helper->purpose)
     {
     case BTREE_OP_INSERT_NEW_OBJECT:
       log_sysop_end_logical_undo (thread_p, helper->rcvindex, helper->leaf_addr.vfid, helper->rv_keyval_data_length,
 				  helper->rv_keyval_data);
       break;
+
     case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
       log_sysop_end_logical_compensate (thread_p, &helper->compensate_undo_nxlsa);
       break;
+
     case BTREE_OP_INSERT_MVCC_DELID:
     case BTREE_OP_INSERT_MARK_DELETED:
       /* no system ops are expected! */
+
     default:
       assert_release (false);
       log_sysop_abort (thread_p);
       break;
     }
+
   helper->is_system_op_started = false;
 }
