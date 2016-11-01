@@ -3417,7 +3417,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	  file_partsect_set_bit (partsect_ftab, file_partsect_pageid_to_offset (partsect_ftab, vpid_ftab.pageid));
 
 	  /* Save link in previous page. */
-	  extdata_part_ftab->vpid_next = vpid_fhead;
+	  extdata_part_ftab->vpid_next = vpid_ftab;
 	  if (page_ftab != NULL)
 	    {
 	      if (do_logging)
@@ -7631,6 +7631,31 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       file_header_sanity_check (fhead);
     }
   assert (fhead->n_page_free > 0);
+
+  if (fhead->offset_to_last_temp_alloc == file_extdata_item_count (extdata_part_ftab))
+    {
+      VPID vpid_next;
+
+      /* must be full */
+      assert (file_extdata_is_full (extdata_part_ftab));
+      /* we must have another extensible data */
+      assert (!VPID_ISNULL (&extdata_part_ftab->vpid_next));
+
+      /* move allocation cursor to next partial table page */
+      vpid_next = extdata_part_ftab->vpid_next;
+      if (page_ftab != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_ftab);
+	}
+      page_ftab = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ftab == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      fhead->vpid_last_temp_alloc = vpid_next;
+      fhead->offset_to_last_temp_alloc = 0;
+    }
 
   assert (extdata_part_ftab != NULL);
   assert (fhead->offset_to_last_temp_alloc < file_extdata_item_count (extdata_part_ftab));
