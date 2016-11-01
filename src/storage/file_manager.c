@@ -3457,7 +3457,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	{
 	  log_append_redo_page (thread_p, page_ftab, file_extdata_size (extdata_part_ftab), PAGE_FTAB);
 	}
-      pgbuf_unfix_and_init (thread_p, page_ftab);
+      pgbuf_set_dirty_and_free (thread_p, page_ftab);
     }
 
   if (partsect_ftab == NULL)
