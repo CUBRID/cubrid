@@ -4938,7 +4938,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   int error_code;
   DBDEF_VOL_EXT_INFO ext_info;
   HEAP_OPERATION_CONTEXT heapop_context;
-  HEAP_SCANCACHE scan_cache_boot;
 
   assert (client_credential != NULL);
 

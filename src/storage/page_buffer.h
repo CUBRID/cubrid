@@ -76,6 +76,13 @@ extern const VPID vpid_Null_vpid;
 #define PGBUF_PAGE_VPID_AS_ARGS(pg) pgbuf_get_volume_id (pg), pgbuf_get_page_id (pg)
 #define PGBUF_PAGE_LSA_AS_ARGS(pg) (long long int) pgbuf_get_lsa (pg)->pageid, (int) pgbuf_get_lsa (pg)->offset
 
+#define PGBUF_PAGE_STATE_MSG(name) name " { VPID = %d|%d, crt_lsa = %lld|%d } "
+#define PGBUF_PAGE_STATE_ARGS(pg) PGBUF_PAGE_VPID_AS_ARGS (pg), PGBUF_PAGE_LSA_AS_ARGS (pg)
+
+#define PGBUF_PAGE_MODIFY_MSG(name) name " { VPID = %d|%d, prev_lsa = %lld|%d, crt_lsa = %lld|%d } "
+#define PGBUF_PAGE_MODIFY_ARGS(pg, prev_lsa) \
+  PGBUF_PAGE_VPID_AS_ARGS (pg), LSA_AS_ARGS (prev_lsa), PGBUF_PAGE_LSA_AS_ARGS (pg)
+
 #define pgbuf_unfix_and_init(thread_p, pgptr) \
   do { \
     pgbuf_unfix ((thread_p), (pgptr)); \
