@@ -4954,6 +4954,7 @@ disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_
   if (*voltype_out == DB_TEMPORARY_VOLTYPE)
     {
       /* don't load temporary volumes */
+      pgbuf_unfix_and_init (thread_p, page_volheader);
       return NO_ERROR;
     }
 
@@ -5337,8 +5338,10 @@ disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_M
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+
   disk_verify_volume_header (thread_p, *page_volheader_out);
   *volheader_out = (DISK_VAR_HEADER *) (*page_volheader_out);
+
   return NO_ERROR;
 }
 
@@ -5656,7 +5659,8 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
   *disk_map_clone = (DISK_VOLMAP_CLONE *) calloc (disk_Cache->nvols_perm, sizeof (DISK_VOLMAP_CLONE));
   if (*disk_map_clone == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, disk_Cache->nvols_perm * sizeof (char *));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      disk_Cache->nvols_perm * sizeof (DISK_VOLMAP_CLONE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   for (iter = 0; iter < disk_Cache->nvols_perm; iter++)
@@ -5666,20 +5670,23 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
 	  /* we don't consider volumes with temporary purpose here */
 	  continue;
 	}
+
       error_code = disk_get_volheader (thread_p, iter, PGBUF_LATCH_READ, &page_volheader, &volheader);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
+
       disk_map_clone[iter]->size_map = volheader->nsect_total / CHAR_BIT;
       disk_map_clone[iter]->map = (char *) malloc (disk_map_clone[iter]->size_map);
       if (disk_map_clone[iter]->map == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, disk_map_clone[iter]->size_map);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, disk_map_clone[iter]->size_map);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit;
 	}
+
       /* copy map */
       vpid_stab.volid = iter;
       vpid_stab.pageid = volheader->stab_first_page;
@@ -5696,7 +5703,9 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
 	    }
 
 	  memcpy (ptr_map, page_stab, memsize);
+
 	  pgbuf_unfix_and_init (thread_p, page_stab);
+
 	  ptr_map += memsize;
 	  vpid_stab.pageid++;
 	}
@@ -5711,8 +5720,11 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
 	  *(DISK_STAB_UNIT *) ptr_map = 0;
 	  ptr_map += DISK_STAB_UNIT_SIZE_OF;
 	}
+
       /* clear trailing bits */
       *(DISK_STAB_UNIT *) ptr_map &= ~bit64_set_trailing_bits (0, nsects);
+
+      pgbuf_unfix_and_init (thread_p, page_volheader);
     }
 
   /* disk map clone successfully created */
