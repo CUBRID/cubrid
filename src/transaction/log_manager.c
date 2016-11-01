@@ -3529,6 +3529,8 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
       return "LOG_SYSOP_END_ABORT";
     case LOG_SYSOP_END_LOGICAL_UNDO:
       return "LOG_SYSOP_END_LOGICAL_UNDO";
+    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
+      return "LOG_SYSOP_END_LOGICAL_MVCC_UNDO";
     case LOG_SYSOP_END_LOGICAL_COMPENSATE:
       return "LOG_SYSOP_END_LOGICAL_COMPENSATE";
     case LOG_SYSOP_END_LOGICAL_RUN_POSTPONE:
@@ -3829,7 +3831,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  /* we should be doing rollback or undo recovery */
 	  assert (tdes->state == TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
 	}
-      else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO)
+      else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO || log_record->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
 	  /* to allow postpone records, we need to extend implementation of sys op start postpone */
 	  assert (LSA_ISNULL (LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)));
@@ -3892,6 +3894,7 @@ log_sysop_commit (THREAD_ENTRY * thread_p)
  * return	  : Void.
  * thread_p (in)  : Thread entry.
  * rcvindex (in)  : Recovery index for undo operation.
+ * vfid (in)      : NULL or file identifier. Must be not NULL for mvcc operations.
  * undo_size (in) : Undo data size.
  * undo_data (in) : Undo data.
  *
@@ -3900,16 +3903,32 @@ log_sysop_commit (THREAD_ENTRY * thread_p)
  *       was not necessary.
  */
 void
-log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int undo_size, char *undo_data)
+log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, int undo_size,
+			    char *undo_data)
 {
   LOG_REC_SYSOP_END log_record;
 
-  log_record.type = LOG_SYSOP_END_LOGICAL_UNDO;
-  log_record.undo.data.offset = NULL_OFFSET;
-  log_record.undo.data.volid = NULL_VOLID;
-  log_record.undo.data.pageid = NULL_PAGEID;
-  log_record.undo.data.rcvindex = rcvindex;
-  log_record.undo.length = undo_size;
+  if (LOG_IS_MVCC_OPERATION (rcvindex))
+    {
+      log_record.type = LOG_SYSOP_END_LOGICAL_MVCC_UNDO;
+      log_record.mvcc_undo.undo.data.offset = NULL_OFFSET;
+      log_record.mvcc_undo.undo.data.volid = NULL_VOLID;
+      log_record.mvcc_undo.undo.data.pageid = NULL_PAGEID;
+      log_record.mvcc_undo.undo.data.rcvindex = rcvindex;
+      log_record.mvcc_undo.undo.length = undo_size;
+      log_record.mvcc_undo.mvccid = logtb_get_current_mvccid (thread_p);
+      log_record.mvcc_undo.vacuum_info.vfid = *vfid;
+      LSA_SET_NULL (&log_record.mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa);
+    }
+  else
+    {
+      log_record.type = LOG_SYSOP_END_LOGICAL_UNDO;
+      log_record.undo.data.offset = NULL_OFFSET;
+      log_record.undo.data.volid = NULL_VOLID;
+      log_record.undo.data.pageid = NULL_PAGEID;
+      log_record.undo.data.rcvindex = rcvindex;
+      log_record.undo.length = undo_size;
+    }
 
   log_sysop_commit_internal (thread_p, &log_record, undo_size, undo_data);
 }
@@ -6916,6 +6935,9 @@ static LOG_PAGE *
 log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end, LOG_LSA * log_lsa,
 				    LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p, FILE * out_fp)
 {
+  int undo_length;
+  LOG_RCVINDEX rcvindex;
+
   fprintf (out_fp, ",\n     Prev parent LSA = %lld|%d, Prev_topresult_lsa = %lld|%d, %s \n",
 	   LSA_AS_ARGS (&sysop_end->lastparent_lsa), LSA_AS_ARGS (&sysop_end->prv_topresult_lsa),
 	   log_sysop_end_type_string (sysop_end->type));
@@ -6940,8 +6962,28 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
       fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	       sysop_end->undo.data.volid, sysop_end->undo.data.pageid, sysop_end->undo.data.offset,
 	       (int) GET_ZIP_LEN (sysop_end->undo.length));
-      log_dump_data (thread_p, out_fp, sysop_end->undo.length, log_lsa, log_page_p,
-		     RV_fun[sysop_end->undo.data.rcvindex].dump_undofun, log_zip_p);
+
+      undo_length = sysop_end->undo.length;
+      rcvindex = sysop_end->undo.data.rcvindex;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
+      log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+      break;
+    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
+      assert (log_lsa != NULL && log_page_p != NULL && log_zip_p != NULL);
+
+      fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (sysop_end->mvcc_undo.undo.data.rcvindex));
+      fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
+	       sysop_end->mvcc_undo.undo.data.volid, sysop_end->mvcc_undo.undo.data.pageid,
+	       sysop_end->mvcc_undo.undo.data.offset, (int) GET_ZIP_LEN (sysop_end->mvcc_undo.undo.length));
+      fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
+	       (unsigned long long int) sysop_end->mvcc_undo.mvccid,
+	       LSA_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa),
+	       VFID_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.vfid));
+
+      undo_length = sysop_end->mvcc_undo.undo.length;
+      rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
+      log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
       break;
     default:
       assert (false);
@@ -8097,6 +8139,21 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
 		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
 		}
+	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+		{
+		  rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+		  rcv.offset = sysop_end->mvcc_undo.undo.data.offset;
+		  rcv_vpid.volid = sysop_end->mvcc_undo.undo.data.volid;
+		  rcv_vpid.pageid = sysop_end->mvcc_undo.undo.data.pageid;
+		  rcv.length = sysop_end->mvcc_undo.undo.length;
+		  rcv.mvcc_id = sysop_end->mvcc_undo.mvccid;
+
+		  /* will jump to parent LSA. save it now before advancing to undo data */
+		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
+		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
+		}
 	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 		{
 		  /* compensate */
@@ -8351,7 +8408,8 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
     }
 
   assert (sysop_end != NULL);
-  assert (sysop_end->type != LOG_SYSOP_END_ABORT && sysop_end->type != LOG_SYSOP_END_LOGICAL_UNDO);
+  assert (sysop_end->type != LOG_SYSOP_END_ABORT && sysop_end->type != LOG_SYSOP_END_LOGICAL_UNDO
+	  && sysop_end->type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
   /* we cannot have TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE inside TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE */
   assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
 

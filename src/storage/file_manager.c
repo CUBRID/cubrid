@@ -426,7 +426,7 @@ static bool file_Logging = false;
 
 #define FILE_PARTSECT_MSG(name) \
   "\t" name ": { vsid = %d|%d, page bitmap = " BIT64_HEXA_PRINT_FORMAT " } \n"
-#define FILE_PARTSECT_AS_ARGS(ps) VSID_AS_ARGS (&(ps)->vsid), (ps)->page_bitmap
+#define FILE_PARTSECT_AS_ARGS(ps) VSID_AS_ARGS (&(ps)->vsid), (long long unsigned int) (ps)->page_bitmap
 
 #define FILE_ALLOC_TYPE_STRING(alloc_type) \
   ((alloc_type) == FILE_ALLOC_USER_PAGE ? "alloc user page" : "alloc table page")
@@ -1351,7 +1351,8 @@ flre_header_dump_descriptor (THREAD_ENTRY * thread_p, const FLRE_HEADER * fhead,
       break;
 
     case FILE_BTREE_OVERFLOW_KEY:
-      fprintf (fp, "Overflow keys for BTID: %10d|%5|%10d\n", BTID_AS_ARGS (&fhead->descriptor.btree_key_overflow.btid));
+      fprintf (fp, "Overflow keys for BTID: %10d|%5d|%10d\n",
+	       BTID_AS_ARGS (&fhead->descriptor.btree_key_overflow.btid));
       break;
 
     case FILE_EXTENDIBLE_HASH:
@@ -1841,6 +1842,8 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
 
   while (true)
     {
+      /* catch infinite loop, if any */
+      assert (page_extdata == NULL || !VPID_EQ (pgbuf_get_vpid_ptr (page_extdata), &extdata_in->vpid_next));
       if (f_extdata != NULL)
 	{
 	  /* apply f_extdata */
@@ -3562,7 +3565,7 @@ exit:
       else
 	{
 	  ASSERT_NO_ERROR ();
-	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, sizeof (*vfid), (char *) vfid);
+	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, NULL, sizeof (*vfid), (char *) vfid);
 	}
     }
 
@@ -4688,7 +4691,7 @@ exit:
       else
 	{
 	  /* commit and undo (to deallocate) */
-	  log_sysop_end_logical_undo (thread_p, RVFL_ALLOC, UNDO_DATA_SIZE, undo_log_data);
+	  log_sysop_end_logical_undo (thread_p, RVFL_ALLOC, NULL, UNDO_DATA_SIZE, undo_log_data);
 	}
     }
 
@@ -4949,7 +4952,7 @@ flre_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -5051,7 +5054,7 @@ flre_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
       VPID_COPY ((VPID *) (log_data + sizeof (VFID)), vpid);
       log_append_postpone (thread_p, RVFL_DEALLOC, &log_addr, LOG_DATA_SIZE, log_data);
 
-      file_log ("file_dealloc", "file %s %d|%d dealloc vpid %|%d postponed",
+      file_log ("file_dealloc", "file %s %d|%d dealloc vpid %d|%d postponed",
 		file_type_to_string (file_type_hint), VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
     }
   else
@@ -5770,6 +5773,7 @@ exit:
 int
 file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  file_log ("file_rv_dealloc_on_undo", "lsa = %lld|%d", LSA_AS_ARGS (&rcv->reference_lsa));
   return file_rv_dealloc_internal (thread_p, rcv, FILE_RV_DEALLOC_COMPENSATE);
 }
 
@@ -5783,6 +5787,7 @@ file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  file_log ("file_rv_dealloc_on_postpone", "lsa = %lld|%d", LSA_AS_ARGS (&rcv->reference_lsa));
   return file_rv_dealloc_internal (thread_p, rcv, FILE_RV_DEALLOC_RUN_POSTPONE);
 }
 
@@ -5958,7 +5963,7 @@ exit:
     {
       pgbuf_unfix (thread_p, page_fhead);
     }
-  return DISK_ERROR;
+  return isvalid;
 }
 
 /*
@@ -6515,6 +6520,11 @@ exit:
     {
       allvalid = DISK_ERROR;
     }
+
+  if (collector.vsids != NULL)
+    {
+      db_private_free (thread_p, collector.vsids);
+    }
   return allvalid;
 }
 
@@ -6781,6 +6791,8 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
       fprintf (fp, "\n WARNING: page %d|%d is marked as deleted!! \n\t\t\t", VPID_AS_ARGS (vpid));
     }
   fprintf (fp, "%5d|%10d ", VPID_AS_ARGS (vpid));
+
+  return NO_ERROR;
 }
 
 /************************************************************************/
@@ -9100,7 +9112,7 @@ flre_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
 
   LOG_LSA save_lsa;
 
-  assert (item_old->type == FILE_HEAP);
+  assert ((FILE_TYPE) item_old->type == FILE_HEAP);
   assert (!item_old->metadata.heap.is_marked_deleted);
 
   item_new = *item_old;
@@ -9185,7 +9197,7 @@ flre_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
       for (idx_item = 0; idx_item < file_extdata_item_count (extdata);)
 	{
 	  item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, idx_item);
-	  if (item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
+	  if ((FILE_TYPE) item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
 	    {
 	      /* destroy file */
 	      vfid.volid = item->volid;
@@ -9348,7 +9360,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       /* accept heap or heap reuse slots */
-      if (item->type != FILE_HEAP && item->type != FILE_HEAP_REUSE_SLOTS)
+      if ((FILE_TYPE) item->type != FILE_HEAP && (FILE_TYPE) item->type != FILE_HEAP_REUSE_SLOTS)
 	{
 	  /* reject */
 	  return NO_ERROR;
@@ -9356,7 +9368,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       break;
     default:
       /* accept the exact file type */
-      if (item->type != desired_type)
+      if ((FILE_TYPE) item->type != desired_type)
 	{
 	  /* reject */
 	  return NO_ERROR;
@@ -9366,7 +9378,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 
   /* now we need to make sure the file is protected. most types are not mutable (cannot be created or destroyed during
    * run-time), but b-tree and heap files must be protected by lock. */
-  if (item->type == FILE_HEAP)
+  if ((FILE_TYPE) item->type == FILE_HEAP)
     {
       /* these files may be marked for delete. check this is not a deleted file */
       if (item->metadata.heap.is_marked_deleted)
@@ -9376,7 +9388,7 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 	}
       /* we need to protect with lock. fall through */
     }
-  else if (item->type == FILE_HEAP_REUSE_SLOTS || item->type == FILE_BTREE)
+  else if ((FILE_TYPE) item->type == FILE_HEAP_REUSE_SLOTS || (FILE_TYPE) item->type == FILE_BTREE)
     {
       /* we need to protect with lock. fall through */
     }
@@ -9400,13 +9412,21 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   file_header_sanity_check (fhead);
 
   /* read class OID */
-  if (item->type == FILE_BTREE)
+  if ((FILE_TYPE) item->type == FILE_BTREE)
     {
       *class_oid = fhead->descriptor.btree.class_oid;
     }
   else
     {
       *class_oid = fhead->descriptor.heap.class_oid;
+    }
+  pgbuf_unfix (thread_p, page_fhead);
+
+  if (OID_ISNULL (class_oid))
+    {
+      /* this must be boot_Db_parm file; cannot be deleted so we don't need lock. */
+      *stop = true;
+      return NO_ERROR;
     }
 
   /* try conditional lock */
@@ -9421,7 +9441,6 @@ flre_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       /* stop at this file */
       *stop = true;
     }
-  pgbuf_unfix (thread_p, page_fhead);
 
   /* finished */
   return NO_ERROR;
@@ -9475,6 +9494,7 @@ flre_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
     {
       /* now that we fixed tracker header page, we no longer need lock protection. */
       lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, SCH_S_LOCK, true);
+      OID_SET_NULL (class_oid);
     }
 
   extdata = (FILE_EXTENSIBLE_DATA *) page_track_head;
@@ -9552,10 +9572,10 @@ flre_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
 
   /* end of tracker */
   VFID_SET_NULL (vfid);
+  assert (OID_ISNULL (class_oid));
   assert (error_code == NO_ERROR);
 
 exit:
-  assert (OID_ISNULL (class_oid));
   if (page_track_other != NULL)
     {
       pgbuf_unfix (thread_p, page_track_other);
@@ -9658,7 +9678,7 @@ flre_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
   file_header_sanity_check (fhead);
 
   fprintf (fp, "%4d|%4d %5d  %-22s ", item->volid, item->fileid, fhead->n_page_user, file_type_to_string (fhead->type));
-  if (item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
+  if ((FILE_TYPE) item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
     {
       fprintf (fp, "Marked as deleted... ");
     }
@@ -9714,7 +9734,7 @@ flre_tracker_item_dump_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FIL
   int error_code = NO_ERROR;
 
   item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
-  if (item->type != FILE_HEAP && item->type != FILE_HEAP_REUSE_SLOTS)
+  if ((FILE_TYPE) item->type != FILE_HEAP && (FILE_TYPE) item->type != FILE_HEAP_REUSE_SLOTS)
     {
       return NO_ERROR;
     }
@@ -9780,7 +9800,7 @@ flre_tracker_item_dump_heap_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
   int error_code = NO_ERROR;
 
   item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
-  if (item->type != FILE_HEAP && item->type != FILE_HEAP_REUSE_SLOTS)
+  if ((FILE_TYPE) item->type != FILE_HEAP && (FILE_TYPE) item->type != FILE_HEAP_REUSE_SLOTS)
     {
       return NO_ERROR;
     }
@@ -9834,13 +9854,12 @@ flre_tracker_item_dump_btree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of
 {
   FLRE_TRACK_ITEM *item;
   BTID btid;
-  VPID vpid_btree_header;
   FILE *fp = (FILE *) args;
 
   int error_code = NO_ERROR;
 
   item = (FLRE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
-  if (item->type != FILE_BTREE)
+  if ((FILE_TYPE) item->type != FILE_BTREE)
     {
       return NO_ERROR;
     }
@@ -9848,10 +9867,12 @@ flre_tracker_item_dump_btree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of
   /* get btid */
   btid.vfid.volid = item->volid;
   btid.vfid.fileid = item->fileid;
-  btree_get_root_page (thread_p, &btid, &vpid_btree_header);
-  assert (btid.vfid.volid == vpid_btree_header.volid);
-  btid.root_pageid = vpid_btree_header.pageid;
-
+  error_code = btree_get_btid_from_file (thread_p, &btid.vfid, &btid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
   /* dump */
   error_code = btree_dump_capacity (thread_p, fp, &btid);
   if (error_code != NO_ERROR)
@@ -9886,13 +9907,24 @@ DISK_ISVALID
 flre_tracker_check (THREAD_ENTRY * thread_p)
 {
   DISK_ISVALID allvalid = DISK_VALID;
+  DISK_ISVALID valid = DISK_VALID;
   int error_code = NO_ERROR;
 
 #if defined (SERVER_MODE)
-
-  DISK_ISVALID valid = DISK_VALID;
   VFID vfid = VFID_INITIALIZER;
   OID class_oid = OID_INITIALIZER;
+
+  valid = file_table_check (thread_p, &flre_Tracker_vfid, NULL);
+  if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+      return DISK_ERROR;
+    }
+  else if (valid == DISK_INVALID)
+    {
+      assert_release (false);
+      allvalid = DISK_INVALID;
+    }
 
   while (true)
     {
@@ -9911,6 +9943,7 @@ flre_tracker_check (THREAD_ENTRY * thread_p)
       valid = file_table_check (thread_p, &vfid, NULL);
       if (valid == DISK_INVALID)
 	{
+	  assert (false);
 	  allvalid = DISK_INVALID;
 	}
       else if (valid == DISK_ERROR)
@@ -9935,23 +9968,46 @@ flre_tracker_check (THREAD_ENTRY * thread_p)
       return DISK_ERROR;
     }
 
+  valid = file_table_check (thread_p, &flre_Tracker_vfid, disk_map_clone);
+  if (valid == DISK_INVALID)
+    {
+      assert_release (false);
+      allvalid = DISK_INVALID;
+      /* continue checks */
+    }
+  else if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+      return DISK_ERROR;
+    }
+
   error_code = flre_tracker_map (thread_p, PGBUF_LATCH_READ, flre_tracker_item_check, disk_map_clone);
   if (error_code == ER_FAILED)
     {
       assert_release (false);
       disk_map_clone_free (&disk_map_clone);
-      return DISK_INVALID;
+      allvalid = DISK_INVALID;
     }
   else if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       disk_map_clone_free (&disk_map_clone);
-      return DISK_ERROR;
+      return allvalid == DISK_VALID ? DISK_ERROR : allvalid;
     }
 
   /* check all sectors have been cleared */
-  allvalid = disk_map_clone_check_leaks (disk_map_clone);
-  assert (allvalid != DISK_INVALID);
+  valid = disk_map_clone_check_leaks (disk_map_clone);
+  if (valid == DISK_INVALID)
+    {
+      assert_release (false);
+      allvalid = DISK_INVALID;
+    }
+  else if (valid == DISK_ERROR)
+    {
+      ASSERT_ERROR ();
+      allvalid = allvalid == DISK_VALID ? DISK_ERROR : allvalid;
+    }
+
   disk_map_clone_free (&disk_map_clone);
 #endif /* SA_MODE */
 

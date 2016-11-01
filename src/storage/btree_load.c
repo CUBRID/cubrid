@@ -792,7 +792,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       ASSERT_ERROR ();
       goto error;
     }
-  btree_get_root_page (thread_p, btid, &root_vpid);
+  btree_get_root_vpid_from_btid (thread_p, btid, &root_vpid);
 
     /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
@@ -1778,7 +1778,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
     }
 
   /* move current ROOT page content to the first page allocated */
-  btree_get_root_page (thread_p, load_args->btid->sys_btid, &cur_nleafpgid);
+  btree_get_root_vpid_from_btid (thread_p, load_args->btid->sys_btid, &cur_nleafpgid);
   next_pageptr = pgbuf_fix (thread_p, &cur_nleafpgid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (next_pageptr == NULL)
     {

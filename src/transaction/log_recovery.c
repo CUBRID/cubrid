@@ -1449,6 +1449,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       break;
 
     case LOG_SYSOP_END_LOGICAL_UNDO:
+    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
       /* can be used in all states, but cannot have postpones. so it doesn't commit_start_postpone.
        * note: if we add postpones to logical undo, it will have to save previous state... maybe it is a good idea to
        *       do this for all types of end system op. */
@@ -4131,6 +4132,22 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      /* will jump to parent LSA. save it now before advancing to undo data */
 		      LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 
+		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
+		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
+					  undo_unzip_ptr);
+		    }
+		  else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+		    {
+		      /* execute undo */
+		      rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+		      rcv.length = sysop_end->mvcc_undo.undo.length;
+		      rcv.offset = sysop_end->mvcc_undo.undo.data.offset;
+		      rcv_vpid.volid = sysop_end->mvcc_undo.undo.data.volid;
+		      rcv_vpid.pageid = sysop_end->mvcc_undo.undo.data.pageid;
+		      rcv.mvcc_id = sysop_end->mvcc_undo.mvccid;
+
+		      /* will jump to parent LSA. save it now before advancing to undo data */
+		      LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
 					  undo_unzip_ptr);

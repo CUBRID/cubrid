@@ -1434,6 +1434,7 @@ enum log_sysop_end_type
   LOG_SYSOP_END_COMMIT,		/* permanent changes */
   LOG_SYSOP_END_ABORT,		/* aborted system op */
   LOG_SYSOP_END_LOGICAL_UNDO,	/* logical undo */
+  LOG_SYSOP_END_LOGICAL_MVCC_UNDO,	/* logical mvcc undo */
   LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
   LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
 };
@@ -1441,6 +1442,7 @@ enum log_sysop_end_type
   assert ((type) == LOG_SYSOP_END_COMMIT \
           || (type) == LOG_SYSOP_END_ABORT \
           || (type) == LOG_SYSOP_END_LOGICAL_UNDO \
+          || (type) == LOG_SYSOP_END_LOGICAL_MVCC_UNDO \
           || (type) == LOG_SYSOP_END_LOGICAL_COMPENSATE \
           || (type) == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
 
@@ -1454,6 +1456,7 @@ struct log_rec_sysop_end
   union				/* other info based on type */
   {
     LOG_REC_UNDO undo;		/* undo data for logical undo */
+    LOG_REC_MVCC_UNDO mvcc_undo;	/* undo data for logical undo of MVCC operation */
     LOG_LSA compensate_lsa;	/* compensate lsa for logical compensate */
     struct
     {

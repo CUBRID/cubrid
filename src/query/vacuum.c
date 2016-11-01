@@ -3667,6 +3667,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_UNDOREDO *undoredo = NULL;
   LOG_REC_UNDO *undo = NULL;
+  LOG_REC_SYSOP_END *sysop_end = NULL;
   int ulength;
   char *new_undo_data_buffer = NULL;
   bool is_zipped = false;
@@ -3735,6 +3736,35 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       VFID_COPY (&vacuum_info->vfid, &mvcc_undoredo->vacuum_info.vfid);
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
+    }
+  else if (log_rec_type == LOG_SYSOP_END)
+    {
+      /* Get system op mvcc undo information */
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
+      sysop_end = (LOG_REC_SYSOP_END *) (log_page_p->area + log_lsa_p->offset);
+      if (sysop_end->type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+	{
+	  assert (false);
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_LOGGING, "invalid record type!\n");
+	  return ER_FAILED;
+	}
+
+      mvcc_undo = &sysop_end->mvcc_undo;
+
+      /* Get MVCCID */
+      *mvccid = mvcc_undo->mvccid;
+
+      /* Get record log data */
+      *log_record_data = mvcc_undo->undo.data;
+
+      /* Get undo data length */
+      ulength = mvcc_undo->undo.length;
+
+      /* Copy LSA for next MVCC operation */
+      LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa);
+      VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
     }
   else
     {
