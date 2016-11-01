@@ -5573,7 +5573,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
   assert (k == all_country_count);
 
-  /* Add the new timezones */
+  /* Add the new timezones to the end */
   timezones = tzd->timezones;
   start_timezones = old_tzd.timezone_count;
   start_names = old_tzd.name_count;

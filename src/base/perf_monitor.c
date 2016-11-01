@@ -153,6 +153,8 @@ static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 
 static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char *s,
 								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
+static void print_timer_to_file (FILE * stream, int stat_index, UINT64* stats_ptr, int offset);
+static void print_timer_to_buffer (char **s, int stat_index, UINT64* stats_ptr, int offset, int* remained_size);
 
 PSTAT_GLOBAL pstat_Global;
 
@@ -1928,7 +1930,10 @@ perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
 		  break;
 		case PSTAT_COUNTER_TIMER_VALUE:
 		  copied = stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)];
+		  stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)] = 0;
 		  stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)] = 0;
+		  stats_ptr[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)] = 0;
+		  stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)] = 0;
 		  break;
 		case PSTAT_COMPLEX_VALUE:
 		default:
@@ -2251,9 +2256,11 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 		}
 	      else
 		{
-		  ret =
+		  /*ret =
 		    snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			      (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
+			      (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);*/
+		  print_timer_to_buffer (&p, i, stats_ptr, offset, &remained_size);
+		  ret = 0;
 		}
 	    }
 	  else
@@ -2347,8 +2354,9 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 		}
 	      else
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
+		  /*fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);*/
+		  print_timer_to_file (stream, i, stats_ptr, offset);
 		}
 	    }
 	  else
@@ -4488,4 +4496,66 @@ perfmon_get_peek_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
   stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
+}
+
+/*
+ * print_timer_to_file - Print in a file the statistic values for a timer type statistic
+ *
+ * stream (in/out): input file
+ * stat_index (in): statistic index
+ * stats_ptr (in): statistic values array
+ *  offset (in): offset in the statistics array
+ *
+ * return: void
+ *
+ */
+static void print_timer_to_file (FILE * stream, int stat_index, UINT64* stats_ptr, int offset) 
+{
+  fprintf (stream, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
+  fprintf (stream, "The value for timer count value is: %10llu\n",
+	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
+  fprintf (stream, "The value for timer total time value is: %10llu\n",
+	  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
+  fprintf (stream, "The value for timer max time value is: %10llu\n",
+	  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)]);
+  fprintf (stream, "The value for timer average time value is: %10llu\n",
+	  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]);
+}
+
+/*
+ * print_timer_to_buffer - Print in a buffer the statistic values for a timer type statistic
+ *
+ * s (in/out): input stream
+ * stat_index (in): statistic index
+ * stats_ptr (in): statistic values array
+ * offset (in): offset in the statistics array
+ * remained_size (in/out): remained size to write in the buffer 
+ *
+ * return: void
+ *
+ *   stats (in): statistics array
+ */
+static void print_timer_to_buffer (char **s, int stat_index, UINT64* stats_ptr, int offset, int* remained_size) 
+{
+  int ret;
+
+  ret = snprintf (*s, *remained_size, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
+  *remained_size -= ret;
+  *s += ret;
+  ret = snprintf (*s, *remained_size, "The value for timer count value is: %10llu\n",
+		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
+  *remained_size -= ret;
+  *s += ret;
+  ret = snprintf (*s, *remained_size, "The value for timer total value is: %10llu\n",
+		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
+  *remained_size -= ret;
+  *s += ret;
+  ret = snprintf (*s, *remained_size, "The value for timer max time value is: %10llu\n",
+		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)]);
+  *remained_size -= ret;
+  *s += ret;
+  ret = snprintf (*s, *remained_size, "The value for timer avg time value is: %10llu\n",
+		 (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]);
+  *remained_size -= ret;
+  *s += ret;
 }
