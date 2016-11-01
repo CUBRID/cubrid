@@ -308,7 +308,6 @@ static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
 
 static int log_is_valid_locator (const char *locator);
 
-static bool log_is_class_being_modified_internal (THREAD_ENTRY * thread_p, const OID * class_oid);
 static void log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg);
 static void log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
 					 void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * class,
@@ -2912,10 +2911,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
       start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
       /* 
-       * Set the LSA on the data page of the corresponding log record for page
-       * operation logging.
-       * Make sure that I should log. Page operational logging is not done for
-       * temporary data of temporary files and volumes
+       * Set the LSA on the data page of the corresponding log record for page operation logging.
+       * Make sure that I should log. Page operational logging is not done for temporary data of temporary files/volumes
        */
       if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
 	{
@@ -3713,6 +3710,7 @@ STATIC_INLINE void
 log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   int r = NO_ERROR;
+
   log_sysop_end_unstack (thread_p, tdes);
 
   if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
@@ -3749,8 +3747,8 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 			 VACUUM_GET_WORKER_STATE (thread_p));
 
 	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
-	   * are not  nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
-	   * records to undo will process all system operations until the first one. Since vacuum workers.master never
+	   * are not nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
+	   * records to undo will process all system operations until the first one. Since vacuum workers/master never
 	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
 	   * system operations will not be linked between them. */
 	  LSA_SET_NULL (&tdes->head_lsa);
@@ -3881,7 +3879,9 @@ void
 log_sysop_commit (THREAD_ENTRY * thread_p)
 {
   LOG_REC_SYSOP_END log_record;
+
   log_record.type = LOG_SYSOP_END_COMMIT;
+
   log_sysop_commit_internal (thread_p, &log_record, 0, NULL);
 }
 
@@ -4096,6 +4096,7 @@ STATIC_INLINE void
 log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
 {
   *tran_index_out = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
@@ -4105,6 +4106,7 @@ log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
     {
       *tdes_out = LOG_FIND_TDES (*tran_index_out);
     }
+
   if (*tdes_out == NULL)
     {
       assert_release (false);
@@ -4134,16 +4136,19 @@ log_check_system_op_is_started (THREAD_ENTRY * thread_p)
     {
       tdes = LOG_FIND_TDES (tran_index);
     }
+
   if (tdes == NULL)
     {
       assert_release (false);
       return false;
     }
+
   if (!LOG_IS_SYSTEM_OP_STARTED (tdes))
     {
       assert_release (false);
       return false;
     }
+
   return true;
 }
 
@@ -4227,18 +4232,16 @@ log_is_tran_in_system_op (THREAD_ENTRY * thread_p)
  *   tdes(in):
  *   addr(in):
  *
- * NOTE: Find if it is safe to skip undo logging for data related to
- *              given file.
- *              Some rcvindex values should never be skipped.
+ * NOTE: Find if it is safe to skip undo logging for data related to given file.
+ *       Some rcvindex values should never be skipped.
  */
 static bool
 log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const LOG_TDES * tdes, LOG_DATA_ADDR * addr)
 {
   /* 
    * Some log record types (rcvindex) should never be skipped.
-   * In the case of LINK_PERM_VOLEXT, the link of a permanent temp
-   * volume must be logged to support media failures.
-   * See also canskip_redo.
+   * In the case of LINK_PERM_VOLEXT, the link of a permanent temp volume must be logged to support media failures.
+   * See also log_can_skip_redo_logging.
    */
   if (LOG_ISUNSAFE_TO_SKIP_RCVINDEX (rcvindex))
     {
@@ -4252,12 +4255,9 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
     }
 
   /* 
-   * Operation level undo can be skipped on temporary pages. For example,
-   * those of temporary files.
-   * No-operational level undo (i.e., logical logging) can be skipped for
-   * temporary files.
+   * Operation level undo can be skipped on temporary pages. For example, those of temporary files.
+   * No-operational level undo (i.e., logical logging) can be skipped for temporary files.
    */
-
   if (addr->pgptr != NULL && pgbuf_is_lsa_temporary (addr->pgptr) == true)
     {
       /* why do we log temporary files */
@@ -4274,7 +4274,7 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
 }
 
 /*
- * log_can_skip_redo_logging - IS IT SAFE TO SKIP REDO LOGGING FOR GIVEN FILE ?
+ * log_can_skip_redo_logging - Is it safe to skip redo logging for given file ?
  *
  * return:
  *
@@ -4282,19 +4282,17 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
  *   ignore_tdes(in):
  *   addr(in): Address (Volume, page, and offset) of data
  *
- * NOTE: Find if it is safe to skip redo logging for data related to
- *              given file. Redo logging can be skip on any temporary page.
- *              For example, pages of temporary files on any volume.
- *              Some rcvindex values should never be skipped.
+ * NOTE: Find if it is safe to skip redo logging for data related to given file. 
+ *       Redo logging can be skip on any temporary page. For example, pages of temporary files on any volume.
+ *       Some rcvindex values should never be skipped.
  */
 static bool
 log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr)
 {
   /* 
    * Some log record types (rcvindex) should never be skipped.
-   * In the case of LINK_PERM_VOLEXT, the link of a permanent temp
-   * volume must be logged to support media failures.
-   * See also canskip_undo.
+   * In the case of LINK_PERM_VOLEXT, the link of a permanent temp volume must be logged to support media failures.
+   * See also log_can_skip_undo_logging.
    */
   if (LOG_ISUNSAFE_TO_SKIP_RCVINDEX (rcvindex))
     {
@@ -4302,8 +4300,7 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
     }
 
   /* 
-   * Operation level redo can be skipped on temporary pages. For example,
-   * those of temporary files
+   * Operation level redo can be skipped on temporary pages. For example, those of temporary files
    */
   if (addr->pgptr != NULL && pgbuf_is_lsa_temporary (addr->pgptr) == true)
     {
@@ -4323,9 +4320,8 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
  *   tdes(in/out): State structure of transaction being committed
  *   start_posplsa(in): Address where the first postpone log record start
  *
- * NOTE: The transaction is declared as committed with postpone actions
- *              The transaction is not fully committed until all postpone
- *              actions are executed.
+ * NOTE: The transaction is declared as committed with postpone actions.
+ *       The transaction is not fully committed until all postpone actions are executed.
  *
  *       The postpone operations are not invoked by this function.
  */
@@ -4518,17 +4514,16 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool i
 }
 
 /*
- * log_append_repl_info_and_commit_log - APPEND REPL LOG ALONG WITH COMMIT LOG.
+ * log_append_repl_info_and_commit_log - append repl log along with commit log.
  *
  * return: none
  *
  *   tdes(in): 
  *   commit_lsa(out): LSA of commit log
  *
- * NOTE: Atomic write of replication log and commit log is crucial for replication
- *       consistencies. When a commit log of others is written in the middle of 
- *       one's replication and commit log, a restart of replication will break 
- *       consistencies of slaves/replicas.
+ * NOTE: Atomic write of replication log and commit log is crucial for replication consistencies. 
+ *       When a commit log of others is written in the middle of one's replication and commit log, 
+ *       a restart of replication will break consistencies of slaves/replicas.
  */
 static void
 log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
@@ -4544,8 +4539,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 }
 
 /*
- * log_append_donetime_internal - APPEND COMMIT/ABORT LOG RECORD ALONG WITH TIME OF
- *                      TERMINATION.
+ * log_append_donetime_internal - APPEND COMMIT/ABORT LOG RECORD ALONG WITH TIME OF TERMINATION.
  *
  * return: none
  *
@@ -4554,8 +4548,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
  *   iscommitted(in): Is transaction been finished as committed?
  *   with_lock(in): whether it has mutex or not.
  *
- * NOTE: An append commit or abort record is recorded along with the
- *              current time as the termination time of the transaction.
+ * NOTE: a commit or abort record is recorded along with the current time as the termination time of the transaction.
  */
 static void
 log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa, LOG_RECTYPE iscommitted,
@@ -4591,7 +4584,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 /*
- * log_change_tran_as_completed - CHANGE THE STATE OF A TRANSACTION AS COMMITTED/ABORTED
+ * log_change_tran_as_completed - change the state of a transaction as committed/aborted
  *
  * return: nothing
  *
@@ -4633,7 +4626,7 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
 }
 
 /*
- * log_append_commit_log - APPEND COMMIT LOG RECORD ALONG WITH TIME OF TERMINATION.
+ * log_append_commit_log - append commit log record along with time of termination.
  *
  * return: nothing
  *
@@ -4647,8 +4640,7 @@ log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commi
 }
 
 /*
- * log_append_commit_log_with_lock - APPEND COMMIT LOG RECORD ALONG WITH TIME OF
- *                      TERMINATION WITH PRIOR LSA MUTEX.
+ * log_append_commit_log_with_lock - append commit log record along with time of termination with prior lsa mutex.
  *
  * return: none
  *
@@ -4662,7 +4654,7 @@ log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 }
 
 /*
- * log_append_abort_log - APPEND ABORT LOG RECORD ALONG WITH TIME OF TERMINATION 
+ * log_append_abort_log - append abort log record along with time of termination 
  *
  * return: nothing
  *
@@ -4762,15 +4754,14 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, 
 }
 
 /*
- * log_is_class_being_modified () - check if a class is being modified by
- *				    the transaction which is executed by the
+ * log_is_class_being_modified () - check if a class is being modified by the transaction which is executed by the
  *				    thread parameter
  * return : true if the class is being modified, false otherwise
  * thread_p (in)  : thread entry
  * class_oid (in) : class identifier
  */
-static bool
-log_is_class_being_modified_internal (THREAD_ENTRY * thread_p, const OID * class_oid)
+bool
+log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   LOG_TDES *tdes;
   int tran_index;
@@ -4801,20 +4792,6 @@ log_is_class_being_modified_internal (THREAD_ENTRY * thread_p, const OID * class
 }
 
 /*
- * log_is_class_being_modified () - check if a class is being modified by
- *				    the transaction which is executed by the
- *				    thread parameter
- * return : true if the class is being modified, false otherwise
- * thread_p (in)  : thread entry
- * class_oid (in) : class identifier
- */
-bool
-log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
-{
-  return log_is_class_being_modified_internal (thread_p, class_oid);
-}
-
-/*
  * log_cleanup_modified_class -
  *
  * return:
@@ -4823,8 +4800,7 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
  *   arg(in):
  *
  * NOTE: Function for LOG_TDES.modified_class_list
- *       This will be used to decache the class representations and XASLs
- *       when a transaction is finished.
+ *       This will be used to decache the class representations and XASLs when a transaction is finished.
  */
 static void
 log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg)
@@ -4858,8 +4834,7 @@ extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, L
  *   arg(in): optional
  *
  * NOTE: Function for LOG_TDES.modified_class_list
- *       This will be used to traverse a modified class list and to do
- *       something on each entry.
+ *       This will be used to traverse a modified class list and to do something on each entry.
  */
 static void
 log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
@@ -5247,8 +5222,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
 									 "LOB_TRANSIENT_DELETED"
 									 : ((entry->top->state ==
 									     LOB_PERMANENT_CREATED) ?
-									    "LOB_PERMANENT_CREATED" : (entry->top->
-												       state ==
+									    "LOB_PERMANENT_CREATED" : (entry->
+												       top->state ==
 												       LOB_PERMANENT_DELETED)
 									    ? "LOB_PERMANENT_DELETED" : "LOB_UNKNOWN")),
 		    entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
@@ -5353,8 +5328,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
  * NOTE:
  *
  * Ordering relation of lob locator entry is defined as (key_hash, key).
- * Because it is very UNLIKELY in normal case that two different locators
- * have same hash value, this compare function is very efficient.
+ * Because it is very UNLIKELY in normal case that two different locators have same hash value, this compare function 
+ * is very efficient.
  *
  */
 static int
@@ -5386,16 +5361,11 @@ RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
  *                    true  = retain locks
  *   is_local_tran(in): Is a local transaction?
  *
- * NOTE:  Commit the current transaction locally. If there are postpone
- *	  actions, the transaction is declared committed_with_postpone_actions
- *	  by logging a log record indicating this state. Then, the postpone
- *        actions are executed.
- *	  When the transaction is declared as fully committed, the locks
- *	  acquired by the transaction are released and query cursors are
- *	  closed. A committed transaction is not subject to deadlock when
- *	  postpone operations are executed.
- *	  The function returns the state of the transaction
- *	  (i.e. notify if the transaction is completely committed or not).
+ * NOTE:  Commit the current transaction locally. If there are postpone actions, the transaction is declared 
+ *        committed_with_postpone_actions by logging a log record indicating this state. Then, the postpone actions 
+ *        are executed. When the transaction is declared as fully committed, the locks acquired by the transaction 
+ *        are released. A committed transaction is not subject to deadlock when postpone operations are executed.
+ *	  The function returns the state of the transaction(i.e. whether it is completely committed or not).
  */
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
@@ -5450,7 +5420,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
 	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction 
-	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
+	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
@@ -5503,7 +5473,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 }
 
 /*
- * log_abort_local - PERFORM THE LOCAL ABORT OPERATIONS OF A TRANSACTION
+ * log_abort_local - Perform the local abort operations of a transaction
  *
  * return: state of abort operation
  *
@@ -5511,8 +5481,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
  *   is_local_tran(in): Is a local transaction? (It is not used at this point)
  *
  * NOTE: Abort the current transaction locally.
- *	 When the transaction is declared as fully aborted, the locks acquired
- *       by the transaction are released and query cursors are closed.
+ *	 When the transaction is declared as fully aborted, the locks acquired by the transaction are released and 
+ *	 query cursors are closed.
  *       This function is used for both local and coordinator transactions.
  */
 TRAN_STATE
@@ -5666,8 +5636,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
   else
     {
       /* 
-       * This is a local transaction or is a participant of a distributed
-       * transaction
+       * This is a local transaction or is a participant of a distributed transaction
        */
       state = log_commit_local (thread_p, tdes, retain_lock, true);
       state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
@@ -5789,8 +5758,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
   else
     {
       /* 
-       * This is a local transaction or is a participant of a distributed
-       * transaction.
+       * This is a local transaction or is a participant of a distributed transaction.
        * Perform the server rollback first.
        */
       state = log_abort_local (thread_p, tdes, true);
@@ -8356,7 +8324,9 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* nothing to do */
       return;
     }
+
   assert (tdes->topops.last < 0);
+
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
@@ -8379,6 +8349,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
       /* nothing to postpone */
       return;
     }
+
   assert (sysop_end != NULL);
   assert (sysop_end->type != LOG_SYSOP_END_ABORT && sysop_end->type != LOG_SYSOP_END_LOGICAL_UNDO);
   /* we cannot have TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE inside TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE */
@@ -8402,17 +8373,15 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
 }
 
 /*
- * log_do_postpone - Scan forward doing postpone operations of given
- *                  transaction
+ * log_do_postpone - Scan forward doing postpone operations of given transaction
  *
  * return: nothing
  *
  *   tdes(in): Transaction descriptor
  *   start_posplsa(in): Where to start looking for postpone records
  *
- * NOTE: Scan the log forward doing postpone operations of given
- *              transaction. This function is invoked after a transaction is
- *              declared committed with postpone actions.
+ * NOTE: Scan the log forward doing postpone operations of given transaction. 
+ *       This function is invoked after a transaction is declared committed with postpone actions.
  */
 void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
@@ -8490,6 +8459,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
       while (!LSA_ISNULL (&forward_lsa) && !isdone)
 	{
 	  LOG_LSA fetch_lsa;
+
 	  /* Fetch the page where the postpone LSA record is located */
 	  LSA_COPY (&log_lsa, &forward_lsa);
 	  fetch_lsa.pageid = log_lsa.pageid;
@@ -8508,11 +8478,11 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		  isdone = true;
 		  break;
 		}
+
 	      /* 
-	       * If an offset is missing, it is because we archive an incomplete
-	       * log record. This log_record was completed later.
-	       * Thus, we have to find the offset by searching
-	       * for the next log_record in the page.
+	       * If an offset is missing, it is because we archive an incomplete log record.
+	       * This log_record was completed later.
+	       * Thus, we have to find the offset by searching for the next log_record in the page.
 	       */
 	      if (forward_lsa.offset == NULL_OFFSET)
 		{
@@ -8579,6 +8549,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 			{
 			  goto end;
 			}
+
+		      /* TODO: consider to add FI here */
 		      break;
 
 		    case LOG_WILL_COMMIT:
@@ -8632,8 +8604,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		}
 
 	      /* 
-	       * We can fix the lsa.pageid in the case of log_records without
-	       * forward address at this moment.
+	       * We can fix the lsa.pageid in the case of log_records without forward address at this moment.
 	       */
 
 	      if (forward_lsa.offset == NULL_OFFSET && forward_lsa.pageid != NULL_PAGEID
@@ -8675,10 +8646,8 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 
   /* GET AFTER DATA */
 
-  /* 
-   * If data is contained in only one buffer, pass pointer
-   * directly. Otherwise, allocate a contiguous area, copy the
-   * data and pass this area. At the end deallocate the area
+  /* If data is contained in only one buffer, pass pointer directly. Otherwise, allocate a contiguous area, copy
+   * data and pass this area. At the end deallocate the area.
    */
   if (log_lsa->offset + redo.length < (int) LOGAREA_SIZE)
     {
@@ -8752,8 +8721,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
       if (rcv.pgptr == NULL)
 	{
 	  /* 
-	   * Unable to fetch page of volume... May need media recovery
-	   * on such page
+	   * Unable to fetch page of volume... May need media recovery on such page
 	   */
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
@@ -8762,14 +8730,12 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 	}
     }
 
-  rvaddr.offset = rcv.offset;
-  rvaddr.pgptr = rcv.pgptr;
-
   /* Now call the REDO recovery function */
 
   if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
     {
       LSA_COPY (&rcv.reference_lsa, log_lsa);
+
       error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
       assert (error_code == NO_ERROR);
     }
@@ -8777,19 +8743,20 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
     {
       /* Logical postpone. Use a system operation and commit with run postpone */
       log_sysop_start (thread_p);
+
       error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
       assert (error_code == NO_ERROR);
+
       log_sysop_end_logical_run_postpone (thread_p, log_lsa);
     }
   else
     {
-      /* 
-       * Write the corresponding run postpone record for
-       * the postpone action
-       */
+      /* Write the corresponding run postpone record for the postpone action */
+      rvaddr.offset = rcv.offset;
+      rvaddr.pgptr = rcv.pgptr;
+
       log_append_run_postpone (thread_p, rcvindex, &rvaddr, &rcv_vpid, rcv.length, rcv.data, log_lsa);
 
-      /* Now call the REDO recovery function */
       error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
       assert (error_code == NO_ERROR);
     }
@@ -8809,8 +8776,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
  *
  *   end_lsa(in/out): Address of end of log
  *
- * NOTE: Find the end of the log (i.e., the end of the active portion
- *              of the log).
+ * NOTE: Find the end of the log (i.e., the end of the active portion of the log).
  */
 static void
 log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)

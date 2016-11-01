@@ -979,7 +979,7 @@ file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * file_header_dealloc () - Update stats in file header for page allocation.
+ * file_header_alloc () - Update stats in file header for page allocation.
  *
  * return	   : Void
  * fhead (in)      : File header
@@ -1003,10 +1003,12 @@ file_header_alloc (FLRE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool was_emp
     {
       fhead->n_page_ftab++;
     }
+
   if (was_empty)
     {
       fhead->n_sector_empty--;
     }
+
   if (is_full)
     {
       fhead->n_sector_partial--;
@@ -1039,10 +1041,12 @@ file_header_dealloc (FLRE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool is_em
     {
       fhead->n_page_ftab--;
     }
+
   if (is_empty)
     {
       fhead->n_sector_empty++;
     }
+
   if (was_full)
     {
       fhead->n_sector_partial++;
@@ -1080,8 +1084,7 @@ file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	    "after %s, was_empty %s, is_full %s \n" FILE_HEAD_ALLOC_MSG,
 	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead),
 	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead),
-	    FILE_ALLOC_TYPE_STRING (is_ftab_page ? FILE_ALLOC_TABLE_PAGE :
-				    FILE_ALLOC_USER_PAGE),
+	    FILE_ALLOC_TYPE_STRING (is_ftab_page ? FILE_ALLOC_TABLE_PAGE : FILE_ALLOC_USER_PAGE),
 	    was_empty ? "true" : "false", is_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
@@ -1119,11 +1122,11 @@ file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	    "after de%s, is_empty %s, was_full %s \n" FILE_HEAD_ALLOC_MSG,
 	    VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_VPID_AS_ARGS (page_fhead),
 	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead),
-	    FILE_ALLOC_TYPE_STRING (is_ftab_page ? FILE_ALLOC_TABLE_PAGE :
-				    FILE_ALLOC_USER_PAGE),
+	    FILE_ALLOC_TYPE_STRING (is_ftab_page ? FILE_ALLOC_TABLE_PAGE : FILE_ALLOC_USER_PAGE),
 	    is_empty ? "true" : "false", was_full ? "true" : "false", FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+
   return NO_ERROR;
 }
 
@@ -3398,6 +3401,7 @@ flre_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	    {
 	      vpid_ftab.pageid++;
 	    }
+
 	  if (VPID_EQ (&vpid_fhead, &vpid_ftab))
 	    {
 	      /* Go to next page. This can't be last page in sector, because the sector bitmap would have been full */
@@ -4509,8 +4513,8 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   /* log allocation */
   log_append_undoredo_data2 (thread_p, RVFL_PARTSECT_ALLOC, NULL, page_fhead,
 			     (PGLENGTH) ((char *) partsect - page_fhead),
-			     sizeof (offset_to_alloc_bit),
-			     sizeof (offset_to_alloc_bit), &offset_to_alloc_bit, &offset_to_alloc_bit);
+			     sizeof (offset_to_alloc_bit), sizeof (offset_to_alloc_bit),
+			     &offset_to_alloc_bit, &offset_to_alloc_bit);
 
   file_log ("file_perm_alloc",
 	    "allocated page %d|%d in file %d|%d page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "

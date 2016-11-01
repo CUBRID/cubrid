@@ -1535,6 +1535,7 @@ xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOL
 
       space_info->n_max_sects = volheader->nsect_max;
       space_info->n_total_sects = volheader->nsect_total;
+
       pgbuf_unfix_and_init (thread_p, page_volheader);
 
       space_info->n_free_sects = disk_Cache->vols[volid].nsect_free;
