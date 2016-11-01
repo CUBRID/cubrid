@@ -7037,8 +7037,9 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   if (repack_with_oor)
     {
       *copyarea =
-	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, NULL, &new_recdes, -1, &oor_context,
-						 LOB_FLAG_INCLUDE_LOB);
+	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info,
+						 LC_IS_FLUSH_UPDATE (obj->operation) ? old_recdes : NULL, &new_recdes,
+						 -1, &oor_context, LOB_FLAG_INCLUDE_LOB);
       if (*copyarea == NULL)
 	{
 	  error_code = ER_FAILED;

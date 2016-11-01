@@ -1165,6 +1165,8 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
 {
   assert (((LOG_RCV *) rcv)->data != NULL);
 
+  _er_log_debug (ARG_FILE_LINE, "elo_rv_delete_elo: %s", ((LOG_RCV *) rcv)->data);
+
   es_delete_file (((LOG_RCV *) rcv)->data);
 
   return NO_ERROR;
