@@ -1005,6 +1005,14 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL,
+   NULL},
+
+  {RVREPL_OOR_UPDATE,
+   "RVREPL_OOR_UPDATE",
+   /* TODO[arnia] : undo redo functions */
+   NULL,
+   NULL,
+   NULL,
    NULL}
 };
 

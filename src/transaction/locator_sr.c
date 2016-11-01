@@ -6886,6 +6886,10 @@ static int
 locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, RECDES * old_recdes, RECDES * recdes,
 			    DB_VALUE * key_value, HEAP_SCANCACHE * force_scancache, LC_COPYAREA **copyarea)
 {
+#define IS_OOR_REPLICATION_OP(op) \
+  ((op) == LC_FLUSH_INSERT || (op) == LC_FLUSH_INSERT_PRUNE || (op) == LC_FLUSH_INSERT_PRUNE_VERIFY \
+   || (op) == LC_FLUSH_UPDATE || (op) == LC_FLUSH_UPDATE_PRUNE || (op) == LC_FLUSH_UPDATE_PRUNE_VERIFY)
+
   int error_code = NO_ERROR;
   int last_repr_id = -1;
   int old_chn = -1;
@@ -6975,7 +6979,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	}
     }
 
-  if (obj->operation == LC_FLUSH_DELETE)
+  if (!IS_OOR_REPLICATION_OP (obj->operation))
     {
       return error_code;
     }
@@ -7052,6 +7056,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   heap_free_oor_context (thread_p, &oor_context);
 
   return NO_ERROR;
+
+#undef IS_OOR_REPLICATION_OP
 }
 
 /*
@@ -7765,6 +7771,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       if (oor_context.oor_atts->att_cnt > 0 &&
 	  !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
+	  /* TODO[arnia] : add flag to avoid deletion of old LOB files (already deleted by previous call of
+	   * locator_allocate_copy_area_by_attr_info */
 	   copyarea_expanded_oor =
 	     locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &oor_context.repl_record, -1,
 						      NULL, LOB_FLAG_EXCLUDE_LOB);

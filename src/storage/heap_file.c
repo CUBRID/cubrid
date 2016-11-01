@@ -21012,7 +21012,7 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 }
 
 /*
- * heap_log_insert_physical_oor () - add logging information for physical insertion
+ * heap_log_replication_oor () - add logging information for physical OOR operation (insert or update)
  *   thread_p(in): thread entry
  *   page_p(in): page where insert was performed
  *   vfid_p(in): virtual file id
@@ -21020,7 +21020,8 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
  *   recdes_p(in): record descriptor of inserted record
  */
 static void
-heap_log_insert_physical_oor (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p)
+heap_log_replication_oor (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, LOG_RCVINDEX rcvindex,
+			  RECDES * recdes_p)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -21029,7 +21030,7 @@ heap_log_insert_physical_oor (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * v
   log_addr.offset = oid_p->slotid;
   log_addr.pgptr = page_p;
 
-  log_append_redo_recdes (thread_p, RVREPL_OOR_INSERT, &log_addr, recdes_p);
+  log_append_redo_recdes (thread_p, rcvindex, &log_addr, recdes_p);
 }
 
 /*
@@ -22765,6 +22766,15 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* log home update */
   heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 			    &context->home_recdes, home_page_updated_recdes_p, undo_rcvindex);
+
+  if (context->oor_context_p != NULL
+      && context->oor_context_p->repl_record.data != NULL)
+    {
+      /* log a replication update  */
+      heap_log_replication_oor (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
+				&context->res_oid, RVREPL_OOR_UPDATE, &context->oor_context_p->repl_record);
+    }
+
   LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -23121,8 +23131,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (context->oor_context_p != NULL
       && context->oor_context_p->repl_record.data != NULL)
     {
-      heap_log_insert_physical_oor (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
-				    &context->res_oid, &context->oor_context_p->repl_record);
+      heap_log_replication_oor (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
+				RVREPL_OOR_INSERT, &context->oor_context_p->repl_record);
     }
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
