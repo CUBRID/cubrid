@@ -110,6 +110,10 @@ extern void log_append_redo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex
 				  const void *data);
 extern void log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, PAGE_PTR pgptr,
 				   PGLENGTH offset, int length, const void *data);
+extern int log_create_log_node_from_undoredo_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+						   LOG_DATA_ADDR * addr, int undo_length, int redo_length,
+						   const void *undo_data, const void *redo_data,
+						   LOG_PRIOR_NODE ** node);
 extern int log_create_log_node_from_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
 						     LOG_DATA_ADDR * addr, int num_undo_crumbs, int num_redo_crumbs,
 						     const LOG_CRUMB * undo_crumbs, const LOG_CRUMB * redo_crumbs,

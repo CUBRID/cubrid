@@ -367,11 +367,16 @@ static int logpb_add_archive_page_info (THREAD_ENTRY * thread_p, int arv_num, LO
 static int logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p, LOG_PAGEID page_id);
 static LOG_ZIP *logpb_get_zip_undo (THREAD_ENTRY * thread_p);
 static LOG_ZIP *logpb_get_zip_redo (THREAD_ENTRY * thread_p);
-STATIC_INLINE void logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_ucrumbs,
-				       const LOG_CRUMB * ucrumbs, int ulength, int num_rcrumbs,
-				       const LOG_CRUMB * rcrumbs, int rlength, LOG_ZIP * zip_undo, LOG_ZIP * zip_redo,
-				       bool * is_undo_zip, bool * is_redo_zip, bool * is_diff_log)
-  __attribute__ ((ALWAYS_INLINE));
+static void logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_ucrumbs,
+				const LOG_CRUMB * ucrumbs, int ulength, int num_rcrumbs,
+				const LOG_CRUMB * rcrumbs, int rlength, LOG_ZIP * zip_undo, LOG_ZIP * zip_redo,
+				bool * is_undo_zip, bool * is_redo_zip, bool * is_diff_log);
+STATIC_INLINE int prior_lsa_update_undoredo_data_from_crumbs_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+								       LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr,
+								       int num_undo_crumbs, int num_redo_crumbs,
+								       LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs,
+								       int ulength, int rlength, bool skip_undo,
+								       bool skip_redo) __attribute__ ((ALWAYS_INLINE));
 static char *logpb_get_data_ptr (THREAD_ENTRY * thread_p);
 static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 
@@ -2814,7 +2819,7 @@ prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node, int num_crumbs, const
  *   is_redo_zip(out): true, if is redo compressed
  *   is_diff_log(out): true, if is diff log - redo data XORed with undo data
  */
-STATIC_INLINE void
+static void
 logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_ucrumbs, const LOG_CRUMB * ucrumbs,
 		    int ulength, int num_rcrumbs, const LOG_CRUMB * rcrumbs, int rlength,
 		    LOG_ZIP * zip_undo, LOG_ZIP * zip_redo, bool * is_undo_zip, bool * is_redo_zip, bool * is_diff_log)
@@ -2910,40 +2915,51 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_u
     }
 }
 
+
 /*
- * prior_lsa_update_undoredo_data () - Update undoredo data of previous generated log prior node.
+ * prior_lsa_update_undoredo_data_from_crumbs_internal () - Update undoredo data of previous generated log prior node
+ *							  from crumbs.
  *
  *  return	      : Error code.
  *
- *  thread_p (in)     : Thread entry.
- *  node (in)	      : Log prior node.
- *  rcv_index(in)     : Log recovery index
- *  addr (in)	      : Logged data address.
- *  old_recdes_p (in) : Old recdes
- *  new_recdes_p (in) : New recdes
+ *  thread_p (in)	 : Thread entry.
+ *  node (in)		 : Log prior node.
+ *  rcv_index(in)	 : Log recovery index
+ *  addr (in)		 : Logged data address.
+ *  num_undo_crumbs (in) : The number of undo crumbs
+ *  num_redo_crumbs (in) : The number of redo crumbs
+ *  undo_crumbs(in)	 : The undo crumbs
+ *  redo_crumbs(in)	 : The redo crumbs
+ *  ulength(in)		 : The undo length
+ *  rlength(in)		 : The redo length
  */
 int
-prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
-				LOG_DATA_ADDR * addr, RECDES * old_recdes_p, RECDES * new_recdes_p)
+prior_lsa_update_undoredo_data_from_crumbs_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+						     LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr, int num_undo_crumbs,
+						     int num_redo_crumbs, LOG_CRUMB * undo_crumbs,
+						     LOG_CRUMB * redo_crumbs, int ulength, int rlength,
+						     bool skip_undo, bool skip_redo)
 {
-  LOG_CRUMB crumbs[4];
-  LOG_CRUMB *undo_crumbs = &crumbs[0];
-  LOG_CRUMB *redo_crumbs = &crumbs[2];
   LOG_DATA *log_data_p = NULL;
-  int *data_header_ulength_p = NULL, *data_header_rlength_p = NULL, num_undo_crumbs = 0, num_redo_crumbs = 0;
+  int *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
   LOG_VACUUM_INFO *vacuum_info_p = NULL;
   MVCCID *mvccid_p = NULL;
   VPID *vpid;
   LOG_ZIP *zip_undo = NULL, *zip_redo = NULL;
-  int error_code = NO_ERROR, ulength = 0, rlength = 0;
-  bool is_undo_zip = false, is_redo_zip = false, is_diff = false, has_redo = false, has_undo = false;
+  int error_code = NO_ERROR;
+  bool is_undo_zip = false, is_redo_zip = false, is_diff = false;
+  LOG_RECTYPE new_header_type;
 
   assert (node != NULL);
-  assert (LOG_IS_UNDOREDO_RECORD_TYPE (node->log_header.type));
+  new_header_type = LOG_IS_MVCC_OPERATION (rcv_index) ? LOG_MVCC_UNDOREDO_DATA : LOG_UNDOREDO_DATA;
+  if (node->log_header.type != new_header_type)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INCOMPATIBLE_LOG_TYPE, 2, node->log_header.type, new_header_type);
+      return ER_INCOMPATIBLE_LOG_TYPE;
+    }
 
   LOG_NODE_GET_DATAP (node, log_data_p, data_header_ulength_p, data_header_rlength_p, vacuum_info_p, mvccid_p);
   assert (data_header_ulength_p != NULL);
-
   /* Updates the log node data header first. */
   log_data_p->rcvindex = rcv_index;
   log_data_p->offset = addr->offset;
@@ -2951,30 +2967,14 @@ prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
   log_data_p->pageid = vpid->pageid;
   log_data_p->volid = vpid->volid;
 
-  if (old_recdes_p != NULL)
-    {
-      /* Need to update the undo log. */
-      LOG_GET_CRUMBS_FROM_RECDES (old_recdes_p, 2, undo_crumbs, num_undo_crumbs);
-      ulength = LOG_GET_RECDES_CRUMBS_SIZE (old_recdes_p);
-      has_undo = true;
-      assert (0 <= ulength);
-    }
-
-  if (new_recdes_p != NULL)
-    {
-      /* Need to update the redo log. */
-      LOG_GET_CRUMBS_FROM_RECDES (old_recdes_p, 2, redo_crumbs, num_redo_crumbs);
-      rlength = LOG_GET_RECDES_CRUMBS_SIZE (old_recdes_p);
-      has_redo = true;
-      assert (0 <= rlength);
-    }
-
-  assert (ulength < log_Zip_min_size_to_compress || has_undo == true);
-  assert (rlength < log_Zip_min_size_to_compress || has_redo == true);
+  assert (ulength < log_Zip_min_size_to_compress || undo_crumbs != NULL);
+  assert (rlength < log_Zip_min_size_to_compress || redo_crumbs != NULL);
 
   /* Check whether compression is possible. */
-  if (log_zip_support && (ulength >= log_Zip_min_size_to_compress || rlength >= log_Zip_min_size_to_compress))
+  if (false			/* TO DO - log_zip_support */
+      && (ulength >= log_Zip_min_size_to_compress || rlength >= log_Zip_min_size_to_compress))
     {
+      /* TO DO - skip_redo, skip_undo */
       zip_undo = logpb_get_zip_undo (thread_p);
       zip_redo = logpb_get_zip_redo (thread_p);
       if ((zip_undo != NULL || ulength == 0) && (zip_redo != NULL || rlength == 0))
@@ -2986,36 +2986,183 @@ prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
     }
 
   /* Updates the undo log. */
-  if (is_undo_zip)
+  if (!skip_undo)
     {
-      assert (has_undo && (data_header_ulength_p != NULL));
+      if (is_undo_zip)
+	{
+	  assert (undo_crumbs && (data_header_ulength_p != NULL));
 
-      *data_header_ulength_p = MAKE_ZIP_LEN (zip_undo->data_length);
-      error_code = prior_lsa_copy_undo_data_to_node (node, zip_undo->data_length, (char *) zip_undo->log_data);
-    }
-  else if (has_undo)
-    {
-      assert (data_header_ulength_p != NULL);
+	  *data_header_ulength_p = MAKE_ZIP_LEN (zip_undo->data_length);
+	  error_code = prior_lsa_copy_undo_data_to_node (node, zip_undo->data_length, (char *) zip_undo->log_data);
+	}
+      else if (undo_crumbs)
+	{
+	  assert (data_header_ulength_p != NULL);
 
-      *data_header_ulength_p = ulength;
-      error_code = prior_lsa_copy_undo_crumbs_to_node (node, num_undo_crumbs, undo_crumbs);
+	  *data_header_ulength_p = ulength;
+	  error_code = prior_lsa_copy_undo_crumbs_to_node (node, num_undo_crumbs, undo_crumbs);
+	}
     }
 
   /* Updates the redo log. */
-  if (is_redo_zip)
+  if (!skip_redo)
     {
-      assert (has_redo && (data_header_rlength_p != NULL));
+      if (is_redo_zip)
+	{
+	  assert (redo_crumbs && (data_header_rlength_p != NULL));
 
-      *data_header_rlength_p = MAKE_ZIP_LEN (zip_redo->data_length);
-      error_code = prior_lsa_copy_redo_data_to_node (node, zip_redo->data_length, (char *) zip_redo->log_data);
-    }
-  else if (has_redo)
-    {
-      *data_header_rlength_p = rlength;
-      error_code = prior_lsa_copy_redo_crumbs_to_node (node, num_redo_crumbs, redo_crumbs);
+	  *data_header_rlength_p = MAKE_ZIP_LEN (zip_redo->data_length);
+	  error_code = prior_lsa_copy_redo_data_to_node (node, zip_redo->data_length, (char *) zip_redo->log_data);
+	}
+      else if (redo_crumbs)
+	{
+	  *data_header_rlength_p = rlength;
+	  error_code = prior_lsa_copy_redo_crumbs_to_node (node, num_redo_crumbs, redo_crumbs);
+	}
     }
 
   return error_code;
+}
+
+/*
+ * prior_lsa_update_undoredo_data () - Update undoredo data of previous generated log prior node.
+ *
+ *  return	      : Error code.
+ *
+ *  thread_p (in)	 : Thread entry.
+ *  node (in)		 : Log prior node.
+ *  rcv_index(in)	 : Log recovery index
+ *  addr (in)		 : Logged data address
+ *  undo_length (in)	 : Undo length
+ *  redo_length (in)	 : Redo length
+ *  undo_data(in)	 : The undo data
+ *  redo_data(in)	 : The redo data
+ *  skip_undo(in)	 : True, if skip undo
+ *  skip_redo(in)	 : True, if skip redo
+ */
+int
+prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
+				LOG_DATA_ADDR * addr, int undo_length, int redo_length,
+				const void *undo_data, const void *redo_data, bool skip_undo, bool skip_redo)
+{				/* TO DO - move it in log manager ??? */
+  LOG_CRUMB undo_crumb;
+  LOG_CRUMB redo_crumb;
+
+  /* Set undo length/data to crumb */
+  assert (0 <= undo_length);
+  assert (0 == undo_length || undo_data != NULL);
+
+  undo_crumb.data = undo_data;
+  undo_crumb.length = undo_length;
+
+  /* Set redo length/data to crumb */
+  assert (0 <= redo_length);
+  assert (0 == redo_length || redo_data != NULL);
+
+  redo_crumb.data = redo_data;
+  redo_crumb.length = redo_length;
+
+  return prior_lsa_update_undoredo_data_from_crumbs (thread_p, node, rcv_index, addr, 1, 1, &undo_crumb, &redo_crumb,
+						     skip_undo, skip_redo);
+}
+
+/*
+ * prior_lsa_update_undoredo_crumbs () - Update undoredo data of previous generated log prior node from crumbs.
+ *
+ *  return	      : Error code.
+ *
+ *  thread_p (in)	 : Thread entry.
+ *  node (in)		 : Log prior node.
+ *  rcv_index(in)	 : Log recovery index
+ *  addr (in)		 : Logged data address.
+ *  num_undo_crumbs (in) : The number of undo crumbs
+ *  num_redo_crumbs (in) : The number of redo crumbs
+ *  undo_crumbs(in)	 : The undo crumbs
+ *  redo_crumbs(in)	 : The redo crumbs
+ *  skip_undo(in)	 : True, if skip undo
+ *  skip_redo(in)	 : True, if skip redo
+ */
+int
+prior_lsa_update_undoredo_data_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
+					    LOG_DATA_ADDR * addr, int num_undo_crumbs, int num_redo_crumbs,
+					    LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs, bool skip_undo,
+					    bool skip_redo)
+{				/* TO DO - move it in log manager ??? */
+  int error_code = NO_ERROR, ulength = 0, rlength = 0, i;
+
+  if (undo_crumbs != NULL)
+    {
+      /* Need to update the undo log. */
+      for (i = 0; i < num_undo_crumbs; i++)
+	{
+	  ulength += undo_crumbs[i].length;
+	}
+      assert (0 <= ulength);
+    }
+
+  if (redo_crumbs != NULL)
+    {
+      /* Need to update the redo log. */
+      for (i = 0; i < num_redo_crumbs; i++)
+	{
+	  rlength += redo_crumbs[i].length;
+	}
+      assert (0 <= rlength);
+    }
+
+  return prior_lsa_update_undoredo_data_from_crumbs_internal (thread_p, node, rcv_index, addr, num_undo_crumbs,
+							      num_redo_crumbs, undo_crumbs, redo_crumbs, ulength,
+							      rlength, skip_undo, skip_redo);
+}
+
+
+/*
+ * prior_lsa_update_undoredo_data_from_recdes () - Update undoredo data of previous generated log prior node from recdes
+ *
+ *  return	      : Error code.
+ *
+ *  thread_p (in)     : Thread entry.
+ *  node (in)	      : Log prior node.
+ *  rcv_index(in)     : Log recovery index
+ *  addr (in)	      : Logged data address.
+ *  old_recdes_p (in) : Old recdes
+ *  new_recdes_p (in) : New recdes
+ *  skip_undo(in)     : True, if skip undo
+ *  skip_redo(in)     : True, if skip redo
+ */
+int
+prior_lsa_update_undoredo_data_from_recdes (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
+					    LOG_DATA_ADDR * addr, RECDES * old_recdes_p, RECDES * new_recdes_p,
+					    bool skip_undo, bool skip_redo)
+{
+  LOG_CRUMB crumbs[4];
+  LOG_CRUMB *undo_crumbs = &crumbs[0];
+  LOG_CRUMB *redo_crumbs = &crumbs[2];
+  LOG_DATA *log_data_p = NULL;
+  int *data_header_ulength_p = NULL, *data_header_rlength_p = NULL, num_undo_crumbs = 0, num_redo_crumbs = 0;
+  LOG_VACUUM_INFO *vacuum_info_p = NULL;
+  MVCCID *mvccid_p = NULL;
+  LOG_ZIP *zip_undo = NULL, *zip_redo = NULL;
+  int error_code = NO_ERROR, ulength = 0, rlength = 0;
+  bool is_undo_zip = false, is_redo_zip = false, is_diff = false, has_redo = false, has_undo = false;
+
+  LOG_GET_CRUMBS_FROM_RECDES (old_recdes_p, 2, undo_crumbs, num_undo_crumbs);
+  if (old_recdes_p != NULL)
+    {
+      /* Need to update the undo log. */
+      ulength = LOG_GET_RECDES_CRUMBS_SIZE (old_recdes_p);
+    }
+
+  LOG_GET_CRUMBS_FROM_RECDES (old_recdes_p, 2, redo_crumbs, num_redo_crumbs);
+  if (new_recdes_p != NULL)
+    {
+      /* Need to update the redo log. */
+      rlength = LOG_GET_RECDES_CRUMBS_SIZE (new_recdes_p);
+    }
+
+  return prior_lsa_update_undoredo_data_from_crumbs_internal (thread_p, node, rcv_index, addr, num_undo_crumbs,
+							      num_redo_crumbs, undo_crumbs, redo_crumbs, ulength,
+							      rlength, skip_undo, skip_redo);
 }
 
 
@@ -4078,8 +4225,12 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   int flush_page_count = 0;
 #if defined(CUBRID_DEBUG)
-  struct timeval start_time = { 0, 0 };
-  struct timeval end_time = { 0, 0 };
+  struct timeval start_time = {
+    0, 0
+  };
+  struct timeval end_time = {
+    0, 0
+  };
   int dirty_page_count = 0;
   int curr_flush_count = 0;
   long commit_count = 0;
@@ -4090,9 +4241,12 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
   LOG_RECORD_HEADER save_record = {
-    {NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
-    {NULL_PAGEID, NULL_OFFSET},	/* back_lsa */
-    {NULL_PAGEID, NULL_OFFSET},	/* forw_lsa */
+    {
+     NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
+    {
+     NULL_PAGEID, NULL_OFFSET},	/* back_lsa */
+    {
+     NULL_PAGEID, NULL_OFFSET},	/* forw_lsa */
     NULL_TRANID,		/* trid */
     LOG_SMALLER_LOGREC_TYPE	/* type */
   };				/* Save last record */
@@ -4777,9 +4931,15 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   LOG_CS_EXIT (thread_p);
 #else /* SERVER_MODE */
   int rv;
-  struct timeval start_time = { 0, 0 };
-  struct timeval tmp_timeval = { 0, 0 };
-  struct timespec to = { 0, 0 };
+  struct timeval start_time = {
+    0, 0
+  };
+  struct timeval tmp_timeval = {
+    0, 0
+  };
+  struct timespec to = {
+    0, 0
+  };
   int max_wait_time_in_msec = 1000;
   bool need_wakeup_LFT, need_wait;
   bool async_commit, group_commit;
@@ -6549,7 +6709,9 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 static void
 logpb_archive_active_log (THREAD_ENTRY * thread_p)
 {
-  char arv_name[PATH_MAX] = { '\0' };	/* Archive name */
+  char arv_name[PATH_MAX] = {
+    '\0'
+  };				/* Archive name */
   LOG_PAGE *malloc_arv_hdr_pgptr = NULL;	/* Archive header page PTR */
   LOG_ARV_HEADER *arvhdr;	/* Archive header */
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
@@ -8401,9 +8563,10 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
  *
  */
 int
-logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path, FILEIO_BACKUP_LEVEL backup_level,
-	      bool delete_unneeded_logarchives, const char *backup_verbose_file_path, int num_threads,
-	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs)
+logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path,
+	      FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
+	      const char *backup_verbose_file_path, int num_threads, FILEIO_ZIP_METHOD zip_method,
+	      FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs)
 {
   FILEIO_BACKUP_SESSION session;
   const char *from_vlabel;	/* Name of volume to backup (FROM) */

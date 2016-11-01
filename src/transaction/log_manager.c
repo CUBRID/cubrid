@@ -1948,9 +1948,50 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
 }
 
 /*
+ * log_create_log_node_from_undoredo_data - Create log node from undo (before) + redo(after) data
+ *
+ * returns: error code
+ *
+ *   thread_p(in): Thread entry
+ *   tdes(in): Transaction descriptor
+ *   rcvindex(in): Index to recovery function
+ *   addr(in): Address (Volume, page, and offset) of data
+ *   undo_length(in): The undo length
+ *   redo_length(in): The redo length
+ *   undo_data(in): The undo data
+ *   redo_data(in): The redo data
+ *   node(out): Created log node
+ */
+int
+log_create_log_node_from_undoredo_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+					LOG_DATA_ADDR * addr, int undo_length, int redo_length, const void *undo_data,
+					const void *redo_data, LOG_PRIOR_NODE ** node)
+{
+  LOG_CRUMB undo_crumb;
+  LOG_CRUMB redo_crumb;
+
+  /* Set undo length/data to crumb */
+  assert (0 <= undo_length);
+  assert (0 == undo_length || undo_data != NULL);
+
+  undo_crumb.data = undo_data;
+  undo_crumb.length = undo_length;
+
+  /* Set redo length/data to crumb */
+  assert (0 <= redo_length);
+  assert (0 == redo_length || redo_data != NULL);
+
+  redo_crumb.data = redo_data;
+  redo_crumb.length = redo_length;
+
+  return
+    log_create_log_node_from_undoredo_crumbs (thread_p, tdes, rcvindex, addr, 1, 1, &undo_crumb, &redo_crumb, node);
+}
+
+/*
  * log_create_log_node_from_undoredo_crumbs - Create log node from undo (before) + redo(after) crumbs
  *
- * return: nothing
+ * returns: nothing
  *
  *   thread_p(in): Thread entry
  *   tdes(in): Transaction descriptor
@@ -2132,7 +2173,6 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       return;
     }
 
-  /* TO DO - if was not generated yet!!! */
   if (log_create_log_node_from_undoredo_crumbs (thread_p, tdes, rcvindex, addr, num_undo_crumbs, num_redo_crumbs,
 						undo_crumbs, redo_crumbs, &node) != NO_ERROR)
     {

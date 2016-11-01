@@ -1371,11 +1371,11 @@ enum log_repl_flush
 /* Is log record for a heap MVCC operation */
 #define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
   (((rcvindex) == RVHF_MVCC_DELETE_REC_HOME) \
-   || ((rcvindex) == RVHF_MVCC_INSERT) \
-   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
-   || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
+  || ((rcvindex) == RVHF_MVCC_INSERT) \
+  || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
+  || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
+  || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
+  || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
 
 /* Is log record for a b-tree MVCC operation */
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
@@ -2086,8 +2086,19 @@ extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, L
 						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int ulength,
 						      char *udata, int rlength, char *rdata);
 extern void prior_lsa_free_node (LOG_PRIOR_NODE * node);
-extern int prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
-					   LOG_DATA_ADDR * addr, RECDES * old_recdes_p, RECDES * new_recdes_p);
+extern int prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
+					   LOG_DATA_ADDR * addr, int undo_length, int redo_length,
+					   const void *undo_data, const void *redo_data, bool skip_undo,
+					   bool skip_redo);
+extern int prior_lsa_update_undoredo_data_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+						       LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr,
+						       int num_undo_crumbs, int num_redo_crumbs,
+						       LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs, bool skip_undo,
+						       bool skip_redo);
+extern int prior_lsa_update_undoredo_data_from_recdes (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+						       LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+						       RECDES * old_recdes_p, RECDES * new_recdes_p, bool skip_undo,
+						       bool skip_redo);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 							LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 							const int num_ucrumbs, const LOG_CRUMB * ucrumbs,
