@@ -20548,8 +20548,6 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	}
     }
 
-  /* TODO[arnia] : merge issue */
-/*  if (is_mvcc_op && context->type == HEAP_OPERATION_UPDATE && is_oor_buf == false) */
   if (is_mvcc_op)
     {
       if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
@@ -21451,10 +21449,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  repid_and_flag_bits |= (OR_MVCC_FLAG_VALID_DELID << OR_MVCC_FLAG_SHIFT_BITS);
 	  OR_PUT_INT (start_p, repid_and_flag_bits);
 
-/* TODO[arnia]: merge 
-      or_mvcc_add_header (&new_forward_recdes, &new_forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
-			  OR_GET_OOR_BIT_FLAG (forward_recdes.data), OR_GET_OFFSET_SIZE (forward_recdes.data));
-*/
 	  /* Sets the MVCC DELID. */
 	  OR_PUT_BIGINT (build_recdes_data, &mvcc_id);
 	  build_recdes_data += OR_MVCCID_SIZE;
@@ -21911,7 +21905,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  /* TODO[arnia] : merge */
+
 	  assert (record_header.mvcc_flag == mvcc_flags);
 	  heap_delete_adjust_header (&record_header, mvcc_id, is_adjusted_size_big);
 	  or_mvcc_add_header (&built_recdes, &record_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
@@ -22248,7 +22242,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	}
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      /* TODO[arnia] : merge */
       if (is_mvcc_op)
 	{
 	  /* log home no change; vacuum needs it to reach the updated overflow record */
@@ -23081,7 +23074,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid)
       && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
-      /* TODO[arnia] : merge */
       if (heap_insert_adjust_recdes_header (thread_p, context, is_mvcc_class) != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -23512,7 +23504,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid))
     {
       bool is_mvcc_class = !mvcc_is_mvcc_disabled_class (&context->class_oid);
-      /* TODO[arnia] : merge */
+
       rc = heap_update_adjust_recdes_header (thread_p, context, is_mvcc_op, is_mvcc_class);
       if (rc != NO_ERROR)
 	{

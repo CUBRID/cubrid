@@ -3208,6 +3208,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  /* A lob file must be deleted */
 	  (void) or_unpack_string (undo_data, &es_uri);
 	  vacuum_er_log (VACUUM_ER_LOG_WORKER, "VACUUM: Delete lob %s.", es_uri);
+	  _er_log_debug (ARG_FILE_LINE, "VACUUM: Delete lob %s.", es_uri);
 	  (void) es_delete_file (es_uri);
 	  db_private_free_and_init (thread_p, es_uri);
 	}
@@ -3216,6 +3217,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  /* A lob file must be deleted */
 	  (void) or_unpack_string (undo_data, &es_uri);
 	  vacuum_er_log (VACUUM_ER_LOG_WORKER, "VACUUM: Delete lob %s.", es_uri);
+	  _er_log_debug (ARG_FILE_LINE, "VACUUM: Delete lob %s.", es_uri);
 	  (void) es_delete_file (es_uri);
 	  db_private_free_and_init (thread_p, es_uri);
 	}
