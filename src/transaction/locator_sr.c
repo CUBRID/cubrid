@@ -7019,7 +7019,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 
   for (i = 0; i < attr_info.num_values; i++)
     {
-      _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: attr_info.values[i].dbvalue.type:%d, attr_info.values[i].dbvalue.size:%d, state:%d",
+      _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: attr_info.values[i].dbvalue.type:%d, "
+	"attr_info.values[i].dbvalue.size:%d, state:%d",
 	DB_VALUE_TYPE (&attr_info.values[i].dbvalue),
 	TP_IS_OOR_TYPE (DB_VALUE_TYPE (&attr_info.values[i].dbvalue)) ? DB_GET_STRING_SIZE (&attr_info.values[i].dbvalue): -1,
 	attr_info.values[i].state);
@@ -7037,9 +7038,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   if (repack_with_oor)
     {
       *copyarea =
-	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info,
-						 LC_IS_FLUSH_UPDATE (obj->operation) ? old_recdes : NULL, &new_recdes,
-						 -1, &oor_context, LOB_FLAG_INCLUDE_LOB);
+	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, NULL, &new_recdes, -1, &oor_context,
+						 LOB_FLAG_INCLUDE_LOB);
       if (*copyarea == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -7047,6 +7047,10 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       else
 	{
 	  *recdes = new_recdes;
+	  if (LC_IS_FLUSH_UPDATE (obj->operation) == true)
+	    {
+	      error_code = heap_attrinfo_delete_lob (thread_p, old_recdes, &attr_info);
+	    }
 	}
     }
 
@@ -7055,7 +7059,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   heap_attrinfo_end (thread_p, &attr_info);
   heap_free_oor_context (thread_p, &oor_context);
 
-  return NO_ERROR;
+  return error_code;
 
 #undef IS_OOR_REPLICATION_OP
 }
