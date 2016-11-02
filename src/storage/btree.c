@@ -32444,6 +32444,7 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * b
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   btree_delete_log (delete_helper, BTREE_DELETE_MODIFY_MSG ("removed delete MVCCID %llu"),
+		    (unsigned long long int) delete_helper->object_info.mvcc_info.delete_mvccid,
 		    BTREE_DELETE_MODIFY_ARGS (delete_helper, page, &prev_lsa, node_type == BTREE_LEAF_NODE, slotid,
 					      record->length, btid_int->sys_btid));
 
