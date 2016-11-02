@@ -76,6 +76,8 @@
 #include "tsc_timer.h"
 #include "xasl_generation.h"
 
+#include "dbval.h"
+
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
