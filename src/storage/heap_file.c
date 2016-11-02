@@ -11494,6 +11494,10 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
+
+      _er_log_debug (ARG_FILE_LINE, "heap_attrinfo_set_uninitialized: value->last_attrepr->type:%d,"
+	"value->state:%d", value->last_attrepr->type, value->state);
+
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
 	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, oor_context);
@@ -11549,6 +11553,10 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	    {
 	      goto exit_on_error;
 	    }
+
+	  _er_log_debug (ARG_FILE_LINE, "heap_attrinfo_set_uninitialized: oor_location->is_null:%d",
+	    db_value_is_null (&oor_location));
+
 	  if (!db_value_is_null (&oor_location))
 	    {
 	      DB_ELO *elo;
@@ -11750,8 +11758,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   offset_size = tmp;
 
   _er_log_debug (ARG_FILE_LINE, "heap_attrinfo_transform_to_disk_internal : num_values:%d,"
-    "oor_context:%p, size_without_overflow_columns:%d, expected_size:%d",
-    attr_info->num_values, oor_context, size_without_overflow_columns, expected_size);
+    "oor_context:%p, size_without_overflow_columns:%d, expected_size:%d, old_recdes:%p, new_recdes:%p",
+    attr_info->num_values, oor_context, size_without_overflow_columns, expected_size, old_recdes, new_recdes);
 
   if (attr_info->num_values > 1
       && (oor_context != NULL && oor_context->oor_atts != NULL)
