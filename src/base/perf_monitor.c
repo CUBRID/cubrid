@@ -124,15 +124,15 @@ static void f_dump_in_file_Time_data_page_fix_acquire_time (FILE *, const UINT64
 static void f_dump_in_file_Num_mvcc_snapshot_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Time_obj_lock_acquire_time (FILE *, const UINT64 * stat_vals);
 
-static void f_dump_in_buffer_Num_data_page_fix_ext (char *, const UINT64 * stat_vals, int *remaining_size);
-static void f_dump_in_buffer_Num_data_page_promote_ext (char *, const UINT64 * stat_vals, int *remaining_size);
-static void f_dump_in_buffer_Num_data_page_promote_time_ext (char *, const UINT64 * stat_vals, int *remaining_size);
-static void f_dump_in_buffer_Num_data_page_unfix_ext (char *, const UINT64 * stat_vals, int *remaining_size);
-static void f_dump_in_buffer_Time_data_page_lock_acquire_time (char *, const UINT64 * stat_vals, int *remaining_size);
-static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char *, const UINT64 * stat_vals, int *remaining_size);
-static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char *, const UINT64 * stat_vals, int *remaining_size);
-static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char *, const UINT64 * stat_vals, int *remaining_size);
-static void f_dump_in_buffer_Time_obj_lock_acquire_time (char *, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_data_page_fix_ext (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_data_page_promote_ext (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_data_page_promote_time_ext (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_data_page_unfix_ext (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Time_data_page_lock_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Time_obj_lock_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
 
 static void perfmon_stat_dump_in_file_fix_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr);
@@ -142,17 +142,17 @@ static void perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE *, const U
 static void perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_snapshot_array_stat (FILE *, const UINT64 * stats_ptr);
 
-static void perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
-static void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char *s,
+static void perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char **s,
 								 int *remaining_size);
-static void perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
-static void perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr, char *s,
+static void perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr, char **s,
 								   int *remaining_size);
-static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr, char *s,
+static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr, char **s,
 								   int *remaining_size);
-static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char *s,
+static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char **s,
 								  int *remaining_size);
-static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
 static void print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
@@ -2291,11 +2291,12 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 
       ret = snprintf (p, remained_size, "%s:\n", pstat_Metadata[i].stat_name);
       remained_size -= ret;
+      p += ret;
       if (remained_size <= 0)
 	{
 	  return;
 	}
-      pstat_Metadata[i].f_dump_in_buffer (p, &(stats[pstat_Metadata[i].start_offset]), &remained_size);
+      pstat_Metadata[i].f_dump_in_buffer (&p, &(stats[pstat_Metadata[i].start_offset]), &remained_size);
     }
 
   buffer[buf_size - 1] = '\0';
@@ -2930,7 +2931,7 @@ perfmon_stat_promote_cond_name (const int cond_type)
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   int module;
   int page_type;
@@ -2942,7 +2943,8 @@ perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char 
   int ret;
 
   assert (remaining_size != NULL);
-  if (s != NULL)
+  assert (s != NULL);
+  if (*s != NULL)
     {
       for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
 	{
@@ -2964,12 +2966,13 @@ perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char 
 			      continue;
 			    }
 
-			  ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s,%-11s = %10llu\n",
+			  ret = snprintf (*s, *remaining_size, "%-6s,%-14s,%-18s,%-5s,%-11s = %10llu\n",
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  perfmon_stat_page_mode_name (page_mode),
 					  perfmon_stat_holder_latch_name (latch_mode),
 					  perfmon_stat_cond_type_name (cond_type), (long long unsigned int) counter);
 			  *remaining_size -= ret;
+			  *s += ret;
 			  if (*remaining_size <= 0)
 			    {
 			      return;
@@ -3040,7 +3043,7 @@ perfmon_stat_dump_in_file_fix_page_array_stat (FILE * stream, const UINT64 * sta
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   int module;
   int page_type;
@@ -3052,7 +3055,8 @@ perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, c
   int ret;
 
   assert (remaining_size != NULL);
-  if (s != NULL)
+  assert (s != NULL);
+  if (*s != NULL)
     {
       for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
 	{
@@ -3075,12 +3079,13 @@ perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, c
 			      continue;
 			    }
 
-			  ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-13s,%-5s,%-7s = %10llu\n",
+			  ret = snprintf (*s, *remaining_size, "%-6s,%-14s,%-13s,%-5s,%-7s = %10llu\n",
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  perfmon_stat_promote_cond_name (promote_cond),
 					  perfmon_stat_holder_latch_name (holder_latch),
 					  (success ? "SUCCESS" : "FAILED"), (long long unsigned int) counter);
 			  *remaining_size -= ret;
+			  *s += ret;
 			  if (*remaining_size <= 0)
 			    {
 			      return;
@@ -3152,7 +3157,7 @@ perfmon_stat_dump_in_file_promote_page_array_stat (FILE * stream, const UINT64 *
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   int module;
   int page_type;
@@ -3164,7 +3169,8 @@ perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, cha
   int ret;
 
   assert (remaining_size != NULL);
-  if (s != NULL)
+  assert (s != NULL);
+  if (*s != NULL)
     {
       for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
 	{
@@ -3186,13 +3192,14 @@ perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, cha
 			      continue;
 			    }
 
-			  ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-13s,%-16s,%-5s = %10llu\n",
+			  ret = snprintf (*s, *remaining_size, "%-6s,%-14s,%-13s,%-16s,%-5s = %10llu\n",
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  buf_dirty ? "BUF_DIRTY" : "BUF_NON_DIRTY",
 					  holder_dirty ? "HOLDER_DIRTY" : "HOLDER_NON_DIRTY",
 					  perfmon_stat_holder_latch_name (holder_latch),
 					  (long long unsigned int) counter);
 			  *remaining_size -= ret;
+			  *s += ret;
 			  if (*remaining_size <= 0)
 			    {
 			      return;
@@ -3263,7 +3270,7 @@ perfmon_stat_dump_in_file_unfix_page_array_stat (FILE * stream, const UINT64 * s
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   int module;
   int page_type;
@@ -3275,7 +3282,8 @@ perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr,
   int ret;
 
   assert (remaining_size != NULL);
-  if (s != NULL)
+  assert (s != NULL);
+  if (*s != NULL)
     {
       for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
 	{
@@ -3296,12 +3304,13 @@ perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr,
 			      continue;
 			    }
 
-			  ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s,%-11s = %16llu\n",
+			  ret = snprintf (*s, *remaining_size, "%-6s,%-14s,%-18s,%-5s,%-11s = %16llu\n",
 					  perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 					  perfmon_stat_page_mode_name (page_mode),
 					  perfmon_stat_holder_latch_name (latch_mode),
 					  perfmon_stat_cond_type_name (cond_type), (long long unsigned int) counter);
 			  *remaining_size -= ret;
+			  *s += ret;
 			  if (*remaining_size <= 0)
 			    {
 			      return;
@@ -3372,7 +3381,7 @@ perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   int module;
   int page_type;
@@ -3383,7 +3392,8 @@ perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr,
   int ret;
 
   assert (remaining_size != NULL);
-  if (s != NULL)
+  assert (s != NULL);
+  if (*s != NULL)
     {
       for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
 	{
@@ -3402,11 +3412,12 @@ perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr,
 			  continue;
 			}
 
-		      ret = snprintf (s, *remaining_size, "%-6s,%-14s,%-18s,%-5s = %16llu\n",
+		      ret = snprintf (*s, *remaining_size, "%-6s,%-14s,%-18s,%-5s = %16llu\n",
 				      perfmon_stat_module_name (module), perfmon_stat_page_type_name (page_type),
 				      perfmon_stat_page_mode_name (page_mode),
 				      perfmon_stat_holder_latch_name (latch_mode), (long long unsigned int) counter);
 		      *remaining_size -= ret;
+		      *s += ret;
 		      if (*remaining_size <= 0)
 			{
 			  return;
@@ -3473,7 +3484,7 @@ perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE * stream, const UINT64
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   /* the counters partitioning match with page fix statistics */
   perfmon_stat_dump_in_buffer_page_lock_time_array_stat (stats_ptr, s, remaining_size);
@@ -3502,7 +3513,7 @@ perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE * stream, const UINT64 
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   PERF_SNAPSHOT_TYPE snapshot;
   PERF_SNAPSHOT_RECORD_TYPE rec_type;
@@ -3512,7 +3523,8 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
   int ret;
 
   assert (remaining_size != NULL);
-  if (s != NULL)
+  assert (s != NULL);
+  if (*s != NULL)
     {
       for (snapshot = PERF_SNAPSHOT_SATISFIES_DELETE; snapshot < PERF_SNAPSHOT_CNT; snapshot++)
 	{
@@ -3530,11 +3542,12 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
 		    }
 
 		  ret =
-		    snprintf (s, *remaining_size, "%-8s,%-18s,%-9s = %16llu\n", perfmon_stat_snapshot_name (snapshot),
+		    snprintf (*s, *remaining_size, "%-8s,%-18s,%-9s = %16llu\n", perfmon_stat_snapshot_name (snapshot),
 			      perfmon_stat_snapshot_record_type (rec_type),
 			      (visibility == PERF_SNAPSHOT_INVISIBLE) ? "INVISIBLE" : "VISIBLE",
 			      (long long unsigned int) counter);
 		  *remaining_size -= ret;
+		  *s += ret;
 		  if (*remaining_size <= 0)
 		    {
 		      return;
@@ -3596,14 +3609,15 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   int lock_mode;
   UINT64 counter = 0;
   int ret;
 
   assert (remaining_size != NULL);
-  if (s != NULL)
+  assert (s != NULL);
+  if (*s != NULL)
     {
       for (lock_mode = NA_LOCK; lock_mode <= SCH_M_LOCK; lock_mode++)
 	{
@@ -3613,9 +3627,10 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
 	      continue;
 	    }
 
-	  ret = snprintf (s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode),
+	  ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_lock_mode_name (lock_mode),
 			  (long long unsigned int) counter);
 	  *remaining_size -= ret;
+	  *s += ret;
 	  if (*remaining_size <= 0)
 	    {
 	      return;
@@ -3660,7 +3675,7 @@ perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * sta
  * 
  */
 static void
-perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *remaining_size)
+perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   int module;
   int offset;
@@ -3668,7 +3683,8 @@ perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char 
   int ret;
 
   assert (remaining_size != NULL);
-  if (s != NULL)
+  assert (s != NULL);
+  if (*s != NULL)
     {
       for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
 	{
@@ -3681,9 +3697,10 @@ perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char 
 	      continue;
 	    }
 
-	  ret = snprintf (s, *remaining_size, "%-6s = %16llu\n", perfmon_stat_module_name (module),
+	  ret = snprintf (*s, *remaining_size, "%-6s = %16llu\n", perfmon_stat_module_name (module),
 			  (long long unsigned int) counter);
 	  *remaining_size -= ret;
+	  *s += ret;
 	  if (*remaining_size <= 0)
 	    {
 	      return;
@@ -4239,7 +4256,7 @@ f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
  * 
  */
 void
-f_dump_in_buffer_Num_data_page_fix_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Num_data_page_fix_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_fix_page_array_stat (stat_vals, s, remaining_size);
 }
@@ -4253,7 +4270,7 @@ f_dump_in_buffer_Num_data_page_fix_ext (char *s, const UINT64 * stat_vals, int *
  * 
  */
 void
-f_dump_in_buffer_Num_data_page_promote_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Num_data_page_promote_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
 }
@@ -4267,7 +4284,7 @@ f_dump_in_buffer_Num_data_page_promote_ext (char *s, const UINT64 * stat_vals, i
  * 
  */
 void
-f_dump_in_buffer_Num_data_page_promote_time_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Num_data_page_promote_time_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
 }
@@ -4281,7 +4298,7 @@ f_dump_in_buffer_Num_data_page_promote_time_ext (char *s, const UINT64 * stat_va
  * 
  */
 void
-f_dump_in_buffer_Num_data_page_unfix_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Num_data_page_unfix_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_unfix_page_array_stat (stat_vals, s, remaining_size);
 }
@@ -4296,7 +4313,7 @@ f_dump_in_buffer_Num_data_page_unfix_ext (char *s, const UINT64 * stat_vals, int
  * 
  */
 void
-f_dump_in_buffer_Time_data_page_lock_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Time_data_page_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_lock_time_array_stat (stat_vals, s, remaining_size);
 }
@@ -4311,7 +4328,7 @@ f_dump_in_buffer_Time_data_page_lock_acquire_time (char *s, const UINT64 * stat_
  * 
  */
 void
-f_dump_in_buffer_Time_data_page_hold_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Time_data_page_hold_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_hold_time_array_stat (stat_vals, s, remaining_size);
 }
@@ -4326,7 +4343,7 @@ f_dump_in_buffer_Time_data_page_hold_acquire_time (char *s, const UINT64 * stat_
  * 
  */
 void
-f_dump_in_buffer_Time_data_page_fix_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_fix_time_array_stat (stat_vals, s, remaining_size);
 }
@@ -4340,7 +4357,7 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char *s, const UINT64 * stat_v
  * 
  */
 void
-f_dump_in_buffer_Num_mvcc_snapshot_ext (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
     {
@@ -4357,7 +4374,7 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char *s, const UINT64 * stat_vals, int *
  * 
  */
 void
-f_dump_in_buffer_Time_obj_lock_acquire_time (char *s, const UINT64 * stat_vals, int *remaining_size)
+f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
     {
