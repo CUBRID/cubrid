@@ -1091,8 +1091,8 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
       if (table)
 	{
 	  /* evaluate the names of the current table. The name scope of the first spec, is only the outer level scopes. The 
-       	   * outer scopes are pointed to by scopes->next. The null "scopes" spec is kept to maintain correlation level
-           * calculation. */
+	   * outer scopes are pointed to by scopes->next. The null "scopes" spec is kept to maintain correlation level
+	   * calculation. */
 	  table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	  spec->info.spec.derived_table = table;
 

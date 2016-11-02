@@ -12057,8 +12057,8 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 }
 
 /*
- * pt_to_cte_table_spec_list () - Convert a PT_NODE CTE to an ACCESS_SPEC_LIST
- *			  list of representing the classes to be selected from
+ * pt_to_cte_table_spec_list () - Convert a PT_NODE CTE to an ACCESS_SPEC_LIST of representations
+				  of the classes to be selected from
  * return:
  * parser(in):
  * spec(in):
@@ -12090,7 +12090,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
   else
     {
       /* The CTE xasl is null because the recursive part xasl has not been
-         generated yet. But this is not a problem because the recursive part
+         generated yet, but this is not a problem because the recursive part
          should have access only to the non recursive part */
       PT_NODE *non_rec_part = cte_def->info.cte.non_rec_part;
       if (non_rec_part->info.query.xasl)
@@ -12100,7 +12100,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
       else
 	{
 	  assert (false);
-	  return;
+	  return NULL;
 	}
     }
 
@@ -12136,7 +12136,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
    */
   saved_current_class = parser->symbols->current_class;
   parser->symbols->current_class = NULL;
-  where = pt_to_pred_expr (parser, where_part, NULL);
+  where = pt_to_pred_expr (parser, where_part);
   parser->symbols->current_class = saved_current_class;
 
   access = pt_make_list_access_spec (cte_proc, SEQUENTIAL, NULL, where, regu_attributes_pred, regu_attributes_rest);
@@ -12145,6 +12145,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
     {
       return access;
     }
+
   return NULL;
 }
 
