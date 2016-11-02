@@ -15527,7 +15527,10 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
 	  equal = ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, 0, 1, NULL, domp->collation_id) == DB_EQ);
 	}
 
-      pr_clear_value (&dbval1);
+      if (copy || DB_NEED_CLEAR (&dbval1))
+	{
+	  pr_clear_value (&dbval1);
+	}
 
       if (!equal)
 	{
