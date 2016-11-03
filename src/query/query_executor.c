@@ -21659,7 +21659,6 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    {
 	      out_values[idx_val]->need_clear = true;
 	    }
-
 	  idx_val++;
 
 	  /* attribute type */
@@ -21675,22 +21674,24 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_ENUMERATION:
-		  db_make_string (out_values[idx_val++], lang_get_collation_name (attrepr->domain->collation_id));
+		  db_make_string (out_values[idx_val], lang_get_collation_name (attrepr->domain->collation_id));
 		  break;
 		default:
-		  db_make_null (out_values[idx_val++]);
+		  db_make_null (out_values[idx_val]);
 		}
+	      idx_val++;
 	    }
 
 	  /* attribute can store NULL ? */
 	  if (attrepr->is_notnull == 0)
 	    {
-	      db_make_string (out_values[idx_val++], "YES");
+	      db_make_string (out_values[idx_val], "YES");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[idx_val++], "NO");
+	      db_make_string (out_values[idx_val], "NO");
 	    }
+	  idx_val++;
 
 	  /* attribute has index or not */
 	  found_index_type = -1;
@@ -21723,23 +21724,24 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    {
 	    case BTREE_UNIQUE:
 	    case BTREE_REVERSE_UNIQUE:
-	      db_make_string (out_values[idx_val++], "UNI");
+	      db_make_string (out_values[idx_val], "UNI");
 	      break;
 
 	    case BTREE_INDEX:
 	    case BTREE_REVERSE_INDEX:
 	    case BTREE_FOREIGN_KEY:
-	      db_make_string (out_values[idx_val++], "MUL");
+	      db_make_string (out_values[idx_val], "MUL");
 	      break;
 
 	    case BTREE_PRIMARY_KEY:
-	      db_make_string (out_values[idx_val++], "PRI");
+	      db_make_string (out_values[idx_val], "PRI");
 	      break;
 
 	    default:
-	      db_make_string (out_values[idx_val++], "");
+	      db_make_string (out_values[idx_val], "");
 	      break;
 	    }
+	  idx_val++;
 
 	  /* default values */
 	  if (attrepr->default_value.default_expr != DB_DEFAULT_NONE)
@@ -21749,43 +21751,55 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		case DB_DEFAULT_NONE:
 		  break;
 		case DB_DEFAULT_SYSTIME:
-		  db_make_string (out_values[idx_val++], "SYS_TIME");
+		  db_make_string (out_values[idx_val], "SYS_TIME");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_SYSDATE:
-		  db_make_string (out_values[idx_val++], "SYS_DATE");
+		  db_make_string (out_values[idx_val], "SYS_DATE");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_SYSDATETIME:
-		  db_make_string (out_values[idx_val++], "SYS_DATETIME");
+		  db_make_string (out_values[idx_val], "SYS_DATETIME");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_SYSTIMESTAMP:
-		  db_make_string (out_values[idx_val++], "SYS_TIMESTAMP");
+		  db_make_string (out_values[idx_val], "SYS_TIMESTAMP");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURRENTTIME:
-		  db_make_string (out_values[idx_val++], "CURRENT_TIME");
+		  db_make_string (out_values[idx_val], "CURRENT_TIME");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURRENTDATE:
-		  db_make_string (out_values[idx_val++], "CURRENT_DATE");
+		  db_make_string (out_values[idx_val], "CURRENT_DATE");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURRENTDATETIME:
-		  db_make_string (out_values[idx_val++], "CURRENT_DATETIME");
+		  db_make_string (out_values[idx_val], "CURRENT_DATETIME");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURRENTTIMESTAMP:
-		  db_make_string (out_values[idx_val++], "CURRENT_TIMESTAMP");
+		  db_make_string (out_values[idx_val], "CURRENT_TIMESTAMP");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_UNIX_TIMESTAMP:
-		  db_make_string (out_values[idx_val++], "UNIX_TIMESTAMP");
+		  db_make_string (out_values[idx_val], "UNIX_TIMESTAMP");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_USER:
-		  db_make_string (out_values[idx_val++], "USER");
+		  db_make_string (out_values[idx_val], "USER");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURR_USER:
-		  db_make_string (out_values[idx_val++], "CURRENT_USER");
+		  db_make_string (out_values[idx_val], "CURRENT_USER");
+		  idx_val++;
 		  break;
 		}
 	    }
 	  else if (attrepr->current_default_value.value == NULL || attrepr->current_default_value.val_length <= 0)
 	    {
-	      db_make_null (out_values[idx_val++]);
+	      db_make_null (out_values[idx_val]);
+	      idx_val++;
 	    }
 	  else
 	    {
@@ -21806,12 +21820,13 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		    {
 		      (*(pr_type->data_readval)) (&buf, out_values[idx_val], attrepr->domain, disk_length, copy, NULL,
 						  0);
-		      valcnv_convert_value_to_string (out_values[idx_val++]);
+		      valcnv_convert_value_to_string (out_values[idx_val]);
 		    }
 		  else
 		    {
-		      db_make_null (out_values[idx_val++]);
+		      db_make_null (out_values[idx_val]);
 		    }
+		  idx_val++;
 		  break;
 		default:
 		  /* 
@@ -21827,12 +21842,13 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* attribute has auto_increment or not */
 	  if (attrepr->is_autoincrement == 0)
 	    {
-	      db_make_string (out_values[idx_val++], "");
+	      db_make_string (out_values[idx_val], "");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[idx_val++], "auto_increment");
+	      db_make_string (out_values[idx_val], "auto_increment");
 	    }
+	  idx_val++;
 
 	  /* attribute's comment */
 	  if (full_columns)
