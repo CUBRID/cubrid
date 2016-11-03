@@ -31190,7 +31190,7 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
 
   pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
 
-  btree_delete_log (delete_helper, BTREE_DELETE_MODIFY_MSG ("delete object in leaf record by replacing with last"),
+  btree_delete_log (delete_helper, BTREE_DELETE_MODIFY_MSG ("delete object in leaf record by replacing with last")
 		    "\t" BTREE_OBJINFO_MSG ("replacement object"),
 		    BTREE_DELETE_MODIFY_ARGS (delete_helper, leaf_page, &prev_lsa, true, search_key->slotid,
 					      leaf_record->length, btid_int->sys_btid),
