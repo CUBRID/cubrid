@@ -2033,7 +2033,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
       csect_exit (thread_p, CSECT_DISK_CHECK);
       return DISK_INVALID;
     }
-  if (nvols_temp > 0 && (nvols_temp != (LOG_MAX_DBVOLID - volid_temp_last - 1)))
+  if (nvols_temp > 0 && (nvols_temp != (LOG_MAX_DBVOLID - volid_temp_last + 1)))
     {
       /* cannot repair */
       assert_release (false);
