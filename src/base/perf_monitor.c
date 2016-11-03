@@ -4515,7 +4515,7 @@ perfmon_get_peek_stats (UINT64 * stats)
  *
  * stream (in/out): input file
  * stat_index (in): statistic index
- * stats_ptr (in): statistic values array
+ * stats_ptr (in) : statistic values array
  *
  * return: void
  *
@@ -4527,12 +4527,13 @@ perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr)
 
   assert (pstat_Metadata[stat_index].valtype == PSTAT_COUNTER_TIMER_VALUE);
   fprintf (stream, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
-  fprintf (stream, "Num_%-25s = %10llu\n", (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
-  fprintf (stream, "Total_time_%-18s = %10llu\n",
+  fprintf (stream, "Num_%-25s = %10llu\n", pstat_Metadata[stat_index].stat_name,
+	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
+  fprintf (stream, "Total_time_%-18s = %10llu\n", pstat_Metadata[stat_index].stat_name,
 	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
-  fprintf (stream, "Max_time_%-20s = %10llu\n",
+  fprintf (stream, "Max_time_%-20s = %10llu\n", pstat_Metadata[stat_index].stat_name,
 	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)]);
-  fprintf (stream, "Avg_time_%-20s = %10llu\n",
+  fprintf (stream, "Avg_time_%-20s = %10llu\n", pstat_Metadata[stat_index].stat_name,
 	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]);
 }
 
@@ -4558,19 +4559,19 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
   ret = snprintf (*s, *remained_size, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
   *remained_size -= ret;
   *s += ret;
-  ret = snprintf (*s, *remained_size, "Num_%-25s = %10llu\n",
+  ret = snprintf (*s, *remained_size, "Num_%-25s = %10llu\n", pstat_Metadata[stat_index].stat_name,
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
-  ret = snprintf (*s, *remained_size, "Total_time_%-18s = %10llu\n",
+  ret = snprintf (*s, *remained_size, "Total_time_%-18s = %10llu\n", pstat_Metadata[stat_index].stat_name,
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
-  ret = snprintf (*s, *remained_size, "Max_time_%-20s = %10llu\n",
+  ret = snprintf (*s, *remained_size, "Max_time_%-20s = %10llu\n", pstat_Metadata[stat_index].stat_name,
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
-  ret = snprintf (*s, *remained_size, "Avg_time_%-20s = %10llu\n",
+  ret = snprintf (*s, *remained_size, "Avg_time_%-20s = %10llu\n", pstat_Metadata[stat_index].stat_name,
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
