@@ -76,11 +76,12 @@
 #include "tsc_timer.h"
 #include "xasl_generation.h"
 
-#include "dbval.h"
-
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+/* this must be the last header file included!!! */
+#include "dbval.h"
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -8638,7 +8639,20 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      mvcc_reev_class->inst_oid = DB_GET_OID (valp);
+	      /* FIXME: Function version of DB_GET_OID returns (probably) NULL_OID when the value is NULL,
+	       * while macro version returns NULL pointer. This may cause different behavior.
+	       * As a quick fix, I'm going to add DB_IS_NULL block to keep the existing behavior.
+	       * We need to investigate and get rid of differences of two implementation.
+	       * Inlining would be a good choice.
+	       */
+	      if (DB_IS_NULL (valp))
+		{
+		  OID_SET_NULL (mvcc_reev_class->inst_oid);
+		}
+	      else
+		{
+		  mvcc_reev_class->inst_oid = DB_GET_OID (valp);
+		}
 
 	      /* class OID */
 	      valp = vallist->next->val;
@@ -8646,7 +8660,16 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      class_oid = DB_GET_OID (valp);
+
+	      /* FIXME: please see above FIXME */
+	      if (DB_IS_NULL (valp))
+		{
+		  OID_SET_NULL (class_oid);
+		}
+	      else
+		{
+		  class_oid = DB_GET_OID (valp);
+		}
 
 	      /* class has changed to a new subclass */
 	      if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
@@ -8791,7 +8814,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  xasl->list_id->tuple_cnt++;
 		}
 	    }
-	continue_scan:;
+	continue_scan:
+	  ;
 	}
       if (ls_scan != S_END)
 	{
@@ -11822,17 +11846,14 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
 	  /* get oid and attrid to be fetched last at scan */
 	  rightvalp = varptr->value.arithptr->value;
-	  if (fetch_peek_dbval (thread_p, varptr->value.arithptr->thirdptr, NULL, NULL, NULL, NULL, &thirdvalp) !=
-	      NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
 
-	  /* we need the OID and the attribute id to perform increment */
 	  oid = DB_GET_OID (rightvalp);
-	  attrid = DB_GET_INTEGER (thirdvalp);
-	  n_increment = (varptr->value.arithptr->opcode == T_INCR ? 1 : -1);
-
+	  if (oid == NULL)
+	    {
+	      /* Probably this would be INCR(NULL). When the source value is NULL, INCR/DECR expression is also NULL. */
+	      clear_list_id = false;
+	      continue;
+	    }
 	  if (OID_ISNULL (oid))
 	    {
 	      /* in some cases, a query returns no result even if it should have an result on dirty read mode. it may
@@ -11842,6 +11863,16 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      clear_list_id = false;
 	      continue;
 	    }
+
+	  /* we also need attribute id to perform increment */
+	  if (fetch_peek_dbval (thread_p, varptr->value.arithptr->thirdptr, NULL, NULL, NULL, NULL, &thirdvalp) !=
+	      NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  attrid = DB_GET_INTEGER (thirdvalp);
+
+	  n_increment = (varptr->value.arithptr->opcode == T_INCR ? 1 : -1);
 
 	  /* check if class oid/hfid does not set, find class oid/hfid to access */
 	  if (!OID_EQ (&selupd->class_oid, &oid_Null_oid))
