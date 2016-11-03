@@ -153,8 +153,8 @@ static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 
 static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char **s,
 								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
-static void print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
-static void print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
+static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
+static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
 PSTAT_GLOBAL pstat_Global;
 
@@ -4511,7 +4511,7 @@ perfmon_get_peek_stats (UINT64 * stats)
 }
 
 /*
- * print_timer_to_file - Print in a file the statistic values for a timer type statistic
+ * perfmon_print_timer_to_file - Print in a file the statistic values for a timer type statistic
  *
  * stream (in/out): input file
  * stat_index (in): statistic index
@@ -4521,24 +4521,23 @@ perfmon_get_peek_stats (UINT64 * stats)
  *
  */
 static void
-print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr)
+perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr)
 {
   int offset = pstat_Metadata[stat_index].start_offset;
 
   assert (pstat_Metadata[stat_index].valtype == PSTAT_COUNTER_TIMER_VALUE);
   fprintf (stream, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
-  fprintf (stream, "Timer count value is: %10llu\n",
-	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
-  fprintf (stream, "Timer total time value is: %10llu\n",
+  fprintf (stream, "Num_%-25s = %10llu\n", (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
+  fprintf (stream, "Total_time_%-18s = %10llu\n",
 	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
-  fprintf (stream, "Timer max time value is: %10llu\n",
+  fprintf (stream, "Max_time_%-20s = %10llu\n",
 	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)]);
-  fprintf (stream, "Timer average time value is: %10llu\n",
+  fprintf (stream, "Avg_time_%-20s = %10llu\n",
 	   (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]);
 }
 
 /*
- * print_timer_to_buffer - Print in a buffer the statistic values for a timer type statistic
+ * perfmon_print_timer_to_buffer - Print in a buffer the statistic values for a timer type statistic
  *
  * s (in/out): input stream
  * stat_index (in): statistic index
@@ -4550,7 +4549,7 @@ print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr)
  *
  */
 static void
-print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size)
+perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size)
 {
   int ret;
   int offset = pstat_Metadata[stat_index].start_offset;
@@ -4559,19 +4558,19 @@ print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remain
   ret = snprintf (*s, *remained_size, "The timer values for %s are:\n", pstat_Metadata[stat_index].stat_name);
   *remained_size -= ret;
   *s += ret;
-  ret = snprintf (*s, *remained_size, "Timer count value is: %10llu\n",
+  ret = snprintf (*s, *remained_size, "Num_%-25s = %10llu\n",
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_COUNT_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
-  ret = snprintf (*s, *remained_size, "Timer total value is: %10llu\n",
+  ret = snprintf (*s, *remained_size, "Total_time_%-18s = %10llu\n",
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
-  ret = snprintf (*s, *remained_size, "Timer max time value is: %10llu\n",
+  ret = snprintf (*s, *remained_size, "Max_time_%-20s = %10llu\n",
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
-  ret = snprintf (*s, *remained_size, "Timer avg time value is: %10llu\n",
+  ret = snprintf (*s, *remained_size, "Avg_time_%-20s = %10llu\n",
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
