@@ -229,7 +229,6 @@ extern int file_rv_extdata_merge_compare_vsid_redo (THREAD_ENTRY * thread_p, LOG
 extern int file_rv_extdata_merge_compare_track_item_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_undo_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
