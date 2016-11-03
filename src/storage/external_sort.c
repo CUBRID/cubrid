@@ -2438,7 +2438,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
-		  error = flre_create_temp (thread_p, 1, &sort_param->multipage_file);
+		  error = file_create_temp (thread_p, 1, &sort_param->multipage_file);
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -4404,13 +4404,13 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     {
       if (sort_param->temp[k].volid != NULL_VOLID)
 	{
-	  (void) flre_temp_retire (thread_p, &sort_param->temp[k]);
+	  (void) file_temp_retire (thread_p, &sort_param->temp[k]);
 	}
     }
 
   if (sort_param->multipage_file.volid != NULL_VOLID)
     {
-      (void) flre_temp_retire (thread_p, &(sort_param->multipage_file));
+      (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
     }
 
   for (k = 0; k < sort_param->tot_tempfiles; k++)
@@ -4454,7 +4454,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: sort file is a case I missed that seems to use file_find_nthpages. I don't know if it can be optimized to
    *       work without numerable files, that remains to be seen. */
 
-  ret = flre_create_temp_numerable (thread_p, file_pg_cnt_est, vfid);
+  ret = file_create_temp_numerable (thread_p, file_pg_cnt_est, vfid);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4475,11 +4475,11 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: we don't have multiple page allocation, but allocation should be fast enough */
   for (; file_pg_cnt_est > 0; file_pg_cnt_est--)
     {
-      ret = flre_alloc (thread_p, vfid, &new_vpid);
+      ret = file_alloc (thread_p, vfid, &new_vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  flre_temp_retire (thread_p, vfid);
+	  file_temp_retire (thread_p, vfid);
 	  VFID_SET_NULL (vfid);
 	  return ret;
 	}
@@ -4522,7 +4522,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   for (i = 0; i < num_pages; i++)
     {
       /* file is automatically expanded if page is not allocated (as long as it is missing only one page) */
-      ret = flre_numerable_find_nth (thread_p, vfid, page_no++, true, &vpid);
+      ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, &vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4570,7 +4570,7 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_
 
   for (i = 0; i < num_pages; i++)
     {
-      ret = flre_numerable_find_nth (thread_p, vfid, page_no++, false, &vpid);
+      ret = file_numerable_find_nth (thread_p, vfid, page_no++, false, &vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4710,7 +4710,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
       if (needed_pages[i] > 0)
 	{
 	  assert (!VFID_ISNULL (&sort_param->temp[i]));
-	  if (flre_get_num_user_pages (thread_p, &sort_param->temp[i], &contains) != NO_ERROR)
+	  if (file_get_num_user_pages (thread_p, &sort_param->temp[i], &contains) != NO_ERROR)
 	    {
 	      /* what happened? */
 	      assert (false);
@@ -4719,7 +4719,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  alloc_pages = (needed_pages[i] - contains);
 	  if (alloc_pages > 0)
 	    {
-	      if (flre_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL) != NO_ERROR)
+	      if (file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL) != NO_ERROR)
 		{
 		  /* shouldn't we make this safe? */
 		  assert (false);
@@ -4732,7 +4732,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      if (flre_temp_retire (thread_p, &sort_param->temp[i]) == NO_ERROR)
+	      if (file_temp_retire (thread_p, &sort_param->temp[i]) == NO_ERROR)
 		{
 		  VFID_SET_NULL (&sort_param->temp[i]);
 		}

@@ -2178,7 +2178,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 	}
       assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
 
-      if (flre_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
+      if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return false;

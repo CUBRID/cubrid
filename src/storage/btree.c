@@ -1873,7 +1873,7 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
   /* initialize description of overflow heap file */
   btdes_ovf.btid = *btid->sys_btid;	/* structure copy */
   /* create file with at least 3 pages */
-  return flre_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, (FILE_DESCRIPTORS *) & btdes_ovf, &btid->ovfid);
+  return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, (FILE_DESCRIPTORS *) & btdes_ovf, &btid->ovfid);
 }
 
 /*
@@ -4860,7 +4860,7 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
 
   alignment = BTREE_MAX_ALIGN;
 
-  if (flre_alloc_and_init (thread_p, &btid->sys_btid->vfid, btree_initialize_new_page, (void *) (&alignment), vpid)
+  if (file_alloc_and_init (thread_p, &btid->sys_btid->vfid, btree_initialize_new_page, (void *) (&alignment), vpid)
       != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5630,9 +5630,9 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
     }
   if (!VFID_ISNULL (&ovfid))
     {
-      flre_postpone_destroy (thread_p, &ovfid);
+      file_postpone_destroy (thread_p, &ovfid);
     }
-  flre_postpone_destroy (thread_p, &btid->vfid);
+  file_postpone_destroy (thread_p, &btid->vfid);
 
 
   btid->root_pageid = NULL_PAGEID;
@@ -6898,7 +6898,7 @@ btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * bti
 
   int error_code = NO_ERROR;
 
-  error_code = flre_get_sticky_first_page (thread_p, vfid, &vpid_sticky);
+  error_code = file_get_sticky_first_page (thread_p, vfid, &vpid_sticky);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -6937,7 +6937,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
   assert_release (stat_info_p != NULL);
   assert_release (!BTID_IS_NULL (&stat_info_p->btid));
 
-  ret = flre_get_num_user_pages (thread_p, &(stat_info_p->btid.vfid), &npages);
+  ret = file_get_num_user_pages (thread_p, &(stat_info_p->btid.vfid), &npages);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -7582,7 +7582,7 @@ btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, VP
   BTREE_NODE_TYPE node_type;
 
   /* Verify the given page */
-  vld = flre_check_vpid (thread_p, &btid->sys_btid->vfid, pg_vpid);
+  vld = file_check_vpid (thread_p, &btid->sys_btid->vfid, pg_vpid);
   if (vld != DISK_VALID)
     {
       goto error;
@@ -7728,7 +7728,7 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 
   assert (!VFID_ISNULL (&btid->vfid));
 
-  if (flre_descriptor_get (thread_p, &btid->vfid, &fdes) != NO_ERROR)
+  if (file_descriptor_get (thread_p, &btid->vfid, &fdes) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return DISK_ERROR;
@@ -8145,7 +8145,7 @@ btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * index_btid, b
   VFID_SET_NULL (&btid.vfid);
   while (true)
     {
-      if (flre_tracker_interruptable_iterate (thread_p, FILE_BTREE, &btid.vfid, &class_oid) != NO_ERROR)
+      if (file_tracker_interruptable_iterate (thread_p, FILE_BTREE, &btid.vfid, &class_oid) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  valid = valid == DISK_VALID ? DISK_ERROR : valid;
@@ -8209,7 +8209,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
   VFID_SET_NULL (&btid.vfid);
   while (true)
     {
-      error_code = flre_tracker_interruptable_iterate (thread_p, FILE_BTREE, &btid.vfid, &class_oid);
+      error_code = file_tracker_interruptable_iterate (thread_p, FILE_BTREE, &btid.vfid, &class_oid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -8674,7 +8674,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
       goto exit;
     }
 
-  ret = flre_descriptor_get (thread_p, &btid->vfid, &fdes);
+  ret = file_descriptor_get (thread_p, &btid->vfid, &fdes);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -19182,7 +19182,7 @@ btree_fix_ovfl_oid_pages_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
   assert (!BTID_IS_NULL (btid));
   assert (btid->root_pageid != NULL_PAGEID);
 
-  ret = flre_descriptor_get (thread_p, &btid->vfid, &fdes);
+  ret = file_descriptor_get (thread_p, &btid->vfid, &fdes);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -30071,14 +30071,14 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 #endif /* !NDEBUG */
 
 	      pgbuf_unfix_and_init (thread_p, left_page);
-	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &left_vpid, FILE_BTREE);
+	      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &left_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
 		  goto error;
 		}
 	      pgbuf_unfix_and_init (thread_p, right_page);
-	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
+	      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -30297,7 +30297,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 	      /* Deallocate right page. */
 	      pgbuf_unfix_and_init (thread_p, right_page);
-	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
+	      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -30461,7 +30461,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 	      /* Deallocate child page. */
 	      pgbuf_unfix_and_init (thread_p, child_page);
-	      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &child_vpid, FILE_BTREE);
+	      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &child_vpid, FILE_BTREE);
 	      if (error_code != NO_ERROR)
 		{
 		  /* Is this acceptable? Pages are "leaked" if it happens. */
@@ -31534,7 +31534,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* todo: we always need a system operation to deallocate page. otherwise the page may be "leaked" on rollback.
        * fixme when replacing the old system operation system */
       /* Deallocate page. */
-      error_code = flre_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
+      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &overflow_vpid, FILE_BTREE);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -33047,13 +33047,13 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   des.class_oid = *class_oid;
   des.attr_id = attrid;
 
-  error_code = flre_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) (&des), &btid->vfid);
+  error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, (FILE_DESCRIPTORS *) (&des), &btid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
-  error_code = flre_alloc_sticky_first_page (thread_p, &btid->vfid, &vpid_root);
+  error_code = file_alloc_sticky_first_page (thread_p, &btid->vfid, &vpid_root);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

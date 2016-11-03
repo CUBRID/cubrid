@@ -246,7 +246,7 @@ phase3:
   catalog_reclaim_space (NULL);
   db_commit_transaction ();
 
-  if (flre_tracker_reclaim_marked_deleted (NULL) != NO_ERROR)
+  if (file_tracker_reclaim_marked_deleted (NULL) != NO_ERROR)
     {
       /* how to handle error? */
       ASSERT_ERROR ();

@@ -922,7 +922,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 			 load_args->btid->sys_btid->vfid.fileid);
 	}
       /* there are no index entries, destroy index file and call index creation */
-      if (flre_destroy (thread_p, &btid->vfid) != NO_ERROR)
+      if (file_destroy (thread_p, &btid->vfid) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1883,7 +1883,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
   assert (log_check_system_op_is_started (thread_p));	/* need system operation */
 
   /* allocate new page */
-  error_code = flre_alloc (thread_p, &btid->vfid, vpid_new);
+  error_code = file_alloc (thread_p, &btid->vfid, vpid_new);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

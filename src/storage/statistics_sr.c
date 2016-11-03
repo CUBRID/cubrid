@@ -248,7 +248,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   npages = estimated_nobjs = 0;
 
   /* do not use estimated npages, get correct info */
-  if (flre_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &npages) != NO_ERROR)
+  if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &npages) != NO_ERROR)
     {
       goto error;
     }
@@ -636,7 +636,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
       /* do not use estimated npages, get correct info */
       assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
-      if (flre_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
+      if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  /* cannot get #pages from the heap, use ones from the catalog */
@@ -691,7 +691,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  /* If the btree file has currently more pages than when we gathered statistics, assume that all growth happen 
 	   * at the leaf level. If the btree is smaller, we use the gathered statistics since the btree may have an
 	   * external file (unknown at this level) to keep overflow keys. */
-	  if (flre_get_num_user_pages (thread_p, &btree_stats_p->btid.vfid, &npages) != NO_ERROR)
+	  if (file_get_num_user_pages (thread_p, &btree_stats_p->btid.vfid, &npages) != NO_ERROR)
 	    {
 	      /* what to do here? */
 	      npages = btree_stats_p->pages;

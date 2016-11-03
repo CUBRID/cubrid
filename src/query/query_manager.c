@@ -2433,7 +2433,7 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
   /* memory buffer is exhausted; create temp file */
   if (VFID_ISNULL (&tfile_vfid_p->temp_vfid))
     {
-      if (flre_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+      if (file_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return NULL;
@@ -2473,7 +2473,7 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
   QFILE_PAGE_HEADER page_header = QFILE_PAGE_HEADER_INITIALIZER;
 
   VPID_SET_NULL (vpid_p);
-  if (flre_alloc (thread_p, &tmp_vfid_p->temp_vfid, vpid_p) != NO_ERROR)
+  if (file_alloc (thread_p, &tmp_vfid_p->temp_vfid, vpid_p) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -2636,7 +2636,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
 
-  if (flre_create_query_area (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+  if (file_create_query_area (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
     {
       free_and_init (tfile_vfid_p);
       return NULL;
@@ -2668,7 +2668,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       /* query entry is not found */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      flre_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
       free_and_init (tfile_vfid_p);
       return NULL;
     }
@@ -2719,7 +2719,7 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
       fd_ret = NO_ERROR;
       if ((tfile_vfid_p->temp_file_type != FILE_QUERY_AREA || is_error) && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  fd_ret = flre_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	  fd_ret = file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
 	  if (fd_ret != NO_ERROR)
 	    {
 	      /* set error but continue with the destroy process */
@@ -2846,7 +2846,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
     {
       if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  if (flre_temp_retire (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+	  if (file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	    {
 	      /* stop; return error */
 	      rc = ER_FAILED;

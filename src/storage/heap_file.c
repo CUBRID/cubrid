@@ -4142,7 +4142,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
   /* allocate new page and initialize it */
-  error_code = flre_alloc_and_init (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, &vpid);
+  error_code = file_alloc_and_init (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, &vpid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4478,7 +4478,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
   /* Free the page to be deallocated and deallocate the page */
   pgbuf_ordered_unfix (thread_p, &rm_pg_watcher);
 
-  if (flre_dealloc (thread_p, &hfid->vfid, rm_vpid, FILE_HEAP) != NO_ERROR)
+  if (file_dealloc (thread_p, &hfid->vfid, rm_vpid, FILE_HEAP) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
@@ -4760,7 +4760,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
   /* Deallocate current page. */
-  if (flre_dealloc (thread_p, &hfid->vfid, &page_vpid, FILE_HEAP) != NO_ERROR)
+  if (file_dealloc (thread_p, &hfid->vfid, &page_vpid, FILE_HEAP) != NO_ERROR)
     {
       ASSERT_ERROR ();
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
@@ -5043,7 +5043,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
        * Try to reuse an already mark deleted heap file
        */
 
-      error_code = flre_tracker_reuse_heap (thread_p, &hfid->vfid);
+      error_code = file_tracker_reuse_heap (thread_p, &hfid->vfid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -5052,13 +5052,13 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       if (!VFID_ISNULL (&hfid->vfid))
 	{
 	  VPID vpid_heap_header;
-	  error_code = flre_descriptor_update (thread_p, &hfid->vfid, &hfdes);
+	  error_code = file_descriptor_update (thread_p, &hfid->vfid, &hfdes);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error;
 	    }
-	  error_code = flre_get_sticky_first_page (thread_p, &hfid->vfid, &vpid_heap_header);
+	  error_code = file_get_sticky_first_page (thread_p, &hfid->vfid, &vpid_heap_header);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -5091,13 +5091,13 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
    * new, and the file is going to be removed in the event of a crash.
    */
 
-  error_code = flre_create_heap (thread_p, &hfdes, reuse_oid, &hfid->vfid);
+  error_code = file_create_heap (thread_p, &hfdes, reuse_oid, &hfid->vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
     }
-  error_code = flre_alloc_sticky_first_page (thread_p, &hfid->vfid, &vpid);
+  error_code = file_alloc_sticky_first_page (thread_p, &hfid->vfid, &vpid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5632,10 +5632,10 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
   addr.offset = -1;
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      flre_postpone_destroy (thread_p, &vfid);
+      file_postpone_destroy (thread_p, &vfid);
     }
 
-  flre_postpone_destroy (thread_p, &hfid->vfid);
+  file_postpone_destroy (thread_p, &hfid->vfid);
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
 
@@ -5658,7 +5658,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
   FILE_TYPE file_type;
   int ret;
 
-  ret = flre_get_type (thread_p, &hfid->vfid, &file_type);
+  ret = file_get_type (thread_p, &hfid->vfid, &file_type);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5674,10 +5674,10 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
 
   if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
-      flre_postpone_destroy (thread_p, &vfid);
+      file_postpone_destroy (thread_p, &vfid);
     }
 
-  ret = flre_tracker_mark_heap_deleted (thread_p, &hfid->vfid);
+  ret = file_tracker_mark_heap_deleted (thread_p, &hfid->vfid);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -6197,7 +6197,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 
 	  /* Initialize description of overflow heap file */
 	  HFID_COPY (&hfdes_ovf.hfid, hfid);
-	  if (flre_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, (FILE_DESCRIPTORS *) & hfdes_ovf,
+	  if (file_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, (FILE_DESCRIPTORS *) & hfdes_ovf,
 				       ovf_vfid) == NO_ERROR)
 	    {
 	      /* Log undo, then redo */
@@ -6556,7 +6556,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	  scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
 	  scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
 	  scan_cache->node.hfid.hpgid = hfid->hpgid;
-	  if (flre_get_type (thread_p, &hfid->vfid, &scan_cache->file_type) != NO_ERROR)
+	  if (file_get_type (thread_p, &hfid->vfid, &scan_cache->file_type) != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto exit_on_error;
@@ -6805,7 +6805,7 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	  scan_cache->node.hfid.vfid.fileid = hfid->vfid.fileid;
 	  scan_cache->node.hfid.hpgid = hfid->hpgid;
 
-	  ret = flre_get_type (thread_p, &hfid->vfid, &scan_cache->file_type);
+	  ret = file_get_type (thread_p, &hfid->vfid, &scan_cache->file_type);
 	  if (ret != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -13503,7 +13503,7 @@ heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_CH
     {
       npages++;
 
-      valid_pg = flre_check_vpid (thread_p, &hfid->vfid, &vpid);
+      valid_pg = file_check_vpid (thread_p, &hfid->vfid, &vpid);
       if (valid_pg != DISK_VALID)
 	{
 	  break;
@@ -13610,7 +13610,7 @@ heap_check_all_pages_by_file_table (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_C
   int error_code = NO_ERROR;
 
   error_code =
-    flre_map_pages (thread_p, &hfid->vfid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, heap_file_map_chkreloc,
+    file_map_pages (thread_p, &hfid->vfid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, heap_file_map_chkreloc,
 		    chk_objs);
   if (error_code == ER_FAILED)
     {
@@ -13672,7 +13672,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
   valid_pg = heap_check_all_pages_by_heapchain (thread_p, hfid, chk_objs, &npages);
 
 #if defined (SA_MODE)
-  if (flre_get_num_user_pages (thread_p, &hfid->vfid, &file_numpages) != NO_ERROR)
+  if (file_get_num_user_pages (thread_p, &hfid->vfid, &file_numpages) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return valid_pg == DISK_VALID ? DISK_ERROR : valid_pg;
@@ -13757,7 +13757,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	{
 	  if (!VPID_ISNULL (&heap_hdr->estimates.best[i].vpid))
 	    {
-	      valid = flre_check_vpid (thread_p, &hfid->vfid, &heap_hdr->estimates.best[i].vpid);
+	      valid = file_check_vpid (thread_p, &hfid->vfid, &heap_hdr->estimates.best[i].vpid);
 	      if (valid != DISK_VALID)
 		{
 		  valid_pg = valid;
@@ -13781,7 +13781,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	      assert_release (!VPID_ISNULL (&ent->best.vpid));
 	      if (!VPID_ISNULL (&ent->best.vpid))
 		{
-		  valid_pg = flre_check_vpid (thread_p, &hfid->vfid, &ent->best.vpid);
+		  valid_pg = file_check_vpid (thread_p, &hfid->vfid, &ent->best.vpid);
 		  if (valid_pg != DISK_VALID)
 		    {
 		      break;
@@ -13814,7 +13814,7 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
   FILE_DESCRIPTORS fdes;
 #endif /* !NDEBUG */
 
-  if (flre_get_type (thread_p, &hfid->vfid, &file_type) != NO_ERROR)
+  if (file_get_type (thread_p, &hfid->vfid, &file_type) != NO_ERROR)
     {
       return DISK_ERROR;
     }
@@ -13829,7 +13829,7 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
       hfid->hpgid = vpid.pageid;
 
 #if !defined (NDEBUG)
-      if (flre_descriptor_get (thread_p, &hfid->vfid, &fdes) == NO_ERROR && !OID_ISNULL (&fdes.heap.class_oid))
+      if (file_descriptor_get (thread_p, &hfid->vfid, &fdes) == NO_ERROR && !OID_ISNULL (&fdes.heap.class_oid))
 	{
 	  assert (lock_has_lock_on_object (&fdes.heap.class_oid, oid_Root_class_oid,
 					   LOG_FIND_THREAD_TRAN_INDEX (thread_p), SCH_S_LOCK) == 1);
@@ -13873,7 +13873,7 @@ heap_check_all_heaps (THREAD_ENTRY * thread_p)
   while (true)
     {
       /* Go to each file, check only the heap files */
-      error_code = flre_tracker_interruptable_iterate (thread_p, FILE_HEAP, &vfid, &class_oid);
+      error_code = file_tracker_interruptable_iterate (thread_p, FILE_HEAP, &vfid, &class_oid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -13998,7 +13998,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 
   fprintf (fp, "\n\n*** DUMPING HEAP FILE: ");
   fprintf (fp, "volid = %d, Fileid = %d, Header-pageid = %d ***\n", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-  (void) flre_descriptor_dump (thread_p, &hfid->vfid, fp);
+  (void) file_descriptor_dump (thread_p, &hfid->vfid, fp);
 
   /* Fetch the header page of the heap file */
 
@@ -14059,7 +14059,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   assert (pg_watcher.pgptr == NULL);
 
   /* Dump file table configuration */
-  if (flre_dump (thread_p, &hfid->vfid, fp) != NO_ERROR)
+  if (file_dump (thread_p, &hfid->vfid, fp) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return;
@@ -14069,7 +14069,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
     {
       /* There is an overflow file for this heap file */
       fprintf (fp, "\nOVERFLOW FILE INFORMATION FOR HEAP FILE\n\n");
-      if (flre_dump (thread_p, &ovf_vfid, fp) != NO_ERROR)
+      if (file_dump (thread_p, &ovf_vfid, fp) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return;
@@ -14080,7 +14080,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
    * Dump schema definition
    */
 
-  if (flre_descriptor_get (thread_p, &hfid->vfid, &fdes) != NO_ERROR)
+  if (file_descriptor_get (thread_p, &hfid->vfid, &fdes) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return;
@@ -14178,7 +14178,7 @@ heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 	   avg_reclength, num_pages, avg_freespace, avg_freespace_nolast, avg_overhead);
 
   /* Dump schema definition */
-  error_code = flre_descriptor_get (thread_p, &hfid->vfid, &fdes);
+  error_code = file_descriptor_get (thread_p, &hfid->vfid, &fdes);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17911,7 +17911,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
       goto cleanup;
     }
 
-  error = flre_descriptor_get (thread_p, &hfid_p->vfid, &fdes);
+  error = file_descriptor_get (thread_p, &hfid_p->vfid, &fdes);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -19217,7 +19217,7 @@ heap_get_header_page (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * header_
 {
   assert (!VFID_ISNULL (&hfid->vfid));
 
-  return flre_get_sticky_first_page (thread_p, &hfid->vfid, header_vpid);
+  return file_get_sticky_first_page (thread_p, &hfid->vfid, header_vpid);
 }
 
 /*
@@ -23388,7 +23388,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
   if (entry->ftype == FILE_UNKNOWN_TYPE)
     {
       FILE_TYPE ftype_local;
-      error_code = flre_get_type (thread_p, &entry->hfid.vfid, &ftype_local);
+      error_code = file_get_type (thread_p, &entry->hfid.vfid, &ftype_local);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

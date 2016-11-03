@@ -2692,7 +2692,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = flre_tracker_load (thread_p, &boot_Db_parm->trk_vfid);
+  error_code = file_tracker_load (thread_p, &boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2853,7 +2853,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* If there is an existing query area, delete it. */
   if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
     {
-      (void) flre_destroy (thread_p, &boot_Db_parm->query_vfid);
+      (void) file_destroy (thread_p, &boot_Db_parm->query_vfid);
       boot_Db_parm->query_vfid.fileid = NULL_FILEID;
       boot_Db_parm->query_vfid.volid = NULL_VOLID;
 
@@ -3830,7 +3830,7 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids,
     {
       if (isvalid != DISK_ERROR)
 	{
-	  isvalid = flre_tracker_check (thread_p);
+	  isvalid = file_tracker_check (thread_p);
 	  if (isvalid != DISK_VALID)
 	    {
 	      assert (isvalid != DISK_INVALID);
@@ -5025,7 +5025,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   VFID_SET_NULL (&boot_Db_parm->dropped_files_vfid);
 
   /* Create the needed files */
-  error_code = flre_tracker_create (thread_p, &boot_Db_parm->trk_vfid);
+  error_code = file_tracker_create (thread_p, &boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5558,7 +5558,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
       goto error_exit;
     }
 
-  error_code = flre_tracker_load (thread_p, &boot_Db_parm->trk_vfid);
+  error_code = file_tracker_load (thread_p, &boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

@@ -539,7 +539,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
     {
       goto error;
     }
-  error_code = flre_manager_init ();
+  error_code = file_manager_init ();
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -652,7 +652,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   logtb_finalize_mvcctable (thread_p);
   lock_finalize ();
   pgbuf_finalize ();
-  flre_manager_final ();
+  file_manager_final ();
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -7238,7 +7238,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* Num_new_temp_temp_files */
-      db_make_int (&vals[idx], flre_get_tran_num_temp_files (thread_p));
+      db_make_int (&vals[idx], file_get_tran_num_temp_files (thread_p));
       idx++;
 
       /* Waiting_for_res */

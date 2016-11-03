@@ -157,7 +157,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
   log_sysop_start (thread_p);
   is_sysop_started = true;
 
-  error_code = flre_alloc_multiple (thread_p, ovf_vfid, NULL, NULL, npages, vpids);
+  error_code = file_alloc_multiple (thread_p, ovf_vfid, NULL, NULL, npages, vpids);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -531,7 +531,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	  if (VPID_ISNULL (&next_vpid))
 	    {
 	      /* We need to allocate a new page */
-	      error_code = flre_alloc (thread_p, ovf_vfid, &next_vpid);
+	      error_code = file_alloc (thread_p, ovf_vfid, &next_vpid);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -594,7 +594,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 
 	      pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
-	      error_code = flre_dealloc (thread_p, ovf_vfid, &tmp_vpid, file_type);
+	      error_code = file_dealloc (thread_p, ovf_vfid, &tmp_vpid, file_type);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -632,7 +632,7 @@ overflow_delete_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
   pgbuf_unfix_and_init (thread_p, pgptr);
 
   /* TODO: clarify file_type */
-  ret = flre_dealloc (thread_p, ovf_vfid, vpid, FILE_UNKNOWN_TYPE);
+  ret = file_dealloc (thread_p, ovf_vfid, vpid, FILE_UNKNOWN_TYPE);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
