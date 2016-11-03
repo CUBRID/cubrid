@@ -2256,7 +2256,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 		}
 	      else
 		{
-		  print_timer_to_buffer (&p, i, stats_ptr, &remained_size);
+		  perfmon_print_timer_to_buffer (&p, i, stats_ptr, &remained_size);
 		  ret = 0;
 		}
 	    }
@@ -2352,7 +2352,7 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 		}
 	      else
 		{
-		  print_timer_to_file (stream, i, stats_ptr);
+		  perfmon_print_timer_to_file (stream, i, stats_ptr);
 		}
 	    }
 	  else
