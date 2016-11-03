@@ -2122,9 +2122,11 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_ENUMERATION:
       if (value->need_clear)
 	{
-	  if (DB_GET_ENUM_STRING (value) != NULL)
+	  char *string;
+	  string = DB_GET_ENUM_STRING (value);
+	  if (string != NULL)
 	    {
-	      db_private_free_and_init (NULL, DB_GET_ENUM_STRING (value));
+	      db_private_free_and_init (NULL, string);
 	    }
 	}
       db_make_enumeration (value, 0, NULL, 0, DB_GET_ENUM_CODESET (value), DB_GET_ENUM_COLLATION (value));

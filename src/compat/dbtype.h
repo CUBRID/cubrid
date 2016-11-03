@@ -390,18 +390,18 @@
 
 #define DB_GET_TIME(value)              db_get_time(value)
 
-#define DB_GET_TIMETZ(value)		db_get_timetz(value)
+#define DB_GET_TIMETZ(value)          db_get_timetz(value)
 
 #define DB_GET_DATE(value)              db_get_date(value)
 
 #define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
-#define DB_GET_UTIME DB_GET_TIMESTAMP
 
-#define DB_GET_TIMESTAMPTZ(value)	db_get_timestamptz(value)
+
+#define DB_GET_TIMESTAMPTZ(value)     db_get_timestamptz(value)
 
 #define DB_GET_DATETIME(value)          db_get_datetime(value)
 
-#define DB_GET_DATETIMETZ(value)	db_get_datetimetz(value)
+#define DB_GET_DATETIMETZ(value)      db_get_datetimetz(value)
 
 #define DB_GET_MONETARY(value)          db_get_monetary(value)
 
@@ -1129,6 +1129,7 @@ extern int db_get_int (const DB_VALUE * value);
 extern DB_C_SHORT db_get_short (const DB_VALUE * value);
 extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
 extern DB_C_CHAR db_get_string (const DB_VALUE * value);
+extern DB_C_CHAR db_get_string_safe (const DB_VALUE * value);
 extern DB_C_FLOAT db_get_float (const DB_VALUE * value);
 extern DB_C_DOUBLE db_get_double (const DB_VALUE * value);
 extern DB_OBJECT *db_get_object (const DB_VALUE * value);
@@ -1169,5 +1170,7 @@ extern int db_get_enum_collation (const DB_VALUE * value);
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
+
+/* extern DB_C_CHAR db_pull_string(const DB_VALUE * value); */
 
 #endif /* _DBTYPE_H_ */

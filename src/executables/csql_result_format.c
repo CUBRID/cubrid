@@ -1685,7 +1685,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	const char *str;
 	char *decomposed = NULL;
 
-	if (db_get_enum_short (value) == 0 && db_get_enum_string (value) == NULL)
+	if (DB_GET_ENUM_SHORT (value) == 0 && DB_GET_ENUM_STRING (value) == NULL)
 	  {
 	    /* ENUM special error value */
 	    str = "";
