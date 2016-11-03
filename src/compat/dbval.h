@@ -38,42 +38,42 @@
 #else
 #undef DB_VALUE_DOMAIN_TYPE
 #endif
-#undef DB_VALUE_TYPE
-#undef DB_VALUE_SCALE
-#undef DB_VALUE_PRECISION
-#undef DB_GET_INTEGER
-#undef DB_GET_BIGINT
-#undef DB_GET_FLOAT
-#undef DB_GET_DOUBLE
-#undef DB_GET_STRING
-#undef DB_GET_CHAR
-#undef DB_GET_NCHAR
-#undef DB_GET_BIT
-#undef DB_GET_OBJECT
-#undef DB_GET_OID
-#undef DB_GET_SET
-#undef DB_GET_LIST
-#undef DB_GET_MIDXKEY
-#undef DB_GET_ELO
-#undef DB_GET_TIME
-#undef DB_GET_TIMETZ
-#undef DB_GET_DATE
-#undef DB_GET_TIMESTAMP
-#undef DB_GET_TIMESTAMPTZ
-#undef DB_GET_DATETIME
-#undef DB_GET_DATETIMETZ
-#undef DB_GET_MONETARY
-#undef DB_GET_POINTER
-#undef DB_GET_ERROR
-#undef DB_GET_SHORT
-#undef DB_GET_SMALLINT
-#undef DB_GET_NUMERIC
-#undef DB_GET_STRING_SIZE
-#undef DB_GET_RESULTSET
-#undef DB_GET_STRING_CODESET
-#undef DB_GET_STRING_COLLATION
-#undef DB_GET_ENUM_CODESET
-#undef DB_GET_ENUM_COLLATION
+//#undef DB_VALUE_TYPE
+//#undef DB_VALUE_SCALE
+//#undef DB_VALUE_PRECISION
+//#undef DB_GET_INTEGER
+//#undef DB_GET_BIGINT
+//#undef DB_GET_FLOAT
+//#undef DB_GET_DOUBLE
+//#undef DB_GET_STRING
+//#undef DB_GET_CHAR
+//#undef DB_GET_NCHAR
+//#undef DB_GET_BIT
+//#undef DB_GET_OBJECT
+//#undef DB_GET_OID
+//#undef DB_GET_SET
+//#undef DB_GET_LIST
+//#undef DB_GET_MIDXKEY
+//#undef DB_GET_ELO
+//#undef DB_GET_TIME
+//#undef DB_GET_TIMETZ
+//#undef DB_GET_DATE
+//#undef DB_GET_TIMESTAMP
+//#undef DB_GET_TIMESTAMPTZ
+//#undef DB_GET_DATETIME
+//#undef DB_GET_DATETIMETZ
+//#undef DB_GET_MONETARY
+//#undef DB_GET_POINTER
+//#undef DB_GET_ERROR
+//#undef DB_GET_SHORT
+//#undef DB_GET_SMALLINT
+//#undef DB_GET_NUMERIC
+//#undef DB_GET_STRING_SIZE
+//#undef DB_GET_RESULTSET
+//#undef DB_GET_STRING_CODESET
+//#undef DB_GET_STRING_COLLATION
+//#undef DB_GET_ENUM_CODESET
+//#undef DB_GET_ENUM_COLLATION
 
 #if !defined(NDEBUG)
 #else
@@ -187,49 +187,12 @@
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
 
-#define DB_IS_NULL(v) db_value_is_null(v)
-#define DB_VALUE_DOMAIN_TYPE(v) db_value_domain_type(v)
-#define DB_VALUE_TYPE(v) db_value_type(v)
-#define DB_VALUE_SCALE(v) db_value_scale(v)
-#define DB_VALUE_PRECISION(v) db_value_precision(v)
-#define DB_GET_INTEGER(v) db_get_int(v)
-#define DB_GET_FLOAT(v) db_get_float(v)
-#define DB_GET_DOUBLE(v) db_get_double(v)
-#define DB_GET_STRING(v) db_get_string(v)
-#define DB_GET_STRING_SAFE(v) db_get_string_safe(v)
-#define DB_GET_CHAR(v, l) db_get_char(v, l)
-#define DB_GET_NCHAR(v, l) db_get_nchar(v, l)
-#define DB_GET_BIT(v, l) db_get_bit(v, l)
-#define DB_GET_OBJECT(v) db_get_object(v)
-#define DB_GET_OID(v) db_get_oid(v)
-#define DB_GET_SET(v) db_get_set(v)
-#define DB_GET_MIDXKEY(v) db_get_midxkey(v)
-#define DB_GET_ELO(v) db_get_elo(v)
-#define DB_GET_TIME(v) db_get_time(v)
-#define DB_GET_TIMETZ(v) db_get_timetz(v)
-#define DB_GET_DATE(v) db_get_date(v)
-#define DB_GET_TIMESTAMP(v) db_get_timestamp(v)
-#define DB_GET_TIMESTAMPTZ(v) db_get_timestamptz(v)
-#define DB_GET_DATETIME(v) db_get_datetime(v)
-#define DB_GET_DATETIMETZ(v) db_get_datetimetz(v)
-#define DB_GET_MONETARY(v) db_get_monetary(v)
-#define DB_GET_POINTER(v) db_get_pointer(v)
-#define DB_GET_ERROR(v) db_get_error(v)
-#define DB_GET_SHORT(v) db_get_short(v)
-#define DB_GET_NUMERIC(v) db_get_numeric(v)
-#define DB_GET_STRING_SIZE(v) db_get_string_size(v)
-#define DB_GET_RESULTSET(v) db_get_resultset(v)
-#define DB_GET_STRING_CODESET(v) db_get_string_codeset(v)
-#define DB_GET_STRING_COLLATION(v) db_get_string_collation(v)
 #define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
 #define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
 #define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
-#define DB_GET_ENUM_CODESET(v) db_get_enum_codeset(v)
-#define DB_GET_ENUM_COLLATION(v) db_get_enum_collation(v)
-#define DB_GET_LIST(v) db_get_set(v)
-#define DB_GET_BIGINT(v) db_get_bigint(v)
-#define DB_GET_SMALLINT(v) db_get_short(v)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
+#define DB_GET_STRING_SAFE(v) db_get_string_safe(v)
+#define DB_IS_NULL(v) db_value_is_null(v)
 
 /* TODO: Decide whether we keep this as it is or we use inline functions */
 #define db_pull_string(v) DB_PULL_STRING(v)
