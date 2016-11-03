@@ -2090,11 +2090,11 @@ extern int prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 					   LOG_DATA_ADDR * addr, int undo_length, int redo_length,
 					   const void *undo_data, const void *redo_data, bool skip_undo,
 					   bool skip_redo);
-extern int prior_lsa_update_undoredo_data_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
-						       LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr,
-						       int num_undo_crumbs, int num_redo_crumbs,
-						       LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs, bool skip_undo,
-						       bool skip_redo);
+extern int prior_lsa_update_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+					     LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr,
+					     int num_undo_crumbs, int num_redo_crumbs,
+					     LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs, bool skip_undo,
+					     bool skip_redo);
 extern int prior_lsa_update_undoredo_data_from_recdes (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 						       LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 						       RECDES * old_recdes_p, RECDES * new_recdes_p, bool skip_undo,

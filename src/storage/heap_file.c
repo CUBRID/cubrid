@@ -109,6 +109,8 @@ typedef enum
   HEAP_DELETE_MARK_REUSABLE_SLOT,	/* Physical deletion with mark reusable */
 } HEAP_DELETE_TYPE;
 
+#define HEAP_UPDATE_PREFETCH_RECORD_TYPE REC_HOME
+
 #define HEAP_BESTSPACE_SYNC_THRESHOLD (0.1f)
 
 /* ATTRIBUTE LOCATION */
@@ -607,7 +609,7 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
     } \
   while (false)
 
-typedef struct heap_log_info HEAP_PREFETCH_LOG_INFO;	/* Log info obtained before page fixing. */
+typedef struct heap_log_info HEAP_LOG_INFO;	/* Log info obtained before page fixing. */
 struct heap_log_info
 {
   LOG_PRIOR_NODE *node;		/* log node */
@@ -819,9 +821,9 @@ static int heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCAN
 					      HEAP_SCANCACHE * old_scan_cache, OID * next_row_version);
 static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					  OID * forward_oid, RECDES * recdes);
-STATIC_INLINE int heap_create_log_node_for_logical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-							     PAGE_PTR page_p,
-							     VFID * vfid_p, PGLENGTH offset, LOG_RCVINDEX rcv_index,
+STATIC_INLINE int heap_create_log_node_for_logical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id,
+							     PAGE_PTR page_p, VFID * vfid_p, PGLENGTH offset,
+							     LOG_RCVINDEX rcv_index,
 							     LOG_PRIOR_NODE ** logical_delete_log_node)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int
@@ -829,15 +831,14 @@ heap_create_log_node_for_physical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * 
 					    PAGE_PTR page_p, VFID * vfid_p, PGLENGTH offset, RECDES * old_recdes_p,
 					    RECDES * new_recdes_p, LOG_RCVINDEX rcv_index,
 					    LOG_PRIOR_NODE ** physical_delete_log_node) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p,
+STATIC_INLINE int heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, PAGE_PTR page_p,
 					VFID * vfid_p, int offset, LOG_RCVINDEX rcv_index,
-					HEAP_PREFETCH_LOG_INFO * logical_delete_log_info)
-  __attribute__ ((ALWAYS_INLINE));
+					HEAP_LOG_INFO * logical_delete_log_info) __attribute__ ((ALWAYS_INLINE));
 static int heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLOTID slotid, MVCCID mvccid);
 STATIC_INLINE int heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p,
 						       VFID * vfid_p, int offset, RECDES * old_recdes,
 						       RECDES * new_recdes,
-						       HEAP_PREFETCH_LOG_INFO * logical_delete_log_info)
+						       HEAP_LOG_INFO * logical_delete_log_info)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void
 heap_mvcc_log_home_no_change (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, int offset)
@@ -892,33 +893,33 @@ STATIC_INLINE int heap_create_log_node_for_physical_insertion (THREAD_ENTRY * th
 							       LOG_PRIOR_NODE ** node) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int heap_log_insert_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p,
 					    int offset, RECDES * recdes_p, bool is_mvcc_op, bool is_redistribute_op,
-					    LOG_RCVINDEX rcv_index, HEAP_PREFETCH_LOG_INFO * physical_insert_log_info)
+					    LOG_RCVINDEX rcv_index, HEAP_LOG_INFO * physical_insert_log_info)
   __attribute__ ((ALWAYS_INLINE));
 
 /* heap delete related functions */
 static void heap_delete_adjust_header (MVCC_REC_HEADER * header_p, MVCCID mvcc_id, bool need_mvcc_header_max_size);
 static int heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
-			       bool is_mvcc_op, MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * delete_log_info);
+			       bool is_mvcc_op, MVCCID mvccid, HEAP_LOG_INFO * delete_log_info);
 static int heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
-				   bool is_mvcc_op, MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * delete_log_info);
+				   bool is_mvcc_op, MVCCID mvcc_id, HEAP_LOG_INFO * delete_log_info);
 static int heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
-			     bool is_mvcc_op, MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * delete_log_info);
+			     bool is_mvcc_op, MVCCID mvccid, HEAP_LOG_INFO * delete_log_info);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p);
 static int heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p,
 				     int offset, RECDES * recdes_p, bool mark_reusable,
-				     HEAP_PREFETCH_LOG_INFO * physical_delete_log_info, LOG_LSA * undo_lsa);
+				     HEAP_LOG_INFO * physical_delete_log_info, LOG_LSA * undo_lsa);
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
-			       MVCCID mvccid, bool is_mvcc_op);
+			       MVCCID mvccid, bool is_mvcc_op, HEAP_LOG_INFO * physical_update_log_info);
 static int heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
-				   bool is_mvcc_op, MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * physical_update_log_info);
+				   bool is_mvcc_op, MVCCID mvccid, HEAP_LOG_INFO * physical_update_log_info);
 static int heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
-			     bool is_mvcc_op, MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * physical_update_log_info);
+			     bool is_mvcc_op, MVCCID mvccid, HEAP_LOG_INFO * physical_update_log_info);
 static int heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p);
 STATIC_INLINE int heap_log_update_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p,
 					    int offset, RECDES * old_recdes_p, RECDES * new_recdes_p,
-					    LOG_RCVINDEX rcv_index, HEAP_PREFETCH_LOG_INFO * physical_update_log_info)
+					    LOG_RCVINDEX rcv_index, HEAP_LOG_INFO * physical_update_log_info)
   __attribute__ ((ALWAYS_INLINE));
 
 static void *heap_hfid_table_entry_alloc (void);
@@ -15931,6 +15932,7 @@ heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * heap_create_log_node_for_logical_deletion () - create log node for logical deletion
  *   thread_p(in): thread entry
  *   tdes(in): transaction descriptor
+ *   mvcc_id(in): MVCC id
  *   page_p(in): page pointer
  *   vfid_p(in): virtual file identifier
  *   offset(in): offset
@@ -15938,8 +15940,8 @@ heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   logical_delete_log_node(out): logical delete log node
  */
 STATIC_INLINE int
-heap_create_log_node_for_logical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p,
-					   PGLENGTH offset, LOG_RCVINDEX rcv_index,
+heap_create_log_node_for_logical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, PAGE_PTR page_p,
+					   VFID * vfid_p, PGLENGTH offset, LOG_RCVINDEX rcv_index,
 					   LOG_PRIOR_NODE ** logical_delete_log_node)
 {
   LOG_DATA_ADDR log_addr;
@@ -15951,23 +15953,21 @@ heap_create_log_node_for_logical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * t
   assert (tdes != NULL && vfid_p != NULL && logical_delete_log_node != NULL);
 
   /* Populate address field with valid VFID. The offset and page pointer will be generated later */
-  log_addr.vfid = vfid_p;
-  log_addr.offset = offset;
-  log_addr.pgptr = page_p;
+  LOG_SET_DATA_ADDR (&log_addr, page_p, vfid_p, offset);
 
   assert (rcv_index == RVHF_MVCC_DELETE_REC_HOME || rcv_index == RVHF_MVCC_DELETE_REC_NEWHOME
 	  || rcv_index == RVHF_MVCC_DELETE_OVERFLOW);
 
   /* The redo record can be built by adding DELID to the old record. */
 
-  ptr = redo_data_p;
   if (rcv_index != RVHF_MVCC_DELETE_REC_HOME)
     {
       /* MVCCID must be packed also, since it is not saved in log record structure. */
-      ptr = or_pack_mvccid (ptr, logtb_get_current_mvccid (thread_p));
+      ptr = redo_data_p;
+      ptr = or_pack_mvccid (ptr, mvcc_id);
       redo_data_size += OR_MVCCID_SIZE;
+      assert ((ptr - redo_data_buffer) <= (int) sizeof (redo_data_buffer));
     }
-  assert ((ptr - redo_data_buffer) <= (int) sizeof (redo_data_buffer));
 
   /* Log append undo/redo data */
   return log_create_log_node_from_undoredo_data (thread_p, tdes, rcv_index, &log_addr, 0, redo_data_size,
@@ -15997,9 +15997,7 @@ heap_create_log_node_for_physical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * 
   assert (tdes != NULL && vfid_p != NULL && physical_delete_log_node != NULL);
 
   /* Populate address field with valid VFID. The offset and page pointer will be generated later */
-  log_addr.vfid = vfid_p;
-  log_addr.offset = offset;
-  log_addr.pgptr = page_p;
+  LOG_SET_DATA_ADDR (&log_addr, page_p, vfid_p, offset);
 
   if (old_recdes_p->type == REC_ASSIGN_ADDRESS)
     {
@@ -16025,22 +16023,22 @@ heap_create_log_node_for_physical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * 
 					  physical_delete_log_node);
 }
 
-
 /*
- * heap_mvcc_log_delete () - Log heap logical delete operation (just append delete MVCCID and next version OID).
+ * heap_mvcc_log_delete () - Log heap logical delete operation (just append delete MVCCID).
  *
  * return		    : error code
  *
  * thread_p (in)	    : Thread entry.
  * tdes(in)		    : Log tdes
+ * mvcc_id(in)		    : MVCC id
  * page_p(in)		    : Page pointer.
  * offset(in)		    : Offset.
  * rcv_index(in)	    : Index to recovery function
  * delete_log_info(in/out)  : Logical delete log info, obtained before page fixing.
  */
 STATIC_INLINE int
-heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p, int offset,
-		      LOG_RCVINDEX rcv_index, HEAP_PREFETCH_LOG_INFO * logical_delete_log_info)
+heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, PAGE_PTR page_p, VFID * vfid_p,
+		      int offset, LOG_RCVINDEX rcv_index, HEAP_LOG_INFO * logical_delete_log_info)
 {
   LOG_DATA_ADDR address;
   int error_code = NO_ERROR;
@@ -16053,23 +16051,27 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p,
 
   /* build address */
   LOG_SET_DATA_ADDR (&address, page_p, vfid_p, offset);
-
   if (logical_delete_log_info)
     {
       assert (rcv_index == RVHF_MVCC_DELETE_REC_HOME || rcv_index == RVHF_MVCC_DELETE_REC_NEWHOME
 	      || rcv_index == RVHF_MVCC_DELETE_OVERFLOW);
       assert (logical_delete_log_info->node != NULL && logical_delete_log_info->node_appended == false);
-      logical_delete_log_node = logical_delete_log_info->node;
 
+      /*
+       * The most simple MVCC delete case. The recovery index may change from RVHF_MVCC_DELETE_REC_HOME to
+       * RVHF_MVCC_DELETE_REC_NEWHOME or RVHF_MVCC_DELETE_OVERFLOW. The redo data is NULL or contains MVCCID only.
+       * The undo data is NULL.
+       */
+      logical_delete_log_node = logical_delete_log_info->node;
+      assert (logical_delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_HOME);
+      assert (logical_delete_log_node->ulength == 0 && logical_delete_log_node->rlength == 0);
       if (logical_delete_log_info->rcv_index != rcv_index)
 	{
-	  if (rcv_index != RVHF_MVCC_DELETE_REC_HOME)
-	    {
-	      /* MVCCID must be packed also, since it is not saved in log record structure. */
-	      ptr = redo_data_p;
-	      ptr = or_pack_mvccid (ptr, logtb_get_current_mvccid (thread_p));
-	      redo_data_size += OR_MVCCID_SIZE;
-	    }
+	  /* MVCCID must be packed also, since it is not saved in log record structure. */
+	  ptr = redo_data_p;
+	  ptr = or_pack_mvccid (ptr, mvcc_id);
+	  redo_data_size += OR_MVCCID_SIZE;
+	  skip_redo = false;
 	}
 
       error_code = prior_lsa_update_undoredo_data (thread_p, logical_delete_log_node, rcv_index, &address,
@@ -16106,7 +16108,7 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p,
 	}
 
     }
-  error_code = heap_create_log_node_for_logical_deletion (thread_p, tdes, page_p, vfid_p, offset, rcv_index,
+  error_code = heap_create_log_node_for_logical_deletion (thread_p, tdes, mvcc_id, page_p, vfid_p, offset, rcv_index,
 							  &logical_delete_log_node);
   if (error_code != NO_ERROR)
     {
@@ -19240,8 +19242,8 @@ heap_get_class_oid_from_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, OID * cl
 }
 
 /*
- * heap_mvcc_log_home_change_on_delete () - Log the change of record in home page when MVCC delete does not
- *					    change a REC_HOME to REC_HOME.
+ * heap_mvcc_log_home_change_on_delete () - Log the change of record in home page when MVCC delete changes not only
+ *					    MVCCID information in record.
  *
  * returns	   : error code
  *
@@ -19257,7 +19259,7 @@ heap_get_class_oid_from_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, OID * cl
 STATIC_INLINE int
 heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p,
 				     int offset, RECDES * old_recdes, RECDES * new_recdes,
-				     HEAP_PREFETCH_LOG_INFO * logical_delete_log_info)
+				     HEAP_LOG_INFO * logical_delete_log_info)
 {
   LOG_DATA_ADDR address;
   int error_code = NO_ERROR;
@@ -20666,7 +20668,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 {
   HEAP_OPERATION_CONTEXT ins_context;
   LOG_PRIOR_NODE *physical_insert_log_node = NULL;
-  HEAP_PREFETCH_LOG_INFO physical_insert_log_info, *p_physical_insert_log_info = NULL;
+  HEAP_LOG_INFO physical_insert_log_info, *p_physical_insert_log_info = NULL;
   int error_code = NO_ERROR;
   LOG_TDES *tdes = NULL;
   short offset;
@@ -20835,9 +20837,7 @@ heap_create_log_node_for_physical_insertion (THREAD_ENTRY * thread_p, LOG_TDES *
 
   assert (node != NULL && rcv_index != NULL && p_recdes != NULL);
   /* Populate address field with valid VFID. The offset and page pointer will be generated later */
-  log_addr.vfid = vfid_p;
-  log_addr.offset = offset;
-  log_addr.pgptr = page_p;
+  LOG_SET_DATA_ADDR (&log_addr, page_p, vfid_p, offset);
 
   if (is_mvcc_op)
     {
@@ -20973,7 +20973,7 @@ heap_create_log_node_for_physical_insertion (THREAD_ENTRY * thread_p, LOG_TDES *
 STATIC_INLINE int
 heap_log_insert_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p, int offset,
 			  RECDES * recdes_p, bool is_mvcc_op, bool is_redistribute_op, LOG_RCVINDEX rcv_index,
-			  HEAP_PREFETCH_LOG_INFO * physical_insert_log_info)
+			  HEAP_LOG_INFO * physical_insert_log_info)
 {
   int error_code;
   LOG_PRIOR_NODE *physical_insert_log_node = NULL;
@@ -21129,17 +21129,16 @@ heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
  *   tdes(in): transaction descriptor
  *   context(in): operation context
  *   is_mvcc_op(in): specifies type of operation (MVCC/non-MVCC)
- *   mvccid(in): current transaction MVCCID
+ *   mvcc_id(in): current transaction MVCCID
  *   delete_log_info(in/out): delete log info, obtained before page fixing.
  */
 static int
 heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op,
-		    MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * delete_log_info)
+		    MVCCID mvcc_id, HEAP_LOG_INFO * delete_log_info)
 {
   MVCC_REC_HEADER overflow_header;
   VPID overflow_vpid;
   OID overflow_oid;
-  MVCCID mvcc_id;
   int rc, flag_vacuum_status = 0;
 
   /* check input */
@@ -21159,7 +21158,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
 
   if (is_mvcc_op)
     {
-      mvcc_id = logtb_get_current_mvccid (thread_p);
+      assert (MVCCID_IS_VALID (mvcc_id));
 
       /* fix overflow page */
       overflow_vpid.pageid = overflow_oid.pageid;
@@ -21189,11 +21188,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      /* log operation. Vacuum status does not change. */
-      assert (!LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_OVERFLOW));
-      /*heap_page_update_chain_after_mvcc_op (thread_p, context->overflow_page_watcher_p->pgptr,
-         logtb_get_current_mvccid (thread_p), &flag_vacuum_status); */
-      rc = heap_mvcc_log_delete (thread_p, tdes, context->overflow_page_watcher_p->pgptr, &context->hfid.vfid,
+      /* log operation. */
+      rc = heap_mvcc_log_delete (thread_p, tdes, mvcc_id, context->overflow_page_watcher_p->pgptr, &context->hfid.vfid,
 				 overflow_oid.slotid | flag_vacuum_status, RVHF_MVCC_DELETE_OVERFLOW, delete_log_info);
       if (rc != NO_ERROR)
 	{
@@ -21221,7 +21217,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
       /* Home record is not changed, but page max MVCCID and vacuum status have to change. Also vacuum needs to be
        * vacuum with the location of home record (REC_RELOCATION). */
       heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr,
-					    logtb_get_current_mvccid (thread_p), &flag_vacuum_status);
+					    mvcc_id, &flag_vacuum_status);
       heap_mvcc_log_home_no_change (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
 				    context->oid.slotid | flag_vacuum_status);
 
@@ -21301,16 +21297,15 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
  *   tdes(in): transaction descriptor
  *   context(in): operation context
  *   is_mvcc_op(in): specifies type of operation (MVCC/non-MVCC)
- *   mvccid(in): current transaction MVCCID
+ *   mvcc_id(in): current transaction MVCCID
  *   delete_log_info(in): delete log info, obtained before page fixing.
  */
 static int
 heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op,
-			MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * delete_log_info)
+			MVCCID mvcc_id, HEAP_LOG_INFO * delete_log_info)
 {
   RECDES new_forward_recdes, new_home_recdes;
   MVCC_REC_HEADER forward_rec_header;
-  MVCCID mvcc_id;
   char buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
   OID new_forward_oid;
   int adjusted_size;
@@ -21325,6 +21320,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
   RECDES forward_recdes;
   OID forward_oid;
   int rc, flag_vacuum_status = 0;
+  LOG_DATA_ADDR forward_addr;
 
   /* check input */
   assert (context != NULL);
@@ -21353,13 +21349,12 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 
   if (is_mvcc_op)
     {
-      /* Check MVCC delete log info */
-      assert (delete_log_info == NULL || delete_log_info->rcv_index == RVHF_MVCC_DELETE_MODIFY_HOME
-	      || delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_HOME
-	      || delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_NEWHOME
-	      || delete_log_info->rcv_index == RVHF_MVCC_DELETE_OVERFLOW);
+      /*
+       * Check MVCC delete log info.
+       */
+      assert (MVCCID_IS_VALID (mvcc_id));
+      assert (delete_log_info == NULL || delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_HOME);
 
-      mvcc_id = logtb_get_current_mvccid (thread_p);
       repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data);
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
       adjusted_size = forward_recdes.length;
@@ -21570,6 +21565,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
+      /* The old rec_newhome must be removed or updated */
+      assert (remove_old_forward != update_old_forward);
+      /* Remove rec_newhome only in case of old_home update */
+      assert (remove_old_forward == update_old_home);
+
       /* 
        * Update old home record (if necessary)
        */
@@ -21592,8 +21592,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 	    }
 
 	  /* log operation */
-	  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr,
-						logtb_get_current_mvccid (thread_p), &flag_vacuum_status);
+	  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr, mvcc_id,
+						&flag_vacuum_status);
 	  rc = heap_mvcc_log_home_change_on_delete (thread_p, tdes, context->home_page_watcher_p->pgptr,
 						    &context->hfid.vfid, context->oid.slotid | flag_vacuum_status,
 						    &context->home_recdes, &new_home_recdes, delete_log_info);
@@ -21614,13 +21614,45 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 	    }
 
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+	  /*
+	   * Delete old forward record. Re-peek forward record descriptor; forward page may have been unfixed
+	   * by previous pgbuf_ordered_fix() call.
+	   */
+	  if (context->forward_page_watcher_p->page_was_unfixed)
+	    {
+	      if (spage_get_record (context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes, PEEK)
+		  != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
+	  LOG_SET_DATA_ADDR (&forward_addr, context->forward_page_watcher_p->pgptr, &context->hfid.vfid,
+			     forward_oid.slotid);
+	  log_append_undoredo_recdes (thread_p, RVHF_DELETE, &forward_addr, &forward_recdes, NULL);
+	  if (heap_is_reusable_oid (context->file_type))
+	    {
+	      log_append_postpone (thread_p, RVHF_MARK_REUSABLE_SLOT, &forward_addr, 0, NULL);
+	    }
+
+	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
+	  /* physical removal of forward record */
+	  rc = heap_delete_physical (thread_p, &context->hfid, context->forward_page_watcher_p->pgptr, &forward_oid);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
       else
 	{
 	  /* Home record is not changed, but page max MVCCID and vacuum status have to change. Also vacuum needs to be
 	   * vacuum with the location of home record (REC_BIGONE). */
-	  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr,
-						logtb_get_current_mvccid (thread_p), &flag_vacuum_status);
+	  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr, mvcc_id,
+						&flag_vacuum_status);
 	  heap_mvcc_log_home_no_change (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
 					context->oid.slotid | flag_vacuum_status);
 	  pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
@@ -21635,9 +21667,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 	{
 	  /* No need to update vacuum status. */
 	  assert (!LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_REC_NEWHOME));
-	  rc = heap_mvcc_log_delete (thread_p, tdes, context->forward_page_watcher_p->pgptr,
-				     &context->hfid.vfid, forward_oid.slotid,
-				     RVHF_MVCC_DELETE_REC_NEWHOME, delete_log_info);
+	  rc = heap_mvcc_log_delete (thread_p, tdes, mvcc_id, context->forward_page_watcher_p->pgptr,
+				     &context->hfid.vfid, forward_oid.slotid, RVHF_MVCC_DELETE_REC_NEWHOME,
+				     delete_log_info);
 	  if (rc != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -21650,47 +21682,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 	  rc =
 	    heap_update_physical (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid,
 				  &new_forward_recdes);
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
-
-	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
-	}
-
-      /* 
-       * Delete old forward record (if necessary)
-       */
-      if (remove_old_forward)
-	{
-	  LOG_DATA_ADDR forward_addr;
-
-	  assert (update_old_home == true);
-	  /* re-peek forward record descriptor; forward page may have been unfixed by previous pgbuf_ordered_fix() call 
-	   */
-	  if (context->forward_page_watcher_p->page_was_unfixed)
-	    {
-	      if (spage_get_record (context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes, PEEK)
-		  != S_SUCCESS)
-		{
-		  return ER_FAILED;
-		}
-	    }
-
-	  forward_addr.vfid = &context->hfid.vfid;
-	  forward_addr.pgptr = context->forward_page_watcher_p->pgptr;
-	  forward_addr.offset = forward_oid.slotid;
-
-	  log_append_undoredo_recdes (thread_p, RVHF_DELETE, &forward_addr, &forward_recdes, NULL);
-	  if (heap_is_reusable_oid (context->file_type))
-	    {
-	      log_append_postpone (thread_p, RVHF_MARK_REUSABLE_SLOT, &forward_addr, 0, NULL);
-	    }
-
-	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
-	  /* physical removal of forward record */
-	  rc = heap_delete_physical (thread_p, &context->hfid, context->forward_page_watcher_p->pgptr, &forward_oid);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -21724,9 +21715,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 	    }
 	}
       /* 
-       * Delete home record
+       * Delete home record.
        */
-
       rc = heap_log_delete_physical (thread_p, tdes, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
 				     context->oid.slotid, &context->home_recdes, is_reusable, delete_log_info, NULL);
       if (rc != NO_ERROR)
@@ -21797,12 +21787,12 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
  *   tdes(in): transaction descriptor
  *   context(in): operation context
  *   is_mvcc_op(in): specifies type of operation (MVCC/non-MVCC)
- *   mvccid(in): current transaction MVCCID
+ *   mvcc_id(in): current transaction MVCCID
  *   delete_log_info(in/out): delete log info, obtained before page fixing.
  */
 static int
 heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op,
-		  MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * delete_log_info)
+		  MVCCID mvcc_id, HEAP_LOG_INFO * delete_log_info)
 {
   MVCC_REC_HEADER record_header;
   RECDES built_recdes;
@@ -21844,11 +21834,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
   /* operation */
   if (is_mvcc_op)
     {
-      assert (mvccid != MVCCID_NULL);
-      assert (delete_log_info == NULL || delete_log_info->rcv_index == RVHF_MVCC_DELETE_MODIFY_HOME
-	      || delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_HOME
-	      || delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_NEWHOME
-	      || delete_log_info->rcv_index == RVHF_MVCC_DELETE_OVERFLOW);
+      assert (MVCCID_IS_VALID (mvcc_id));
+      assert (delete_log_info == NULL || delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_HOME);
 
       /* Build the new record descriptor. */
       repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (context->home_recdes.data);
@@ -21902,7 +21889,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
 	  OR_PUT_INT (start_p, repid_and_flag_bits);
 
 	  /* Sets the MVCC DELID. */
-	  OR_PUT_BIGINT (build_recdes_data, &mvccid);
+	  OR_PUT_BIGINT (build_recdes_data, &mvcc_id);
 	  build_recdes_data += OR_MVCC_DELETE_ID_SIZE;
 
 	  /* Copy remaining data. */
@@ -21938,7 +21925,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
 	    }
 	  assert (record_header.mvcc_flag == mvcc_flags);
 
-	  heap_delete_adjust_header (&record_header, mvccid, is_adjusted_size_big);
+	  heap_delete_adjust_header (&record_header, mvcc_id, is_adjusted_size_big);
 	  or_mvcc_add_header (&built_recdes, &record_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
 			      OR_GET_OFFSET_SIZE (context->home_recdes.data));
 	  header_size = mvcc_header_size_lookup[mvcc_flags];
@@ -22024,7 +22011,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
 
 	  /* log relocation */
 	  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr,
-						mvccid, &flag_vacuum_status);
+						mvcc_id, &flag_vacuum_status);
 	  error_code =
 	    heap_mvcc_log_home_change_on_delete (thread_p, tdes, context->home_page_watcher_p->pgptr,
 						 &context->hfid.vfid, context->oid.slotid | flag_vacuum_status,
@@ -22047,10 +22034,10 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
 	   */
 	  assert (LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_REC_HOME));
 	  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr,
-						mvccid, &flag_vacuum_status);
-	  error_code = heap_mvcc_log_delete (thread_p, tdes, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
-					     context->oid.slotid | flag_vacuum_status, RVHF_MVCC_DELETE_REC_HOME,
-					     delete_log_info);
+						mvcc_id, &flag_vacuum_status);
+	  error_code = heap_mvcc_log_delete (thread_p, tdes, mvcc_id, context->home_page_watcher_p->pgptr,
+					     &context->hfid.vfid, context->oid.slotid | flag_vacuum_status,
+					     RVHF_MVCC_DELETE_REC_HOME, delete_log_info);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -22167,7 +22154,7 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
  */
 static int
 heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p, int offset,
-			  RECDES * recdes_p, bool mark_reusable, HEAP_PREFETCH_LOG_INFO * physical_delete_log_info,
+			  RECDES * recdes_p, bool mark_reusable, HEAP_LOG_INFO * physical_delete_log_info,
 			  LOG_LSA * undo_lsa)
 {
   LOG_DATA_ADDR address;
@@ -22207,6 +22194,8 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR pag
 	  undo_recdes_p = recdes_p;
 	}
 
+      assert (physical_delete_log_info->rcv_index == RVHF_DELETE);
+      assert (physical_delete_log_node->rlength == 0);
       error_code =
 	prior_lsa_update_undoredo_data_from_recdes (thread_p, physical_delete_log_node, RVHF_DELETE, &address,
 						    undo_recdes_p, NULL, false, true);
@@ -22270,10 +22259,11 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR pag
  *   context(in): operation context
  *   mvccid(in): current transaction MVCCID
  *   is_mvcc_op(in): type of operation (MVCC/non-MVCC)
+ *   physical_update_log_info(in/out): physical update log info
  */
 static int
 heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context, MVCCID mvccid,
-		    bool is_mvcc_op)
+		    bool is_mvcc_op, HEAP_LOG_INFO * physical_update_log_info)
 {
   int error_code = NO_ERROR;
   bool is_old_home_updated;
@@ -22311,6 +22301,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
       VPID ovf_vpid;
       PAGE_PTR first_pgptr;
 
+      assert (MVCCID_IS_VALID (mvccid));
       if (heap_get_bigone_content (thread_p, context->scan_cache_p, COPY, &context->ovf_oid, &ovf_recdes) != S_SUCCESS)
 	{
 	  error_code = ER_FAILED;
@@ -22421,7 +22412,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
       /* log home update operation and remove old overflow record */
       heap_log_update_physical (thread_p, tdes, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
 				context->oid.slotid | flag_vacuum_status, &context->home_recdes,
-				&new_home_recdes, rcv_index, NULL);
+				&new_home_recdes, rcv_index, physical_update_log_info);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* the old overflow record is no longer needed, it was linked only by old home */
@@ -22456,7 +22447,7 @@ exit:
  */
 static int
 heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op,
-			MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * physical_update_log_info)
+			MVCCID mvccid, HEAP_LOG_INFO * physical_update_log_info)
 {
   RECDES forward_recdes;
   char forward_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -22490,7 +22481,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
   else
 #endif /* SERVER_MODE */
     {
-      assert (!MVCCID_IS_VALID (mvccid));
       rcv_index = RVHF_UPDATE;
     }
 
@@ -22608,15 +22598,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
       update_old_forward = true;
 
       rcv_index = RVHF_UPDATE;
-      if (physical_update_log_info != NULL && physical_update_log_info->rcv_index != rcv_index)
-	{
-	  /*
-	   * The log recovery index modified from MVCC to non-MVCC style. Rebuild the log data, to build correctly
-	   * the log header. The old log info will be cleaned later, after unfixing pages.
-	   */
-	  physical_update_log_info = NULL;
-	}
-
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_UPDATES);
     }
   else
@@ -22631,8 +22612,15 @@ heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
   assert (remove_old_forward != update_old_forward);
   /* Remove rec_newhome only in case of old_home update */
   assert (remove_old_forward == update_old_home);
-  /* Check the log recovery index consistency. */
-  assert (physical_update_log_info == NULL || physical_update_log_info->rcv_index == rcv_index);
+
+  if (physical_update_log_info != NULL && physical_update_log_info->rcv_index != rcv_index)
+    {
+      /*
+       * The log recovery index modified from MVCC to non-MVCC style. Rebuild the log data, to build correctly
+       * the log header. The old log info will be cleaned later, after unfixing pages.
+       */
+      physical_update_log_info = NULL;
+    }
 
   /* 
    * Update old home record (if necessary)
@@ -22785,7 +22773,7 @@ exit:
  */
 static int
 heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op,
-		  MVCCID mvccid, HEAP_PREFETCH_LOG_INFO * physical_update_log_info)
+		  MVCCID mvccid, HEAP_LOG_INFO * physical_update_log_info)
 {
   int error_code = NO_ERROR;
   RECDES forwarding_recdes;
@@ -22827,15 +22815,6 @@ heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
     {
       /* Quick fix: Assign address is update in-place. Vacuum must be notified. Needs MVCCID. */
       rcv_index = RVHF_UPDATE_NOTIFY_VACUUM;
-      if (physical_update_log_info != NULL && physical_update_log_info->rcv_index != rcv_index)
-	{
-	  /*
-	   * At update, the log data is known before fixing the page. But, after fixing the page, in relatively rare cases,
-	   * the log recovery index can be modified from non-MVCC to MVCC style. In such case, we need to rebuild the
-	   * log data, to build correctly the log header. The old log info will be cleaned later, after unfixing pages.
-	   */
-	  physical_update_log_info = NULL;
-	}
       if (!MVCCID_IS_VALID (mvccid))
 	{
 	  mvccid = logtb_get_current_mvccid (thread_p);
@@ -22844,12 +22823,18 @@ heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
   else
 #endif /* SERVER_MODE */
     {
-      assert (!MVCCID_IS_VALID (mvccid));
       rcv_index = RVHF_UPDATE;
     }
 
-  /* Check the log recovery index consistency. */
-  assert (physical_update_log_info == NULL || physical_update_log_info->rcv_index == rcv_index);
+  if (physical_update_log_info != NULL && physical_update_log_info->rcv_index != rcv_index)
+    {
+      /*
+       * At update, the log data is known before fixing the page. But, after fixing the page, in relatively rare cases,
+       * the log recovery index can be modified from non-MVCC to MVCC style or reverse way. In such case, we need to rebuild the
+       * log data, to build correctly the log header. The old log info will be cleaned later, after unfixing pages.
+       */
+      physical_update_log_info = NULL;
+    }
 
   if (heap_is_big_length (context->recdes_p->length))
     {
@@ -22887,7 +22872,7 @@ heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
 
       if (is_mvcc_op)
 	{
-	  /* necessary later to set prev version, which is required only for mvcc objects */
+	  /* necessary later to set prev version, which is required only for MVCC objects */
 	  newhome_pg_watcher_p = &newhome_pg_watcher;
 	  PGBUF_INIT_WATCHER (newhome_pg_watcher_p, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 	}
@@ -23094,7 +23079,7 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
 STATIC_INLINE int
 heap_log_update_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p, int offset,
 			  RECDES * old_recdes_p, RECDES * new_recdes_p, LOG_RCVINDEX rcv_index,
-			  HEAP_PREFETCH_LOG_INFO * physical_update_log_info)
+			  HEAP_LOG_INFO * physical_update_log_info)
 {
   LOG_DATA_ADDR address;
   LOG_PRIOR_NODE *physical_update_log_node = NULL;
@@ -23108,27 +23093,16 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR pag
   assert (page_p != NULL && old_recdes_p);
   if (physical_update_log_info != NULL)
     {
-      /*
-       *  We have to be sure that the log record type does not changed.
-       */
-#if defined(SERVER_MODE)
-      if (new_recdes_p != NULL)
-	{
-	  thread_p->allow_log_diff = false;
-	}
-#endif
-
+      /* Check the log recovery index consistency. */
+      assert (physical_update_log_info->rcv_index == rcv_index);
       assert (physical_update_log_info->node != NULL && physical_update_log_info->node_appended == false);
+
       physical_update_log_node = physical_update_log_info->node;
       assert (physical_update_log_node != NULL);
-      skip_redo = new_recdes_p && new_recdes_p->type == REC_HOME;
+      skip_redo = new_recdes_p && new_recdes_p->type == HEAP_UPDATE_PREFETCH_RECORD_TYPE;
       error_code =
 	prior_lsa_update_undoredo_data_from_recdes (thread_p, physical_update_log_node, rcv_index, &address,
-						    old_recdes_p, new_recdes_p, false,
-						    skip_redo /* TO DO - skip redo flag added to struct */ );
-#if defined(SERVER_MODE)
-      thread_p->allow_log_diff = true;
-#endif
+						    old_recdes_p, new_recdes_p, false, skip_redo);
       if (error_code == NO_ERROR)
 	{
 	  log_append_prior_node (thread_p, tdes, rcv_index, page_p, physical_update_log_node);
@@ -23277,7 +23251,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
   LOG_PRIOR_NODE *physical_insert_log_node = NULL;
-  HEAP_PREFETCH_LOG_INFO physical_insert_log_info, *p_physical_insert_log_info = NULL;
+  HEAP_LOG_INFO physical_insert_log_info, *p_physical_insert_log_info = NULL;
   int tran_index;
   LOG_RCVINDEX rcv_index = 0;
   LOG_TDES *tdes = NULL;
@@ -23509,7 +23483,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   PERF_UTIME_TRACKER time_track;
   LOG_TDES *tdes = NULL;
   LOG_PRIOR_NODE *delete_log_node = NULL;
-  HEAP_PREFETCH_LOG_INFO delete_log_info, *p_delete_log_info = NULL;
+  HEAP_LOG_INFO delete_log_info, *p_delete_log_info = NULL;
   MVCCID mvccid = MVCCID_NULL;
   int rcv_index;
 
@@ -23590,52 +23564,65 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   context->home_recdes.area_size = DB_PAGESIZE;
   context->home_recdes.data = PTR_ALIGN (context->home_recdes_buffer, MAX_ALIGNMENT);
-/* LOG here */
-  /* Need to set context->home_recdes.length for logging purpose. */
 #if defined(SERVER_MODE)
-  if (true)
+  /*
+   * Generate log before fetching the page. The generated log data may be updated later after fixing the page.
+   * In case of MVCC heap deletion, the logging is done mainly with the following recover indexes:
+   *    RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_DELETE_REC_NEWHOME, RVHF_MVCC_DELETE_OVERFLOW:
+   *      - log only MVCCID in redo data (adding MVCCID does fit in page)
+   *    RVHF_MVCC_DELETE_MODIFY_HOME:
+   *      - log not only MVCCID undo, redo data (adding MVCCID does not fit in page)
+   *  Currently, before the page fixing, we don't know the record type. Also, we don't know whether the MVCCID does fit
+   *  in page. We don't know the recovery index also. We will use RVHF_MVCC_DELETE_REC_HOME before page fixing, since is
+   *  the most common used.
+   *    Here are the current modification that must be done in log data, depending by the recovery index used after
+   *   page fix:
+   *    (RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_DELETE_REC_HOME) - update VPID
+   *    (RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_DELETE_REC_NEWHOME) - update VPID, redo
+   *    (RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_DELETE_OVERFLOW) - update VPID, redo
+   *    (RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_DELETE_MODIFY_HOME) - update VPID, rcv_index, undo, redo data
+   *  With page copy without latch, we will can have RVHF_MVCC_DELETE_REC_NEWHOME, RVHF_MVCC_DELETE_OVERFLOW,
+   *  RVHF_MVCC_DELETE_MODIFY_HOME before page fixing. In that case, the recovery index would change even rarely after
+   *  fixing the page.
+   * In case of non-MVCC heap deletion, the logging is done mainly with the RVHF_DELETE.
+   */
+
+  if (is_mvcc_op)
     {
-      LOG_DATA_ADDR log_addr;
-
-      /* Populate address field with valid VFID. The offset and page pointer will be generated later */
-      log_addr.vfid = &context->hfid.vfid;
-      log_addr.offset = NULL_SLOTID;
-      log_addr.pgptr = NULL;
-
       /*
-       * Sets the record type from beginning since we generate log node. If type is modified, redo data will be
-       * rebuilt. Sets the length to page_size to reserve enough free space for undo data. The undo data will be
-       * provided later, after fixing the page.
+       * Log with RVHF_MVCC_DELETE_REC_HOME before page fixing, since is the most common situation. Log undo and log
+       * redo are NULL. If the log type will modified, the undo/redo data would be allocated after fixing the page.
+       * With page copy without latch, we will know the maximum space needed for log undo/redo from beginning. In that
+       * case we can allocate enough log undo/redo space before fixing the page, even for particular cases.
        */
-      context->home_recdes.type = REC_HOME;
-      context->home_recdes.length = DB_PAGESIZE;
-
-      /* Disable zip undo. We need only to reserve enough free space for undo data, at this moment. */
+      rc = heap_create_log_node_for_logical_deletion (thread_p, tdes, mvccid, NULL, &context->hfid.vfid, NULL_SLOTID,
+						      RVHF_MVCC_DELETE_REC_HOME, &delete_log_node);
+      rcv_index = RVHF_MVCC_DELETE_REC_HOME;
+    }
+  else
+    {
       assert (thread_p->disable_zip_undo == false);
       thread_p->disable_zip_undo = true;
-
-      if (is_mvcc_op)
-	{
-	  rc = heap_create_log_node_for_logical_deletion (thread_p, tdes, NULL, &context->hfid.vfid, NULL_SLOTID,
-							  RVHF_MVCC_DELETE_REC_HOME, &delete_log_node);
-	  rcv_index = RVHF_MVCC_DELETE_REC_HOME;
-	}
-      else
-	{
-	  rc = heap_create_log_node_for_physical_deletion (thread_p, tdes, NULL, &context->hfid.vfid, NULL_SLOTID,
-							   &context->home_recdes, NULL, RVHF_DELETE, &delete_log_node);
-	  rcv_index = RVHF_DELETE;
-	}
-
-      if (rc != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      p_delete_log_info = &delete_log_info;
-      HEAP_SET_LOG_INFO (p_delete_log_info, delete_log_node, rcv_index, false);
+      /*
+       * Disable zip undo. We only need only to reserve log free space for log undo data, at this moment. We want to
+       * avoid memory allocation after fixing the page, as much as possible. For now, we allocate DB_PAGESIZE / 4.
+       * With page copy without latch, the maximum space needed for log undo is known from beginning.
+       */
+      context->home_recdes.type = REC_HOME;
+      context->home_recdes.length = DB_PAGESIZE / 4;
+      rc = heap_create_log_node_for_physical_deletion (thread_p, tdes, NULL, &context->hfid.vfid, NULL_SLOTID,
+						       &context->home_recdes, NULL, RVHF_DELETE, &delete_log_node);
+      rcv_index = RVHF_DELETE;
       thread_p->disable_zip_undo = false;
     }
+
+  if (rc != NO_ERROR)
+    {
+      goto error;
+    }
+
+  p_delete_log_info = &delete_log_info;
+  HEAP_SET_LOG_INFO (p_delete_log_info, delete_log_node, rcv_index, false);
 #endif
 
   /* 
@@ -23739,7 +23726,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   bool is_mvcc_class;
   MVCCID mvccid = MVCCID_NULL;
   LOG_PRIOR_NODE *physical_update_log_node = NULL;
-  HEAP_PREFETCH_LOG_INFO physical_update_log_info, *p_physical_update_log_info = NULL;
+  HEAP_LOG_INFO physical_update_log_info, *p_physical_update_log_info = NULL;
+  LOG_DATA_ADDR log_addr;
 
   /* 
    * Check input
@@ -23835,15 +23823,20 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	}
     }
 
-  /* 
-   *  Generates partial log data here, before fixing the heap page. Uses uninitialized home_recdes_buffer now, to
-   * allocate space. Later, after obtaining the home recdes, we will update the remaining log data. If we implement
-   * page copy without latch, then we will have more log data from beginning.   
-   *  If home recdes type is REC_ASSIGN_ADDRESS and not MVCC disabled class, then rcv_index must type be
-   * RVHF_UPDATE_NOTIFY_VACUUM, in order to notified the VACUUM. Since we don't know yet the type of home recdes,
-   * we will set the real rcv_index after fixing the page. If we implement page copy without latch, then we will know
-   * the rcvindex from beginning for this particular case.
+  /*
+   *  Generate log before fetching the page. The generated log data may be updated later after fixing the page.
+   *  In case of MVCC heap updating, the logging is done with RVHF_UPDATE_NOTIFY_VACUUM (log undo/redo record).
+   *  In case of non-MVCC heap deletion, the logging is done with RVHF_UPDATE (log undo/redo record).
+   *  Currently, before the page fixing, we don't know the record type. Uses uninitialized home_recdes_buffer now, to
+   * allocate log undo space. Later, after obtaining the home recdes, we will update the undo log data. If we implement
+   * page copy without latch, then we will have undo log data from beginning, in most of the cases.
+   *  The recovery index can't be changed from non-MVCC style to MVCC style or reverse way. That's because the MVCC
+   * log header differs by non-MVCC log header. However, in some cases, the recovery index style generated before page
+   * fixing, may differ by recovery index style needed after fixing the page. In such cases, the generated log can't be
+   * used after fixing the page. We will create the entire log node. With page copy without latch, we will know the
+   * recovery index style from beginning, in most of the cases.
    */
+
   if (is_mvcc_op)
     {
       rcv_index = RVHF_UPDATE_NOTIFY_VACUUM;
@@ -23859,39 +23852,32 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   /* Need to set context->home_recdes.length for logging purpose. */
 #if defined(SERVER_MODE)
-  if (!heap_is_big_length (context->recdes_p->length))
+  /* Populate address field with valid VFID. The offset and page pointer will be generated later */
+  LOG_SET_DATA_ADDR (&log_addr, NULL, &context->hfid.vfid, NULL_SLOTID);
+
+  /*
+   * Sets the record type from beginning since we generate log node. If type is modified, redo data will be
+   * rebuilt. Sets the length to page_size to reserve enough free space for undo data. The undo data will be
+   * provided later, after fixing the page.
+   */
+  context->recdes_p->type = HEAP_UPDATE_PREFETCH_RECORD_TYPE;
+  context->home_recdes.length = DB_PAGESIZE;
+
+  /* Disable zip undo. We need only to reserve enough free space for undo data, at this moment. */
+  assert (thread_p->disable_zip_undo == false);
+  thread_p->disable_zip_undo = true;
+
+  rc = log_create_log_node_from_recdes (thread_p, tdes, rcv_index, &log_addr, &context->home_recdes,
+					context->recdes_p, &physical_update_log_node);
+  if (rc != NO_ERROR)
     {
-      LOG_DATA_ADDR log_addr;
-
-      /* Populate address field with valid VFID. The offset and page pointer will be generated later */
-      log_addr.vfid = &context->hfid.vfid;
-      log_addr.offset = NULL_SLOTID;
-      log_addr.pgptr = NULL;
-
-      /*
-       * Sets the record type from beginning since we generate log node. If type is modified, redo data will be
-       * rebuilt. Sets the length to page_size to reserve enough free space for undo data. The undo data will be
-       * provided later, after fixing the page.
-       */
-      context->recdes_p->type = REC_HOME;
-      context->home_recdes.length = DB_PAGESIZE;
-
-      /* Disable zip undo. We need only to reserve enough free space for undo data, at this moment. */
-      assert (thread_p->disable_zip_undo == false);
-      thread_p->disable_zip_undo = true;
-
-      rc = log_create_log_node_from_recdes (thread_p, tdes, rcv_index, &log_addr, &context->home_recdes,
-					    context->recdes_p, &physical_update_log_node);
-      if (rc != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      p_physical_update_log_info = &physical_update_log_info;
-      HEAP_SET_LOG_INFO (p_physical_update_log_info, physical_update_log_node, rcv_index, false);
-
-      thread_p->disable_zip_undo = false;
+      goto exit;
     }
+
+  p_physical_update_log_info = &physical_update_log_info;
+  HEAP_SET_LOG_INFO (p_physical_update_log_info, physical_update_log_node, rcv_index, false);
+
+  thread_p->disable_zip_undo = false;
 #endif
 
   /*
@@ -23938,7 +23924,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       break;
 
     case REC_BIGONE:
-      rc = heap_update_bigone (thread_p, tdes, context, mvccid, is_mvcc_op);
+      rc = heap_update_bigone (thread_p, tdes, context, mvccid, is_mvcc_op, p_physical_update_log_info);
       break;
 
     case REC_ASSIGN_ADDRESS:

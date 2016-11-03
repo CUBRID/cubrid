@@ -367,16 +367,18 @@ static int logpb_add_archive_page_info (THREAD_ENTRY * thread_p, int arv_num, LO
 static int logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p, LOG_PAGEID page_id);
 static LOG_ZIP *logpb_get_zip_undo (THREAD_ENTRY * thread_p);
 static LOG_ZIP *logpb_get_zip_redo (THREAD_ENTRY * thread_p);
-static void logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_ucrumbs,
-				const LOG_CRUMB * ucrumbs, int ulength, int num_rcrumbs,
-				const LOG_CRUMB * rcrumbs, int rlength, LOG_ZIP * zip_undo, LOG_ZIP * zip_redo,
-				bool * is_undo_zip, bool * is_redo_zip, bool * is_diff_log);
-STATIC_INLINE int prior_lsa_update_undoredo_data_from_crumbs_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
-								       LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr,
-								       int num_undo_crumbs, int num_redo_crumbs,
-								       LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs,
-								       int ulength, int rlength, bool skip_undo,
-								       bool skip_redo) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, bool allow_undo_compression,
+				       int num_ucrumbs, const LOG_CRUMB * ucrumbs, int ulength,
+				       bool allow_redo_compression, int num_rcrumbs, const LOG_CRUMB * rcrumbs,
+				       int rlength, bool allow_log_diff, LOG_ZIP * zip_undo, LOG_ZIP * zip_redo,
+				       bool * is_undo_zip, bool * is_redo_zip, bool * is_diff_log)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int prior_lsa_update_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+								LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr,
+								int num_undo_crumbs, int num_redo_crumbs,
+								LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs,
+								int ulength, int rlength, bool skip_undo,
+								bool skip_redo) __attribute__ ((ALWAYS_INLINE));
 static char *logpb_get_data_ptr (THREAD_ENTRY * thread_p);
 static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 
@@ -2807,46 +2809,40 @@ prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node, int num_crumbs, const
  *
  *   thread_p(in): thread entry
  *   log_rec_type(in): log record type
+ *   allow_undo_compression(in): true, if undo compression allowed
  *   num_ucrumbs(in): the number of undo crumbs
- *   ulength(in): undo length
  *   ucrumbs(in): undo crumbs
+ *   ulength(in): undo length
+ *   allow_redo_compression(in): true, if redo compression allowed
  *   num_rcrumbs(in): the number of redo crumbs
  *   rcrumbs(in): redo crumbs
  *   rlength(in): redo length
+ *   allow_log_diff(in): true, if allow log diff
  *   zip_undo(in/out): compressed undo
  *   zip_redo(in/out): compressed redo
  *   is_undo_zip(out): true, if is undo compressed
  *   is_redo_zip(out): true, if is redo compressed
  *   is_diff_log(out): true, if is diff log - redo data XORed with undo data
  */
-static void
-logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_ucrumbs, const LOG_CRUMB * ucrumbs,
-		    int ulength, int num_rcrumbs, const LOG_CRUMB * rcrumbs, int rlength,
-		    LOG_ZIP * zip_undo, LOG_ZIP * zip_redo, bool * is_undo_zip, bool * is_redo_zip, bool * is_diff_log)
+STATIC_INLINE void
+logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, bool allow_undo_compression, int num_ucrumbs,
+		    const LOG_CRUMB * ucrumbs, int ulength, bool allow_redo_compression, int num_rcrumbs,
+		    const LOG_CRUMB * rcrumbs, int rlength, bool allow_log_diff, LOG_ZIP * zip_undo,
+		    LOG_ZIP * zip_redo, bool * is_undo_zip, bool * is_redo_zip, bool * is_diff_log)
 {
   int i, total_length;
   char *data_ptr = NULL, *tmp_ptr = NULL;
   char *undo_data = NULL, *redo_data = NULL;
   bool can_zip = false;
-  bool can_compress_undo, can_compress_redo;
 
   *is_redo_zip = *is_undo_zip = *is_diff_log = false;
 
-  can_compress_undo = ulength >= log_Zip_min_size_to_compress;
-  can_compress_redo = rlength >= log_Zip_min_size_to_compress;
-  assert (can_compress_undo || can_compress_redo);
+  assert (log_zip_support == true);
+  assert (allow_undo_compression || allow_redo_compression);
 
   /* Try to zip undo and/or redo data */
-  total_length = 0;
-  if (ulength > 0)
-    {
-      total_length += ulength;
-    }
-  if (rlength > 0)
-    {
-      total_length += rlength;
-    }
-
+  assert (ulength >= 0 && rlength >= 0);
+  total_length = ulength + rlength;
   if (logpb_realloc_data_ptr (thread_p, total_length))
     {
       data_ptr = logpb_get_data_ptr (thread_p);
@@ -2856,7 +2852,7 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_u
     {
       tmp_ptr = data_ptr;
 
-      if (can_compress_undo)
+      if (allow_undo_compression)
 	{
 	  undo_data = data_ptr;
 
@@ -2869,7 +2865,7 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_u
 	  assert (CAST_BUFLEN (tmp_ptr - undo_data) == ulength);
 	}
 
-      if (can_compress_redo)
+      if (allow_redo_compression)
 	{
 	  redo_data = tmp_ptr;
 
@@ -2883,13 +2879,10 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_u
 	}
 
       assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length
-	      || ulength < log_Zip_min_size_to_compress || rlength < log_Zip_min_size_to_compress);
+	      || ulength < log_Zip_min_size_to_compress || rlength < log_Zip_min_size_to_compress
+	      || !allow_undo_compression || !allow_redo_compression);
 
-#if defined(SERVER_MODE)
-      if (can_compress_undo && can_compress_redo && thread_p->allow_log_diff)
-#else
-      if (can_compress_undo && can_compress_redo)
-#endif
+      if (allow_undo_compression && allow_redo_compression && allow_log_diff)
 	{
 	  (void) log_diff (ulength, undo_data, rlength, redo_data);
 
@@ -2903,11 +2896,11 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_u
 	}
       else
 	{
-	  if (can_compress_undo)
+	  if (allow_undo_compression)
 	    {
 	      *is_undo_zip = log_zip (zip_undo, ulength, undo_data);
 	    }
-	  if (can_compress_redo)
+	  if (allow_redo_compression)
 	    {
 	      *is_redo_zip = log_zip (zip_redo, rlength, redo_data);
 	    }
@@ -2917,7 +2910,7 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_u
 
 
 /*
- * prior_lsa_update_undoredo_data_from_crumbs_internal () - Update undoredo data of previous generated log prior node
+ * prior_lsa_update_undoredo_record_from_crumbs () - Update undoredo data of previous generated log prior node
  *							  from crumbs.
  *
  *  return	      : Error code.
@@ -2933,12 +2926,12 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, int num_u
  *  ulength(in)		 : The undo length
  *  rlength(in)		 : The redo length
  */
-int
-prior_lsa_update_undoredo_data_from_crumbs_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
-						     LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr, int num_undo_crumbs,
-						     int num_redo_crumbs, LOG_CRUMB * undo_crumbs,
-						     LOG_CRUMB * redo_crumbs, int ulength, int rlength,
-						     bool skip_undo, bool skip_redo)
+STATIC_INLINE int
+prior_lsa_update_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+					      LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr, int num_undo_crumbs,
+					      int num_redo_crumbs, LOG_CRUMB * undo_crumbs,
+					      LOG_CRUMB * redo_crumbs, int ulength, int rlength,
+					      bool skip_undo, bool skip_redo)
 {
   LOG_DATA *log_data_p = NULL;
   int *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
@@ -2949,8 +2942,9 @@ prior_lsa_update_undoredo_data_from_crumbs_internal (THREAD_ENTRY * thread_p, LO
   int error_code = NO_ERROR;
   bool is_undo_zip = false, is_redo_zip = false, is_diff = false;
   LOG_RECTYPE new_header_type;
+  bool allow_undo_compression, allow_redo_compression;
 
-  assert (node != NULL);
+  assert (node != NULL && LOG_IS_UNDOREDO_RECORD_TYPE (node->log_header.type));
   new_header_type = LOG_IS_MVCC_OPERATION (rcv_index) ? LOG_MVCC_UNDOREDO_DATA : LOG_UNDOREDO_DATA;
   if (node->log_header.type != new_header_type)
     {
@@ -2971,16 +2965,23 @@ prior_lsa_update_undoredo_data_from_crumbs_internal (THREAD_ENTRY * thread_p, LO
   assert (rlength < log_Zip_min_size_to_compress || redo_crumbs != NULL);
 
   /* Check whether compression is possible. */
-  if (false			/* TO DO - log_zip_support */
-      && (ulength >= log_Zip_min_size_to_compress || rlength >= log_Zip_min_size_to_compress))
+  allow_redo_compression = (rlength >= log_Zip_min_size_to_compress) && (skip_redo == false);
+#if defined(SERVER_MODE)
+  allow_undo_compression = (ulength >= log_Zip_min_size_to_compress) && (skip_undo == false)
+    && (thread_p->disable_zip_undo == false);
+#else
+  allow_undo_compression = (ulength >= log_Zip_min_size_to_compress) && (skip_undo == false);
+#endif
+
+  if (allow_undo_compression || allow_redo_compression)
     {
-      /* TO DO - skip_redo, skip_undo */
       zip_undo = logpb_get_zip_undo (thread_p);
       zip_redo = logpb_get_zip_redo (thread_p);
       if ((zip_undo != NULL || ulength == 0) && (zip_redo != NULL || rlength == 0))
 	{
-	  logpb_get_zip_info (thread_p, node->log_header.type, num_undo_crumbs, undo_crumbs, ulength, num_redo_crumbs,
-			      redo_crumbs, rlength, zip_undo, zip_redo, &is_undo_zip, &is_redo_zip, &is_diff);
+	  logpb_get_zip_info (thread_p, node->log_header.type, allow_undo_compression, num_undo_crumbs, undo_crumbs,
+			      ulength, allow_redo_compression, num_redo_crumbs, redo_crumbs, rlength, false, zip_undo,
+			      zip_redo, &is_undo_zip, &is_redo_zip, &is_diff);
 	  assert (is_diff == false);
 	}
     }
@@ -3044,7 +3045,7 @@ int
 prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
 				LOG_DATA_ADDR * addr, int undo_length, int redo_length,
 				const void *undo_data, const void *redo_data, bool skip_undo, bool skip_redo)
-{				/* TO DO - move it in log manager ??? */
+{
   LOG_CRUMB undo_crumb;
   LOG_CRUMB redo_crumb;
 
@@ -3062,12 +3063,12 @@ prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
   redo_crumb.data = redo_data;
   redo_crumb.length = redo_length;
 
-  return prior_lsa_update_undoredo_data_from_crumbs (thread_p, node, rcv_index, addr, 1, 1, &undo_crumb, &redo_crumb,
-						     skip_undo, skip_redo);
+  return prior_lsa_update_undoredo_crumbs (thread_p, node, rcv_index, addr, 1, 1, &undo_crumb, &redo_crumb,
+					   skip_undo, skip_redo);
 }
 
 /*
- * prior_lsa_update_undoredo_crumbs () - Update undoredo data of previous generated log prior node from crumbs.
+ * prior_lsa_update_undoredo_crumbs () - Update undoredo crumbs.
  *
  *  return	      : Error code.
  *
@@ -3083,11 +3084,10 @@ prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
  *  skip_redo(in)	 : True, if skip redo
  */
 int
-prior_lsa_update_undoredo_data_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
-					    LOG_DATA_ADDR * addr, int num_undo_crumbs, int num_redo_crumbs,
-					    LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs, bool skip_undo,
-					    bool skip_redo)
-{				/* TO DO - move it in log manager ??? */
+prior_lsa_update_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
+				  LOG_DATA_ADDR * addr, int num_undo_crumbs, int num_redo_crumbs,
+				  LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs, bool skip_undo, bool skip_redo)
+{
   int error_code = NO_ERROR, ulength = 0, rlength = 0, i;
 
   if (undo_crumbs != NULL)
@@ -3110,9 +3110,9 @@ prior_lsa_update_undoredo_data_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_N
       assert (0 <= rlength);
     }
 
-  return prior_lsa_update_undoredo_data_from_crumbs_internal (thread_p, node, rcv_index, addr, num_undo_crumbs,
-							      num_redo_crumbs, undo_crumbs, redo_crumbs, ulength,
-							      rlength, skip_undo, skip_redo);
+  return prior_lsa_update_undoredo_record_from_crumbs (thread_p, node, rcv_index, addr, num_undo_crumbs,
+						       num_redo_crumbs, undo_crumbs, redo_crumbs, ulength,
+						       rlength, skip_undo, skip_redo);
 }
 
 
@@ -3153,16 +3153,16 @@ prior_lsa_update_undoredo_data_from_recdes (THREAD_ENTRY * thread_p, LOG_PRIOR_N
       ulength = LOG_GET_RECDES_CRUMBS_SIZE (old_recdes_p);
     }
 
-  LOG_GET_CRUMBS_FROM_RECDES (old_recdes_p, 2, redo_crumbs, num_redo_crumbs);
+  LOG_GET_CRUMBS_FROM_RECDES (new_recdes_p, 2, redo_crumbs, num_redo_crumbs);
   if (new_recdes_p != NULL)
     {
       /* Need to update the redo log. */
       rlength = LOG_GET_RECDES_CRUMBS_SIZE (new_recdes_p);
     }
 
-  return prior_lsa_update_undoredo_data_from_crumbs_internal (thread_p, node, rcv_index, addr, num_undo_crumbs,
-							      num_redo_crumbs, undo_crumbs, redo_crumbs, ulength,
-							      rlength, skip_undo, skip_redo);
+  return prior_lsa_update_undoredo_record_from_crumbs (thread_p, node, rcv_index, addr, num_undo_crumbs,
+						       num_redo_crumbs, undo_crumbs, redo_crumbs, ulength,
+						       rlength, skip_undo, skip_redo);
 }
 
 
@@ -3195,7 +3195,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   LOG_VACUUM_INFO *vacuum_info_p = NULL;
   VPID *vpid = NULL;
   int error_code = NO_ERROR;
-  int i, saved_ulength, ulength, rlength, *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
+  int i, ulength, rlength, *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
   MVCCID *mvccid_p = NULL;
   LOG_TDES *tdes = NULL;
   char *data_ptr = NULL, *tmp_ptr = NULL;
@@ -3206,6 +3206,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   bool has_redo = false;
   bool is_undo_zip = false, is_redo_zip = false, is_diff = false;
   bool can_zip = false;
+  bool allow_undo_compression, allow_redo_compression;
 
   assert (node->log_header.type != LOG_DIFF_UNDOREDO_DATA && node->log_header.type != LOG_MVCC_DIFF_UNDOREDO_DATA);
   assert (num_ucrumbs == 0 || ucrumbs != NULL);
@@ -3251,24 +3252,20 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   assert (ulength < log_Zip_min_size_to_compress || has_undo == true);
   assert (rlength < log_Zip_min_size_to_compress || has_redo == true);
   /* Check whether compression is possible. */
-  saved_ulength = ulength;
 
+  allow_redo_compression = (rlength >= log_Zip_min_size_to_compress);
 #if defined(SERVER_MODE)
-  if (thread_p->disable_zip_undo)
-    {
-      /* Disable undo compression. */
-      ulength = 0;
-    }
+  allow_undo_compression = (ulength >= log_Zip_min_size_to_compress) && (thread_p->disable_zip_undo == false);
+#else
+  allow_undo_compression = (ulength >= log_Zip_min_size_to_compress);
 #endif
-  if (can_zip && (ulength >= log_Zip_min_size_to_compress || rlength >= log_Zip_min_size_to_compress))
+
+  if (can_zip && (allow_undo_compression || allow_redo_compression))
     {
-      logpb_get_zip_info (thread_p, node->log_header.type, num_ucrumbs, ucrumbs, ulength, num_rcrumbs, rcrumbs, rlength,
-			  zip_undo, zip_redo, &is_undo_zip, &is_redo_zip, &is_diff);
+      logpb_get_zip_info (thread_p, node->log_header.type, allow_undo_compression, num_ucrumbs, ucrumbs, ulength,
+			  allow_redo_compression, num_rcrumbs, rcrumbs, rlength, true, zip_undo, zip_redo, &is_undo_zip,
+			  &is_redo_zip, &is_diff);
     }
-#if defined(SERVER_MODE)
-  /* Restore the length. */
-  ulength = saved_ulength;
-#endif
 
   if (is_diff)
     {
