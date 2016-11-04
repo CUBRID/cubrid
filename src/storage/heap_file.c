@@ -110,6 +110,7 @@ typedef enum
 } HEAP_DELETE_TYPE;
 
 #define HEAP_UPDATE_PREFETCH_RECORD_TYPE REC_HOME
+#define HEAP_MVCC_DELETE_DEFAULT_LOG_REDO_SIZE (MAX(OR_MVCCID_SIZE, OR_OID_SIZE + sizeof (INT16)))
 
 #define HEAP_BESTSPACE_SYNC_THRESHOLD (0.1f)
 
@@ -823,7 +824,8 @@ static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACH
 					  OID * forward_oid, RECDES * recdes);
 STATIC_INLINE int heap_create_log_node_for_logical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id,
 							     PAGE_PTR page_p, VFID * vfid_p, PGLENGTH offset,
-							     LOG_RCVINDEX rcv_index,
+							     LOG_RCVINDEX rcv_index, char *redo_data_p,
+							     int redo_data_size,
 							     LOG_PRIOR_NODE ** logical_delete_log_node)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int
@@ -832,8 +834,9 @@ heap_create_log_node_for_physical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * 
 					    RECDES * new_recdes_p, LOG_RCVINDEX rcv_index,
 					    LOG_PRIOR_NODE ** physical_delete_log_node) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, PAGE_PTR page_p,
-					VFID * vfid_p, int offset, LOG_RCVINDEX rcv_index,
-					HEAP_LOG_INFO * logical_delete_log_info) __attribute__ ((ALWAYS_INLINE));
+					VFID * vfid_p, int offset, LOG_RCVINDEX rcv_index, char *redo_data_p,
+					int redo_data_size, HEAP_LOG_INFO * logical_delete_log_info)
+  __attribute__ ((ALWAYS_INLINE));
 static int heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLOTID slotid, MVCCID mvccid);
 STATIC_INLINE int heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p,
 						       VFID * vfid_p, int offset, RECDES * old_recdes,
@@ -15933,19 +15936,16 @@ heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   vfid_p(in): virtual file identifier
  *   offset(in): offset
  *   rcv_index(in): recovery index
+ *   redo_data_p(in): redo data
+ *   redo_data_size(in): redo data size
  *   logical_delete_log_node(out): logical delete log node
  */
 STATIC_INLINE int
 heap_create_log_node_for_logical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, PAGE_PTR page_p,
-					   VFID * vfid_p, PGLENGTH offset, LOG_RCVINDEX rcv_index,
-					   LOG_PRIOR_NODE ** logical_delete_log_node)
+					   VFID * vfid_p, PGLENGTH offset, LOG_RCVINDEX rcv_index, char *redo_data_p,
+					   int redo_data_size, LOG_PRIOR_NODE ** logical_delete_log_node)
 {
   LOG_DATA_ADDR log_addr;
-  char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
-  char *redo_data_p = PTR_ALIGN (redo_data_buffer, MAX_ALIGNMENT);
-  char *ptr;
-  int redo_data_size = 0;
-
   assert (tdes != NULL && vfid_p != NULL && logical_delete_log_node != NULL);
 
   /* Populate address field with valid VFID. The offset and page pointer will be generated later */
@@ -15954,18 +15954,7 @@ heap_create_log_node_for_logical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * t
   assert (rcv_index == RVHF_MVCC_DELETE_REC_HOME || rcv_index == RVHF_MVCC_DELETE_REC_NEWHOME
 	  || rcv_index == RVHF_MVCC_DELETE_OVERFLOW);
 
-  /* The redo record can be built by adding DELID to the old record. */
-
-  if (rcv_index != RVHF_MVCC_DELETE_REC_HOME)
-    {
-      /* MVCCID must be packed also, since it is not saved in log record structure. */
-      ptr = redo_data_p;
-      ptr = or_pack_mvccid (ptr, mvcc_id);
-      redo_data_size += OR_MVCCID_SIZE;
-      assert ((ptr - redo_data_buffer) <= (int) sizeof (redo_data_buffer));
-    }
-
-  /* Log append undo/redo data */
+  /* Create log undo/redo data */
   return log_create_log_node_from_undoredo_data (thread_p, tdes, rcv_index, &log_addr, 0, redo_data_size,
 						 NULL, redo_data_p, logical_delete_log_node);
 }
@@ -16028,21 +16017,19 @@ heap_create_log_node_for_physical_deletion (THREAD_ENTRY * thread_p, LOG_TDES * 
  * tdes(in)		    : Log tdes
  * mvcc_id(in)		    : MVCC id
  * page_p(in)		    : Page pointer.
+ * redo_data_p(in)	    : Redo data
+ * redo_data_size(in)	    : Redo data size
  * offset(in)		    : Offset.
  * rcv_index(in)	    : Index to recovery function
  * delete_log_info(in/out)  : Logical delete log info, obtained before page fixing.
  */
 STATIC_INLINE int
 heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, PAGE_PTR page_p, VFID * vfid_p,
-		      int offset, LOG_RCVINDEX rcv_index, HEAP_LOG_INFO * logical_delete_log_info)
+		      int offset, LOG_RCVINDEX rcv_index, char *redo_data_p, int redo_data_size,
+		      HEAP_LOG_INFO * logical_delete_log_info)
 {
   LOG_DATA_ADDR address;
   int error_code = NO_ERROR;
-  char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
-  char *redo_data_p = PTR_ALIGN (redo_data_buffer, MAX_ALIGNMENT);
-  char *ptr;
-  int redo_data_size = 0;
-  bool skip_redo = true;
   LOG_PRIOR_NODE *logical_delete_log_node = NULL;
 
   /* build address */
@@ -16055,23 +16042,14 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, 
 
       /*
        * The most simple MVCC delete case. The recovery index may change from RVHF_MVCC_DELETE_REC_HOME to
-       * RVHF_MVCC_DELETE_REC_NEWHOME or RVHF_MVCC_DELETE_OVERFLOW. The redo data is NULL or contains MVCCID only.
+       * RVHF_MVCC_DELETE_REC_NEWHOME or RVHF_MVCC_DELETE_OVERFLOW. The redo can be NULL or can contain MVCCID only.
        * The undo data is NULL.
        */
       logical_delete_log_node = logical_delete_log_info->node;
       assert (logical_delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_HOME);
-      assert (logical_delete_log_node->ulength == 0 && logical_delete_log_node->rlength == 0);
-      if (logical_delete_log_info->rcv_index != rcv_index)
-	{
-	  /* MVCCID must be packed also, since it is not saved in log record structure. */
-	  ptr = redo_data_p;
-	  ptr = or_pack_mvccid (ptr, mvcc_id);
-	  redo_data_size += OR_MVCCID_SIZE;
-	  skip_redo = false;
-	}
-
+      assert (logical_delete_log_node->ulength == 0 && redo_data_size <= OR_MVCCID_SIZE);
       error_code = prior_lsa_update_undoredo_data (thread_p, logical_delete_log_node, rcv_index, &address,
-						   0, redo_data_size, NULL, redo_data_p, true, skip_redo);
+						   0, redo_data_size, NULL, redo_data_p, true, false);
       if (error_code == NO_ERROR)
 	{
 	  log_append_prior_node (thread_p, tdes, rcv_index, page_p, logical_delete_log_node);
@@ -16090,22 +16068,8 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, 
 	}
     }
 
-  if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
-    {
-      int flag_vacuum_status = 0;
-      HEAP_PAGE_VACUUM_STATUS vacuum_status;
-      vacuum_status = heap_page_get_vacuum_status (thread_p, page_p);
-
-      heap_page_update_chain_after_mvcc_op (thread_p, page_p, logtb_get_current_mvccid (thread_p), &flag_vacuum_status);
-      if (heap_page_get_vacuum_status (thread_p, page_p) != vacuum_status)
-	{
-	  /* Mark vacuum status change for recovery. */
-	  offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
-	}
-
-    }
   error_code = heap_create_log_node_for_logical_deletion (thread_p, tdes, mvcc_id, page_p, vfid_p, offset, rcv_index,
-							  &logical_delete_log_node);
+							  redo_data_p, redo_data_size, &logical_delete_log_node);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -21136,6 +21100,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
   VPID overflow_vpid;
   OID overflow_oid;
   int rc, flag_vacuum_status = 0;
+  char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
+  char *redo_data_p;
 
   /* check input */
   assert (context != NULL);
@@ -21184,9 +21150,13 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
+      /* MVCCID must be packed also, since it is not saved in log record structure. */
+      redo_data_p = PTR_ALIGN (redo_data_buffer, MAX_ALIGNMENT);
+      (void) or_pack_mvccid (redo_data_p, mvcc_id);
       /* log operation. */
       rc = heap_mvcc_log_delete (thread_p, tdes, mvcc_id, context->overflow_page_watcher_p->pgptr, &context->hfid.vfid,
-				 overflow_oid.slotid | flag_vacuum_status, RVHF_MVCC_DELETE_OVERFLOW, delete_log_info);
+				 overflow_oid.slotid | flag_vacuum_status, RVHF_MVCC_DELETE_OVERFLOW,
+				 redo_data_p, OR_MVCCID_SIZE, delete_log_info);
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -21303,6 +21273,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
   RECDES new_forward_recdes, new_home_recdes;
   MVCC_REC_HEADER forward_rec_header;
   char buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
+  char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
+  char *redo_data_p;
   OID new_forward_oid;
   int adjusted_size;
   bool fits_in_home, fits_in_forward;
@@ -21663,9 +21635,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 	{
 	  /* No need to update vacuum status. */
 	  assert (!LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_REC_NEWHOME));
+	  redo_data_p = PTR_ALIGN (redo_data_buffer, MAX_ALIGNMENT);
+	  (void) or_pack_mvccid (redo_data_p, mvcc_id);
 	  rc = heap_mvcc_log_delete (thread_p, tdes, mvcc_id, context->forward_page_watcher_p->pgptr,
 				     &context->hfid.vfid, forward_oid.slotid, RVHF_MVCC_DELETE_REC_NEWHOME,
-				     delete_log_info);
+				     redo_data_p, OR_MVCCID_SIZE, delete_log_info);
 	  if (rc != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -22033,7 +22007,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
 						mvcc_id, &flag_vacuum_status);
 	  error_code = heap_mvcc_log_delete (thread_p, tdes, mvcc_id, context->home_page_watcher_p->pgptr,
 					     &context->hfid.vfid, context->oid.slotid | flag_vacuum_status,
-					     RVHF_MVCC_DELETE_REC_HOME, delete_log_info);
+					     RVHF_MVCC_DELETE_REC_HOME, NULL, 0, delete_log_info);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -23482,7 +23456,8 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   HEAP_LOG_INFO delete_log_info, *p_delete_log_info = NULL;
   MVCCID mvccid = MVCCID_NULL;
   int rcv_index;
-
+  char redo_data_buffer[HEAP_MVCC_DELETE_DEFAULT_LOG_REDO_SIZE + MAX_ALIGNMENT];
+  char *redo_data_p = PTR_ALIGN (redo_data_buffer, MAX_ALIGNMENT);
   /* 
    * Check input
    */
@@ -23586,13 +23561,14 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (is_mvcc_op)
     {
       /*
-       * Log with RVHF_MVCC_DELETE_REC_HOME before page fixing, since is the most common situation. Log undo and log
-       * redo are NULL. If the log type will modified, the undo/redo data would be allocated after fixing the page.
+       * Log with RVHF_MVCC_DELETE_REC_HOME before page fixing, since is the most common situation. Log undo is NULL.
+       * Reserve enough space for log redo. The redo data will be set after fixing the page.
        * With page copy without latch, we will know the maximum space needed for log undo/redo from beginning. In that
        * case we can allocate enough log undo/redo space before fixing the page, even for particular cases.
        */
       rc = heap_create_log_node_for_logical_deletion (thread_p, tdes, mvccid, NULL, &context->hfid.vfid, NULL_SLOTID,
-						      RVHF_MVCC_DELETE_REC_HOME, &delete_log_node);
+						      RVHF_MVCC_DELETE_REC_HOME, redo_data_p,
+						      HEAP_MVCC_DELETE_DEFAULT_LOG_REDO_SIZE, &delete_log_node);
       rcv_index = RVHF_MVCC_DELETE_REC_HOME;
     }
   else
