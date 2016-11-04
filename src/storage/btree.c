@@ -735,6 +735,7 @@ struct btree_insert_helper
   bool log_operations;		/* er_log. */
   bool is_null;			/* is key NULL. */
   char *printed_key;		/* Printed key. */
+  SHA1Hash printed_key_sha1;	/* SHA1 of printed key - useful for very large keys */
 
   /* Recovery data. */
   LOG_DATA_ADDR leaf_addr;
@@ -776,6 +777,7 @@ struct btree_insert_helper
     false /* log_operations */, \
     false /* is_null */, \
     NULL /* printed_key */, \
+    SHA1_HASH_INITIALIZER /* printed_key_sha1 */, \
     LOG_DATA_ADDR_INITIALIZER /* leaf_addr */, \
     RV_NOT_DEFINED /* rcvindex */, \
     NULL /* rv_keyval_data */, \
@@ -807,6 +809,7 @@ struct btree_insert_helper
     false /* log_operations */, \
     false /* is_null */, \
     NULL /* printed_key */, \
+    SHA1_HASH_INITIALIZER /* printed_key_sha1 */, \
     LOG_DATA_ADDR_INITIALIZER /* leaf_addr */, \
     RV_NOT_DEFINED /* rcvindex */, \
     NULL /* rv_keyval_data */, \
@@ -843,6 +846,7 @@ struct btree_delete_helper
   BTREE_MVCC_INFO match_mvccinfo;	/* Used to match MVCC information when searching for object in index key. */
   OR_BUF *buffered_key;		/* Buffered key value. */
   char *printed_key;		/* Key printed value. */
+  SHA1Hash printed_key_sha1;	/* SHA1 of printed key - useful for very large keys */
   bool log_operations;		/* Debugging purpose logging. */
   bool is_root;			/* True if current node is root. */
   bool is_first_search;		/* True for the first b-tree traversal. */
@@ -873,6 +877,7 @@ struct btree_delete_helper
     BTREE_MVCC_INFO_INITIALIZER /* match_mvccinfo */, \
     NULL /* buffered_key */, \
     NULL /* printed_key */, \
+    SHA1_HASH_INITIALIZER /* printed_key_sha1 */, \
     false /* log_operations */, \
     false /* is_root */, \
     true /* is_first_search */, \
@@ -1168,7 +1173,7 @@ enum btree_rv_debug_id
   BTREE_MVCC_INFO_AS_ARGS (&((objinfo)->mvcc_info))
 
 /* logging a key value (stored as char *) */
-#define BTREE_PRINT_KEY_MSG(key) key " = %.64s"
+#define BTREE_PRINT_KEY_MSG(key) key " = %.32s"
 #define BTREE_PRINT_KEY_ARGS(key) (key) != NULL ? (key) : "** UNKNOWN KEY **"
 
 /* logging insert helper */
@@ -1177,12 +1182,12 @@ enum btree_rv_debug_id
   tabs "\t" BTREE_OBJINFO_MSG("obj_info") "\n" \
   tabs "\t" "purpose = %s \n" \
   tabs "\t" "op_type = %s \n" \
-  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") " \n"
+  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") " (sha1 = %08x | %08x | %08x | %08x | %08x) \n"
 #define BTREE_INSERT_HELPER_AS_ARGS(helper) \
   BTREE_OBJINFO_AS_ARGS (&(helper)->obj_info), \
   btree_purpose_to_string ((helper)->purpose), \
   btree_op_type_to_string ((helper)->op_type), \
-  BTREE_PRINT_KEY_ARGS((helper)->printed_key)
+  BTREE_PRINT_KEY_ARGS((helper)->printed_key), SHA1_AS_ARGS (&(helper)->printed_key_sha1)
 
 /* logging delete helper */
 #define BTREE_DELETE_HELPER_MSG(tabs) \
@@ -1190,13 +1195,13 @@ enum btree_rv_debug_id
   tabs "\t" BTREE_OBJINFO_MSG("object_info") "\n" \
   tabs "\t" "purpose = %s \n " \
   tabs "\t" "op_type = %s \n" \
-  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") " \n" \
+  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") " (sha1 = %08x | %08x | %08x | %08x | %08x) \n" \
   tabs "\t" "match_mvccinfo = %llu|%llu \n"
 #define BTREE_DELETE_HELPER_AS_ARGS(helper) \
   BTREE_OBJINFO_AS_ARGS (&(helper)->object_info), \
   btree_purpose_to_string ((helper)->purpose), \
   btree_op_type_to_string ((helper)->op_type), \
-  BTREE_PRINT_KEY_ARGS((helper)->printed_key), \
+  BTREE_PRINT_KEY_ARGS((helper)->printed_key), SHA1_AS_ARGS (&(helper)->printed_key_sha1) \
   BTREE_MVCC_INFO_AS_ARGS (&(helper)->match_mvccinfo)
 
 /* log changes during insert */
@@ -25955,6 +25960,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
     {
       /* This is postponed here to make sure midxkey domain was initialized. */
       insert_helper->printed_key = pr_valstring (key);
+      (void) SHA1Compute ((unsigned char *) insert_helper->printed_key, strlen (insert_helper->printed_key),
+			  &insert_helper->printed_key_sha1);
     }
 
   if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
@@ -29465,6 +29472,8 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
     {
       /* Key must be printed. */
       delete_helper->printed_key = pr_valstring (key);
+      (void) SHA1Compute ((unsigned char *) delete_helper->printed_key, strlen (delete_helper->printed_key),
+			  &delete_helper->printed_key_sha1);
     }
 
   /* Safe guard: key cannot always be NULL. */
