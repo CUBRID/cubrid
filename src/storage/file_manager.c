@@ -314,7 +314,7 @@ static bool file_Logging = false;
   "\t\ttable offsets: partial = %d, full = %d, user page = %d \n" \
   "\t\tvpid_sticky_first = %d|%d \n" \
   "\t\tvpid_last_temp_alloc = %d|%d, offset_to_last_temp_alloc=%d \n" \
-  "\t\tvpid_last_user_page_ftab = %d \n"
+  "\t\tvpid_last_user_page_ftab = %d|%d \n"
 #define FILE_HEAD_FULL_AS_ARGS(fhead) \
   FILE_HEAD_ALLOC_AS_ARGS (fhead), \
   VFID_AS_ARGS (&(fhead)->self), (long long int) fhead->time_creation, file_type_to_string ((fhead)->type), \
@@ -2405,8 +2405,7 @@ file_rv_extdata_merge_compare_vsid_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcvindex (in)     : Recovery index (to know the type of merge, ordered or unordered).
  */
 STATIC_INLINE void
-file_log_extdata_merge (THREAD_ENTRY * thread_p,
-			const FILE_EXTENSIBLE_DATA * extdata_dest,
+file_log_extdata_merge (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_dest,
 			PAGE_PTR page_dest, const FILE_EXTENSIBLE_DATA * extdata_src, LOG_RCVINDEX rcvindex)
 {
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
@@ -2414,8 +2413,7 @@ file_log_extdata_merge (THREAD_ENTRY * thread_p,
   addr.pgptr = page_dest;
   addr.offset = (PGLENGTH) (((char *) extdata_dest) - page_dest);
 
-  log_append_undoredo_data (thread_p, rcvindex, &addr,
-			    file_extdata_size (extdata_dest),
+  log_append_undoredo_data (thread_p, rcvindex, &addr, file_extdata_size (extdata_dest),
 			    file_extdata_size (extdata_src), extdata_dest, extdata_src);
 }
 
@@ -5049,9 +5047,11 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 	}
       fhead = (FILE_HEADER *) page_fhead;
     }
+
   assert (page_fhead != NULL);
   assert (fhead != NULL);
   assert (!VPID_EQ (&fhead->vpid_sticky_first, vpid));
+
   if (!FILE_IS_NUMERABLE (fhead))
     {
       /* we don't need to do anything now. the actual deallocation is postponed (or skipped altogether). */
@@ -5060,9 +5060,8 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 
   /* search for VPID in user page table */
   FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
-  error_code =
-    file_extdata_search_item (thread_p, &extdata_user_page_ftab, vpid,
-			      file_compare_vpids, false, true, &found, &pos, &page_ftab);
+  error_code = file_extdata_search_item (thread_p, &extdata_user_page_ftab, vpid, file_compare_vpids, false, true,
+					 &found, &pos, &page_ftab);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5071,6 +5070,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
   if (!found)
     {
       /* not found?? corrupted table! */
+      /* TODO: raise an error. */
       assert_release (false);
       error_code = ER_FAILED;
       goto exit;
@@ -5081,6 +5081,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
   if (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_found))
     {
       /* already marked as deleted? I don't think so! */
+      /* TODO: raise an error. */
       assert_release (false);
       error_code = ER_FAILED;
       goto exit;
@@ -5088,8 +5089,10 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 
   /* mark page as deleted */
   FILE_USER_PAGE_MARK_DELETED (vpid_found);
+
   page_extdata = page_ftab != NULL ? page_ftab : page_fhead;
   save_lsa = *pgbuf_get_lsa (page_extdata);
+
   pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
   if (!FILE_IS_TEMPORARY (fhead))
     {
@@ -5502,7 +5505,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 		    VPID_AS_ARGS (&vpid_ftab_new),
 		    FILE_PARTSECT_AS_ARGS (&partsect_new), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
-	  pgbuf_unfix_and_init (thread_p, page_ftab);
+	  pgbuf_set_dirty_and_free (thread_p, page_ftab);
 	}
     }
 
@@ -6888,9 +6891,7 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
       if (!FILE_IS_TEMPORARY (fhead))
 	{
 	  /* log that we are going to change fhead->vpid_last_page_ftab. */
-	  log_append_undoredo_data2 (thread_p,
-				     RVFL_FHEAD_SET_LAST_USER_PAGE_FTAB, NULL,
-				     page_fhead, 0, sizeof (VPID),
+	  log_append_undoredo_data2 (thread_p, RVFL_FHEAD_SET_LAST_USER_PAGE_FTAB, NULL, page_fhead, 0, sizeof (VPID),
 				     sizeof (VPID), &fhead->vpid_last_user_page_ftab, &vpid_ftab_new);
 	}
 
@@ -7286,8 +7287,7 @@ file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
   addr.offset = (PGLENGTH) (((char *) vpid_in_table) - addr.pgptr);
   save_lsa = *pgbuf_get_lsa (addr.pgptr);
-  log_append_compensate (thread_p, RVFL_USER_PAGE_MARK_DELETE_COMPENSATE,
-			 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset,
+  log_append_compensate (thread_p, RVFL_USER_PAGE_MARK_DELETE_COMPENSATE, pgbuf_get_vpid_ptr (addr.pgptr), addr.offset,
 			 addr.pgptr, 0, NULL, LOG_FIND_CURRENT_TDES (thread_p));
 
   file_log ("file_rv_user_page_unmark_delete_logical",
@@ -7983,41 +7983,45 @@ file_tempcache_init (void)
 static void
 file_tempcache_final (void)
 {
-  if (file_Tempcache)
+  int tran = 0;
+  int ntrans;
+
+  if (file_Tempcache == NULL)
     {
-      int tran = 0;
+      return;
+    }
+
 #if defined (SERVER_MODE)
-      int ntrans = logtb_get_number_of_total_tran_indices ();
+  ntrans = logtb_get_number_of_total_tran_indices ();
 #else
-      int ntrans = 1;
+  ntrans = 1;
 #endif
 
-      file_tempcache_lock ();
+  file_tempcache_lock ();
 
-      /* free all transaction lists... they should be empty anyway, but be conservative */
-      for (tran = 0; tran < ntrans; tran++)
+  /* free all transaction lists... they should be empty anyway, but be conservative */
+  for (tran = 0; tran < ntrans; tran++)
+    {
+      if (file_Tempcache->tran_files[tran] != NULL)
 	{
-	  if (file_Tempcache->tran_files[tran] != NULL)
-	    {
-	      /* should be empty */
-	      assert (false);
-	      file_tempcache_free_entry_list (&file_Tempcache->tran_files[tran]);
-	    }
+	  /* should be empty */
+	  assert (false);
+	  file_tempcache_free_entry_list (&file_Tempcache->tran_files[tran]);
 	}
-      free_and_init (file_Tempcache->tran_files);
-
-      /* temporary volumes are removed, we don't have to destroy files */
-      file_tempcache_free_entry_list (&file_Tempcache->cached_not_numerable);
-      file_tempcache_free_entry_list (&file_Tempcache->cached_numerable);
-
-      file_tempcache_free_entry_list (&file_Tempcache->free_entries);
-
-      file_tempcache_unlock ();
-
-      pthread_mutex_destroy (&file_Tempcache->mutex);
-
-      free_and_init (file_Tempcache);
     }
+  free_and_init (file_Tempcache->tran_files);
+
+  /* temporary volumes are removed, we don't have to destroy files */
+  file_tempcache_free_entry_list (&file_Tempcache->cached_not_numerable);
+  file_tempcache_free_entry_list (&file_Tempcache->cached_numerable);
+
+  file_tempcache_free_entry_list (&file_Tempcache->free_entries);
+
+  file_tempcache_unlock ();
+
+  pthread_mutex_destroy (&file_Tempcache->mutex);
+
+  free_and_init (file_Tempcache);
 }
 
 /*
@@ -8187,6 +8191,7 @@ file_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FI
 	{
 	  assert (*entry == file_Tempcache->cached_numerable);
 	  assert (file_Tempcache->ncached_numerable > 0);
+
 	  file_Tempcache->cached_numerable = file_Tempcache->cached_numerable->next;
 	  file_Tempcache->ncached_numerable--;
 	}
@@ -8194,9 +8199,11 @@ file_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FI
 	{
 	  assert (*entry == file_Tempcache->cached_not_numerable);
 	  assert (file_Tempcache->ncached_not_numerable > 0);
+
 	  file_Tempcache->cached_not_numerable = file_Tempcache->cached_not_numerable->next;
 	  file_Tempcache->ncached_not_numerable--;
 	}
+
       (*entry)->next = NULL;
 
       file_log ("file_tempcache_get",
