@@ -1360,7 +1360,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
   if (compressable == true)
     {
-      if (!pr_Enable_string_compression)	/* compession is not set */
+      if (!pr_Enable_string_compression)	/* compression is not set */
 	{
 	  compressed_length = 0;
 	  goto after_compression;
@@ -7638,6 +7638,7 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET (db_enum)));
       size += (*(tp_String.data_lengthval)) (&value, 1);
+      pr_clear_value (&value);
     }
 
   return size;
@@ -7673,6 +7674,8 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       enumeration->collation_id);
       rc = (*(tp_String.data_writeval)) (buf, &value);
+      pr_clear_value (&value);
+
       if (rc != NO_ERROR)
 	{
 	  break;

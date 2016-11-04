@@ -227,7 +227,7 @@ extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
 /* server execution statistics */
 extern void xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats);
-extern void xperfmon_server_copy_global_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats);
+extern void xperfmon_server_copy_global_stats (UINT64 * to_stats);
 /* catalog manager interface */
 
 extern int xcatalog_check_rep_dir (THREAD_ENTRY * thread_p, OID * class_id, OID * rep_dir_p);
