@@ -2251,7 +2251,7 @@ file_log_extdata_add (THREAD_ENTRY * thread_p,
   crumbs[1].length = sizeof (count);
 
   crumbs[2].data = data;
-  crumbs[2].length = extdata->size_of_item;
+  crumbs[2].length = extdata->size_of_item * count;
 
   log_append_undoredo_crumbs (thread_p, RVFL_EXTDATA_ADD, &addr, 2, 3, crumbs, crumbs);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
@@ -2284,7 +2284,7 @@ file_log_extdata_remove (THREAD_ENTRY * thread_p,
   crumbs[1].length = sizeof (count);
 
   crumbs[2].data = file_extdata_at (extdata, position);
-  crumbs[2].length = extdata->size_of_item;
+  crumbs[2].length = extdata->size_of_item * count;
 
   log_append_undoredo_crumbs (thread_p, RVFL_EXTDATA_REMOVE, &addr, 3, 2, crumbs, crumbs);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
