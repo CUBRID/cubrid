@@ -742,6 +742,7 @@ enum lob_locator_state
   LOB_NOT_FOUND
 };
 
+#if 0 /* LOB locator disabled code */
 /* lob entry */
 typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
 
@@ -753,6 +754,7 @@ typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
   };
  */
 RB_HEAD (lob_rb_root, lob_locator_entry);
+#endif
 
 typedef enum tran_abort_reason TRAN_ABORT_REASON;
 enum tran_abort_reason
@@ -902,7 +904,9 @@ struct log_tdes
   int num_new_temp_files;	/* # of new FILE_TEMP files created */
   int suppress_replication;	/* suppress writing replication logs when flag is set */
 
+#if 0
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
+#endif
 
   INT64 query_timeout;		/* a query should be executed before query_timeout time. */
 

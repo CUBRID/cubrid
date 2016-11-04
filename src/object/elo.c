@@ -705,8 +705,6 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
   assert (dest != NULL);
   assert (elo->type == ELO_FBO || elo->type == ELO_LO);
   
-  _er_log_debug (ARG_FILE_LINE, "elo_copy:  %s -> %s", elo ? elo->locator : NULL, dest ? dest->locator : dest);
-
   if (elo->type == ELO_FBO)
     {
       int ret;

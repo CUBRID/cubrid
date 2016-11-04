@@ -957,7 +957,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
   tdes->num_new_temp_files = 0;
+#if 0
   RB_INIT (&tdes->lob_locator_root);
+#endif
 }
 
 /*
@@ -2016,7 +2018,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->num_new_files = 0;
   tdes->num_new_temp_files = 0;
   tdes->suppress_replication = 0;
+#if 0
   RB_INIT (&tdes->lob_locator_root);
+#endif
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;

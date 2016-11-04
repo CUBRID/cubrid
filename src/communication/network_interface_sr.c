@@ -1855,6 +1855,7 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   db_private_free_and_init (NULL, buffer);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * slog_find_lob_locator -
  *
@@ -1990,7 +1991,7 @@ slog_drop_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   or_pack_int (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * sacl_reload -
  *

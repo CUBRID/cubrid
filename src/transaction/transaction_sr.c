@@ -315,7 +315,9 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
 	      return TRAN_UNACTIVE_UNKNOWN;
 	    }
+#if 0
 	  log_clear_lob_locator_list (thread_p, tdes, false, topop_lsa);
+#endif
 	}
       break;
 

@@ -501,6 +501,7 @@ net_server_init (void)
   req_p->processing_function = slogtb_dump_trantable;
   req_p->name = "NET_SERVER_LOG_DUMP_TRANTB";
 
+#if 0
   req_p = &net_Requests[NET_SERVER_LOG_FIND_LOB_LOCATOR];
   req_p->processing_function = slog_find_lob_locator;
   req_p->name = "NET_SERVER_LOG_FIND_LOB_LOCATOR";
@@ -516,6 +517,7 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LOG_DROP_LOB_LOCATOR];
   req_p->processing_function = slog_drop_lob_locator;
   req_p->name = "NET_SERVER_LOG_DROP_LOB_LOCATOR";
+#endif
 
   req_p = &net_Requests[NET_SERVER_LOG_CHECKPOINT];
   req_p->processing_function = slog_checkpoint;

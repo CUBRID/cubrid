@@ -147,6 +147,7 @@ static int rv;
     && ((RCVI) != RVELO_RENAME_FILE) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
+#if 0 /* LOB locator disabled code */
 /* Assume that locator end with <path>/<meta_name>.<key_name> */
 #define LOCATOR_KEY(locator_) (strrchr (locator_, '.') + 1)
 #define LOCATOR_META(locator_) (strrchr (locator_, PATH_SEPARATOR) + 1)
@@ -181,6 +182,7 @@ struct lob_locator_entry
   char *key;
   char key_data[1];
 };
+#endif /* LOB locator disabled code */
 
 /* struct for active log header scan */
 typedef struct actve_log_header_scan_context ACTIVE_LOG_HEADER_SCAN_CTX;
@@ -234,10 +236,12 @@ static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
 static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * upto_lsa);
+#if defined (ENABLE_UNUSED_FUNCTIONS)
 static void log_free_lob_locator (LOB_LOCATOR_ENTRY * entry);
 static int lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTRY * e2);
 /* RB_PROTOTYPE_STATIC declares red-black tree functions. see base/rb_tree.h */
 RB_PROTOTYPE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
+#endif /* ENABLE_UNUSED_FUNCTIONS */
 
 static TRAN_STATE log_complete_system_op (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result,
 					  TRAN_STATE back_to_state);
@@ -4810,6 +4814,7 @@ log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_is_valid_locator -
  *
@@ -5247,6 +5252,8 @@ lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTRY * e2)
  */
 RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 
+#endif /* ENABLE_UNUSED_FUNCTION */
+
 /*
  * log_commit_local - Perform the local commit operations of a transaction
  *
@@ -5281,7 +5288,9 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * statistics, we will lost logging of unique statistics. 4. A recovery will occur. Because our transaction was saved 
    * at checkpoint with TRAN_UNACTIVE_WILL_COMMIT state, it will be committed. Because we didn't logged the changes
    * made by the transaction we will not reflect the changes. They will be definitely lost. */
+#if 0
   log_clear_lob_locator_list (thread_p, tdes, true, NULL);
+#endif
 
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must 
@@ -5471,7 +5480,9 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
       /* There is no need to create a new transaction identifier */
     }
 
+#if 0
   log_clear_lob_locator_list (thread_p, tdes, false, NULL);
+#endif
 
   return tdes->state;
 }
@@ -5789,7 +5800,9 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
 
   log_cleanup_modified_class_list (thread_p, tdes, savept_lsa, false, true);
 
+#if 0
   log_clear_lob_locator_list (thread_p, tdes, false, savept_lsa);
+#endif
 
   /* 
    * The following is done so that if we go over several savepoints, they

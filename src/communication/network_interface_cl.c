@@ -2425,6 +2425,7 @@ log_set_suppress_repl_on_transaction (int set)
 #endif /* !CS_MODE */
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_find_lob_locator -
  *
@@ -2647,6 +2648,7 @@ log_drop_lob_locator (const char *locator)
   return error_code;
 #endif /* !CS_MODE */
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tran_server_commit -
