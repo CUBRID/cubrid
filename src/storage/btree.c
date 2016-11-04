@@ -1201,7 +1201,7 @@ enum btree_rv_debug_id
   BTREE_OBJINFO_AS_ARGS (&(helper)->object_info), \
   btree_purpose_to_string ((helper)->purpose), \
   btree_op_type_to_string ((helper)->op_type), \
-  BTREE_PRINT_KEY_ARGS((helper)->printed_key), SHA1_AS_ARGS (&(helper)->printed_key_sha1) \
+  BTREE_PRINT_KEY_ARGS((helper)->printed_key), SHA1_AS_ARGS (&(helper)->printed_key_sha1), \
   BTREE_MVCC_INFO_AS_ARGS (&(helper)->match_mvccinfo)
 
 /* log changes during insert */
