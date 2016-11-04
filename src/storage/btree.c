@@ -1709,8 +1709,7 @@ STATIC_INLINE const char *btree_purpose_to_string (BTREE_OP_PURPOSE purpose) __a
 STATIC_INLINE const char *btree_op_type_to_string (int op_type) __attribute__ ((ALWAYS_INLINE));
 
 /*
- * btree_fix_root_with_info () - Fix b-tree root page and output its VPID,
- *				 header and b-tree info if requested.
+ * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
  *
  * return	       : Root page pointer or NULL if fix failed.
  * thread_p (in)       : Thread entry.
@@ -2066,8 +2065,7 @@ exit_on_error:
  *   slot_id(in): Slot that contains the overflow key
  *   node_type(in): Leaf or NonLeaf page
  *
- * Note: The overflow key is deleted. This routine will not delete the
- * btree slot containing the key.
+ * Note: The overflow key is deleted. This routine will not delete the btree slot containing the key.
  */
 static int
 btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
@@ -2182,10 +2180,8 @@ btree_leaf_get_vpid_for_overflow_oids (RECDES * rec, VPID * ovfl_vpid)
  * btid_int (in)	  : B-tree info.
  * leaf_record (in)	  : Leaf record.
  * new_overflow_vpid (in) : New overflow link.
- * rv_undo_data_ptr (in)  : If not null, outputs undo recovery data for
- *			    changes made.
- * rv_redo_data_ptr (in)  : If not null, outputs redo recovery data for
- *			    changes made.
+ * rv_undo_data_ptr (in)  : If not null, outputs undo recovery data for changes made.
+ * rv_redo_data_ptr (in)  : If not null, outputs redo recovery data for changes made.
  */
 void
 btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
@@ -2340,8 +2336,7 @@ btree_leaf_get_first_object (BTID_INT * btid, RECDES * recp, OID * oidp, OID * c
 }
 
 /*
- * btree_get_num_visible_oids_from_all_ovf () - Get the number of visible
- *					        objects according to snapshot
+ * btree_get_num_visible_oids_from_all_ovf () - Get the number of visible objects according to snapshot
  *						in all overflow pages.
  *
  * return		  : Error code.
@@ -2445,19 +2440,16 @@ error:
 }
 
 /*
- * btree_get_num_visible_from_leaf_and_ovf () - Get the number of visible
- *						objects in record.
+ * btree_get_num_visible_from_leaf_and_ovf () - Get the number of visible objects in record.
  *
- * return		 : Number of visible objects or negative value for
- *			   errors.
+ * return		 : Number of visible objects or negative value for errors.
  * thread_p (in)	 : Thread entry.
  * btid_int (in)	 : B-tree info.
  * leaf_record (in)	 : Leaf record descriptor.
  * offset_after_key (in) : Offset to where packed key is ended.
  * leaf_info (in)	 : Leaf record information (VPID of first overflow).
- * max_visible_oids (in) : Non-null value if there is limit of objects to
- *			   count. If limit is reached, counting is stopped and
- *			   current count is returned.
+ * max_visible_oids (in) : Non-null value if there is limit of objects to count. 
+ * 			   If limit is reached, counting is stopped and current count is returned.
  * mvcc_snapshot (in)	 : Snapshot for visibility test.
  */
 static int
@@ -2604,15 +2596,13 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
 }
 
 /*
- * btree_record_get_num_oids () - Compute the total number of objects in a
- *				  leaf or overflow record.
+ * btree_record_get_num_oids () - Compute the total number of objects in a leaf or overflow record.
  *
  * return		 : Number of objects or error code.
  * thread_p (in)	 : Thread entry.
  * btid_int (in)	 : B-tree info.
  * rec (in)		 : Record descriptor.
- * after_key_offset (in) : Offset where packed key ends. Is used only in case
- *			   of leaf records.
+ * after_key_offset (in) : Offset where packed key ends. Is used only in case of leaf records.
  * node_type (in)	 : Leaf/overflow node type.
  */
 static int
@@ -2667,8 +2657,7 @@ btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
 }
 
 /*
- * btree_leaf_change_first_object () - Replace first object in record with
- *				       given object.
+ * btree_leaf_change_first_object () - Replace first object in record with given object.
  *
  * return		  : Void
  * recp (in/out)	  : B-tree leaf record.
@@ -2863,16 +2852,13 @@ btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp, OID 
 }
 
 /*
- * btree_leaf_record_handle_first_overflow () - Set fixed size for first
- *						object and update record.
+ * btree_leaf_record_handle_first_overflow () - Set fixed size for first object and update record.
  *
  * return		  : Void.
  * recp (in)		  : Leaf record.
  * btid_int (in)	  : B-tree info.
- * rv_undo_data_ptr (out) : If not null, outputs undo recovery data for the
- *			    changes made to record.
- * rv_redo_data_ptr (out) : If not null, outputs redo recovery data for the
- *			    changes made to record.
+ * rv_undo_data_ptr (out) : If not null, outputs undo recovery data for the changes made to record.
+ * rv_redo_data_ptr (out) : If not null, outputs redo recovery data for the changes made to record.
  */
 static void
 btree_leaf_record_handle_first_overflow (RECDES * recp, BTID_INT * btid_int, char **rv_undo_data_ptr,
@@ -3005,15 +2991,13 @@ btree_leaf_record_handle_first_overflow (RECDES * recp, BTID_INT * btid_int, cha
 }
 
 /*
- * btree_leaf_get_nth_oid_ptr () - Advance to the nth object in b-tree key
- *				   record data and return pointer.
+ * btree_leaf_get_nth_oid_ptr () - Advance to the nth object in b-tree key record data and return pointer.
  *
  * return		: Pointer to nth object in record data.
  * btid (in)		: B-tree data.
  * recp (in)		: Record data.
  * node_type (in)	: Node type (leaf or overflow).
- * oid_list_offset (in) : Offset to list of objects (for leaf it must skip the
- *			  packed key).
+ * oid_list_offset (in) : Offset to list of objects (for leaf it must skip the packed key).
  * n (in)		: Required object index.
  *
  * TODO: This function is no longer used due to changes in b-tree range scan.
@@ -3103,11 +3087,10 @@ btree_leaf_get_nth_oid_ptr (BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node
  * btid_int (in)	       : B-tree info.
  * recp (in)		       : B-tree leaf/overflow record.
  * node_type (in)	       : Leaf/overflow node type.
- * offset_after_key (in)       : For leaf record, offset to where packed key is
- *				 ended.
- * oidp (in)		       : Output last object OID.
- * class_oid (in)	       : Output last object class OID.
- * mvcc_info (in)	       : Output last object MVCC info.
+ * offset_after_key (in)       : For leaf record, offset to where packed key is ended.
+ * oidp (out)		       : Output last object OID.
+ * class_oid (out)	       : Output last object class OID.
+ * mvcc_info (out)	       : Output last object MVCC info.
  * offset_to_last_object (out) : Output offset in record to last object.
  */
 static int
@@ -3201,10 +3184,8 @@ btree_record_get_last_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECD
  * recp (in)		      : B-tree record.
  * node_type (in)	      : Leaf or overflow node type.
  * offset_to_last_object (in) : Offset to last object (must be known).
- * rv_undo_data_ptr (out)     : If not null, output the packed undo logging
- *				for this change.
- * rv_redo_data_ptr (out)     : If not null, output the packed redo logging
- *				for this change.
+ * rv_undo_data_ptr (out)     : If not null, output the packed undo logging for this change.
+ * rv_redo_data_ptr (out)     : If not null, output the packed redo logging for this change.
  */
 static void
 btree_record_remove_last_object (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
@@ -3306,8 +3287,7 @@ btree_leaf_is_flaged (RECDES * recp, short record_flag)
 }
 
 /*
- * btree_record_object_is_flagged () - Check whether object found at rec_data
- *				       has the MVCC flag.
+ * btree_record_object_is_flagged () - Check whether object found at rec_data has the MVCC flag.
  *
  * return	  : True if flag is set, false otherwise.
  * rec_data (in)  : Pointer to an object in b-tree record.
@@ -3340,8 +3320,7 @@ btree_leaf_set_flag (RECDES * recp, short record_flag)
 }
 
 /*
- * btree_record_object_set_mvcc_flags () - Set MVCC flags to an object in a
- *					   b-tree record.
+ * btree_record_object_set_mvcc_flags () - Set MVCC flags to an object in a b-tree record.
  *
  * return	   : Void.
  * rec_data (in)   : Pointer to an object in a b-tree record.
@@ -3378,8 +3357,7 @@ btree_leaf_clear_flag (RECDES * recp, short record_flag)
 }
 
 /*
- * btree_record_object_clear_mvcc_flags () - Clear MVCC flags from an object
- *					     in a b-tree record.
+ * btree_record_object_clear_mvcc_flags () - Clear MVCC flags from an object in a b-tree record.
  *
  * return	   : Void.
  * rec_data (in)   : Pointer to an object in a b-tree record.
@@ -3471,8 +3449,7 @@ btree_write_fixed_portion_of_non_leaf_record_to_orbuf (OR_BUF * buf, NON_LEAF_RE
  *   buf(in):
  *   non_leaf_rec(in):
  *
- * Note: Reads the fixed portion (preamble) of a non leaf record using
- * the OR_BUF stuff.
+ * Note: Reads the fixed portion (preamble) of a non leaf record using the OR_BUF stuff.
  */
 static int
 btree_read_fixed_portion_of_non_leaf_record_from_orbuf (OR_BUF * buf, NON_LEAF_REC * non_leaf_rec)
@@ -3524,10 +3501,8 @@ btree_append_oid (RECDES * rec, OID * oid)
  * oid_offset (in)	  : Offset to object (where MVCC flag is set).
  * mvcc_delid_offset (in) : Add MVCCID at this offset.
  * p_mvcc_delid (in)	  : Pointer to MVCCID value.
- * rv_undo_data_ptr (out) : Outputs undo recovery data for changing the
- *			    record.
- * rv_redo_data_ptr (out) : Outputs redo recovery data for changing the
- *			    record.
+ * rv_undo_data_ptr (out) : Outputs undo recovery data for changing the record.
+ * rv_redo_data_ptr (out) : Outputs redo recovery data for changing the record.
  */
 STATIC_INLINE void
 btree_add_mvcc_delid (RECDES * rec, int oid_offset, int mvcc_delid_offset, MVCCID * p_mvcc_delid,
@@ -3584,10 +3559,8 @@ btree_add_mvcc_delid (RECDES * rec, int oid_offset, int mvcc_delid_offset, MVCCI
  * rec (in)		  : Record data.
  * mvcc_delid_offset (in) : Offset of old delete MVCCID.
  * p_mvcc_delid (in)	  : New delete MVCCID.
- * rv_undo_data_ptr (in)  : Outputs undo recovery data for changing the
- *			    record.
- * rv_redo_data_ptr (in)  : Outputs redo recovery data for changing the
- *			    record.
+ * rv_undo_data_ptr (in)  : Outputs undo recovery data for changing the record.
+ * rv_redo_data_ptr (in)  : Outputs redo recovery data for changing the record.
  */
 STATIC_INLINE void
 btree_set_mvcc_delid (RECDES * rec, int mvcc_delid_offset, MVCCID * p_mvcc_delid, char **rv_undo_data_ptr,
@@ -3619,8 +3592,7 @@ btree_set_mvcc_delid (RECDES * rec, int mvcc_delid_offset, MVCCID * p_mvcc_delid
 }
 
 /*
- * btree_record_append_object () - Append an object and all its info to
- *				   record.
+ * btree_record_append_object () - Append an object and all its info to record.
  *
  * return		  : Void.
  * thread_p (in)	  : Thread entry.
@@ -3628,10 +3600,8 @@ btree_set_mvcc_delid (RECDES * rec, int mvcc_delid_offset, MVCCID * p_mvcc_delid
  * record (in)		  : Leaf/overflow record.
  * node_type (in)	  : Note type.
  * object_info (in)	  : Object & info to append.
- * rv_undo_data_ptr (out) : If not NULL, outputs redo log recovery data for
- *			    the change.
- * rv_redo_data_ptr (out) : If not NULL, outputs redo log recovery data for
- *			    the change.
+ * rv_undo_data_ptr (out) : If not NULL, outputs redo log recovery data for the change.
+ * rv_redo_data_ptr (out) : If not NULL, outputs redo log recovery data for the change.
  */
 static void
 btree_record_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type,
@@ -3697,17 +3667,14 @@ btree_record_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 }
 
 /*
- * btree_insert_object_ordered_by_oid () - Insert in record by keeping objects
- *					   ordered by OID's.
+ * btree_insert_object_ordered_by_oid () - Insert in record by keeping objects ordered by OID's.
  *
  * return		  : Error code.
  * record (in)		  : B-tree (overflow) record.
  * btid_int (in)	  : B-tree info.
  * object_info (in)	  : Object & info being inserted.
- * rv_undo_data_ptr (in)  : If not null, outputs undo recovery data for the
- *			    changes made to record.
- * rv_redo_data_ptr (in)  : If not null, outputs redo recovery data for the
- *			    changes made to record.
+ * rv_undo_data_ptr (in)  : If not null, outputs undo recovery data for the changes made to record.
+ * rv_redo_data_ptr (in)  : If not null, outputs redo recovery data for the changes made to record.
  * offset_to_objptr (out) : Output offset to inserted object.
  */
 static void
@@ -4536,8 +4503,7 @@ btree_dump_key (FILE * fp, DB_VALUE * key)
  *   rec(in): Pointer to a record in a leaf page of the tree
  *   n(in): Indentation left margin (number of preceding blanks)
  *
- * Note: Dumps the content of a leaf record, namely key and the set of
- * values for the key.
+ * Note: Dumps the content of a leaf record, namely key and the set of values for the key.
  */
 static void
 btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * rec, int depth)
@@ -4797,8 +4763,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, REC
  *   n(in): Indentation left margin (number of preceding blanks)
  *   print_key(in):
  *
- * Note: Dumps the content of a nonleaf record, namely key and child
- * page identifier.
+ * Note: Dumps the content of a nonleaf record, namely key and child page identifier.
  */
 static void
 btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * rec, int depth, int print_key)
@@ -4842,13 +4807,11 @@ btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
 
 /*
  * btree_get_new_page () - GET a NEW PAGE for the B+tree index
- *   return: The pointer to a newly allocated page for the given
- *           B+tree or NULL.
+ *   return: The pointer to a newly allocated page for the given B+tree or NULL.
  *           The parameter vpid is set to the page identifier.
  *   btid(in): B+tree index identifier
  *   vpid(out): Set to the page identifier for the newly allocated page
- *   near_vpid(in): A page identifier that may be used in a nearby page
- *                  allocation. (It may be ignored.)
+ *   near_vpid(in): A page identifier that may be used in a nearby page allocation. (It may be ignored.)
  *
  * Note: Allocates a new page for the B+tree
  */
@@ -4889,10 +4852,8 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
  *   vfid(in): File where the new page belongs
  *   file_type(in):
  *   vpid(in): The new page
- *   ignore_npages(in): Number of contiguous allocated pages
- *                      (Ignored in this function. We allocate only one page)
- *   ignore_args(in): More arguments to function.
- *                    Ignored at this moment.
+ *   ignore_npages(in): Number of contiguous allocated pages (Ignored in this function. We allocate only one page)
+ *   ignore_args(in): More arguments to function. Ignored at this moment.
  *
  * Note: Initialize a newly allocated btree page.
  */
@@ -4918,12 +4879,10 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
  *   page_ptr(in): Pointer to the non_leaf page to be searched
  *   key(in): Key to find
  *   slot_id(out): Set to the record number that contains the key
- *   child_vpid(out): Set to the child page identifier to be followed,
- *                    or NULL_PAGEID
+ *   child_vpid(out): Set to the child page identifier to be followed, or NULL_PAGEID
  *
- * Note: Binary search the page to locate the record that contains the
- * child page pointer to be followed to locate the key, and
- * return the page identifier for this child page.
+ * Note: Binary search the page to locate the record that contains the child page pointer to be followed to locate 
+ *       the key, and return the page identifier for this child page.
  */
 static int
 btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key, INT16 * slot_id,
@@ -5063,10 +5022,8 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 }
 
 /*
- * btree_leaf_is_key_between_min_max () - Output if key is between first and
- *					  last key in page. Function is useful
- *					  to decide to resume with leaf page
- *					  after it was unfixed.
+ * btree_leaf_is_key_between_min_max () - Output if key is between first and last key in page. Function is useful
+ *					  to decide to resume with leaf page after it was unfixed.
  *
  * return	    : Error code.
  * thread_p (in)    : Thread entry.
@@ -5228,21 +5185,16 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
  *   search_key (out) : Output result:
  *			- BTREE_KEY_FOUND and slotid of key.
  *			- BTREE_KEY_NOTFOUND (unknown compare result).
- *			- BTREE_KEY_SMALLER (smaller than any key in page,
- *			  slotid = 0).
- *			- BTREE_KEY_BIGGER (bigger than any key in page,
- *			  slotid = key_cnt + 1).
- *			- BTREE_KEY_BETWEEN (key is not found, but it would
- *			  belong to this page if it existed. slotid of next
- *			  bigger key, where the searched key should be
- *			  inserted).
+ *			- BTREE_KEY_SMALLER (smaller than any key in page, slotid = 0).
+ *			- BTREE_KEY_BIGGER (bigger than any key in page, slotid = key_cnt + 1).
+ *			- BTREE_KEY_BETWEEN (key is not found, but it would belong to this page if it existed. 
+ *			    slotid of next bigger key, where the searched key should be inserted).
  *
  * Note: Binary search the page to find the location of the key.
  *
  * NOTE: If this function is called after advancing through the index from
  *	 root and if page has upper fence key, under no circumstance can key
- *	 argument be equal to it. The advance algorithm should have pointed
- *	 to next leaf node.
+ *	 argument be equal to it. The advance algorithm should have pointed to next leaf node.
  *	 However this case is possible when accessing leaf node directly
  *	 (e.g. after unfixing-refixing leaf node). In this case, the key
  *	 is not considered equal to fence key, but rather bigger than all
@@ -5452,12 +5404,10 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 /*
  * xbtree_add_index () - ADD (create) a new B+tree INDEX
  *   return: BTID * (btid on success and NULL on failure)
- *   btid(out): Set to the created B+tree index identifier
- *              (Note: btid->vfid.volid should be set by the caller)
+ *   btid(out): Set to the created B+tree index identifier (Note: btid->vfid.volid should be set by the caller)
  *   key_type(in): Key type of the index to be created.
  *   class_oid(in): OID of the class for which the index is created
- *   attr_id(in): Identifier of the attribute of the class for which the
- *                index is created.
+ *   attr_id(in): Identifier of the attribute of the class for which the index is created.
  *   unique_pk(in):
  *   num_oids(in):
  *   num_nulls(in):
@@ -5586,9 +5536,8 @@ error:
  *   return: NO_ERROR
  *   btid(in): B+tree index identifier
  *
- * Note: Removes the B+tree index. All pages associated with the index
- * are removed. After the routine is called, the index identifier
- * is not valid any more.
+ * Note: Removes the B+tree index. All pages associated with the index are removed. After the routine is called, 
+ *       the index identifier is not valid any more.
  */
 int
 xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
@@ -5645,9 +5594,8 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
  *   return:
  *   btid(in):
  *
- * Note: This routine returns a varying domain of the same precision
- * for fixed domains which are one of the string types.  For all other
- * domains, it returns the same domain.
+ * Note: This routine returns a varying domain of the same precision for fixed domains which are one of the string 
+ *       types. For all other domains, it returns the same domain.
  */
 TP_DOMAIN *
 btree_generate_prefix_domain (BTID_INT * btid)
@@ -5790,8 +5738,7 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class
 }
 
 /*
- * xbtree_find_multi_uniques () - search a list of unique indexes for
- *				  specified values
+ * xbtree_find_multi_uniques () - search a list of unique indexes for specified values
  * return : search return code
  * thread_p (in)  : handler thread
  * class_oid (in) : class oid
@@ -5922,8 +5869,7 @@ error_return:
 }
 
 /*
- * btree_find_foreign_key () - Find and lock any existing object in foreign
- *			       key. Used to check that delete/update on
+ * btree_find_foreign_key () - Find and lock any existing object in foreign key. Used to check that delete/update on
  *			       primary key is allowed.
  *
  * return	   : Error code.
@@ -5931,8 +5877,7 @@ error_return:
  * btid (in)	   : B-tree ID.
  * key (in)	   : Key value.
  * class_oid (in)  : Class OID.
- * found_oid (out) : Outputs OID of found object. If no object is found
- *		     outputs NULL.
+ * found_oid (out) : Outputs OID of found object. If no object is found outputs NULL.
  */
 int
 btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * found_oid)
@@ -6025,8 +5970,7 @@ btree_is_unique_type (BTREE_TYPE type)
  *   buf(in):
  *   buf_size(in):
  *
- * Note: Return NO_ERROR if the btrees given are unique.
- * Return ER_BTREE_UNIQUE_FAILED if one of the unique tests failed.
+ * Note: Return NO_ERROR if the btrees given are unique. Return ER_BTREE_UNIQUE_FAILED if one of unique tests failed.
  * This is used for interpreter and xasl batch checking of uniqueness.
  */
 int
@@ -6060,8 +6004,7 @@ xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size)
  *   return: int
  *   btid(in): B+tree index identifier
  *
- * Note: Return 1 (true) if the index is unique, return 0 if
- * the index is not unique, return -1 if the btree isn't
+ * Note: Return 1 (true) if the index is unique, return 0 if the index is not unique, return -1 if the btree isn't
  * keeping track of unique statistics (a regular, plain jane btree).
  */
 static int
@@ -6134,8 +6077,7 @@ xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid)
  *   null_cnt(in/out): no. of nulls
  *   key_cnt(in/out): no. of keys
  *
- * Note: In MVCC the statistics are taken from memory structures. In non-mvcc
- *	 from B-tree header
+ * Note: In MVCC the statistics are taken from memory structures. In non-mvcc from B-tree header
  */
 int
 btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, int *oid_cnt, int *null_cnt, int *key_cnt)
@@ -6914,13 +6856,11 @@ btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * bti
 /*
  * btree_get_stats () - Get Statistical Information about the B+tree index
  *   return: NO_ERROR
- *   stat_info_p(in/out): Structure to store and
- *                        return the statistical information
+ *   stat_info_p(in/out): Structure to store and return the statistical information
  *   with_fullscan(in): true iff WITH FULLSCAN
  *
- * Note: Computes and returns statistical information about B+tree
- * which consist of the number of leaf pages, total number of
- * pages, number of keys and the height of the tree.
+ * Note: Computes and returns statistical information about B+tree which consist of the number of leaf pages, 
+ * total number of pages, number of keys and the height of the tree.
  */
 int
 btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_fullscan)
@@ -7361,8 +7301,7 @@ error:
  *   pg_vpid(in): Page identifier for the subtree root page
  *   INFO(in):
  *
- * Note: Verifies the correctness of the content of the given page
- * together with its subtree
+ * Note: Verifies the correctness of the content of the given page together with its subtree
  */
 static DISK_ISVALID
 btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid, const char *btname,
@@ -7510,10 +7449,8 @@ error:
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
  *   btid_int(in): B+tree index identifier
  *
- * Note: Verifies the correctness of the B+tree index . During tree
- * traversal,  several tests are  conducted, such as checking
- * the order of keys on a page or among pages that are in a
- * father-child relationship.
+ * Note: Verifies the correctness of the B+tree index. During tree traversal, several tests are conducted, 
+ * such as checking the order of keys on a page or among pages that are in a father-child relationship.
  */
 DISK_ISVALID
 btree_verify_tree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid_int, const char *btname)
@@ -9184,9 +9121,7 @@ exit_on_error:
 }
 
 /*
- * btree_replace_first_oid_with_ovfl_oid () - Replace the object in leaf page
- *					      with an object from the first
- *					      overflow page.
+ * btree_replace_first_oid_with_ovfl_oid () - Replace the object in leaf page with an object from the first overflow page.
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
@@ -9388,8 +9323,7 @@ exit_on_error:
 }
 
 /*
- * btree_modify_leaf_ovfl_vpid () - Modify the link to first overflow page in
- *				    leaf record.
+ * btree_modify_leaf_ovfl_vpid () - Modify the link to first overflow page in leaf record.
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
@@ -9998,19 +9932,16 @@ exit_on_error:
  *   P_vpid(in): Page identifier for page P
  *   Q_vpid(in): Page identifier for page Q
  *   R_vpid(in): Page identifier for page R
- *   p_slot_id(in): The slot of parent page P which points page to
-		be merged (right page)
+ *   p_slot_id(in): The slot of parent page P which points page to be merged (right page)
  *   child_vpid(in): Child page identifier to be followed, Q or R.
  *
- * Note: Page Q is merged with page R which may be its left or right
- * sibling. Depending on the efficiency of the merge operation
- * the merge operation may take place on Page Q or on page R to
- * reduce the size of the data that will moved. After the merge
- * operation either page Q or page R becomes ready for
- * deallocation. Deallocation is left to the calling routine.
+ * Note: Page Q is merged with page R which may be its left or right sibling. Depending on the efficiency of 
+ * the merge operation the merge operation may take place on Page Q or on page R to reduce the size of the data 
+ * that will moved. After the merge operation either page Q or page R becomes ready for deallocation. 
+ * Deallocation is left to the calling routine.
  *
- * Note:  The page which will be deallocated by the caller after a
- * successful merge operation is not changed by this routine.
+ * Note: The page which will be deallocated by the caller after a successful merge operation is not changed 
+ * by this routine.
  */
 static int
 btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR left_pg, PAGE_PTR right_pg,
@@ -10742,8 +10673,7 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR L_page,
 }
 
 /*
- * btree_key_append_object_as_new_overflow () - Insert object into a new
- *						overflow page.
+ * btree_key_append_object_as_new_overflow () - Insert object into a new overflow page.
  *
  * return		     : Error code.
  * thread_p (in)	     : Thread entry.
@@ -10859,10 +10789,8 @@ error:
 }
 
 /*
- * btree_key_append_object_to_overflow () - Insert object in an existing
- *					    overflow page. The page must be
- *					    checked for free space before
- *					    calling this function.
+ * btree_key_append_object_to_overflow () - Insert object in an existing overflow page. The page must be
+ *					    checked for free space before calling this function.
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
@@ -11009,14 +10937,12 @@ btree_rv_write_log_record (char *log_rec, int *log_length, RECDES * recp, BTREE_
 }
 
 /*
- * btree_find_free_overflow_oids_page () - Find overflow page that has enough
- *					   free space to store a new object.
+ * btree_find_free_overflow_oids_page () - Find overflow page that has enough free space to store a new object.
  *
  * return		: Error code.
  * thread_p (in)	: Thread entry.
  * btid (in)		: B-tree info.
- * first_ovfl_vpid (in) : VPID of first overflow page (or VPID NULL if there
- *			  is no overflow).
+ * first_ovfl_vpid (in) : VPID of first overflow page (or VPID NULL if there is no overflow).
  * overflow_page (out)	: Output overflow page with enough free space.
  */
 static int
@@ -11743,21 +11669,17 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 
 /*
  * btree_get_prefix_separator () -
- *   return: db_value containing the prefix key.  This must be
- *           cleared when it is done being used.
+ *   return: db_value containing the prefix key. This must be cleared when it is done being used.
  *   key1(in): first key
  *   key2(in): second key
  *   prefix_key(in):
  *
  * Note: This function finds the prefix (the separator) of two strings.
  * Currently this is only done for one of the six string types,
- * but with multi-column indexes and uniques coming, we may want
- * to do prefix keys for sequences as well.
+ * but with multi-column indexes and uniques coming, we may want to do prefix keys for sequences as well.
  *
- * The purpose of this routine is to find a prefix that is
- * greater than or equal to the first key but strictly less
- * than the second key.  This routine assumes that the second
- * key is strictly greater than the first key.
+ * The purpose of this routine is to find a prefix that is greater than or equal to the first key but strictly less
+ * than the second key.  This routine assumes that the second key is strictly greater than the first key.
  *
  * If this function could not generate common prefix key
  * (ex: key domain == integer)
@@ -13969,8 +13891,7 @@ exit_on_error:
  *   btid(in): B+tree index identifier
  *   old_key(in): Old key value
  *   new_key(in): New key value
- *   locked_keys(in): keys already locked by the current transaction
- *		      when search
+ *   locked_keys(in): keys already locked by the current transaction when search
  *   cls_oid(in):
  *   oid(in): Object identifier to be updated
  *   op_type(in):
@@ -14057,12 +13978,10 @@ exit_on_error:
 }
 
 /*
- * btree_reflect_global_unique_statistics () - reflects the global statistical
- *					       information into btree header
+ * btree_reflect_global_unique_statistics () - reflects the global statistical information into btree header
  *   return: NO_ERROR
  *   unique_stat_info(in):
- *   only_active_tran(in): if true then reflect statistics only if transaction
- *			   is active
+ *   only_active_tran(in): if true then reflect statistics only if transaction is active
  *
  * Note: We don't need to log the changes at this point because the changes were
  *	 already logged at commit stage.
@@ -14162,8 +14081,7 @@ exit_on_error:
  *   btid_int (in) : B+tree index info.
  *   key (in) : Key to locate
  *   pg_vpid (out) : Outputs Leaf node page VPID.
- *   slot_id (out) : Outputs slot ID of key if found, or slot ID of key if it
- *		     was to be inserted.
+ *   slot_id (out) : Outputs slot ID of key if found, or slot ID of key if it was to be inserted.
  *   found_p (out) : Outputs true if key was found and false otherwise.
  *
  * Note: Search the B+tree index to locate the page and record that contains
@@ -14351,8 +14269,7 @@ btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
  *   pg_vpid(in):
  *   stat_info(in):
  *
- * Note: Find the page identifier for the first/last leaf page
- *       of the B+tree index.
+ * Note: Find the page identifier for the first/last leaf page of the B+tree index.
  */
 static PAGE_PTR
 btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
@@ -14543,10 +14460,8 @@ error:
  *   stat_info_p(in):
  *   found_p(out):
  *
- * Note: Find the page identifier via the Acceptance/Rejection Sampling
- *       leaf page of the B+tree index.
- * Note: Random Sampling from Databases
- *       (Chapter 3. Random Sampling from B+ Trees)
+ * Note: Find the page identifier via the Acceptance/Rejection Sampling leaf page of the B+tree index.
+ * Note: Random Sampling from Databases (Chapter 3. Random Sampling from B+ Trees)
  */
 static PAGE_PTR
 btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info_p,
@@ -14746,8 +14661,7 @@ error:
  *           memory limitations, the set of object identifiers are returned
  *           iteratively. At each call, the btree_scan is modified, to
  *           remember the old search position.
- *   btid(in):
- *      btid: B+tree index identifier
+ *   btid: B+tree index identifier
  *   scan_op_type(in):
  *   bts(in/out): Btree range search scan structure
  *   key(in): Key to be searched for its object identifier set
@@ -14758,19 +14672,14 @@ error:
  *   isidp(in):
  *   is_all_class_srch(in):
  *
- * Note: Finds the set of object identifiers for the given key.
- * if the key is not found, a 0 count is returned. Otherwise,
- * the area pointed at by oids_ptr is filled with one group of
- * object identifiers.
+ * Note: Finds the set of object identifiers for the given key. if the key is not found, 0 count is returned. 
+ * Otherwise, the area pointed at by oids_ptr is filled with one group of object identifiers.
  *
- * Note: the btree_scan structure must first be initialized by using the macro
- * BTREE_INIT_SCAN() defined in bt.h
+ * Note: the btree_scan structure must first be initialized by using the macro BTREE_INIT_SCAN() 
  *
- * Note: After the first iteration, caller can use BTREE_END_OF_SCAN() macro
- * defined in bt.h to understand the end of range.
+ * Note: After the first iteration, caller can use BTREE_END_OF_SCAN() macro to understand the end of range.
  *
- * NOTE: Instead of range scan, this can be replaced with a different function
- *	 to go to key directly.
+ * NOTE: Instead of range scan, this can be replaced with a different function to go to key directly.
  */
 int
 btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, BTREE_SCAN * bts,
@@ -15055,8 +14964,7 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 }
 
 /*
- * btree_prepare_bts () - Prepare b-tree scan structure before starting
- *			  index scan.
+ * btree_prepare_bts () - Prepare b-tree scan structure before starting index scan.
  *
  * return		   : Error code.
  * thread_p (in)	   : Thread entry.
@@ -15065,15 +14973,11 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
  * index_scan_id_p (in)	   : Index scan info.
  * key_val_range (in)	   : Range of scan.
  * filter (in)		   : Key filter.
- * match_class_oid (in)	   : Non-NULL value if class must be matched (unique
- *			     indexes).
- * key_limit_upper (in)	   : Pointer to upper key limit. NULL if there is no
- *			     upper key limit.
- * key_limit_lower (in)	   : Pointer to lower key limit. NULL if there is no
- *			     lower key limit.
+ * match_class_oid (in)	   : Non-NULL value if class must be matched (unique indexes).
+ * key_limit_upper (in)	   : Pointer to upper key limit. NULL if there is no upper key limit.
+ * key_limit_lower (in)	   : Pointer to lower key limit. NULL if there is no lower key limit.
  * need_to_check_null (in) : True if midxkey NULL needs to be checked.
- * bts_other (in/out)	   : Sets the argument specific to one type of range
- *			     search.
+ * bts_other (in/out)	   : Sets the argument specific to one type of range search.
  */
 int
 btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_SCAN_ID * index_scan_id_p,
@@ -15464,10 +15368,8 @@ btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, KEY_VAL_RANG
  *   bts(in):
  *
  * Note: This functions finds the next index record(or slot).
- * Then, it adjusts the slot_id and oid_pos information
- * about the oid-set contained in the found index slot.
- * If next records is located in next page, unfix current page
- * and change C_page as it.
+ * Then, it adjusts the slot_id and oid_pos information about the oid-set contained in the found index slot.
+ * If next records is located in next page, unfix current page and change C_page as it.
  */
 static int
 btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
@@ -15541,8 +15443,7 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  *   return: NO_ERROR
  *   bts(in):
  *
- * Note: This functions finds & peek next index record
- * this function does not unfix first page
+ * Note: This functions finds & peek next index record this function does not unfix first page
  */
 static int
 btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, RECDES * peek_rec)
@@ -15648,8 +15549,7 @@ exit_on_error:
  *   bts(in):
  *
  * Note: This functions finds the next index record(or slot).
- * Then, it adjusts the slot_id and oid_pos information
- * about the oid-set contained in the found index slot.
+ * Then, it adjusts the slot_id and oid_pos information about the oid-set contained in the found index slot.
  */
 static int
 btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, PAGE_PTR first_page)
@@ -15799,10 +15699,9 @@ exit_on_error:
  *   is_key_range_satisfied(out): true, or false
  *   is_key_filter_satisfied(out): true, or false
  *
- * Note: This function applies key range condition and key filter condition
- * to the current key value saved in B+-tree scan structure.
- * The results of the evaluation of the given conditions are
- * returned throught key_range_satisfied and key_filter_satisfied.
+ * Note: This function applies key range condition and key filter condition to the current key value saved 
+ * in B+-tree scan structure. The results of the evaluation of the given conditions are returned through 
+ * key_range_satisfied and key_filter_satisfied.
  */
 static int
 btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, bool is_iss, bool * is_key_range_satisfied,
@@ -15959,12 +15858,10 @@ exit_on_error:
  *   curr_key(in): the current key
  *   btree_att_ids(in): the btree attributes ids
  *   btree_num_att(in): the btree attributes count
- *   attr_info(in/out): The attribute information structure which describe the
- *                      desired attributes
+ *   attr_info(in/out): The attribute information structure which describe the desired attributes
  *
  * Note: Find DB_VALUES of desired attributes of given key.
- * The attr_info structure must have already been initialized
- * with the desired attributes.
+ * The attr_info structure must have already been initialized with the desired attributes.
  */
 int
 btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids, int btree_num_att,
@@ -16130,8 +16027,7 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
 }
 
 /*
- * btree_get_next_key_info () - Advance to next key in b-tree and obtain
- *				information.
+ * btree_get_next_key_info () - Advance to next key in b-tree and obtain information.
  *
  * return		: Scan code.
  * thread_p (in)	: Thread entry.
@@ -16518,9 +16414,7 @@ btree_rv_util_save_page_records (PAGE_PTR page_ptr, INT16 first_slotid, int rec_
 }
 
 /*
- * btree_rv_save_keyval_for_undo () - Save a < key, value > pair and other
- *				      information for undo logical log
- *				      purposes.
+ * btree_rv_save_keyval_for_undo () - Save a < key, value > pair and other information for undo logical log purposes.
  *
  * return	: Error code.
  * btid (in)	: B+tree index identifier.
@@ -16532,19 +16426,15 @@ btree_rv_util_save_page_records (PAGE_PTR page_ptr, INT16 first_slotid, int rec_
  *		  (Note: The caller should FREE the allocated area.)
  * length (out) : Length of the data area after save is completed.
  *
- * Note: Copy the adequate key-value information to the data area and return
- *	 this data area.
- *	 The MVCCID is stored in buffer only if is not null. In this case, an
- *	 area at the beginning of recovery data si reserved for the log lsa
- *	 of previous MVCC operation (used by vacuum).
+ * Note: Copy the adequate key-value information to the data area and return this data area.
+ *	 The MVCCID is stored in buffer only if is not null. In this case, an area at the beginning of recovery data 
+ *	 is reserved for the log lsa of previous MVCC operation (used by vacuum).
  *
  * Note: This is a UTILITY routine, but not an actual recovery routine
  *
- * Warning: This routine assumes that the keyval is from a leaf page and not a
- *	    non-leaf page.  Because of this assumption, we use the index
- *	    domain and not the non-leaf domain to write out the key value.
- *	    Currently all calls to this routine are from leaf pages. Be
- *	    careful if you add a call to this routine.
+ * Warning: This routine assumes that the keyval is from a leaf page and not a non-leaf page. Because of this assumption, 
+ *          we use the index domain and not the non-leaf domain to write out the key value.
+ *	    Currently all calls to this routine are from leaf pages. Be careful if you add a call to this routine.
  */
 int
 btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info,
@@ -16743,8 +16633,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
 }
 
 /*
- * btree_rv_save_keyval_for_undo_two_objects () - Create undo data by storing
- *						  two objects.
+ * btree_rv_save_keyval_for_undo_two_objects () - Create undo data by storing two objects.
  *
  * return		    : Error code.
  * btid (in)		    : B-tree info.
@@ -17133,8 +17022,7 @@ btree_rv_ovfid_dump (FILE * fp, int length, void *data)
 }
 
 /*
- * btree_rv_nodehdr_undoredo_update () - Recover an update to a node header. used either for
- *                         undo or redo
+ * btree_rv_nodehdr_undoredo_update () - Recover an update to a node header. used either for undo or redo
  *   return: int
  *   recv(in): Recovery structure
  *
@@ -17184,8 +17072,7 @@ btree_rv_nodehdr_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  *   return: int
  *   recv(in): Recovery structure
  *
- * Note: Recover a node header insertion by reinserting the node header
- * for redo purposes.
+ * Note: Recover a node header insertion by reinserting the node header for redo purposes.
  */
 int
 btree_rv_nodehdr_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
@@ -17218,8 +17105,7 @@ btree_rv_nodehdr_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  *   return: int
  *   recv(in): Recovery structure
  *
- * Note: Recover a node header insertion by deletion  the node header
- * for undo purposes.
+ * Note: Recover a node header insertion by deletion  the node header for undo purposes.
  */
 int
 btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
@@ -17236,8 +17122,7 @@ btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 }
 
 /*
- * btree_rv_noderec_undoredo_update () - Recover an update to a node record. used either
- *                         for undo or redo
+ * btree_rv_noderec_undoredo_update () - Recover an update to a node record. used either for undo or redo
  *   return:
  *   return: int
  *   recv(in): Recovery structure
@@ -17279,8 +17164,7 @@ btree_rv_noderec_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  *   return: int
  *   recv(in): Recovery structure
  *
- * Note: Recover a node record insertion by reinserting the record for
- * redo purposes
+ * Note: Recover a node record insertion by reinserting the record for redo purposes
  */
 int
 btree_rv_noderec_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
@@ -17317,8 +17201,7 @@ btree_rv_noderec_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  *   return: int
  *   recv(in): Recovery structure
  *
- * Note: Recover a node record insertion by deleting the record for
- * undo purposes
+ * Note: Recover a node record insertion by deleting the record for undo purposes
  */
 int
 btree_rv_noderec_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
@@ -17505,8 +17388,7 @@ btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 }
 
 /*
- * btree_rv_read_keyval_info_nocopy () - Recover key value and other
- *					 information on b-tree operation.
+ * btree_rv_read_keyval_info_nocopy () - Recover key value and other information on b-tree operation.
  *
  * return	    : Void.
  * thread_p (in)    : Thread entry.
@@ -17515,8 +17397,7 @@ btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * btid (out)	    : B-tree identifier.
  * cls_oid (out)    : Class identifier.
  * oid (out)	    : Object identifier.
- * mvcc_id (in/out) : Operation MVCCID. It must be NULL for non-MVCC
- *		      operations and not NULL for MVCC operations.
+ * mvcc_id (in/out) : Operation MVCCID. It must be NULL for non-MVCC operations and not NULL for MVCC operations.
  * key (out)	    : Key value.
  *
  * Note: If it is an MVCC operation recovery (mvcc_id is not NULL), data will
@@ -17614,8 +17495,7 @@ error:
  * btid (out)	    : B-tree identifier.
  * cls_oid (out)    : Class identifier.
  * oid (out)	    : Object identifier.
- * mvcc_id (in/out) : Operation MVCCID. It must be NULL for non-MVCC
- *		      operations and not NULL for MVCC operations.
+ * mvcc_id (in/out) : Operation MVCCID. It must be NULL for non-MVCC operations and not NULL for MVCC operations.
  * key_buf (out)    : buffer for packed key.
  *
  * Note: this should be prefered to btree_rv_read_keyval_info_nocopy
@@ -17965,8 +17845,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 }
 
 /*
- * btree_rv_remove_marked_for_delete () - Part of run postpone to remove an
- *					  object which was previously marked
+ * btree_rv_remove_marked_for_delete () - Part of run postpone to remove an object which was previously marked
  *					  for delete.
  *				       
  *
@@ -18074,8 +17953,8 @@ btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  *   recv(in): Recovery structure
  *
  *
- * Note: Does nothing. This routine is used for to accompany some
- * compensating redo logs which are supposed to do nothing.
+ * Note: Does nothing. This routine is used for to accompany some compensating redo logs which are supposed 
+ * to do nothing.
  */
 int
 btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv)
@@ -18087,8 +17966,7 @@ btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
 /*
  * btree_multicol_key_is_null () -
- *   return: Return true if DB_VALUE is a NULL multi-column
- *           key and false otherwise.
+ *   return: Return true if DB_VALUE is a NULL multi-column key and false otherwise.
  *   key(in): Pointer to multi-column key
  *
  * Note: Check the multi-column key for a NULL value. In terms of the B-tree,
@@ -18135,8 +18013,7 @@ btree_multicol_key_is_null (DB_VALUE * key)
 
 /*
  * btree_multicol_key_has_null () -
- *   return: Return true if DB_VALUE is a multi-column key
- *           and has a NULL element in it and false otherwise.
+ *   return: Return true if DB_VALUE is a multi-column key and has a NULL element in it and false otherwise.
  *   key(in): Pointer to multi-column key
  *
  * Note: Check the multi-column  key has a NULL element.
@@ -18533,7 +18410,6 @@ exit_on_error:
     }
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-
 }
 
 static void
@@ -18805,9 +18681,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 }
 
 /*
- * btree_range_opt_check_add_index_key () - Add key in the array of top N keys
- *					    for multiple range search
- *					    optimization.
+ * btree_range_opt_check_add_index_key () - Add key in the array of top N keys for multiple range search optimization.
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
@@ -18992,16 +18866,13 @@ exit:
 }
 
 /*
- * btree_top_n_items_binary_search () - searches for the right position for
- *				        the keys in new_key_values in top
- *					N item list
+ * btree_top_n_items_binary_search () - searches for the right position for the keys in new_key_values in top N items
  *
  * return	       : error code
  * top_n_items (in)    : current top N item list
  * att_idxs (in)       : indexes for midxkey attributes
  * domains (in)	       : domains for midxkey attributes
- * desc_order (in)     : is descending order for midxkey attributes
- *			 if NULL, ascending order will be considered
+ * desc_order (in)     : is descending order for midxkey attributes if NULL, ascending order will be considered
  * new_key_values (in) : key values for the new item
  * num_keys (in)       : number of keys that are compared
  * first (in)	       : position of the first item in current range
@@ -20431,8 +20302,7 @@ index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * rec
 }
 
 /*
- * btree_index_start_scan () -  start scan function for
- *                              show index header/capacity
+ * btree_index_start_scan () -  start scan function for show index header/capacity
  *   return: NO_ERROR, or ER_code
  *
  *   thread_p(in):
@@ -20577,8 +20447,7 @@ cleanup:
 }
 
 /*
- * btree_index_next_scan () -  next scan function for
- *                             show index header/capacity
+ * btree_index_next_scan () -  next scan function for show index header/capacity
  *   return: S_ERROR, S_SUCCESS, or S_END
  *
  *   thread_p(in):
@@ -20683,8 +20552,7 @@ cleanup:
 }
 
 /*
- * btree_index_end_scan () -  end scan function
- *                            for show index header/capacity
+ * btree_index_end_scan () -  end scan function for show index header/capacity
  *   return: NO_ERROR, or ER_code
  *
  *   thread_p(in):
@@ -21255,8 +21123,7 @@ btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool do_delete_on
 }
 
 /*
- * btree_unpack_mvccinfo () - Check b-tree MVCC flags and unpack any MVCC info
- *			      into MVCC header.
+ * btree_unpack_mvccinfo () - Check b-tree MVCC flags and unpack any MVCC info into MVCC header.
  *
  * return		 : Pointer after the packed MVCC info.
  * ptr (in)		 : Pointer to packed MVCC info.
@@ -21323,25 +21190,28 @@ int
 btree_packed_mvccinfo_size (BTREE_MVCC_INFO * mvcc_info)
 {
   int size = 0;
+
   if (mvcc_info == NULL)
     {
       /* Nothing to pack */
       return size;
     }
+
   if (BTREE_MVCC_INFO_HAS_INSID (mvcc_info))
     {
       size += OR_MVCCID_SIZE;
     }
+
   if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info))
     {
       size += OR_MVCCID_SIZE;
     }
+
   return size;
 }
 
 /*
- * btree_or_get_mvccinfo () - Check b-tree MVCC flags and unpack any MVCC info
- *			      into MVCC header.
+ * btree_or_get_mvccinfo () - Check b-tree MVCC flags and unpack any MVCC info into MVCC header.
  *
  * return		 : Error code.
  * buf (in/out)		 : OR Buffer.
@@ -21352,20 +21222,22 @@ static int
 btree_or_get_mvccinfo (OR_BUF * buf, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags)
 {
   int size = BTREE_GET_MVCC_INFO_SIZE_FROM_FLAGS (btree_mvcc_flags);
+
   if (buf->ptr + size > buf->endptr)
     {
       /* Overflow error */
       return or_overflow (buf);
     }
+
   /* Unpack and update pointer */
   buf->ptr = btree_unpack_mvccinfo (buf->ptr, mvcc_info, btree_mvcc_flags);
+
   return NO_ERROR;
 }
 
 /*
- * btree_or_put_mvccinfo () - Set MVCC information into buffer (should be used
- *			      for b-tree records). Only insert/delete MVCCID's
- *			      will be set depending on MVCC flags.
+ * btree_or_put_mvccinfo () - Set MVCC information into buffer (should be used for b-tree records). 
+ *                            Only insert/delete MVCCID's will be set depending on MVCC flags.
  *
  * return	  : Error code.
  * buf (in/out)	  : OR Buffer.
@@ -21384,6 +21256,7 @@ btree_or_put_mvccinfo (OR_BUF * buf, BTREE_MVCC_INFO * mvcc_info)
 	  return error_code;
 	}
     }
+
   if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info))
     {
       error_code = or_put_mvccid (buf, mvcc_info->delete_mvccid);
@@ -21392,12 +21265,12 @@ btree_or_put_mvccinfo (OR_BUF * buf, BTREE_MVCC_INFO * mvcc_info)
 	  return error_code;
 	}
     }
+
   return error_code;
 }
 
 /*
- * btree_unpack_object () - Unpack a b-tree object from the given pointer.
- *			    Pointer should belong to a b-tree record.
+ * btree_unpack_object () - Unpack a b-tree object from the given pointer. Pointer should belong to a b-tree record.
  *
  * return		 : Error code.
  * ptr (in)		 : Pointer in b-tree record to unpack object.
@@ -21423,12 +21296,12 @@ btree_unpack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, 
       assert (false);
       return NULL;
     }
+
   return buffer.ptr;
 }
 
 /*
- * btree_pack_object () - Pack a b-tree object into the given pointer.
- *			  Pointer should belong to a b-tree record.
+ * btree_pack_object () - Pack a b-tree object into the given pointer. Pointer should belong to a b-tree record.
  *
  * return		 : Error code.
  * ptr (in)		 : Pointer in b-tree record to pack object.
@@ -21451,12 +21324,12 @@ btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RE
       assert (false);
       return NULL;
     }
+
   return buffer.ptr;
 }
 
 /*
- * btree_or_get_object () - Get object, class OID and its MVCC info from
- *			    buffer pointing in a b-tree record.
+ * btree_or_get_object () - Get object, class OID and its MVCC info from buffer pointing in a b-tree record.
  *
  * return		  : Error code.
  * buf (in/out)		  : Buffer pointing to object in b-tree record.
@@ -21469,8 +21342,8 @@ btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RE
  *
  * NOTE: Buffer.buffer should point to start of b-tree record.
  * NOTE: Buffer pointer will be moved after read object.
- *	 If object is first in leaf record, buffer pointer will be moved after
- *	 the packed key (where second objects starts).
+ *	 If object is first in leaf record, buffer pointer will be moved after the packed key 
+ *	 (where second objects starts).
  */
 static int
 btree_or_get_object (OR_BUF * buf, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, int after_key_offset, OID * oid,
@@ -21652,8 +21525,7 @@ btree_or_put_object (OR_BUF * buf, BTID_INT * btid_int, BTREE_NODE_TYPE node_typ
 }
 
 /*
- * btree_set_mvcc_flags_into_oid () - Set MVCC info flags in the volid field
- *				      of OID.
+ * btree_set_mvcc_flags_into_oid () - Set MVCC info flags in the volid field of OID.
  *
  * return	      : Void.
  * p_mvcc_header (in) : MVCC info.
@@ -21693,8 +21565,7 @@ btree_clear_mvcc_flags_from_oid (OID * oid)
  * btree_compare_btids () - B-tree identifier comparator.
  *
  * return	  : Positive value is the first identifier is bigger,
- *		    negative if the second identifier is bigger and 0 if the
- *		    identifiers are equal.
+ *		    negative if the second identifier is bigger and 0 if the identifiers are equal.
  * mem_btid1 (in) : Pointer to first btid value.
  * mem_btid2 (in) : Pointer to second btid value.
  */
@@ -21747,8 +21618,7 @@ btree_compare_btids (void *mem_btid1, void *mem_btid2)
  * recp (in)		: Record descriptor.
  * node_type (in)	: Node type (overflow or leaf).
  * key (in)		: Expected key value (will be checked if not null,
- *			  and if node type is leaf and if key doesn't have
- *			  overflow pages).
+ *			  and if node type is leaf and if key doesn't have overflow pages).
  */
 int
 btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
@@ -22066,8 +21936,7 @@ btree_leaf_lsa_eq (THREAD_ENTRY * thread_p, LOG_LSA * a, LOG_LSA * b)
 }
 
 /*
- * btree_key_find_first_visible_row_from_all_ovf () - MVCC find first visible
- *						    row in OID overflow pages
+ * btree_key_find_first_visible_row_from_all_ovf () - MVCC find first visible row in OID overflow pages
  *   return: whether the visible row has been found
  *   btid_int(in): B+tree index identifier
  *   first_ovfl_vpid(in): First overflow vpid
@@ -22269,14 +22138,9 @@ error:
 }
 
 /*
- * btree_search_key_and_apply_functions () - B-tree internal function to
- *					     traverse the tree in the
- *					     direction given by a key and
- *					     calling three types of function:
- *					     one to fix/handle root page,
- *					     one on the traversed nodes and
- *					     one on the leaf node pointed
- *					     by key.
+ * btree_search_key_and_apply_functions () - B-tree internal function to traverse the tree in the direction given by 
+ * 					     a key and calling three types of function: one to fix/handle root page, 
+ * 					     one on the traversed nodes and one on the leaf node pointed by key.
  *
  * return		     : Error code.
  * thread_p (in)	     : Thread entry.
@@ -22285,15 +22149,12 @@ error:
  * key (in)		     : Search key value.
  * root_function (in)	     : Function called to fix/process root node.
  * root_args (in/out)	     : Arguments for root function.
- * advance_function (in)     : Function called to advance and process nodes
- *			       discovered nodes.
+ * advance_function (in)     : Function called to advance and process nodes discovered nodes.
  * advance_args (in/out)     : Arguments for advance function.
- * key_function (in)	     : Function to process key record (and its leaf
- *			       and overflow nodes).
+ * key_function (in)	     : Function to process key record (and its leaf and overflow nodes).
  * process_key_args (in/out) : Arguments for key function.
  * search_key (out)	     : Search key result.
- * leaf_page_ptr (out)	     : If not NULL, it will output the leaf node page
- *			       where key lead the search.
+ * leaf_page_ptr (out)	     : If not NULL, it will output the leaf node page where key lead the search.
  */
 static int
 btree_search_key_and_apply_functions (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int, DB_VALUE * key,
@@ -22483,9 +22344,8 @@ error:
 }
 
 /*
- * btree_get_root_with_key () - BTREE_ROOT_WITH_KEY_FUNCTION used by default
- *				to read root page header and get b-tree data
- *				from header.
+ * btree_get_root_with_key () - BTREE_ROOT_WITH_KEY_FUNCTION used by default to read root page header and get b-tree 
+ * 				data from header.
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
@@ -22496,8 +22356,7 @@ error:
  * is_leaf (out)       : Output true if root is leaf page.
  * search_key (out)    : Output key search result (if root is also leaf).
  * stop (out)	       : Output true if advancing in b-tree should stop.
- * restart (out)       : Output true if advancing in b-tree should be
- *			 restarted.
+ * restart (out)       : Output true if advancing in b-tree should be restarted.
  * other_args (in/out) : BTREE_ROOT_WITH_KEY_ARGS (outputs BTID_INT).
  */
 static int
@@ -22548,8 +22407,7 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
 
 /*
  * btree_advance_and_find_key () - Fix next node in b-tree following given key.
- *				   If argument is leaf-node, return if key
- *				   is found and the slot if key instead.
+ *				   If argument is leaf-node, return if key is found and the slot if key instead.
  *
  * return		 : Error code. 
  * thread_p (in)	 : Thread entry.
@@ -22558,12 +22416,9 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
  * crt_page (in)	 : Page of current node.
  * advance_to_page (out) : Fixed page of child node found by following key.
  * is_leaf (out)	 : Output true if current page is leaf node.
- * key_slotid (out)	 : Output slotid of key if found, otherwise
- *			   NULL_SLOTID.
- * stop (out)		 : Output true if advancing in b-tree should be
- *			   stopped.
- * restart (out)	 : Output true if advancing in b-tree should be
- *			   restarted from top.
+ * key_slotid (out)	 : Output slotid of key if found, otherwise NULL_SLOTID.
+ * stop (out)		 : Output true if advancing in b-tree should be stopped.
+ * restart (out)	 : Output true if advancing in b-tree should be restarted from top.
  * other_args (in/out)	 : Not used.
  */
 static int
@@ -22633,10 +22488,8 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 }
 
 /*
- * btree_key_find_unique_version_oid () - Find the visible object version from
- *					  key. Since the index is unique,
- *					  there must be at most one visible
- *					  version.
+ * btree_key_find_unique_version_oid () - Find the visible object version from key. Since the index is unique,
+ *					  there must be at most one visible version.
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
@@ -22644,8 +22497,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
  * key (in)	       : Key value.
  * leaf_page (in/out)  : Leaf page pointer.
  * search_key (in)     : Search key result.
- * restart (out)       : Set to true if index must be traversed again from
- *			 root node.
+ * restart (out)       : Set to true if index must be traversed again from root node.
  * other_args (in/out) : BTREE_FIND_UNIQUE_HELPER *.
  */
 static int
@@ -22744,8 +22596,7 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 }
 
 /*
- * btree_key_find_and_lock_unique () - Find key and lock its unique non-dirty
- *				       version.
+ * btree_key_find_and_lock_unique () - Find key and lock its unique non-dirty version.
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
@@ -22753,8 +22604,7 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
  * key (in)	       : Key value.
  * leaf_page (in/out)  : Leaf node page (where key would normally belong).
  * search_key (in)     : Search key result.
- * restart (out)       : Set to true if b-tree traversal must be restarted
- *			 from root.
+ * restart (out)       : Set to true if b-tree traversal must be restarted from root.
  * other_args (in/out) : BTREE_FIND_UNIQUE_HELPER *.
  */
 static int
@@ -22774,9 +22624,7 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 }
 
 /*
- * btree_key_find_and_lock_unique_of_unique () - Find key and lock its first
- *						 object (if not deleted or 
- *						 dirty).
+ * btree_key_find_and_lock_unique_of_unique () - Find key and lock its first object (if not deleted or dirty).
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
@@ -22784,8 +22632,7 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
  * key (in)	       : Key value.
  * leaf_page (in/out)  : Leaf node page (where key would normally belong).
  * search_key (in)     : Search key result.
- * restart (out)       : Set to true if b-tree traversal must be restarted
- *			 from root.
+ * restart (out)       : Set to true if b-tree traversal must be restarted from root.
  * other_args (in/out) : BTREE_FIND_UNIQUE_HELPER *.
  */
 static int
@@ -23007,12 +22854,9 @@ error_or_not_found:
 }
 
 /*
- * btree_key_find_and_lock_unique_of_non_unique () - Find key non-dirty
- *						     version and lock it.
- *						     This is usually called in
- *						     indexes of system classes
- *						     that should be unique
- *						     but are not.
+ * btree_key_find_and_lock_unique_of_non_unique () - Find key non-dirty version and lock it.
+ *						     This is usually called in indexes of system classes
+ *						     that should be unique but are not.
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
@@ -23020,8 +22864,7 @@ error_or_not_found:
  * key (in)	       : Key value.
  * leaf_page (in/out)  : Leaf node page (where key would normally belong).
  * search_key (in)     : Search key result.
- * restart (out)       : Set to true if b-tree traversal must be restarted
- *			 from root.
+ * restart (out)       : Set to true if b-tree traversal must be restarted from root.
  * other_args (in/out) : BTREE_FIND_UNIQUE_HELPER *.
  */
 static int
@@ -23368,17 +23211,14 @@ error_or_not_found:
  * btid_int (in)	  : B-tree identifier.
  * key (in)		  : Key.
  * leaf_page (in/out)     : Pointer to leaf node page.
- * overflow_page (in/out) : Pointer to fixed overflow page. If leaf page must
- *			    be unfixed, this will be unfixed too (without
- *			    fixing it again).
+ * overflow_page (in/out) : Pointer to fixed overflow page. If leaf page must be unfixed, this will be unfixed too 
+ * 			    (without fixing it again).
  * oid (in)		  : OID of object to lock.
  * class_oid (in)	  : Class OID of object to lock.
  * lock_mode (in)	  : Lock mode.
  * search_key (in.out)	  : Search key result. Can change if page is unfixed.
- * try_cond_lock (in)	  : True to try conditional lock first. If false,
- *			    page is unfixed directly.
- * restart (out)	  : Outputs true when page had to be unfixed and was
- *			    not considered valid to be reused.
+ * try_cond_lock (in)	  : True to try conditional lock first. If false, page is unfixed directly.
+ * restart (out)	  : Outputs true when page had to be unfixed and was not considered valid to be reused.
  * was_page_refixed (out) : Outputs true if page had to be unfixed.
  *
  * TODO: Extend this function to handle overflow OID's page too.
@@ -23527,16 +23367,14 @@ error:
 #endif /* SERVER_MODE */
 
 /*
- * btree_record_process_objects () - Generic routine to process the objects
- *				     of a record (leaf or overflow).
+ * btree_record_process_objects () - Generic routine to process the objects of a record (leaf or overflow).
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
  * btid_int (in)	 : B-tree info.
  * node_type (in)	 : Node type - LEAF or OVERFLOW.
  * record (in)		 : Record descriptor.
- * after_key_offset (in) : Offset in record where key value is ended (for
- *			   leaf record).
+ * after_key_offset (in) : Offset in record where key value is ended (for leaf record).
  * func (in)		 : BTREE_PROCESS_OBJECT_FUNCTION *.
  * args (in/out)	 : Arguments for internal function.
  */
@@ -23599,10 +23437,8 @@ btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTRE
 }
 
 /*
- * btree_key_process_objects () - Generic key processing function that calls
- *				  given BTREE_PROCESS_OBJECT_FUNCTION function
- *				  on all key objects (unless an error or stop
- *				  argument forces an early out).
+ * btree_key_process_objects () - Generic key processing function that calls given BTREE_PROCESS_OBJECT_FUNCTION function
+ *				  on all key objects (unless an error or stop argument forces an early out).
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -23712,8 +23548,7 @@ btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
 
 /*
  * btree_record_satisfies_snapshot () - BTREE_PROCESS_OBJECT_FUNCTION.
- *					Output visible objects according to
- *					snapshot. If snapshot is NULL, all
+ *					Output visible objects according to snapshot. If snapshot is NULL, all
  *					objects are saved.
  *
  * return	   : Error code.
@@ -23724,8 +23559,7 @@ btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
  * oid (in)	   : Object OID.
  * class_oid (in)  : Object class OID.
  * mvcc_info (in)  : Object MVCC info.
- * stop (out)	   : Set to true if index is unique and visible object is
- *		     found and if this is not a debug build.
+ * stop (out)	   : Set to true if index is unique and visible object is found and if this is not a debug build.
  * args (in/out)   : BTREE_REC_SATISFIES_SNAPSHOT_HELPER *.
  */
 static int
@@ -23795,19 +23629,16 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
 }
 
 /*
- * xbtree_find_unique () - Find (and sometimes lock) object in key of unique
- *			   index.
+ * xbtree_find_unique () - Find (and sometimes lock) object in key of unique index.
  *
  * return		  : BTREE_SEARCH result.
  * thread_p (in)	  : Thread entry.
  * btid (in)		  : B-tree identifier.
- * scan_op_type (in)	  : Operation type (purpose) of finding unique key
- *			    object.
+ * scan_op_type (in)	  : Operation type (purpose) of finding unique key object.
  * key (in)		  : Key value.
  * class_oid (in)	  : Class OID.
  * oid (out)		  : Found (and sometimes locked) object OID.
- * is_all_class_srch (in) : True if search is based on all classes contained
- *			    in the class hierarchy.
+ * is_all_class_srch (in) : True if search is based on all classes contained in the class hierarchy.
  */
 BTREE_SEARCH
 xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
@@ -23960,8 +23791,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 }
 
 /*
- * btree_count_oids () - BTREE_PROCESS_OBJECT_FUNCTION - Increment object
- *			 counter.
+ * btree_count_oids () - BTREE_PROCESS_OBJECT_FUNCTION - Increment object counter.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -23971,8 +23801,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
  * oid (in)	   : Object OID.
  * class_oid (in)  : Object class OID.
  * mvcc_info (in)  : Object MVCC info.
- * stop (out)	   : Set to true if index is unique and visible object is
- *		     found and if this is not a debug build.
+ * stop (out)	   : Set to true if index is unique and visible object is found and if this is not a debug build.
  * args (in/out)   : Integer object counter. Outputs incremented value.
  */
 STATIC_INLINE int
@@ -23988,11 +23817,8 @@ btree_count_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 }
 
 /*
- * btree_range_scan_count_oids_leaf_and_one_ovf () - Count key objects from
- *						     leaf record and if it
- *						     has an overflow page,
- *						     also add its full
- *						     capacity.
+ * btree_range_scan_count_oids_leaf_and_one_ovf () - Count key objects from leaf record and if it has an overflow page,
+ *						     also add its full capacity.
  *
  * return	 : OID count or error code.
  * thread_p (in) : Thread entry.
@@ -24013,19 +23839,20 @@ btree_range_scan_count_oids_leaf_and_one_ovf (THREAD_ENTRY * thread_p, BTREE_SCA
       ASSERT_ERROR ();
       return leaf_oids_count;
     }
+
   if (VPID_ISNULL (&bts->leaf_rec_info.ovfl))
     {
       /* No overflow. */
       return leaf_oids_count;
     }
+
   /* Estimate one overflow. Do not just count first overflow records. They may be all invisible, in which case we need
    * to proceed to next overflow. Just to be on the safe side, take into consideration one full overflow page. */
   return leaf_oids_count + BTREE_MAX_OIDCOUNT_IN_OVERFLOW_RECORD (&bts->btid_int);
 }
 
 /*
- * btree_range_scan_start () - Start a range scan by finding the first
- *			       eligible key.
+ * btree_range_scan_start () - Start a range scan by finding the first eligible key.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -24116,10 +23943,8 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 }
 
 /*
- * btree_range_scan_resume () - Function used to resume range scans after
- *				being interrupted. It will try to resume from
- *				saved leaf node (if possible). Otherwise,
- *				current key must looked up starting from
+ * btree_range_scan_resume () - Function used to resume range scans after being interrupted. It will try to resume from
+ *				saved leaf node (if possible). Otherwise, current key must looked up starting from
  *				b-tree root.
  *
  * return	 : Error code.
@@ -24285,8 +24110,7 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 }
 
 /*
- * btree_range_scan_advance_over_filtered_keys () - Find a key to pass all
- *						    all filters.
+ * btree_range_scan_advance_over_filtered_keys () - Find a key to pass all all filters.
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
@@ -24499,11 +24323,8 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 }
 
 /*
- * btree_range_scan_descending_fix_prev_leaf () - Fix previous leaf node
- *						  without generating cross
- *						  latches with regular scans
- *						  and by trying to avoid a key
- *						  lookup from root.
+ * btree_range_scan_descending_fix_prev_leaf () - Fix previous leaf node without generating cross latches with regular
+ * 						  scans and by trying to avoid a key lookup from root.
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
@@ -24723,16 +24544,14 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
 }
 
 /*
- * btree_range_scan () - Generic function to do a range scan on b-tree. It
- *			 can scan key by key starting with first (or last
- *			 key for descending scans). For each key, it calls an
- *			 internal function to process the key.
+ * btree_range_scan () - Generic function to do a range scan on b-tree. It can scan key by key starting with first 
+ * 			 (or last key for descending scans). For each key, it calls an internal function to process 
+ * 			 the key.
  *
  * return	      : Error code.
  * thread_p (in)      : Thread entry.
  * bts (in)	      : B-tree scan structure.
- * key_func (in)      : Internal function to call when an eligible key is
- *			found.
+ * key_func (in)      : Internal function to call when an eligible key is found.
  */
 int
 btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func)
@@ -24920,11 +24739,9 @@ exit_on_error:
 
 /*
  * btree_range_scan_select_visible_oids () - BTREE_RANGE_SCAN_PROCESS_KEY_FUNC
- *					     Used internally by
- *					     btree_range_scan to select
- *					     visible objects from key OID's.
- *					     Handling depends on the type of
- *					     scan:
+ *					     Used internally by btree_range_scan to select visible objects from key 
+ *					     OID's.
+ *					     Handling depends on the type of scan:
  *					     1. Multiple ranges optimization.
  *					     2. Covering index.
  *					     3. Index skip scan.
@@ -25246,9 +25063,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
 /*
  * btree_select_visible_object_for_range_scan () - BTREE_PROCESS_OBJECT_FUNCTION
- *						   Function handles each found
- *						   object based on type of
- *						   index scan.
+ *						   Function handles each found object based on type of index scan.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -25258,8 +25073,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  * oid (in)	   : Current object OID.
  * class_oid (in)  : Current object class OID.
  * mvcc_info (in)  : Current object MVCC info.
- * stop (out)	   : Set to true if processing record should stop after this
- *		     function execution.
+ * stop (out)	   : Set to true if processing record should stop after this function execution.
  * args (in/out)   : BTREE_SCAN *.
  */
 static int
@@ -25584,9 +25398,7 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 }
 
 /*
- * btree_fk_object_does_exist () - Check whether current object exists (it
- *				   must not be deleted and successfully
- *				   locked).
+ * btree_fk_object_does_exist () - Check whether current object exists (it must not be deleted and successfully locked).
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -25596,8 +25408,7 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  * oid (in)	   : Current object OID.
  * class_oid (in)  : Current object class OID.
  * mvcc_info (in)  : Current object MVCC info.
- * stop (out)	   : Set to true if processing record should stop after this
- *		     function execution.
+ * stop (out)	   : Set to true if processing record should stop after this function execution.
  * args (in/out)   : BTREE_SCAN *
  */
 static int
@@ -25741,8 +25552,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 }
 
 /*
- * btree_undo_delete_physical () - Undo of physical delete from b-tree. Must
- *				   insert back object and other required
+ * btree_undo_delete_physical () - Undo of physical delete from b-tree. Must insert back object and other required
  *				   information (class OID, MVCC info).
  *
  * return	   : Error code.
@@ -25829,8 +25639,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oi
 }
 
 /*
- * btree_mvcc_delete () - MVCC logical delete. Adds delete MVCCID to an
- *			  existing object.
+ * btree_mvcc_delete () - MVCC logical delete. Adds delete MVCCID to an existing object.
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
@@ -25876,8 +25685,7 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * c
 }
 
 /*
- * btree_insert_internal () - Generic index function that inserts new data in
- *			      a b-tree key.
+ * btree_insert_internal () - Generic index function that inserts new data in a b-tree key.
  *
  * return		     : Error code.
  * thread_p (in)	     : Thread entry.
@@ -25886,10 +25694,8 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * c
  * class_oid (in)	     : Class OID.
  * oid (in)		     : Instance OID.
  * op_type (in)		     : Single/Multi row operation type.
- * unique_stat_info (in/out) : Unique stats info, used to track changes during
- *			       multi-update operation.
- * unique (out)		     : Outputs true if index was unique, false
- *			       otherwise.
+ * unique_stat_info (in/out) : Unique stats info, used to track changes during multi-update operation.
+ * unique (out)		     : Outputs true if index was unique, false otherwise.
  * mvcc_info (in)	     : B-tree MVCC information.
  * undo_nxlsa (in)	     : UNDO next lsa for logical compensate.
  * purpose (in)		     : B-tree insert purpose
@@ -26056,8 +25862,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
 }
 
 /*
- * btree_fix_root_for_insert () - BTREE_ROOT_WITH_KEY_FUNCTION - fix root
- *				  before inserting data in b-tree.
+ * btree_fix_root_for_insert () - BTREE_ROOT_WITH_KEY_FUNCTION - fix root before inserting data in b-tree.
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
@@ -26068,12 +25873,10 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
  * is_leaf (out)       : Output true if root is leaf page.
  * search_key (out)    : Output key search result (if root is also leaf).
  * stop (out)	       : Output true if advancing in b-tree should stop.
- * restart (out)       : Output true if advancing in b-tree should be
- *			 restarted.
+ * restart (out)       : Output true if advancing in b-tree should be restarted.
  * other_args (in/out) : BTREE_INSERT_HELPER *.
  *
- * NOTE: Besides fixing root page, this function can also modify the root
- *	 header. This must be done only once.
+ * NOTE: Besides fixing root page, this function can also modify the root header. This must be done only once.
  */
 static int
 btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int, DB_VALUE * key,
@@ -26340,8 +26143,7 @@ error:
 }
 
 /*
- * btree_get_max_new_data_size () - Get new data size required based on node
- *				    type and operation.
+ * btree_get_max_new_data_size () - Get new data size required based on node type and operation.
  *
  * return		  : Maximum require size for operation.
  * thread_p (in)	  : Thread entry.
@@ -26398,10 +26200,8 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
 }
 
 /*
- * btree_split_node_and_advance () - BTREE_ADVANCE_WITH_KEY_FUNCTION used by
- *				     btree_insert_internal while advancing
- *				     following key. It also has the role
- *				     to make sure b-tree has enough space to
+ * btree_split_node_and_advance () - BTREE_ADVANCE_WITH_KEY_FUNCTION used by btree_insert_internal while advancing
+ *				     following key. It also has the role to make sure b-tree has enough space to
  *				     insert new data.
  *
  * return		 : Error code. 
@@ -26411,12 +26211,9 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
  * crt_page (in)	 : Page of current node.
  * advance_to_page (out) : Fixed page of child node found by following key.
  * is_leaf (out)	 : Output true if current page is leaf node.
- * key_slotid (out)	 : Output slotid of key if found, otherwise
- *			   NULL_SLOTID.
- * stop (out)		 : Output true if advancing in b-tree should be
- *			   stopped.
- * restart (out)	 : Output true if advancing in b-tree should be
- *			   restarted from top.
+ * key_slotid (out)	 : Output slotid of key if found, otherwise NULL_SLOTID.
+ * stop (out)		 : Output true if advancing in b-tree should be stopped.
+ * restart (out)	 : Output true if advancing in b-tree should be restarted from top.
  * other_args (in/out)	 : BTREE_INSERT_HELPER *.
  */
 static int
@@ -27011,8 +26808,7 @@ error:
 }
 
 /*
- * btree_key_insert_new_object () - BTREE_PROCESS_KEY_FUNCTION used for
- *				    inserting new object in b-tree.
+ * btree_key_insert_new_object () - BTREE_PROCESS_KEY_FUNCTION used for inserting new object in b-tree.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -27022,8 +26818,7 @@ error:
  * oid (in)	   : Object OID.
  * class_oid (in)  : Object class OID.
  * mvcc_info (in)  : Object MVCC info.
- * stop (out)	   : Set to true if index is unique and visible object is
- *		     found and if this is not a debug build.
+ * stop (out)	   : Set to true if index is unique and visible object is found and if this is not a debug build.
  * args (in/out)   : BTREE_INSERT_HELPER *.
  */
 static int
@@ -27404,9 +27199,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 
 #if defined (SERVER_MODE)
 /*
- * btree_key_insert_does_leaf_need_split () - Check if there is not enough
- *					      space in leaf node to handle new
- *					      object.
+ * btree_key_insert_does_leaf_need_split () - Check if there is not enough space in leaf node to handle new object.
  *
  * return	      : True if there is not enough space in page.
  * thread_p (in)      : Thread entry.
@@ -27443,24 +27236,19 @@ btree_key_insert_does_leaf_need_split (THREAD_ENTRY * thread_p, BTID_INT * btid_
 #endif /* SERVER_MODE */
 
 /*
- * btree_key_lock_and_append_object_unique () - Append new object into an
- *						existing unique index key.
- *						New objects are always
- *						inserted at the beginning of
- *						the key (as long as unique
- *						constraint is not violated).
+ * btree_key_lock_and_append_object_unique () - Append new object into an existing unique index key.
+ *						New objects are always inserted at the beginning of
+ *						the key (as long as unique constraint is not violated).
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
  * btid_int (in)       : B-tree info.
  * key (in)	       : Inserted key.
  * leaf (in/out)       : Pointer to leaf page (can be re-fixed).
- * restart (out)       : Outputs true when restarting from b-tree root is
- *			 required.
+ * restart (out)       : Outputs true when restarting from b-tree root is required.
  * search_key (in/out) : Search key result.
  * insert_helper (in)  : Insert operation helper structure.
- * leaf_record (in)    : Preallocated record descriptor used to read b-tree
- *			 record.
+ * leaf_record (in)    : Preallocated record descriptor used to read b-tree record.
  */
 static int
 btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf,
@@ -27802,8 +27590,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 }
 
 /*
- * btree_key_append_object_non_unique () - Append a new object in an existing
- *					   b-tree key.
+ * btree_key_append_object_non_unique () - Append a new object in an existing b-tree key.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -27812,8 +27599,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
  * leaf (in)		 : Leaf node.
  * search_key (in)	 : Search key result.
  * leaf_record (in)	 : Key's leaf record.
- * offset_after_key (in) : Offset to where packed key is ended in leaf record
- *			   data.
+ * offset_after_key (in) : Offset to where packed key is ended in leaf record data.
  * leaf_info (in)	 : Leaf record info.
  * btree_obj (in)	 : B-tree object info.
  * insert_helper (in)	 : B-tree insert helper.
@@ -28045,8 +27831,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 }
 
 /*
- * btree_key_relocate_last_into_ovf () - Move last object in leaf record into
- *					 an overflow page.
+ * btree_key_relocate_last_into_ovf () - Move last object in leaf record into an overflow page.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -28198,8 +27983,7 @@ exit:
 }
 
 /*
- * btree_key_relocate_last_into_ovf () - Append a new object in overflow OID's
- *					 pages.
+ * btree_key_relocate_last_into_ovf () - Append a new object in overflow OID's pages.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -28284,11 +28068,8 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 }
 
 /*
- * btree_key_find_and_insert_delete_mvccid () - BTREE_ADVANCE_WITH_KEY_FUNCTION
- *						used for MVCC logical delete.
- *						An object is found and an
- *						MVCCID is added to its MVCC
- *						info.
+ * btree_key_find_and_insert_delete_mvccid () - BTREE_ADVANCE_WITH_KEY_FUNCTION used for MVCC logical delete.
+ *						An object is found and an MVCCID is added to its MVCC info.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -28435,8 +28216,7 @@ exit:
 }
 
 /*
- * btree_key_insert_delete_mvccid () - Insert delete MVCCID for a b-tree
- *				       object.
+ * btree_key_insert_delete_mvccid () - Insert delete MVCCID for a b-tree object.
  *
  * return		       : Error code.
  * thread_p (in)	       : Thread entry.
@@ -28507,8 +28287,7 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 
 #if !defined (NDEBUG)
 /*
- * btree_key_record_check_no_visible () - Check b-tree record has no visible
- *					  objects. Debug only.
+ * btree_key_record_check_no_visible () - Check b-tree record has no visible objects. Debug only.
  *
  * thread_p (in)  : Thread entry.
  * btid_int (in)  : B-tree info.
@@ -28546,11 +28325,8 @@ btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 #endif /* !NDEBUG */
 
 /*
- * btree_mvcc_info_from_heap_mvcc_header () - Convert an MVCC record header
- *					      (used for heap records) into
- *					      a b-tree MVCC info structure
- *					      (used to store an object in
- *					      b-tree).
+ * btree_mvcc_info_from_heap_mvcc_header () - Convert an MVCC record header (used for heap records) into
+ *					      a b-tree MVCC info structure (used to store an object in b-tree).
  *
  * return	    : Void.
  * mvcc_header (in) : Heap record MVCC header.
@@ -28585,9 +28361,7 @@ btree_mvcc_info_from_heap_mvcc_header (MVCC_REC_HEADER * mvcc_header, BTREE_MVCC
 }
 
 /*
- * btree_mvcc_info_to_heap_mvcc_header () - Convert a b-tree MVCC info
- *					    structure into a heap record
- *					    MVCC header.
+ * btree_mvcc_info_to_heap_mvcc_header () - Convert a b-tree MVCC info structure into a heap record MVCC header.
  *
  * return	     : Void.
  * mvcc_info (in)    : B-tree MVCC info.
@@ -28648,8 +28422,7 @@ btree_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * btree_rv_record_modify_internal () - Undoredo recovery of b-tree key
- *					records.
+ * btree_rv_record_modify_internal () - Undoredo recovery of b-tree key records.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -29578,8 +29351,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
 }
 
 /*
- * btree_fix_root_for_delete () - BTREE_ROOT_WITH_KEY_FUNCTION - fix root page
- *				  before deleting data from a key.
+ * btree_fix_root_for_delete () - BTREE_ROOT_WITH_KEY_FUNCTION - fix root page before deleting data from a key.
  *
  * return	       : Error code.
  * thread_p (in)       : Thread entry.
@@ -29790,10 +29562,8 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 }
 
 /*
- * btree_merge_node_and_advance () - BTREE_ADVANCE_WITH_KEY_FUNCTION used by
- *				     btree_delete_internal to merge b-tree
- *				     nodes while advancing to delete data from
- *				     a key.
+ * btree_merge_node_and_advance () - BTREE_ADVANCE_WITH_KEY_FUNCTION used by btree_delete_internal to merge b-tree
+ *				     nodes while advancing to delete data from a key.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -29802,8 +29572,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
  * crt_page (in)	 : Pointer to current node's page.
  * advance_to_page (out) : Outputs next node page to advance to.
  * is_leaf (out)	 : Outputs whether current node is leaf.
- * search_key (out)	 : Outputs search key result when current node is
- *			   leaf.
+ * search_key (out)	 : Outputs search key result when current node is leaf.
  * stop (out)		 : Outputs to end advancing (not used).
  * restart (out)	 : Outputs to restart from root.
  * other_args (in/out)	 : BTREE_DELETE_HELPER *
@@ -31073,10 +30842,8 @@ exit:
   return error_code;
 }
 
-
 /*
- * btree_leaf_record_replace_first_with_last () - Remove first object by
- *						  replacing it with last.
+ * btree_leaf_record_replace_first_with_last () - Remove first object by replacing it with last.
  *
  * return		      : Error code.
  * thread_p (in)	      : Thread entry.
@@ -31201,8 +30968,7 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
 }
 
 /*
- * btree_record_remove_object () - Remove object from b-tree leaf or overflow
- *				   record.
+ * btree_record_remove_object () - Remove object from b-tree leaf or overflow record.
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
@@ -31329,8 +31095,7 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
 }
 
 /*
- * btree_record_remove_object_internal () - Remove object and all it's info
- *					    from b-tree record.
+ * btree_record_remove_object_internal () - Remove object and all it's info from b-tree record.
  *
  * return		 : Void.
  * thread_p (in)	 : Thread entry.
@@ -31392,8 +31157,7 @@ btree_record_remove_object_internal (THREAD_ENTRY * thread_p, BTID_INT * btid_in
 }
 
 /*
- * btree_key_remove_object () - Remove object from key. Function is interface
- *				for btree_leaf_remove_object and
+ * btree_key_remove_object () - Remove object from key. Function is interface for btree_leaf_remove_object and
  *				btree_overflow_remove_object.
  *
  * return		    : Error code.
@@ -31404,8 +31168,7 @@ btree_record_remove_object_internal (THREAD_ENTRY * thread_p, BTID_INT * btid_in
  * leaf_page (in)	    : Leaf page.
  * leaf_record (in)	    : Leaf record.
  * leaf_info (in)	    : Leaf record info.
- * offset_after_key (in)    : Offset to where packed key is ended in leaf
- *			      record.
+ * offset_after_key (in)    : Offset to where packed key is ended in leaf record.
  * search_key (in)	    : Search key result.
  * overflow_page (in)	    : Overflow page.
  * prev_page (in)	    : Previous page to overflow page.
@@ -31452,8 +31215,7 @@ btree_key_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT * bti
  * btid_int (in)	    : B-tree info.
  * delete_helper (in)	    : B-tree delete helper.
  * overflow_page (in)	    : Overflow page (can be set to NULL).
- * prev_page (in)	    : Page previous to overflow page (can be leaf page
- *			      or another overflow page).
+ * prev_page (in)	    : Page previous to overflow page (can be leaf page or another overflow page).
  * leaf_page (in)	    : Leaf page.
  * leaf_record (in)	    : Leaf record.
  * search_key (in)	    : Search key result.
@@ -32106,10 +31868,8 @@ exit:
  * search_key (in)	 : Search key result.
  * leaf_page (in)	 : Leaf node page.
  * leaf_record (in)	 : Key's leaf record.
- * overflow_page (in)	 : Overflow node page (if object was found in overflow
- *			   page).
- * overflow_record (in)  : Overflow record (if object was found in overflow
- *			   page).
+ * overflow_page (in)	 : Overflow node page (if object was found in overflow page).
+ * overflow_record (in)  : Overflow record (if object was found in overflow page).
  * node_type (in)	 : Node type of page where object was found.
  * offset_to_object (in) : Offset to object in its record.
  */
