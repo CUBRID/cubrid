@@ -33,7 +33,7 @@ define file_header_part_ftab
 # $arg0 (in)  : FILE HEADER
 # $arg1 (out) : Partiable table extensible data
 #
-define file_header_part_ftab
+define file_header_full_ftab
   set $fhead = $arg0
   set $off = $fhead->offset_to_full_ftab
   if $off < 0
@@ -43,11 +43,11 @@ define file_header_part_ftab
     end
   end
   
-# file_header_part_ftab
+# file_header_user_ftab
 # $arg0 (in)  : FILE HEADER
 # $arg1 (out) : Partiable table extensible data
 #
-define file_header_part_ftab
+define file_header_user_ftab
   set $fhead = $arg0
   set $off = $fhead->offset_to_user_page_ftab
   if $off < 0

@@ -507,6 +507,7 @@ typedef int (*FILE_TRACK_ITEM_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
 /* File header section.                                                 */
 /************************************************************************/
 
+STATIC_INLINE void file_header_init (FILE_HEADER * fhead) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_header_sanity_check (FILE_HEADER * fhead) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_header_alloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type,
 				      bool was_empty, bool is_full) __attribute__ ((ALWAYS_INLINE));
@@ -785,6 +786,46 @@ file_manager_final (void)
 /************************************************************************/
 /* File header section.                                                 */
 /************************************************************************/
+
+/*
+ * file_header_init () - initialize file header
+ *
+ * return      : void
+ * fhead (out) : output initialized file header
+ */
+STATIC_INLINE void
+file_header_init (FILE_HEADER * fhead)
+{
+  VFID_SET_NULL (&fhead->self);
+
+  fhead->tablespace.initial_size = 0;
+  fhead->tablespace.expand_ratio = 0;
+  fhead->tablespace.expand_min_size = 0;
+  fhead->tablespace.expand_max_size = 0;
+
+  fhead->time_creation = 0;
+  fhead->type = FILE_UNKNOWN_TYPE;
+  fhead->file_flags = 0;
+  fhead->volid_last_expand = NULL_VOLDES;
+  VPID_SET_NULL (&fhead->vpid_last_temp_alloc);
+  fhead->offset_to_last_temp_alloc = NULL_OFFSET;
+  VPID_SET_NULL (&fhead->vpid_last_user_page_ftab);
+  VPID_SET_NULL (&fhead->vpid_sticky_first);
+
+  fhead->n_page_total = 0;
+  fhead->n_page_user = 0;
+  fhead->n_page_ftab = 0;
+  fhead->n_page_mark_delete = 0;
+
+  fhead->n_sector_total = 0;
+  fhead->n_sector_partial = 0;
+  fhead->n_sector_full = 0;
+  fhead->n_sector_empty = 0;
+
+  fhead->offset_to_partial_ftab = NULL_OFFSET;
+  fhead->offset_to_full_ftab = NULL_OFFSET;
+  fhead->offset_to_user_page_ftab = NULL_OFFSET;
+}
 
 /*
  * file_header_sanity_check () - Debug function used to check the sanity of file header before and after certaion file
@@ -6822,7 +6863,7 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
-      page_extdata = page_fhead;
+      page_extdata = page_ftab;
       extdata_user_page_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
     }
 
@@ -6936,14 +6977,10 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
   file_extdata_append (extdata_user_page_ftab, vpid);
 
   file_log ("file_numerable_add_page",
-	    "add page %d|%d to position %d in file %d|%d, page %d|%d, prev_lsa = %lld|%d, "
-	    "crt_lsa = %lld|%d \n"
-	    FILE_EXTDATA_MSG ("last user page table component")
-	    FILE_HEAD_FULL_MSG, VPID_AS_ARGS (vpid),
-	    file_extdata_item_count (extdata_user_page_ftab) - 1,
-	    VFID_AS_ARGS (&fhead->self),
-	    PGBUF_PAGE_VPID_AS_ARGS (page_extdata), LSA_AS_ARGS (&save_lsa),
-	    PGBUF_PAGE_LSA_AS_ARGS (page_extdata),
+	    "add page %d|%d to position %d in file %d|%d, page %d|%d, prev_lsa = %lld|%d, crt_lsa = %lld|%d \n"
+	    FILE_EXTDATA_MSG ("last user page table component") FILE_HEAD_FULL_MSG, VPID_AS_ARGS (vpid),
+	    file_extdata_item_count (extdata_user_page_ftab) - 1, VFID_AS_ARGS (&fhead->self),
+	    PGBUF_PAGE_VPID_AS_ARGS (page_extdata), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_extdata),
 	    FILE_EXTDATA_AS_ARGS (extdata_user_page_ftab), FILE_HEAD_FULL_AS_ARGS (fhead));
 
   /* done */
@@ -7131,8 +7168,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
       /* we don't know where the marked deleted pages are... we need to iterate through all pages and skip the marked
        * deleted. */
       error_code =
-	file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, NULL,
-				  NULL,
+	file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, NULL, NULL,
 				  file_extdata_find_nth_vpid_and_skip_marked, &find_nth_context, false, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
@@ -7144,8 +7180,8 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     {
       /* we can go directly to the right VPID. */
       error_code =
-	file_extdata_apply_funcs (thread_p, extdata_user_page_ftab,
-				  file_extdata_find_nth_vpid, &find_nth_context, NULL, NULL, false, NULL, NULL);
+	file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, file_extdata_find_nth_vpid, &find_nth_context, NULL,
+				  NULL, false, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -7649,7 +7685,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   file_header_alloc (fhead, alloc_type, was_empty, is_full);
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
-  file_log ("file_temp_alloc", "%s %d|%d successful." FILE_HEAD_FULL_MSG
+  file_log ("file_temp_alloc", "%s %d|%d successful. \n" FILE_HEAD_FULL_MSG
 	    FILE_PARTSECT_MSG ("partial sector after alloc"),
 	    FILE_ALLOC_TYPE_STRING (alloc_type),
 	    VPID_AS_ARGS (vpid_alloc_out), FILE_HEAD_FULL_AS_ARGS (fhead), FILE_PARTSECT_AS_ARGS (partsect));
