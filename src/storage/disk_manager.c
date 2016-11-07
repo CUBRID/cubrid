@@ -5225,6 +5225,7 @@ void
 disk_unlock_extend (void)
 {
 #if defined (NDEBUG)
+  pthread_mutex_unlock (&disk_Cache->mutex_extend);
 #else /* !NDEBUG */
   int me = thread_get_current_entry_index ();
 
@@ -5264,6 +5265,7 @@ STATIC_INLINE void
 disk_cache_lock_reserve (DISK_EXTEND_INFO * extend_info)
 {
 #if defined (NDEBUG)
+  pthread_mutex_lock (&extend_info->mutex_reserve);
 #else /* !NDEBUG */
   int me = thread_get_current_entry_index ();
 
@@ -5283,6 +5285,7 @@ STATIC_INLINE void
 disk_cache_unlock_reserve (DISK_EXTEND_INFO * extend_info)
 {
 #if defined (NDEBUG)
+  pthread_mutex_unlock (&extend_info->mutex_reserve);
 #else /* !NDEBUG */
   int me = thread_get_current_entry_index ();
 
