@@ -471,8 +471,13 @@ disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
   if (vol_purpose == DB_PERMANENT_DATA_PURPOSE)
     {
       disk_Cache->perm_purpose_info.extend_info.nsect_free += space_info.n_free_sects;
-      disk_Cache->perm_purpose_info.extend_info.nsect_total = space_info.n_total_sects;
-      disk_Cache->perm_purpose_info.extend_info.nsect_max = space_info.n_max_sects;
+      disk_Cache->perm_purpose_info.extend_info.nsect_total += space_info.n_total_sects;
+      disk_Cache->perm_purpose_info.extend_info.nsect_max += space_info.n_max_sects;
+
+      assert (disk_Cache->perm_purpose_info.extend_info.nsect_free
+	      <= disk_Cache->perm_purpose_info.extend_info.nsect_total);
+      assert (disk_Cache->perm_purpose_info.extend_info.nsect_total
+	      <= disk_Cache->perm_purpose_info.extend_info.nsect_total);
 
       if (space_info.n_total_sects < space_info.n_max_sects)
 	{
@@ -486,6 +491,8 @@ disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 
       disk_Cache->temp_purpose_info.nsect_perm_free += space_info.n_free_sects;
       disk_Cache->temp_purpose_info.nsect_perm_total += space_info.n_total_sects;
+
+      assert (disk_Cache->temp_purpose_info.nsect_perm_free <= disk_Cache->temp_purpose_info.nsect_perm_total);
     }
 
   disk_Cache->vols[volid].nsect_free = space_info.n_free_sects;
