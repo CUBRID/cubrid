@@ -1182,7 +1182,7 @@ enum btree_rv_debug_id
   tabs "\t" BTREE_OBJINFO_MSG("obj_info") "\n" \
   tabs "\t" "purpose = %s \n" \
   tabs "\t" "op_type = %s \n" \
-  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") " (sha1 = %08x | %08x | %08x | %08x | %08x) \n"
+  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") "... (sha1 = %08x | %08x | %08x | %08x | %08x) \n"
 #define BTREE_INSERT_HELPER_AS_ARGS(helper) \
   BTREE_OBJINFO_AS_ARGS (&(helper)->obj_info), \
   btree_purpose_to_string ((helper)->purpose), \
@@ -1195,7 +1195,7 @@ enum btree_rv_debug_id
   tabs "\t" BTREE_OBJINFO_MSG("object_info") "\n" \
   tabs "\t" "purpose = %s \n " \
   tabs "\t" "op_type = %s \n" \
-  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") " (sha1 = %08x | %08x | %08x | %08x | %08x) \n" \
+  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") "... (sha1 = %08x | %08x | %08x | %08x | %08x) \n" \
   tabs "\t" "match_mvccinfo = %llu|%llu \n"
 #define BTREE_DELETE_HELPER_AS_ARGS(helper) \
   BTREE_OBJINFO_AS_ARGS (&(helper)->object_info), \
@@ -27179,9 +27179,25 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 					     &insert_helper->compensate_undo_nxlsa);
     }
 
-  btree_insert_log (insert_helper, BTREE_INSERT_MODIFY_MSG ("New key"),
-		    BTREE_INSERT_MODIFY_ARGS (insert_helper, leaf_page, &prev_lsa, true, search_key->slotid,
-					      record.length, btid_int->sys_btid));
+  if (insert_helper->log_operations)
+    {
+      if (key_type == BTREE_OVERFLOW_KEY)
+	{
+	  VPID vpid_ovfl = VPID_INITIALIZER;
+	  btree_leaf_get_vpid_for_overflow_oids (&record, &vpid_ovfl);
+	  assert (!VPID_ISNULL (&vpid_ovfl));
+	  btree_insert_log (insert_helper, BTREE_INSERT_MODIFY_MSG ("New overflow key %d|%d"),
+			    VPID_AS_ARGS (&vpid_ovfl),
+			    BTREE_INSERT_MODIFY_ARGS (insert_helper, leaf_page, &prev_lsa, true, search_key->slotid,
+						      record.length, btid_int->sys_btid));
+	}
+      else
+	{
+	  btree_insert_log (insert_helper, BTREE_INSERT_MODIFY_MSG ("New key"),
+			    BTREE_INSERT_MODIFY_ARGS (insert_helper, leaf_page, &prev_lsa, true, search_key->slotid,
+						      record.length, btid_int->sys_btid));
+	}
+    }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
