@@ -209,7 +209,7 @@ struct disk_stab_cursor
 
 #define DISK_SECTS_ROUND_UP(nsects)  (CEIL_PTVDIV (nsects, DISK_STAB_UNIT_BIT_COUNT) * DISK_STAB_UNIT_BIT_COUNT)
 #define DISK_SECTS_ROUND_DOWN(nsects)  ((nsects / DISK_STAB_UNIT_BIT_COUNT) * DISK_STAB_UNIT_BIT_COUNT)
-#define DISK_SECTS_ASSERT_ROUNDED(nsects)  assert (nsects == DISK_SECTS_ROUND_DOWN (nsects));
+#define DISK_SECTS_ASSERT_ROUNDED(nsects)  assert (nsects == DISK_SECTS_ROUND_DOWN (nsects))
 
 #define DISK_STAB_NPAGES(nsect_max) (CEIL_PTVDIV (nsect_max, DISK_STAB_PAGE_BIT_COUNT))
 
