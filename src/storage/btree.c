@@ -27183,11 +27183,17 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       if (key_type == BTREE_OVERFLOW_KEY)
 	{
-	  VPID vpid_ovfl = VPID_INITIALIZER;
-	  btree_leaf_get_vpid_for_overflow_oids (&record, &vpid_ovfl);
-	  assert (!VPID_ISNULL (&vpid_ovfl));
+	  OR_BUF buf_vpid_key;
+	  VPID vpid_key = VPID_INITIALIZER;
+	  int rc = NO_ERROR;
+
+	  OR_BUF_INIT (buf_vpid_key, record.data + record.length - DISK_VPID_ALIGNED_SIZE, DISK_VPID_ALIGNED_SIZE);
+	  vpid_key.pageid = or_get_int (&buf_vpid_key, &rc);
+	  vpid_key.volid = or_get_short (&buf_vpid_key, &rc);
+
+	  assert (!VPID_ISNULL (&vpid_key));
 	  btree_insert_log (insert_helper, BTREE_INSERT_MODIFY_MSG ("New overflow key %d|%d"),
-			    VPID_AS_ARGS (&vpid_ovfl),
+			    VPID_AS_ARGS (&vpid_key),
 			    BTREE_INSERT_MODIFY_ARGS (insert_helper, leaf_page, &prev_lsa, true, search_key->slotid,
 						      record.length, btid_int->sys_btid));
 	}
