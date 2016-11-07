@@ -1949,9 +1949,7 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
 
 /*
  * log_create_log_node_from_undoredo_data - Create log node from undo (before) + redo(after) data
- *
- * returns: error code
- *
+ *   returns: error code
  *   thread_p(in): Thread entry
  *   tdes(in): Transaction descriptor
  *   rcvindex(in): Index to recovery function
@@ -1990,9 +1988,7 @@ log_create_log_node_from_undoredo_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes
 
 /*
  * log_create_log_node_from_undoredo_crumbs - Create log node from undo (before) + redo(after) crumbs
- *
  * returns: nothing
- *
  *   thread_p(in): Thread entry
  *   tdes(in): Transaction descriptor
  *   rcvindex(in): Index to recovery function
@@ -2085,7 +2081,6 @@ log_create_log_node_from_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_TDES * td
  *   rcvindex(in): Index to recovery function
  *   pgptr(in): Page pointer
  *   node(in): Log node
- *
  */
 void
 log_append_prior_node (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex, PAGE_PTR pgptr,
@@ -2093,6 +2088,7 @@ log_append_prior_node (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rc
 {
   LOG_LSA start_lsa;
 
+  assert (node != NULL);
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
   if (LOG_NEED_TO_SET_LSA (rcvindex, pgptr))
     {
@@ -2295,9 +2291,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
 /*
  * log_create_log_node_from_redo_crumbs - Create log node from redo(after) crumbs
- *
- * return: nothing
- *
+ *   returns: nothing
  *   thread_p(in): Thread entry
  *   tdes(in): Transaction descriptor
  *   rcvindex(in): Index to recovery function
@@ -2460,9 +2454,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
 /*
  * log_create_log_node_from_recdes - Create log node from undo (before) + redo(after) record descriptor
- *
- * return: error code
- *
+ *   return: error code
  *   thread_p(in): Thread entry
  *   tdes(in): Transaction descriptor
  *   rcvindex(in): Index to recovery function
@@ -2480,6 +2472,19 @@ log_create_log_node_from_recdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_R
 					   redo_recdes, node);
 }
 
+/*
+ * log_create_log_node_from_recdes2 - Create log node from undo (before) + redo(after) record descriptor
+ *   return: error code
+ *   thread_p(in): Thread entry
+ *   tdes(in): Transaction descriptor
+ *   rcvindex(in): Index to recovery function
+ *   vfid(in): File identifier
+ *   pgptr(in): Page pointer
+ *   offset(in): Offset
+ *   undo_recdes(in): Undo(before) record descriptor
+ *   redo_recdes(in): Redo(after) record descriptor
+ *   node(out): Created log node
+ */
 int
 log_create_log_node_from_recdes2 (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex, const VFID * vfid,
 				  PAGE_PTR pgptr, PGLENGTH offset, const RECDES * undo_recdes,
@@ -2496,41 +2501,6 @@ log_create_log_node_from_recdes2 (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_
   addr.vfid = vfid;
   addr.pgptr = pgptr;
   addr.offset = offset;
-
-#if 0
-  if (rcvindex == RVHF_UPDATE)
-    {
-      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      if (tdes && tdes->null_log.is_set && undo_recdes && redo_recdes)
-	{
-	  tdes->null_log.recdes = malloc (sizeof (RECDES));
-	  if (tdes == NULL)
-	    {
-	      return;		/* error */
-	    }
-	  *(tdes->null_log.recdes) = *undo_recdes;
-	  tdes->null_log.recdes->data = malloc (undo_recdes->length);
-	  if (tdes->null_log.recdes->data == NULL)
-	    {
-	      free_and_init (tdes->null_log.recdes);
-	      return;		/* error */
-	    }
-	  (void) memcpy (tdes->null_log.recdes->data, undo_recdes->data, undo_recdes->length);
-	}
-      undo_crumbs[0].length = sizeof (undo_recdes->type);
-      undo_crumbs[0].data = (char *) &undo_recdes->type;
-      undo_crumbs[1].length = 0;
-      undo_crumbs[1].data = NULL;
-      num_undo_crumbs = 2;
-      redo_crumbs[0].length = sizeof (redo_recdes->type);
-      redo_crumbs[0].data = (char *) &redo_recdes->type;
-      redo_crumbs[1].length = 0;
-      redo_crumbs[1].data = NULL;
-      num_redo_crumbs = 2;
-      log_append_undoredo_crumbs (rcvindex, addr, num_undo_crumbs, num_redo_crumbs, undo_crumbs, redo_crumbs);
-      return;
-    }
-#endif
 
   LOG_GET_CRUMBS_FROM_RECDES (undo_recdes, 2, undo_crumbs, num_undo_crumbs);
   LOG_GET_CRUMBS_FROM_RECDES (redo_recdes, 2, redo_crumbs, num_redo_crumbs);
