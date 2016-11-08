@@ -1111,7 +1111,7 @@ db_value_domain_type (const DB_VALUE * value)
 {
   DB_TYPE db_type;
 
-  if (NO_SERVER_AND_NO_DEBUG_MODE)
+  if (NO_SERVER_OR_DEBUG_MODE)
     {
       CHECK_1ARG_UNKNOWN (value);
     }
@@ -1133,7 +1133,7 @@ db_value_domain_type (const DB_VALUE * value)
 DB_TYPE
 db_value_type (const DB_VALUE * value)
 {
-  if (NO_SERVER_AND_NO_DEBUG_MODE)
+  if (NO_SERVER_OR_DEBUG_MODE)
     {
       CHECK_1ARG_UNKNOWN (value);
     }
