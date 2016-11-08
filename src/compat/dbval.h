@@ -38,42 +38,6 @@
 #else
 #undef DB_VALUE_DOMAIN_TYPE
 #endif
-//#undef DB_VALUE_TYPE
-//#undef DB_VALUE_SCALE
-//#undef DB_VALUE_PRECISION
-//#undef DB_GET_INTEGER
-//#undef DB_GET_BIGINT
-//#undef DB_GET_FLOAT
-//#undef DB_GET_DOUBLE
-//#undef DB_GET_STRING
-//#undef DB_GET_CHAR
-//#undef DB_GET_NCHAR
-//#undef DB_GET_BIT
-//#undef DB_GET_OBJECT
-//#undef DB_GET_OID
-//#undef DB_GET_SET
-//#undef DB_GET_LIST
-//#undef DB_GET_MIDXKEY
-//#undef DB_GET_ELO
-//#undef DB_GET_TIME
-//#undef DB_GET_TIMETZ
-//#undef DB_GET_DATE
-//#undef DB_GET_TIMESTAMP
-//#undef DB_GET_TIMESTAMPTZ
-//#undef DB_GET_DATETIME
-//#undef DB_GET_DATETIMETZ
-//#undef DB_GET_MONETARY
-//#undef DB_GET_POINTER
-//#undef DB_GET_ERROR
-//#undef DB_GET_SHORT
-//#undef DB_GET_SMALLINT
-//#undef DB_GET_NUMERIC
-//#undef DB_GET_STRING_SIZE
-//#undef DB_GET_RESULTSET
-//#undef DB_GET_STRING_CODESET
-//#undef DB_GET_STRING_COLLATION
-//#undef DB_GET_ENUM_CODESET
-//#undef DB_GET_ENUM_COLLATION
 
 #if !defined(NDEBUG)
 #else

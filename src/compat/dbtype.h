@@ -396,7 +396,6 @@
 
 #define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
 
-
 #define DB_GET_TIMESTAMPTZ(value)     db_get_timestamptz(value)
 
 #define DB_GET_DATETIME(value)          db_get_datetime(value)

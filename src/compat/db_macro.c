@@ -110,6 +110,12 @@ static VALCNV_BUFFER *valcnv_convert_money_to_string (const double value);
 static VALCNV_BUFFER *valcnv_convert_data_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
 static VALCNV_BUFFER *valcnv_convert_db_value_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
 
+#if !defined(SERVER_MODE) || defined(NDEBUG)
+#define NO_SERVER_OR_DEBUG_MODE true
+#else
+#define NO_SERVER_AND_NO_DEBUG_MODE false
+#endif
+
 /*
  *  db_value_put_null()
  *  return : Error indicator
@@ -144,7 +150,10 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 {
   int error = NO_ERROR;
 
-  CHECK_1ARG_ERROR (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ERROR (value);
+    }
 
   /* It's important to initialize the codeset of the data portion since it is considered domain information.  It
    * doesn't matter what we set it to, since it will be reset correctly when data is stored in the DB_VALUE by one of
@@ -1102,7 +1111,10 @@ db_value_domain_type (const DB_VALUE * value)
 {
   DB_TYPE db_type;
 
-  CHECK_1ARG_UNKNOWN (value);
+  if (NO_SERVER_AND_NO_DEBUG_MODE)
+    {
+      CHECK_1ARG_UNKNOWN (value);
+    }
 
   db_type = (DB_TYPE) value->domain.general_info.type;
 
@@ -1121,7 +1133,10 @@ db_value_domain_type (const DB_VALUE * value)
 DB_TYPE
 db_value_type (const DB_VALUE * value)
 {
-  CHECK_1ARG_UNKNOWN (value);
+  if (NO_SERVER_AND_NO_DEBUG_MODE)
+    {
+      CHECK_1ARG_UNKNOWN (value);
+    }
 
   if (value->domain.general_info.is_null)
     {
@@ -1141,7 +1156,10 @@ db_value_type (const DB_VALUE * value)
 int
 db_value_precision (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_AND_NO_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
 
   switch (value->domain.general_info.type)
     {
@@ -1194,8 +1212,10 @@ db_value_precision (const DB_VALUE * value)
 int
 db_value_scale (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
-
+  if (NO_SERVER_AND_NO_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
   if (value->domain.general_info.type == DB_TYPE_NUMERIC || value->domain.general_info.type == DB_TYPE_DATETIME
       || value->domain.general_info.type == DB_TYPE_DATETIMETZ
       || value->domain.general_info.type == DB_TYPE_DATETIMELTZ)
@@ -2447,6 +2467,7 @@ db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount)
 int
 db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval)
 {
+
   CHECK_1ARG_ERROR (value);
 
   value->domain.general_info.type = DB_TYPE_TIMESTAMP;
@@ -2731,6 +2752,7 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 int
 db_get_int (const DB_VALUE * value)
 {
+
   CHECK_1ARG_ZERO (value);
   assert (value->domain.general_info.type == DB_TYPE_INTEGER);
 
