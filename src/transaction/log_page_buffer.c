@@ -3019,9 +3019,7 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, bool allo
 	  assert (CAST_BUFLEN (tmp_ptr - redo_data) == rlength);
 	}
 
-      assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length
-	      || ulength < log_Zip_min_size_to_compress || rlength < log_Zip_min_size_to_compress
-	      || !allow_undo_compression || !allow_redo_compression);
+      assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length || !allow_undo_compression || !allow_redo_compression);
 
       if (allow_undo_compression && allow_redo_compression && allow_log_diff)
 	{
@@ -3247,8 +3245,8 @@ prior_lsa_update_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node
     }
 
   return prior_lsa_update_undoredo_record_from_crumbs (thread_p, node, rcv_index, addr, num_undo_crumbs,
-						       num_redo_crumbs, undo_crumbs, redo_crumbs, ulength,
-						       rlength, skip_undo, skip_redo);
+						       num_redo_crumbs, undo_crumbs, redo_crumbs, ulength, rlength,
+						       skip_undo, skip_redo);
 }
 
 
@@ -3571,7 +3569,19 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   return error_code;
 
 error:
-  prior_lsa_free_node (node);
+  if (node->data_header != NULL)
+    {
+      free_and_init (node->data_header);
+    }
+  if (node->udata != NULL)
+    {
+      free_and_init (node->udata);
+    }
+  if (node->rdata != NULL)
+    {
+      free_and_init (node->rdata);
+    }
+
   return error_code;
 }
 
