@@ -1156,7 +1156,7 @@ db_value_type (const DB_VALUE * value)
 int
 db_value_precision (const DB_VALUE * value)
 {
-  if (NO_SERVER_AND_NO_DEBUG_MODE)
+  if (NO_SERVER_OR_DEBUG_MODE)
     {
       CHECK_1ARG_ZERO (value);
     }
@@ -1212,7 +1212,7 @@ db_value_precision (const DB_VALUE * value)
 int
 db_value_scale (const DB_VALUE * value)
 {
-  if (NO_SERVER_AND_NO_DEBUG_MODE)
+  if (NO_SERVER_OR_DEBUG_MODE)
     {
       CHECK_1ARG_ZERO (value);
     }
