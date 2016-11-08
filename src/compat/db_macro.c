@@ -113,7 +113,7 @@ static VALCNV_BUFFER *valcnv_convert_db_value_to_string (VALCNV_BUFFER * buf, co
 #if !defined(SERVER_MODE) || defined(NDEBUG)
 #define NO_SERVER_OR_DEBUG_MODE true
 #else
-#define NO_SERVER_AND_NO_DEBUG_MODE false
+#define NO_SERVER_OR_DEBUG_MODE false
 #endif
 
 /*
@@ -1239,7 +1239,10 @@ db_value_type_is_collection (const DB_VALUE * value)
   bool is_collection;
   DB_TYPE type;
 
-  CHECK_1ARG_FALSE (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_FALSE (value);
+    }
 
   type = db_value_type (value);
   is_collection = (TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ);
@@ -2752,8 +2755,11 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 int
 db_get_int (const DB_VALUE * value)
 {
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
 
-  CHECK_1ARG_ZERO (value);
   assert (value->domain.general_info.type == DB_TYPE_INTEGER);
 
   return value->data.i;
@@ -2767,7 +2773,11 @@ db_get_int (const DB_VALUE * value)
 short
 db_get_short (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_SHORT);
 
   return value->data.sh;
@@ -2781,7 +2791,11 @@ db_get_short (const DB_VALUE * value)
 DB_BIGINT
 db_get_bigint (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_BIGINT);
 
   return value->data.bigint;
@@ -2796,7 +2810,11 @@ char *
 db_get_string (const DB_VALUE * value)
 {
   char *str = NULL;
-  CHECK_1ARG_NULL (value);
+
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -2888,8 +2906,11 @@ db_get_char (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
 
-  CHECK_1ARG_NULL (value);
-  CHECK_1ARG_NULL (length);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+      CHECK_1ARG_NULL (length);
+    }
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -2947,8 +2968,11 @@ db_get_bit (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
 
-  CHECK_1ARG_NULL (value);
-  CHECK_1ARG_NULL (length);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+      CHECK_1ARG_NULL (length);
+    }
 
   if (value->domain.general_info.is_null)
     {
@@ -2991,7 +3015,10 @@ db_get_string_size (const DB_VALUE * value)
 {
   int size = 0;
 
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
 
   switch (value->data.ch.info.style)
     {
@@ -3024,7 +3051,10 @@ db_get_string_size (const DB_VALUE * value)
 int
 db_get_string_codeset (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+    }
 
   return value->data.ch.info.codeset;
 }
@@ -3037,7 +3067,10 @@ db_get_string_codeset (const DB_VALUE * value)
 int
 db_get_string_collation (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO_WITH_TYPE (value, int);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO_WITH_TYPE (value, int);
+    }
 
   return value->domain.char_info.collation_id;
 }
@@ -3050,7 +3083,10 @@ db_get_string_collation (const DB_VALUE * value)
 DB_C_NUMERIC
 db_get_numeric (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -3070,7 +3106,11 @@ db_get_numeric (const DB_VALUE * value)
 float
 db_get_float (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_FLOAT);
 
   return value->data.f;
@@ -3084,7 +3124,11 @@ db_get_float (const DB_VALUE * value)
 double
 db_get_double (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_DOUBLE);
 
   return value->data.d;
@@ -3098,7 +3142,10 @@ db_get_double (const DB_VALUE * value)
 DB_OBJECT *
 db_get_object (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -3118,7 +3165,10 @@ db_get_object (const DB_VALUE * value)
 DB_SET *
 db_get_set (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -3138,7 +3188,10 @@ db_get_set (const DB_VALUE * value)
 DB_MIDXKEY *
 db_get_midxkey (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -3158,7 +3211,10 @@ db_get_midxkey (const DB_VALUE * value)
 void *
 db_get_pointer (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
@@ -3178,7 +3234,11 @@ db_get_pointer (const DB_VALUE * value)
 DB_TIME *
 db_get_time (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_TIME || value->domain.general_info.type == DB_TYPE_TIMELTZ);
 
   return ((DB_TIME *) (&value->data.time));
@@ -3192,7 +3252,10 @@ db_get_time (const DB_VALUE * value)
 DB_TIMETZ *
 db_get_timetz (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
 
   assert (value->domain.general_info.type == DB_TYPE_TIMETZ);
 
@@ -3208,7 +3271,11 @@ db_get_timetz (const DB_VALUE * value)
 DB_TIMESTAMP *
 db_get_timestamp (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_TIMESTAMP
 	  || value->domain.general_info.type == DB_TYPE_TIMESTAMPLTZ);
 
@@ -3223,7 +3290,11 @@ db_get_timestamp (const DB_VALUE * value)
 DB_TIMESTAMPTZ *
 db_get_timestamptz (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_TIMESTAMPTZ);
 
   return ((DB_TIMESTAMPTZ *) (&value->data.timestamptz));
@@ -3237,7 +3308,11 @@ db_get_timestamptz (const DB_VALUE * value)
 DB_DATETIME *
 db_get_datetime (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_DATETIME
 	  || value->domain.general_info.type == DB_TYPE_DATETIMELTZ);
 
@@ -3252,7 +3327,10 @@ db_get_datetime (const DB_VALUE * value)
 DB_DATETIMETZ *
 db_get_datetimetz (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
 
   assert (value->domain.general_info.type == DB_TYPE_DATETIMETZ);
 
@@ -3267,7 +3345,11 @@ db_get_datetimetz (const DB_VALUE * value)
 DB_DATE *
 db_get_date (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_DATE);
 
   return ((DB_DATE *) (&value->data.date));
@@ -3281,7 +3363,11 @@ db_get_date (const DB_VALUE * value)
 DB_MONETARY *
 db_get_monetary (const DB_VALUE * value)
 {
-  CHECK_1ARG_NULL (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_NULL (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_MONETARY);
 
   return ((DB_MONETARY *) (&value->data.money));
@@ -3321,7 +3407,10 @@ db_value_get_monetary_amount_as_double (const DB_VALUE * value)
 int
 db_get_enum_codeset (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
+    }
 
   return value->data.enumeration.str_val.info.codeset;
 }
@@ -3391,7 +3480,11 @@ db_get_enum_string_size (const DB_VALUE * value)
 DB_RESULTSET
 db_get_resultset (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_RESULTSET);
 
   return value->data.rset;
@@ -3752,7 +3845,11 @@ db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2)
 int
 db_get_error (const DB_VALUE * value)
 {
-  CHECK_1ARG_ZERO (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_ZERO (value);
+    }
+
   assert (value->domain.general_info.type == DB_TYPE_ERROR);
 
   return value->data.error;
