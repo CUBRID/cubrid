@@ -218,7 +218,7 @@ struct tz_raw_data
 typedef struct offset_rule_interval OFFSET_RULE_INTERVAL;
 struct offset_rule_interval
 {
-  int originial_offset_rule_start;
+  int original_offset_rule_start;
   int len;
   int final_offset_rule_start;
 };
@@ -5711,7 +5711,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  for (j = 0; j < old_tzd_map_count; j++)
 	    {
-	      if (old_tzd_offset_rule_map[j].originial_offset_rule_start == start
+	      if (old_tzd_offset_rule_map[j].original_offset_rule_start == start
 		  && old_tzd_offset_rule_map[j].len == cnt)
 		{
 		  find_idx = j;
@@ -5721,7 +5721,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  if (find_idx == -1)
 	    {
-	      old_tzd_offset_rule_map[old_tzd_map_count].originial_offset_rule_start = start;
+	      old_tzd_offset_rule_map[old_tzd_map_count].original_offset_rule_start = start;
 	      old_tzd_offset_rule_map[old_tzd_map_count].len = cnt;
 	      old_tzd_offset_rule_map[old_tzd_map_count++].final_offset_rule_start = gmt_off_rule_start;
 	      gmt_off_rule_start += cnt;
@@ -5743,7 +5743,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  for (j = 0; j < tzd_map_count; j++)
 	    {
-	      if (tzd_offset_rule_map[j].originial_offset_rule_start == start && tzd_offset_rule_map[j].len == cnt)
+	      if (tzd_offset_rule_map[j].original_offset_rule_start == start && tzd_offset_rule_map[j].len == cnt)
 		{
 		  find_idx = j;
 		  break;
@@ -5752,7 +5752,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  if (find_idx == -1)
 	    {
-	      tzd_offset_rule_map[tzd_map_count].originial_offset_rule_start = start;
+	      tzd_offset_rule_map[tzd_map_count].original_offset_rule_start = start;
 	      tzd_offset_rule_map[tzd_map_count].len = cnt;
 	      tzd_offset_rule_map[tzd_map_count++].final_offset_rule_start = gmt_off_rule_start;
 	      gmt_off_rule_start += cnt;
