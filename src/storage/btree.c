@@ -1182,7 +1182,7 @@ enum btree_rv_debug_id
   tabs "\t" BTREE_OBJINFO_MSG("obj_info") "\n" \
   tabs "\t" "purpose = %s \n" \
   tabs "\t" "op_type = %s \n" \
-  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") " (sha1 = %08x | %08x | %08x | %08x | %08x) \n"
+  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") "... (sha1 = %08x | %08x | %08x | %08x | %08x) \n"
 #define BTREE_INSERT_HELPER_AS_ARGS(helper) \
   BTREE_OBJINFO_AS_ARGS (&(helper)->obj_info), \
   btree_purpose_to_string ((helper)->purpose), \
@@ -1195,7 +1195,7 @@ enum btree_rv_debug_id
   tabs "\t" BTREE_OBJINFO_MSG("object_info") "\n" \
   tabs "\t" "purpose = %s \n " \
   tabs "\t" "op_type = %s \n" \
-  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") " (sha1 = %08x | %08x | %08x | %08x | %08x) \n" \
+  tabs "\t" BTREE_PRINT_KEY_MSG("printed_key") "... (sha1 = %08x | %08x | %08x | %08x | %08x) \n" \
   tabs "\t" "match_mvccinfo = %llu|%llu \n"
 #define BTREE_DELETE_HELPER_AS_ARGS(helper) \
   BTREE_OBJINFO_AS_ARGS (&(helper)->object_info), \
@@ -8994,7 +8994,7 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
 
   /* Is this an overflow key? Should we delete it too? */
   /* If this is undo of inserted object, overflow key deletion will be handled automatically. Don't delete here. */
-  if (leafrec_pnt->key_len < 0 && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT)
+  if (leafrec_pnt->key_len < 0)
     {
       assert (delete_helper->purpose != BTREE_OP_DELETE_VACUUM_OBJECT || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
       log_sysop_start (thread_p);
@@ -9065,8 +9065,6 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   if (delete_helper->is_system_op_started)
     {
       /* We need undoredo logging. */
-      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	      || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
 
       /* TODO: Add debugging info for undo. */
       log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, leaf_record.length, 0,
@@ -27046,6 +27044,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   assert (search_key != NULL && search_key->result != BTREE_KEY_FOUND);
   assert (search_key->slotid > 0 && search_key->slotid <= btree_node_number_of_keys (leaf_page) + 1);
   assert (insert_helper->rv_redo_data != NULL && insert_helper->rv_redo_data_ptr != NULL);
+  assert (insert_helper->is_system_op_started == false);
 #if defined (SERVER_MODE)
   assert (!BTREE_IS_UNIQUE (btid_int->unique_pk) || log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
@@ -27059,6 +27058,9 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
     {
       key_type = BTREE_OVERFLOW_KEY;
+
+      log_sysop_start (thread_p);
+      insert_helper->is_system_op_started = true;
     }
   else
     {
@@ -27090,29 +27092,23 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       pr_clear_value (&local_key);
     }
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error_code;
+      goto error;
     }
 
 #if !defined (NDEBUG)
   (void) btree_check_valid_record (thread_p, btid_int, &record, BTREE_LEAF_NODE, NULL);
 #endif
 
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
   /* Node header will be updated. */
   node_header = btree_get_node_header (leaf_page);
   if (node_header == NULL)
     {
       assert_release (false);
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      goto error;
     }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -27121,7 +27117,8 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   if (spage_insert_at (thread_p, leaf_page, search_key->slotid, &record) != SP_SUCCESS)
     {
       assert_release (false);
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      goto error;
     }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -27164,7 +27161,15 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   /* Add logging. */
   rv_redo_data_length = CAST_BUFLEN (rv_redo_data_ptr - rv_redo_data);
   assert (rv_redo_data_length < DB_PAGESIZE);
-  if (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT)
+  if (insert_helper->is_system_op_started)
+    {
+      /* undo/redo physical. */
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &insert_helper->leaf_addr, 0,
+				rv_redo_data_length, NULL, rv_redo_data);
+
+      btree_insert_sysop_end (thread_p, insert_helper);
+    }
+  else if (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT)
     {
       /* Undo/redo logging. */
       log_append_undoredo_data (thread_p, insert_helper->rcvindex, &insert_helper->leaf_addr,
@@ -27179,9 +27184,31 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 					     &insert_helper->compensate_undo_nxlsa);
     }
 
-  btree_insert_log (insert_helper, BTREE_INSERT_MODIFY_MSG ("New key"),
-		    BTREE_INSERT_MODIFY_ARGS (insert_helper, leaf_page, &prev_lsa, true, search_key->slotid,
-					      record.length, btid_int->sys_btid));
+  if (insert_helper->log_operations)
+    {
+      if (key_type == BTREE_OVERFLOW_KEY)
+	{
+	  OR_BUF buf_vpid_key;
+	  VPID vpid_key = VPID_INITIALIZER;
+	  int rc = NO_ERROR;
+
+	  OR_BUF_INIT (buf_vpid_key, record.data + record.length - DISK_VPID_ALIGNED_SIZE, DISK_VPID_ALIGNED_SIZE);
+	  vpid_key.pageid = or_get_int (&buf_vpid_key, &rc);
+	  vpid_key.volid = or_get_short (&buf_vpid_key, &rc);
+
+	  assert (!VPID_ISNULL (&vpid_key));
+	  btree_insert_log (insert_helper, BTREE_INSERT_MODIFY_MSG ("New overflow key %d|%d"),
+			    VPID_AS_ARGS (&vpid_key),
+			    BTREE_INSERT_MODIFY_ARGS (insert_helper, leaf_page, &prev_lsa, true, search_key->slotid,
+						      record.length, btid_int->sys_btid));
+	}
+      else
+	{
+	  btree_insert_log (insert_helper, BTREE_INSERT_MODIFY_MSG ("New key"),
+			    BTREE_INSERT_MODIFY_ARGS (insert_helper, leaf_page, &prev_lsa, true, search_key->slotid,
+						      record.length, btid_int->sys_btid));
+	}
+    }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -27202,6 +27229,16 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 #endif
 
   return NO_ERROR;
+
+error:
+  assert (error_code != NO_ERROR);
+
+  if (insert_helper->is_system_op_started)
+    {
+      log_sysop_abort (thread_p);
+      insert_helper->is_system_op_started = false;
+    }
+  return error_code;
 }
 
 #if defined (SERVER_MODE)
