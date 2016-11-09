@@ -990,6 +990,7 @@ struct func_pred
 #define XASL_KEEP_DBVAL	      4096	/* do not clear db_value */
 #define XASL_RETURN_GENERATED_KEYS	     8192	/* return generated keys */
 #define XASL_NO_FIXED_SCAN    16384	/* disable fixed scan for this proc */
+#define XASL_DECACHE_CLONE    32768
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

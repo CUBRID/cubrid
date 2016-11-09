@@ -1755,6 +1755,8 @@ static void
 xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone)
 {
   HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
+  XASL_SET_FLAG (xclone->xasl, XASL_DECACHE_CLONE);
+  qexec_clear_xasl (thread_p, xclone->xasl, true);
   stx_free_additional_buff (thread_p, xclone->xasl_buf);
   stx_free_xasl_unpack_info (xclone->xasl_buf);
   db_private_free (thread_p, xclone->xasl_buf);
