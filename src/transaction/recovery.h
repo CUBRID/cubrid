@@ -313,4 +313,15 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVVAC_NOTIFY_DROPPED_FILE \
    || (idx) == RVPGBUF_DEALLOC)
 
+#define RCV_IS_NEW_PAGE_INIT(idx) \
+  ((idx) == RVPGBUF_NEW_PAGE \
+   || (idx) == RVHF_NEWPAGE \
+   || (idx) == RVOVF_NEWPAGE_INSERT \
+   || (idx) == RVEH_INIT_BUCKET \
+   || (idx) == RVEH_INIT_NEW_DIR_PAGE \
+   || (idx) == RVEH_INIT_DIR \
+   || (idx) == RVBT_GET_NEWPAGE \
+   || (idx) == RVCT_NEWPAGE \
+   || (idx) == RVVAC_DATA_INIT_NEW_PAGE)
+
 #endif /* _RECOVERY_H_ */

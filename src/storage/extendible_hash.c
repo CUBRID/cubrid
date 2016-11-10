@@ -1113,9 +1113,8 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
    */
 
   /* Log the directory root page */
-  log_append_undo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, dir_page_p, 0, 0, NULL);
-  log_append_redo_data2 (thread_p, RVEH_INIT_DIR, &dir_vfid, dir_page_p, 0,
-			 EHASH_DIR_HEADER_SIZE + sizeof (EHASH_DIR_RECORD), dir_page_p);
+  log_append_undoredo_data2 (thread_p, RVEH_INIT_DIR, &dir_vfid, dir_page_p, 0, 0,
+			     EHASH_DIR_HEADER_SIZE + sizeof (EHASH_DIR_RECORD), NULL, dir_page_p);
 
   /* Finishing up; release the pages and return directory file id */
   pgbuf_set_dirty (thread_p, dir_page_p, FREE);

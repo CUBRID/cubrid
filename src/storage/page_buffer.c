@@ -1269,14 +1269,6 @@ pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p, const VPID * vpid, 
   old_check_page_validation = pgbuf_set_check_page_validation (thread_p, false);
 
   pgptr = pgbuf_fix_debug (thread_p, vpid, fetch_mode, request_mode, condition, caller_file, caller_line);
-  if (pgptr == NULL)
-    {
-      if (er_errid () == ER_PB_BAD_PAGEID)
-	{
-	  /* expected */
-	  er_clear ();
-	}
-    }
 
   rv = pgbuf_set_check_page_validation (thread_p, old_check_page_validation);
 
@@ -1293,14 +1285,6 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid
   old_check_page_validation = pgbuf_set_check_page_validation (thread_p, false);
 
   pgptr = pgbuf_fix_release (thread_p, vpid, fetch_mode, request_mode, condition);
-  if (pgptr == NULL)
-    {
-      if (er_errid () == ER_PB_BAD_PAGEID)
-	{
-	  /* expected */
-	  er_clear ();
-	}
-    }
 
   rv = pgbuf_set_check_page_validation (thread_p, old_check_page_validation);
 
@@ -12035,6 +12019,7 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (page_to_flush == NULL)
     {
       /* Page no longer exist. */
+      er_clear ();
       return NO_ERROR;
     }
   /* Flush page and unfix. */
@@ -12390,7 +12375,7 @@ pgbuf_set_check_page_validation (THREAD_ENTRY * thread_p, bool check)
 {
 #if defined (SERVER_MODE)
   return thread_set_check_page_validation (thread_p, check);
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   bool save_check = pgbuf_SA_check_page_validation;
   pgbuf_SA_check_page_validation = check;
   return save_check;
@@ -12408,7 +12393,7 @@ pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   return thread_get_check_page_validation (thread_p);
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   return pgbuf_SA_check_page_validation;
 #endif /* SA_MODE */
 }
@@ -12428,7 +12413,7 @@ pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p)
  * caller_line (in)     : caller line
  */
 int
-pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, VPID * vpid, PGBUF_LATCH_MODE latch_mode,
+pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid, PGBUF_LATCH_MODE latch_mode,
 					  PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
 					  const char *caller_file, int caller_line)
 {
@@ -12464,6 +12449,7 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, VPID * vpid, P
       if (error_code == ER_PB_BAD_PAGEID)
 	{
 	  /* deallocated */
+	  er_clear ();
 	  error_code = NO_ERROR;
 	}
     }

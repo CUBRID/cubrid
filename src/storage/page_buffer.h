@@ -483,9 +483,9 @@ extern int pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR * page_dealloc)
 extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
-extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, VPID * vpid, PGBUF_LATCH_MODE latch_mode,
-						     PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
-						     const char *caller_file, int caller_line);
+extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid,
+						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
+						     PAGE_PTR * page, const char *caller_file, int caller_line);
 #if defined (NDEBUG)
 #define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
   pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, NULL, 0)

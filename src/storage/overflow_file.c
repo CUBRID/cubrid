@@ -424,7 +424,6 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit_on_error;
 	    }
-	  log_append_undo_data (thread_p, RVPGBUF_NEW_PAGE, &addr, 0, NULL);
 	  pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 	}
       else
@@ -524,7 +523,15 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
       data += copy_length;
       length -= copy_length;
 
-      log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
+      if (isnewpage)
+	{
+	  log_append_undoredo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr, 0, copy_length + hdr_length, NULL,
+				    addr.pgptr);
+	}
+      else
+	{
+	  log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
+	}
 
       if (length > 0)
 	{

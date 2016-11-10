@@ -8741,11 +8741,6 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 	  /* deallocated */
 	  return NO_ERROR;
 	}
-      if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
-	{
-	  /* page was deallocated */
-	  return NO_ERROR;
-	}
     }
 
   /* Now call the REDO recovery function */

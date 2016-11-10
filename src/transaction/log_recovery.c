@@ -115,6 +115,9 @@ static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv
 static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv_buf, RECDES * record,
 						      bool is_undo);
 
+STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
+  __attribute__ ((ALWAYS_INLINE));
+
 /*
  * CRASH RECOVERY PROCESS
  */
@@ -2848,15 +2851,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      rcv_vpid.pageid = undoredo->data.pageid;
 
 	      rcv.pgptr = NULL;
+	      rcvindex = undoredo->data.rcvindex;
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
-						    &rcv.pgptr) != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      break;
-		    }
+		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
 		  if (rcv.pgptr == NULL)
 		    {
 		      /* deallocated */
@@ -2887,7 +2886,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      temp_length = undoredo->ulength;
 
-	      rcvindex = undoredo->data.rcvindex;
 	      rcv.length = undoredo->rlength;
 	      rcv.offset = undoredo->data.offset;
 	      rcv.mvcc_id = mvccid;
@@ -3048,15 +3046,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      rcv_vpid.pageid = redo->data.pageid;
 
 	      rcv.pgptr = NULL;
+	      rcvindex = redo->data.rcvindex;
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
-						    &rcv.pgptr) != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      break;
-		    }
+		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
 		  if (rcv.pgptr == NULL)
 		    {
 		      /* deallocated */
@@ -3085,7 +3079,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  rcv_page_lsaptr = NULL;
 		}
 
-	      rcvindex = redo->data.rcvindex;
 	      rcv.length = redo->length;
 	      rcv.offset = redo->data.offset;
 	      rcv.mvcc_id = mvccid;
@@ -3173,15 +3166,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      rcv_vpid.pageid = run_posp->data.pageid;
 
 	      rcv.pgptr = NULL;
+	      rcvindex = run_posp->data.rcvindex;
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
-						    &rcv.pgptr) != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      break;
-		    }
+		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
 		  if (rcv.pgptr == NULL)
 		    {
 		      /* deallocated */
@@ -3210,7 +3199,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  rcv_page_lsaptr = NULL;
 		}
 
-	      rcvindex = run_posp->data.rcvindex;
 	      rcv.length = run_posp->length;
 	      rcv.offset = run_posp->data.offset;
 
@@ -3267,15 +3255,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      rcv_vpid.pageid = compensate->data.pageid;
 
 	      rcv.pgptr = NULL;
+	      rcvindex = compensate->data.rcvindex;
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
-						    &rcv.pgptr) != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      break;
-		    }
+		  rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
 		  if (rcv.pgptr == NULL)
 		    {
 		      /* deallocated */
@@ -3304,7 +3288,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  rcv_page_lsaptr = NULL;
 		}
 
-	      rcvindex = compensate->data.rcvindex;
 	      rcv.length = compensate->length;
 	      rcv.offset = compensate->data.offset;
 
@@ -5684,4 +5667,44 @@ log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_siz
   ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
 
   return ptr;
+}
+
+/*
+ * log_rv_redo_fix_page () - fix page for recovery
+ *
+ * return        : fixed page or NULL
+ * thread_p (in) : thread entry
+ * vpid_rcv (in) : page identifier
+ * rcvindex (in) : recovery index of log record to redo
+ *
+ * note: based on recovery index we will do two types of fixing:
+ *       1. if recovery index belong to any new page initialization, we will fix using fetch type NEW_PAGE
+ *       2. for other indexes, we will fix the page only if it is not deallocated (if it is deallocated, recovery is
+ *          not necessary).
+ */
+STATIC_INLINE PAGE_PTR
+log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
+{
+  PAGE_PTR page = NULL;
+
+  assert (vpid_rcv != NULL && !VPID_ISNULL (vpid_rcv));
+  if (RCV_IS_NEW_PAGE_INIT (rcvindex))
+    {
+      page = pgbuf_fix (thread_p, vpid_rcv, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return NULL;
+	}
+    }
+  else
+    {
+      if (pgbuf_fix_if_not_deallocated (thread_p, vpid_rcv, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, &page)
+	  != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return NULL;
+	}
+    }
+  return page;
 }

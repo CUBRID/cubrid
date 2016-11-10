@@ -1785,8 +1785,6 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       ASSERT_ERROR_AND_SET (ret);
       goto end;
     }
-  log_append_undo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, next_pageptr, 0, 0, NULL);
-
   pgbuf_set_page_ptype (thread_p, next_pageptr, PAGE_BTREE);
 
   memcpy (next_pageptr, load_args->nleaf.pgptr, DB_PAGESIZE);
@@ -1797,10 +1795,10 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   load_args->nleaf.vpid = cur_nleafpgid;
 
   /* 
-   * The root page must be logged, otherwise, in the event of a crash. The
-   * index may be gone.
+   * The root page must be logged, otherwise, in the event of a crash. The index may be gone.
    */
-  btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr);
+  pgbuf_log_new_page (thread_p, next_pageptr, DB_PAGESIZE, PAGE_BTREE);
+
   /* Root was unfixed */
   load_args->nleaf.pgptr = NULL;
 

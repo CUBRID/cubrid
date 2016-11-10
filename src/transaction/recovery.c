@@ -407,7 +407,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVEH_INIT_DIR,
    "RVEH_INIT_DIR",
-   log_rv_copy_char,
+   pgbuf_rv_new_page_undo,
    ehash_rv_init_dir_redo,
    NULL,
    NULL},
