@@ -5456,8 +5456,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   char *rep_dir_offset;
   char *classname = NULL;	/* Classname to update */
   char *old_classname = NULL;	/* Classname that may have been renamed */
-
+#if defined(ENABLE_UNUSED_FUNCTION)
   bool isold_object;		/* Make sure that this is an old object */
+#endif
   RECDES copy_recdes;
   SCAN_CODE scan = S_SUCCESS;
 
@@ -5584,7 +5585,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	  goto error;
 	}
+#if defined(ENABLE_UNUSED_FUNCTION)
       isold_object = update_context.is_logical_old;
+#endif
 
       if (update_context.is_logical_old)
 	{
@@ -5655,7 +5658,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		    }
 		  goto error;
 		}
+#if defined(ENABLE_UNUSED_FUNCTION)
 	      isold_object = update_context.is_logical_old;
+#endif
 
 #if !defined(NDEBUG)
 	      or_class_rep_dir (recdes, &rep_dir);
@@ -6039,7 +6044,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	  goto error;
 	}
+#if defined(ENABLE_UNUSED_FUNCTION)
       isold_object = update_context.is_logical_old;
+#endif
 
       /* 
        * for replication,
@@ -6050,6 +6057,21 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  && repl_info.need_replication == true)
 	{
 	  repl_add_update_lsa (thread_p, oid);
+	}
+
+      if (oldrecdes != NULL)
+	{
+	  HEAP_CACHE_ATTRINFO attr_info;
+
+	  error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  error_code = heap_attrinfo_delete_lob (thread_p, oldrecdes, &attr_info);
+
+	  heap_attrinfo_end (thread_p, &attr_info);
 	}
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -7329,6 +7351,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
   RECDES recdes;		/* Record descriptor for object */
+  RECDES shrinked_recdes;
   int i;
   HEAP_SCANCACHE *force_scancache = NULL;
   HEAP_SCANCACHE scan_cache;
@@ -7337,6 +7360,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   int error_code = NO_ERROR;
   int pruning_type = 0;
   int has_index;
+  char *shrinked_recdes_buf = NULL;
 
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
@@ -7354,6 +7378,11 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
     {
       obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
       LC_RECDES_TO_GET_ONEOBJ (force_area, obj, &recdes);
+
+      if (shrinked_recdes_buf != NULL)
+	{
+	  db_private_free_and_init (thread_p, shrinked_recdes_buf);
+	}
 
       if (i == 0)
 	{
@@ -7391,16 +7420,24 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  continue;
 	}
 
+      if (LC_ONEOBJ_IS_OOR (obj) && (LC_IS_FLUSH_INSERT (obj->operation) || LC_IS_FLUSH_UPDATE (obj->operation)))
+	{
+	  error_code = heap_shrink_oor_attributes (thread_p, &obj->class_oid, &recdes, &shrinked_recdes,
+						   &shrinked_recdes_buf);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
       /* delete old row must be set to true for system classes and false for others, therefore it must be updated for
        * each object. */
 
-      switch (obj->operation)
-	{
+      switch (obj->operation){
 	case LC_FLUSH_INSERT:
 	case LC_FLUSH_INSERT_PRUNE:
 	case LC_FLUSH_INSERT_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
-	  /* TODO[arnia] : oor columns */
 	  error_code =
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, NULL, has_index,
 				  SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
@@ -7417,10 +7454,8 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_UPDATE_PRUNE:
 	case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
-	  /* TODO[arnia] : oor columns */
 	  error_code =
-	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
-				  NULL,
+	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, NULL,
 				  has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
 
@@ -7515,6 +7550,11 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
 
+  if (shrinked_recdes_buf != NULL)
+    {
+      db_private_free_and_init (thread_p, shrinked_recdes_buf);
+    }
+
   return error_code;
 
 error:
@@ -7530,6 +7570,12 @@ error:
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
   assert_release (error_code == ER_FAILED || error_code == er_errid ());
+
+  if (shrinked_recdes_buf != NULL)
+    {
+      db_private_free_and_init (thread_p, shrinked_recdes_buf);
+    }
+
   return error_code;
 }
 

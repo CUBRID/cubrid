@@ -25418,6 +25418,90 @@ exit:
 }
 
 /*
+ * heap_shrink_oor_attributes () - Remove OOR attributes from a recdes into LOB files and return shrinked record
+ *   return: NO_ERROR
+ *   inst_oid(in): The instance oid
+ *   recdes(in): The instance Record descriptor
+ */
+int
+heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID *class_oid_p, RECDES *old_recdes, RECDES *new_recdes,
+			    char **new_recdes_buffer)
+{
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  OUT_OF_ROW_CONTEXT shrink_oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  OUT_OF_ROW_ATTS oor_attrs = OUT_OF_ROW_ATTS_INITILIAZER;
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = NO_ERROR;
+  SCAN_CODE scan;
+  bool attr_info_inited = false;
+  OID dummy_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+
+  shrink_oor_context.oor_atts = &oor_attrs;
+
+  assert (class_oid_p != NULL);
+  assert (!OID_ISNULL (class_oid_p));
+  assert (old_recdes != NULL);
+  assert (new_recdes != NULL);
+  assert (new_recdes_buffer != NULL);
+
+  assert (OR_GET_OOR_BIT_FLAG (old_recdes->data) == 0);
+
+  if (OID_IS_ROOTOID (class_oid_p))
+    {
+      return error;
+    }
+
+  error = heap_attrinfo_start (thread_p, class_oid_p, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+      
+  attr_info_inited = true;
+
+  error = heap_attrinfo_read_dbvalues (thread_p, &dummy_oid, old_recdes, NULL, &attr_info, &oor_context);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  *new_recdes_buffer = db_private_alloc (thread_p, DB_PAGESIZE);
+  if (*new_recdes_buffer == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      heap_attrinfo_end (thread_p, &attr_info);
+      goto exit;
+    }
+
+  new_recdes->data = *new_recdes_buffer;
+  new_recdes->area_size = DB_PAGESIZE;
+
+  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, &attr_info, old_recdes, new_recdes,
+						     &shrink_oor_context);
+  if (scan != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto exit;      
+    }
+
+  *old_recdes = *new_recdes;
+  /* TODO[arnia] : handle doesn't fit error */
+exit:
+
+  heap_free_oor_context (thread_p, &shrink_oor_context);
+  heap_free_oor_context (thread_p, &oor_context);
+  
+  if (attr_info_inited == true)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      attr_info_inited = false;
+    }
+
+  return error;
+}
+
+
+/*
  * heap_rv_undo_ovf_update - Assure undo record corresponds with vacuum status
  *
  * return	: int

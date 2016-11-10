@@ -685,4 +685,6 @@ extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * cla
 extern int heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_CONTEXT *oor_context);
 extern int heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
+extern int heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID *class_oid_p, RECDES *old_recdes,
+				       RECDES *new_recdes, char **new_recdes_buffer);
 #endif /* _HEAP_FILE_H_ */

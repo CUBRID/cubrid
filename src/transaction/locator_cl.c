@@ -152,8 +152,8 @@ static void locator_mflush_end (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_index, int *round_length_p,
 				  WS_MAP_STATUS * map_status);
-static int locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_index, int *round_length_p,
-				WS_MAP_STATUS * map_status);
+static int locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_index, bool * has_oor_flag,
+				int *round_length_p, WS_MAP_STATUS * map_status);
 static void locator_mflush_set_dirty (MOP mop, MOBJ ignore_object, void *ignore_argument);
 static void locator_keep_mops (MOP mop, MOBJ object, void *kmops);
 static int locator_instance_decache (MOP mop, void *ignore);
@@ -4476,6 +4476,7 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_in
  *   mflush(in):
  *   object(in):
  *   has_index(out):
+ *   has_oor_flag(out): set true if any of the attributes should be stored out of row
  *   round_length_p(out):
  *   map_status(out):
  *
@@ -4483,15 +4484,15 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_in
  *       object does not fit. Force the area and try again
  */
 static int
-locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_index, int *round_length_p,
-		     WS_MAP_STATUS * map_status)
+locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_index, bool * has_oor_flag,
+		     int *round_length_p, WS_MAP_STATUS * map_status)
 {
   int error_code = NO_ERROR;
   TF_STATUS tfstatus;
   bool isalone;
   bool enable_mem_to_disk;
 
-  tfstatus = tf_mem_to_disk (mflush->class_mop, mflush->class_obj, object, &mflush->recdes, has_index);
+  tfstatus = tf_mem_to_disk (mflush->class_mop, mflush->class_obj, object, &mflush->recdes, has_index, has_oor_flag);
   if (tfstatus != TF_SUCCESS)
     {
       isalone = (mflush->mobjs->num_objs == 0) ? true : false;
@@ -4567,7 +4568,8 @@ locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_inde
 		  return ER_FAILED;
 		}
 
-	      tfstatus = tf_mem_to_disk (mflush->class_mop, mflush->class_obj, object, &mflush->recdes, has_index);
+	      tfstatus = tf_mem_to_disk (mflush->class_mop, mflush->class_obj, object, &mflush->recdes, has_index,
+					 has_oor_flag);
 	    }
 	  while (tfstatus != TF_SUCCESS);
 	}
@@ -4607,6 +4609,7 @@ locator_mflush (MOP mop, void *mf)
   LC_COPYAREA_OPERATION operation;	/* Flush operation to be executed: insert, update, delete, etc. */
   bool has_index;		/* is an index maintained on the instances? */
   bool has_unique_index;	/* is an unique maintained on the instances? */
+  bool has_oor_att = false;	/* has an attribute which needs to be stored out of row */
   int status;
   bool decache;
   WS_MAP_STATUS map_status;
@@ -4849,7 +4852,7 @@ locator_mflush (MOP mop, void *mf)
 	      mflush->hfid = sm_ch_heap (mflush->class_obj);
 	    }
 
-	  if (locator_mem_to_disk (mflush, object, &has_index, &round_length, &map_status) != NO_ERROR)
+	  if (locator_mem_to_disk (mflush, object, &has_index, &has_oor_att, &round_length, &map_status) != NO_ERROR)
 	    {
 	      return map_status;
 	    }
@@ -4974,6 +4977,11 @@ locator_mflush (MOP mop, void *mf)
   if (has_unique_index)
     {
       LC_ONEOBJ_SET_HAS_UNIQUE_INDEX (mflush->obj);
+    }
+
+  if (has_oor_att)
+    {
+      LC_ONEOBJ_SET_HAS_OOR (mflush->obj);
     }
 
   HFID_COPY (&mflush->obj->hfid, hfid);
