@@ -6030,46 +6030,31 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
       if (zone_id == -1)
 	{
 	  start = old_tzd.timezones[i].gmt_off_rule_start;
+	  tzd_or_old_tzd = &old_tzd;
 	}
       else
 	{
 	  start = timezones[zone_id].gmt_off_rule_start;
+	  tzd_or_old_tzd = tzd;
 	}
 
-      for (j = all_timezones[i].gmt_off_rule_start;
-	   j < all_timezones[i].gmt_off_rule_start + all_timezones[i].gmt_off_rule_count; j++)
+      for (j = 0; j < all_timezones[i].gmt_off_rule_count; j++)
 	{
-	  int offset_rule_index = start + j - all_timezones[i].gmt_off_rule_start;
-	  if (zone_id == -1)
-	    {
-	      int old_tzd_ds_ruleset = old_tzd.offset_rules[offset_rule_index].ds_ruleset;
+	  int tzd_or_old_tzd_ds_ruleset = tzd_or_old_tzd->offset_rules[start + j].ds_ruleset;
 
-	      if (old_tzd.offset_rules[offset_rule_index].ds_type != DS_TYPE_FIXED)
-		{
-		  ruleset_name = old_tzd.ds_rulesets[old_tzd_ds_ruleset].ruleset_name;
-		}
-	      else
-		{
-		  ruleset_name = NULL;
-		}
+	  if (tzd_or_old_tzd->offset_rules[start + j].ds_type != DS_TYPE_FIXED)
+	    {
+	      ruleset_name = tzd_or_old_tzd->ds_rulesets[tzd_or_old_tzd_ds_ruleset].ruleset_name;
 	    }
 	  else
 	    {
-	      int tzd_ds_ruleset = tzd->offset_rules[offset_rule_index].ds_ruleset;
-
-	      if (tzd->offset_rules[offset_rule_index].ds_type != DS_TYPE_FIXED)
-		{
-		  ruleset_name = tzd->ds_rulesets[tzd_ds_ruleset].ruleset_name;
-		}
-	      else
-		{
-		  ruleset_name = NULL;
-		}
+	      ruleset_name = NULL;
 	    }
+
 	  if (ruleset_name != NULL)
 	    {
 	      ruleset_id = tzc_get_ds_ruleset_by_name (all_ds_rulesets, all_ds_ruleset_count, ruleset_name);
-	      all_offset_rules[j].ds_ruleset = ruleset_id;
+	      all_offset_rules[all_timezones[i].gmt_off_rule_start + j].ds_ruleset = ruleset_id;
 	    }
 	}
     }
