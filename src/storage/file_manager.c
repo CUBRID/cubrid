@@ -7765,6 +7765,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	      /* todo: unreserve sector */
 	      goto exit;
 	    }
+	  pgbuf_set_page_ptype (thread_p, page_ftab_new, PAGE_FTAB);
 
 	  /* set link to previous page. */
 	  VPID_COPY (&extdata_part_ftab->vpid_next, &vpid_ftab_new);
@@ -7783,7 +7784,6 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	  page_ftab = page_ftab_new;
 	  extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), DB_PAGESIZE, extdata_part_ftab);
-	  page_ftab = page_ftab_new;
 
 	  file_log ("file_temp_alloc",
 		    "used newly reserved sector's first page %d|%d for partial table.", VPID_AS_ARGS (&vpid_ftab_new));
