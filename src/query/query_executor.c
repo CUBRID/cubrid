@@ -9798,7 +9798,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
     }
 
   /* TODO[arnia]*/
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, NULL, LOB_FLAG_EXCLUDE_LOB);
+  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, NULL,
+						      LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -10032,7 +10033,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
     }
 
   /* TODO[arnia] */
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, NULL, LOB_FLAG_INCLUDE_LOB);
+  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, NULL,
+						      LOB_FLAG_INCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
   if (copyarea == NULL)
     {
       goto error_exit;

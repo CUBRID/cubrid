@@ -44,6 +44,7 @@
 #include "server_interface.h"
 #include "xserver_interface.h"
 #include "transform.h"
+#include "locator_sr.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -873,7 +874,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   new_recdesc.data = PTR_ALIGN (copyarea_buf, MAX_ALIGNMENT);
   new_recdesc.area_size = DB_PAGESIZE;
 
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc, NULL);
+  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc, NULL, LOB_DELETE_ON_ATTR_INIT);
   if (scan != S_SUCCESS)
     {
       assert (false);

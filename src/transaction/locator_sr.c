@@ -7061,7 +7061,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
     {
       *copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, NULL, &new_recdes, -1, &oor_context,
-						 LOB_FLAG_INCLUDE_LOB);
+						 LOB_FLAG_INCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
       if (*copyarea == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -7593,14 +7593,16 @@ error:
  *   new_recdes(in): The resulting new representation of the object.
  *   copyarea_length_hint(in): An estimated size for the LC_COPYAREA or -1 if
  *                             an estimated size is not known.
+ *   oor_context(in/out) :
  *   lob_create_flag(in) :
+ *   lob_delete_flag(in) :
  *
  * Note: The allocated should be freed by using locator_free_copy_area ()
  */
 LC_COPYAREA *
 locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 					 RECDES * new_recdes, const int copyarea_length_hint,
-					 OUT_OF_ROW_CONTEXT *oor_context, int lob_create_flag)
+					 OUT_OF_ROW_CONTEXT *oor_context, int lob_create_flag, int lob_delete_flag)
 {
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
@@ -7619,11 +7621,13 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 
       if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
 	{
-	  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, new_recdes, oor_context);
+	  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, new_recdes, oor_context,
+							     lob_delete_flag);
 	}
       else
 	{
-	  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes, oor_context);
+	  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes, oor_context,
+						  lob_delete_flag);
 	}
 
       if (scan != S_SUCCESS)
@@ -7814,7 +7818,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
       copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1, &oor_context,
-						 LOB_FLAG_INCLUDE_LOB);
+						 LOB_FLAG_INCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
       if (copyarea == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -7824,11 +7828,9 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       if (oor_context.oor_atts->att_cnt > 0 &&
 	  !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	  /* TODO[arnia] : add flag to avoid deletion of old LOB files (already deleted by previous call of
-	   * locator_allocate_copy_area_by_attr_info */
 	   copyarea_expanded_oor =
 	     locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &oor_context.repl_record, -1,
-						      NULL, LOB_FLAG_EXCLUDE_LOB);
+						      NULL, LOB_FLAG_EXCLUDE_LOB, LOB_SKIP_DELETE_ON_ATTR_INIT);
 	    if (copyarea_expanded_oor == NULL)
 	      {
 		error_code = ER_FAILED;
@@ -13893,7 +13895,8 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
       /* TODO[arnia] : oor */
       mvcc_reev_data->copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, mvcc_reev_data->curr_attrinfo, recdes,
-						 mvcc_reev_data->new_recdes, -1, NULL, LOB_FLAG_INCLUDE_LOB);
+						 mvcc_reev_data->new_recdes, -1, NULL, LOB_FLAG_INCLUDE_LOB,
+						 LOB_DELETE_ON_ATTR_INIT);
       if (mvcc_reev_data->copyarea == NULL)
 	{
 	  ev_res = V_ERROR;
