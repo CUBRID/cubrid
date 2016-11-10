@@ -1104,23 +1104,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 
   /* Get page from first object. */
   VPID_GET_FROM_OID (&helper.home_vpid, &heap_objects->oid);
-  if (was_interrupted)
-    {
-      DISK_ISVALID valid = disk_is_page_sector_reserved (thread_p, helper.home_vpid.volid, helper.home_vpid.pageid);
-      if (valid == DISK_INVALID)
-	{
-	  /* Page was already deallocated in previous job run. */
-	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
-	  assert (n_heap_objects == 1);
-	  return NO_ERROR;
-	}
-      else if (valid == DISK_ERROR)
-	{
-	  assert_release (false);
-	  return ER_FAILED;
-	}
-      /* Valid page. Proceed to vacuum. */
-    }
 
 #if !defined (NDEBUG)
   /* Check all objects belong to same page. */
@@ -1147,14 +1130,38 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   VFID_SET_NULL (&helper.overflow_vfid);
 
   /* Fix heap page. */
-  helper.home_page = pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (helper.home_page == NULL)
+  if (was_interrupted)
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page %d|%d.\n",
-		     helper.home_vpid.volid, helper.home_vpid.pageid);
-      return error_code;
+      error_code =
+	pgbuf_fix_if_not_deallocated (thread_p, &helper.home_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
+				      &helper.home_page);
+      if (error_code != NO_ERROR)
+	{
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page %d|%d.\n",
+			 helper.home_vpid.volid, helper.home_vpid.pageid);
+	  return error_code;
+	}
+      if (helper.home_page == NULL)
+	{
+	  /* deallocated */
+	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
+	  assert (n_heap_objects == 1);
+	  return NO_ERROR;
+	}
     }
+  else
+    {
+      helper.home_page =
+	pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (helper.home_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page %d|%d.\n",
+			 helper.home_vpid.volid, helper.home_vpid.pageid);
+	  return error_code;
+	}
+    }
+
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 
   helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page, NULL);
@@ -4939,8 +4946,8 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      vacuum_data_initialize_new_page (thread_p, data_page);
 	      /* Set vacuum_Data.last_blockid to first entry blockid. */
 	      data_page->data->blockid = vacuum_Data.last_blockid;
-	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
-				     sizeof (vacuum_Data.last_blockid), &vacuum_Data.last_blockid);
+	      log_append_undoredo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
+					 0, sizeof (vacuum_Data.last_blockid), NULL, &vacuum_Data.last_blockid);
 
 	      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 
@@ -5794,8 +5801,9 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
     }
 #endif
 
-  log_append_redo_page (thread_p, (PAGE_PTR) new_page, sizeof (VACUUM_DROPPED_FILES_PAGE), PAGE_DROPPED_FILES);
   pgbuf_set_page_ptype (thread_p, (PAGE_PTR) new_page, PAGE_DROPPED_FILES);
+  pgbuf_log_new_page (thread_p, (PAGE_PTR) new_page, sizeof (VACUUM_DROPPED_FILES_PAGE), PAGE_DROPPED_FILES);
+
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
 		 "VACUUM: thread(%d): added new dropped file(%d, %d) and mvccid=%llu to at position=%d. "
@@ -5807,8 +5815,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 		 (int) pgbuf_get_lsa ((PAGE_PTR) new_page)->offset, new_page->n_dropped_files,
 		 vacuum_Dropped_files_count);
 
-  /* Set dirty and unfix new page */
-  vacuum_set_dirty_dropped_entries_page (thread_p, new_page, FREE);
+  /* Unfix new page */
+  vacuum_unfix_dropped_entries_page (thread_p, new_page);
 
   /* Save a link to the new page in last page */
   vacuum_dropped_files_set_next_page (thread_p, page, &vpid);

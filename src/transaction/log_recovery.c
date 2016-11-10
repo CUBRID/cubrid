@@ -2851,13 +2851,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+		  if (pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
+						    &rcv.pgptr) != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
 		      break;
 		    }
-		  rcv.pgptr = pgbuf_fix (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 		  if (rcv.pgptr == NULL)
 		    {
+		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3049,13 +3051,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+		  if (pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
+						    &rcv.pgptr) != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
 		      break;
 		    }
-		  rcv.pgptr = pgbuf_fix (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 		  if (rcv.pgptr == NULL)
 		    {
+		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3172,13 +3176,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+		  if (pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
+						    &rcv.pgptr) != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
 		      break;
 		    }
-		  rcv.pgptr = pgbuf_fix (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 		  if (rcv.pgptr == NULL)
 		    {
+		      /* deallocated */
 		      break;
 		    }
 		}
@@ -3264,13 +3270,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
-		  if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+		  if (pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
+						    &rcv.pgptr) != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
 		      break;
 		    }
-		  rcv.pgptr = pgbuf_fix (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 		  if (rcv.pgptr == NULL)
 		    {
+		      /* deallocated */
 		      break;
 		    }
 		}

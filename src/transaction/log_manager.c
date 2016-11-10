@@ -1966,48 +1966,6 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
 }
 
 /*
- * log_append_redo_page () - Log first data_size bytes of page for redo.
- *
- * return	      : Void.
- * thread_p (in)      : Thread entry.
- * page (in)	      : Page being logged.
- * data_size (in)     : Size of data being logged.
- * set_page_type (in) : If not PAGE_UNKNOWN, recovery will set page type too.
- */
-void
-log_append_redo_page (THREAD_ENTRY * thread_p, PAGE_PTR page, int data_size, PAGE_TYPE set_page_type)
-{
-  log_append_redo_data2 (thread_p, RVPG_REDO_PAGE, NULL, page, (PGLENGTH) set_page_type, data_size, page);
-}
-
-/*
- * log_redo_page () - Apply redo for changing entire page (or at least its first part).
- *
- * return	 : NO_ERROR.
- * thread_p (in) : Thread entry.
- * rcv (in)	 : Recovery data.
- */
-int
-log_rv_redo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  PAGE_TYPE set_page_type;
-  assert (rcv->pgptr != NULL);
-  assert (rcv->length > 0);
-  assert (rcv->length <= DB_PAGESIZE);
-
-  memcpy (rcv->pgptr, rcv->data, rcv->length);
-
-  set_page_type = (PAGE_TYPE) rcv->offset;
-  if (set_page_type != PAGE_UNKNOWN)
-    {
-      pgbuf_set_page_ptype (thread_p, rcv->pgptr, set_page_type);
-    }
-
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-  return NO_ERROR;
-}
-
-/*
  * log_append_undoredo_crumbs -  LOG UNDO (BEFORE) + REDO (AFTER) CRUMBS OF DATA
  *
  * return: nothing
@@ -8769,22 +8727,24 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
     }
   else
     {
-      if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+      error_code =
+	pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, &rcv.pgptr);
+      if (error_code != NO_ERROR)
 	{
-	  /* page was deallocated */
-	  return NO_ERROR;
-	}
-
-      rcv.pgptr = pgbuf_fix_with_retry (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, 10);
-      if (rcv.pgptr == NULL)
-	{
-	  /* 
-	   * Unable to fetch page of volume... May need media recovery on such page
-	   */
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
 		  fileio_get_volume_label (rcv_vpid.volid, PEEK));
 	  return ER_LOG_MAYNEED_MEDIA_RECOVERY;
+	}
+      if (rcv.pgptr == NULL)
+	{
+	  /* deallocated */
+	  return NO_ERROR;
+	}
+      if (disk_is_page_sector_reserved (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID)
+	{
+	  /* page was deallocated */
+	  return NO_ERROR;
 	}
     }
 

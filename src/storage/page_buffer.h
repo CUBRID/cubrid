@@ -191,6 +191,7 @@ typedef enum
 				 * deallocated or flushed and invalidated from buffer, in which case fixing page is not
 				 * necessary. */
   OLD_PAGE_PREVENT_DEALLOC,	/* Fetch existing page and mark its memory buffer, to prevent deallocation. */
+  OLD_PAGE_DEALLOCATED,		/* Fetch page that has been deallocated. */
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */
@@ -474,5 +475,23 @@ extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
 extern int pgbuf_get_hold_count (THREAD_ENTRY * thread_p);
 
 extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (PAGE_PTR pgptr);
+
+extern void pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
+extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+int pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR * page_dealloc);
+extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, VPID * vpid, PGBUF_LATCH_MODE latch_mode,
+						     PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
+						     const char *caller_file, int caller_line);
+#if defined (NDEBUG)
+#define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
+  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, NULL, 0)
+#else /* !NDEBUG */
+#define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
+  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)
+#endif /* !NDEBUG */
 
 #endif /* _PAGE_BUFFER_H_ */
