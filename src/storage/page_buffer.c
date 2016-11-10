@@ -12390,7 +12390,7 @@ pgbuf_set_check_page_validation (THREAD_ENTRY * thread_p, bool check)
 {
 #if defined (SERVER_MODE)
   return thread_set_check_page_validation (thread_p, check);
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   bool save_check = pgbuf_SA_check_page_validation;
   pgbuf_SA_check_page_validation = check;
   return save_check;
@@ -12408,7 +12408,7 @@ pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   return thread_get_check_page_validation (thread_p);
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   return pgbuf_SA_check_page_validation;
 #endif /* SA_MODE */
 }
