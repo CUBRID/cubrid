@@ -1785,6 +1785,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       ASSERT_ERROR_AND_SET (ret);
       goto end;
     }
+  log_append_undo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, next_pageptr, 0, 0, NULL);
+
   pgbuf_set_page_ptype (thread_p, next_pageptr, PAGE_BTREE);
 
   memcpy (next_pageptr, load_args->nleaf.pgptr, DB_PAGESIZE);

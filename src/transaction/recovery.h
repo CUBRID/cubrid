@@ -208,7 +208,7 @@ typedef enum
 
   RVHF_MVCC_UPDATE_OVERFLOW = 150,
 
-  RVPG_REDO_PAGE = 151,
+  RVPGBUF_NEW_PAGE = 151,
 
   RVDK_RESERVE_SECTORS = 152,
   RVDK_UNRESERVE_SECTORS = 153,
@@ -239,7 +239,10 @@ typedef enum
   RVFL_EXTDATA_MERGE_COMPARE_TRACK_ITEM = 176,
   RVFL_EXTDATA_UPDATE_ITEM = 177,
 
-  RV_LAST_LOGID = RVFL_EXTDATA_UPDATE_ITEM,
+  RVPGBUF_DEALLOC = 178,
+  RVPGBUF_COMPENSATE_DEALLOC = 179,
+
+  RV_LAST_LOGID = RVPGBUF_COMPENSATE_DEALLOC,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -292,7 +295,8 @@ extern void rv_check_rvfuns (void);
 #define RCV_IS_LOGICAL_COMPENSATE_MANUAL(idx) \
   (RCV_IS_BTREE_LOGICAL_LOG(idx) \
    || (idx) == RVFL_ALLOC \
-   || (idx) == RVFL_USER_PAGE_MARK_DELETE)
+   || (idx) == RVFL_USER_PAGE_MARK_DELETE \
+   || (idx) == RVPGBUF_DEALLOC)
 #define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
   ((idx) == RVFL_DEALLOC)
 
@@ -300,12 +304,13 @@ extern void rv_check_rvfuns (void);
   (((vpid)->volid == NULL_VOLID) \
    || ((vpid)->pageid == NULL_PAGEID) \
    || RCV_IS_BTREE_LOGICAL_LOG (idx) \
-   || ((idx) == RVBT_MVCC_INCREMENTS_UPD) \
-   || ((idx) == RVBT_CREATE_INDEX) \
-   || ((idx) == RVPGBUF_FLUSH_PAGE) \
-   || ((idx) == RVFL_DESTROY) \
-   || ((idx) == RVFL_ALLOC) \
-   || ((idx) == RVFL_DEALLOC) \
-   || ((idx) == RVVAC_NOTIFY_DROPPED_FILE))
+   || (idx) == RVBT_MVCC_INCREMENTS_UPD \
+   || (idx) == RVBT_CREATE_INDEX \
+   || (idx) == RVPGBUF_FLUSH_PAGE \
+   || (idx) == RVFL_DESTROY \
+   || (idx) == RVFL_ALLOC \
+   || (idx) == RVFL_DEALLOC \
+   || (idx) == RVVAC_NOTIFY_DROPPED_FILE \
+   || (idx) == RVPGBUF_DEALLOC)
 
 #endif /* _RECOVERY_H_ */

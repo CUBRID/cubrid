@@ -290,7 +290,6 @@
  */
 #define BTREE_IS_PAGE_VALID_LEAF(thread_p, page) \
   ((page) != NULL \
-   && pgbuf_is_valid_page (thread_p, pgbuf_get_vpid_ptr (page), true, NULL, NULL) \
    && pgbuf_get_page_ptype (thread_p, page) == PAGE_BTREE \
    && spage_get_slot (page, HEADER) != NULL \
    && spage_get_slot (page, HEADER)->record_length == sizeof (BTREE_NODE_HEADER) \
@@ -4871,7 +4870,7 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 
   alignment = *((unsigned short *) args);
   spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
-  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, sizeof (alignment), &alignment);
+  log_append_undoredo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, 0, sizeof (alignment), NULL, &alignment);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;
@@ -23295,11 +23294,17 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * 
   /* Lock granted. */
 
   /* Try to re-fix page. */
-  *leaf_page = pgbuf_fix_without_validation (thread_p, &leaf_vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  error_code = pgbuf_fix_if_not_deallocated (thread_p, &leaf_vpid, latch_mode, PGBUF_UNCONDITIONAL_LATCH, leaf_page);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
   if (*leaf_page == NULL)
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      goto error;
+      /* deallocated */
+      *restart = true;
+      return NO_ERROR;
     }
   /* Page successfully re-fixed. */
 
@@ -23971,40 +23976,31 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   if (!bts->force_restart_from_root)
     {
       /* Try to resume from saved leaf node. */
-      bts->C_page =
-	pgbuf_fix_without_validation (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (bts->C_page == NULL)
+      error_code =
+	pgbuf_fix_if_not_deallocated (thread_p, &bts->C_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+				      &bts->C_page);
+      if (error_code != NO_ERROR)
 	{
-	  /* Error */
-	  ASSERT_ERROR_AND_SET (error_code);
+	  ASSERT_ERROR ();
 	  return error_code;
 	}
-
-      if (LSA_EQ (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
+      if (bts->C_page != NULL)
 	{
-	  /* Leaf page suffered no changes while range search was interrupted. Range search can be resumed using
-	   * current position. */
-	  return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
-	}
-
-      /* Page suffered some changes. */
-      if (BTREE_IS_PAGE_VALID_LEAF (thread_p, bts->C_page))
-	{
-	  /* Page is still a valid leaf page. Check if key still exists. */
-	  /* Is key still in this page? */
-	  error_code =
-	    btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, bts->C_page, &bts->cur_key, &search_key);
-	  if (error_code != NO_ERROR)
+	  /* Try to resume from this page  */
+	  if (LSA_EQ (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page)))
 	    {
-	      /* Error! */
-	      pgbuf_unfix_and_init (thread_p, bts->C_page);
-	      ASSERT_ERROR ();
-	      return error_code;
+	      /* Leaf page suffered no changes while range search was interrupted. Range search can be resumed using
+	       * current position. */
+	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
 	    }
-	  if (search_key.result == BTREE_KEY_BETWEEN)
+
+	  /* Page suffered some changes. */
+	  if (BTREE_IS_PAGE_VALID_LEAF (thread_p, bts->C_page))
 	    {
-	      /* We need to find slot of key. */
-	      error_code = btree_search_leaf_page (thread_p, &bts->btid_int, bts->C_page, &bts->cur_key, &search_key);
+	      /* Page is still a valid leaf page. Check if key still exists. */
+	      /* Is key still in this page? */
+	      error_code =
+		btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, bts->C_page, &bts->cur_key, &search_key);
 	      if (error_code != NO_ERROR)
 		{
 		  /* Error! */
@@ -24012,50 +24008,67 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 		  ASSERT_ERROR ();
 		  return error_code;
 		}
-	    }
-	  switch (search_key.result)
-	    {
-	    case BTREE_KEY_FOUND:
-	      /* Key was found. Use this key. */
-	      bts->slot_id = search_key.slotid;
-	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
-
-	    case BTREE_KEY_BETWEEN:
-	      /* Key should have been in this page, but it was removed. Proceed to next key. */
-	      if (bts->use_desc_index)
+	      if (search_key.result == BTREE_KEY_BETWEEN)
 		{
-		  /* Use previous slot. */
-		  bts->slot_id = search_key.slotid - 1;
-		  assert (bts->slot_id >= 1 && bts->slot_id <= btree_node_number_of_keys (bts->C_page));
+		  /* We need to find slot of key. */
+		  error_code =
+		    btree_search_leaf_page (thread_p, &bts->btid_int, bts->C_page, &bts->cur_key, &search_key);
+		  if (error_code != NO_ERROR)
+		    {
+		      /* Error! */
+		      pgbuf_unfix_and_init (thread_p, bts->C_page);
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
 		}
-	      else
+	      switch (search_key.result)
 		{
-		  /* Use next slotid. */
+		case BTREE_KEY_FOUND:
+		  /* Key was found. Use this key. */
 		  bts->slot_id = search_key.slotid;
-		  assert (bts->slot_id >= 1 && bts->slot_id <= btree_node_number_of_keys (bts->C_page));
+		  return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
+
+		case BTREE_KEY_BETWEEN:
+		  /* Key should have been in this page, but it was removed. Proceed to next key. */
+		  if (bts->use_desc_index)
+		    {
+		      /* Use previous slot. */
+		      bts->slot_id = search_key.slotid - 1;
+		      assert (bts->slot_id >= 1 && bts->slot_id <= btree_node_number_of_keys (bts->C_page));
+		    }
+		  else
+		    {
+		      /* Use next slotid. */
+		      bts->slot_id = search_key.slotid;
+		      assert (bts->slot_id >= 1 && bts->slot_id <= btree_node_number_of_keys (bts->C_page));
+		    }
+		  bts->key_status = BTS_KEY_IS_NOT_VERIFIED;
+		  return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
+
+		case BTREE_KEY_SMALLER:
+		case BTREE_KEY_BIGGER:
+		  /* Key is no longer in this leaf node. Locate key by advancing from root. */
+		  /* Fall through. */
+		  break;
+
+		default:
+		  /* Unexpected. */
+		  assert (false);
+		  pgbuf_unfix_and_init (thread_p, bts->C_page);
+		  return ER_FAILED;
 		}
-	      bts->key_status = BTS_KEY_IS_NOT_VERIFIED;
-	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
-
-	    case BTREE_KEY_SMALLER:
-	    case BTREE_KEY_BIGGER:
-	      /* Key is no longer in this leaf node. Locate key by advancing from root. */
-	      /* Fall through. */
-	      break;
-
-	    default:
-	      /* Unexpected. */
-	      assert (false);
-	      pgbuf_unfix_and_init (thread_p, bts->C_page);
-	      return ER_FAILED;
 	    }
+	  else			/* !BTREE_IS_PAGE_VALID_LEAF (bts->C_page) */
+	    {
+	      /* Page must have been deallocated/reused for other purposes. */
+	      /* Fall through. */
+	    }
+	  pgbuf_unfix_and_init (thread_p, bts->C_page);
 	}
-      else			/* !BTREE_IS_PAGE_VALID_LEAF (bts->C_page) */
+      else
 	{
-	  /* Page must have been deallocated/reused for other purposes. */
-	  /* Fall through. */
+	  /* bts->C_Page is null because it was deallocated. we need to search the key again. fall through */
 	}
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
   /* Couldn't resume from saved leaf node. */
 
@@ -24371,12 +24384,18 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
 
   /* Unfix current page and retry. */
   pgbuf_unfix_and_init (thread_p, bts->C_page);
-  prev_leaf =
-    pgbuf_fix_without_validation (thread_p, &prev_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  error_code =
+    pgbuf_fix_if_not_deallocated (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
   if (prev_leaf == NULL)
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      /* deallocated */
+      bts->force_restart_from_root = true;
+      return NO_ERROR;
     }
   if (!BTREE_IS_PAGE_VALID_LEAF (thread_p, prev_leaf))
     {
