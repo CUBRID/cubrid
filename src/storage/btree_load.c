@@ -1797,10 +1797,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   /* 
    * The root page must be logged, otherwise, in the event of a crash. The index may be gone.
    */
-  pgbuf_log_new_page (thread_p, next_pageptr, DB_PAGESIZE, PAGE_BTREE);
-
-  /* Root was unfixed */
-  load_args->nleaf.pgptr = NULL;
+  pgbuf_log_new_page (thread_p, load_args->nleaf.pgptr, DB_PAGESIZE, PAGE_BTREE);
+  pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
 
   assert (ret == NO_ERROR);
 
