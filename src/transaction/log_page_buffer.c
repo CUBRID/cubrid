@@ -373,8 +373,8 @@ static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
 
-static int prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data);
-static int prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data);
+static int prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, const char *data);
+static int prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node, int length, const char *data);
 static int prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node, int num_crumbs, const LOG_CRUMB * crumbs);
 static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node, int num_crumbs, const LOG_CRUMB * crumbs);
 static void prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES * tdes);
@@ -382,11 +382,11 @@ static void prior_lsa_end_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node
 static void prior_lsa_append_data (int length);
 static void prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * crumbs);
 static int prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
-					  LOG_DATA_ADDR * addr, int length, char *data);
+					  LOG_DATA_ADDR * addr, int length, const char *data);
 static int prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
-					    int length, char *data);
+					    int length, const char *data);
 static int prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYPE rec_type, int length,
-				 char *data);
+				 const char *data);
 static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int num_ucrumbs,
 						      const LOG_CRUMB * ucrumbs, int num_rcrumbs,
@@ -2590,7 +2590,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
  *   data(in):
  */
 static int
-prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data)
+prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, const char *data)
 {
   if (length <= 0 || data == NULL)
     {
@@ -2621,7 +2621,7 @@ prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data)
  *   data(in):
  */
 static int
-prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data)
+prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node, int length, const char *data)
 {
   if (length <= 0 || data == NULL)
     {
@@ -3156,7 +3156,7 @@ error:
  */
 static int
 prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
-			       LOG_DATA_ADDR * addr, int length, char *data)
+			       LOG_DATA_ADDR * addr, int length, const char *data)
 {
   LOG_REC_REDO *redo;
   VPID *vpid;
@@ -3203,7 +3203,7 @@ prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, L
  */
 static int
 prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex, int length,
-				 char *data)
+				 const char *data)
 {
   LOG_REC_DBOUT_REDO *dbout_redo;
   int error_code = NO_ERROR;
@@ -3238,7 +3238,7 @@ prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
  */
 static int
 prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, int gtran_length,
-				  char *gtran_data, int lock_length, char *lock_data)
+				  const char *gtran_data, int lock_length, const char *lock_data)
 {
   int error_code = NO_ERROR;
 
@@ -3274,8 +3274,8 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node
  *   topop_data(in):
  */
 static int
-prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, int tran_length, char *tran_data,
-				int topop_length, char *topop_data)
+prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, int tran_length, const char *tran_data,
+				int topop_length, const char *topop_data)
 {
   int error_code = NO_ERROR;
 
@@ -3310,7 +3310,8 @@ prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
  *   data(in):
  */
 static int
-prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYPE rec_type, int length, char *data)
+prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYPE rec_type, int length,
+		      const char *data)
 {
   int error_code = NO_ERROR;
 
@@ -3414,7 +3415,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
  */
 LOG_PRIOR_NODE *
 prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
-			       LOG_DATA_ADDR * addr, int ulength, char *udata, int rlength, char *rdata)
+			       LOG_DATA_ADDR * addr, int ulength, const char *udata, int rlength, const char *rdata)
 {
   LOG_PRIOR_NODE *node;
   int error_code = NO_ERROR;
@@ -7839,7 +7840,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
 		      chkpt_topone = &chkpt_topops[ntops];
 		      chkpt_topone->trid = act_tdes->trid;
-		      chkpt_topone->sysop_start_postpone = tdes->rcv.sysop_start_postpone;
 		      chkpt_topone->sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
 		      ntops++;
 		      break;

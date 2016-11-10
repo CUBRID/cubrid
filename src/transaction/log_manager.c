@@ -224,9 +224,10 @@ static bool log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
 static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr);
 static void log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa);
 static void log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-					     LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone);
+					     LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int data_size,
+					     const char *data);
 static void log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
-				  int data_size, char *data);
+				  int data_size, const char *data);
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -274,10 +275,7 @@ static LOG_PAGE *log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FI
 static LOG_PAGE *log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 					      LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
-						       LOG_PAGE * log_page_p);
-static void log_dump_record_sysop_start_postpone_internal (THREAD_ENTRY * thread_p,
-							   LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone,
-							   FILE * out_fp);
+						       LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static LOG_PAGE *log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 					    LOG_ZIP * log_zip_p, FILE * out_fp);
 static LOG_PAGE *log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end,
@@ -329,7 +327,8 @@ STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, i
 STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
-static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end);
+static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
+				   int data_size, const char *data);
 
 /*
  * log_rectype_string - RETURN TYPE OF LOG RECORD IN STRING FORMAT
@@ -3740,7 +3739,7 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  * log_record (in) : All information that are required to build the log record for commit system operation.
  */
 void
-log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size, char *data)
+log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size, const char *data)
 {
   int tran_index;
   LOG_TDES *tdes = NULL;
@@ -3791,8 +3790,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	}
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO || log_record->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
-	  /* to allow postpone records, we need to extend implementation of sys op start postpone */
-	  assert (LSA_ISNULL (LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)));
+	  /* hm... no restrictions I can think of */
 	}
       else
 	{
@@ -3813,7 +3811,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       log_record->prv_topresult_lsa = tdes->tail_topresult_lsa;
 
       /* do postpone */
-      log_sysop_do_postpone (thread_p, tdes, log_record);
+      log_sysop_do_postpone (thread_p, tdes, log_record, data_size, data);
 
       /* log system operation end */
       log_append_sysop_end (thread_p, tdes, log_record, data_size, data);
@@ -3862,7 +3860,7 @@ log_sysop_commit (THREAD_ENTRY * thread_p)
  */
 void
 log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, int undo_size,
-			    char *undo_data)
+			    const char *undo_data)
 {
   LOG_REC_SYSOP_END log_record;
 
@@ -4332,15 +4330,19 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
  * thread_p (in)             : thread entry
  * tdes (in)                 : transaction descriptor
  * sysop_start_postpone (in) : start postpone log record
+ * data_size (in)            : undo data size
+ * data (in)                 : undo data
  */
 static void
 log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				 LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone)
+				 LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int data_size, const char *data)
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_START_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_START_POSTPONE, RV_NOT_DEFINED, NULL, data_size, (char *) data,
+				   0, NULL);
   if (node == NULL)
     {
       return;
@@ -4380,7 +4382,7 @@ log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  */
 static void
 log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end, int data_size,
-		      char *data)
+		      const char *data)
 {
   LOG_PRIOR_NODE *node = NULL;
 
@@ -6840,22 +6842,6 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
 }
 
 /*
- * log_dump_record_sysop_start_postpone_internal () - dump system op start postpone log record
- *
- * return                    : void
- * thread_p (in)             : thread entry
- * sysop_start_postpone (in) : system op start postpone log record
- * out_fp (in/out)           : dump output
- */
-static void
-log_dump_record_sysop_start_postpone_internal (THREAD_ENTRY * thread_p,
-					       LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, FILE * out_fp)
-{
-  (void) log_dump_record_sysop_end_internal (thread_p, &sysop_start_postpone->sysop_end, NULL, NULL, NULL, out_fp);
-  fprintf (out_fp, "     postpone_lsa = %lld|%d \n", LSA_AS_ARGS (&sysop_start_postpone->posp_lsa));
-}
-
-/*
  * log_dump_record_sysop_start_postpone () - dump system op start postpone log record
  *
  * return              : log page
@@ -6863,17 +6849,21 @@ log_dump_record_sysop_start_postpone_internal (THREAD_ENTRY * thread_p,
  * out_fp (in/out)     : dump output
  * log_lsa (in/out)    : log lsa
  * log_page_p (in/out) : log page
+ * log_zip_p (in/out)  : log unzip
  */
 static LOG_PAGE *
-log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				      LOG_ZIP * log_zip_p)
 {
-  LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone;
+  LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 
   /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_start_postpone), log_lsa, log_page_p);
-  sysop_start_postpone = ((LOG_REC_SYSOP_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset));
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (sysop_start_postpone), log_lsa, log_page_p);
+  sysop_start_postpone = *((LOG_REC_SYSOP_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset));
 
-  log_dump_record_sysop_start_postpone_internal (thread_p, sysop_start_postpone, out_fp);
+  (void) log_dump_record_sysop_end_internal (thread_p, &sysop_start_postpone.sysop_end, log_lsa, log_page_p, log_zip_p,
+					     out_fp);
+  fprintf (out_fp, "     postpone_lsa = %lld|%d \n", LSA_AS_ARGS (&sysop_start_postpone.posp_lsa));
 
   return log_page_p;
 }
@@ -7004,7 +6994,6 @@ log_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
       fprintf (out_fp, "     Trid = %d \n", chkpt_topone->trid);
       fprintf (out_fp, "     Sysop start postpone LSA = %lld|%d \n",
 	       LSA_AS_ARGS (&chkpt_topone->sysop_start_postpone_lsa));
-      log_dump_record_sysop_start_postpone_internal (NULL, &chkpt_topone->sysop_start_postpone, out_fp);
     }
   (void) fprintf (out_fp, "\n");
 }
@@ -7203,7 +7192,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       break;
 
     case LOG_SYSOP_START_POSTPONE:
-      log_page_p = log_dump_record_sysop_start_postpone (thread_p, out_fp, log_lsa, log_page_p);
+      log_page_p = log_dump_record_sysop_start_postpone (thread_p, out_fp, log_lsa, log_page_p, log_zip_p);
       break;
 
     case LOG_SYSOP_END:
@@ -8353,9 +8342,12 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  * thread_p (in)  : thread entry
  * tdes (in)      : transaction descriptor
  * sysop_end (in) : system end op log record
+ * data_size (in) : data size (for logical undo)
+ * data (in)      : data (for logical undo)
  */
 static void
-log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end)
+log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end, int data_size,
+		       const char *data)
 {
   LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 
@@ -8366,17 +8358,14 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
     }
 
   assert (sysop_end != NULL);
-  assert (sysop_end->type != LOG_SYSOP_END_ABORT && sysop_end->type != LOG_SYSOP_END_LOGICAL_UNDO
-	  && sysop_end->type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
+  assert (sysop_end->type != LOG_SYSOP_END_ABORT);
   /* we cannot have TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE inside TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE */
   assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
 
   sysop_start_postpone.sysop_end = *sysop_end;
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
-  /* for checkpoint and recovery */
-  tdes->rcv.sysop_start_postpone = sysop_start_postpone;
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
-  log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone);
+  log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p)
       && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
@@ -9999,4 +9988,93 @@ exit:
     }
 
   return scan;
+}
+
+/*
+ * log_read_sysop_start_postpone () - read system op start postpone and its recovery data
+ *
+ * return                     : error code
+ * thread_p (in)              : thread entry
+ * log_lsa (in/out)           : log address
+ * log_page (in/out)          : log page
+ * with_undo_data (in)        : true to read undo data
+ * sysop_start_postpone (out) : output system op start postpone log record
+ * undo_buffer_size (in/out)  : size for undo data buffer
+ * undo_buffer (in/out)       : undo data buffer
+ * undo_size (out)            : output undo data size
+ * undo_data (out)            : output undo data
+ */
+int
+log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page, bool with_undo_data,
+			       LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int *undo_buffer_size,
+			       char **undo_buffer, int *undo_size, char **undo_data)
+{
+  int error_code = NO_ERROR;
+
+  if (log_page->hdr.logical_pageid != log_lsa->pageid)
+    {
+      error_code = logpb_fetch_page (thread_p, log_lsa, LOG_CS_FORCE_USE, log_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
+  assert (((LOG_RECORD_HEADER *) (log_page->area + log_lsa->offset))->type == LOG_SYSOP_START_POSTPONE);
+
+  /* skip log record header */
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page);
+
+  *sysop_start_postpone = *(LOG_REC_SYSOP_START_POSTPONE *) (log_page->area + log_lsa->offset);
+  if (!with_undo_data
+      || (sysop_start_postpone->sysop_end.type != LOG_SYSOP_END_LOGICAL_UNDO
+	  && sysop_start_postpone->sysop_end.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
+    {
+      /* no undo */
+      return NO_ERROR;
+    }
+
+  /* read undo data and size */
+  assert (undo_buffer_size != NULL);
+  assert (undo_buffer != NULL);
+  assert (undo_size != NULL);
+  assert (undo_data != NULL);
+
+  if (sysop_start_postpone->sysop_end.type == LOG_SYSOP_END_LOGICAL_UNDO)
+    {
+      *undo_size = sysop_start_postpone->sysop_end.undo.length;
+    }
+  else
+    {
+      assert (sysop_start_postpone->sysop_end.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
+      *undo_size = sysop_start_postpone->sysop_end.mvcc_undo.undo.length;
+    }
+
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), log_lsa, log_page);
+  if (log_lsa->offset + (*undo_size) < (int) LOGAREA_SIZE)
+    {
+      *undo_data = log_page->area + log_lsa->offset;
+    }
+  else
+    {
+      if (*undo_buffer_size == 0)
+	{
+	  *undo_buffer = (char *) db_private_alloc (thread_p, *undo_size);
+	}
+      else if (*undo_buffer_size < *undo_size)
+	{
+	  char *new_ptr = (char *) db_private_realloc (thread_p, *undo_buffer, *undo_size);
+	  if (new_ptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, *undo_size);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  *undo_buffer_size = *undo_size;
+	  *undo_buffer = new_ptr;
+	}
+      *undo_data = *undo_buffer;
+      logpb_copy_from_log (thread_p, *undo_data, *undo_size, log_lsa, log_page);
+    }
+  return NO_ERROR;
 }

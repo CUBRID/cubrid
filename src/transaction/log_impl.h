@@ -1524,7 +1524,6 @@ typedef struct log_info_chkpt_sysop_start_postpone LOG_INFO_CHKPT_SYSOP_START_PO
 struct log_info_chkpt_sysop_start_postpone
 {
   TRANID trid;			/* Transaction identifier */
-  LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;	/* saved log record for system op start postpone */
   LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
 };
 
@@ -1588,10 +1587,8 @@ typedef struct log_rcv_tdes LOG_RCV_TDES;
 struct log_rcv_tdes
 {
   /* structure stored in transaction descriptor and used for recovery purpose.
-   * currently we store the log record for system ops that are doing postpone. this log record is used to end system
-   * op properly after recovering the entire postpone of system op. */
-  LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
-  /* LSA of system operation start postpone */
+   * currently we store the LSA of a system op start postpone. it is required to finish the system op postpone phase
+   * correctly */
   LOG_LSA sysop_start_postpone_lsa;
 };
 
@@ -2055,7 +2052,7 @@ extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int ulength,
-						      char *udata, int rlength, char *rdata);
+						      const char *udata, int rlength, const char *rdata);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 							LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 							const int num_ucrumbs, const LOG_CRUMB * ucrumbs,
