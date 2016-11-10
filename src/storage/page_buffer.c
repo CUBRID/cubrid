@@ -1638,9 +1638,9 @@ try_again:
     {
       /* this page is not allocated. we allow it if the caller wants to initialize new page or if it specifies it wants
        * to fix the deallocated page */
+      int severity = pgbuf_get_check_page_validation (thread_p) ? ER_ERROR_SEVERITY : ER_WARNING_SEVERITY;
       assert (!pgbuf_get_check_page_validation (thread_p));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-	      fileio_get_volume_label (vpid->volid, PEEK));
+      er_set (severity, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
       pthread_mutex_unlock (&bufptr->BCB_mutex);
       return NULL;
     }
