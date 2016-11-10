@@ -12223,6 +12223,8 @@ void
 pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new)
 {
   assert (ptype_new != PAGE_UNKNOWN);
+  assert (page_new != NULL);
+  assert (data_size > 0);
 
   log_append_undoredo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_new, (PGLENGTH) ptype_new, 0, data_size, NULL,
 			     page_new);
