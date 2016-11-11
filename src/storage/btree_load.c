@@ -1902,7 +1902,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
   addr.offset = -1;		/* No header slot is initialized */
   addr.pgptr = *page_new;
 
-  log_append_redo_data (thread_p, RVBT_GET_NEWPAGE, &addr, sizeof (alignment), &alignment);
+  log_append_undoredo_data (thread_p, RVBT_GET_NEWPAGE, &addr, 0, sizeof (alignment), NULL, &alignment);
 
   if (header)
     {				/* This is going to be a leaf or non-leaf page */

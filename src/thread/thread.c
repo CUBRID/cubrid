@@ -2352,16 +2352,13 @@ thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag)
 {
   bool old_val = true;
 
-  if (BO_IS_SERVER_RESTARTED ())
+  if (thread_p == NULL)
     {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      old_val = thread_p->check_page_validation;
-      thread_p->check_page_validation = flag;
+      thread_p = thread_get_thread_entry_info ();
     }
+
+  old_val = thread_p->check_page_validation;
+  thread_p->check_page_validation = flag;
 
   return old_val;
 }
@@ -2373,19 +2370,12 @@ thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag)
 bool
 thread_get_check_page_validation (THREAD_ENTRY * thread_p)
 {
-  bool ret_val = true;
-
-  if (BO_IS_SERVER_RESTARTED ())
+  if (thread_p == NULL)
     {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      ret_val = thread_p->check_page_validation;
+      thread_p = thread_get_thread_entry_info ();
     }
 
-  return ret_val;
+  return thread_p->check_page_validation;
 }
 
 /*
