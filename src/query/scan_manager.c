@@ -2282,6 +2282,14 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
     {
       return NO_ERROR;
     }
+  else
+    {
+      REGU_VARIABLE_LIST p;
+      for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
+	{
+	  pr_clear_value (p->value.vfetch_to);
+	}
+    }
 
   switch (indx_infop->range_type)
     {
@@ -5478,16 +5486,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	       * first time */
 	      assert_release (!isidp->iss.use || isidp->iss.current_op == ISS_OP_NONE);
 
-	      if (SCAN_IS_INDEX_COVERED (isidp))
-		{
-		  /* TO DO - comment */
-		  REGU_VARIABLE_LIST p;
-		  for (p = isidp->indx_cov.regu_val_list; p; p = p->next)
-		    {
-		      pr_clear_value (p->value.vfetch_to);
-		    }
-		}
-
 	      ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
 	      if (ret != S_SUCCESS)
 		{
@@ -5588,17 +5586,10 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 		      if (SCAN_IS_INDEX_COVERED (isidp))
 			{
-			  REGU_VARIABLE_LIST p;
 			  /* close current list and start a new one */
 			  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
 			  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
 			  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
-
-
-			  for (p = isidp->indx_cov.regu_val_list; p; p = p->next)
-			    {
-			      pr_clear_value (p->value.vfetch_to);
-			    }
 
 			  isidp->indx_cov.list_id =
 			    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0);
