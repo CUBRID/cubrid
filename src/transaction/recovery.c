@@ -202,7 +202,7 @@ struct rvfun RV_fun[] = {
 
   {RVHF_CREATE_HEADER,
    "RVHF_CREATE_HEADER",
-   NULL,
+   pgbuf_rv_new_page_undo,
    heap_rv_redo_newpage,
    NULL,
    heap_rv_dump_statistics},

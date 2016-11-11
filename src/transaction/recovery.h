@@ -322,6 +322,7 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVEH_INIT_DIR \
    || (idx) == RVBT_GET_NEWPAGE \
    || (idx) == RVCT_NEWPAGE \
-   || (idx) == RVVAC_DATA_INIT_NEW_PAGE)
+   || (idx) == RVVAC_DATA_INIT_NEW_PAGE \
+   || (idx) == RVHF_CREATE_HEADER)
 
 #endif /* _RECOVERY_H_ */
