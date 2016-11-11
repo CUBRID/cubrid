@@ -4946,8 +4946,8 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      vacuum_data_initialize_new_page (thread_p, data_page);
 	      /* Set vacuum_Data.last_blockid to first entry blockid. */
 	      data_page->data->blockid = vacuum_Data.last_blockid;
-	      log_append_undoredo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
-					 0, sizeof (vacuum_Data.last_blockid), NULL, &vacuum_Data.last_blockid);
+	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
+				     sizeof (vacuum_Data.last_blockid), &vacuum_Data.last_blockid);
 
 	      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 
@@ -5802,8 +5802,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 #endif
 
   pgbuf_set_page_ptype (thread_p, (PAGE_PTR) new_page, PAGE_DROPPED_FILES);
-  pgbuf_log_new_page (thread_p, (PAGE_PTR) new_page, sizeof (VACUUM_DROPPED_FILES_PAGE), PAGE_DROPPED_FILES);
-
+  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, (PAGE_PTR) new_page, (PGLENGTH) PAGE_DROPPED_FILES,
+			 sizeof (VACUUM_DROPPED_FILES_PAGE), new_page);
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
 		 "VACUUM: thread(%d): added new dropped file(%d, %d) and mvccid=%llu to at position=%d. "

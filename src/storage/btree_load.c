@@ -1794,10 +1794,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   next_pageptr = NULL;
   load_args->nleaf.vpid = cur_nleafpgid;
 
-  /* 
-   * The root page must be logged, otherwise, in the event of a crash. The index may be gone.
-   */
-  pgbuf_log_new_page (thread_p, load_args->nleaf.pgptr, DB_PAGESIZE, PAGE_BTREE);
+  /* The root page must be logged, otherwise, in the event of a crash. The index may be gone. */
+  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, load_args->nleaf.pgptr, (PGLENGTH) FILE_BTREE, DB_PAGESIZE,
+			 load_args->nleaf.pgptr);
   pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
 
   assert (ret == NO_ERROR);
@@ -1902,7 +1901,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
   addr.offset = -1;		/* No header slot is initialized */
   addr.pgptr = *page_new;
 
-  log_append_undoredo_data (thread_p, RVBT_GET_NEWPAGE, &addr, 0, sizeof (alignment), NULL, &alignment);
+  log_append_redo_data (thread_p, RVBT_GET_NEWPAGE, &addr, sizeof (alignment), &alignment);
 
   if (header)
     {				/* This is going to be a leaf or non-leaf page */

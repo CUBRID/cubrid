@@ -4870,7 +4870,7 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 
   alignment = *((unsigned short *) args);
   spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
-  log_append_undoredo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, 0, sizeof (alignment), NULL, &alignment);
+  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, sizeof (alignment), &alignment);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;

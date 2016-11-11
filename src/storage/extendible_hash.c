@@ -690,7 +690,7 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void
 
   if (!is_temp)
     {
-      log_append_undoredo_data2 (thread_p, RVEH_INIT_BUCKET, NULL, page_p, -1, 0, 2, NULL, args);
+      log_append_redo_data2 (thread_p, RVEH_INIT_BUCKET, NULL, page_p, -1, 2, args);
     }
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 
@@ -712,7 +712,7 @@ ehash_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *a
   pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
   if (!is_temp)
     {
-      log_append_undoredo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, NULL, page_p, -1, 0, 0, NULL, NULL);
+      log_append_redo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, NULL, page_p, -1, 0, NULL);
     }
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
   return NO_ERROR;
@@ -1131,8 +1131,8 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   /* Log the directory root page */
   if (!is_tmp)
     {
-      log_append_undoredo_data2 (thread_p, RVEH_INIT_DIR, &dir_vfid, dir_page_p, 0, 0,
-				 EHASH_DIR_HEADER_SIZE + sizeof (EHASH_DIR_RECORD), NULL, dir_page_p);
+      log_append_redo_data2 (thread_p, RVEH_INIT_DIR, &dir_vfid, dir_page_p, 0,
+			     EHASH_DIR_HEADER_SIZE + sizeof (EHASH_DIR_RECORD), dir_page_p);
     }
 
   /* Finishing up; release the pages and return directory file id */

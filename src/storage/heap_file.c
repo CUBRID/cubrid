@@ -4078,7 +4078,7 @@ heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
       return ER_FAILED;
     }
 
-  log_append_undoredo_data (thread_p, RVHF_NEWPAGE, &addr, 0, recdes.length, NULL, recdes.data);
+  log_append_redo_data (thread_p, RVHF_NEWPAGE, &addr, recdes.length, recdes.data);
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
   return NO_ERROR;
 }
@@ -5202,7 +5202,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
        */
       addr_hdr.vfid = &hfid->vfid;
       addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-      log_append_undoredo_data (thread_p, RVHF_CREATE_HEADER, &addr_hdr, 0, sizeof (heap_hdr), NULL, &heap_hdr);
+      log_append_redo_data (thread_p, RVHF_CREATE_HEADER, &addr_hdr, sizeof (heap_hdr), &heap_hdr);
       pgbuf_set_dirty (thread_p, addr_hdr.pgptr, FREE);
       addr_hdr.pgptr = NULL;
     }
