@@ -4165,6 +4165,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      /* will jump to parent LSA. save it now before advancing to undo data */
 		      LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		      LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
 
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
@@ -4182,6 +4183,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      /* will jump to parent LSA. save it now before advancing to undo data */
 		      LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		      LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
 					  undo_unzip_ptr);

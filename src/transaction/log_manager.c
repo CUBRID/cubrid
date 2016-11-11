@@ -8085,6 +8085,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
 		  /* will jump to parent LSA. save it now before advancing to undo data */
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		  LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
 
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
 		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
@@ -8100,6 +8101,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
 		  /* will jump to parent LSA. save it now before advancing to undo data */
 		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		  LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
 
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
 		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
