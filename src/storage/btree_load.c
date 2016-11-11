@@ -627,6 +627,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   void *func_unpack_info = NULL;
   bool btree_id_complete = false, has_fk;
   OID *notification_class_oid;
+  PAGE_PTR page_root = NULL;
+  unsigned short alignment = BTREE_MAX_ALIGN;
 #if !defined(NDEBUG)
   int track_id;
 #endif
@@ -794,7 +796,21 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   btree_get_root_vpid_from_btid (thread_p, btid, &root_vpid);
 
-    /** Initialize the fields of loading argument structures **/
+  /* initialize root page type. data will be added later.
+   * note: we have to do this. the page is not considered allocated until its type is set to something different than
+   *       PAGE_UNKNOWN. if for instance the load is aborted due to unique constraint violation, deallocating root
+   *       page will complain about it not being allocated. */
+  page_root = pgbuf_fix (thread_p, &root_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_root == NULL)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+  pgbuf_set_page_ptype (thread_p, page_root, PAGE_BTREE);
+  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_root, (PGLENGTH) PAGE_BTREE, 0, NULL);
+  pgbuf_set_dirty_and_free (thread_p, page_root);
+
+  /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
   load_args->bt_name = bt_name;
   DB_MAKE_NULL (&load_args->current_key);
@@ -1779,13 +1795,13 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 
   /* move current ROOT page content to the first page allocated */
   btree_get_root_vpid_from_btid (thread_p, load_args->btid->sys_btid, &cur_nleafpgid);
-  next_pageptr = pgbuf_fix (thread_p, &cur_nleafpgid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  next_pageptr = pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (next_pageptr == NULL)
     {
       ASSERT_ERROR_AND_SET (ret);
       goto end;
     }
-  pgbuf_set_page_ptype (thread_p, next_pageptr, PAGE_BTREE);
+  assert (pgbuf_get_page_ptype (thread_p, next_pageptr) == PAGE_BTREE);
 
   memcpy (next_pageptr, load_args->nleaf.pgptr, DB_PAGESIZE);
   pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
@@ -1795,9 +1811,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   load_args->nleaf.vpid = cur_nleafpgid;
 
   /* The root page must be logged, otherwise, in the event of a crash. The index may be gone. */
-  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, load_args->nleaf.pgptr, (PGLENGTH) FILE_BTREE, DB_PAGESIZE,
-			 load_args->nleaf.pgptr);
-  pgbuf_set_dirty_and_free (thread_p, load_args->nleaf.pgptr);
+  btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr);
+  load_args->nleaf.pgptr = NULL;
 
   assert (ret == NO_ERROR);
 
