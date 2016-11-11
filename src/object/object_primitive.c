@@ -2096,6 +2096,18 @@ pr_clear_value (DB_VALUE * value)
 	    }
 	  DB_SET_COMPRESSED_STRING (value, NULL, 0, false);
 	}
+      else if (db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
+	{
+	  assert (value->data.ch.info.compressed_need_clear == false);
+	  if (value->data.ch.medium.compressed_buf != NULL)
+	    {
+	      if (value->data.ch.info.compressed_need_clear == true)
+		{
+		  db_private_free_and_init (NULL, value->data.ch.medium.compressed_buf);
+		}
+	    }
+
+	}
       break;
 
     case DB_TYPE_BLOB:

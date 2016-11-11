@@ -4527,13 +4527,15 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
     {
     case DB_TYPE_CHAR:
       return (desired_precision == original_length
-	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
+	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR)
+	      && DB_GET_COMPRESSED_STRING (val) == NULL);
     case DB_TYPE_VARCHAR:
       return (desired_precision >= original_length
 	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_NCHAR:
       return (desired_precision == original_length
-	      && (original_type == DB_TYPE_NCHAR || original_type == DB_TYPE_VARNCHAR));
+	      && (original_type == DB_TYPE_NCHAR || original_type == DB_TYPE_VARNCHAR)
+	      && DB_GET_COMPRESSED_STRING (val) == NULL);
     case DB_TYPE_VARNCHAR:
       return (desired_precision >= original_length
 	      && (original_type == DB_TYPE_NCHAR || original_type == DB_TYPE_VARNCHAR));

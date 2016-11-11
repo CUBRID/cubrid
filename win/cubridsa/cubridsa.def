@@ -787,7 +787,8 @@ EXPORTS
 ; db private
 	db_private_alloc_debug
 	db_private_alloc_release
-	db_private_realloc
+	db_private_realloc_debug
+	db_private_realloc_release
 	db_private_strdup
 	db_private_free_debug
 	db_private_free_release

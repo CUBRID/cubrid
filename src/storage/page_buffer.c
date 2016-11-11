@@ -1327,6 +1327,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   PERF_HOLDER_LATCH perf_latch_mode;
   PERF_CONDITIONAL_FIX_TYPE perf_cond_type;
   TSC_TICKS start_tick, end_tick, start_holder_tick;
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time, holder_wait_time, fix_wait_time;
   bool is_perf_tracking;
@@ -1716,6 +1718,20 @@ try_again:
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
+#if !defined (NDEBUG)
+  assert (pgptr != NULL);
+
+  holder = pgbuf_get_holder (thread_p, pgptr);
+  assert (holder != NULL);
+
+  watcher = holder->last_watcher;
+  while (watcher != NULL)
+    {
+      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+      watcher = watcher->prev;
+    }
+#endif
+
   if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
     {
       /* latch is obtained, no need for avoidance of dealloc */
@@ -2084,6 +2100,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
   PERF_HOLDER_LATCH perf_holder_latch;
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
   PGBUF_HOLDER_STAT holder_perf_stat;
   PERF_PAGE_TYPE perf_page_type;
   bool is_perf_tracking;
@@ -2101,6 +2119,17 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	{
 	  return;
 	}
+    }
+
+  holder = pgbuf_get_holder (thread_p, pgptr);
+
+  assert (holder != NULL);
+
+  watcher = holder->last_watcher;
+  while (watcher != NULL)
+    {
+      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+      watcher = watcher->prev;
     }
 #else /* !NDEBUG */
   if (pgptr == NULL)
