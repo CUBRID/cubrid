@@ -8776,6 +8776,7 @@ file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out)
   file_extdata_init (sizeof (FILE_TRACK_ITEM), DB_PAGESIZE, extdata);
   log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_tracker, (PGLENGTH) PAGE_FTAB, sizeof (*extdata),
 			 page_tracker);
+  pgbuf_set_dirty (thread_p, page_tracker, DONT_FREE);
 
   /* success */
   assert (error_code == NO_ERROR);
@@ -8925,6 +8926,7 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
       file_extdata_init (sizeof (FILE_TRACK_ITEM), DB_PAGESIZE, extdata);
       log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_extdata, (PGLENGTH) PAGE_FTAB, sizeof (*extdata),
 			     page_extdata);
+      pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
     }
 
   assert (page_extdata != NULL);

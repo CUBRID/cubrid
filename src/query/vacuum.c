@@ -5816,7 +5816,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 		 vacuum_Dropped_files_count);
 
   /* Unfix new page */
-  vacuum_unfix_dropped_entries_page (thread_p, new_page);
+  vacuum_set_dirty_dropped_entries_page (thread_p, new_page, FREE);
 
   /* Save a link to the new page in last page */
   vacuum_dropped_files_set_next_page (thread_p, page, &vpid);

@@ -1797,7 +1797,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   /* The root page must be logged, otherwise, in the event of a crash. The index may be gone. */
   log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, load_args->nleaf.pgptr, (PGLENGTH) FILE_BTREE, DB_PAGESIZE,
 			 load_args->nleaf.pgptr);
-  pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
+  pgbuf_set_dirty_and_free (thread_p, load_args->nleaf.pgptr);
 
   assert (ret == NO_ERROR);
 
