@@ -524,7 +524,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 
       if (isnewpage)
 	{
-	  log_append_undoredo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr, copy_length + hdr_length, addr.pgptr);
+	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr, copy_length + hdr_length, addr.pgptr);
 	}
       else
 	{
