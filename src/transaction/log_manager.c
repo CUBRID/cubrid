@@ -7560,14 +7560,17 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
     }
 #endif /* CUBRID_DEBUG */
 
-  if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex)
-      || (disk_is_page_sector_reserved (thread_p, rcv_vpid->volid, rcv_vpid->pageid) != DISK_VALID))
+  if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
     {
       rcv->pgptr = NULL;
     }
   else
     {
       rcv->pgptr = pgbuf_fix (thread_p, rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (rcv->pgptr == NULL)
+	{
+	  assert (false);
+	}
     }
 
   /* GET BEFORE DATA */
