@@ -5591,7 +5591,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  qfile_close_scan (thread_p, isidp->indx_cov.lsid);
 			  qfile_destroy_list (thread_p, isidp->indx_cov.list_id);
 			  QFILE_FREE_AND_INIT_LIST_ID (isidp->indx_cov.list_id);
-
 			  isidp->indx_cov.list_id =
 			    qfile_open_list (thread_p, isidp->indx_cov.type_list, NULL, isidp->indx_cov.query_id, 0);
 			  if (isidp->indx_cov.list_id == NULL)
