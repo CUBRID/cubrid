@@ -12332,6 +12332,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR * page_dealloc)
   assert (ptype != PAGE_UNKNOWN);
   log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, *page_dealloc, (PGLENGTH) ptype, sizeof (VPID), 0,
 			     pgbuf_get_vpid_ptr (*page_dealloc), NULL);
+  pgbuf_set_page_ptype (thread_p, *page_dealloc, PAGE_UNKNOWN);
   pgbuf_set_dirty (thread_p, *page_dealloc, DONT_FREE);
   error_code = pgbuf_invalidate (thread_p, *page_dealloc);
   if (error_code != NO_ERROR)
