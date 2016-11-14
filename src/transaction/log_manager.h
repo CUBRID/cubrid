@@ -215,8 +215,8 @@ extern void log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rc
 					int undo_size, const char *undo_data);
 extern void log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa);
 extern void log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa);
-extern void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
-				       const char *data);
+extern void log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
+					     const char *data);
 extern int log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page,
 					  bool with_undo_data, LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone,
 					  int *undo_buffer_size, char **undo_buffer, int *undo_size, char **undo_data);

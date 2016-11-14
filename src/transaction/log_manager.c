@@ -322,6 +322,8 @@ STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
+static void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
+				       const char *data, bool is_rv_finish_postpone);
 STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
 						      LOG_TDES ** tdes_out) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
@@ -3734,12 +3736,16 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  *				  all changes in system operation. Or it can be extended to also act as an undo,
  *				  compensate or run postpone log record. The type is decided using log_record argument.
  *
- * return	   : Void.
- * thread_p (in)   : Thread entry.
- * log_record (in) : All information that are required to build the log record for commit system operation.
+ * return	              : Void.
+ * thread_p (in)              : Thread entry.
+ * log_record (in)            : All information that are required to build the log record for commit system operation.
+ * data_size (in)             : recovery data size
+ * data (in)                  : recovery data
+ * is_rv_finish_postpone (in) : true if this is called during recovery to finish a system op postpone
  */
 void
-log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size, const char *data)
+log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size, const char *data,
+			   bool is_rv_finish_postpone)
 {
   int tran_index;
   LOG_TDES *tdes = NULL;
@@ -3786,17 +3792,18 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 	{
 	  /* we should be doing rollback or undo recovery */
-	  assert (tdes->state == TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
+	  assert (tdes->state == TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
+		  || (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && is_rv_finish_postpone));
 	}
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO || log_record->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
-	  /* hm... no restrictions I can think of */
+	  /* ... no restrictions I can think of */
 	}
       else
 	{
 	  assert (log_record->type == LOG_SYSOP_END_COMMIT);
 	  assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
-		  && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
+		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	}
 
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
@@ -3840,7 +3847,7 @@ log_sysop_commit (THREAD_ENTRY * thread_p)
 
   log_record.type = LOG_SYSOP_END_COMMIT;
 
-  log_sysop_commit_internal (thread_p, &log_record, 0, NULL);
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
 }
 
 /*
@@ -3886,7 +3893,7 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
       log_record.undo.length = undo_size;
     }
 
-  log_sysop_commit_internal (thread_p, &log_record, undo_size, undo_data);
+  log_sysop_commit_internal (thread_p, &log_record, undo_size, undo_data, false);
 }
 
 /*
@@ -3905,7 +3912,7 @@ log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa)
   log_record.type = LOG_SYSOP_END_LOGICAL_COMPENSATE;
   log_record.compensate_lsa = *undo_nxlsa;
 
-  log_sysop_commit_internal (thread_p, &log_record, 0, NULL);
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
 }
 
 /*
@@ -3925,7 +3932,23 @@ log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa)
   log_record.run_postpone.postpone_lsa = *posp_lsa;
   /* is_sysop_postpone will be set in log_sysop_commit_internal */
 
-  log_sysop_commit_internal (thread_p, &log_record, 0, NULL);
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
+}
+
+/*
+ * log_sysop_end_recovery_postpone () - called during recovery to finish the postpone phase of system op
+ *
+ * return          : void
+ * thread_p (in)   : thread entry
+ * log_record (in) : end system op log record as it was read from start postpone log record
+ * data_size (in)  : undo data size
+ * data (in)       : undo data
+ */
+void
+log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
+				 const char *data)
+{
+  return log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
 }
 
 /*
