@@ -5449,20 +5449,20 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
     }
   btree_get_root_vpid_from_btid (thread_p, btid, &root_vpid);
 
-  page_ptr = pgbuf_fix (thread_p, &root_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  page_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
       ASSERT_ERROR ();
       goto error;
     }
+  pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+
   alignment = BTREE_MAX_ALIGN;
   if (btree_initialize_new_page (thread_p, page_ptr, (void *) &alignment) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
     }
-
-  pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 
   /* form the root header information */
   root_header->node.split_info.pivot = 0.0f;
@@ -7821,7 +7821,7 @@ btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTID * btid, bool repai
   PAGE_PTR current_pgptr, next_pgptr, root_pgptr;
   VPID current_vpid, next_vpid;
   DISK_ISVALID valid = DISK_VALID;
-  int request_mode;
+  PGBUF_LATCH_MODE request_mode;
   int retry_count = 0;
   int retry_max = 20;
   char output[LINE_MAX];
@@ -32866,6 +32866,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
 {
   FILE_BTREE_DES des;
   VPID vpid_root;
+  PAGE_PTR page_root;
 
   int error_code = NO_ERROR;
 
@@ -32878,19 +32879,39 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
       ASSERT_ERROR ();
       return error_code;
     }
+
+  /* index page allocations need to be committed. they are not individually deallocated on undo; all pages are
+   * deallocated when the file is destroyed. */
+  log_sysop_start (thread_p);
   error_code = file_alloc_sticky_first_page (thread_p, &btid->vfid, &vpid_root);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
       return error_code;
     }
   if (vpid_root.volid != btid->vfid.volid)
     {
       /* should not happen */
       assert_release (false);
+      log_sysop_abort (thread_p);
       return ER_FAILED;
     }
   btid->root_pageid = vpid_root.pageid;
+
+  /* page allocation is complete only when its type is set */
+  page_root = pgbuf_fix (thread_p, &vpid_root, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_root == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      log_sysop_abort (thread_p);
+      return error_code;
+    }
+  pgbuf_set_page_ptype (thread_p, page_root, PAGE_BTREE);
+  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_root, NULL_OFFSET, 0, NULL);
+  pgbuf_set_dirty_and_free (thread_p, page_root);
+
+  log_sysop_commit (thread_p);
   return NO_ERROR;
 }
 

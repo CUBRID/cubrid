@@ -627,7 +627,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   void *func_unpack_info = NULL;
   bool btree_id_complete = false, has_fk;
   OID *notification_class_oid;
-  PAGE_PTR page_root = NULL;
   unsigned short alignment = BTREE_MAX_ALIGN;
 #if !defined(NDEBUG)
   int track_id;
@@ -795,20 +794,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       goto error;
     }
   btree_get_root_vpid_from_btid (thread_p, btid, &root_vpid);
-
-  /* initialize root page type. data will be added later.
-   * note: we have to do this. the page is not considered allocated until its type is set to something different than
-   *       PAGE_UNKNOWN. if for instance the load is aborted due to unique constraint violation, deallocating root
-   *       page will complain about it not being allocated. */
-  page_root = pgbuf_fix (thread_p, &root_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_root == NULL)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-  pgbuf_set_page_ptype (thread_p, page_root, PAGE_BTREE);
-  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_root, (PGLENGTH) PAGE_BTREE, 0, NULL);
-  pgbuf_set_dirty_and_free (thread_p, page_root);
 
   /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
@@ -1894,18 +1879,21 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
 	  || (header == NULL && node_level == -1));	/* overflow */
   assert (log_check_system_op_is_started (thread_p));	/* need system operation */
 
+  /* we need to commit page allocations. if loading index is aborted, the entire file is destroyed. */
+  log_sysop_start (thread_p);
+
   /* allocate new page */
   error_code = file_alloc (thread_p, &btid->vfid, vpid_new);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error_code;
+      goto end;
     }
   *page_new = pgbuf_fix (thread_p, vpid_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (*page_new == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      goto end;
     }
   pgbuf_set_page_ptype (thread_p, *page_new, PAGE_BTREE);
   alignment = BTREE_MAX_ALIGN;
@@ -1933,7 +1921,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
 	{
 	  ASSERT_ERROR ();
 	  pgbuf_unfix_and_init (thread_p, *page_new);
-	  return error_code;
+	  goto end;
 	}
     }
   else
@@ -1948,8 +1936,20 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
 	{
 	  ASSERT_ERROR ();
 	  pgbuf_unfix_and_init (thread_p, *page_new);
-	  return error_code;
+	  goto end;
 	}
+    }
+
+  assert (error_code == NO_ERROR);
+
+end:
+  if (error_code != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+    }
+  else
+    {
+      log_sysop_commit (thread_p);
     }
 
   /* success */
