@@ -32908,7 +32908,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
       return error_code;
     }
   pgbuf_set_page_ptype (thread_p, page_root, PAGE_BTREE);
-  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_root, NULL_OFFSET, 0, NULL);
+  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_root, (PGLENGTH) PAGE_BTREE, 0, NULL);
   pgbuf_set_dirty_and_free (thread_p, page_root);
 
   log_sysop_commit (thread_p);
