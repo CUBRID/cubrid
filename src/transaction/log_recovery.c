@@ -3706,7 +3706,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  assert_release (false);
 	  return;
 	}
-      log_sysop_commit_internal (thread_p, &sysop_start_postpone.sysop_end, undo_data_size, undo_data);
+      log_sysop_end_recovery_postpone (thread_p, &sysop_start_postpone.sysop_end, undo_data_size, undo_data);
       if (undo_buffer != NULL)
 	{
 	  /* no longer needed */
