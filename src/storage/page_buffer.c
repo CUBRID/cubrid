@@ -12272,7 +12272,7 @@ pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   PAGE_TYPE set_page_type;
   assert (rcv->pgptr != NULL);
-  assert (rcv->length > 0);
+  assert (rcv->length >= 0);
   assert (rcv->length <= DB_PAGESIZE);
 
   if (rcv->length > 0)
