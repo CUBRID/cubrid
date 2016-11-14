@@ -4479,24 +4479,28 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
 			  TP_DOMAIN ** rght_dom, int tval_cnt)
 {
   OR_BUF buf;
-  DB_VALUE left_dbval, rght_dbval;
-  int i, cmp, left_len, rght_len;
-  bool left_is_set, rght_is_set;
+  DB_VALUE left_dbval, right_dbval;
+  int i, cmp, left_len, right_len;
+  bool left_is_set, right_is_set;
 
   cmp = DB_UNK;			/* init */
 
   for (i = 0; i < tval_cnt; i++)
     {
+      PRIM_SET_NULL (&left_dbval);
+      PRIM_SET_NULL (&right_dbval);
+
       /* get tpl values into db_values for the comparison */
 
       /* zero length means NULL */
-      if ((left_len = QFILE_GET_TUPLE_VALUE_LENGTH (left_tval[i])) == 0)
+      left_len = QFILE_GET_TUPLE_VALUE_LENGTH (left_tval[i]);
+      if (left_len == 0)
 	{
 	  cmp = DB_LT;
 	  break;
 	}
-      rght_len = QFILE_GET_TUPLE_VALUE_LENGTH (rght_tval[i]);
-      if (rght_len == 0)
+      right_len = QFILE_GET_TUPLE_VALUE_LENGTH (rght_tval[i]);
+      if (right_len == 0)
 	{
 	  cmp = DB_GT;
 	  break;
@@ -4517,39 +4521,42 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
 	  break;
 	}
 
-      or_init (&buf, (char *) (rght_tval[i] + QFILE_TUPLE_VALUE_HEADER_SIZE), rght_len);
+      or_init (&buf, (char *) (rght_tval[i] + QFILE_TUPLE_VALUE_HEADER_SIZE), right_len);
       /* Do not copy the string--just use the pointer.  The pr_ routines for strings and sets have different semantics
        * for length. */
-      rght_is_set = pr_is_set_type (TP_DOMAIN_TYPE (rght_dom[i])) ? true : false;
-      if ((*(rght_dom[i]->type->data_readval)) (&buf, &rght_dbval, rght_dom[i], -1, rght_is_set, NULL, 0) != NO_ERROR)
+      right_is_set = pr_is_set_type (TP_DOMAIN_TYPE (rght_dom[i])) ? true : false;
+      if ((*(rght_dom[i]->type->data_readval)) (&buf, &right_dbval, rght_dom[i], -1, right_is_set, NULL, 0) != NO_ERROR)
 	{
 	  cmp = DB_UNK;		/* is error */
-	  break;
+	  goto clear;
 	}
-      if (DB_IS_NULL (&rght_dbval))
+      if (DB_IS_NULL (&right_dbval))
 	{
 	  cmp = DB_GT;
-	  break;
+	  goto clear;
 	}
 
-      /* both left_dbval, rght_dbval is non-null */
-      cmp = tp_value_compare (&left_dbval, &rght_dbval, 1, 0);
+      /* both left_dbval, right_dbval is non-null */
+      cmp = tp_value_compare (&left_dbval, &right_dbval, 1, 0);
 
-      if (left_is_set)
+      if (left_is_set && cmp == DB_UNK && qexec_collection_has_null (&left_dbval))
 	{
-	  if (cmp == DB_UNK && qexec_collection_has_null (&left_dbval))
-	    {
-	      cmp = DB_LT;
-	    }
+	  cmp = DB_LT;
+	}
+      if (right_is_set && cmp == DB_UNK && qexec_collection_has_null (&right_dbval))
+	{
+	  cmp = DB_GT;
+	}
+
+    clear:
+      if (left_is_set || DB_NEED_CLEAR (&left_dbval))
+	{
 	  pr_clear_value (&left_dbval);
 	}
-      if (rght_is_set)
+
+      if (right_is_set || DB_NEED_CLEAR (&right_dbval))
 	{
-	  if (cmp == DB_UNK && qexec_collection_has_null (&rght_dbval))
-	    {
-	      cmp = DB_GT;
-	    }
-	  pr_clear_value (&rght_dbval);
+	  pr_clear_value (&right_dbval);
 	}
 
       if (cmp == DB_EQ)
@@ -15584,7 +15591,9 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
     }
 
   if (i < outptr_list->valptr_cnt - PCOL_FIRST_TUPLE_OFFSET)
-    *are_equal = 0;
+    {
+      *are_equal = 0;
+    }
 
   return NO_ERROR;
 }
