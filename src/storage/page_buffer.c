@@ -1643,7 +1643,16 @@ try_again:
       int severity = pgbuf_get_check_page_validation (thread_p) ? ER_ERROR_SEVERITY : ER_WARNING_SEVERITY;
       assert (!pgbuf_get_check_page_validation (thread_p));
       er_set (severity, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+      if (buf_lock_acquired)
+	{
+	  pgbuf_insert_into_hash_chain (hash_anchor, bufptr);
+	  (void) pgbuf_unlock_page (hash_anchor, vpid, false);
+	}
+      else
+	{
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	}
       return NULL;
     }
 
