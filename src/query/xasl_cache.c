@@ -1544,6 +1544,10 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
 		{
 		  /* Successfully marked for delete. Save it to delete after the iteration. */
+		  while (xcache_entry->n_cache_clones > 0)
+		    {
+		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+		    }
 		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
