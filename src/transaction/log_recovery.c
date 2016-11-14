@@ -5326,7 +5326,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 
-			sysop_end = (LOG_REC_SYSOP_END *) (log_pgptr + log_lsa.offset);
+			sysop_end = (LOG_REC_SYSOP_END *) (log_pgptr->area + log_lsa.offset);
 			if (sysop_end->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
 			  {
 			    LSA_COPY (&local_start_postpone_run_lsa, &log_lsa);
