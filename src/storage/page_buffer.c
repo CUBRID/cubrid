@@ -4462,7 +4462,7 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   ptype = (PAGE_TYPE) (bufptr->iopage_buffer->iopage.prv.ptype);
 
   assert (PAGE_UNKNOWN <= ptype);
-  assert (ptype < PAGE_LAST);
+  assert (ptype <= PAGE_LAST);
 
   return ptype;
 }
