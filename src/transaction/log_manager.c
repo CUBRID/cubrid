@@ -7650,6 +7650,10 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 	  assert (rv_err == NO_ERROR);
 	}
+      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+	{
+	  /* do nothing */
+	}
       else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical

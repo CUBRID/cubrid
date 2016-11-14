@@ -270,6 +270,10 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	{
 	  /* nothing to do during recovery */
 	}
+      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+	{
+	  /* nothing to do */
+	}
       else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical

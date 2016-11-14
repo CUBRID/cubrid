@@ -2684,7 +2684,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	    {
 	      goto error;
 	    }
-	  log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, pgptr, -1,
+	  log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, NULL, -1,
 				 notify_vacuum_rv_data_length, notify_vacuum_rv_data);
 	  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
 	}

@@ -285,12 +285,13 @@ extern void rv_check_rvfuns (void);
 
 #define RCV_IS_BTREE_LOGICAL_LOG(idx) \
   ((idx) == RVBT_DELETE_OBJECT_PHYSICAL \
-   || ((idx) == RVBT_MVCC_DELETE_OBJECT) \
-   || ((idx) == RVBT_MVCC_INSERT_OBJECT) \
-   || ((idx) == RVBT_NON_MVCC_INSERT_OBJECT) \
-   || ((idx) == RVBT_MARK_DELETED) \
-   || ((idx) == RVBT_DELETE_OBJECT_POSTPONE) \
-   || ((idx) == RVBT_MVCC_INSERT_OBJECT_UNQ))
+   || (idx) == RVBT_MVCC_DELETE_OBJECT \
+   || (idx) == RVBT_MVCC_INSERT_OBJECT \
+   || (idx) == RVBT_NON_MVCC_INSERT_OBJECT \
+   || (idx) == RVBT_MARK_DELETED \
+   || (idx) == RVBT_DELETE_OBJECT_POSTPONE \
+   || (idx) == RVBT_MVCC_INSERT_OBJECT_UNQ \
+   || (idx) == RVBT_MVCC_NOTIFY_VACUUM)
 
 #define RCV_IS_LOGICAL_COMPENSATE_MANUAL(idx) \
   (RCV_IS_BTREE_LOGICAL_LOG(idx) \
@@ -311,7 +312,8 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVFL_ALLOC \
    || (idx) == RVFL_DEALLOC \
    || (idx) == RVVAC_NOTIFY_DROPPED_FILE \
-   || (idx) == RVPGBUF_DEALLOC)
+   || (idx) == RVPGBUF_DEALLOC \
+   || (idx) == RVES_NOTIFY_VACUUM)
 
 #define RCV_IS_NEW_PAGE_INIT(idx) \
   ((idx) == RVPGBUF_NEW_PAGE \
