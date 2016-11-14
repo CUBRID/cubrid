@@ -1050,6 +1050,11 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
       xcache_log ("delete entry from hash after unfix: \n"
 		  XCACHE_LOG_ENTRY_TEXT ("entry")
 		  XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
+      while (xcache_entry->n_cache_clones > 0)
+	{
+	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+	}
+
       error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
       if (error_code != NO_ERROR)
 	{
