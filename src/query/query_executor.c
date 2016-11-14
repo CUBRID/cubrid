@@ -1445,20 +1445,20 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       break;
     case TYPE_DBVAL:
       if (!XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
-	{	  
+	{
 	  if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	    {
-	      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_DECACHE))
+	      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 		{
 		  (void) pr_clear_value (&regu_var->value.dbval);
-		  REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_DECACHE);
+		  REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 		}
 	    }
 	  else
 	    {
-	      if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_DECACHE))
+	      if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 		{
-		  (void) pr_clear_value (&regu_var->value.dbval);		  
+		  (void) pr_clear_value (&regu_var->value.dbval);
 		}
 	    }
 	}

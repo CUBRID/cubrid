@@ -198,7 +198,7 @@ struct regu_variable_node
 #define REGU_VARIABLE_INFER_COLLATION	  0x20	/* infer collation for default parameter */
 #define REGU_VARIABLE_FETCH_ALL_CONST     0x40	/* is all constant */
 #define REGU_VARIABLE_FETCH_NOT_CONST     0x80	/* is not constant */
-#define REGU_VARIABLE_CLEAR_AT_DECACHE   0x100
+#define REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE   0x100
   int flags;			/* flags */
 #define REGU_VARIABLE_IS_FLAGED(e, f)    ((e)->flags & (short) (f))
 #define REGU_VARIABLE_SET_FLAG(e, f)     (e)->flags |= (short) (f)
