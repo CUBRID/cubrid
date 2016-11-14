@@ -8115,8 +8115,11 @@ void
 file_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   /* to preserve the file, we need to remove it from transaction list */
-  FILE_TEMPCACHE_ENTRY *entry = file_tempcache_pop_tran_file (thread_p, vfid);
+  FILE_TEMPCACHE_ENTRY *entry = NULL;
 
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+
+  entry = file_tempcache_pop_tran_file (thread_p, vfid);
   if (entry == NULL)
     {
       assert_release (false);
