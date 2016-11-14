@@ -691,6 +691,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
       rc = (*(pr_type_p->data_readval)) (&buf, &dbval2, domain_p, -1, is_copy, NULL, 0);
       if (rc != NO_ERROR)
 	{
+	  pr_clear_value (&dbval1);
 	  return ER_FAILED;
 	}
     }
@@ -712,11 +713,8 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
       *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL, domain_p->collation_id);
     }
 
-  if (is_copy)
-    {
-      pr_clear_value (&dbval1);
-      pr_clear_value (&dbval2);
-    }
+  pr_clear_value (&dbval1);
+  pr_clear_value (&dbval2);
 
   return NO_ERROR;
 }

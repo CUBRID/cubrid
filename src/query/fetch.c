@@ -4087,6 +4087,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 			assert (false);	/* is impossible */
 			error = ER_QPROC_INVALID_DATATYPE;
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+			if (index != NULL && index->need_clear == true)
+			  {
+			    pr_clear_value (index);
+			  }
 			goto exit_on_error;
 		      }
 
@@ -4481,6 +4485,11 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       *dbval = *tmp;
     }
 
+  if (readonly_val != NULL && readonly_val->need_clear == true)
+    {
+      pr_clear_value (readonly_val);
+    }
+
   return result;
 }
 
@@ -4541,7 +4550,23 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	      pr_clear_value (regup->value.vfetch_to);
 	      return ER_FAILED;
 	    }
-	  PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
+
+	  if (regup->value.vfetch_to->need_clear == true)
+	    {
+	      pr_clear_value (regup->value.vfetch_to);
+	    }
+
+	  if (regup->value.vfetch_to != tmp && tmp->need_clear == true)
+	    {
+	      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tmp)));
+	      /* since we don't know the life time of source and destination, is better to clone the value in
+	       * destination and expect both values are cleared by their respective owners */
+	      pr_clone_value (tmp, regup->value.vfetch_to);
+	    }
+	  else
+	    {
+	      PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
+	    }
 	}
     }
   else
