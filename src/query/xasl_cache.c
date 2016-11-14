@@ -855,8 +855,8 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 	}
     }
 
-  /* Check the entry is still valid. */
-  if ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
+  /* Check the entry is still valid.  Uses atomic to prevent any code reordering */
+  if (ATOMIC_INC_32 (&((*xcache_entry)->xasl_id.cache_flag), 0) & XCACHE_ENTRY_MARK_DELETED)
     {
       /* Someone has marked entry as deleted. */
       xcache_log ("could not get cache entry because it was deleted until locked: \n"
@@ -1050,6 +1050,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
       xcache_log ("delete entry from hash after unfix: \n"
 		  XCACHE_LOG_ENTRY_TEXT ("entry")
 		  XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
+      /* No need to acquire the clone mutex, since I'm the unique user. */
       while (xcache_entry->n_cache_clones > 0)
 	{
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
@@ -1543,7 +1544,10 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	      /* Mark entry as deleted. */
 	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
 		{
-		  /* Successfully marked for delete. Save it to delete after the iteration. */
+		  /* 
+		   * Successfully marked for delete. Save it to delete after the iteration.
+		   * No need to acquire the clone mutex, since I'm the unique user.
+		   */
 		  while (xcache_entry->n_cache_clones > 0)
 		    {
 		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
@@ -1953,6 +1957,14 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
 	  continue;
 	}
+
+      /* Acquire the mutex and decache the clones. Decache the clones, even if the entry will not be deleted. */
+      pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+      while (xcache_entry->n_cache_clones > 0)
+	{
+	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+	}
+      pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 
       (void) bh_try_insert (bh, &candidate, NULL);
     }
