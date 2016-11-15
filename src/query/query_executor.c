@@ -2375,7 +2375,20 @@ qexec_clear_update_assignment (XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignmen
   pg_cnt = 0;
   if (!XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
     {
-      (void) pr_clear_value (assignment->constant);
+      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	{
+	  if (xcache_uses_clone (NULL))
+	    {
+	      (void) pr_clear_value (assignment->constant);
+	    }
+	}
+      else
+	{
+	  if (!xcache_uses_clone (NULL))
+	    {
+	      (void) pr_clear_value (assignment->constant);
+	    }
+	}
     }
 
   if (assignment->regu_var != NULL)

@@ -2148,7 +2148,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 /*
  * xcache_uses_clone () - Check whether XASL clones are used 
  *
- * return	     : True, if XASL clones are used, false otherwise
+ * return	     : True, if XASL clones are used, false otherwise 
  * thread_p(in)	     : Thread entry
  */
 bool
