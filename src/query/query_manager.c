@@ -1110,6 +1110,8 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	{
 	  goto exit_on_error;
 	}
+
+      XASL_SET_FLAG (xasl_p, XASL_DECACHE_CLONE);
     }
 
   if (flag & RETURN_GENERATED_KEYS)
