@@ -5342,7 +5342,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
-      if (xcache_uses_clone (thread_p))
+      if (xcache_uses_clones ())
 	{
 	  if (!db_value_is_null (&regu_var->value.dbval))
 	    {

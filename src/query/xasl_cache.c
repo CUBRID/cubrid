@@ -870,7 +870,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 
   assert ((*xcache_entry) != NULL);
 
-  if (xcache_uses_clone (thread_p))
+  if (xcache_uses_clones ())
     {
       /* Try to fetch a cached clone. */
       if ((*xcache_entry)->cache_clones == NULL)
@@ -1706,7 +1706,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "  cache flags = %08x \n", xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FLAGS_MASK);
       fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
       fprintf (fp, "  time second last used = %lld \n", (long long) xcache_entry->time_last_used.tv_sec);
-      if (xcache_uses_clone (thread_p))
+      if (xcache_uses_clones ())
 	{
 	  fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
 	}
@@ -1792,7 +1792,7 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
   /* Free XASL. Be sure that was already cleared to avoid memory leaks. */
   assert (xclone->xasl->status == XASL_CLEARED);
 
-  if (xcache_uses_clone (thread_p))
+  if (xcache_uses_clones ())
     {
       pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
       if (xcache_entry->n_cache_clones < xcache_Max_clones)
@@ -1958,7 +1958,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  continue;
 	}
 
-      /* Acquire the mutex and decache the clones. Decache the clones, even if the entry will not be deleted. */
+      /* Acquire the mutex and decache the clones even if the entry will not be deleted from xcache_Ht. */
       pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
       while (xcache_entry->n_cache_clones > 0)
 	{
@@ -2146,13 +2146,12 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 }
 
 /*
- * xcache_uses_clone () - Check whether XASL clones are used 
+ * xcache_uses_clones () - Check whether XASL clones are used
  *
- * return	     : True, if XASL clones are used, false otherwise 
- * thread_p(in)	     : Thread entry
+ * return : True, if XASL clones are used, false otherwise
  */
 bool
-xcache_uses_clone (THREAD_ENTRY * thread_p)
+xcache_uses_clones (void)
 {
   return xcache_Max_clones > 0;
 }

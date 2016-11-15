@@ -975,22 +975,22 @@ struct func_pred
   HEAP_CACHE_ATTRINFO *cache_attrinfo;
 };
 
-#define XASL_LINK_TO_REGU_VARIABLE 1	/* is linked to regu variable ? */
-#define XASL_SKIP_ORDERBY_LIST     2	/* skip sorting for orderby_list ? */
-#define XASL_ZERO_CORR_LEVEL       4	/* is zero-level uncorrelated subquery ? */
-#define XASL_TOP_MOST_XASL         8	/* this is a top most XASL */
-#define XASL_TO_BE_CACHED         16	/* the result will be cached */
-#define	XASL_HAS_NOCYCLE	  32	/* NOCYCLE is specified */
-#define	XASL_HAS_CONNECT_BY	  64	/* has CONNECT BY clause */
-#define XASL_MULTI_UPDATE_AGG	 128	/* is for multi-update with aggregate */
-#define XASL_IGNORE_CYCLES	 256	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
-#define	XASL_OBJFETCH_IGNORE_CLASSOID 512	/* fetch proc should ignore class oid */
-#define XASL_IS_MERGE_QUERY	      1024	/* query belongs to a merge statement */
-#define XASL_USES_MRO	      2048	/* query uses multi range optimization */
-#define XASL_KEEP_DBVAL	      4096	/* do not clear db_value */
-#define XASL_RETURN_GENERATED_KEYS	     8192	/* return generated keys */
-#define XASL_NO_FIXED_SCAN    16384	/* disable fixed scan for this proc */
-#define XASL_DECACHE_CLONE    32768
+#define XASL_LINK_TO_REGU_VARIABLE	0x01	/* is linked to regu variable ? */
+#define XASL_SKIP_ORDERBY_LIST		0x02	/* skip sorting for orderby_list ? */
+#define XASL_ZERO_CORR_LEVEL		0x04	/* is zero-level uncorrelated subquery ? */
+#define XASL_TOP_MOST_XASL		0x08	/* this is a top most XASL */
+#define XASL_TO_BE_CACHED		0x10	/* the result will be cached */
+#define	XASL_HAS_NOCYCLE		0x20	/* NOCYCLE is specified */
+#define	XASL_HAS_CONNECT_BY		0x40	/* has CONNECT BY clause */
+#define XASL_MULTI_UPDATE_AGG		0x80	/* is for multi-update with aggregate */
+#define XASL_IGNORE_CYCLES	       0x100	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
+#define	XASL_OBJFETCH_IGNORE_CLASSOID  0x200	/* fetch proc should ignore class oid */
+#define XASL_IS_MERGE_QUERY	       0x400	/* query belongs to a merge statement */
+#define XASL_USES_MRO		       0x800	/* query uses multi range optimization */
+#define XASL_KEEP_DBVAL		      0x1000	/* do not clear db_value */
+#define XASL_RETURN_GENERATED_KEYS    0x2000	/* return generated keys */
+#define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
+#define XASL_DECACHE_CLONE	      0x8000	/* decache clone */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
