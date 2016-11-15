@@ -11620,8 +11620,6 @@ heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, int *offset_size_pt
 
   *offset_size_ptr = OR_BYTE_SIZE;
 
-  /* TODO[arnia] : check if we need to build overflow column recdes */
-
 re_check:
   size_gain_overflow_columns = 0;
   size = 0;
@@ -11639,7 +11637,7 @@ re_check:
 	  column_size = pr_data_writeval_disk_size (&value->dbvalue);
 	  size += column_size;
 	  if (pr_is_oor_value (&value->dbvalue)
-	      && column_size > OR_OID_SIZE)
+	      && column_size > OBJECT_OOR_THRESHOLD_SIZE)
 	    {
 	      /* TODO[arnia] : better approximation of OOR column size */
 	      size_gain_overflow_columns += column_size - OBJECT_OOR_THRESHOLD_SIZE;
