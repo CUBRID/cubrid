@@ -6395,6 +6395,10 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 
 	  break;
 	}
+      else if (elem.need_clear == true)
+	{
+	  pr_clear_value (&elem);
+	}
     }
 
   return ret;
