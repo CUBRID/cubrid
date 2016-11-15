@@ -2794,6 +2794,8 @@ union db_char
     unsigned char compressed_need_clear;
     int size;
     char *buf;
+    int compressed_size;
+    char *compressed_buf;
   } medium;
   struct
   {
