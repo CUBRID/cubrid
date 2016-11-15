@@ -5768,6 +5768,19 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
   assert (vpid_rcv != NULL && !VPID_ISNULL (vpid_rcv));
   if (RCV_IS_NEW_PAGE_INIT (rcvindex))
     {
+      /* even if this is a new page, the file may have been deallocated. first check it is still reserved. */
+      DISK_ISVALID isvalid;
+      isvalid = disk_is_page_sector_reserved (thread_p, vpid_rcv->volid, vpid_rcv->pageid);
+      if (isvalid == DISK_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return NULL;
+	}
+      else if (isvalid == DISK_INVALID)
+	{
+	  /* not reserved */
+	  return NULL;
+	}
       page = pgbuf_fix (thread_p, vpid_rcv, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page == NULL)
 	{
