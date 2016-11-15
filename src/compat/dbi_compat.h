@@ -2693,13 +2693,6 @@ struct db_midxkey
  * This is the run-time state structure for an ELO. The ELO is part of
  * the implementation of large object type and not intended to be used
  * directly by the API.
- *
- * NOTE:
- *  1. LOID and related definition which were in storage_common.h moved here.
- *  2. DB_ELO definition in dbi_compat.h does not expose the LOID and
- *     related data type. BE CAREFUL when you change following definitions.
- *     - VPID
- *     - VFID
  */
 
 typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
@@ -2716,27 +2709,18 @@ struct vfid
   short volid;			/* Volume identifier where the file reside */
 };
 
-typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
-struct loid
-{
-  VPID vpid;			/* Real page identifier */
-  VFID vfid;			/* Real file identifier */
-};
-
 typedef enum db_elo_type DB_ELO_TYPE;
 typedef struct db_elo DB_ELO;
 
 enum db_elo_type
 {
   ELO_NULL,
-  ELO_LO,
   ELO_FBO
 };
 
 struct db_elo
 {
   int64_t size;
-  LOID loid;
   char *locator;
   char *meta_data;
   DB_ELO_TYPE type;
