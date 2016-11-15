@@ -3149,9 +3149,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	    FILE_PERM_TEMP_STRING (is_temp),
 	    FILE_NUMERABLE_REGULAR_STRING (is_numerable), FILE_TABLESPACE_AS_ARGS (tablespace), n_sectors);
 
-  error_code =
-    disk_reserve_sectors (thread_p, volpurpose, DISK_NONCONTIGUOUS_SPANVOLS_PAGES, NULL_VOLID, n_sectors,
-			  vsids_reserved);
+  error_code = disk_reserve_sectors (thread_p, volpurpose, NULL_VOLID, n_sectors, vsids_reserved);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4203,9 +4201,8 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
 
   /* reserve disk sectors */
   error_code =
-    disk_reserve_sectors (thread_p, DB_PERMANENT_DATA_PURPOSE,
-			  DISK_NONCONTIGUOUS_SPANVOLS_PAGES,
-			  fhead->volid_last_expand, expand_size_in_sectors, vsids_reserved);
+    disk_reserve_sectors (thread_p, DB_PERMANENT_DATA_PURPOSE, fhead->volid_last_expand, expand_size_in_sectors,
+			  vsids_reserved);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -7732,8 +7729,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 
       /* reserve a sector */
       error_code =
-	disk_reserve_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE,
-			      DISK_NONCONTIGUOUS_SPANVOLS_PAGES, fhead->volid_last_expand, 1, &partsect_new.vsid);
+	disk_reserve_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, fhead->volid_last_expand, 1, &partsect_new.vsid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

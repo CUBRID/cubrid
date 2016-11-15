@@ -4151,15 +4151,7 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 #if defined(SERVER_MODE) && !defined(NDEBUG)
   if (bufptr->vpid.pageid == 0)
     {
-      DISK_VAR_HEADER *vhdr;
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_VOLHEADER);
-
-      vhdr = (DISK_VAR_HEADER *) pgptr;
-      if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) != 0)
-	{
-	  assert (0);
-	}
+      disk_volheader_check_magic (thread_p, pgptr);
     }
 #endif
 
