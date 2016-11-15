@@ -752,7 +752,7 @@ static int heap_rv_redo_newpage_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, RECDES * new_recdes,
 							   OUT_OF_ROW_CONTEXT *oor_context, int lob_create_flag,
-							   int log_delete_flag);
+							   int lob_delete_flag);
 static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
 static HEAP_BESTSPACE heap_stats_get_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
@@ -10019,6 +10019,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
  *   recdes(in): Instance record descriptor
  *   value(in): Disk value attribute information
  *   attr_info(in/out): The attribute information structure
+ *   oor_context(in/out):
  *
  * Note: Read the dbvalue of the given value attribute information.
  */
@@ -11718,14 +11719,20 @@ heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_
  *   attr_info(in/out): The attribute information structure
  *   old_recdes(in): where the object's disk format is deposited
  *   new_recdes(in):
+ *   oor_context(in/out): out of row context
  *   lob_create_flag(in):
+ *   lob_delete_flag(in):
  *
  * Note: Transform the object represented by attr_info to disk format
+ *	 'oor_context' object is optional (can be NULL); if attr_info contains long strings, they are transformed to
+ *	 OOR LOBs only if oor_context not-NULL or copied as LOB path if state of value is HEAP_READ_ATTRVALUE_OOR_LOB;
+ *	 otherwise, the long string is stored as a normal string in heap.
+ *	 
  */
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 					  RECDES * new_recdes, OUT_OF_ROW_CONTEXT *oor_context, int lob_create_flag,
-					  int log_delete_flag)
+					  int lob_delete_flag)
 {
   OR_BUF orep, *buf;
   char *ptr_bound, *ptr_varvals;
@@ -11753,7 +11760,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
    * Get any of the values that have not been set/read
    */
   if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, oor_context, attr_info,
-				       log_delete_flag)
+				       lob_delete_flag)
       != NO_ERROR)
     {
       return S_ERROR;

@@ -9787,6 +9787,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
   HEAP_SCANCACHE *local_scan_cache = NULL;
   BTREE_SEARCH r;
   OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  OUT_OF_ROW_ATTS oor_attrs = OUT_OF_ROW_ATTS_INITILIAZER;
+
+  oor_context.oor_atts = &oor_attrs;
 
   *removed_count = 0;
 
@@ -9797,8 +9800,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  /* TODO[arnia]*/
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, NULL,
+  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, &oor_context,
 						      LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
   if (copyarea == NULL)
     {
@@ -9950,6 +9952,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       new_recdes.area_size = 0;
     }
 
+  heap_free_oor_context (thread_p, &oor_context);
+
   return NO_ERROR;
 
 error_exit:
@@ -9966,6 +9970,8 @@ error_exit:
       new_recdes.data = NULL;
       new_recdes.area_size = 0;
     }
+
+  heap_free_oor_context (thread_p, &oor_context);
 
   return ER_FAILED;
 }
@@ -10015,8 +10021,11 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
   int local_op_type = SINGLE_ROW_UPDATE;
   BTREE_SEARCH r;
   OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  OUT_OF_ROW_ATTS oor_attrs = OUT_OF_ROW_ATTS_INITILIAZER;
 
   assert (pruned_partition_scan_cache != NULL);
+
+  oor_context.oor_atts = &oor_attrs;
 
   DB_MAKE_NULL (&dbvalue);
   OID_SET_NULL (unique_oid_p);
@@ -10032,8 +10041,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  /* TODO[arnia] */
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, NULL,
+  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, &oor_context,
 						      LOB_FLAG_INCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
   if (copyarea == NULL)
     {
@@ -10158,6 +10166,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       recdes.area_size = 0;
     }
 
+  heap_free_oor_context (thread_p, &oor_context);
+
   return NO_ERROR;
 
 error_exit:
@@ -10174,6 +10184,8 @@ error_exit:
       recdes.data = NULL;
       recdes.area_size = 0;
     }
+
+  heap_free_oor_context (thread_p, &oor_context);
 
   return ER_FAILED;
 }
