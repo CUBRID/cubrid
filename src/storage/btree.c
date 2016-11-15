@@ -32871,6 +32871,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   FILE_BTREE_DES des;
   VPID vpid_root;
   PAGE_PTR page_root;
+  unsigned short alignment;
 
   int error_code = NO_ERROR;
 
@@ -32912,7 +32913,9 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
       return error_code;
     }
   pgbuf_set_page_ptype (thread_p, page_root, PAGE_BTREE);
-  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_root, (PGLENGTH) PAGE_BTREE, 0, NULL);
+  alignment = BTREE_MAX_ALIGN;
+  spage_initialize (thread_p, page_root, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
+  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page_root, NULL_OFFSET, sizeof (alignment), &alignment);
   pgbuf_set_dirty_and_free (thread_p, page_root);
 
   log_sysop_commit (thread_p);
