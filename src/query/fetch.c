@@ -4485,11 +4485,6 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       *dbval = *tmp;
     }
 
-  if (readonly_val != NULL && readonly_val->need_clear == true)
-    {
-      pr_clear_value (readonly_val);
-    }
-
   return result;
 }
 
