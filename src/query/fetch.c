@@ -4551,22 +4551,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	      return ER_FAILED;
 	    }
 
-	  if (regup->value.vfetch_to->need_clear == true)
-	    {
-	      pr_clear_value (regup->value.vfetch_to);
-	    }
-
-	  if (regup->value.vfetch_to != tmp && tmp->need_clear == true)
-	    {
-	      assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tmp)));
-	      /* since we don't know the life time of source and destination, is better to clone the value in
-	       * destination and expect both values are cleared by their respective owners */
-	      pr_clone_value (tmp, regup->value.vfetch_to);
-	    }
-	  else
-	    {
-	      PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
-	    }
+	  PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
 	}
     }
   else
