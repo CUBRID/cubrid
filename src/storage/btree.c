@@ -16852,16 +16852,15 @@ btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid
 }
 #endif
 
-
 /*
- * btree_rv_mvcc_undo_redo_increments_update () -
+ * btree_rv_update_tran_stats () -
  *   return: int
  *   recv(in): Recovery structure
  *
  * Note: Recover the in-memory unique statistics.
  */
 int
-btree_rv_mvcc_undo_redo_increments_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
   int num_nulls, num_oids, num_keys;

@@ -587,7 +587,7 @@ extern void btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID
 extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * Rec);
 #endif
 extern int btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int btree_rv_mvcc_undo_redo_increments_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern void btree_rv_roothdr_dump (FILE * fp, int length, void *data);
 extern int btree_rv_ovfid_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern void btree_rv_ovfid_dump (FILE * fp, int length, void *data);

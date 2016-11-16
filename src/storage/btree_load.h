@@ -254,8 +254,6 @@ extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID
 				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
 
 /* Recovery routines */
-extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void btree_rv_dump_create_index (FILE * fp, int length_ignore, void *data);
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (BTID * btid, int key_delta, int oid_delta, int null_delta, RECDES * recdes);
 

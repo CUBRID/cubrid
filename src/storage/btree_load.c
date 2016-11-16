@@ -3722,56 +3722,6 @@ btree_load_foo_debug (void)
 #endif /* CUBRID_DEBUG */
 
 /*
- * btree_rv_undo_create_index () - Undo the creation of an index file
- *   return: int
- *   rcv(in): Recovery structure
- *
- * Note: The index file is destroyed completely.
- */
-int
-btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  BTID *btid;
-  int ret;
-
-  btid = (BTID *) rcv->data;
-  ret = logtb_delete_global_unique_stats (thread_p, btid);
-  if (ret == NO_ERROR)
-    {
-      LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
-
-      unique_stats = logtb_tran_find_btid_stats (thread_p, btid, false);
-
-      if (unique_stats != NULL)
-	{
-	  unique_stats->deleted = true;
-	}
-    }
-  else
-    {
-      assert (false);
-    }
-  return ret;
-}
-
-/*
- * btree_rv_dump_create_index () -
- *   return: int
- *   length_ignore(in): Length of Recovery Data
- *   data(in): The data being logged
- *
- * Note: Dump the information to undo the creation of an index file
- */
-void
-btree_rv_dump_create_index (FILE * fp, int length_ignore, void *data)
-{
-  VFID *vfid;
-
-  vfid = &((BTID *) data)->vfid;
-  (void) fprintf (fp, "Undo creation of Index vfid: %d|%d\n", vfid->volid, vfid->fileid);
-}
-
-/*
  * btree_rv_nodehdr_dump () - Dump node header recovery information
  *   return: int
  *   length(in): Length of Recovery Data
