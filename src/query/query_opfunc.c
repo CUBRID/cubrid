@@ -7710,6 +7710,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   PR_TYPE *pr_type_p;
   OR_BUF buf;
   double dbl;
+  int i;
 
   DB_MAKE_NULL (&sqr_val);
   DB_MAKE_NULL (&dbval);
@@ -7776,6 +7777,10 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  /* free const_array */
 	  if (agg_p->info.dist_percent.const_array != NULL)
 	    {
+	      for (i = 0; i < agg_p->info.dist_percent.list_len; i++)
+		{
+		  pr_clear_value (agg_p->info.dist_percent.const_array[i]);
+		}
 	      db_private_free_and_init (thread_p, agg_p->info.dist_percent.const_array);
 	      agg_p->info.dist_percent.list_len = 0;
 	    }
