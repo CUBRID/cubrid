@@ -496,6 +496,8 @@ struct aggregate_accumulator
   DB_VALUE *value;		/* value of the aggregate */
   DB_VALUE *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
   int curr_cnt;			/* current number of items */
+  bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
+  bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
 };
 
 typedef struct aggregate_accumulator_domain AGGREGATE_ACCUMULATOR_DOMAIN;

@@ -5652,6 +5652,13 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	  goto error;
 	}
     }
+  aggregate->accumulator.clear_value_at_clone_decache = false;
+#if defined (SERVER_MODE)
+  if (thread_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value))
+    {
+      aggregate->accumulator.clear_value_at_clone_decache = true;
+    }
+#endif
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5666,6 +5673,14 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	  goto error;
 	}
     }
+
+  aggregate->accumulator.clear_value2_at_clone_decache = false;
+#if defined (SERVER_MODE)
+  if (thread_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value2))
+    {
+      aggregate->accumulator.clear_value2_at_clone_decache = true;
+    }
+#endif
 
   ptr = or_unpack_int (ptr, &aggregate->accumulator.curr_cnt);
 

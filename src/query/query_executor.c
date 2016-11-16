@@ -1870,8 +1870,31 @@ qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, int final)
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
-      pr_clear_value (p->accumulator.value);
-      pr_clear_value (p->accumulator.value2);
+      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	{
+	  if (p->accumulator.clear_value_at_clone_decache)
+	    {
+	      pr_clear_value (p->accumulator.value);
+	    }
+
+	  if (p->accumulator.clear_value2_at_clone_decache)
+	    {
+	      pr_clear_value (p->accumulator.value2);
+	    }
+	}
+      else
+	{
+	  if (!p->accumulator.clear_value_at_clone_decache)
+	    {
+	      pr_clear_value (p->accumulator.value);
+	    }
+
+	  if (!p->accumulator.clear_value2_at_clone_decache)
+	    {
+	      pr_clear_value (p->accumulator.value2);
+	    }
+	}
+
       pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
     }
 
