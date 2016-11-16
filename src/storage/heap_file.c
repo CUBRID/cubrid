@@ -4029,7 +4029,7 @@ heap_copy_chain (PAGE_PTR page_heap, HEAP_CHAIN * chain)
       assert_release (false);
       return ER_FAILED;
     }
-  assert (recdes.length >= sizeof (*chain));
+  assert (recdes.length >= (int) sizeof (*chain));
   memcpy (chain, recdes.data, sizeof (*chain));
   return NO_ERROR;
 }

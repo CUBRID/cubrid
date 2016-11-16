@@ -2859,7 +2859,7 @@ disk_stab_cursor_check_valid (const DISK_STAB_CURSOR * cursor)
       /* Must have a page fixed */
       assert (cursor->page != NULL);
       /* Unit pointer must match offset_to_unit */
-      assert (((char *) cursor->unit - cursor->page) == cursor->offset_to_unit * DISK_STAB_UNIT_SIZE_OF);
+      assert ((int) ((char *) cursor->unit - cursor->page) == (int) (cursor->offset_to_unit * DISK_STAB_UNIT_SIZE_OF));
     }
 }
 

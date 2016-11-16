@@ -454,6 +454,10 @@ log_to_string (LOG_RECTYPE type)
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
       break;
+
+    default:
+      assert (false);
+      break;
     }
 
   return "UNKNOWN_LOG_REC_TYPE";
