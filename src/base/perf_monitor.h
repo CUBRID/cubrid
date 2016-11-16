@@ -577,7 +577,7 @@ typedef enum
 typedef struct pstat_metadata PSTAT_METADATA;
 
 typedef void (*PSTAT_DUMP_IN_FILE_FUNC) (FILE *, const UINT64 * stat_vals);
-typedef void (*PSTAT_DUMP_IN_BUFFER_FUNC) (char *, const UINT64 * stat_vals, int *remaining_size);
+typedef void (*PSTAT_DUMP_IN_BUFFER_FUNC) (char **, const UINT64 * stat_vals, int *remaining_size);
 typedef int (*PSTAT_LOAD_FUNC) (void);
 
 struct pstat_metadata

@@ -552,7 +552,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	  return S_ERROR;
 	}
 
-      /* first_midxkey_val holds pointer to first value from last_key, which we actually want to place in last_key.
+      /* first_midxkey_val may hold pointer to first value from last_key, which we actually want to place in last_key.
        * steps: 1. clone first_midxkey_val to a temp variable so we have a DB_VALUE independent of last_key 2. clear
        * last_key (no longer holds important data) 3. clone temp variable to last_key (for later use) 4. clear tmp (we
        * no longer need it) */
@@ -560,6 +560,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
       pr_clear_value (last_key);
       pr_clone_value (&tmp, last_key);
       pr_clear_value (&tmp);
+      pr_clear_value (&first_midxkey_val);
     }
 
   /* use last_key in scan_range */
@@ -2281,6 +2282,15 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
   if (iscan_id->curr_keyno > key_cnt)
     {
       return NO_ERROR;
+    }
+  else
+    {
+      /* Clear output val list to avoid memory leak. */
+      REGU_VARIABLE_LIST p;
+      for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
+	{
+	  pr_clear_value (p->value.vfetch_to);
+	}
     }
 
   switch (indx_infop->range_type)
