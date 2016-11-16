@@ -488,6 +488,13 @@ struct file_tracker_dump_heap_context
   bool dump_records;
 };
 
+typedef struct file_track_mark_heap_deleted_context FILE_TRACK_MARK_HEAP_DELETED_CONTEXT;
+struct file_track_mark_heap_deleted_context
+{
+  LOG_LSA ref_lsa;
+  bool is_undo;
+};
+
 typedef int (*FILE_TRACK_ITEM_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 				     int index_item, bool * stop, void *args);
 
@@ -9344,13 +9351,6 @@ file_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out)
   return file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_reuse_heap, vfid_out);
 }
 
-typedef struct file_track_mark_heap_deleted_context FILE_TRACK_MARK_HEAP_DELETED_CONTEXT;
-struct file_track_mark_heap_deleted_context
-{
-  LOG_LSA ref_lsa;
-  bool is_undo;
-};
-
 /*
  * file_tracker_item_mark_heap_deleted () - FILE_TRACK_ITEM_FUNC to mark heap entry as deleted
  *
@@ -9359,7 +9359,8 @@ struct file_track_mark_heap_deleted_context
  * page_of_item (in) : page of item
  * extdata (in)      : extensible data
  * index_item (in)   : index of item
- * ignore_args (in)  : not used
+ * stop (in)         : not used
+ * args (in)         : FILE_TRACK_MARK_HEAP_DELETED_CONTEXT *
  */
 static int
 file_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
@@ -9395,8 +9396,6 @@ file_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
 	    PGBUF_PAGE_MODIFY_MSG ("tracker page") ", item at pos %d, on %s, ref_lsa = %lld|%d",
 	    item->volid, item->fileid, PGBUF_PAGE_MODIFY_ARGS (page_of_item, &save_lsa), index_item,
 	    context->is_undo ? "undo" : "postpone", LSA_AS_ARGS (&context->ref_lsa));
-
-  *stop = true;
 
   return NO_ERROR;
 }
