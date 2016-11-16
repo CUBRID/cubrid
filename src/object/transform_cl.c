@@ -1493,6 +1493,9 @@ string_disk_size (const char *string)
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   length = (*(tp_VarNChar.data_lengthval)) (&value, 1);
 
+  /* Clear the compressed_string of DB_VALUE */
+  pr_clear_compressed_string (&value);
+
   return length;
 }
 

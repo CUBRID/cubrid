@@ -563,6 +563,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
   pr_type = list_id->type_list.domp[0]->type;
   if (pr_type == NULL)
     {
+      qfile_close_scan (thread_p, &s_id);
       return V_ERROR;
     }
 
@@ -579,6 +580,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 
 	  if ((*(pr_type->data_readval)) (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
 	    {
+	      qfile_close_scan (thread_p, &s_id);
 	      return V_ERROR;
 	    }
 
@@ -724,6 +726,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
       if (rc == V_ERROR)
 	{
 	  pr_clear_value (&list_val);
+	  qfile_close_scan (thread_p, &s_id);
 	  return ER_FAILED;
 	}
       else if (rc == V_TRUE)
@@ -737,6 +740,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
       if (rc == V_ERROR)
 	{
+	  qfile_close_scan (thread_p, &s_id);
 	  return ER_FAILED;
 	}
       else if (rc == V_TRUE)
@@ -927,6 +931,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   p_tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
   if (p_tplrec.tpl == NULL)
     {
+      qfile_close_scan (thread_p, &s_id);
       return V_ERROR;
     }
 
@@ -934,14 +939,14 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   card1 = 0;
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
+      pr_clear_value (&list_val);
+
       if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
 	{
-	  qfile_close_scan (thread_p, &s_id);
-	  db_private_free_and_init (thread_p, p_tplrec.tpl);
-	  return V_UNKNOWN;
+	  res = V_UNKNOWN;
+	  goto end;
 	}
 
-      pr_clear_value (&list_val);
       OR_BUF_INIT (buf, ptr, length);
 
       (*(pr_type->data_readval)) (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
@@ -957,39 +962,27 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
 	    {
-	      pr_clear_value (&list_val);
-	      pr_clear_value (&list_val2);
-	      qfile_close_scan (thread_p, &s_id);
-	      db_private_free_and_init (thread_p, p_tplrec.tpl);
-	      return V_ERROR;
+	      res = V_ERROR;
+	      goto end;
 	    }
 	  else if (rc != V_TRUE)
 	    {
 	      card2 = eval_item_card_set (&list_val2, set, R_EQ);
 	      if (card2 == ER_FAILED)
 		{
-		  pr_clear_value (&list_val);
-		  pr_clear_value (&list_val2);
-		  qfile_close_scan (thread_p, &s_id);
-		  db_private_free_and_init (thread_p, p_tplrec.tpl);
-		  return V_ERROR;
+		  res = V_ERROR;
+		  goto end;
 		}
 	      else if (card2 == UNKNOWN_CARD)
 		{
-		  pr_clear_value (&list_val);
-		  pr_clear_value (&list_val2);
-		  qfile_close_scan (thread_p, &s_id);
-		  db_private_free_and_init (thread_p, p_tplrec.tpl);
-		  return V_UNKNOWN;
+		  res = V_UNKNOWN;
+		  goto end;
 		}
 
 	      if (card1 > card2)
 		{
-		  pr_clear_value (&list_val);
-		  pr_clear_value (&list_val2);
-		  qfile_close_scan (thread_p, &s_id);
-		  free_and_init (p_tplrec.tpl);
-		  return V_FALSE;
+		  res = V_FALSE;
+		  goto end;
 		}
 	      card1 = 0;
 	    }
@@ -1003,7 +996,8 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	  p_tplrec.tpl = (QFILE_TUPLE) db_private_realloc (thread_p, p_tplrec.tpl, tpl_len);
 	  if (p_tplrec.tpl == NULL)
 	    {
-	      return (DB_LOGICAL) ER_OUT_OF_VIRTUAL_MEMORY;
+	      res = V_ERROR;
+	      goto end;
 	    }
 	}
       memcpy (p_tplrec.tpl, tplrec.tpl, tpl_len);
@@ -1013,10 +1007,8 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (qp_scan != S_END)
     {
-      pr_clear_value (&list_val);
-      qfile_close_scan (thread_p, &s_id);
-      db_private_free_and_init (thread_p, p_tplrec.tpl);
-      return V_ERROR;
+      res = V_ERROR;
+      goto end;
     }
 
   if (list_on == true)
@@ -1030,30 +1022,29 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       card2 = eval_item_card_set (&list_val2, set, R_EQ);
       if (card2 == ER_FAILED)
 	{
-	  pr_clear_value (&list_val);
-	  pr_clear_value (&list_val2);
-	  qfile_close_scan (thread_p, &s_id);
-	  db_private_free_and_init (thread_p, p_tplrec.tpl);
-	  return V_ERROR;
+	  res = V_ERROR;
+	  goto end;
 	}
       else if (card2 == UNKNOWN_CARD)
 	{
 	  res = V_UNKNOWN;
+	  goto end;
 	}
       else if (card1 > card2)
 	{
-	  pr_clear_value (&list_val);
-	  pr_clear_value (&list_val2);
-	  qfile_close_scan (thread_p, &s_id);
-	  db_private_free_and_init (thread_p, p_tplrec.tpl);
-	  return V_FALSE;
+	  res = V_FALSE;
+	  goto end;
 	}
     }
 
+end:
   pr_clear_value (&list_val);
   pr_clear_value (&list_val2);
   qfile_close_scan (thread_p, &s_id);
-  db_private_free_and_init (thread_p, p_tplrec.tpl);
+  if (p_tplrec.tpl != NULL)
+    {
+      db_private_free_and_init (thread_p, p_tplrec.tpl);
+    }
   return res;
 }
 
@@ -1116,6 +1107,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   p_tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
   if (p_tplrec.tpl == NULL)
     {
+      qfile_close_scan (thread_p, &s_id);
       return V_ERROR;
     }
 
@@ -1123,11 +1115,12 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   card1 = 0;
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
+      pr_clear_value (&list_val);
+
       if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
 	{
-	  qfile_close_scan (thread_p, &s_id);
-	  db_private_free_and_init (thread_p, p_tplrec.tpl);
-	  return V_UNKNOWN;
+	  res = V_UNKNOWN;
+	  goto end;
 	}
 
       OR_BUF_INIT (buf, ptr, length);
@@ -1146,39 +1139,27 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  if (rc == V_ERROR)
 	    {
-	      pr_clear_value (&list_val);
-	      pr_clear_value (&list_val2);
-	      qfile_close_scan (thread_p, &s_id);
-	      db_private_free_and_init (thread_p, p_tplrec.tpl);
-	      return V_ERROR;
+	      res = V_ERROR;
+	      goto end;
 	    }
 	  else if (rc != V_TRUE)
 	    {
 	      card2 = eval_item_card_sort_list (thread_p, &list_val2, list_id2);
 	      if (card2 == ER_FAILED)
 		{
-		  pr_clear_value (&list_val);
-		  pr_clear_value (&list_val2);
-		  qfile_close_scan (thread_p, &s_id);
-		  db_private_free_and_init (thread_p, p_tplrec.tpl);
-		  return V_ERROR;
+		  res = V_ERROR;
+		  goto end;
 		}
 	      else if (card2 == UNKNOWN_CARD)
 		{
-		  pr_clear_value (&list_val);
-		  pr_clear_value (&list_val2);
-		  qfile_close_scan (thread_p, &s_id);
-		  db_private_free_and_init (thread_p, p_tplrec.tpl);
-		  return V_UNKNOWN;
+		  res = V_UNKNOWN;
+		  goto end;
 		}
 
 	      if (card1 > card2)
 		{
-		  pr_clear_value (&list_val);
-		  pr_clear_value (&list_val2);
-		  qfile_close_scan (thread_p, &s_id);
-		  db_private_free_and_init (thread_p, p_tplrec.tpl);
-		  return V_FALSE;
+		  res = V_FALSE;
+		  goto end;
 		}
 	      card1 = 0;
 	    }
@@ -1192,7 +1173,8 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	  p_tplrec.tpl = (QFILE_TUPLE) db_private_realloc (thread_p, p_tplrec.tpl, tpl_len);
 	  if (p_tplrec.tpl == NULL)
 	    {
-	      return (DB_LOGICAL) ER_OUT_OF_VIRTUAL_MEMORY;
+	      res = V_ERROR;
+	      goto end;
 	    }
 	}
       memcpy (p_tplrec.tpl, tplrec.tpl, tpl_len);
@@ -1202,10 +1184,8 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (qp_scan != S_END)
     {
-      pr_clear_value (&list_val);
-      qfile_close_scan (thread_p, &s_id);
-      db_private_free_and_init (thread_p, p_tplrec.tpl);
-      return V_ERROR;
+      res = V_ERROR;
+      goto end;
     }
 
   if (list_on == true)
@@ -1216,40 +1196,36 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       if ((*(pr_type->data_readval)) (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
 	{
-	  /* TODO: look once more, need to free (tpl)? */
-	  pr_clear_value (&list_val);
-	  qfile_close_scan (thread_p, &s_id);
-	  db_private_free_and_init (thread_p, p_tplrec.tpl);
-	  return V_ERROR;
+	  res = V_ERROR;
+	  goto end;
 	}
 
       card2 = eval_item_card_sort_list (thread_p, &list_val2, list_id2);
       if (card2 == ER_FAILED)
 	{
-	  pr_clear_value (&list_val);
-	  pr_clear_value (&list_val2);
-	  qfile_close_scan (thread_p, &s_id);
-	  db_private_free_and_init (thread_p, p_tplrec.tpl);
-	  return V_ERROR;
+	  res = V_ERROR;
+	  goto end;
 	}
       else if (card2 == UNKNOWN_CARD)
 	{
 	  res = V_UNKNOWN;
+	  goto end;
 	}
       else if (card1 > card2)
 	{
-	  pr_clear_value (&list_val);
-	  pr_clear_value (&list_val2);
-	  qfile_close_scan (thread_p, &s_id);
-	  db_private_free_and_init (thread_p, p_tplrec.tpl);
-	  return V_FALSE;
+	  res = V_FALSE;
+	  goto end;
 	}
     }
 
+end:
   pr_clear_value (&list_val);
   pr_clear_value (&list_val2);
   qfile_close_scan (thread_p, &s_id);
-  db_private_free_and_init (thread_p, p_tplrec.tpl);
+  if (p_tplrec.tpl != NULL)
+    {
+      db_private_free_and_init (thread_p, p_tplrec.tpl);
+    }
 
   return res;
 }

@@ -13890,6 +13890,10 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 		  goto end;
 		}
 	      rc = heap_attrinfo_set (oid, assign->att_id, dbval, mvcc_reev_data->curr_attrinfo);
+	      if (dbval->need_clear)
+		{
+		  pr_clear_value (dbval);
+		}
 	    }
 	  if (rc != NO_ERROR)
 	    {

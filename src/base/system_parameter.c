@@ -616,6 +616,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FORCE_RESTART_TO_SKIP_RECOVERY "force_restart_to_skip_recovery"
 
+#define PRM_NAME_ENABLE_STRING_COMPRESSION "enable_string_compression"
+
+#define PRM_NAME_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES "xasl_cache_time_threshold_in_minutes"
+
 #define PRM_NAME_EXTENDED_STATISTICS_ACTIVATION "extended_statistics_activation"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
@@ -1507,7 +1511,7 @@ bool PRM_INTL_MBS_SUPPORT = false;
 static bool prm_intl_mbs_support_default = false;
 static unsigned int prm_intl_mbs_support_flag = 0;
 
-bool PRM_LOG_COMPRESS = false;
+bool PRM_LOG_COMPRESS = true;
 static bool prm_log_compress_default = true;
 static unsigned int prm_log_compress_flag = 0;
 
@@ -2030,6 +2034,15 @@ int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_upper = 15;
 static int prm_extended_statistics_lower = 0;
 
+bool PRM_ENABLE_STRING_COMPRESSION = true;
+static bool prm_enable_string_compression_default = true;
+static unsigned int prm_enable_string_compression_flag = 0;
+
+int PRM_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES = 360;
+static unsigned int prm_xasl_cache_time_threshold_in_minutes_flag = 0;
+static int prm_xasl_cache_time_threshold_in_minutes_default = 360;
+static int prm_xasl_cache_time_threshold_in_minutes_upper = INT_MAX;
+static int prm_xasl_cache_time_threshold_in_minutes_lower = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4926,7 +4939,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_extended_statistics_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_ENABLE_STRING_COMPRESSION,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_BOOLEAN,
+   (void *) &prm_enable_string_compression_flag,
+   (void *) &prm_enable_string_compression_default,
+   (void *) &PRM_ENABLE_STRING_COMPRESSION,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   (void *) &prm_xasl_cache_time_threshold_in_minutes_flag,
+   (void *) &prm_xasl_cache_time_threshold_in_minutes_default,
+   (void *) &PRM_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES,
+   (void *) &prm_xasl_cache_time_threshold_in_minutes_upper,
+   (void *) &prm_xasl_cache_time_threshold_in_minutes_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

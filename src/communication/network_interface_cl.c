@@ -8134,7 +8134,7 @@ error:
 
   ENTER_SERVER ();
 
-  xperfmon_server_copy_global_stats (NULL, to_stats);
+  xperfmon_server_copy_global_stats (to_stats);
 
   EXIT_SERVER ();
   return NO_ERROR;
