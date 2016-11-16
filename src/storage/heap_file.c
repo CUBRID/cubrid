@@ -25401,6 +25401,7 @@ heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   if (context->ispeeking == COPY)
     {
       /* TODO[arnia] : need to clear recdes_p ?*/
+      assert (false);
       
     }
   else
