@@ -9324,6 +9324,7 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
   item->metadata.heap.is_marked_deleted = false;
   log_append_undoredo_data2 (thread_p, RVFL_TRACKER_HEAP_REUSE, NULL, page_of_item, index_item, sizeof (*vfid), 0, vfid,
 			     NULL);
+  pgbuf_set_dirty (thread_p, page_of_item, DONT_FREE);
 
   file_log ("file_tracker_item_reuse_heap", "reuse heap file %d|%d; tracker page %d|%d, prev_lsa = %lld|%d, "
 	    "crt_lsa = %lld|%d, item at pos %d ", VFID_AS_ARGS (vfid), PGBUF_PAGE_VPID_AS_ARGS (page_of_item),
@@ -9391,6 +9392,7 @@ file_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
       log_append_run_postpone (thread_p, RVFL_TRACKER_HEAP_MARK_DELETED, &addr, pgbuf_get_vpid_ptr (page_of_item),
 			       0, NULL, &context->ref_lsa);
     }
+  pgbuf_set_dirty (thread_p, page_of_item, DONT_FREE);
 
   file_log ("file_tracker_item_mark_heap_deleted", "mark delete heap file %d|%d; "
 	    PGBUF_PAGE_MODIFY_MSG ("tracker page") ", item at pos %d, on %s, ref_lsa = %lld|%d",
