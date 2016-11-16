@@ -898,7 +898,7 @@ es_owfs_delete_file (const char *path)
 }
 
 int
-es_owfs_copy_file (const char *src_path, char *metaname, char *new_path)
+es_owfs_copy_file (const char *src_path, const char *metaname, char *new_path)
 {
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;
