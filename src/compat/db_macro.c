@@ -1258,7 +1258,10 @@ db_value_type_is_collection (const DB_VALUE * value)
 bool
 db_value_is_null (const DB_VALUE * value)
 {
-  CHECK_1ARG_TRUE (value);
+  if (NO_SERVER_OR_DEBUG_MODE)
+    {
+      CHECK_1ARG_TRUE (value);
+    }
 
   return (value->domain.general_info.is_null != 0);
 }
