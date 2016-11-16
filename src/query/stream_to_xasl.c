@@ -269,6 +269,7 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * 
  *   return: if successful, return 0, otherwise non-zero error code
  *   xasl_tree(in)      : pointer to where to return the
  *                        root of the unpacked XASL tree
+ *   use_xasl_clone(in) : true, if XASL clone is used
  *   xasl_stream(in)    : pointer to xasl stream
  *   xasl_stream_size(in)       : # of bytes in xasl_stream
  *   xasl_unpack_info_ptr(in)   : pointer to where to return the pack info
@@ -279,8 +280,8 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * 
  * xasl_unpack_info_ptr. The free function is stx_free_xasl_unpack_info().
  */
 int
-stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, char *xasl_stream, int xasl_stream_size,
-			void **xasl_unpack_info_ptr)
+stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
+			int xasl_stream_size, void **xasl_unpack_info_ptr)
 {
   XASL_NODE *xasl;
   char *p;
@@ -292,6 +293,10 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, char *x
     {
       return ER_QPROC_INVALID_XASLNODE;
     }
+
+#if defined (SERVER_MODE)
+  thread_p->use_xasl_clone = use_xasl_clone;
+#endif
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
@@ -346,6 +351,7 @@ end:
  *   return: if successful, return 0, otherwise non-zero error code
  *   pred(in): pointer to where to return the root of the unpacked
  *             filter predicate tree
+ *   use_xasl_clone(in) : true, if XASL clone is used
  *   pred_stream(in): pointer to predicate stream
  *   pred_stream_size(in): # of bytes in predicate stream
  *   pred_unpack_info_ptr(in): pointer to where to return the pack info
@@ -355,8 +361,8 @@ end:
  *       (*pred)->unpack_info by calling stx_free_xasl_unpack_info().
  */
 int
-stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred, char *pred_stream,
-			       int pred_stream_size)
+stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred, bool use_xasl_clone,
+			       char *pred_stream, int pred_stream_size)
 {
   PRED_EXPR_WITH_CONTEXT *pwc = NULL;
   char *p = NULL;
@@ -368,6 +374,10 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
     {
       return ER_QPROC_INVALID_XASLNODE;
     }
+
+#if defined (SERVER_MODE)
+  thread_p->use_xasl_clone = use_xasl_clone;
+#endif
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, pred_stream, pred_stream_size);
@@ -409,13 +419,14 @@ end:
  * stx_map_stream_to_func_pred () -
  *   return: if successful, return 0, otherwise non-zero error code
  *   xasl(in)      : pointer to where to return the unpacked FUNC_PRED
+ *   use_xasl_clone(in) : true, if XASL clone is used
  *   xasl_stream(in)    : pointer to xasl stream
  *   xasl_stream_size(in)       : # of bytes in xasl_stream
  *   xasl_unpack_info_ptr(in)   : pointer to where to return the pack info
  */
 int
-stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream, int xasl_stream_size,
-			     void **xasl_unpack_info_ptr)
+stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, bool use_xasl_clone, char *xasl_stream,
+			     int xasl_stream_size, void **xasl_unpack_info_ptr)
 {
   FUNC_PRED *p_xasl = NULL;
   char *p = NULL;
@@ -427,6 +438,10 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *x
     {
       return ER_QPROC_INVALID_XASLNODE;
     }
+
+#if defined (SERVER_MODE)
+  thread_p->use_xasl_clone = use_xasl_clone;
+#endif
 
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
@@ -5342,14 +5357,12 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
-      if (xcache_uses_clones ())
+#if defined (SERVER_MODE)
+      if (thread_p->use_xasl_clone && !db_value_is_null (&regu_var->value.dbval))
 	{
-	  if (!db_value_is_null (&regu_var->value.dbval))
-	    {
-	      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
-	    }
+	  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	}
-
+#endif
       break;
 
     case TYPE_CONSTANT:

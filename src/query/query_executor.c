@@ -398,7 +398,8 @@ static int qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, int 
 static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
-static int qexec_clear_update_assignment (XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment, int final);
+static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
+					  int final);
 static DB_LOGICAL qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p, ORDBYNUM_INFO * ordby_info);
 static int qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
 static int qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS option,
@@ -2214,7 +2215,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	for (i = 0; i < xasl->proc.update.num_assigns; i++)
 	  {
 	    assignment = &(xasl->proc.update.assigns[i]);
-	    pg_cnt += qexec_clear_update_assignment (xasl, assignment, final);
+	    pg_cnt += qexec_clear_update_assignment (thread_p, xasl, assignment, final);
 	  }
       }
       break;
@@ -2230,7 +2231,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	  for (i = 0; i < xasl->proc.insert.odku->num_assigns; i++)
 	    {
 	      assignment = &(xasl->proc.insert.odku->assignments[i]);
-	      pg_cnt += qexec_clear_update_assignment (xasl, assignment, final);
+	      pg_cnt += qexec_clear_update_assignment (thread_p, xasl, assignment, final);
 	    }
 	}
       if (xasl->proc.insert.valptr_lists != NULL && xasl->proc.insert.num_val_lists > 0)
@@ -2369,27 +2370,31 @@ qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
  *   final(in)  :
  */
 static int
-qexec_clear_update_assignment (XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment, int final)
+qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment, int final)
 {
   int pg_cnt;
 
   pg_cnt = 0;
   if (!XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
     {
+#if (defined (SERVER_MODE))
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
-	  if (xcache_uses_clones ())
+	  if (thread_p->use_xasl_clone)
 	    {
 	      (void) pr_clear_value (assignment->constant);
 	    }
 	}
       else
 	{
-	  if (!xcache_uses_clones ())
+	  if (!thread_p->use_xasl_clone)
 	    {
 	      (void) pr_clear_value (assignment->constant);
 	    }
 	}
+#else
+      (void) pr_clear_value (assignment->constant);
+#endif
     }
 
   if (assignment->regu_var != NULL)
@@ -20547,11 +20552,6 @@ qexec_clear_partition_expression (THREAD_ENTRY * thread_p, REGU_VARIABLE * expr)
   XASL_NODE xasl_node;
 
   memset (&xasl_node, 0, sizeof (XASL_NODE));
-  if (xcache_uses_clones ())
-    {
-      XASL_SET_FLAG (&xasl_node, XASL_DECACHE_CLONE);
-    }
-
   qexec_clear_regu_var (&xasl_node, expr, true);
 
   return NO_ERROR;

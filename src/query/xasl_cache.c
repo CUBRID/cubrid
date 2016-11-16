@@ -228,6 +228,8 @@ static bool xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_
 static void xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, void *),
 				       void *arg);
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg);
+static bool xcache_uses_clones (void);
+
 
 /*
  * xcache_initialize () - Initialize XASL cache.
@@ -772,6 +774,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
   HL_HEAPID save_heapid = 0;
   int oid_index;
   int lock_result;
+  bool use_xasl_clone = false;
 
   assert (xid != NULL);
   assert (xcache_entry != NULL && *xcache_entry == NULL);
@@ -872,6 +875,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 
   if (xcache_uses_clones ())
     {
+      use_xasl_clone = true;
       /* Try to fetch a cached clone. */
       if ((*xcache_entry)->cache_clones == NULL)
 	{
@@ -908,7 +912,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
       save_heapid = db_change_private_heap (thread_p, 0);
     }
   error_code =
-    stx_map_stream_to_xasl (thread_p, &xclone->xasl, (*xcache_entry)->stream.xasl_stream,
+    stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.xasl_stream,
 			    (*xcache_entry)->stream.xasl_stream_size, &xclone->xasl_buf);
   if (save_heapid != 0)
     {
@@ -2150,8 +2154,12 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
  *
  * return : True, if XASL clones are used, false otherwise
  */
-bool
+static bool
 xcache_uses_clones (void)
 {
+#if defined (SERVER_MODE)
   return xcache_Max_clones > 0;
+#else
+  return false;
+#endif
 }

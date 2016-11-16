@@ -730,7 +730,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   sort_args->fk_name = fk_name;
   if (pred_stream && pred_stream_size > 0)
     {
-      if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
+      if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, false, pred_stream, pred_stream_size) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -745,7 +745,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       func_index_info.col_id = func_col_id;
       func_index_info.attr_index_start = func_attr_index_start;
       func_index_info.expr = NULL;
-      if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&func_index_info.expr), func_pred_stream,
+      if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&func_index_info.expr), false, func_pred_stream,
 				       func_pred_stream_size, &func_unpack_info))
 	{
 	  goto error;
