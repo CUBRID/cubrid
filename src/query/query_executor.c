@@ -20547,6 +20547,10 @@ qexec_clear_partition_expression (THREAD_ENTRY * thread_p, REGU_VARIABLE * expr)
   XASL_NODE xasl_node;
 
   memset (&xasl_node, 0, sizeof (XASL_NODE));
+  if (xcache_uses_clones ())
+    {
+      XASL_SET_FLAG (&xasl_node, XASL_DECACHE_CLONE);
+    }
 
   qexec_clear_regu_var (&xasl_node, expr, true);
 
