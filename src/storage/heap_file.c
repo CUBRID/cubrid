@@ -17552,7 +17552,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       /* insert case, read the values */
       if (func_pred == NULL)
 	{
-	  if (stx_map_stream_to_func_pred (NULL, (FUNC_PRED **) (&func_pred), false, expr_stream, expr_stream_size,
+	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&func_pred), false, expr_stream, expr_stream_size,
 					   &unpack_info))
 	    {
 	      error = ER_FAILED;
