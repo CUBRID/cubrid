@@ -9247,6 +9247,39 @@ exit:
 }
 
 /*
+ * file_rv_tracker_reuse_heap () - recover reuse heap file in tracker
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  FILE_EXTENSIBLE_DATA *extdata = NULL;
+  FILE_TRACK_ITEM *item = NULL;
+
+  assert (rcv->length == 0);
+  assert (rcv->pgptr != NULL);
+  assert (rcv->offset >= 0);
+
+  extdata = (FILE_EXTENSIBLE_DATA *) rcv->pgptr;
+  assert (rcv->offset < file_extdata_item_count (extdata));
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, rcv->offset);
+  assert (item->type == FILE_HEAP);
+  assert (item->metadata.heap.is_marked_deleted);
+
+  item->metadata.heap.is_marked_deleted = false;
+
+  file_log ("file_rv_tracker_reuse_heap", "recovery reuse heap " FILE_TRACK_ITEM_MSG ", in "
+	    PGBUF_PAGE_STATE_MSG ("tracker page"), FILE_TRACK_ITEM_AS_ARGS (item), PGBUF_PAGE_STATE_ARGS (rcv->pgptr));
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
  * file_tracker_item_reuse_heap () - reuse heap file if marked as deleted
  *
  * return            : error code
@@ -9261,7 +9294,6 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
 			      int index_item, bool * stop, void *args)
 {
   FILE_TRACK_ITEM *item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
-  FILE_TRACK_ITEM item_new;
   VFID *vfid;
 
   LOG_LSA save_lsa;
@@ -9280,11 +9312,11 @@ file_tracker_item_reuse_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FI
   vfid->volid = item->volid;
   vfid->fileid = item->fileid;
 
-  item_new = *item;
-  item_new.metadata.heap.is_marked_deleted = false;
-
   save_lsa = *pgbuf_get_lsa (page_of_item);
-  file_extdata_update_item (thread_p, page_of_item, &item_new, index_item, extdata);
+
+  item->metadata.heap.is_marked_deleted = false;
+  log_append_undoredo_data2 (thread_p, RVFL_TRACKER_HEAP_REUSE, NULL, page_of_item, index_item, sizeof (*vfid), 0, vfid,
+			     NULL);
 
   file_log ("file_tracker_item_reuse_heap", "reuse heap file %d|%d; tracker page %d|%d, prev_lsa = %lld|%d, "
 	    "crt_lsa = %lld|%d, item at pos %d ", VFID_AS_ARGS (vfid), PGBUF_PAGE_VPID_AS_ARGS (page_of_item),
@@ -9312,6 +9344,13 @@ file_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out)
   return file_tracker_map (thread_p, PGBUF_LATCH_WRITE, file_tracker_item_reuse_heap, vfid_out);
 }
 
+typedef struct file_track_mark_heap_deleted_context FILE_TRACK_MARK_HEAP_DELETED_CONTEXT;
+struct file_track_mark_heap_deleted_context
+{
+  LOG_LSA ref_lsa;
+  bool is_undo;
+};
+
 /*
  * file_tracker_item_mark_heap_deleted () - FILE_TRACK_ITEM_FUNC to mark heap entry as deleted
  *
@@ -9324,41 +9363,108 @@ file_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out)
  */
 static int
 file_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
-				     int index_item, bool * stop, void *ignore_args)
+				     int index_item, bool * stop, void *args)
 {
-  FILE_TRACK_ITEM item_new;
-  FILE_TRACK_ITEM *item_old = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+  FILE_TRACK_ITEM *item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+  FILE_TRACK_MARK_HEAP_DELETED_CONTEXT *context = (FILE_TRACK_MARK_HEAP_DELETED_CONTEXT *) args;
 
   LOG_LSA save_lsa;
 
-  assert ((FILE_TYPE) item_old->type == FILE_HEAP);
-  assert (!item_old->metadata.heap.is_marked_deleted);
+  assert ((FILE_TYPE) item->type == FILE_HEAP);
+  assert (!item->metadata.heap.is_marked_deleted);
 
-  item_new = *item_old;
-  item_new.metadata.heap.is_marked_deleted = true;
+  item->metadata.heap.is_marked_deleted = true;
 
   save_lsa = *pgbuf_get_lsa (page_of_item);
-  file_extdata_update_item (thread_p, page_of_item, &item_new, index_item, extdata);
+  if (context->is_undo)
+    {
+      log_append_compensate_with_undo_nxlsa (thread_p, RVFL_TRACKER_HEAP_MARK_DELETED,
+					     pgbuf_get_vpid_ptr (page_of_item), index_item, page_of_item, 0, NULL,
+					     LOG_FIND_CURRENT_TDES (thread_p), &context->ref_lsa);
+    }
+  else
+    {
+      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+      addr.pgptr = page_of_item;
+      addr.offset = index_item;
+      log_append_run_postpone (thread_p, RVFL_TRACKER_HEAP_MARK_DELETED, &addr, pgbuf_get_vpid_ptr (page_of_item),
+			       0, NULL, &context->ref_lsa);
+    }
 
-  file_log ("file_tracker_item_mark_heap_deleted", "mark delete heap file %d|%d; tracker page %d|%d, "
-	    "prev_lsa = %lld|%d, crt_lsa = %lld|%d, item at pos %d ", item_old->volid, item_old->fileid,
-	    PGBUF_PAGE_VPID_AS_ARGS (page_of_item), LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_of_item),
-	    index_item);
+  file_log ("file_tracker_item_mark_heap_deleted", "mark delete heap file %d|%d; "
+	    PGBUF_PAGE_MODIFY_MSG ("tracker page") ", item at pos %d, on %s, ref_lsa = %lld|%d",
+	    item->volid, item->fileid, PGBUF_PAGE_MODIFY_ARGS (page_of_item, &save_lsa), index_item,
+	    context->is_undo ? "undo" : "postpone", LSA_AS_ARGS (&context->ref_lsa));
+
+  *stop = true;
 
   return NO_ERROR;
 }
 
 /*
- * file_tracker_mark_heap_deleted () - search for heap file and mark it for delete
+ * file_rv_tracker_mark_heap_deleted () - search for heap file and mark it for delete
  *
  * return        : error code
  * thread_p (in) : thread entry
- * vfid (in)     : file identifier
+ * rcv (in)      : recovery data
+ * is_undo (in)  : true if called on undo/rollback, false if called on postpone
  */
 int
-file_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, const VFID * vfid)
+file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo)
 {
-  return file_tracker_apply_to_file (thread_p, vfid, PGBUF_LATCH_WRITE, file_tracker_item_mark_heap_deleted, NULL);
+  VFID *vfid = (VFID *) rcv->data;
+  FILE_TRACK_MARK_HEAP_DELETED_CONTEXT context;
+
+  int error_code = NO_ERROR;
+
+  assert (rcv->length == sizeof (*vfid));
+  assert (!LSA_ISNULL (&rcv->reference_lsa));
+
+  context.is_undo = is_undo;
+  context.ref_lsa = rcv->reference_lsa;
+
+  error_code =
+    file_tracker_apply_to_file (thread_p, vfid, PGBUF_LATCH_WRITE, file_tracker_item_mark_heap_deleted, &context);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+    }
+  return error_code;
+}
+
+/*
+ * file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone () - used for recovery as compensate or run postpone
+ *                                                                   when heap file is marked as deleted.
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  FILE_EXTENSIBLE_DATA *extdata = NULL;
+  FILE_TRACK_ITEM *item = NULL;
+
+  assert (rcv->length == 0);
+  assert (rcv->pgptr != NULL);
+  assert (rcv->offset >= 0);
+
+  extdata = (FILE_EXTENSIBLE_DATA *) rcv->pgptr;
+  assert (rcv->offset < file_extdata_item_count (extdata));
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, rcv->offset);
+  assert (item->type == FILE_HEAP);
+  assert (!item->metadata.heap.is_marked_deleted);
+
+  item->metadata.heap.is_marked_deleted = true;
+
+  file_log ("file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone", "mark heap deleted" FILE_TRACK_ITEM_MSG
+	    ", in " PGBUF_PAGE_STATE_MSG ("tracker page"), FILE_TRACK_ITEM_AS_ARGS (item),
+	    PGBUF_PAGE_STATE_ARGS (rcv->pgptr));
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
 }
 
 #if defined (SA_MODE)

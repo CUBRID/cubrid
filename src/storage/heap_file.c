@@ -5659,6 +5659,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
   VFID vfid;
   FILE_TYPE file_type;
   int ret;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
   ret = file_get_type (thread_p, &hfid->vfid, &file_type);
   if (ret != NO_ERROR)
@@ -5679,16 +5680,47 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
       file_postpone_destroy (thread_p, &vfid);
     }
 
-  ret = file_tracker_mark_heap_deleted (thread_p, &hfid->vfid);
-  if (ret != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return ret;
-    }
+  log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (vfid), &vfid);
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
 
   return ret;
+}
+
+/*
+ * heap_rv_mark_deleted_on_undo () - mark heap file as deleted on undo
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+heap_rv_mark_deleted_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  int error_code = file_rv_tracker_mark_heap_deleted (thread_p, rcv, true);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+    }
+  return error_code;
+}
+
+/*
+ * heap_rv_mark_deleted_on_postpone () - mark heap file as deleted on postpone
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  int error_code = file_rv_tracker_mark_heap_deleted (thread_p, rcv, false);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+    }
+  return error_code;
 }
 
 /*
