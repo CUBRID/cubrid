@@ -45,6 +45,9 @@
     ((DB_TYPE) ((v)->domain.general_info.type))
 #endif
 
+#define DB_IS_NULL(v) \
+  ((((DB_VALUE *) (v) != NULL) && (v)->domain.general_info.is_null == 0) ? false : true)
+
 #define DB_PULL_STRING(v) \
       ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
 		|| DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
@@ -156,7 +159,6 @@
 #define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
 #define DB_GET_STRING_SAFE(v) db_get_string_safe(v)
-#define DB_IS_NULL(v) db_value_is_null(v)
 
 /* TODO: Decide whether we keep this as it is or we use inline functions */
 #define db_pull_string(v) DB_PULL_STRING(v)
@@ -168,6 +170,7 @@
 #define db_pull_bit(v, l) DB_PULL_BIT(v, l)
 #define db_pull_nchar(v, l) DB_PULL_NCHAR(v, l)
 #define db_pull_char(v, l) DB_PULL_CHAR(v, l)
+#define db_value_is_null(v) DB_IS_NULL(v)
 
 #define db_make_null(v) \
     ((v)->domain.general_info.type = DB_TYPE_NULL, \
