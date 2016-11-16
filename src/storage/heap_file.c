@@ -5680,7 +5680,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
       file_postpone_destroy (thread_p, &vfid);
     }
 
-  log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (vfid), &vfid);
+  log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
 
   (void) heap_stats_del_bestspace_by_hfid (thread_p, hfid);
 
