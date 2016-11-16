@@ -5538,3 +5538,185 @@ tz_create_datetimetz_from_parts (const int m, const int d, const int y, const in
 
   return error_status;
 }
+
+/*
+* conv_tz() - Converts a tz type from one time library to another
+*				      
+*  Returns error or no error
+*  p (in/out): pointer to timezone data type
+*  type (in): timezone type
+*  new_tzdata (in): new timezone lib data
+*
+*/
+int
+conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata)
+{
+  TZ_DATA save_data;
+  int err_status = NO_ERROR;
+
+  save_data = timezone_data;
+  switch (type)
+    {
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ *p1;
+	DB_DATE date_local;
+	DB_TIME time_local;
+	TZ_DECODE_INFO tz_info;
+	DB_DATETIME src_dt, dest_dt;
+	DB_TIMESTAMP timestamp_utc;
+
+	p1 = (DB_TIMESTAMPTZ *) p;
+	if (p1->tz_id == TZ_REGION_OFFSET)
+	  {
+	    return NO_ERROR;
+	  }
+
+	err_status = db_timestamp_decode_w_tz_id (&(p1->timestamp), &(p1->tz_id), &date_local, &time_local);
+	if (err_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
+	src_dt.date = date_local;
+	src_dt.time = time_local;
+
+	timezone_data = *new_tzdata;
+	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
+	/* If we get an error it means that the abbreviation does no longer exist
+	 * Then we must try to convert without the abbreviation
+	 *
+	 */
+	if (err_status != NO_ERROR)
+	  {
+	    tz_info.zone.dst_str[0] = '\0';
+	    err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
+	    if (err_status != NO_ERROR)
+	      {
+		goto exit;
+	      }
+	  }
+
+	tz_encode_tz_id (&tz_info, &(p1->tz_id));
+	// Encode UTC time for timestamptz
+	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, &timestamp_utc);
+	p1->timestamp = timestamp_utc;
+	break;
+      }
+
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_DATETIMETZ *p1;
+	TZ_DECODE_INFO tz_info;
+	DB_DATETIME dest_dt;
+	DB_DATETIME datetime_local;
+
+	p1 = (DB_DATETIMETZ *) p;
+	if (p1->tz_id == TZ_REGION_OFFSET)
+	  {
+	    return NO_ERROR;
+	  }
+
+	err_status = tz_utc_datetimetz_to_local (&(p1->datetime), &(p1->tz_id), &datetime_local);
+	if (err_status)
+	  {
+	    goto exit;
+	  }
+
+	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
+	timezone_data = *new_tzdata;
+	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, &dest_dt);
+	/* If we get an error it means that the abbreviation does no longer exist
+	 * then we must try to convert without the abbreviation
+	 */
+	if (err_status != NO_ERROR)
+	  {
+	    tz_info.zone.dst_str[0] = '\0';
+	    err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, &dest_dt);
+	    if (err_status != NO_ERROR)
+	      {
+		goto exit;
+	      }
+	  }
+
+	tz_encode_tz_id (&tz_info, &(p1->tz_id));
+	p1->datetime = dest_dt;
+	break;
+      }
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMP *p1;
+	TZ_ID ses_tz_id;
+	DB_DATE date_local;
+	DB_TIME time_local;
+	DB_DATETIME src_dt, dest_dt;
+	TZ_DECODE_INFO tz_info;
+
+	p1 = (DB_TIMESTAMP *) p;
+	err_status = tz_create_session_tzid_for_timestamp (p1, &ses_tz_id);
+	if (err_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	err_status = db_timestamp_decode_w_tz_id (p1, &ses_tz_id, &date_local, &time_local);
+	if (err_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
+	src_dt.date = date_local;
+	src_dt.time = time_local;
+	timezone_data = *new_tzdata;
+	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
+
+	if (err_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, p1);
+	break;
+      }
+
+    case DB_TYPE_DATETIMELTZ:
+      {
+	DB_DATETIME *p1;
+	TZ_ID ses_tz_id;
+	DB_DATETIME src_dt;
+	TZ_DECODE_INFO tz_info;
+	DB_DATETIME datetime_local;
+
+	p1 = (DB_DATETIME *) p;
+	err_status = tz_create_session_tzid_for_datetime (p1, true, &ses_tz_id);
+	if (err_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	err_status = tz_utc_datetimetz_to_local (p1, &ses_tz_id, &datetime_local);
+	if (err_status)
+	  {
+	    goto exit;
+	  }
+
+	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
+	timezone_data = *new_tzdata;
+	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, p1);
+
+	if (err_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+	break;
+      }
+    }
+
+exit:
+  /* Recover state */
+  timezone_data = save_data;
+  return err_status;
+}
