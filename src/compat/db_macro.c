@@ -2841,63 +2841,6 @@ db_get_string (const DB_VALUE * value)
   return str;
 }
 
-/*char *
-db_pull_string(const DB_VALUE * value)
-{
-  char *str = NULL;
-  DB_TYPE type;
-  CHECK_1ARG_NULL (value);
-
-  type = DB_VALUE_DOMAIN_TYPE(value);
-  switch(type)
-    {
-      case DB_TYPE_VARCHAR:
-      case DB_TYPE_VARNCHAR:
-      case DB_TYPE_NCHAR:
-      case DB_TYPE_CHAR:
-      case DB_TYPE_BIT:
-      case DB_TYPE_VARBIT:
-	str = value->data.ch.medium.buf;
-	break;
-      default:
-	assert(false);
-    }
-  return str;  
-}
-*/
-/*
- * db_get_string_safe() -
- * return :
- * value(in):
- */
-char *
-db_get_string_safe (const DB_VALUE * value)
-{
-  char *str = "";
-  CHECK_1ARG_NULL (value);
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return str;
-    }
-
-  switch (value->data.ch.info.style)
-    {
-    case SMALL_STRING:
-      str = (char *) value->data.ch.sm.buf;
-      break;
-    case MEDIUM_STRING:
-      str = value->data.ch.medium.buf;
-      break;
-    case LARGE_STRING:
-      /* Currently not implemented */
-      str = "";
-      break;
-    }
-
-  return str;
-}
-
 /*
  * db_get_char() -
  * return :

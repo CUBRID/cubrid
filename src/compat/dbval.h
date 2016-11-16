@@ -48,6 +48,16 @@
 #define DB_IS_NULL(v) \
   ((((DB_VALUE *) (v) != NULL) && (v)->domain.general_info.is_null == 0) ? false : true)
 
+
+#define DB_GET_ENUMERATION(v) \
+  ((v)->data.enumeration)
+#define DB_GET_ENUM_SHORT(v) \
+  ((v)->data.enumeration.short_val)
+#define DB_GET_ENUM_STRING(v) \
+  ((v)->data.enumeration.str_val.medium.buf)
+#define DB_GET_ENUM_STRING_SIZE(v) \
+  ((v)->data.enumeration.str_val.medium.size)
+
 #define DB_PULL_STRING(v) \
       ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
 		|| DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
@@ -151,14 +161,24 @@
 #define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
       ((elem)->str_val.medium.size = (sz))
 
+#define DB_GET_STRING_SAFE(v) \
+  ((DB_IS_NULL (v) \
+  || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
+  : ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
+  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
+  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
+  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
+  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
+  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
+  (v)->data.ch.medium.buf))
+
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
 
-#define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
-#define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
-#define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
+#define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
+#define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
-#define DB_GET_STRING_SAFE(v) db_get_string_safe(v)
+#define db_get_string_safe(v) DB_GET_STRING_SAFE(v)
 
 /* TODO: Decide whether we keep this as it is or we use inline functions */
 #define db_pull_string(v) DB_PULL_STRING(v)
@@ -171,6 +191,7 @@
 #define db_pull_nchar(v, l) DB_PULL_NCHAR(v, l)
 #define db_pull_char(v, l) DB_PULL_CHAR(v, l)
 #define db_value_is_null(v) DB_IS_NULL(v)
+#define db_get_enum_string(v) DB_GET_ENUM_STRING(v)
 
 #define db_make_null(v) \
     ((v)->domain.general_info.type = DB_TYPE_NULL, \
