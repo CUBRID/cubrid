@@ -17929,6 +17929,8 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
+  DB_MAKE_NULL (&val);
+
   if (buildlist->groupby_list == NULL)
     {
       return NO_ERROR;
