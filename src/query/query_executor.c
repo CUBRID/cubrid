@@ -18087,6 +18087,8 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 
 	  db_value_clone (&val, &list_dbvals[i]);
 
+	  pr_clear_value (&val);
+
 	  regu_list = regu_list->next;
 	}
 
