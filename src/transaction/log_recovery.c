@@ -2731,6 +2731,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		}
 
 	      /* Do we need to redo anything ? */
+	      if (redo->data.rcvindex == RVREPL_OOR_INSERT || redo->data.rcvindex == RVREPL_OOR_UPDATE)
+		{
+		  /* do not apply redo for these changes */
+		  break;
+		}
 
 	      /* 
 	       * Fetch the page for physical log records and check if redo
