@@ -1260,7 +1260,8 @@ $ LOADDB
 1191 スタンドアロン真空スイープの実行が終了しました。
 1192 %1$zuの値の精度は最大許容%2$dを超えていました。
 1193 処理されたパーティション式の長さが許容される最大「%1$d」を超えていました。
-1194 ラストエラー
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

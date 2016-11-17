@@ -1536,7 +1536,10 @@
 
 #define ER_PRECISION_OVERFLOW			    -1192
 #define ER_PARTITION_EXPRESSION_TOO_LONG	    -1193
-#define ER_LAST_ERROR                               -1194
+
+#define ER_CANNOT_CHECK_FILE                        -1194
+
+#define ER_LAST_ERROR                               -1195
 
 #define DB_TRUE 1
 #define DB_FALSE 0

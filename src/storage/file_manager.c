@@ -5229,7 +5229,6 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
   if (!found)
     {
       /* not found?? corrupted table! */
-      /* TODO: raise an error. */
       assert_release (false);
       error_code = ER_FAILED;
       goto exit;
@@ -5240,7 +5239,6 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
   if (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_found))
     {
       /* already marked as deleted? I don't think so! */
-      /* TODO: raise an error. */
       assert_release (false);
       error_code = ER_FAILED;
       goto exit;
@@ -5540,7 +5538,6 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 		PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
 
       /* check if full table pages can be merged. */
-      /* todo: tweak the condition for trying merges. */
       if (file_extdata_size (extdata_full_ftab) * 2 < file_extdata_max_size (extdata_full_ftab))
 	{
 	  VPID vpid_merged;
@@ -5848,7 +5845,6 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
 		PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), FILE_EXTDATA_AS_ARGS (extdata_user_page_ftab));
 
       /* should we merge pages? */
-      /* todo: tweak the condition for trying merges */
       if (file_extdata_size (extdata_user_page_ftab) * 2 < file_extdata_max_size (extdata_user_page_ftab))
 	{
 	  VPID vpid_merged;
@@ -7539,7 +7535,6 @@ file_table_check_page_is_in_sectors (THREAD_ENTRY * thread_p, const void *data, 
     {
       /* not found! */
       assert_release (false);
-      /* todo: relevant notification error here */
       return ER_FAILED;
     }
   return NO_ERROR;
@@ -9710,8 +9705,8 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   /* try conditional lock */
   if (lock_object (thread_p, class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK) != LK_GRANTED)
     {
-      /* todo: set an appropriate notification here */
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CANNOT_CHECK_FILE, 5, item->volid, item->fileid,
+	      OID_AS_ARGS (class_oid));
       OID_SET_NULL (class_oid);
     }
   else
