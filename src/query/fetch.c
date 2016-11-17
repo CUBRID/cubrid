@@ -3804,6 +3804,11 @@ fetch_peek_arith_end:
 error:
   thread_dec_recursion_depth (thread_p);
 
+  if (original_domain)
+    {
+      regu_var->domain = original_domain;
+    }
+
   return ER_FAILED;
 }
 
