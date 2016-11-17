@@ -689,9 +689,6 @@ struct log_topops_stack
 {
   int max;			/* Size of stack */
   int last;			/* Last entry in stack */
-  LOG_TOPOPS_TYPE type;		/* Used by compensate/postpone log operation. */
-  LOG_LSA ref_lsa;		/* Compensate undo_nxlsa or postpone next lsa. */
-  int compensate_level;		/* The level of top operations when compensate was started. */
   LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
 };
 

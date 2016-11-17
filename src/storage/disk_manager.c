@@ -4560,8 +4560,6 @@ disk_stab_unit_check_reserved (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * curso
     {
       /* not all bits are set */
       assert_release (false);
-
-      /* todo: relevant notification error */
       return ER_FAILED;
     }
   if (context->nsects_lastvol_remaining <= 0)

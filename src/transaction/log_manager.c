@@ -2708,9 +2708,6 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       return;
     }
 
-  /* We cannot append postpone during a postpone system operation. */
-  assert (tdes->topops.type != LOG_TOPOPS_POSTPONE);
-
   skipredo = log_can_skip_redo_logging (rcvindex, tdes, addr);
   if (skipredo == true || (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes)))
     {
@@ -4365,7 +4362,6 @@ log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				 LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int data_size, const char *data)
 {
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_START_POSTPONE, RV_NOT_DEFINED, NULL, data_size, (char *) data,
@@ -4376,25 +4372,7 @@ log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     }
 
   *(LOG_REC_SYSOP_START_POSTPONE *) node->data_header = *sysop_start_postpone;
-  if (tdes->topops.type != LOG_TOPOPS_NORMAL)
-    {
-      assert (tdes->topops.last == 0 || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
-      assert (tdes->topops.type != LOG_TOPOPS_POSTPONE);
-
-      /* todo: remove me */
-      /* Overwrite lastparent_lsa with compensate ref_lsa. */
-      LSA_COPY (&((LOG_REC_SYSOP_START_POSTPONE *) node->data_header)->sysop_end.lastparent_lsa, &tdes->topops.ref_lsa);
-
-      /* Do not reset type yet. It is reset when system op is completed. */
-      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "COMPENSATE_DEBUG: Successful commit postpone for "
-			 "compensate. Tran_ID=%d, system op depth=%d.\n", tdes->trid, tdes->topops.last);
-	}
-    }
-
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 }
 
 /*
