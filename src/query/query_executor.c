@@ -17924,9 +17924,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   QFILE_TUPLE_RECORD tuple_rec;
   REGU_VARIABLE_LIST regu_list;
   int tuple_cnt = 0;
+  DB_VALUE val;
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+
+  DB_MAKE_NULL (&val);
 
   if (buildlist->groupby_list == NULL)
     {
@@ -18048,8 +18051,6 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       regu_list = xasl->outptr_list->valptrp;
       for (i = 0; i < ncolumns; i++)
 	{
-	  DB_VALUE val;
-
 	  if (regu_list == NULL)
 	    {
 	      gbstate.state = ER_FAILED;
@@ -18086,6 +18087,11 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	    }
 
 	  db_value_clone (&val, &list_dbvals[i]);
+
+	  if (DB_NEED_CLEAR (&val))
+	    {
+	      pr_clear_value (&val);
+	    }
 
 	  regu_list = regu_list->next;
 	}
@@ -18154,6 +18160,11 @@ exit_on_error:
 	  pr_clear_value (&(list_dbvals[i]));
 	}
       db_private_free (thread_p, list_dbvals);
+    }
+
+  if (DB_NEED_CLEAR (&val))
+    {
+      pr_clear_value (&val);
     }
 
   /* SORT_PUT_STOP set by 'qexec_gby_finalize_group_dim ()' isn't error */
