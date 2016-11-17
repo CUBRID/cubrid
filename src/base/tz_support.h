@@ -143,6 +143,9 @@ extern "C"
   extern int tz_get_first_weekday_around_date (const int year, const int month, const int weekday, const int after_day,
 					       const bool before);
   extern const TZ_DATA *tz_get_data (void);
+  extern void tz_set_data (const TZ_DATA * data);
+  extern const TZ_DATA *tz_get_new_timezone_data (void);
+  extern void tz_set_new_timezone_data (const TZ_DATA * data);
   extern const char *tz_get_system_timezone (void);
   extern const char *tz_get_session_local_timezone (void);
   extern void tz_get_system_tz_region (TZ_REGION * tz_region);
@@ -234,7 +237,7 @@ extern "C"
   extern int tz_create_datetimetz_from_parts (const int m, const int d, const int y, const int h, const int mi,
 					      const int s, const int ms, const TZ_ID * tz_id, DB_DATETIMETZ * dt_tz);
   extern int get_day_from_timetz (const DB_TIMETZ * timetz);
-  extern int conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata);
+  extern int conv_tz (void *, DB_TYPE);
 #ifdef __cplusplus
 }
 #endif

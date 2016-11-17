@@ -153,8 +153,19 @@ static void *tz_lib_handle = NULL;
 static TZ_DATA timezone_data = { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0,
   NULL, {'0'}
 };
+
+/* Timezone data generated when doing an extend */
+static TZ_DATA new_timezone_data = { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+  NULL, {'0'}
+};
+
 #else
 static TZ_DATA timezone_data = { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL,
+  {'0'}
+};
+
+/* Timezone data generated when doing an extend */
+static TZ_DATA new_timezone_data = { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL,
   {'0'}
 };
 #endif
@@ -682,6 +693,41 @@ tz_get_data (void)
     }
 
   return &timezone_data;
+}
+
+/*
+ * tz_set_data() - Set the new timezone data
+ * Returns: void
+ */
+void
+tz_set_data (const TZ_DATA * data)
+{
+  timezone_data = *data;
+}
+
+/*
+ * tz_get_new_data() - get a reference to the global new timezone data
+ * Returns: NULL if timezone data is not loaded, reference to it otherwise
+ */
+const TZ_DATA *
+tz_get_new_timezone_data (void)
+{
+  if (new_timezone_data.timezone_count == 0)
+    {
+      return NULL;
+    }
+
+  return &new_timezone_data;
+}
+
+/*
+ * tz_set_new_timezone_data() - Set the new timezone data
+ * Returns: void
+ */
+void
+tz_set_new_timezone_data (const TZ_DATA * data)
+{
+  new_timezone_data = *data;
 }
 
 /* 
@@ -5545,15 +5591,15 @@ tz_create_datetimetz_from_parts (const int m, const int d, const int y, const in
 *  Returns error or no error
 *  p (in/out): pointer to timezone data type
 *  type (in): timezone type
-*  new_tzdata (in): new timezone lib data
 *
 */
 int
-conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata)
+conv_tz (void *p, DB_TYPE type)
 {
-  TZ_DATA save_data;
   int err_status = NO_ERROR;
+  TZ_DATA save_data;
 
+  /* Save the state */
   save_data = timezone_data;
   switch (type)
     {
@@ -5582,7 +5628,7 @@ conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata)
 	src_dt.date = date_local;
 	src_dt.time = time_local;
 
-	timezone_data = *new_tzdata;
+	tz_set_data (tz_get_new_timezone_data ());
 	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
 	/* If we get an error it means that the abbreviation does no longer exist
 	 * Then we must try to convert without the abbreviation
@@ -5625,7 +5671,7 @@ conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata)
 	  }
 
 	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
-	timezone_data = *new_tzdata;
+	tz_set_data (tz_get_new_timezone_data ());
 	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, &dest_dt);
 	/* If we get an error it means that the abbreviation does no longer exist
 	 * then we must try to convert without the abbreviation
@@ -5670,7 +5716,8 @@ conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata)
 	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
 	src_dt.date = date_local;
 	src_dt.time = time_local;
-	timezone_data = *new_tzdata;
+
+	tz_set_data (tz_get_new_timezone_data ());
 	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
 
 	if (err_status != NO_ERROR)
@@ -5686,7 +5733,6 @@ conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata)
       {
 	DB_DATETIME *p1;
 	TZ_ID ses_tz_id;
-	DB_DATETIME src_dt;
 	TZ_DECODE_INFO tz_info;
 	DB_DATETIME datetime_local;
 
@@ -5704,7 +5750,7 @@ conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata)
 	  }
 
 	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
-	timezone_data = *new_tzdata;
+	tz_set_data (tz_get_new_timezone_data ());
 	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, p1);
 
 	if (err_status != NO_ERROR)
@@ -5716,7 +5762,6 @@ conv_tz (void *p, DB_TYPE type, TZ_DATA * new_tzdata)
     }
 
 exit:
-  /* Recover state */
   timezone_data = save_data;
   return err_status;
 }
