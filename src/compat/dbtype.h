@@ -188,6 +188,12 @@
 /* Defines the state of a value not being yet prompted for a compression process. */
 #define DB_NOT_YET_COMPRESSED 0
 
+#if !defined(SERVER_MODE) || defined(NDEBUG)
+#define NO_SERVER_OR_DEBUG_MODE true
+#else
+#define NO_SERVER_OR_DEBUG_MODE false
+#endif
+
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection

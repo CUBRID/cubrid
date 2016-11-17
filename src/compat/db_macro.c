@@ -110,12 +110,6 @@ static VALCNV_BUFFER *valcnv_convert_money_to_string (const double value);
 static VALCNV_BUFFER *valcnv_convert_data_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
 static VALCNV_BUFFER *valcnv_convert_db_value_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
 
-#if !defined(SERVER_MODE) || defined(NDEBUG)
-#define NO_SERVER_OR_DEBUG_MODE true
-#else
-#define NO_SERVER_OR_DEBUG_MODE false
-#endif
-
 /*
  *  db_value_put_null()
  *  return : Error indicator
