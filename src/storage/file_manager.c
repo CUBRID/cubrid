@@ -50,6 +50,7 @@
 #include "oid.h"
 #include "heap_file.h"
 #include "bit.h"
+#include "util_func.h"
 
 #include "critical_section.h"
 #if defined(SERVER_MODE)
@@ -78,7 +79,6 @@
  * This structure keeps meta-data on files in the file header page. The rest of the file header page, based on the type
  * of files, is used by other tables.
  */
-/* TODO: Rename as FILE_HEADER */
 typedef struct file_header FILE_HEADER;
 struct file_header
 {
@@ -135,10 +135,9 @@ struct file_header
 /* Disk size of file header. */
 #define FILE_HEADER_ALIGNED_SIZE ((INT16) (DB_ALIGN (sizeof (FILE_HEADER), MAX_ALIGNMENT)))
 
-/* TODO: Add flags. */
+/* File flags. */
 #define FILE_FLAG_NUMERABLE	    0x1	/* Is file numerable */
 #define FILE_FLAG_TEMPORARY	    0x2	/* Is file temporary */
-#define FILE_FLAG_MARK_DELETED	    0x4	/* TODO: see if this is necessary. */
 
 #define FILE_IS_NUMERABLE(fh) (((fh)->file_flags & FILE_FLAG_NUMERABLE) != 0)
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
@@ -1649,59 +1648,12 @@ static void
 file_extdata_find_ordered (const FILE_EXTENSIBLE_DATA * extdata, const void *item_to_find,
 			   int (*compare_func) (const void *, const void *), bool * found, int *position)
 {
-  int min = 0;
-  int max = file_extdata_item_count (extdata) - 1;
-  int mid = 0;
-  int compare = 0;
-  void *item_at_mid = NULL;
-
   assert (found != NULL);
   assert (position != NULL);
 
-  *found = false;
-  *position = -1;
-
-  /* TODO: to compare with the upper bound to early out */
-
-  /* binary search */
-  /* keep searching while range is still valid. */
-  while (min <= max)
-    {
-      /* get range midpoint. */
-      mid = (min + max) / 2;
-
-      /* get mid item */
-      item_at_mid = file_extdata_at (extdata, mid);
-
-      /* compare mid item to given item */
-      compare = compare_func (item_at_mid, item_to_find);
-      if (compare == 0)
-	{
-	  /* found given item */
-	  *found = true;
-	  *position = mid;
-	  return;
-	}
-
-      if (compare > 0)
-	{
-	  /* mid is greater. search in lower range. */
-	  max = mid - 1;
-	}
-      else
-	{
-	  /* mid is smaller. search in upper range. also increment mid just in case the loop is exited; mid will point
-	   * to first bigger item. */
-	  min = ++mid;
-	}
-    }
-
-  /* not found. mid is currently the position of first item bigger than given item. */
-  *found = false;
-  *position = mid;
-
-  /* TODO: we can create a generic function of this binary search with position. It is also used at least twice in
-   *       b-tree. */
+  *position =
+    util_bsearch (item_to_find, file_extdata_start (extdata), file_extdata_item_count (extdata), extdata->size_of_item,
+		  compare_func, found);
 }
 
 /*

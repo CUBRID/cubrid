@@ -35,6 +35,7 @@
 #include "perf_monitor.h"
 #include "dbtype.h"
 #include "transaction_cl.h"
+#include "util_func.h"
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -5492,12 +5493,13 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 {
   MVCCID save_mvccid = MVCCID_NULL;
   VPID vpid = VPID_INITIALIZER, prev_vpid = VPID_INITIALIZER;
-  int page_count = 0, mem_size = 0, compare = 0;
+  int page_count = 0, mem_size = 0;
   char *ptr = NULL;
   VACUUM_DROPPED_FILES_PAGE *page = NULL, *new_page = NULL;
-  INT16 min = -1, max = -1, mid = -1, position = -1;
+  INT16 position = -1;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  bool found = false;
 
 #if !defined (NDEBUG)
   VACUUM_TRACK_DROPPED_FILES *track_page = NULL;
@@ -5565,142 +5567,73 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
       VPID_COPY (&vpid, &page->next_page);
       page_count = page->n_dropped_files;
 
-      /* dropped files must be ordered. Look for the right position for the new entry. The algorithm considers possible 
-       * to have duplicate values in case of dropped indexes, because btid may be reused. Although unlikely, it is
-       * theoretically possible to drop index with same btid in a relatively short time, without being removed from the 
-       * list of dropped indexes. Set position variable for adding new dropped file. */
-      if (page_count > 0)
+      /* binary search */
+      position =
+	util_bsearch (vfid, page->dropped_files, page_count, sizeof (VACUUM_DROPPED_FILE), vacuum_compare_dropped_files,
+		      &found);
+
+      if (found)
 	{
-	  /* dropped files are kept in ascending order */
-	  /* Use a binary search to find the right position for the new dropped file. If a duplicate is found, just
-	   * replace the previous MVCCID. */
-	  min = 0;
-	  max = page_count;
+	  /* Same entry was already dropped, replace previous MVCCID */
+	  VACUUM_DROPPED_FILE undo_data;
 
-	  /* Initialize compare with a non-zero value. If page_count is 1, the while loop is skipped and then we must
-	   * compare with the new entry with the only existing value (which is only done if compare is not 0). */
-	  compare = -1;
-	  while ((min + 1) < max)
-	    {
-	      /* Stop when next mid is the same with min */
-	      mid = (min + max) / 2;
+	  /* Replace MVCCID */
+	  undo_data = page->dropped_files[position];
+	  save_mvccid = page->dropped_files[position].mvccid;
+	  page->dropped_files[position].mvccid = mvccid;
 
-	      /* Compare with mid value */
-	      compare = vacuum_compare_dropped_files (vfid, &page->dropped_files[mid].vfid);
-	      if (compare == 0)
-		{
-		  /* Duplicate found, break loop */
-		  break;
-		}
+	  assert_release (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, save_mvccid));
 
-	      if (compare < 0)
-		{
-		  /* Keep searching in the min-mid range */
-		  max = mid;
-		}
-	      else		/* compare > 0 */
-		{
-		  /* Keep searching in mid-max range */
-		  min = mid;
-		}
-	    }
-
-	  if (compare != 0 && min == 0)
-	    {
-	      /* This code can be reached in two cases: 1. There was previously only one value and the while loop was
-	       * skipped. 2. All compared entries have been bigger than the new value.  The last remaining range is min 
-	       * = 0, max = 1 and the new value still must be compared with the first entry. */
-	      compare = vacuum_compare_dropped_files (vfid, &page->dropped_files[0].vfid);
-	      if (compare == 0)
-		{
-		  /* Set mid to 0 to replace the MVCCID */
-		  mid = 0;
-		}
-	      else if (compare < 0)
-		{
-		  /* Add new entry before all existing entries */
-		  position = 0;
-		}
-	      else		/* compare > 0 */
-		{
-		  /* Add new entry after the first entry */
-		  position = 1;
-		}
-	    }
-	  else
-	    {
-	      /* min is certainly smaller the the new entry. max is either bigger or is the equal to the number of
-	       * existing entries. The position of the new entry must be max. */
-	      position = max;
-	    }
-
-	  if (compare == 0)
-	    {
-	      /* Same entry was already dropped, replace previous MVCCID */
-	      /* The equal entry must be at the current mid value */
-	      VACUUM_DROPPED_FILE undo_data;
-
-	      /* Replace MVCCID */
-	      undo_data = page->dropped_files[mid];
-	      save_mvccid = page->dropped_files[mid].mvccid;
-	      page->dropped_files[mid].mvccid = mvccid;
-
-	      assert_release (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, save_mvccid));
-
-	      /* log changes */
-	      addr.pgptr = (PAGE_PTR) page;
-	      addr.offset = mid;
-	      log_append_undoredo_data (thread_p, RVVAC_DROPPED_FILE_REPLACE, &addr, sizeof (VACUUM_DROPPED_FILE),
-					sizeof (VACUUM_DROPPED_FILE), &undo_data, &page->dropped_files[mid]);
+	  /* log changes */
+	  addr.pgptr = (PAGE_PTR) page;
+	  addr.offset = position;
+	  log_append_undoredo_data (thread_p, RVVAC_DROPPED_FILE_REPLACE, &addr, sizeof (VACUUM_DROPPED_FILE),
+				    sizeof (VACUUM_DROPPED_FILE), &undo_data, &page->dropped_files[position]);
 
 #if !defined (NDEBUG)
-	      if (track_page != NULL)
-		{
-		  memcpy (&track_page->dropped_data_page, page, DB_PAGESIZE);
-		}
-#endif
-	      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-			     "VACUUM: thread(%d): add dropped file: found duplicate vfid(%d, %d) at position=%d, "
-			     "replace mvccid=%llu with mvccid=%llu. Page is (%d, %d) with lsa (%lld, %d)."
-			     "Page count=%d, global count=%d", thread_get_current_entry_index (),
-			     page->dropped_files[mid].vfid.volid, page->dropped_files[mid].vfid.fileid, mid,
-			     save_mvccid, page->dropped_files[mid].mvccid, pgbuf_get_volume_id ((PAGE_PTR) page),
-			     pgbuf_get_page_id ((PAGE_PTR) page),
-			     (long long int) pgbuf_get_lsa ((PAGE_PTR) page)->pageid,
-			     (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset, page->n_dropped_files,
-			     vacuum_Dropped_files_count);
-
-	      vacuum_set_dirty_dropped_entries_page (thread_p, page, FREE);
-
-	      return NO_ERROR;
-	    }
-
-	  /* Not a duplicate */
-	  if (VACUUM_DROPPED_FILES_PAGE_CAPACITY <= page_count)
+	  if (track_page != NULL)
 	    {
-	      /* No room left for new entries, try next page */
+	      memcpy (&track_page->dropped_data_page, page, DB_PAGESIZE);
+	    }
+#endif
+	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
+			 "VACUUM: thread(%d): add dropped file: found duplicate vfid(%d, %d) at position=%d, "
+			 "replace mvccid=%llu with mvccid=%llu. Page is (%d, %d) with lsa (%lld, %d)."
+			 "Page count=%d, global count=%d", thread_get_current_entry_index (),
+			 page->dropped_files[position].vfid.volid, page->dropped_files[position].vfid.fileid, position,
+			 save_mvccid, (unsigned long long int) page->dropped_files[position].mvccid,
+			 pgbuf_get_volume_id ((PAGE_PTR) page), pgbuf_get_page_id ((PAGE_PTR) page),
+			 (long long int) pgbuf_get_lsa ((PAGE_PTR) page)->pageid,
+			 (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset, page->n_dropped_files,
+			 vacuum_Dropped_files_count);
+
+	  vacuum_set_dirty_dropped_entries_page (thread_p, page, FREE);
+
+	  return NO_ERROR;
+	}
+
+      /* not a duplicate. can we add? */
+      if (VACUUM_DROPPED_FILES_PAGE_CAPACITY <= page_count)
+	{
+	  assert (VACUUM_DROPPED_FILES_PAGE_CAPACITY == page_count);
+
+	  /* No room left for new entries, try next page */
 
 #if !defined (NDEBUG)
-	      if (track_page != NULL && !VPID_ISNULL (&vpid))
-		{
-		  /* Don't advance from last track page. A new page will be added and we need to set a link between
-		   * last track page and new track page. */
-		  track_page = track_page->next_tracked_page;
-		}
-#endif
-	      continue;
+	  if (track_page != NULL && !VPID_ISNULL (&vpid))
+	    {
+	      /* Don't advance from last track page. A new page will be added and we need to set a link between
+	       * last track page and new track page. */
+	      track_page = track_page->next_tracked_page;
 	    }
-	}
-      else
-	{
-	  /* Set position to 0 */
-	  position = 0;
+#endif
+	  continue;
 	}
 
-      /* Add new entry at position */
-      mem_size = (page_count - position) * sizeof (VACUUM_DROPPED_FILE);
-      if (mem_size > 0)
+      /* add to position to keep the order */
+      if (page_count > position)
 	{
+	  mem_size = (page_count - position) * sizeof (VACUUM_DROPPED_FILE);
 	  memmove (&page->dropped_files[position + 1], &page->dropped_files[position], mem_size);
 	}
 
@@ -5730,9 +5663,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 		     "Page is (%d, %d) with lsa (%lld, %d). Page count=%d, global count=%d",
 		     thread_get_current_entry_index (), page->dropped_files[position].vfid.volid,
 		     page->dropped_files[position].vfid.fileid, page->dropped_files[position].mvccid, position,
-		     pgbuf_get_volume_id ((PAGE_PTR) page), pgbuf_get_page_id ((PAGE_PTR) page),
-		     (long long int) pgbuf_get_lsa ((PAGE_PTR) page)->pageid,
-		     (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset, page->n_dropped_files, vacuum_Dropped_files_count);
+		     PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) page), page->n_dropped_files, vacuum_Dropped_files_count);
 
       vacuum_set_dirty_dropped_entries_page (thread_p, page, FREE);
 
