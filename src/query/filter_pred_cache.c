@@ -215,7 +215,7 @@ fpcache_finalize (THREAD_ENTRY * thread_p)
       bh_destroy (thread_p, fpcache_Cleanup_bh);
       fpcache_Cleanup_bh = NULL;
     }
-  (void) db_change_private_heap (thread_p, 0);
+  (void) db_change_private_heap (thread_p, save_heapid);
 
   fpcache_Enabled = false;
 }

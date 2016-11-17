@@ -323,7 +323,7 @@ xcache_finalize (THREAD_ENTRY * thread_p)
       bh_destroy (thread_p, xcache_Cleanup_bh);
       xcache_Cleanup_bh = NULL;
     }
-  (void) db_change_private_heap (thread_p, 0);
+  (void) db_change_private_heap (thread_p, save_heapid);
 
   xcache_Enabled = false;
 }
