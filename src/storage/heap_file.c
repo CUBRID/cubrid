@@ -17552,7 +17552,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       /* insert case, read the values */
       if (func_pred == NULL)
 	{
-	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&func_pred), false, expr_stream, expr_stream_size,
+	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&func_pred), expr_stream, expr_stream_size,
 					   &unpack_info))
 	    {
 	      error = ER_FAILED;
@@ -17682,7 +17682,7 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 		}
 	    }
 
-	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&(fi_preds[i].func_pred)), false,
+	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&(fi_preds[i].func_pred)),
 					   fi_info->expr_stream, fi_info->expr_stream_size, &(fi_preds[i].unpack_info)))
 	    {
 	      error_status = ER_FAILED;

@@ -956,6 +956,7 @@ struct xasl_node
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
+  bool use_xasl_clone;		/* true, if use xasl clone */
 };
 
 struct pred_expr_with_context
@@ -1068,9 +1069,9 @@ extern void xts_final (void);
 extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone,
 				   char *xasl_stream, int xasl_stream_size, void **xasl_unpack_info_ptr);
 extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred_expr_tree,
-					  bool use_xasl_clone, char *pred_stream, int pred_stream_size);
-extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, bool use_xasl_clone,
-					char *xasl_stream, int xasl_stream_size, void **xasl_unpack_info_ptr);
+					  char *pred_stream, int pred_stream_size);
+extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream,
+					int xasl_stream_size, void **xasl_unpack_info_ptr);
 extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * xasl_header_p,
 					       char *xasl_stream);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);

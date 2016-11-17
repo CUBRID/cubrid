@@ -385,7 +385,7 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, PRE
       /* Use global heap as other threads may also use this filter predicate expression. */
       HL_HEAPID old_private_heap = db_change_private_heap (thread_p, 0);
       error_code =
-	stx_map_stream_to_filter_pred (thread_p, filter_pred, false, or_pred->pred_stream, or_pred->pred_stream_size);
+	stx_map_stream_to_filter_pred (thread_p, filter_pred, or_pred->pred_stream, or_pred->pred_stream_size);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

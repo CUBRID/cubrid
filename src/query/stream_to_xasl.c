@@ -109,6 +109,8 @@ struct xasl_unpack_info
   UNPACK_EXTRA_BUF *additional_buffers;
   /* 1 if additional buffers should be tracked */
   int track_allocated_bufers;
+
+  bool use_xasl_clone;		/* true,if use xasl clone */
 };
 
 #if !defined(SERVER_MODE)
@@ -294,13 +296,15 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool us
       return ER_QPROC_INVALID_XASLNODE;
     }
 
-#if defined (SERVER_MODE)
-  thread_p->use_xasl_clone = use_xasl_clone;
-#endif
-
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
   unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+#if defined (SERVER_MODE)
+  unpack_info_p->use_xasl_clone = use_xasl_clone;
+#else
+  unpack_info_p->use_xasl_clone = false;
+#endif
+
   unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to XASL tree in the stream buffer */
@@ -336,7 +340,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool us
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
   xasl->query_in_progress = false;
-
+  xasl->use_xasl_clone = unpack_info_p->use_xasl_clone;
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
@@ -351,7 +355,6 @@ end:
  *   return: if successful, return 0, otherwise non-zero error code
  *   pred(in): pointer to where to return the root of the unpacked
  *             filter predicate tree
- *   use_xasl_clone(in) : true, if XASL clone is used
  *   pred_stream(in): pointer to predicate stream
  *   pred_stream_size(in): # of bytes in predicate stream
  *   pred_unpack_info_ptr(in): pointer to where to return the pack info
@@ -361,8 +364,8 @@ end:
  *       (*pred)->unpack_info by calling stx_free_xasl_unpack_info().
  */
 int
-stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred, bool use_xasl_clone,
-			       char *pred_stream, int pred_stream_size)
+stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred, char *pred_stream,
+			       int pred_stream_size)
 {
   PRED_EXPR_WITH_CONTEXT *pwc = NULL;
   char *p = NULL;
@@ -375,13 +378,10 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
       return ER_QPROC_INVALID_XASLNODE;
     }
 
-#if defined (SERVER_MODE)
-  thread_p->use_xasl_clone = use_xasl_clone;
-#endif
-
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, pred_stream, pred_stream_size);
   unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p->use_xasl_clone = false;
   unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to filter predicate in the stream buffer */
@@ -418,15 +418,14 @@ end:
 /*
  * stx_map_stream_to_func_pred () -
  *   return: if successful, return 0, otherwise non-zero error code
- *   xasl(in)      : pointer to where to return the unpacked FUNC_PRED
- *   use_xasl_clone(in) : true, if XASL clone is used
+ *   xasl(in)      : pointer to where to return the unpacked FUNC_PRED 
  *   xasl_stream(in)    : pointer to xasl stream
  *   xasl_stream_size(in)       : # of bytes in xasl_stream
  *   xasl_unpack_info_ptr(in)   : pointer to where to return the pack info
  */
 int
-stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, bool use_xasl_clone, char *xasl_stream,
-			     int xasl_stream_size, void **xasl_unpack_info_ptr)
+stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream, int xasl_stream_size,
+			     void **xasl_unpack_info_ptr)
 {
   FUNC_PRED *p_xasl = NULL;
   char *p = NULL;
@@ -439,13 +438,10 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, bool us
       return ER_QPROC_INVALID_XASLNODE;
     }
 
-#if defined (SERVER_MODE)
-  thread_p->use_xasl_clone = use_xasl_clone;
-#endif
-
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
   unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p->use_xasl_clone = false;
   unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to expr XASL in the stream buffer */
@@ -5323,7 +5319,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
   REGU_VALUE_LIST *regu_list;
   REGU_VARIABLE_LIST regu_var_list = NULL;
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && regu_var != NULL);
 
@@ -5358,7 +5354,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
 #if defined (SERVER_MODE)
-      if (thread_p->use_xasl_clone && !db_value_is_null (&regu_var->value.dbval))
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (&regu_var->value.dbval))
 	{
 	  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	}
@@ -5374,7 +5370,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	}
       else
 	{
-	  regu_var->value.dbvalptr = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  regu_var->value.dbvalptr = stx_restore_db_value (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.dbvalptr == NULL)
 	    {
 	      goto error;
@@ -5391,7 +5387,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	}
       else
 	{
-	  regu_var->value.arithptr = stx_restore_arith_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  regu_var->value.arithptr = stx_restore_arith_type (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.arithptr == NULL)
 	    {
 	      goto error;
@@ -5407,7 +5403,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	}
       else
 	{
-	  regu_var->value.funcp = stx_restore_function_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  regu_var->value.funcp = stx_restore_function_type (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.funcp == NULL)
 	    {
 	      goto error;
@@ -5429,7 +5425,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	}
       else
 	{
-	  regu_var->value.srlist_id = stx_restore_srlist_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  regu_var->value.srlist_id = stx_restore_srlist_id (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.srlist_id == NULL)
 	    {
 	      goto error;
@@ -5631,7 +5627,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 {
   int offset;
   int tmp;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && aggregate != NULL);
 
@@ -5646,7 +5642,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->accumulator.value = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->accumulator.value = stx_restore_db_value (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->accumulator.value == NULL)
 	{
 	  goto error;
@@ -5654,7 +5650,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   aggregate->accumulator.clear_value_at_clone_decache = false;
 #if defined (SERVER_MODE)
-  if (thread_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value))
+  if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value))
     {
       aggregate->accumulator.clear_value_at_clone_decache = true;
     }
@@ -5667,7 +5663,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->accumulator.value2 = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->accumulator.value2 = stx_restore_db_value (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->accumulator.value2 == NULL)
 	{
 	  goto error;
@@ -5676,7 +5672,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   aggregate->accumulator.clear_value2_at_clone_decache = false;
 #if defined (SERVER_MODE)
-  if (thread_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value2))
+  if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value2))
     {
       aggregate->accumulator.clear_value2_at_clone_decache = true;
     }
@@ -5692,7 +5688,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->next = stx_restore_aggregate_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->next = stx_restore_aggregate_type (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->next == NULL)
 	{
 	  goto error;
@@ -5726,7 +5722,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->list_id = stx_restore_list_id (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->list_id == NULL)
 	{
 	  goto error;
@@ -5747,7 +5743,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->sort_list = stx_restore_sort_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->sort_list = stx_restore_sort_list (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->sort_list == NULL)
 	{
 	  goto error;
@@ -5761,7 +5757,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
       if (offset > 0)
 	{
 	  aggregate->info.percentile.percentile_reguvar =
-	    stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	    stx_restore_regu_variable (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (aggregate->info.percentile.percentile_reguvar == NULL)
 	    {
 	      goto error;

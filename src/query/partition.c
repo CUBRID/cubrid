@@ -2452,7 +2452,7 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
 
   /* unpack partition expression */
   error =
-    stx_map_stream_to_func_pred (pinfo->thread_p, &pinfo->partition_pred, false, expr_stream, stream_len,
+    stx_map_stream_to_func_pred (pinfo->thread_p, &pinfo->partition_pred, expr_stream, stream_len,
 				 &pinfo->fp_cache_context);
   pr_clear_value (&val);
 

@@ -2403,14 +2403,14 @@ qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDA
 #if (defined (SERVER_MODE))
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
-	  if (thread_p->use_xasl_clone)
+	  if (xasl_p->use_xasl_clone)
 	    {
 	      (void) pr_clear_value (assignment->constant);
 	    }
 	}
       else
 	{
-	  if (!thread_p->use_xasl_clone)
+	  if (!xasl_p->use_xasl_clone)
 	    {
 	      (void) pr_clear_value (assignment->constant);
 	    }

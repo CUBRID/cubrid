@@ -357,8 +357,6 @@ struct thread_entry
 #if !defined(NDEBUG)
   struct fi_test_item *fi_test_array;
 #endif
-
-  bool use_xasl_clone;
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
