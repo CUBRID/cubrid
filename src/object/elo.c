@@ -587,7 +587,7 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
       addr.pgptr = NULL;
       addr.vfid = NULL;
 
-      undo_crumbs[0].length = strlen (uri);
+      undo_crumbs[0].length = strlen (uri) + 1;
       undo_crumbs[0].data = (char *) uri;
       num_undo_crumbs = 1;
       log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
@@ -771,8 +771,8 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		addr.pgptr = NULL;
 		addr.vfid = NULL;
 
-		size_dst_uri = (INT16) strlen (out_uri);
-		size_src_uri = (INT16) strlen (real_locator);
+		size_dst_uri = (INT16) strlen (out_uri) + 1;
+		size_src_uri = (INT16) strlen (real_locator) + 1;
 		undo_crumbs[0].length = sizeof (size_dst_uri);
 		undo_crumbs[0].data = &size_dst_uri;
 		undo_crumbs[1].length = sizeof (size_src_uri);
@@ -807,7 +807,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		addr.pgptr = NULL;
 		addr.vfid = NULL;
 
-		undo_crumbs[0].length = strlen (out_uri);
+		undo_crumbs[0].length = strlen (out_uri) + 1;
 		undo_crumbs[0].data = (char *) out_uri;
 		num_undo_crumbs = 1;
 		log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
@@ -891,7 +891,7 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	  addr.offset = NULL_SLOTID;
 	  addr.pgptr = NULL;
 	  addr.vfid = NULL;
-	  log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator),
+	  log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
 			       elo->locator);
 #endif
 	}
