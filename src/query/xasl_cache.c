@@ -220,7 +220,6 @@ struct xcache_cleanup_candidate
   (xent)->related_objects[oidx].tcard
 
 static bool xcache_fix (XASL_ID * xid);
-static bool xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 static void xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone);
 static void xcache_cleanup (THREAD_ENTRY * thread_p);
 static BH_CMP_RESULT xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg);
@@ -228,7 +227,6 @@ static bool xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_
 static void xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, void *),
 				       void *arg);
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg);
-static bool xcache_uses_clones (void);
 
 
 /*
@@ -1084,7 +1082,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
  * thread_p (in)     : Thread entry.
  * xcache_entry (in) : XASL cache entry.
  */
-static bool
+bool
 xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
@@ -2154,7 +2152,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
  *
  * return : True, if XASL clones are used, false otherwise
  */
-static bool
+bool
 xcache_uses_clones (void)
 {
 #if defined (SERVER_MODE)

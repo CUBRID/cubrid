@@ -173,7 +173,7 @@ static ACTIVE_SESSIONS sessions = { LF_HASH_TABLE_INITIALIZER, LF_FREELIST_INITI
 
 static int session_check_timeout (SESSION_STATE * session_p, SESSION_TIMEOUT_INFO * timeout_info, bool * remove);
 
-static void session_free_prepared_statement (PREPARED_STATEMENT * stmt_p);
+static void session_free_prepared_statement (THREAD_ENTRY * thread_p, PREPARED_STATEMENT * stmt_p);
 
 static int session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE * value);
 
@@ -307,7 +307,7 @@ session_state_uninit (void *st)
   while (pcurent != NULL)
     {
       pnext = pcurent->next;
-      session_free_prepared_statement (pcurent);
+      session_free_prepared_statement (thread_p, pcurent);
       pcurent = pnext;
     }
   /* free holdable queries */
@@ -447,15 +447,35 @@ session_key_increment (void *key, void *existing)
  * session_free_prepared_statement () - free memory allocated for a prepared
  *					statement
  * return : void
+ * thread_p(in) : thread entry
  * stmt_p (in) : prepared statement object
  */
 static void
-session_free_prepared_statement (PREPARED_STATEMENT * stmt_p)
+session_free_prepared_statement (THREAD_ENTRY * thread_p, PREPARED_STATEMENT * stmt_p)
 {
+  int err;
+  XASL_CACHE_ENTRY * xcache_entry = NULL;
+  INT32 cache_flag;
+
   if (stmt_p == NULL)
     {
       return;
     }
+
+ if (xcache_uses_clones ())
+   {
+     /* Be sure that  the clone is not used by concurrent transactions */
+     err = xcache_find_sha1 (thread_p, &stmt_p->sha1, &xcache_entry, NULL);
+     if (err != NO_ERROR)
+       {
+	 ASSERT_ERROR ();     
+       }
+
+     if (xcache_entry_mark_deleted (thread_p, xcache_entry))
+       {
+	 ASSERT_ERROR ();    
+       } 
+   } 
 
 #if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "drop statement %s\n", stmt_p->name);
@@ -1675,7 +1695,7 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *al
 		  prev->next = current->next;
 		}
 	      current->next = NULL;
-	      session_free_prepared_statement (current);
+	      session_free_prepared_statement (thread_p, current);
 	      break;
 	    }
 	  cnt++;
@@ -1839,7 +1859,7 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
 	      prev->next = stmt_p->next;
 	    }
 	  stmt_p->next = NULL;
-	  session_free_prepared_statement (stmt_p);
+	  session_free_prepared_statement (thread_p, stmt_p);
 	  found = true;
 	  break;
 	}
