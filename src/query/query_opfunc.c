@@ -12259,6 +12259,11 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 
 	  if (db_value_coerce (*val_node_p, *val_node_p, dom) != NO_ERROR)
 	    {
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		}
+
 	      goto exit_on_error;
 	    }
 
