@@ -10585,10 +10585,12 @@ exit_on_error:
  *   recdes(in): The instance Record descriptor
  *   attr_info(in): The attribute information structure which describe the
  *                  desired attributes
+ *   delete_only_oor_lob(in): true if only OOR LOBs should be deleted
  *
  */
 int
-heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+			  bool delete_only_oor_lob)
 {
   int i;
   HEAP_ATTRVALUE *value;
@@ -10628,7 +10630,8 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
       _er_log_debug (ARG_FILE_LINE, "heap_attrinfo_delete_lob: value->attrid:%d, value->last_attrepr->type:%d",
 	value->attrid, value->last_attrepr->type);
 
-      if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
+      if (delete_only_oor_lob == DELETE_ALL_LOBS
+	  && (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB))
 	{
 	  if (value->state == HEAP_UNINIT_ATTRVALUE && recdes != NULL)
 	    {

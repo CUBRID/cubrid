@@ -6069,7 +6069,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      goto error;
 	    }
 
-	  error_code = heap_attrinfo_delete_lob (thread_p, oldrecdes, &attr_info);
+	  error_code = heap_attrinfo_delete_lob (thread_p, oldrecdes, &attr_info, DELETE_ONLY_OOR_LOB);
 
 	  heap_attrinfo_end (thread_p, &attr_info);
 	}
@@ -6449,7 +6449,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	  goto error;
 	}
 
-      error_code = heap_attrinfo_delete_lob (thread_p, &copy_recdes, &attr_info);
+      error_code = heap_attrinfo_delete_lob (thread_p, &copy_recdes, &attr_info, DELETE_ALL_LOBS);
 
       heap_attrinfo_end (thread_p, &attr_info);
     }
@@ -6534,7 +6534,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 	  recdes = &copy_recdes;
 	}
 
-      error_code = heap_attrinfo_delete_lob (thread_p, recdes, &attr_info);
+      error_code = heap_attrinfo_delete_lob (thread_p, recdes, &attr_info, DELETE_ALL_LOBS);
     }
 
 error:
@@ -7080,7 +7080,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	  *recdes = new_recdes;
 	  if (LC_IS_FLUSH_UPDATE (obj->operation) == true)
 	    {
-	      error_code = heap_attrinfo_delete_lob (thread_p, old_recdes, &attr_info);
+	      error_code = heap_attrinfo_delete_lob (thread_p, old_recdes, &attr_info, DELETE_ONLY_OOR_LOB);
 	    }
 	}
     }

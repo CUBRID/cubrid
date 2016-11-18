@@ -393,6 +393,12 @@ struct heap_get_context
 struct mvcc_reev_data;
 extern int mvcc_header_size_lookup[8];
 
+enum
+{
+  DELETE_ALL_LOBS = 0,
+  DELETE_ONLY_OOR_LOB
+};
+
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid);
 #ifdef DEBUG_CLASSREPR_CACHE
 extern int heap_classrepr_dump_anyfixed (void);
@@ -478,7 +484,8 @@ extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * ins
 					OUT_OF_ROW_CONTEXT *oor_context);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
-extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+				     bool delete_only_oor_lob);
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
