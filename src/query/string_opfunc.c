@@ -27890,6 +27890,7 @@ parse_tzd (const char *str, const int max_expect_len)
  * return ERROR or NO_ERROR
  * time_val (in)     : time value (datetimetz, datetimeltz, timestamptz, timestampltz)
  * result_time (out) : result
+ *
  */
 int
 db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)

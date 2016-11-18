@@ -497,6 +497,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TZ_OFFSET:
     case T_SLEEP:
     case T_CRC32:
+    case T_CONV_TZ:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
 	{
@@ -3597,6 +3598,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       else
 	{
 	  if (db_from_tz (peek_left, peek_right, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_CONV_TZ:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_conv_tz (peek_right, arithptr->value) != NO_ERROR)
 	    {
 	      goto error;
 	    }
