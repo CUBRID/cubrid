@@ -1521,11 +1521,6 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
   thread_p = thread_get_thread_entry_info ();
   er_entry_p = er_get_er_entry (thread_p);
 
-  if (err_id == ER_ES_GENERAL && er_errid () == ER_BTREE_UNIQUE_FAILED)
-    {
-      abort ();
-    }
-
   /* 
    * Get the UNIX error message if needed. We need to get this as soon
    * as possible to avoid resetting the error.
