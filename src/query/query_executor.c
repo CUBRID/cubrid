@@ -21623,10 +21623,20 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   bool full_columns = false;
   char *string = NULL;
   int alloced_string = 0;
+  HL_HEAPID save_heapid = 0;
 
   if (xasl == NULL || xasl_state == NULL)
     {
       return ER_FAILED;
+    }
+
+  for (regu_var_p = xasl->outptr_list->valptrp, i = 0; regu_var_p; regu_var_p = regu_var_p->next, i++)
+    {
+      if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	{
+	  save_heapid = db_change_private_heap (thread_p, 0);
+	  break;
+	}
     }
 
   if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
@@ -21937,6 +21947,11 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       db_private_free_and_init (thread_p, tplrec.tpl);
     }
 
+  if (save_heapid != 0)
+    {
+      (void) db_change_private_heap (thread_p, save_heapid);
+    }
+
   return NO_ERROR;
 
 exit_on_error:
@@ -21971,6 +21986,11 @@ exit_on_error:
   if (tplrec.tpl)
     {
       db_private_free_and_init (thread_p, tplrec.tpl);
+    }
+
+  if (save_heapid != 0)
+    {
+      (void) db_change_private_heap (thread_p, save_heapid);
     }
 
   xasl->status = XASL_FAILURE;
