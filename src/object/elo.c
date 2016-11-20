@@ -561,6 +561,7 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
       LOG_DATA_ADDR addr;
       LOG_CRUMB undo_crumbs[2];
       int num_undo_crumbs;
+      LOB_LOCATOR_STATE state;
 #endif
 
       ret = es_create_file (out_uri);
@@ -592,6 +593,17 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
       num_undo_crumbs = 1;
       log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
 				  undo_crumbs, NULL);
+
+      /* delete temporary LOB file after commit */
+      state = get_lob_state_from_locator (elo->locator);
+      if (state == LOB_TRANSIENT_CREATED)
+	{
+	  addr.offset = NULL_SLOTID;
+	  addr.pgptr = NULL;
+	  addr.vfid = NULL;
+	  log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
+			       elo->locator);
+	}
 #endif
 
       _er_log_debug (ARG_FILE_LINE, "elo_create : %s", uri);
@@ -754,6 +766,32 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 	    {
 	    case LOB_TRANSIENT_CREATED:
 	      {
+		ret = es_copy_file (real_locator, elo->meta_data, out_uri);
+		if (ret != NO_ERROR)
+		  {
+		    goto error_return;
+		  }
+		locator = db_private_strdup (NULL, out_uri);
+		if (locator == NULL)
+		  {
+		    es_delete_file (out_uri);
+		    goto error_return;
+		  }
+
+#if !defined (CS_MODE)
+		addr.offset = NULL_SLOTID;
+		addr.pgptr = NULL;
+		addr.vfid = NULL;
+
+		undo_crumbs[0].length = strlen (out_uri) + 1;
+		undo_crumbs[0].data = (char *) out_uri;
+		num_undo_crumbs = 1;
+		log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
+					    undo_crumbs, NULL);
+#endif
+
+		/* TODO[arnia]: */
+#if 0
 		ret = es_rename_file (real_locator, elo->meta_data, out_uri);
 		if (ret != NO_ERROR)
 		  {
@@ -784,6 +822,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		num_undo_crumbs = 4;
 		log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_RENAME_FILE, &addr, num_undo_crumbs,
 					    0, undo_crumbs, NULL);
+#endif
 #endif
 	      }
 	      break;

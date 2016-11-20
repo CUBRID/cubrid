@@ -2062,6 +2062,10 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
 	  /* must call this when updating instances */
 	  ws_class_has_object_dependencies (classobj);
 	}
+      else
+	{
+	  assert (er_errid () != NO_ERROR);
+	}
     }
 
   if (obj == NULL)
@@ -2515,7 +2519,14 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		    }
 		}
 	      else
-		trstate = NULL;
+		{
+		  trstate = NULL;
+		}
+
+	      if (error == NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		}
 	    }
 	  else
 	    {
@@ -2534,6 +2545,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		  error = au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION);
 		  if (error != NO_ERROR)
 		    {
+		      assert (er_errid () != NO_ERROR);
+
 		      if (trstate != NULL)
 			{
 			  tr_abort (trstate);
@@ -2551,6 +2564,11 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		      return error;
 		    }
 		}
+
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		}
 	      /* set pin after before trigger */
 	      pin = ws_pin (object, 1);
 	    }
@@ -2562,7 +2580,9 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
     {
       a = template_ptr->assignments[i];
       if (a == NULL)
-	continue;
+	{
+	  continue;
+	}
 
       /* find memory pointer if this is an instance attribute */
       mem = NULL;
@@ -2642,6 +2662,11 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		    }
 		}
 	    }			/* if (a->att->type->id == DB_TYPE_BLOB) || */
+	  
+	  if (error != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	    }
 	}			/* if (db_get_client_type () != */
 
       if (error == NO_ERROR)
@@ -2662,6 +2687,12 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	      /* non-template assignment */
 	      error = obt_apply_assignment (object, a->att, mem, a->variable, check_uniques);
 	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	    }
+
 	}
     }
 
@@ -2694,12 +2725,21 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	  if (event == TR_EVENT_INSERT)
 	    {
 	      error = tr_after_object (trstate, object, NULL);
+
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		}
 	    }
 	  else
 	    {
 	      /* mark the template as an "old" object */
 	      template_ptr->is_old_template = 1;
 	      error = tr_after_object (trstate, object, temp);
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		}
 	    }
 	}
     }
@@ -2759,6 +2799,10 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	  /* update template object if this was a partitioned class */
 	  object = OBT_BASE_OBJECT (template_ptr);
 	}
+    }
+  else
+    {
+      assert (er_errid () != NO_ERROR);
     }
 
   return error;
