@@ -2062,10 +2062,6 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
 	  /* must call this when updating instances */
 	  ws_class_has_object_dependencies (classobj);
 	}
-      else
-	{
-	  assert (er_errid () != NO_ERROR);
-	}
     }
 
   if (obj == NULL)
@@ -2522,11 +2518,6 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		{
 		  trstate = NULL;
 		}
-
-	      if (error == NO_ERROR)
-		{
-		  assert (er_errid () != NO_ERROR);
-		}
 	    }
 	  else
 	    {
@@ -2545,8 +2536,6 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		  error = au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION);
 		  if (error != NO_ERROR)
 		    {
-		      assert (er_errid () != NO_ERROR);
-
 		      if (trstate != NULL)
 			{
 			  tr_abort (trstate);
@@ -2563,11 +2552,6 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 
 		      return error;
 		    }
-		}
-
-	      if (error != NO_ERROR)
-		{
-		  assert (er_errid () != NO_ERROR);
 		}
 	      /* set pin after before trigger */
 	      pin = ws_pin (object, 1);
