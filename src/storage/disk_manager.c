@@ -1867,7 +1867,7 @@ exit:
       log_sysop_abort (thread_p);
     }
 
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -4278,7 +4278,7 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VOLUME_HEADER * volheader)
 	    {
 	      ASSERT_ERROR ();
 	      pgbuf_unfix (thread_p, page_stab);
-	      return NO_ERROR;
+	      return error_code;
 	    }
 	}
 
