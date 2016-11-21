@@ -3808,7 +3808,7 @@ thread_auto_volume_expansion_thread (void *arg_p)
       thread_Auto_volume_expansion_thread.is_running = true;
       pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
 
-      (void) disk_auto_expand (tsd_ptr);;
+      (void) disk_auto_expand (tsd_ptr);
     }
 
   er_final (ER_THREAD_FINAL);

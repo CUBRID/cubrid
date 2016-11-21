@@ -750,8 +750,7 @@ disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname)
 }
 
 /*
- * disk_set_creation () - Change database creation information of the
- *                            given volume
+ * disk_set_creation () - Change database creation information of the given volume
  *   return: NO_ERROR
  *   volid(in): Volume identifier
  *   new_vol_fullname(in): New volume label/name
@@ -760,8 +759,7 @@ disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname)
  *   logchange(in): Whether or not to log the change
  *   flush_page(in): true for flush dirty page. otherwise, false
  *
- * Note: This function is targeted for the log and recovery manager. It is
- *       used when a database is copied or renamed.
+ * Note: This function is targeted for the log and recovery manager. It is used when a database is copied or renamed.
  */
 int
 disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname, const INT64 * new_dbcreation,
@@ -873,8 +871,7 @@ error:
 }
 
 /*
- * disk_set_link () - Link the given permanent volume with the previous
- *                            permanent volume
+ * disk_set_link () - Link the given permanent volume with the previous permanent volume
  *   return: NO_ERROR
  *   volid(in): Volume identifier
  *   next_volid (in): next volume identifier
@@ -882,8 +879,8 @@ error:
  *   logchange(in): Whether or not to log the change
  *   flush(in):
  *
- * Note: No logging is intended for exclusive use by the log and recovery
- *       manager. It is used when a database is copied or renamed.
+ * Note: No logging is intended for exclusive use by the log and recovery manager. It is used when a database 
+ * 	 is copied or renamed.
  */
 int
 disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const char *next_volext_fullname, bool logchange,
@@ -1006,9 +1003,8 @@ error:
  *   volid(in): Permanent volume identifier
  *   hfid(in): System boot heap file
  *
- * Note: The system boot file filed of in the volume header is redefined to
- *       point to the given value. This function is called only during the
- *       initialization process
+ * Note: The system boot file filed of in the volume header is redefined to point to the given value. This function 
+ * 	 is called only during the initialization process.
  */
 int
 disk_set_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, const HFID * hfid)
@@ -4780,15 +4776,13 @@ disk_vhdr_length_of_varfields (const DISK_VOLUME_HEADER * vhdr)
  *   volid(in): Permanent volume identifier
  *   log_chkpt_lsa(in): Recovery checkpoint for volume
  *
- * Note: The dirty pages of this volume are not written out, not even the
- *       header page which maintains the checkpoint value. The function
- *       assumes that all volume pages with lsa smaller that the given one has
- *       already been forced to disk (e.g., by the log and recovery manager).
+ * Note: The dirty pages of this volume are not written out, not even the header page which maintains the checkpoint 
+ * 	 value. The function assumes that all volume pages with lsa smaller that the given one has already been forced
+ * 	 to disk (e.g., by the log and recovery manager).
  *
- *       When a backup of the database is taken, it is important that the
- *       volume header page is forced out. The checkpoint on the volume is
- *       used as an indicator to start a media recovery process, so it may be
- *       good idea to force all dirty unfixed pages.
+ *       When a backup of the database is taken, it is important that the volume header page is forced out.
+ *       The checkpoint on the volume is used as an indicator to start a media recovery process, so it may be good idea
+ *       to force all dirty unfixed pages.
  */
 int
 disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, const LOG_LSA * log_chkpt_lsa)
@@ -4853,8 +4847,7 @@ disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * vol_lsa)
 }
 
 /*
- * disk_get_creation_time () - Get the database creation time according to the
- *                        volume header
+ * disk_get_creation_time () - Get the database creation time according to the volume header
  *   return: void
  *   volid(in): Permanent volume identifier
  *   db_creation(out): Database creation time according to the volume
@@ -4902,18 +4895,15 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
 }
 
 /*
- * xdisk_get_purpose_and_space_info ()
- *          Find the main purpose and space info of the volume
+ * xdisk_get_purpose_and_space_info () - Find the main purpose and space info of the volume
  *
  *   return: volid or NULL_VOLID in case of error
- *   volid(in): Permanent volume identifier. If NULL_VOLID is given, the total
- *              information of all volumes is requested.
+ *   volid(in): Permanent volume identifier. If NULL_VOLID is given, total information of all volumes is requested.
  *   vol_purpose(out): Purpose for the given volume
  *   space_info (out): space info of the volume.
  *
- * Note: The free number of pages should be taken as an approximation by the
- *       caller since we do not leave the page locked after the inquire. That
- *       is, someone else can allocate pages
+ * Note: The free number of pages should be taken as an approximation by the caller since we do not leave the page 
+ * 	 locked after the inquire. That is, someone else can allocate pages
  */
 int
 xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
@@ -4954,9 +4944,8 @@ xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOL
 }
 
 /*
- * xdisk_get_purpose_and_sys_lastpage () - Find the main purpose of the given volume
- *                                   and the pagied of the last system page
- *                                   used by the volume
+ * xdisk_get_purpose_and_sys_lastpage () - Find the main purpose of the given volume and the pagied of the last system
+ * 					   page used by the volume
  *   return: volid or NULL_VOLID in case of error
  *   volid(in): Permanent volume identifier
  *   vol_purpose(out): Purpose for the given volume
@@ -5018,9 +5007,8 @@ xdisk_get_total_numpages (THREAD_ENTRY * thread_p, INT16 volid)
  *   return: Number of free pages
  *   volid(in): Permanent volume identifier
  *
- * Note: The free number of pages should be taken as an approximation by the
- *       caller since we do not leave the page locked after the inquire.
- *       That is, someone else can allocate pages.
+ * Note: The free number of pages should be taken as an approximation by the caller since we do not leave the page
+ *       locked after the inquire. That is, someone else can allocate pages.
  */
 INT32
 xdisk_get_free_numpages (THREAD_ENTRY * thread_p, INT16 volid)
@@ -5084,8 +5072,7 @@ disk_get_total_numsectors (THREAD_ENTRY * thread_p, INT16 volid)
  *   vol_fullname(out): Address where the name of the volume is placed.
  *                     The size must be at least DB_MAX_PATH_LENGTH
  *
- * Note: Alternative function fileio_get_volume_label which is much faster and does not copy
- *       the name
+ * Note: Alternative function fileio_get_volume_label which is much faster and does not copy the name
  */
 char *
 xdisk_get_fullname (THREAD_ENTRY * thread_p, INT16 volid, char *vol_fullname)
