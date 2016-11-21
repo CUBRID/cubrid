@@ -474,7 +474,9 @@ session_free_prepared_statement (THREAD_ENTRY * thread_p, PREPARED_STATEMENT * s
      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
        {
 	 ASSERT_ERROR ();    
-       } 
+       }
+
+     xcache_unfix (thread_p, xcache_entry);
    } 
 
 #if defined (SESSION_DEBUG)
