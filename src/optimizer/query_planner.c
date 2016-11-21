@@ -2124,7 +2124,7 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
   if (plan->plan_un.scan.node->entity_spec->info.spec.cte_pointer)
     {
       PT_NODE *spec = plan->plan_un.scan.node->entity_spec;
-      if (spec->info.spec.cte_pointer->info.pointer.node->info.cte.rec_part)
+      if (spec->info.spec.cte_pointer->info.pointer.node->info.cte.recursive_part)
 	{
 	  fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "recursive CTE: ");
 	}
@@ -2152,6 +2152,7 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 	  PT_NODE *saved_next = key_limit->next;
 	  PARSER_CONTEXT *parser = QO_ENV_PARSER (plan->info->env);
 	  PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+
 	  parser->print_db_value = pt_print_node_value;
 	  if (saved_next)
 	    {

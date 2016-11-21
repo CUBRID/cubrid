@@ -8353,8 +8353,8 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
       if (node->node_type == PT_CTE)
 	{
-	  arg1 = node->info.cte.non_rec_part;
-	  arg2 = node->info.cte.rec_part;
+	  arg1 = node->info.cte.non_recursive_part;
+	  arg2 = node->info.cte.recursive_part;
 	  if (!arg2)
 	    {
 	      /* then the CTE is not recursive (just one part) */

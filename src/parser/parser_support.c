@@ -4688,8 +4688,8 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       break;
 
     case CTE_PROC:
-      ptr->proc.cte.rec_part = NULL;
-      ptr->proc.cte.non_rec_part = NULL;
+      ptr->proc.cte.recursive_part = NULL;
+      ptr->proc.cte.non_recursive_part = NULL;
       break;
 
     default:

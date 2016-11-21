@@ -864,13 +864,13 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
       assert (cte != NULL);
       /* for recursive CTEs bind only the types from the recursive part; 
        * it must contain references of the non-recursive part */
-      if (cte->info.cte.rec_part)
+      if (cte->info.cte.recursive_part)
 	{
-	  derived_table = cte->info.cte.rec_part;
+	  derived_table = cte->info.cte.recursive_part;
 	}
       else
 	{
-	  derived_table = cte->info.cte.non_rec_part;
+	  derived_table = cte->info.cte.non_recursive_part;
 	}
     }
 
@@ -1129,26 +1129,26 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	{
 	  PT_NODE *cte_def = spec->info.spec.cte_pointer->info.pointer.node;
 	  PT_NODE *next_cte_def;
-	  PT_NODE *non_rec_cte = cte_def->info.cte.non_rec_part;
-	  PT_NODE *rec_cte = cte_def->info.cte.rec_part;
+	  PT_NODE *non_recursive_cte = cte_def->info.cte.non_recursive_part;
+	  PT_NODE *recursive_cte = cte_def->info.cte.recursive_part;
 
 	  /* evaluate the names from recursive part if exists; the non recursive part will be evaluated during walk */
-	  if (rec_cte)
+	  if (recursive_cte)
 	    {
-	      /* the rec part have pointers to the current CTE   
-	       * and because of that a cycle will appear if the rec part 
+	      /* the rec part have pointers to the current CTE and because of that a cycle will appear if the rec part 
 	       * is not changed to NULL */
-	      cte_def->info.cte.rec_part = NULL;
+	      cte_def->info.cte.recursive_part = NULL;
 
-	      rec_cte = parser_walk_tree (parser, rec_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	      recursive_cte =
+		parser_walk_tree (parser, recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
 	      /* restore rec part */
-	      cte_def->info.cte.rec_part = rec_cte;
+	      cte_def->info.cte.recursive_part = recursive_cte;
 	    }
-	  else if (non_rec_cte)
+	  else if (non_recursive_cte)
 	    {
-	      non_rec_cte =
-		parser_walk_tree (parser, non_rec_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	      non_recursive_cte =
+		parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	    }
 	  else
 	    {
@@ -1180,7 +1180,6 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  pt_bind_types (parser, spec);
 
 	  cte_def->info.cte.as_attr_list = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
-
 	}
 
       if (prev_spec)
@@ -4165,21 +4164,22 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
 	  if (node->info.spec.cte_pointer)
 	    {
-	      PT_NODE *cte_def = NULL, *non_rec_cte = NULL;
+	      PT_NODE *cte_def = NULL, *non_recursive_cte = NULL;
+
 	      cte_def = node->info.spec.cte_pointer->info.pointer.node;
 	      if (cte_def)
 		{
-		  non_rec_cte = cte_def->info.cte.non_rec_part;
+		  non_recursive_cte = cte_def->info.cte.non_recursive_part;
 		}
 
-	      if (non_rec_cte)
+	      if (non_recursive_cte)
 		{
 		  if (!node->info.spec.id)
 		    {
 		      node->info.spec.id = (UINTPTR) node;
 		    }
 
-		  parser_walk_tree (parser, non_rec_cte, pt_flat_spec_pre, info, pt_continue_walk, NULL);
+		  parser_walk_tree (parser, non_recursive_cte, pt_flat_spec_pre, info, pt_continue_walk, NULL);
 		}
 	    }
 
@@ -8116,9 +8116,9 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	}
 
       /* try to find out if curr_cte is recursive */
-      if ((curr_cte->info.cte.non_rec_part->node_type == PT_UNION) && (!curr_cte->info.cte.rec_part))
+      if ((curr_cte->info.cte.non_recursive_part->node_type == PT_UNION) && (!curr_cte->info.cte.recursive_part))
 	{
-	  PT_NODE *recursive_part = curr_cte->info.cte.non_rec_part->info.query.q.union_.arg2;
+	  PT_NODE *recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg2;
 	  int curr_cte_count = 0;
 
 	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte, curr_cte,
@@ -8131,16 +8131,18 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 
 	  if (curr_cte_count > 0)
 	    {
-	      curr_cte->info.cte.rec_part = recursive_part;
-	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_rec_part->info.query.all_distinct;
-	      curr_cte->info.cte.non_rec_part = curr_cte->info.cte.non_rec_part->info.query.q.union_.arg1;
+	      curr_cte->info.cte.recursive_part = recursive_part;
+	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_recursive_part->info.query.all_distinct;
+	      curr_cte->info.cte.non_recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg1;
 	    }
+
+	  curr_cte->next = saved_curr_cte_next;	/* restore next node */
 	}
 
-      curr_cte->info.cte.non_rec_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
-      if (curr_cte->info.cte.rec_part)
+      curr_cte->info.cte.non_recursive_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
+      if (curr_cte->info.cte.recursive_part)
 	{
-	  curr_cte->info.cte.rec_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
+	  curr_cte->info.cte.recursive_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
 	}
 
       /* reconnect list, previous->next was curr_cte */

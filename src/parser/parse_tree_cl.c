@@ -17240,8 +17240,8 @@ pt_init_with_clause (PT_NODE * p)
 static PT_NODE *
 pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
-  p->info.cte.non_rec_part = g (parser, p->info.cte.non_rec_part, arg);
-  p->info.cte.rec_part = g (parser, p->info.cte.rec_part, arg);
+  p->info.cte.non_recursive_part = g (parser, p->info.cte.non_recursive_part, arg);
+  p->info.cte.recursive_part = g (parser, p->info.cte.recursive_part, arg);
 
   return p;
 }
@@ -17257,8 +17257,8 @@ pt_init_cte (PT_NODE * p)
 {
   p->info.cte.name = NULL;
   p->info.cte.as_attr_list = NULL;
-  p->info.cte.rec_part = NULL;
-  p->info.cte.non_rec_part = NULL;
+  p->info.cte.recursive_part = NULL;
+  p->info.cte.non_recursive_part = NULL;
 }
 
 /*
@@ -17349,10 +17349,10 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   /* cte definition */
   q = pt_append_nulstring (parser, q, "(");
 
-  r1 = pt_print_bytes_l (parser, p->info.cte.non_rec_part);
+  r1 = pt_print_bytes_l (parser, p->info.cte.non_recursive_part);
   q = pt_append_varchar (parser, q, r1);
 
-  if (p->info.cte.rec_part)
+  if (p->info.cte.recursive_part)
     {
       q = pt_append_nulstring (parser, q, " union ");
       if (p->info.cte.only_all == PT_ALL)
@@ -17360,7 +17360,7 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "all ");
 	}
 
-      r1 = pt_print_bytes_l (parser, p->info.cte.rec_part);
+      r1 = pt_print_bytes_l (parser, p->info.cte.recursive_part);
       q = pt_append_varchar (parser, q, r1);
     }
 

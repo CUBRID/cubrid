@@ -12169,8 +12169,8 @@ cte_definition
 			      {
 			        node->info.cte.as_attr_list = $2;
 			      }          
-			    node->info.cte.non_rec_part = $4;
-			    node->info.cte.rec_part = NULL;
+			    node->info.cte.non_recursive_part = $4;
+			    node->info.cte.recursive_part = NULL;
 			  }
 
 			$$ = node;

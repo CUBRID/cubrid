@@ -771,8 +771,8 @@ struct merge_proc_node
 typedef struct cte_proc_node CTE_PROC_NODE;
 struct cte_proc_node
 {
-  XASL_NODE *non_rec_part;	/* non recursive part of the CTE */
-  XASL_NODE *rec_part;		/* recursive part of the CTE */
+  XASL_NODE *non_recursive_part;	/* non recursive part of the CTE */
+  XASL_NODE *recursive_part;	/* recursive part of the CTE */
   QFILE_LIST_ID *list_id;	/* list file identifier for results */
 };
 

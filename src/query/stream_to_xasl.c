@@ -4009,13 +4009,13 @@ stx_build_cte_proc (THREAD_ENTRY * thread_p, char *ptr, CTE_PROC_NODE * cte_info
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      cte_info->non_rec_part = NULL;	/* may have false_where */
+      cte_info->non_recursive_part = NULL;	/* may have false_where */
     }
   else
     {
-      cte_info->non_rec_part = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      cte_info->non_recursive_part = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
 
-      if (cte_info->non_rec_part == NULL)
+      if (cte_info->non_recursive_part == NULL)
 	{
 	  goto error;
 	}
@@ -4024,12 +4024,12 @@ stx_build_cte_proc (THREAD_ENTRY * thread_p, char *ptr, CTE_PROC_NODE * cte_info
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      cte_info->rec_part = NULL;
+      cte_info->recursive_part = NULL;
     }
   else
     {
-      cte_info->rec_part = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (cte_info->rec_part == NULL)
+      cte_info->recursive_part = stx_restore_xasl_node (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (cte_info->recursive_part == NULL)
 	{
 	  goto error;
 	}

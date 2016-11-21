@@ -2652,8 +2652,8 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->node_type == PT_CTE)
     {
-      arg1 = node->info.cte.non_rec_part;
-      arg2 = node->info.cte.rec_part;
+      arg1 = node->info.cte.non_recursive_part;
+      arg2 = node->info.cte.recursive_part;
     }
   else
     {

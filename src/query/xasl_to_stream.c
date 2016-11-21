@@ -3528,14 +3528,14 @@ xts_process_cte_proc (char *ptr, const CTE_PROC_NODE * cte_proc)
 {
   int offset;
 
-  offset = xts_save_xasl_node (cte_proc->non_rec_part);
+  offset = xts_save_xasl_node (cte_proc->non_recursive_part);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_xasl_node (cte_proc->rec_part);
+  offset = xts_save_xasl_node (cte_proc->recursive_part);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -6148,9 +6148,9 @@ xts_sizeof_cte_proc (const CTE_PROC_NODE * cte_info)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* non_rec_part */
-    PTR_SIZE +			/* rec_part */
-    PTR_SIZE;			/* list_id */
+  size += (PTR_SIZE		/* non_recursive_part */
+	   + PTR_SIZE		/* recursive_part */
+	   + PTR_SIZE);		/* list_id */
 
   return size;
 }

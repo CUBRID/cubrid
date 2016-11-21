@@ -2005,8 +2005,8 @@ struct pt_cte_info
 {
   PT_NODE *name;		/* PT_NAME */
   PT_NODE *as_attr_list;	/* PT_NAME */
-  PT_NODE *non_rec_part;	/* the non-recursive subquery */
-  PT_NODE *rec_part;		/* a recursive subquery */
+  PT_NODE *non_recursive_part;	/* the non-recursive subquery */
+  PT_NODE *recursive_part;	/* a recursive subquery */
   PT_MISC_TYPE only_all;	/* Type of UNION between 
 				   non-recursive and recursive parts */
   void *xasl;			/* xasl proc pointer */

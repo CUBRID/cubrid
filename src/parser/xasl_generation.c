@@ -12092,10 +12092,10 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
       /* The CTE xasl is null because the recursive part xasl has not been
          generated yet, but this is not a problem because the recursive part
          should have access only to the non recursive part */
-      PT_NODE *non_rec_part = cte_def->info.cte.non_rec_part;
-      if (non_rec_part->info.query.xasl)
+      PT_NODE *non_recursive_part = cte_def->info.cte.non_recursive_part;
+      if (non_recursive_part->info.query.xasl)
 	{
-	  cte_proc = (XASL_NODE *) non_rec_part->info.query.xasl;
+	  cte_proc = (XASL_NODE *) non_recursive_part->info.query.xasl;
 	}
       else
 	{
@@ -12196,7 +12196,7 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
   else
     {				/* there is a cte_pointer inside spec */
       assert (spec->info.spec.cte_pointer != NULL);
-      /* the subquery should be in non_rec_part of the cte */
+      /* the subquery should be in non_recursive_part of the cte */
       access = pt_to_cte_table_spec_list (parser, spec, spec->info.spec.cte_pointer->info.pointer.node, where_part);
     }
 
@@ -16138,52 +16138,52 @@ static XASL_NODE *
 pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 {
   XASL_NODE *xasl;
-  XASL_NODE *non_rec_part_xasl = NULL, *rec_part_xasl = NULL;
-  PT_NODE *non_rec_part, *rec_part;
+  XASL_NODE *non_recursive_part_xasl = NULL, *recursive_part_xasl = NULL;
+  PT_NODE *non_recursive_part, *recursive_part;
 
   if (!node)
     {
       return NULL;
     }
 
-  non_rec_part = node->info.cte.non_rec_part;
-  rec_part = node->info.cte.rec_part;
+  non_recursive_part = node->info.cte.non_recursive_part;
+  recursive_part = node->info.cte.recursive_part;
 
-  if (!non_rec_part)
+  if (!non_recursive_part)
     {
       PT_INTERNAL_ERROR (parser, "Non recursive part should be not null");
       return NULL;
     }
-  non_rec_part_xasl = (XASL_NODE *) non_rec_part->info.query.xasl;
+  non_recursive_part_xasl = (XASL_NODE *) non_recursive_part->info.query.xasl;
 
-  if (rec_part)
+  if (recursive_part)
     {
-      rec_part_xasl = (XASL_NODE *) rec_part->info.query.xasl;
+      recursive_part_xasl = (XASL_NODE *) recursive_part->info.query.xasl;
     }
 
   xasl = regu_xasl_node_alloc (proc_type);
 
   if (xasl)
     {
-      xasl->proc.cte.non_rec_part = non_rec_part_xasl;
-      xasl->proc.cte.rec_part = rec_part_xasl;
+      xasl->proc.cte.non_recursive_part = non_recursive_part_xasl;
+      xasl->proc.cte.recursive_part = recursive_part_xasl;
     }
 
-  if (!rec_part_xasl && non_rec_part_xasl)
+  if (!recursive_part_xasl && non_recursive_part_xasl)
     {
-      /* save single tuple info, cardinality, limit... from non_rec_part */
-      if (non_rec_part->info.query.single_tuple == 1)
+      /* save single tuple info, cardinality, limit... from non_recursive_part */
+      if (non_recursive_part->info.query.single_tuple == 1)
 	{
 	  xasl->is_single_tuple = true;
 	}
 
-      xasl->projected_size = non_rec_part_xasl->projected_size;
-      xasl->cardinality = non_rec_part_xasl->cardinality;
-      if (non_rec_part->info.query.limit)
+      xasl->projected_size = non_recursive_part_xasl->projected_size;
+      xasl->cardinality = non_recursive_part_xasl->cardinality;
+      if (non_recursive_part->info.query.limit)
 	{
 	  PT_NODE *limit;
 
-	  limit = non_rec_part->info.query.limit;
+	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
 	      limit = limit->next;
