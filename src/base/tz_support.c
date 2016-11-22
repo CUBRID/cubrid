@@ -5648,8 +5648,8 @@ conv_tz (void *p, DB_TYPE type)
 	// Encode UTC time for timestamptz
 	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, &timestamp_utc);
 	p1->timestamp = timestamp_utc;
-	break;
       }
+      break;
 
     case DB_TYPE_DATETIMETZ:
       {
@@ -5688,8 +5688,8 @@ conv_tz (void *p, DB_TYPE type)
 
 	tz_encode_tz_id (&tz_info, &(p1->tz_id));
 	p1->datetime = dest_dt;
-	break;
       }
+      break;
 
     case DB_TYPE_TIMESTAMPLTZ:
       {
@@ -5726,8 +5726,8 @@ conv_tz (void *p, DB_TYPE type)
 	  }
 
 	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, p1);
-	break;
       }
+      break;
 
     case DB_TYPE_DATETIMELTZ:
       {
@@ -5757,11 +5757,14 @@ conv_tz (void *p, DB_TYPE type)
 	  {
 	    goto exit;
 	  }
-	break;
       }
+      break;
+    default:
+      assert (false);
+      break;
     }
 
 exit:
-  timezone_data = save_data;
+  tz_set_data (&save_data);
   return err_status;
 }
