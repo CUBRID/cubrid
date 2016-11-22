@@ -844,6 +844,7 @@ elo_delete (DB_ELO * elo, bool force_delete)
   if (elo->type == ELO_FBO)
     {
       int ret = NO_ERROR;
+      LOB_LOCATOR_STATE state;
 
       assert (elo->locator != NULL);
 
