@@ -1752,7 +1752,7 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
 
   if (page_out != NULL)
     {
-      *page_out = NULL;	/* make it sure for an error */
+      *page_out = NULL;		/* make it sure for an error */
     }
 
   while (true)
