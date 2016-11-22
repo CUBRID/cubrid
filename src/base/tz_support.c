@@ -5626,7 +5626,7 @@ conv_tz (void *p, DB_TYPE type)
 
 	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
 	src_dt.date = date_local;
-	src_dt.time = time_local;
+	src_dt.time = time_local * 1000;
 
 	tz_set_data (tz_get_new_timezone_data ());
 	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
@@ -5644,6 +5644,7 @@ conv_tz (void *p, DB_TYPE type)
 	      }
 	  }
 
+	dest_dt.time /= 1000;
 	tz_encode_tz_id (&tz_info, &(p1->tz_id));
 	// Encode UTC time for timestamptz
 	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, &timestamp_utc);
@@ -5715,7 +5716,7 @@ conv_tz (void *p, DB_TYPE type)
 
 	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
 	src_dt.date = date_local;
-	src_dt.time = time_local;
+	src_dt.time = time_local * 1000;
 
 	tz_set_data (tz_get_new_timezone_data ());
 	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
@@ -5725,6 +5726,7 @@ conv_tz (void *p, DB_TYPE type)
 	    goto exit;
 	  }
 
+	dest_dt.time /= 1000;
 	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, p1);
       }
       break;
