@@ -12210,7 +12210,8 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
 	}
     }
 
-  xasl->instnum_flag &= (0xff - (XASL_INSTNUM_FLAG_SCAN_CHECK + XASL_INSTNUM_FLAG_SCAN_STOP));
+  xasl->instnum_flag &= ~(XASL_INSTNUM_FLAG_SCAN_CHECK | XASL_INSTNUM_FLAG_SCAN_STOP
+			  | XASL_INSTNUM_FLAG_SCAN_LAST_STOP);
 
   return NO_ERROR;
 
