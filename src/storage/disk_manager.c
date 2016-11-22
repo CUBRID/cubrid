@@ -1074,8 +1074,7 @@ disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hfid)
 }
 
 /*
- * disk_get_link () - Find the name of the next permananet volume
- *                          extension
+ * disk_get_link () - Find the name of the next permananet volume extension
  *   return: next_volext_fullname or NULL in case of error
  *   volid(in): Volume identifier
  *   next_volid(out): Next volume identifier
@@ -1110,8 +1109,7 @@ disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *n
 
 
 /*
- * disk_rv_redo_dboutside_newvol () - Redo the initialization of a disk from the
- *                                point of view of operating system
+ * disk_rv_redo_dboutside_newvol () - Redo the initialization of a disk from the point of view of operating system
  *   return: NO_ERROR
  *   rcv(in): Recovery structure
  */
@@ -1135,8 +1133,7 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * disk_rv_undo_format () - Undo the initialization of a disk. The disk is
- *                        uninitialized or removed
+ * disk_rv_undo_format () - Undo the initialization of a disk. The disk is uninitialized or removed
  *   return: NO_ERROR
  *   rcv(in): Recovery structure
  */
@@ -1250,8 +1247,7 @@ disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * disk_rv_dump_set_creation_time () - Dump either redo or undo change creation
- *                                 information
+ * disk_rv_dump_set_creation_time () - Dump either redo or undo change creation information
  *   return: void
  *   length_ignore(in): Length of Recovery Data
  *   data(in): The data being logged
@@ -1290,8 +1286,7 @@ disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * disk_rv_dump_link () - Dump either redo or undo link of a volume
- *                             extension
+ * disk_rv_dump_link () - Dump either redo or undo link of a volume extension
  *   return: void
  *   length_ignore(in): Length of Recovery Data
  *   data(in): The data being logged
@@ -1330,8 +1325,7 @@ disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * disk_rv_dump_set_boot_hfid () - Dump either redo/undo reset of boot system
- *                                 heap
+ * disk_rv_dump_set_boot_hfid () - Dump either redo/undo reset of boot system heap
  *   return: void
  *   length_ignore(in): Length of Recovery Data
  *   data(in): The data being logged
@@ -2420,7 +2414,10 @@ disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** ar
   return NO_ERROR;
 
 exit_on_error:
-  db_private_free (thread_p, ctx);
+  if (ctx != NULL)
+    {
+      db_private_free (thread_p, ctx);
+    }
   return error;
 }
 
@@ -2679,12 +2676,7 @@ disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_M
   vpid_volheader.volid = volid;
   vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
 
-#if defined (NDEBUG)
-  *page_volheader_out = pgbuf_fix_release (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-#else /* !NDEBUG */
-  *page_volheader_out =
-    pgbuf_fix_debug (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH, ARG_FILE_LINE);
-#endif /* NDEBUG */
+  *page_volheader_out = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
   if (*page_volheader_out == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -4602,7 +4594,6 @@ disk_type_to_string (DB_VOLTYPE voltype)
 {
   return voltype == DB_PERMANENT_VOLTYPE ? "Permanent Volume" : "Temporary Volume";
 }
-
 
 /*
  * disk_vhdr_set_vol_fullname () -

@@ -1748,8 +1748,12 @@ file_extdata_apply_funcs (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdat
   bool stop = false;		/* forces to stop processing extensible data */
   PAGE_PTR page_extdata = NULL;	/* extensible data page */
   PGBUF_LATCH_MODE latch_mode = for_write ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ;
-
   int error_code = NO_ERROR;
+
+  if (page_out != NULL)
+    {
+      *page_out = NULL;	/* make it sure for an error */
+    }
 
   while (true)
     {
@@ -1907,7 +1911,6 @@ file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extda
 {
   FILE_EXTENSIBLE_DATA_SEARCH_CONTEXT search_context;
   FILE_EXTENSIBLE_DATA *extdata_in = *extdata;
-
   int error_code = NO_ERROR;
 
   search_context.item_to_find = item_to_find;
@@ -1917,9 +1920,8 @@ file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extda
 
   if (is_ordered)
     {
-      error_code =
-	file_extdata_apply_funcs (thread_p, extdata_in, file_extdata_func_for_search_ordered,
-				  &search_context, NULL, NULL, for_write, extdata, page_extdata);
+      error_code = file_extdata_apply_funcs (thread_p, extdata_in, file_extdata_func_for_search_ordered,
+					     &search_context, NULL, NULL, for_write, extdata, page_extdata);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1929,9 +1931,8 @@ file_extdata_search_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extda
     }
   else
     {
-      error_code =
-	file_extdata_apply_funcs (thread_p, extdata_in, NULL, NULL, file_extdata_item_func_for_search,
-				  &search_context, for_write, extdata, page_extdata);
+      error_code = file_extdata_apply_funcs (thread_p, extdata_in, NULL, NULL, file_extdata_item_func_for_search,
+					     &search_context, for_write, extdata, page_extdata);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1966,7 +1967,6 @@ static int
 file_extdata_find_not_full (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** extdata, PAGE_PTR * page_out, bool * found)
 {
   VPID vpid_next;
-
   int error_code = NO_ERROR;
 
   assert (extdata != NULL && *extdata != NULL);
@@ -3719,6 +3719,9 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
 
+  vsid_collector.vsids = NULL;
+  ftab_collector.partsect_ftab = NULL;
+
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
@@ -3732,9 +3735,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   file_header_sanity_check (fhead);
 
   assert (FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
-
-  vsid_collector.vsids = NULL;
-  ftab_collector.partsect_ftab = NULL;
 
   error_code = file_table_collect_all_vsids (thread_p, page_fhead, &vsid_collector);
   if (error_code != NO_ERROR)
@@ -7515,11 +7515,11 @@ file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv
  * file_table_check_page_is_in_sectors () - FILE_EXTDATA_ITEM_FUNC to check user page table is in one of the sectors
  *
  * return :
- * THREAD_ENTRY * thread_p (in) :
- * const void * data (in) :
- * int index (in) :
- * bool * stop (in) :
- * void * args (in) :
+ * thread_p (in) :
+ * data (in) :
+ * index (in) :
+ * stop (in) :
+ * args (in) :
  */
 static int
 file_table_check_page_is_in_sectors (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
