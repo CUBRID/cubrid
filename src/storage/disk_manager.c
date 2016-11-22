@@ -482,7 +482,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   DISK_VOLPURPOSE vol_purpose = ext_info->purpose;
   DKNPAGES extend_npages = ext_info->nsect_total * DISK_SECTOR_NPAGES;
   INT16 prev_volid;
-
   int error_code = NO_ERROR;
 
   assert ((int) sizeof (DISK_VOLUME_HEADER) <= DB_PAGESIZE);
@@ -515,15 +514,15 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   addr.offset = 0;
   addr.pgptr = NULL;
   log_append_undo_data (thread_p, RVDK_FORMAT, &addr, (int) strlen (vol_fullname) + 1, vol_fullname);
+
   /* this log must be flushed. */
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
 
   /* create and initialize the volume. recovery information is initialized in every page. */
-  vdes =
-    fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
-		   false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false);
+  vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
+			false, false, IO_PAGESIZE, kbytes_to_be_written_per_sec, false);
   if (vdes == NULL_VOLDES)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -769,7 +768,6 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
   LOG_DATA_ADDR addr;
   DISK_RECV_CHANGE_CREATION *undo_recv;
   DISK_RECV_CHANGE_CREATION *redo_recv;
-
   int error_code = NO_ERROR;
 
   if ((int) strlen (new_vol_fullname) + 1 > DB_MAX_PATH_LENGTH)
@@ -860,7 +858,6 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
   return NO_ERROR;
 
 error:
-
   assert (addr.pgptr != NULL);
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
@@ -891,7 +888,6 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
   VPID vpid;
   DISK_RECV_LINK_PERM_VOLUME *undo_recv;
   DISK_RECV_LINK_PERM_VOLUME *redo_recv;
-
   int error_code = NO_ERROR;
 
   addr.vfid = NULL;
@@ -987,7 +983,6 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
   return NO_ERROR;
 
 error:
-
   assert (addr.pgptr != NULL);
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
@@ -1614,11 +1609,8 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   PAGE_PTR page_volheader = NULL;
   DISK_VOLUME_HEADER *volheader = NULL;
   DISK_RECV_INIT_PAGES_INFO log_data;
-
   int npages;
-
   bool do_logging;
-
   int error_code = NO_ERROR;
 
   assert (nsect_extend > 0);
@@ -1721,9 +1713,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   char fullname[PATH_MAX];
   VOLID volid;
   DKNSECTS nsect_part_max;
-
   bool is_sysop_started = true;
-
   int error_code = NO_ERROR;
 
   /* how it works:
@@ -1764,6 +1754,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
     char link_path[PATH_MAX];
     char link_fullname[PATH_MAX];
     struct stat stat_buf;
+
     if (stat (fullname, &stat_buf) == 0	/* file exists */
 	&& S_ISCHR (stat_buf.st_mode))	/* is the raw device? */
       {
@@ -1887,7 +1878,6 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
   VOLID volid_new;
   DKNSECTS nsect_free;
   char buf_realpath[PATH_MAX];
-
   int error_code = NO_ERROR;
 
   *volid_out = NULL_VOLID;
@@ -1969,7 +1959,6 @@ disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_
 {
   PAGE_PTR page_volheader = NULL;
   DISK_VOLUME_HEADER *volheader;
-
   int error_code = NO_ERROR;
 
   assert (volid != NULL_VOLID);
@@ -2024,7 +2013,6 @@ disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_
   assert (error_code == NO_ERROR);
 
 exit:
-
   if (page_volheader != NULL)
     {
       pgbuf_unfix (thread_p, page_volheader);
@@ -2861,6 +2849,7 @@ STATIC_INLINE bool
 disk_stab_cursor_is_bit_set (const DISK_STAB_CURSOR * cursor)
 {
   disk_stab_cursor_check_valid (cursor);
+
   /* update if unit size is changed */
   return bit64_is_set (*cursor->unit, cursor->offset_to_bit);
 }
@@ -2875,7 +2864,9 @@ STATIC_INLINE void
 disk_stab_cursor_set_bit (DISK_STAB_CURSOR * cursor)
 {
   disk_stab_cursor_check_valid (cursor);
+
   assert (!disk_stab_cursor_is_bit_set (cursor));
+
   /* update if unit size is changed */
   *cursor->unit = bit64_set (*cursor->unit, cursor->offset_to_bit);
 }
@@ -2890,7 +2881,9 @@ STATIC_INLINE void
 disk_stab_cursor_clear_bit (DISK_STAB_CURSOR * cursor)
 {
   disk_stab_cursor_check_valid (cursor);
+
   assert (!disk_stab_cursor_is_bit_set (cursor));
+
   /* update if unit size is changed */
   *cursor->unit = bit64_clear (*cursor->unit, cursor->offset_to_bit);
 }
@@ -2905,6 +2898,7 @@ STATIC_INLINE int
 disk_stab_cursor_get_bit_index_in_page (const DISK_STAB_CURSOR * cursor)
 {
   disk_stab_cursor_check_valid (cursor);
+
   return cursor->offset_to_unit * DISK_STAB_UNIT_BIT_COUNT + cursor->offset_to_bit;
 }
 
@@ -3112,7 +3106,6 @@ disk_stab_iterate_units (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * vol
   DISK_STAB_CURSOR cursor;
   DISK_STAB_UNIT *end_unit;
   bool stop = false;
-
   int error_code = NO_ERROR;
 
   assert (volheader != NULL);
@@ -3136,9 +3129,9 @@ disk_stab_iterate_units (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * vol
       /* iterate through units */
 
       /* set end_unit */
-      end_unit =
-	((DISK_STAB_UNIT *) cursor.page)
+      end_unit = ((DISK_STAB_UNIT *) cursor.page)
 	+ (cursor.pageid == end->pageid ? end->offset_to_unit : DISK_STAB_PAGE_UNITS_COUNT);
+
       /* iterate */
       for (; cursor.unit < end_unit;
 	   cursor.unit++, cursor.offset_to_unit++, cursor.sectid += (DISK_STAB_UNIT_BIT_COUNT - cursor.offset_to_bit),
@@ -3161,8 +3154,10 @@ disk_stab_iterate_units (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * vol
 	      return NO_ERROR;
 	    }
 	}
+
       disk_stab_cursor_unfix (thread_p, &cursor);
     }
+
   return NO_ERROR;
 }
 
@@ -3232,6 +3227,7 @@ disk_stab_set_bits_contiguous (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * curso
       *nsectsp = 0;
       *stop = true;
     }
+
   return NO_ERROR;
 }
 
@@ -3313,7 +3309,6 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VOLID volid;
   DB_VOLPURPOSE purpose;
   DKNSECTS nsect;
-
   int error_code = NO_ERROR;
 
   assert (rcv->pgptr != NULL);
@@ -3390,7 +3385,6 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VOLID volid;
   DB_VOLPURPOSE purpose;
   DKNSECTS nsect;
-
   int error_code = NO_ERROR;
 
   assert (rcv->pgptr != NULL);
@@ -3469,7 +3463,6 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
   DISK_STAB_CURSOR start_cursor = DISK_STAB_CURSOR_INITIALIZER;
   DISK_STAB_CURSOR end_cursor = DISK_STAB_CURSOR_INITIALIZER;
   int vol_free_sects = 0;
-
   int error_code = NO_ERROR;
 
   volid = context->cache_vol_reserve[vol_index].volid;
@@ -3501,9 +3494,8 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
       disk_stab_cursor_set_at_end (volheader, &end_cursor);
 
       /* reserve sectors after hint */
-      error_code =
-	disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
-				 disk_stab_unit_reserve, context);
+      error_code = disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
+					    disk_stab_unit_reserve, context);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3514,9 +3506,8 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
 	  /* we need to reserve more. reserve sectors before hint */
 	  end_cursor = start_cursor;
 	  disk_stab_cursor_set_at_start (volheader, &start_cursor);
-	  error_code =
-	    disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
-				     disk_stab_unit_reserve, context);
+	  error_code = disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
+						disk_stab_unit_reserve, context);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -3529,15 +3520,15 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
       /* search the entire sector table */
       disk_stab_cursor_set_at_start (volheader, &start_cursor);
       disk_stab_cursor_set_at_end (volheader, &end_cursor);
-      error_code =
-	disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
-				 disk_stab_unit_reserve, context);
+      error_code = disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
+					    disk_stab_unit_reserve, context);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
     }
+
   if (context->nsects_lastvol_remaining != 0)
     {
       /* our logic must be flawed... the sectors are reserved ahead so we should have found enough free sectors */
@@ -3545,6 +3536,7 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
       error_code = ER_FAILED;
       goto exit;
     }
+
   /* update hint */
   volheader->hint_allocsect = (context->vsidp - 1)->sectid + 1;
   volheader->hint_allocsect = DISK_SECTS_ROUND_DOWN (volheader->hint_allocsect);
@@ -3662,6 +3654,7 @@ disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * vol
     {
       return DISK_ERROR;
     }
+
   if (!disk_stab_cursor_is_bit_set (&cursor_sectid))
     {
       assert (!debug_crash);
@@ -3695,9 +3688,7 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   VOLID volid = NULL_VOLID;
   VOLID banned_volid = NULL_VOLID;
   int iter;
-
   DISK_RESERVE_CONTEXT context;
-
   int error_code = NO_ERROR;
 
   assert (purpose == DB_PERMANENT_DATA_PURPOSE || purpose == DB_TEMPORARY_DATA_PURPOSE);
@@ -3792,7 +3783,6 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
 {
   DISK_EXTEND_INFO *extend_info;
   DKNSECTS save_remaining;
-
   int error_code = NO_ERROR;
 
   if (disk_Cache == NULL)
@@ -4034,7 +4024,6 @@ disk_unreserve_ordered_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, 
   int index;
   VOLID volid = NULL_VOLID;
   DISK_RESERVE_CONTEXT context;
-
   int error_code = NO_ERROR;
 
   error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
@@ -4102,7 +4091,6 @@ disk_unreserve_sectors_from_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_R
   DISK_VOLUME_HEADER *volheader = NULL;
   SECTID sectid_start_cursor;
   DISK_STAB_CURSOR start_cursor, end_cursor;
-
   int error_code = NO_ERROR;
 
   assert (context != NULL && context->nsects_lastvol_remaining > 0);
@@ -4220,7 +4208,6 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VOLUME_HEADER * volheader)
   PAGE_PTR page_stab = NULL;
   DISK_STAB_CURSOR start_cursor;
   DISK_STAB_CURSOR end_cursor;
-
   int error_code = NO_ERROR;
 
   assert (nsects_sys < DISK_STAB_PAGE_BIT_COUNT);
@@ -4263,9 +4250,8 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VOLUME_HEADER * volheader)
 					      (vpid_stab.pageid + 1 - volheader->stab_first_page)
 					      * DISK_STAB_PAGE_BIT_COUNT, &end_cursor);
 	    }
-	  error_code =
-	    disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
-				     disk_stab_set_bits_contiguous, &nsect_copy);
+	  error_code = disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_WRITE, &start_cursor, &end_cursor,
+						disk_stab_set_bits_contiguous, &nsect_copy);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -4285,6 +4271,7 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VOLUME_HEADER * volheader)
       nsects_sys -= nsect_copy;
       nsect_copy = 0;
     }
+
   return NO_ERROR;
 }
 
@@ -4488,7 +4475,6 @@ disk_check_sectors_are_reserved_in_volume (THREAD_ENTRY * thread_p, VOLID volid,
   DISK_VOLUME_HEADER *volheader = NULL;
   SECTID sectid_start_cursor;
   DISK_STAB_CURSOR start_cursor, end_cursor;
-
   int error_code = NO_ERROR;
 
   assert (context != NULL && context->nsects_lastvol_remaining > 0);
@@ -4502,9 +4488,8 @@ disk_check_sectors_are_reserved_in_volume (THREAD_ENTRY * thread_p, VOLID volid,
   sectid_start_cursor = DISK_SECTS_ROUND_DOWN (context->vsidp->sectid);
   disk_stab_cursor_set_at_sectid (volheader, sectid_start_cursor, &start_cursor);
   disk_stab_cursor_set_at_end (volheader, &end_cursor);
-  error_code =
-    disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_READ, &start_cursor, &end_cursor,
-			     disk_stab_unit_check_reserved, context);
+  error_code = disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_READ, &start_cursor, &end_cursor,
+					disk_stab_unit_check_reserved, context);
   pgbuf_unfix (thread_p, page_volheader);
   if (error_code == ER_FAILED)
     {
@@ -4780,7 +4765,6 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, const LOG_LSA * log_c
 {
   DISK_VOLUME_HEADER *vhdr;
   LOG_DATA_ADDR addr;
-
   int error_code = NO_ERROR;
 
   addr.pgptr = NULL;
@@ -4817,7 +4801,6 @@ disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * vol_lsa)
 {
   DISK_VOLUME_HEADER *vhdr;
   PAGE_PTR hdr_pgptr = NULL;
-
   int error_code = NO_ERROR;
 
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &hdr_pgptr, &vhdr);
@@ -4848,7 +4831,6 @@ disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creatio
 {
   DISK_VOLUME_HEADER *vhdr;
   PAGE_PTR hdr_pgptr = NULL;
-
   int error_code = NO_ERROR;
 
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &hdr_pgptr, &vhdr);
@@ -5164,7 +5146,6 @@ disk_dump_volume_system_info (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid)
 {
   DISK_VOLUME_HEADER *vhdr;
   PAGE_PTR hdr_pgptr = NULL;
-
   int error_code = NO_ERROR;
 
   error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &hdr_pgptr, &vhdr);
@@ -5314,7 +5295,6 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
   DISK_VOLUME_HEADER *volheader;
   PAGE_PTR page_volheader = NULL;
   DKNSECTS nfree = 0;
-
   int error_code = NO_ERROR;
 
   /* get check critical section. it will prevent reservations/extensions to interfere with the process */
@@ -5393,7 +5373,6 @@ disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
     }
 
 exit:
-
   if (page_volheader != NULL)
     {
       pgbuf_unfix_and_init (thread_p, page_volheader);
@@ -5424,7 +5403,6 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
   VOLID volid_iter;
   DKNSECTS perm_free;
   DKNSECTS temp_free;
-
   int error_code = NO_ERROR;
 
   error_code = csect_enter (thread_p, CSECT_DISK_CHECK, INF_WAIT);
@@ -5447,6 +5425,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
       csect_exit (thread_p, CSECT_DISK_CHECK);
       return DISK_INVALID;
     }
+
   if (nvols_temp > 0 && (nvols_temp != (LOG_MAX_DBVOLID - volid_temp_last + 1)))
     {
       /* cannot repair */
@@ -5454,6 +5433,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
       csect_exit (thread_p, CSECT_DISK_CHECK);
       return DISK_INVALID;
     }
+
   if (nvols_perm != disk_Cache->nvols_perm)
     {
       assert (false);
@@ -5468,6 +5448,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return DISK_INVALID;
 	}
     }
+
   if (nvols_temp > 0 && nvols_temp != disk_Cache->nvols_temp)
     {
       assert (false);
@@ -5498,6 +5479,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return valid;
 	}
     }
+
   for (volid_iter = LOG_MAX_DBVOLID; volid_iter > LOG_MAX_DBVOLID - disk_Cache->nvols_temp; volid_iter--)
     {
       valid = disk_check_volume (thread_p, volid_iter, repair);
@@ -5529,6 +5511,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  temp_free += disk_Cache->vols[volid_iter].nsect_free;
 	}
     }
+
   if (perm_free != disk_Cache->perm_purpose_info.extend_info.nsect_free)
     {
       assert (false);
@@ -5543,6 +5526,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return DISK_INVALID;
 	}
     }
+
   if (temp_free != disk_Cache->temp_purpose_info.nsect_perm_free)
     {
       assert (false);
@@ -5563,6 +5547,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
     {
       temp_free += disk_Cache->vols[volid_iter].nsect_free;
     }
+
   if (temp_free != disk_Cache->temp_purpose_info.extend_info.nsect_free)
     {
       assert (false);
@@ -5580,6 +5565,7 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 
   /* all valid or all repaired */
   csect_exit (thread_p, CSECT_DISK_CHECK);
+
   return DISK_VALID;
 }
 
@@ -5614,6 +5600,7 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
 	      disk_Cache->nvols_perm * sizeof (DISK_VOLMAP_CLONE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
   for (iter = 0; iter < disk_Cache->nvols_perm; iter++)
     {
       if (disk_Cache->vols[iter].purpose == DB_TEMPORARY_DATA_PURPOSE)
@@ -5735,13 +5722,16 @@ disk_map_clone_clear (VSID * vsid, DISK_VOLMAP_CLONE * disk_map_clone)
       assert_release (false);
       return DISK_INVALID;
     }
+
   if (!bit64_is_set (*unit, offset_bit))
     {
       /* not reserved */
       assert_release (false);
       return DISK_INVALID;
     }
+
   *unit = bit64_clear (*unit, offset_bit);
+
   return DISK_VALID;
 }
 
@@ -5770,6 +5760,7 @@ disk_map_clone_check_leaks (DISK_VOLMAP_CLONE * disk_map_clone)
 	    }
 	}
     }
+
   return DISK_VALID;
 }
 #endif /* SA_MODE */
