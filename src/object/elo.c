@@ -708,9 +708,8 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 {
 #if !defined (CS_MODE)
   LOG_DATA_ADDR addr;
-  LOG_CRUMB undo_crumbs[4];
+  LOG_CRUMB undo_crumbs[1];
   int num_undo_crumbs;
-  INT16 size_dst_uri, size_src_uri;
 #endif
 
   assert (elo != NULL);
@@ -764,6 +763,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 
 	  switch (state)
 	    {
+	    case LOB_PERMANENT_CREATED:
 	    case LOB_TRANSIENT_CREATED:
 	      {
 		ret = es_copy_file (real_locator, elo->meta_data, out_uri);
@@ -777,71 +777,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		    es_delete_file (out_uri);
 		    goto error_return;
 		  }
-
 #if !defined (CS_MODE)
-		addr.offset = NULL_SLOTID;
-		addr.pgptr = NULL;
-		addr.vfid = NULL;
-
-		undo_crumbs[0].length = strlen (out_uri) + 1;
-		undo_crumbs[0].data = (char *) out_uri;
-		num_undo_crumbs = 1;
-		log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
-					    undo_crumbs, NULL);
-#endif
-
-		/* TODO[arnia]: */
-#if 0
-		ret = es_rename_file (real_locator, elo->meta_data, out_uri);
-		if (ret != NO_ERROR)
-		  {
-		    goto error_return;
-		  }
-		locator = db_private_strdup (NULL, out_uri);
-		if (locator == NULL)
-		  {
-		    assert (er_errid () != NO_ERROR);
-		    ret = er_errid ();
-		    goto error_return;
-		  }
-#if !defined (CS_MODE)
-		addr.offset = NULL_SLOTID;
-		addr.pgptr = NULL;
-		addr.vfid = NULL;
-
-		size_dst_uri = (INT16) strlen (out_uri) + 1;
-		size_src_uri = (INT16) strlen (real_locator) + 1;
-		undo_crumbs[0].length = sizeof (size_dst_uri);
-		undo_crumbs[0].data = &size_dst_uri;
-		undo_crumbs[1].length = sizeof (size_src_uri);
-		undo_crumbs[1].data = &size_src_uri;
-		undo_crumbs[2].length = size_dst_uri;
-		undo_crumbs[2].data = (char *) out_uri;
-		undo_crumbs[3].length = size_src_uri;
-		undo_crumbs[3].data = (char *) real_locator;
-		num_undo_crumbs = 4;
-		log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_RENAME_FILE, &addr, num_undo_crumbs,
-					    0, undo_crumbs, NULL);
-#endif
-#endif
-	      }
-	      break;
-
-	    case LOB_PERMANENT_CREATED:
-	      {
-		ret = es_copy_file (real_locator, elo->meta_data, out_uri);
-		if (ret != NO_ERROR)
-		  {
-		    goto error_return;
-		  }
-		locator = db_private_strdup (NULL, out_uri);
-		if (locator == NULL)
-		  {
-		    es_delete_file (out_uri);
-		    goto error_return;
-		  }
-#if !defined (CS_MODE)
-
 		addr.offset = NULL_SLOTID;
 		addr.pgptr = NULL;
 		addr.vfid = NULL;
@@ -908,33 +844,36 @@ elo_delete (DB_ELO * elo, bool force_delete)
   if (elo->type == ELO_FBO)
     {
       int ret = NO_ERROR;
-#if defined (SA_MODE)
-      LOG_DATA_ADDR addr;
-#endif
 
       assert (elo->locator != NULL);
 
-#if !defined (CS_MODE)
-      if (force_delete)
+      state = get_lob_state_from_locator (elo->locator);
+      if (!ELO_NEEDS_TRANSACTION (elo) || force_delete)
 	{
-#endif
 	  es_delete_file (elo->locator);
-#if !defined (CS_MODE)
 	}
       else
 	{
+	  if (state == LOB_TRANSIENT_CREATED)
+	    {
+	      es_delete_file (elo->locator);
+	    }
+	  else
+	    {
 #if defined (SERVER_MODE)
-	  es_notify_vacuum_for_delete (thread_get_thread_entry_info (), elo->locator);
+	      es_notify_vacuum_for_delete (thread_get_thread_entry_info (), elo->locator);
 #endif
 #if defined (SA_MODE)
-	  addr.offset = NULL_SLOTID;
-	  addr.pgptr = NULL;
-	  addr.vfid = NULL;
-	  log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
-			       elo->locator);
+	      LOG_DATA_ADDR addr;
+
+	      addr.offset = NULL_SLOTID;
+	      addr.pgptr = NULL;
+	      addr.vfid = NULL;
+	      log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
+				   elo->locator);
 #endif
+	    }
 	}
-#endif
 
       return ret;
     }
