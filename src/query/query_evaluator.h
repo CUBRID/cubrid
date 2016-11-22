@@ -205,6 +205,7 @@ struct regu_variable_node
 #define REGU_VARIABLE_CLEAR_FLAG(e, f)   (e)->flags &= (short) ~(f)
 
   TP_DOMAIN *domain;		/* domain of the value in this regu variable */
+  TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
   DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
   struct xasl_node *xasl;	/* query xasl pointer */
   union regu_data_value
@@ -478,6 +479,7 @@ struct arith_list_node
 {
   ARITH_TYPE *next;		/* next arithmetic expression */
   TP_DOMAIN *domain;		/* resultant domain */
+  TP_DOMAIN *original_domain;	/* resultant domain */
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */

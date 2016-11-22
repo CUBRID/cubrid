@@ -1366,6 +1366,7 @@ qexec_clear_arith_list (XASL_NODE * xasl_p, ARITH_TYPE * list, int final)
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+      p->domain = p->original_domain;
       pr_clear_value (p->value);
       pg_cnt += qexec_clear_regu_var (xasl_p, p->leftptr, final);
       pg_cnt += qexec_clear_regu_var (xasl_p, p->rightptr, final);
@@ -1398,6 +1399,9 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
     {
       return pg_cnt;
     }
+
+  /* restore the original domain, in order to avoid coerce when use XASL clones */
+  regu_var->domain = regu_var->original_domain;
 
 #if !defined(NDEBUG)
   if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
