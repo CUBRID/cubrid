@@ -12467,7 +12467,12 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
     }
   assert (isvalid == DISK_VALID);
 
+#if !defined (NDEBUG)
+  *page =
+    pgbuf_fix_without_validation_debug (thead_p, vpid, OLD_PAGE, latch_mode, latch_condition, caller_file, caller_line);
+#else /* NDEBUG */
   *page = pgbuf_fix_without_validation (thead_p, vpid, OLD_PAGE, latch_mode, latch_condition);
+#endif /* NDEBUG */
   if (*page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
