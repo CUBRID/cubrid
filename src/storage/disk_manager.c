@@ -441,6 +441,7 @@ STATIC_INLINE int disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID vo
 #endif /* !NDEBUG */
 
 static int disk_cache_init (void);
+static void disk_cache_final (void);
 STATIC_INLINE bool disk_is_valid_volid (VOLID volid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_VOLPURPOSE disk_get_volpurpose (VOLID volid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_VOLTYPE disk_get_voltype (VOLID volid) __attribute__ ((ALWAYS_INLINE));
@@ -2171,6 +2172,29 @@ disk_cache_init (void)
       disk_Cache->vols[i].nsect_free = 0;
     }
   return NO_ERROR;
+}
+
+/*
+ * disk_cache_final () - finalize disk cache
+ */
+static void
+disk_cache_final (void)
+{
+  if (disk_Cache == NULL)
+    {
+      /* not initialized */
+      return;
+    }
+
+  assert (disk_Cache->perm_purpose_info.extend_info.owner_reserve == -1);
+  assert (disk_Cache->temp_purpose_info.extend_info.owner_reserve == -1);
+  assert (disk_Cache->owner_extend == -1);
+
+  pthread_mutex_destroy (&disk_Cache->perm_purpose_info.extend_info.mutex_reserve);
+  pthread_mutex_destroy (&disk_Cache->temp_purpose_info.extend_info.mutex_reserve);
+  pthread_mutex_destroy (&disk_Cache->mutex_extend);
+
+  free_and_init (disk_Cache);
 }
 
 /*
@@ -4283,6 +4307,13 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VOLUME_HEADER * volheader)
   return NO_ERROR;
 }
 
+/*
+ * disk_manager_init () - load disk manager and allocate all required resources
+ *
+ * return              : error code
+ * thread_p (in)       : thread entry
+ * load_from_disk (in) : true to also populate disk cache with volume info
+ */
 int
 disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
 {
@@ -4300,6 +4331,11 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
 
   disk_Logging = prm_get_bool_value (PRM_ID_DISK_LOGGING);
 
+  if (disk_Cache != NULL)
+    {
+      disk_log ("disk_manager_init", "%s", "reload disk cache");
+      disk_cache_final ();
+    }
   error_code = disk_cache_init ();
   if (error_code != NO_ERROR)
     {
@@ -4317,24 +4353,13 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
   return NO_ERROR;
 }
 
+/*
+ * disk_manager_final () - free disk manager resources
+ */
 void
 disk_manager_final (void)
 {
-  if (disk_Cache == NULL)
-    {
-      /* not initialized */
-      return;
-    }
-
-  assert (disk_Cache->perm_purpose_info.extend_info.owner_reserve == -1);
-  assert (disk_Cache->temp_purpose_info.extend_info.owner_reserve == -1);
-  assert (disk_Cache->owner_extend == -1);
-
-  pthread_mutex_destroy (&disk_Cache->perm_purpose_info.extend_info.mutex_reserve);
-  pthread_mutex_destroy (&disk_Cache->temp_purpose_info.extend_info.mutex_reserve);
-  pthread_mutex_destroy (&disk_Cache->mutex_extend);
-
-  free_and_init (disk_Cache);
+  disk_cache_final ();
 }
 
 /*
