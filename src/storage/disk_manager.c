@@ -769,7 +769,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
 		   const LOG_LSA * new_chkptlsa, bool logchange, DISK_FLUSH_TYPE flush)
 {
   DISK_VOLUME_HEADER *vhdr = NULL;
-  LOG_DATA_ADDR addr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   DISK_RECV_CHANGE_CREATION *undo_recv;
   DISK_RECV_CHANGE_CREATION *redo_recv;
   int error_code = NO_ERROR;
@@ -888,7 +888,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
 	       DISK_FLUSH_TYPE flush)
 {
   DISK_VOLUME_HEADER *vhdr;
-  LOG_DATA_ADDR addr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   VPID vpid;
   DISK_RECV_LINK_PERM_VOLUME *undo_recv;
   DISK_RECV_LINK_PERM_VOLUME *redo_recv;
