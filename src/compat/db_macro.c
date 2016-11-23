@@ -144,9 +144,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 {
   int error = NO_ERROR;
 
-#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ERROR (value);
-#endif
 
   /* It's important to initialize the codeset of the data portion since it is considered domain information.  It
    * doesn't matter what we set it to, since it will be reset correctly when data is stored in the DB_VALUE by one of
@@ -1104,9 +1102,7 @@ db_value_domain_type (const DB_VALUE * value)
 {
   DB_TYPE db_type;
 
-#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_UNKNOWN (value);
-#endif
 
   db_type = (DB_TYPE) value->domain.general_info.type;
 
@@ -1223,9 +1219,7 @@ db_value_type_is_collection (const DB_VALUE * value)
   bool is_collection;
   DB_TYPE type;
 
-#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_FALSE (value);
-#endif
 
   type = db_value_type (value);
   is_collection = (TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ);
@@ -1241,9 +1235,7 @@ db_value_type_is_collection (const DB_VALUE * value)
 bool
 db_value_is_null (const DB_VALUE * value)
 {
-#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_TRUE (value);
-#endif
 
   return (value->domain.general_info.is_null != 0);
 }
@@ -2455,7 +2447,6 @@ db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount)
 int
 db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval)
 {
-
   CHECK_1ARG_ERROR (value);
 
   value->domain.general_info.type = DB_TYPE_TIMESTAMP;
@@ -2757,9 +2748,7 @@ db_get_int (const DB_VALUE * value)
 short
 db_get_short (const DB_VALUE * value)
 {
-#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
-#endif
 
   assert (value->domain.general_info.type == DB_TYPE_SHORT);
 

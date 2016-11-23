@@ -189,7 +189,6 @@
 #define db_pull_bit(v, l) DB_PULL_BIT(v, l)
 #define db_pull_nchar(v, l) DB_PULL_NCHAR(v, l)
 #define db_pull_char(v, l) DB_PULL_CHAR(v, l)
-#define db_value_is_null(v) DB_IS_NULL(v)
 #define db_get_enum_string(v) DB_GET_ENUM_STRING(v)
 #define db_make_null(v) \
     ((v)->domain.general_info.type = DB_TYPE_NULL, \
