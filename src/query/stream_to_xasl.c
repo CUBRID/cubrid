@@ -6107,6 +6107,8 @@ stx_build_sort_list (THREAD_ENTRY * thread_p, char *ptr, SORT_LIST * sort_list)
     {
       return NULL;
     }
+  sort_list->original_value_domain = sort_list->pos_descr.dom;
+
   ptr = or_unpack_int (ptr, &tmp);
   sort_list->s_order = (SORT_ORDER) tmp;
 
