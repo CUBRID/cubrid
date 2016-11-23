@@ -9454,15 +9454,7 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
 		  ASSERT_ERROR ();
 		  goto exit;
 		}
-
-	      /* remove from extdata */
-	      save_lsa = *pgbuf_get_lsa (page_extdata);
-	      file_log_extdata_remove (thread_p, extdata, page_extdata, idx_item, 1);
-	      file_log ("file_tracker_reclaim_marked_deleted", "remove " FILE_TRACK_ITEM_MSG
-			" from page %d|%d, crt_lsa = %lld|%d prev_lsa = %lld|%d, at position %d",
-			FILE_TRACK_ITEM_AS_ARGS (item), PGBUF_PAGE_VPID_AS_ARGS (page_extdata), LSA_AS_ARGS (&save_lsa),
-			PGBUF_PAGE_LSA_AS_ARGS (page_extdata), idx_item);
-	      file_extdata_remove_at (extdata, idx_item, 1);
+	      /* already removed by file_destroy. we don't have to increment idx_item */
 	    }
 	  else
 	    {
