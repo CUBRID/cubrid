@@ -7497,12 +7497,12 @@ file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv
 /*
  * file_table_check_page_is_in_sectors () - FILE_EXTDATA_ITEM_FUNC to check user page table is in one of the sectors
  *
- * return :
- * thread_p (in) :
- * data (in) :
- * index (in) :
- * stop (in) :
- * args (in) :
+ * return        : error code
+ * thread_p (in) : thread entry
+ * data (in)     : user page table entry
+ * index (in)    : index of user page table entry
+ * stop (in)     : not used
+ * args (in)     : FILE_VSID_COLLECTOR *
  */
 static int
 file_table_check_page_is_in_sectors (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
