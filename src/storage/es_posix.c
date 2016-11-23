@@ -732,5 +732,9 @@ es_local_get_file_size (const char *path)
 size_t
 es_posix_get_oor_threshold (void)
 {
+#if defined(SA_MODE) || defined(SERVER_MODE)
   return oor_threshold_path_size;
+#else
+  return PATH_MAX;
+#endif
 }
