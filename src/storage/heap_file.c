@@ -14117,52 +14117,54 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
       ASSERT_ERROR ();
       return;
     }
-  if (OID_ISNULL (&fdes.heap.class_oid))
-    {
-      assert_release (false);
-      return;
-    }
 
-  if (heap_attrinfo_start (thread_p, &fdes.heap.class_oid, -1, NULL, &attr_info) != NO_ERROR)
+  if (!OID_ISNULL (&fdes.heap.class_oid))
     {
-      return;
-    }
-
-  ret = heap_classrepr_dump (thread_p, fp, &fdes.heap.class_oid, attr_info.last_classrepr);
-  if (ret != NO_ERROR)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-      return;
-    }
-
-  /* Dump individual Objects */
-  if (dump_records == true)
-    {
-      if (heap_scancache_start (thread_p, &scan_cache, hfid, NULL, true, false, NULL) != NO_ERROR)
+      if (heap_attrinfo_start (thread_p, &fdes.heap.class_oid, -1, NULL, &attr_info) != NO_ERROR)
 	{
-	  /* something went wrong, return */
+	  return;
+	}
+
+      ret = heap_classrepr_dump (thread_p, fp, &fdes.heap.class_oid, attr_info.last_classrepr);
+      if (ret != NO_ERROR)
+	{
 	  heap_attrinfo_end (thread_p, &attr_info);
 	  return;
 	}
 
-      OID_SET_NULL (&oid);
-      oid.volid = hfid->vfid.volid;
-
-      while (heap_next (thread_p, hfid, NULL, &oid, &peek_recdes, &scan_cache, PEEK) == S_SUCCESS)
+      /* Dump individual Objects */
+      if (dump_records == true)
 	{
-	  fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
-		   peek_recdes.length);
-
-	  if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info) != NO_ERROR)
+	  if (heap_scancache_start (thread_p, &scan_cache, hfid, NULL, true, false, NULL) != NO_ERROR)
 	    {
-	      fprintf (fp, "  Error ... continue\n");
-	      continue;
+	      /* something went wrong, return */
+	      heap_attrinfo_end (thread_p, &attr_info);
+	      return;
 	    }
-	  heap_attrinfo_dump (thread_p, fp, &attr_info, false);
+
+	  OID_SET_NULL (&oid);
+	  oid.volid = hfid->vfid.volid;
+
+	  while (heap_next (thread_p, hfid, NULL, &oid, &peek_recdes, &scan_cache, PEEK) == S_SUCCESS)
+	    {
+	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
+		       peek_recdes.length);
+
+	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info) != NO_ERROR)
+		{
+		  fprintf (fp, "  Error ... continue\n");
+		  continue;
+		}
+	      heap_attrinfo_dump (thread_p, fp, &attr_info, false);
+	    }
+	  heap_scancache_end (thread_p, &scan_cache);
 	}
-      heap_scancache_end (thread_p, &scan_cache);
+      heap_attrinfo_end (thread_p, &attr_info);
     }
-  heap_attrinfo_end (thread_p, &attr_info);
+  else
+    {
+      /* boot_Db_parm.hfid */
+    }
 
   fprintf (fp, "\n\n*** END OF DUMP FOR HEAP FILE ***\n\n");
 }
@@ -14216,19 +14218,22 @@ heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
       ASSERT_ERROR ();
       return error_code;
     }
-  if (OID_ISNULL (&fdes.heap.class_oid))
+
+  if (!OID_ISNULL (&fdes.heap.class_oid))
     {
-      assert_release (false);
-      return ER_FAILED;
+      error_code = heap_attrinfo_start (thread_p, &fdes.heap.class_oid, -1, NULL, &attr_info);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      (void) heap_classrepr_dump (thread_p, fp, &fdes.heap.class_oid, attr_info.last_classrepr);
+      heap_attrinfo_end (thread_p, &attr_info);
     }
-  error_code = heap_attrinfo_start (thread_p, &fdes.heap.class_oid, -1, NULL, &attr_info);
-  if (error_code != NO_ERROR)
+  else
     {
-      ASSERT_ERROR ();
-      return error_code;
+      /* boot_Db_parm.hfid */
     }
-  (void) heap_classrepr_dump (thread_p, fp, &fdes.heap.class_oid, attr_info.last_classrepr);
-  heap_attrinfo_end (thread_p, &attr_info);
 
   fprintf (fp, "\n");
   return NO_ERROR;
@@ -17952,12 +17957,6 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      goto cleanup;
-    }
-  if (OID_ISNULL (&fdes.heap.class_oid))
-    {
-      assert_release (false);
-      error = ER_FAILED;
       goto cleanup;
     }
 
