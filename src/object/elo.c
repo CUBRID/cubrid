@@ -606,7 +606,6 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
 	}
 #endif
 
-      _er_log_debug (ARG_FILE_LINE, "elo_create : %s", uri);
       return ret;
     }
   else				/* ELO_LO */
@@ -801,8 +800,6 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
       dest->locator = locator;
       dest->meta_data = meta_data;
 
-      _er_log_debug (ARG_FILE_LINE, "elo_copy : %s to %s", elo->locator ? elo->locator : "", dest->locator ? dest->locator : "");
-
       return NO_ERROR;
 
     error_return:
@@ -838,8 +835,6 @@ elo_delete (DB_ELO * elo, bool force_delete)
 {
   assert (elo != NULL);
   assert (elo->type == ELO_FBO || elo->type == ELO_LO);
-
-  _er_log_debug (ARG_FILE_LINE, "elo_delete : %s (%s)", elo->locator ? elo->locator : "", force_delete ? "force" : "no_force" );
 
   if (elo->type == ELO_FBO)
     {
@@ -1143,8 +1138,6 @@ int
 elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
 {
   assert (((LOG_RCV *) rcv)->data != NULL);
-
-  _er_log_debug (ARG_FILE_LINE, "elo_rv_delete_elo: %s", ((LOG_RCV *) rcv)->data);
 
   es_delete_file (((LOG_RCV *) rcv)->data);
 

@@ -7030,9 +7030,6 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	}
     }
 
-  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: repack_with_oor:%d, recdes->length:%d",
-    repack_with_oor, recdes->length);
-
   if (repack_with_oor == false)
     {
       heap_attrinfo_end (thread_p, &attr_info);
@@ -7050,21 +7047,12 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 
   for (i = 0; i < attr_info.num_values; i++)
     {
-      _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: attr_info.values[i].dbvalue.type:%d, "
-	"attr_info.values[i].dbvalue.size:%d, state:%d",
-	DB_VALUE_TYPE (&attr_info.values[i].dbvalue),
-	TP_IS_OOR_TYPE (DB_VALUE_TYPE (&attr_info.values[i].dbvalue)) ? DB_GET_STRING_SIZE (&attr_info.values[i].dbvalue): -1,
-	attr_info.values[i].state);
-
       if (pr_is_oor_value (&attr_info.values[i].dbvalue))
 	{
 	  repack_with_oor = true;
 	  break;
 	}
     }
-
-  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: repack_with_oor:%d, attr_info.num_values:%d",
-    repack_with_oor, attr_info.num_values);
 
   if (repack_with_oor)
     {
@@ -7084,8 +7072,6 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	    }
 	}
     }
-
-  _er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force: recdes->length:%d", recdes->length);
 
   heap_attrinfo_end (thread_p, &attr_info);
   heap_free_oor_context (thread_p, &oor_context);
@@ -7168,8 +7154,6 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   db_value_put_null (&key_value);
 
   LC_RECDES_IN_COPYAREA (*reply_area, &reply_recdes);
-
-  _er_log_debug (ARG_FILE_LINE, "xlocator_repl_force : num_objs:%d, force_area->length:%d",  mobjs->num_objs, force_area->length);
 
   for (i = 0; i < mobjs->num_objs; i++)
     {
