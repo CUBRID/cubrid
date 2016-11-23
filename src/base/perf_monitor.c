@@ -2234,7 +2234,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	  break;
 	}
 
-      if (substr != NULL && (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE))
+      if (substr != NULL)
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
 	}
@@ -2330,7 +2330,7 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	  break;
 	}
 
-      if (substr != NULL && (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE))
+      if (substr != NULL)
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
 	}
