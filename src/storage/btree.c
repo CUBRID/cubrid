@@ -10705,6 +10705,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   char *rv_undo_data_ptr = NULL;
   int rv_undo_data_length = 0;
   int rv_redo_data_length = 0;
+  bool save_sysop_started = false;
 
   LOG_LSA prev_lsa;
 
@@ -10720,9 +10721,13 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
 	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
 
-  assert (insert_helper->is_system_op_started == false);
-  log_sysop_start (thread_p);
-  insert_helper->is_system_op_started = true;
+  save_sysop_started = insert_helper->is_system_op_started;
+  if (!insert_helper->is_system_op_started)
+    {
+      log_sysop_start (thread_p);
+      insert_helper->is_system_op_started = true;
+    }
+  assert (log_check_system_op_is_started (thread_p));
   rv_undo_data_ptr = rv_undo_data;
 
   /* Create overflow page. */
@@ -10764,8 +10769,11 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &insert_helper->leaf_addr, rv_undo_data_length,
 			    rv_redo_data_length, rv_undo_data, insert_helper->rv_redo_data);
 
-  /* End system operation. */
-  btree_insert_sysop_end (thread_p, insert_helper);
+  if (!save_sysop_started)
+    {
+      /* End system operation. */
+      btree_insert_sysop_end (thread_p, insert_helper);
+    }
 
   btree_insert_log (insert_helper,
 		    BTREE_INSERT_MODIFY_MSG ("create new overflow") "\t" PGBUF_PAGE_STATE_MSG ("new overflow page"),
@@ -10780,7 +10788,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   return NO_ERROR;
 
 error:
-  if (insert_helper->is_system_op_started)
+  if (!save_sysop_started && insert_helper->is_system_op_started)
     {
       /* This might be a problem since compensate was not successfully executed. */
       assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
