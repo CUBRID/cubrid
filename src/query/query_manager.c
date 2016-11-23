@@ -69,8 +69,6 @@ extern int method_Num_method_jsp_calls;
 
 #define QMGR_MAX_QUERY_ENTRY_PER_TRAN   100
 
-#define TEMP_FILE_DEFAULT_PAGES         10	/* remove me */
-
 #define QMGR_TEMP_FILE_FREE_LIST_SIZE   100
 
 #define QMGR_NUM_TEMP_FILE_LISTS        (TEMP_FILE_MEMBUF_NUM_TYPES)
