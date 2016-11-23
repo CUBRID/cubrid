@@ -114,12 +114,6 @@ struct file_ehash_des
   int attr_id;
 };
 
-/************************************************************************/
-/*                                                                      */
-/* FILE MANAGER REDESIGN                                                */
-/*                                                                      */
-/************************************************************************/
-
 typedef struct file_tablespace FILE_TABLESPACE;
 struct file_tablespace
 {
