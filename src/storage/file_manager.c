@@ -82,11 +82,11 @@
 typedef struct file_header FILE_HEADER;
 struct file_header
 {
+  INT64 time_creation;		/* Time of file creation. */
+
   VFID self;			/* Self VFID */
   FILE_TABLESPACE tablespace;	/* The table space definition */
   FILE_DESCRIPTORS descriptor;	/* File descriptor. Depends on file type. */
-
-  INT64 time_creation;		/* Time of file creation. */
 
   /* Page counts. */
   int n_page_total;		/* File total page count. */
@@ -105,9 +105,9 @@ struct file_header
 
   FILE_TYPE type;		/* File type. */
 
-  VOLID volid_last_expand;	/* Last volume used for expansion. */
-
   INT32 file_flags;		/* File flags. */
+
+  VOLID volid_last_expand;	/* Last volume used for expansion. */
 
   INT16 offset_to_partial_ftab;	/* Offset to partial sectors table. */
   INT16 offset_to_full_ftab;	/* Offset to full sectors table. */
@@ -130,6 +130,12 @@ struct file_header
    * tracked and the user can get nth page according to this order. To optimize allocations, we keep the VPID of last
    * page of user page table. Newly allocated page is appended here. */
   VPID vpid_last_user_page_ftab;
+
+  /* reserved area for future extension */
+  INT32 reserved0;
+  INT32 reserved1;
+  INT32 reserved2;
+  INT32 reserved3;
 };
 
 /* Disk size of file header. */
@@ -832,6 +838,8 @@ file_header_init (FILE_HEADER * fhead)
   fhead->offset_to_partial_ftab = NULL_OFFSET;
   fhead->offset_to_full_ftab = NULL_OFFSET;
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
+
+  fhead->reserved0 = fhead->reserved1 = fhead->reserved2 = fhead->reserved3 = 0;
 }
 
 /*
@@ -3221,6 +3229,8 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   fhead->offset_to_partial_ftab = NULL_OFFSET;
   fhead->offset_to_full_ftab = NULL_OFFSET;
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
+
+  fhead->reserved0 = fhead->reserved1 = fhead->reserved2 = fhead->reserved3 = 0;
 
   /* start with a negative empty sector (because we have allocated header). */
   fhead->n_sector_empty--;
