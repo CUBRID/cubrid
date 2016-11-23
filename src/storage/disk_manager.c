@@ -1921,6 +1921,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
     {
       ASSERT_ERROR ();
       disk_unlock_extend ();
+      csect_exit (thread_p, CSECT_DISK_CHECK);
       return error_code;
     }
   assert (volid_new == disk_Cache->nvols_perm);
@@ -1937,6 +1938,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
 
   /* unblock expand */
   disk_unlock_extend ();
+  csect_exit (thread_p, CSECT_DISK_CHECK);
 
   assert (disk_is_valid_volid (volid_new));
 
@@ -3343,6 +3345,7 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  /* should not fail */
 	  assert_release (false);
+	  csect_exit (thread_p, CSECT_DISK_CHECK);
 	  return ER_FAILED;
 	}
     }
@@ -3419,6 +3422,7 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  /* should not fail */
 	  assert_release (false);
+	  csect_exit (thread_p, CSECT_DISK_CHECK);
 	  return ER_FAILED;
 	}
     }
