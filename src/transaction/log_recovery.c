@@ -109,7 +109,7 @@ static void log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p);
 static void log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool is_new_append_page,
 				   LOG_LSA * last_lsa);
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
-					     LOG_LSA * start_postpone_run_lsa, LOG_TDES * tdes);
+					     LOG_TDES * tdes);
 
 static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
 static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv_buf, RECDES * record,
@@ -3652,7 +3652,6 @@ static void
 log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   LOG_LSA first_postpone_to_apply;
-  LOG_LSA start_postpone_run_lsa;
 
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
@@ -3687,7 +3686,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       /* find first postpone */
       log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply,
-					&tdes->topops.stack[tdes->topops.last].posp_lsa, &start_postpone_run_lsa, tdes);
+					&tdes->topops.stack[tdes->topops.last].posp_lsa, tdes);
 
       if (!LSA_ISNULL (&first_postpone_to_apply))
 	{
@@ -3759,7 +3758,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
 	}
 
-      log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply, &tdes->posp_nxlsa, NULL, tdes);
+      log_recovery_find_first_postpone (thread_p, &first_postpone_to_apply, &tdes->posp_nxlsa, tdes);
       if (!LSA_ISNULL (&first_postpone_to_apply))
 	{
 	  log_do_postpone (thread_p, tdes, &first_postpone_to_apply);
@@ -5137,13 +5136,12 @@ error:
  *
  *   ret_lsa(out):
  *   start_postpone_lsa(in):
- *   start_postpone_run_lsa(out): run postpone lsa of start postpone
  *   tdes(in):
  *
  */
 static int
 log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
-				  LOG_LSA * start_postpone_run_lsa, LOG_TDES * tdes)
+				  LOG_TDES * tdes)
 {
   LOG_LSA end_postpone_lsa;
   LOG_LSA start_seek_lsa;
@@ -5188,10 +5186,6 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
     }
 
   LSA_SET_NULL (&next_postpone_lsa);
-  if (start_postpone_run_lsa)
-    {
-      LSA_SET_NULL (start_postpone_run_lsa);
-    }
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -5310,10 +5304,6 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 			  /* run_postpone_log of start_postpone is found, next_postpone_lsa is the first postpone to be 
 			   * applied. */
 
-			  if (start_postpone_run_lsa != NULL)
-			    {
-			      LSA_COPY (start_postpone_run_lsa, &local_start_postpone_run_lsa);
-			    }
 			  start_postpone_lsa_wasapplied = true;
 			  isdone = true;
 			}
@@ -5331,12 +5321,8 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 			  {
 			    LSA_COPY (&local_start_postpone_run_lsa, &log_lsa);
 
-			    if (LSA_EQ (start_postpone_run_lsa, &sysop_end->run_postpone.postpone_lsa))
+			    if (LSA_EQ (start_postpone_lsa, &sysop_end->run_postpone.postpone_lsa))
 			      {
-				if (start_postpone_run_lsa != NULL)
-				  {
-				    LSA_COPY (start_postpone_run_lsa, &local_start_postpone_run_lsa);
-				  }
 				start_postpone_lsa_wasapplied = true;
 				isdone = true;
 			      }
