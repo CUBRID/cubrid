@@ -888,7 +888,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
 	       DISK_FLUSH_TYPE flush)
 {
   DISK_VOLUME_HEADER *vhdr;
-  LOG_DATA_ADDR addr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   VPID vpid;
   DISK_RECV_LINK_PERM_VOLUME *undo_recv;
   DISK_RECV_LINK_PERM_VOLUME *redo_recv;
