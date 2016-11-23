@@ -454,8 +454,8 @@ static void
 session_free_prepared_statement (THREAD_ENTRY * thread_p, PREPARED_STATEMENT * stmt_p)
 {
   int err;
-  XASL_CACHE_ENTRY *xcache_entry = NULL;
-  INT32 cache_flag;
+  /*XASL_CACHE_ENTRY *xcache_entry = NULL;
+     INT32 cache_flag; */
 
   if (stmt_p == NULL)
     {
@@ -463,21 +463,21 @@ session_free_prepared_statement (THREAD_ENTRY * thread_p, PREPARED_STATEMENT * s
     }
 
   /* Be sure that the XASL clone is not used by concurrent transactions */
-  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, &xcache_entry, NULL);
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-    }
+  /* err = xcache_find_sha1 (thread_p, &stmt_p->sha1, &xcache_entry, NULL);
+     if (err != NO_ERROR)
+     {
+     ASSERT_ERROR ();
+     } */
 
-  if (xcache_entry != NULL)
-    {
-      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
-	{
-	  ASSERT_ERROR ();
-	}
+  /* if (xcache_entry != NULL)
+     {
+     if (xcache_entry_mark_deleted (thread_p, xcache_entry))
+     {
+     ASSERT_ERROR ();
+     }
 
-      xcache_unfix (thread_p, xcache_entry);
-    }
+     xcache_unfix (thread_p, xcache_entry);
+     } */
 
 #if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "drop statement %s\n", stmt_p->name);
