@@ -177,7 +177,7 @@ db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT *
     }
 
 #if defined (SERVER_MODE)
-  perfmon_add_stat (NULL, PSTAT_ELO_KBYTES_READ, *read_bytes / ONE_K);
+  perfmon_add_stat (NULL, PSTAT_ELO_KBYTES_READ, ret / ONE_K);
 #endif
 
   return NO_ERROR;
@@ -214,7 +214,7 @@ db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * writ
     }
 
 #if defined (SERVER_MODE)
-  perfmon_add_stat (NULL, PSTAT_ELO_KBYTES_WRITE, *written_bytes / ONE_K);
+  perfmon_add_stat (NULL, PSTAT_ELO_KBYTES_WRITE, ret / ONE_K);
 #endif
 
   return NO_ERROR;
