@@ -31,6 +31,9 @@
 #include "object_primitive.h"
 #include "db.h"
 #include "db_elo.h"
+#if defined (SERVER_MODE)
+#include "perf_monitor.h"
+#endif
 
 /*
  * db_elo.c - DB_API for ELO layer
@@ -59,6 +62,10 @@ db_create_fbo (DB_VALUE * value, DB_TYPE type)
 	  value->need_clear = true;
 	}
     }
+
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (NULL, PSTAT_ELO_CREATE_FILE);
+#endif
 
   return ret;
 }
@@ -102,6 +109,10 @@ db_elo_copy (const DB_ELO * src, DB_ELO * dest)
 {
   CHECK_2ARGS_ERROR (src, dest);
 
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (NULL, PSTAT_ELO_COPY_FILE);
+#endif
+
   return elo_copy (src, dest);
 }
 
@@ -114,6 +125,10 @@ int
 db_elo_delete (DB_ELO * elo)
 {
   CHECK_1ARG_ERROR (elo);
+
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+#endif
 
   return elo_delete (elo, false);
 }
@@ -160,6 +175,11 @@ db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT *
     {
       *read_bytes = ret;
     }
+
+#if defined (SERVER_MODE)
+  perfmon_add_stat (NULL, PSTAT_ELO_KBYTES_READ, *read_bytes / ONE_K);
+#endif
+
   return NO_ERROR;
 }
 
@@ -192,5 +212,10 @@ db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * writ
     {
       *written_bytes = ret;
     }
+
+#if defined (SERVER_MODE)
+  perfmon_add_stat (NULL, PSTAT_ELO_KBYTES_WRITE, *written_bytes / ONE_K);
+#endif
+
   return NO_ERROR;
 }

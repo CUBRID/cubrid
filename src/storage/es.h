@@ -52,4 +52,5 @@ extern int es_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)
 extern void es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri);
 #endif /* SERVER_MODE */
+extern size_t es_get_oor_threshold (void);
 #endif /* _ES_H_ */

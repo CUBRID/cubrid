@@ -48,6 +48,7 @@
 #if defined (SA_MODE) || defined (SERVER_MODE)
 /* es_posix_base_dir - */
 static char es_base_dir[PATH_MAX];
+static size_t oor_threshold_path_size = PATH_MAX;
 
 static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static int es_make_dirs (const char *dirname1, const char *dirname2);
@@ -204,6 +205,11 @@ es_posix_init (const char *base_path)
 
   /* set base dir */
   strlcpy (es_base_dir, base_path, PATH_MAX);
+
+  oor_threshold_path_size = strlen (es_base_dir) + 7 + 1 + DB_MAX_IDENTIFIER_LENGTH + 25;
+#if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
+  oor_threshold_path_size += 7 + 1;
+#endif
   return NO_ERROR;
 #else /* SA_MODE || SERVER_MODE */
   return NO_ERROR;
@@ -721,4 +727,10 @@ es_local_get_file_size (const char *path)
     }
 
   return pstat.st_size;
+}
+
+size_t
+es_posix_get_oor_threshold (void)
+{
+  return oor_threshold_path_size;
 }

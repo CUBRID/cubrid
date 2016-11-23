@@ -649,3 +649,14 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
   log_append_undo_data (thread_p, RVES_NOTIFY_VACUUM, &addr, length, data);
 }
 #endif /* SERVER_MODE */
+
+size_t
+es_get_oor_threshold (void)
+{
+  if (es_initialized_type == ES_POSIX)
+    {
+      return es_posix_get_oor_threshold ();
+    }
+
+  return PATH_MAX;
+}

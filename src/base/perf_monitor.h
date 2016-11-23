@@ -473,6 +473,13 @@ typedef enum
   PSTAT_BT_VACUUM_INSID,
   PSTAT_BT_VACUUM_INSID_TRAVERSE,
 
+  /* LOB counters */
+  PSTAT_ELO_CREATE_FILE,
+  PSTAT_ELO_DELETE_FILE,
+  PSTAT_ELO_COPY_FILE,
+  PSTAT_ELO_KBYTES_READ,
+  PSTAT_ELO_KBYTES_WRITE,
+
   /* Vacuum master/worker timers. */
   PSTAT_VAC_MASTER,
   PSTAT_VAC_JOB,
@@ -788,13 +795,16 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   ATOMIC_INC_64 (&(pstat_Global.global_stats[offset]), amount);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  /* Update local statistic */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
+  if (thread_p != NULL)
     {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      pstat_Global.tran_stats[tran_index][offset] += amount;
+      /* Update local statistic */
+      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+      if (pstat_Global.is_watching[tran_index])
+	{
+	  assert (pstat_Global.tran_stats[tran_index] != NULL);
+	  pstat_Global.tran_stats[tran_index][offset] += amount;
+	}
     }
 #endif /* SERVER_MODE || SA_MODE */
 }

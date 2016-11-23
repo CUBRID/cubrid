@@ -11646,7 +11646,6 @@ re_check:
 	  if (pr_is_oor_value (&value->dbvalue)
 	      && column_size > OBJECT_OOR_THRESHOLD_SIZE)
 	    {
-	      /* TODO[arnia] : better approximation of OOR column size */
 	      size_gain_overflow_columns += column_size - OBJECT_OOR_THRESHOLD_SIZE;
 	    }
 	}

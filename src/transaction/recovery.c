@@ -981,19 +981,16 @@ struct rvfun RV_fun[] = {
    "RVELO_CREATE_FILE",
    elo_rv_delete_elo,
    NULL,
-   /* TODO[arnia] : log dump functions */
    NULL,
    NULL},
   {RVELO_DELETE_FILE,
    "RVELO_DELETE_FILE",
-   /* TODO[arnia] : undo redo functions */
    NULL,
    elo_rv_delete_elo,
    NULL,
    NULL},
   {RVELO_RENAME_FILE,
    "RVELO_RENAME_FILE",
-   /* TODO[arnia] : undo redo functions */
    elo_rv_rename_elo,
    NULL,
    NULL,
@@ -1001,7 +998,6 @@ struct rvfun RV_fun[] = {
 
   {RVREPL_OOR_INSERT,
    "RVREPL_OOR_INSERT",
-   /* TODO[arnia] : undo redo functions */
    NULL,
    NULL,
    NULL,
@@ -1009,7 +1005,6 @@ struct rvfun RV_fun[] = {
 
   {RVREPL_OOR_UPDATE,
    "RVREPL_OOR_UPDATE",
-   /* TODO[arnia] : undo redo functions */
    NULL,
    NULL,
    NULL,

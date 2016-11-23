@@ -256,7 +256,7 @@ extern int pr_ordered_mem_size_total;
 
 
 /* values with this size or above are stored in out of record data (heap or overflow) */
-#define OBJECT_OOR_THRESHOLD_SIZE PATH_MAX
+#define OBJECT_OOR_THRESHOLD_SIZE es_get_oor_threshold()
 
 /*
  * EXTERNAL FUNCTIONS
