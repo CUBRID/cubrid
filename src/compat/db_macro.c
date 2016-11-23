@@ -1125,9 +1125,7 @@ db_value_domain_type (const DB_VALUE * value)
 DB_TYPE
 db_value_type (const DB_VALUE * value)
 {
-#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_UNKNOWN (value);
-#endif
 
   if (value->domain.general_info.is_null)
     {
@@ -1147,9 +1145,7 @@ db_value_type (const DB_VALUE * value)
 int
 db_value_precision (const DB_VALUE * value)
 {
-#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
-#endif
 
   switch (value->domain.general_info.type)
     {
@@ -1202,9 +1198,7 @@ db_value_precision (const DB_VALUE * value)
 int
 db_value_scale (const DB_VALUE * value)
 {
-#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
-#endif
 
   if (value->domain.general_info.type == DB_TYPE_NUMERIC || value->domain.general_info.type == DB_TYPE_DATETIME
       || value->domain.general_info.type == DB_TYPE_DATETIMETZ

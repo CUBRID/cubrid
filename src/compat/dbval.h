@@ -38,6 +38,12 @@
 #else
 #undef DB_VALUE_DOMAIN_TYPE
 #endif
+#undef DB_VALUE_TYPE
+#undef DB_VALUE_SCALE
+#undef DB_VALUE_PRECISION
+
+#define DB_IS_NULL(v) \
+  ((((DB_VALUE *) (v) != NULL) && (v)->domain.general_info.is_null == 0) ? false : true)
 
 #if !defined(NDEBUG)
 #else
@@ -45,9 +51,23 @@
     ((DB_TYPE) ((v)->domain.general_info.type))
 #endif
 
-#define DB_IS_NULL(v) \
-  ((((DB_VALUE *) (v) != NULL) && (v)->domain.general_info.is_null == 0) ? false : true)
+#define DB_VALUE_TYPE(v) \
+    (DB_IS_NULL(v) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE(v))
 
+#define DB_VALUE_SCALE(v) \
+    ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NUMERIC) ? \
+      (v)->domain.numeric_info.scale : 0)
+
+#define DB_VALUE_PRECISION(v) \
+    ((DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_NUMERIC) \
+       ? ((v)->domain.numeric_info.precision) : \
+          ((DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_BIT \
+	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARBIT \
+	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_CHAR \
+	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARCHAR \
+	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_NCHAR \
+	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARNCHAR) \
+           ? ((v)->domain.char_info.length) : 0))
 
 #define DB_GET_ENUMERATION(v) \
   ((v)->data.enumeration)
@@ -57,7 +77,6 @@
   ((v)->data.enumeration.str_val.medium.buf)
 #define DB_GET_ENUM_STRING_SIZE(v) \
   ((v)->data.enumeration.str_val.medium.size)
-
 #define DB_PULL_STRING(v) \
       ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
 		|| DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
@@ -66,23 +85,18 @@
 		|| DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
 		|| DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
        (v)->data.ch.medium.buf)
-
 #define DB_GET_STRING_PRECISION(v) \
     ((v)->domain.char_info.length)
-
 #define DB_GET_BIT_PRECISION(v) \
     ((v)->domain.char_info.length)
-
 #define DB_GET_COMPRESSED_STRING(v) \
       ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) \
 	? NULL : (v)->data.ch.medium.compressed_buf)
-
 #define DB_NEED_CLEAR(v) \
       ((!DB_IS_NULL(v) \
 	&& ((v)->need_clear == true \
 	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
 		 && (v)->data.ch.info.compressed_need_clear == true))))
-
 #define DB_PULL_CHAR(v, l) \
       (intl_char_count ((unsigned char *) (v)->data.ch.medium.buf, \
 			(v)->data.ch.medium.size, \
@@ -94,50 +108,36 @@
 		 || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARBIT \
 		 || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_BIT)), \
 	(v)->data.ch.medium.buf))
-
 #define DB_PULL_NCHAR(v, l) DB_PULL_CHAR(v, l)
-
 #define DB_PULL_BIT(v, l) \
       ((assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_BIT \
 		|| DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARBIT)), \
        ((*(l)) = (v)->data.ch.medium.size), (v)->data.ch.medium.buf)
-
 #define DB_PULL_OBJECT(v) \
       ((v)->data.op)
-
 #define DB_PULL_OID(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_OID), \
        &((v)->data.oid))
-
 #define DB_PULL_SET(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_SET \
 	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_MULTISET \
 	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_SEQUENCE \
 	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VOBJ), \
        (v)->data.set)
-
 #define DB_PULL_MULTISET(v) DB_PULL_SET(v)
-
 #define DB_PULL_LIST(v) DB_PULL_SET(v)
-
 #define DB_PULL_SEQUENCE(v) DB_PULL_LIST(v)
-
 #define DB_PULL_MIDXKEY(v) DB_GET_MIDXKEY(v)
-
 #define DB_PULL_ELO(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ELO \
 	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_CLOB \
 	       || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_BLOB), \
        (DB_ELO *) (&((v)->data.elo)))
-
 #define DB_PULL_POINTER(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_POINTER), (v)->data.p)
-
 #define DB_PULL_NUMERIC(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_NUMERIC), \
        (v)->data.num.d.buf)
-
-
 /* TODO: Decide whether we keep using a macro or we also switch to an inline function approach */
 #define DB_GET_ENUM_ELEM_SHORT(elem) \
       ((elem)->short_val)
@@ -147,12 +147,10 @@
       ((elem)->str_val.medium.buf)
 #define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
       ((elem)->str_val.medium.size)
-
 #define DB_GET_ENUM_ELEM_CODESET(elem) \
       ((elem)->str_val.info.codeset)
 #define DB_SET_ENUM_ELEM_CODESET(elem, cs) \
       ((elem)->str_val.info.codeset = (cs))
-
 #define DB_SET_ENUM_ELEM_SHORT(elem, sv) \
       ((elem)->short_val = (sv))
 #define DB_SET_ENUM_ELEM_STRING(elem, str) \
@@ -160,7 +158,6 @@
        (elem)->str_val.info.style = MEDIUM_STRING)
 #define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
       ((elem)->str_val.medium.size = (sz))
-
 #define DB_GET_STRING_SAFE(v) \
   ((DB_IS_NULL (v) \
   || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
@@ -171,16 +168,18 @@
   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
   (v)->data.ch.medium.buf))
-
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
-
 #define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
 #define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
 #define db_get_string_safe(v) DB_GET_STRING_SAFE(v)
 
 /* TODO: Decide whether we keep this as it is or we use inline functions */
+#define db_value_is_null(v) DB_IS_NULL(v)
+#define db_value_type(v) DB_VALUE_TYPE(v)
+#define db_value_scale(v) DB_VALUE_SCALE(v)
+#define db_value_precision(v) DB_VALUE_PRECISION(v)
 #define db_pull_string(v) DB_PULL_STRING(v)
 #define db_pull_numeric(v)  DB_PULL_NUMERIC(v)
 #define db_pull_elo(v) DB_PULL_ELO(v)
@@ -192,48 +191,41 @@
 #define db_pull_char(v, l) DB_PULL_CHAR(v, l)
 #define db_value_is_null(v) DB_IS_NULL(v)
 #define db_get_enum_string(v) DB_GET_ENUM_STRING(v)
-
 #define db_make_null(v) \
     ((v)->domain.general_info.type = DB_TYPE_NULL, \
      (v)->domain.general_info.is_null = 1, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_int(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_INTEGER, \
      (v)->data.i = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_bigint(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_BIGINT, \
      (v)->data.bigint = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_float(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_FLOAT, \
      (v)->data.f = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_double(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_DOUBLE, \
      (v)->data.d = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_object(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_OBJECT, \
      (v)->data.op = (n), \
      (v)->domain.general_info.is_null = ((n) ? 0 : 1), \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_push_oid(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_OID, \
      (v)->data.oid.pageid = (n)->pageid, \
@@ -242,11 +234,9 @@
      (v)->domain.general_info.is_null = OID_ISNULL(n), \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_oid(v, n) \
     (((n) == NULL) ? ((v)->domain.general_info.is_null = 1, NO_ERROR) : \
      db_push_oid((v), (n)))
-
 #define db_push_elo(v, t, n) \
     ((v)->domain.general_info.type = (t), \
      (v)->data.elo.size = (n)->size, \
@@ -258,40 +248,34 @@
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_elo(v, t, n) \
      (((n) == NULL || ((n)->size < 0) || ((n)->type == ELO_NULL)) ? \
           ((v)->domain.general_info.is_null = 1, NO_ERROR) : \
       db_push_elo((v), (t), (n)))
-
 #define db_make_timestamp(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_TIMESTAMP, \
      (v)->data.utime = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_pointer(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_POINTER, \
      (v)->data.p = (n), \
      (v)->domain.general_info.is_null = ((n) ? 0 : 1), \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_error(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_ERROR, \
      (v)->data.error = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_short(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_SHORT, \
      (v)->data.sh = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_db_char(v, c, coll, p, s) \
     ((v)->data.ch.info.style = MEDIUM_STRING, \
      (v)->data.ch.info.is_max_string = false, \
@@ -308,7 +292,6 @@
      (v)->domain.char_info.collation_id = (coll), \
      (v)->need_clear = false, \
      NO_ERROR)
-
 /* The following char- & string-related macros include functionality from
    db_value_domain_init as well as a call to db_make_db_char, redefined as a
    macro above */
@@ -319,7 +302,6 @@
      (v)->need_clear = false, \
      db_make_db_char((v), INTL_CODESET_RAW_BITS, 0, (p), (s)), \
      NO_ERROR)
-
 #define db_make_varbit(v, l, p, s) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       DB_MAX_VARBIT_PRECISION : (l), \
@@ -327,7 +309,6 @@
      (v)->need_clear = false, \
      db_make_db_char((v), INTL_CODESET_RAW_BITS, 0, (p), (s)), \
      NO_ERROR)
-
 #define db_make_string(v, p) \
     ((v)->domain.char_info.length = DB_MAX_VARCHAR_PRECISION, \
      (v)->domain.general_info.type = DB_TYPE_VARCHAR, \
@@ -335,7 +316,6 @@
      db_make_db_char((v), LANG_SYS_CODESET, LANG_SYS_COLLATION, \
 		     (p), (((void *) (p) != NULL) ? strlen(p) : 0)), \
      NO_ERROR)
-
 #define db_make_char(v, l, p, s, cs, col) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       TP_FLOATING_PRECISION_VALUE : (l), \
@@ -343,7 +323,6 @@
      (v)->need_clear = false, \
      db_make_db_char((v), (cs), (col), (p), (s)), \
      NO_ERROR)
-
 #define db_make_varchar(v, l, p, s, cs, col) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       DB_MAX_VARCHAR_PRECISION : (l), \
@@ -351,7 +330,6 @@
      (v)->need_clear = false, \
      db_make_db_char((v), (cs), (col), (p), (s)), \
      NO_ERROR)
-
 #define db_make_nchar(v, l, p, s, cs, col) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       TP_FLOATING_PRECISION_VALUE : (l), \
@@ -359,7 +337,6 @@
      (v)->need_clear = false, \
      db_make_db_char((v), (cs), (col), (p), (s)), \
      NO_ERROR)
-
 #define db_make_varnchar(v, l, p, s, cs, col) \
     ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
       DB_MAX_VARNCHAR_PRECISION : (l), \
@@ -367,14 +344,12 @@
      (v)->need_clear = false, \
      db_make_db_char((v), (cs), (col), (p), (s)), \
      NO_ERROR)
-
 #define db_make_resultset(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_RESULTSET, \
      (v)->data.rset = (n), \
      (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_midxkey(v, m) \
     ((v)->domain.general_info.type = DB_TYPE_MIDXKEY, \
      (((m) == NULL) ? \
@@ -395,7 +370,6 @@
 	(v)->data.midxkey.min_max_val.type = (m)->min_max_val.type)), \
      (v)->need_clear = false, \
      NO_ERROR)
-
 #define db_make_enumeration(v, i, p, s, cs, coll_id) \
   ((v)->domain.general_info.type		  = DB_TYPE_ENUMERATION, \
     (v)->domain.general_info.is_null		  = 0, \
@@ -406,22 +380,17 @@
     (v)->data.enumeration.str_val.medium.size	  = (s), \
     (v)->data.enumeration.str_val.medium.buf	  = (char*) (p), \
     (v)->need_clear				  = false)
-
 #define DB_GET_NUMERIC_PRECISION(val) \
     ((val)->domain.numeric_info.precision)
-
 #define DB_GET_NUMERIC_SCALE(val) \
     ((val)->domain.numeric_info.scale)
-
 #define db_string_put_cs_and_collation(v, cs, coll) \
     ((v)->data.ch.info.codeset = (cs), \
      (v)->domain.char_info.collation_id = (coll), \
      NO_ERROR)
-
 #define db_enum_put_cs_and_collation(v, cs, coll) \
     (v)->data.enumeration.str_val.info.codeset	  = (cs), \
     (v)->domain.char_info.collation_id		  = (coll)
-
 typedef enum
 {
   SMALL_STRING,
