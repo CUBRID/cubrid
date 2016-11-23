@@ -1676,7 +1676,6 @@ process_value (DB_VALUE * value)
       CHECK_PRINT_ERROR (process_set (DB_GET_SET (value)));
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       {
@@ -1684,7 +1683,6 @@ process_value (DB_VALUE * value)
 	DB_TYPE dt = db_value_type (value);
 	char dts;
 
-	assert (dt != DB_TYPE_ELO);
 	if (dt == DB_TYPE_BLOB)
 	  {
 	    dts = 'B';
@@ -1698,18 +1696,11 @@ process_value (DB_VALUE * value)
 
 	if (elo != NULL)
 	  {
-	    assert (elo->type == ELO_FBO || elo->type == ELO_LO);
-
 	    if (elo->type == ELO_FBO)
 	      {
 		CHECK_PRINT_ERROR (text_print
 				   (obj_out, NULL, 0, "^E'%c%lld|%s|%s'", dts, elo->size, elo->locator,
 				    elo->meta_data != NULL ? elo->meta_data : ""));
-	      }
-	    else if (elo->type == ELO_LO)
-	      {
-		/* not implemented */
-		assert (0);
 	      }
 	    else
 	      {

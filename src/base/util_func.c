@@ -719,3 +719,70 @@ retry:
 
   return fp;
 }
+
+/*
+ * util_bsearch () - generic binary search function. besides searching for key, it also returns the right key position
+ *                   even when it is not found. the caller may then decide to insert the key.
+ *                   if you only want to find key if it exists, it's better to use bsearch.
+ *
+ * return            : position of found key or the right position if key would be inserted.
+ * key (in)          : point to key value
+ * base (in)         : pointer to base array
+ * n_elems (in)      : number of elements in array
+ * size_elem (in)    : memory size of one element
+ * func_compare (in) : compare function
+ * out_found (out)   : output true if key was found, false otherwise
+ *
+ * note: the array of elements should be ordered by func_compare. duplicate keys are not allowed.
+ */
+int
+util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeof_elem,
+	      int (*func_compare) (const void *, const void *), bool * out_found)
+{
+  int min = 0;
+  int max = n_elems - 1;
+  int mid = 0;
+  int compare = 0;
+
+  const void *elem;
+
+  *out_found = false;
+
+  /* binary search */
+  /* keep searching and reducing the range until key is found, or until the range is reduced to 0 */
+  while (min <= max)
+    {
+      /* get range midpoint */
+      mid = (min + max) >> 1;
+
+      /* get mid element */
+      elem = (char *) base + (mid * sizeof_elem);
+
+      /* compare with key */
+      compare = func_compare (elem, key);
+
+      /* did we find key? */
+      if (compare == 0)
+	{
+	  *out_found = true;
+	  return mid;
+	}
+      /* not found */
+      /* reduce the search range */
+      if (compare > 0)
+	{
+	  /* search in lower range */
+	  max = mid - 1;
+	}
+      else
+	{
+	  /* search in upper range */
+	  /* we also have to increment mid. if range is reduced to 0, the right position for key is next. */
+	  min = ++mid;
+	}
+    }
+
+  /* not found */
+  /* mid is the right position for key */
+  return mid;
+}

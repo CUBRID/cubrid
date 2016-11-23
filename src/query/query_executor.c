@@ -11809,7 +11809,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   list = xasl->selected_upd_list;
 
   /* in this function, several instances can be updated, so it need to be atomic */
-  log_start_system_op (thread_p);
+  log_sysop_start (thread_p);
   savepoint_used = 1;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -12062,11 +12062,11 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     {
       if (lock_is_instant_lock_mode (tran_index))
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_commit (thread_p);
 	}
       else
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
@@ -12096,8 +12096,6 @@ exit_on_error:
       scan_cache_inited = false;
     }
 
-  err = ER_FAILED;
-
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
       repl_end_flush_mark (thread_p, true);
@@ -12105,12 +12103,11 @@ exit_on_error:
 
   if (savepoint_used)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
     }
 
   /* clear some kinds of error code; it's click counter! */
-  assert (er_errid () != NO_ERROR);
-  err = er_errid ();
+  ASSERT_ERROR_AND_SET (err);
   if (err == ER_LK_UNILATERALLY_ABORTED || err == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG
       || err == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG || err == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG
       || err == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG)

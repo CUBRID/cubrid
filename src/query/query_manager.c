@@ -69,8 +69,6 @@ extern int method_Num_method_jsp_calls;
 
 #define QMGR_MAX_QUERY_ENTRY_PER_TRAN   100
 
-#define TEMP_FILE_DEFAULT_PAGES         10
-
 #define QMGR_TEMP_FILE_FREE_LIST_SIZE   100
 
 #define QMGR_NUM_TEMP_FILE_LISTS        (TEMP_FILE_MEMBUF_NUM_TYPES)
@@ -722,18 +720,6 @@ qmgr_dump_query_entry (QMGR_QUERY_ENTRY * query_p)
       do
 	{
 	  fprintf (stdout, "\t\tfile_vfid: %p\n", (void *) &temp_vfid_p);
-	  fprintf (stdout, "\t\tvpid_array_index: %d\n", temp_vfid_p->vpid_index);
-	  fprintf (stdout, "\t\tvpid_array_count: %d\n", temp_vfid_p->vpid_count);
-
-	  if (temp_vfid_p->vpid_index != -1)
-	    {
-	      for (i = 1; i < temp_vfid_p->vpid_count; i++)
-		{
-		  fprintf (stdout, "\t\tvpid_array[%d]:\n", i);
-		  fprintf (stdout, "\t\t\tpage_id: %d\n", temp_vfid_p->vpid_array[i].pageid);
-		  fprintf (stdout, "\t\t\tvol_id: %d\n", temp_vfid_p->vpid_array[i].volid);
-		}
-	    }
 
 	  temp_vfid_p = temp_vfid_p->next;
 	}
@@ -2093,9 +2079,6 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
 	  QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 	}
 
-      /* Note: In cases of abort, the qm must delete its own tempfiles otherwise the file manager will delete them out
-       * from under us, leaving us with dangling list_id's and such.  See the functions file_new_destroy_all_tmp and
-       * log_abort_local. */
       if (query_p->temp_vfid != NULL)
 	{
 	  (void) qmgr_free_query_temp_file_helper (thread_p, query_p);
@@ -2448,13 +2431,12 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
   /* memory buffer is exhausted; create temp file */
   if (VFID_ISNULL (&tfile_vfid_p->temp_vfid))
     {
-      if (file_create_tmp (thread_p, &tfile_vfid_p->temp_vfid, TEMP_FILE_DEFAULT_PAGES, NULL) == NULL)
+      if (file_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	{
-	  vpid_p->pageid = NULL_PAGEID;
+	  ASSERT_ERROR ();
 	  return NULL;
 	}
       tfile_vfid_p->temp_file_type = FILE_TEMP;
-      tfile_vfid_p->last_free_page_index = file_get_numpages (thread_p, &tfile_vfid_p->temp_vfid) - 1;
     }
 
   /* try to get pages from an external temp file */
@@ -2485,133 +2467,26 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 static PAGE_PTR
 qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tmp_vfid_p)
 {
-  PAGE_PTR page_p;
-  int nthpg;
-  LOG_DATA_ADDR addr;
-  DKNPAGES num_pages = TEMP_FILE_DEFAULT_PAGES;
-  QFILE_PAGE_HEADER page_header = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID };
+  PAGE_PTR page_p = NULL;
+  QFILE_PAGE_HEADER page_header = QFILE_PAGE_HEADER_INITIALIZER;
 
-  /* 
-   * If there are existing pages allocated in the vpid_array[], use them
-   * Currently we use file_find_nthpages to allocate xx vpids which are then stored in
-   * the query_entry structure. vpid_count is the actual # of pages returned
-   * by file_find_nthpages and used to compare against the vpid_index to avoid handing
-   * out garbage.
-   */
-
-  if (tmp_vfid_p->vpid_index != -1)
+  VPID_SET_NULL (vpid_p);
+  if (file_alloc (thread_p, &tmp_vfid_p->temp_vfid, vpid_p) != NO_ERROR)
     {
-      page_p = pgbuf_fix (thread_p, &(tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index]), NEW_PAGE, PGBUF_LATCH_WRITE,
-			  PGBUF_UNCONDITIONAL_LATCH);
-      if (page_p == NULL)
-	{
-	  VPID_SET_NULL (vpid_p);
-	  return NULL;
-	}
-
-      tmp_vfid_p->curr_free_page_index++;
-      *vpid_p = tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index++];
-
-      (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
-
-      qmgr_put_page_header (page_p, &page_header);
-
-      addr.vfid = &tmp_vfid_p->temp_vfid;
-      addr.pgptr = page_p;
-      addr.offset = -1;		/* irrelevant */
-      log_skip_logging (thread_p, &addr);	/* ignore logging */
-
-      pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
-
-      if (tmp_vfid_p->vpid_index >= tmp_vfid_p->vpid_count)
-	{
-	  tmp_vfid_p->vpid_index = -1;
-	}
-
-      return page_p;
-    }
-
-  if (tmp_vfid_p->curr_free_page_index > tmp_vfid_p->last_free_page_index)
-    {
-      /* existing temporary file needs to be expanded */
-
-      /* 
-       * allocate next extent of pages for the file
-       * Don't care about initializing the pages
-       */
-      if (file_alloc_pages_as_noncontiguous (thread_p, &tmp_vfid_p->temp_vfid, vpid_p, &nthpg, num_pages, NULL, NULL,
-					     NULL, NULL) == NULL)
-	{
-	  /* if error was no more pages, ignore this expected error code */
-	  if (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
-	    {
-	      return NULL;
-	    }
-
-	  /* Find out how many pages are available and ask for that many pages. Since we are in a multi-user
-	   * environment, we have no guarantee that we'll be able to get the number of pages maxpgs_could_allocate()
-	   * returns.  Also right before we call maxpgs, another user may free up a bunch of pages, so only ask for the 
-	   * min of num_pages and our current request. */
-	  num_pages = file_find_maxpages_allocable (thread_p, &tmp_vfid_p->temp_vfid);
-	  if (num_pages <= 0)
-	    {
-	      return NULL;
-	    }
-
-	  /* 
-	   * allocate next extent of pages for the file
-	   * Don't care about initializing the pages
-	   */
-	  if (file_alloc_pages_as_noncontiguous (thread_p, &tmp_vfid_p->temp_vfid, vpid_p, &nthpg, num_pages, NULL,
-						 NULL, NULL, NULL) == NULL)
-	    {
-	      return NULL;
-	    }
-	}
-
-      /* reset file page indices information */
-      tmp_vfid_p->last_free_page_index += num_pages;
-    }
-
-  /* fetch and return the external volume page */
-  tmp_vfid_p->vpid_count = file_find_nthpages (thread_p, &tmp_vfid_p->temp_vfid, tmp_vfid_p->vpid_array,
-					       tmp_vfid_p->curr_free_page_index, QMGR_VPID_ARRAY_SIZE);
-  if (tmp_vfid_p->vpid_count == -1)
-    {
-      tmp_vfid_p->vpid_index = -1;
+      ASSERT_ERROR ();
       return NULL;
     }
-
-  tmp_vfid_p->curr_free_page_index++;
-  tmp_vfid_p->vpid_index = 0;
-  tmp_vfid_p->total_count += num_pages;
-
-  page_p = pgbuf_fix (thread_p, &(tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index]), NEW_PAGE, PGBUF_LATCH_WRITE,
-		      PGBUF_UNCONDITIONAL_LATCH);
+  /* Fix newly allocated page */
+  page_p = pgbuf_fix (thread_p, vpid_p, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_p == NULL)
     {
+      ASSERT_ERROR ();
       VPID_SET_NULL (vpid_p);
       return NULL;
     }
-
-  *vpid_p = tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index++];
-
-  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
-
+  pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
   qmgr_put_page_header (page_p, &page_header);
-
-  if (tmp_vfid_p->vpid_index >= tmp_vfid_p->vpid_count)
-    {
-      tmp_vfid_p->vpid_index = -1;
-    }
-
-  addr.vfid = &tmp_vfid_p->temp_vfid;
-  addr.pgptr = page_p;
-  addr.offset = -1;		/* irrelevant */
-  log_skip_logging (thread_p, &addr);	/* ignore logging */
-
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
-
   return page_p;
 }
 
@@ -2677,19 +2552,9 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   /* initialize tfile_vfid */
   VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
   tfile_vfid_p->temp_file_type = FILE_TEMP;
-  tfile_vfid_p->curr_free_page_index = 0;
-  tfile_vfid_p->last_free_page_index = -1;
-  tfile_vfid_p->vpid_index = -1;
-  tfile_vfid_p->vpid_count = 0;
   tfile_vfid_p->membuf_npages = num_buffer_pages;
   tfile_vfid_p->membuf_type = membuf_type;
 
-  for (i = 0; i < QMGR_VPID_ARRAY_SIZE; i++)
-    {
-      VPID_SET_NULL (&tfile_vfid_p->vpid_array[i]);
-    }
-
-  tfile_vfid_p->total_count = 0;
   tfile_vfid_p->membuf_last = -1;
   page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
 		       + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
@@ -2755,7 +2620,7 @@ QMGR_TEMP_FILE *
 qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 {
   QMGR_QUERY_ENTRY *query_p;
-  int tran_index, i;
+  int tran_index;
   QMGR_TEMP_FILE *tfile_vfid_p, *temp;
   QMGR_TRAN_ENTRY *tran_entry_p;
 
@@ -2769,25 +2634,14 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
 
-  if (file_create_queryarea (thread_p, &tfile_vfid_p->temp_vfid, TEMP_FILE_DEFAULT_PAGES, "Query result file") == NULL)
+  if (file_create_query_area (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
     {
       free_and_init (tfile_vfid_p);
       return NULL;
     }
 
   tfile_vfid_p->temp_file_type = FILE_QUERY_AREA;
-  /* initialize the allocated tfile_vfid */
-  tfile_vfid_p->curr_free_page_index = 0;
-  tfile_vfid_p->last_free_page_index = file_get_numpages (thread_p, &tfile_vfid_p->temp_vfid) - 1;
-  tfile_vfid_p->vpid_index = -1;
-  tfile_vfid_p->vpid_count = 0;
 
-  for (i = 0; i < QMGR_VPID_ARRAY_SIZE; i++)
-    {
-      VPID_SET_NULL (&tfile_vfid_p->vpid_array[i]);
-    }
-
-  tfile_vfid_p->total_count = 0;
   tfile_vfid_p->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
   tfile_vfid_p->membuf = NULL;
   tfile_vfid_p->membuf_npages = 0;
@@ -2812,6 +2666,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       /* query entry is not found */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
+      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
       free_and_init (tfile_vfid_p);
       return NULL;
     }
@@ -2862,7 +2717,7 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
       fd_ret = NO_ERROR;
       if ((tfile_vfid_p->temp_file_type != FILE_QUERY_AREA || is_error) && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  fd_ret = file_destroy (thread_p, &tfile_vfid_p->temp_vfid);
+	  fd_ret = file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
 	  if (fd_ret != NO_ERROR)
 	    {
 	      /* set error but continue with the destroy process */
@@ -2989,7 +2844,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
     {
       if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  if (file_destroy (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+	  if (file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	    {
 	      /* stop; return error */
 	      rc = ER_FAILED;

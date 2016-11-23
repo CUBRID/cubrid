@@ -5019,7 +5019,6 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
       attdesc->setter[LDR_NSTR] = &ldr_nstr_db_varnchar;
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       attdesc->setter[LDR_ELO_EXT] = &ldr_elo_ext_db_elo;

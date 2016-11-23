@@ -2919,7 +2919,7 @@ lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue)
   queue->produce_cursor = 0;
   queue->consume_cursor = 0;
 
-  for (es_idx = 0; es_idx < queue->capacity; es_idx++)
+  for (es_idx = 0; es_idx < (int) queue->capacity; es_idx++)
     {
       queue->entry_state[es_idx] = es_idx | LFCQ_READY_FOR_PRODUCE;
     }

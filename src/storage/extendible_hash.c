@@ -254,39 +254,38 @@ static void ehash_free_recdes (RECDES * recdes);
 static int ehash_compare_overflow (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, char *key, int *comp_result);
 static char *ehash_compose_overflow (THREAD_ENTRY * thread_p, RECDES * recdes);
 #endif
-static bool ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type,
-					      const VPID * vpid, DKNPAGES ignore_npages, void *alignment_depth);
-static bool ehash_initialize_dir_new_pages (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type,
-					    const VPID * ignore_vpid, const INT32 * nthpage, INT32 npages,
-					    void *ignore_args);
+static int ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *alignment_depth);
+static int ehash_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
 static short ehash_get_key_size (DB_TYPE key_type);
 static EHID *ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid, DB_TYPE key_type, int exp_num_entries,
 				  OID * class_oid, int attr_id, bool istmp);
-static PAGE_PTR ehash_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, int mode);
-static PAGE_PTR ehash_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, int latch_mode);
-static PAGE_PTR ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid, int offset, int mode);
+static PAGE_PTR ehash_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid,
+				    PGBUF_LATCH_MODE mode);
+static PAGE_PTR ehash_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, PGBUF_LATCH_MODE latch_mode);
+static PAGE_PTR ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid, int offset, PGBUF_LATCH_MODE mode);
 static void *ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr, int lock_type,
 				  VPID * existing_ovf_vpid);
-static EHASH_RESULT ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid, VFID * ovf_file, FILE_TYPE file_type,
+static EHASH_RESULT ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid, VFID * ovf_file, bool is_temp,
 					    PAGE_PTR buc_pgptr, DB_TYPE key_type, void *key_ptr, OID * value_ptr,
 					    VPID * existing_ovf_vpid);
 static int ehash_compose_record (DB_TYPE key_type, void *key_ptr, OID * value_ptr, RECDES * recdes);
 static bool ehash_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR page, DB_TYPE key_type, void *key,
 			       PGSLOTID * position);
 static PAGE_PTR ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header, PAGE_PTR buc_pgptr,
-				    void *key, int *old_local_depth, int *new_local_depth, VPID * sib_vpid);
-static int ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid, int new_depth);
+				    void *key, int *old_local_depth, int *new_local_depth, VPID * sib_vpid,
+				    bool is_temp);
+static int ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid, int new_depth, bool is_temp);
 static int ehash_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid, int local_depth, EHASH_HASH_KEY hash_key,
-				 VPID * buc_vpid);
+				 VPID * buc_vpid, bool is_temp);
 static char ehash_find_depth (THREAD_ENTRY * thread_p, EHID * ehid, int location, VPID * vpid, VPID * sib_vpid);
-static void ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid, void *key);
-static void ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid, int new_depth);
+static void ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid, void *key, bool is_temp);
+static void ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid, int new_depth, bool is_temp);
 static EHASH_HASH_KEY ehash_hash (void *orig_key, DB_TYPE key_type);
 static int ehash_find_bucket_vpid (THREAD_ENTRY * thread_p, EHID * ehid, EHASH_DIR_HEADER * dir_header, int location,
-				   int latch, VPID * out_vpid);
-static PAGE_PTR ehash_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, EHID * ehid, void *key, int root_latch,
-						  int bucket_latch, VPID * out_vpid, EHASH_HASH_KEY * out_hash_key,
-						  int *out_location);
+				   PGBUF_LATCH_MODE latch, VPID * out_vpid);
+static PAGE_PTR ehash_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, EHID * ehid, void *key,
+						  PGBUF_LATCH_MODE root_latch, PGBUF_LATCH_MODE bucket_latch,
+						  VPID * out_vpid, EHASH_HASH_KEY * out_hash_key, int *out_location);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int ehash_create_overflow_file (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
 				       EHASH_DIR_HEADER * dir_header, FILE_TYPE file_type);
@@ -297,7 +296,7 @@ static char *ehash_read_ehid_from_record (char *rec_p, EHID * ehid_p);
 static char *ehash_write_ehid_to_record (char *rec_p, EHID * ehid_p);
 static int ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid, void *key);
 static void ehash_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
-				      EHASH_DIR_HEADER * dir_header, int depth, int delta);
+				      EHASH_DIR_HEADER * dir_header, int depth, int delta, bool is_temp);
 static int ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid, RECDES * recdes, DB_TYPE key_type, char *bucrec_ptr,
 			     OID * assoc_value, int *out_apply_error, int (*apply_function) (THREAD_ENTRY * thread_p,
 											     void *key, void *data,
@@ -305,8 +304,9 @@ static int ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid, RECDES * recd
 static int ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
 				  EHASH_DIR_HEADER * dir_header, PAGE_PTR buc_pgptr, PAGE_PTR sib_pgptr,
 				  VPID * buc_vpid, VPID * sib_vpid, int num_recs, int loc, PGSLOTID first_slotid,
-				  int *out_new_local_depth);
-static void ehash_shrink_directory_if_need (THREAD_ENTRY * thread_p, EHID * ehid, EHASH_DIR_HEADER * dir_header);
+				  int *out_new_local_depth, bool is_temp);
+static void ehash_shrink_directory_if_need (THREAD_ENTRY * thread_p, EHID * ehid, EHASH_DIR_HEADER * dir_header,
+					    bool is_temp);
 static EHASH_RESULT ehash_check_merge_possible (THREAD_ENTRY * thread_p, EHID * ehid, EHASH_DIR_HEADER * dir_header,
 						VPID * buc_vpid, PAGE_PTR buc_pgptr, int location, int lock_type,
 						int *old_local_depth, VPID * sib_vpid, PAGE_PTR * out_sib_pgptr,
@@ -328,14 +328,13 @@ static int ehash_write_key_to_record (RECDES * recdes, DB_TYPE key_type, void *k
 static EHASH_RESULT ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
 							      EHASH_DIR_HEADER * dir_header, VPID * buc_vpid, void *key,
 							      EHASH_HASH_KEY hash_key, int lock_type,
-							      FILE_TYPE file_type, OID * value_ptr,
-							      VPID * existing_ovf_vpid);
+							      bool is_temp, OID * value_ptr, VPID * existing_ovf_vpid);
 static PAGE_PTR ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
 				     EHASH_DIR_HEADER * dir_header, PAGE_PTR buc_pgptr, void *key,
-				     EHASH_HASH_KEY hash_key, int *new_bit, VPID * buc_vpid);
+				     EHASH_HASH_KEY hash_key, int *new_bit, VPID * buc_vpid, bool is_temp);
 static int ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid, PAGE_PTR dir_Rpgptr,
 						EHASH_DIR_HEADER * dir_header, VPID * buc_vpid, int location,
-						EHASH_HASH_KEY hash_key, FILE_TYPE file_type, void *key,
+						EHASH_HASH_KEY hash_key, bool is_temp, void *key,
 						OID * value_ptr, VPID * existing_ovf_vpid);
 
 static EHASH_HASH_KEY ehash_hash_string_type (char *key, char *orig_key);
@@ -389,7 +388,7 @@ ehash_dir_locate (int *out_page_no_p, int *out_offset_p)
     {
       /* in the first page */
       offset = offset * sizeof (EHASH_DIR_RECORD) + EHASH_DIR_HEADER_SIZE;
-      page_no = 0;
+      page_no = 0;		/* at least one page */
     }
   else
     {
@@ -616,29 +615,33 @@ ehash_compose_overflow (THREAD_ENTRY * thread_p, RECDES * recdes_p)
 
 /*
  * ehash_initialize_bucket_new_page () - Initialize a newly allocated page
- *   return: bool
- *   vfid(in): File where the new page belongs
- *   file_type(in):
- *   vpid(in): The new page
- *   ignore_npages(in): Number of contiguous allocated pages
- *                      (Ignored in this function. We allocate only one page)
- *   alignment_depth(in): Alignment and depth in one integer.
- *                        Used to initialize and log the page
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry
+ * page_p (in)	 : New ehash bucket page
+ * args (in)     : Alignment, depth and is_temp. Used to initialize and log the page.
  */
-static bool
-ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const FILE_TYPE file_type,
-				  const VPID * vpid_p, DKNPAGES ignore_npages, void *alignment_depth)
+static int
+ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
 {
   char alignment;
   char depth;
-  PAGE_PTR page_p;
+  bool is_temp;
+  int offset = 0;
   EHASH_BUCKET_HEADER bucket_header;
   RECDES bucket_recdes;
   PGSLOTID slot_id;
-  int success;
+  int success = SP_SUCCESS;
 
-  alignment = *(char *) alignment_depth;
-  depth = *((char *) alignment_depth + 1);
+  int error_code = NO_ERROR;
+
+  alignment = *(char *) args;
+  offset += sizeof (alignment);
+
+  depth = *((char *) args + offset);
+  offset += sizeof (depth);
+
+  is_temp = *(bool *) ((char *) args + offset);
 
   /* 
    * fetch and initialize the new page. The parameter UNANCHORED_KEEP_
@@ -646,21 +649,15 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, 
    * during insertions and deletions.
    */
 
-  page_p = pgbuf_fix (thread_p, vpid_p, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_p == NULL)
-    {
-      return false;
-    }
-
-  (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
 
   /* 
-   * Initilize the bucket to contain variable-length records
+   * Initialize the bucket to contain variable-length records
    * on ordered slots.
    */
   spage_initialize (thread_p, page_p, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
 
-  /* Initilize the bucket header */
+  /* Initialize the bucket header */
   bucket_header.local_depth = depth;
 
   /* Set the record descriptor to the Bucket header */
@@ -679,58 +676,46 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, 
        * Slotted page module refuses to insert a short size record to an
        * empty page. This should never happen.
        */
-      pgbuf_unfix_and_init (thread_p, page_p);
       if (success != SP_ERROR)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_FAILED;
 	}
-      return false;
+      else
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	}
+      return error_code;
     }
 
-  log_append_redo_data2 (thread_p, RVEH_INIT_BUCKET, vfid_p, page_p, -1, 2, alignment_depth);
-  pgbuf_set_dirty (thread_p, page_p, FREE);
+  if (!is_temp)
+    {
+      log_append_redo_data2 (thread_p, RVEH_INIT_BUCKET, NULL, page_p, -1, 2, args);
+    }
+  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
- * ehash_initialize_dir_new_pages () - Initialize new pages used to expand
- *				       extensible hash directory.
+ * ehash_initialize_dir_new_pages () - Initialize new page used to expand extensible hash directory.
  *
- * return	    : True/false for success/failure.
- * vfid (in)	    : File identifier.
- * file_type (in)   : File type
- * ignore_vpid (in) : Not used.
- * nthpage (in)	    : First page.
- * npages (in)	    : Number of pages.
+ * return	    : Error code
+ * thread_p (in)    : Thread entry
+ * page_p (in)	    : New directory page
  * ignore_args (in) : (not used)
  */
-static bool
-ehash_initialize_dir_new_pages (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type,
-				const VPID * ignore_vpid, const INT32 * nthpage, INT32 npages, void *ignore_args)
+static int
+ehash_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
 {
-  int i, max;
-  VPID nth_vpid;
-  PAGE_PTR page_p = NULL;
-
-  max = *nthpage + npages;
-  for (i = *(int *) nthpage; i < max; i++)
+  bool is_temp = *(bool *) args;
+  pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
+  if (!is_temp)
     {
-      if (file_find_nthpages (thread_p, vfid, &nth_vpid, i, 1) == -1)
-	{
-	  return false;
-	}
-
-      page_p = pgbuf_fix (thread_p, &nth_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_p == NULL)
-	{
-	  return false;
-	}
-      (void) pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
-      log_append_redo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, vfid, page_p, -1, 0, NULL);
-      pgbuf_set_dirty (thread_p, page_p, FREE);
+      log_append_redo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, NULL, page_p, -1, 0, NULL);
     }
-  return true;
+  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+  return NO_ERROR;
 }
 
 /*
@@ -744,7 +729,7 @@ ehash_initialize_dir_new_pages (THREAD_ENTRY * thread_p, const VFID * vfid, cons
 int
 ehash_rv_init_dir_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_EHASH);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
@@ -976,7 +961,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   PAGE_PTR dir_page_p;
   VFID bucket_vfid;
   VPID bucket_vpid;
-  char init_bucket_data[2];
+  char init_bucket_data[3];
   DKNPAGES exp_bucket_pages;
   DKNPAGES exp_dir_pages;
   short key_size;
@@ -1049,38 +1034,25 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
 
   /* Create the first bucket and initialize its header */
 
-  /* 
-   * If the file type is TMP, we must call file_create_tmp, otherwise, if
-   * the file is deleted before the end of the transaction its pages
-   * are not removed immediately. They will be removed at the end of the
-   * transaction.
-   */
-
   bucket_vfid.volid = ehid_p->vfid.volid;
 
-  if (is_tmp)
+  if (file_create_ehash (thread_p, exp_bucket_pages, is_tmp, &ehdes, &bucket_vfid) != NO_ERROR)
     {
-      if (file_create_tmp_no_cache (thread_p, &bucket_vfid, exp_bucket_pages, &ehdes) == NULL)
-	{
-	  return NULL;
-	}
-    }
-  else if (file_create (thread_p, &bucket_vfid, exp_bucket_pages, FILE_EXTENDIBLE_HASH, &ehdes, NULL, 0) == NULL)
-    {
-      /* Error; so return */
+      ASSERT_ERROR ();
       return NULL;
     }
 
-  /* Log the initilization of the first bucket page */
+  /* Log the initialization of the first bucket page */
 
   init_bucket_data[0] = alignment;
   init_bucket_data[1] = 0;
+  init_bucket_data[2] = is_tmp;
 
-  if (file_alloc_pages (thread_p, &bucket_vfid, &bucket_vpid, 1, NULL, ehash_initialize_bucket_new_page,
-			init_bucket_data) == NULL)
+  if (file_alloc_and_init (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, &bucket_vpid)
+      != NO_ERROR)
     {
-      (void) file_destroy (thread_p, &bucket_vfid);
-      return NULL;
+      ASSERT_ERROR ();
+      goto exit_on_error;
     }
 
   /* Estimate number of directory pages */
@@ -1092,16 +1064,11 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
     {
       /* Calculate how many directory pages will be used */
       ehash_dir_locate (&exp_dir_pages, &exp_bucket_pages);
+      /* exp_dir_pages is actually an index. the number of pages should be +1 */
+      exp_dir_pages++;
     }
 
   /* Create the directory (allocate the first page) and initialize its header */
-
-  /* 
-   * If the file type is TMP, we must call file_create_tmp, otherwise, if
-   * the file is deleted before the end of the transaction its pages
-   * are not removed immediately. They will be removed at the end of the
-   * transaction.
-   */
 
   dir_vfid.volid = bucket_vfid.volid;
 
@@ -1112,43 +1079,29 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
    * new, and the file is going to be removed in the event of a crash.
    */
 
-  if (is_tmp == true)
+  if (file_create_ehash_dir (thread_p, exp_dir_pages, is_tmp, &ehdes, &dir_vfid) != NO_ERROR)
     {
-      if (file_create_tmp_no_cache (thread_p, &dir_vfid, exp_dir_pages, &ehdes) == NULL)
-	{
-	  /* Error; so return */
-	  (void) file_destroy (thread_p, &bucket_vfid);
-	  return NULL;
-	}
-
-      if (file_alloc_pages (thread_p, &dir_vfid, &dir_vpid, 1, NULL, NULL, NULL) == NULL)
-	{
-	  (void) file_destroy (thread_p, &dir_vfid);
-	  (void) file_destroy (thread_p, &bucket_vfid);
-	  return NULL;
-	}
+      ASSERT_ERROR ();
+      goto exit_on_error;
     }
-  else if (file_create (thread_p, &dir_vfid, exp_dir_pages, FILE_EXTENDIBLE_HASH_DIRECTORY, &ehdes, &dir_vpid, 1) ==
-	   NULL)
+  if (file_alloc (thread_p, &dir_vfid, &dir_vpid) != NO_ERROR)
     {
-      /* Error; so return */
-      (void) file_destroy (thread_p, &bucket_vfid);
-      return NULL;
+      ASSERT_ERROR ();
+      goto exit_on_error;
     }
 
   dir_page_p = pgbuf_fix (thread_p, &dir_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (dir_page_p == NULL)
     {
-      (void) file_destroy (thread_p, &dir_vfid);
-      (void) file_destroy (thread_p, &bucket_vfid);
-      return NULL;
+      ASSERT_ERROR ();
+      goto exit_on_error;
     }
 
-  (void) pgbuf_set_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
-  /* Initilize the directory header */
+  /* Initialize the directory header */
   dir_header_p->depth = 0;
   dir_header_p->key_type = key_type;
   dir_header_p->alignment = alignment;
@@ -1176,9 +1129,11 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
    */
 
   /* Log the directory root page */
-
-  log_append_redo_data2 (thread_p, RVEH_INIT_DIR, &dir_vfid, dir_page_p, 0,
-			 EHASH_DIR_HEADER_SIZE + sizeof (EHASH_DIR_RECORD), dir_page_p);
+  if (!is_tmp)
+    {
+      log_append_redo_data2 (thread_p, RVEH_INIT_DIR, &dir_vfid, dir_page_p, 0,
+			     EHASH_DIR_HEADER_SIZE + sizeof (EHASH_DIR_RECORD), dir_page_p);
+    }
 
   /* Finishing up; release the pages and return directory file id */
   pgbuf_set_dirty (thread_p, dir_page_p, FREE);
@@ -1187,6 +1142,32 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   ehid_p->pageid = dir_vpid.pageid;
 
   return ehid_p;
+
+exit_on_error:
+
+  if (!VFID_ISNULL (&bucket_vfid))
+    {
+      if (is_tmp)
+	{
+	  (void) file_destroy (thread_p, &bucket_vfid);
+	}
+      else
+	{
+	  (void) file_postpone_destroy (thread_p, &bucket_vfid);
+	}
+    }
+  if (!VFID_ISNULL (&dir_vfid))
+    {
+      if (is_tmp)
+	{
+	  (void) file_destroy (thread_p, &dir_vfid);
+	}
+      else
+	{
+	  (void) file_postpone_destroy (thread_p, &dir_vfid);
+	}
+    }
+  return NULL;
 }
 
 /*
@@ -1197,7 +1178,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
  *   latch_mode(in): lock mode
  */
 static PAGE_PTR
-ehash_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const VPID * vpid_p, int latch_mode)
+ehash_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const VPID * vpid_p, PGBUF_LATCH_MODE latch_mode)
 {
   PAGE_PTR page_p;
 
@@ -1225,7 +1206,7 @@ ehash_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const VPID * v
  *   latch_mode(in): lock mode
  */
 static PAGE_PTR
-ehash_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, int latch_mode)
+ehash_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, PGBUF_LATCH_MODE latch_mode)
 {
   VPID vpid;
 
@@ -1243,12 +1224,13 @@ ehash_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, int latch_mode)
  *   lock(in): lock mode
  */
 static PAGE_PTR
-ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, int latch_mode)
+ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, PGBUF_LATCH_MODE latch_mode)
 {
   VPID vpid;
 
-  if (file_find_nthpages (thread_p, vfid_p, &vpid, offset, 1) == -1)
+  if (file_numerable_find_nth (thread_p, vfid_p, offset, false, &vpid) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return NULL;
     }
 
@@ -1281,19 +1263,28 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
       return ER_FAILED;
     }
 
+  log_sysop_start (thread_p);
+
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
-  (void) file_destroy (thread_p, &(dir_header_p->bucket_file));
+  if (file_destroy (thread_p, &(dir_header_p->bucket_file)) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+  pgbuf_unfix (thread_p, dir_page_p);
+  if (file_destroy (thread_p, &ehid_p->vfid) != NO_ERROR)
+    {
+      assert_release (false);
+    }
 
-  pgbuf_unfix_and_init (thread_p, dir_page_p);
-  (void) file_destroy (thread_p, &ehid_p->vfid);
+  log_sysop_commit (thread_p);
 
   return NO_ERROR;
 }
 
 static int
 ehash_find_bucket_vpid (THREAD_ENTRY * thread_p, EHID * ehid_p, EHASH_DIR_HEADER * dir_header_p, int location,
-			int latch, VPID * out_vpid_p)
+			PGBUF_LATCH_MODE latch, VPID * out_vpid_p)
 {
   EHASH_DIR_RECORD *dir_record_p;
   PAGE_PTR dir_page_p;
@@ -1324,8 +1315,9 @@ ehash_find_bucket_vpid (THREAD_ENTRY * thread_p, EHID * ehid_p, EHASH_DIR_HEADER
 }
 
 static PAGE_PTR
-ehash_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, int root_latch, int bucket_latch,
-				  VPID * out_vpid_p, EHASH_HASH_KEY * out_hash_key_p, int *out_location_p)
+ehash_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, PGBUF_LATCH_MODE root_latch,
+				  PGBUF_LATCH_MODE bucket_latch, VPID * out_vpid_p, EHASH_HASH_KEY * out_hash_key_p,
+				  int *out_location_p)
 {
   EHASH_DIR_HEADER *dir_header_p;
   PAGE_PTR dir_root_page_p;
@@ -1383,7 +1375,7 @@ ehash_search (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p
   VPID bucket_vpid;
   RECDES recdes;
   PGSLOTID slot_id;
-  int result = EH_KEY_NOTFOUND;
+  EH_SEARCH result = EH_KEY_NOTFOUND;
 
   if (ehid_p == NULL || key_p == NULL)
     {
@@ -1437,52 +1429,6 @@ end:
   return result;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-static int
-ehash_create_overflow_file (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
-			    EHASH_DIR_HEADER * dir_header_p, FILE_TYPE file_type)
-{
-  int offset;
-
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /* Log the directory header for undo */
-  offset = CAST_BUFLEN ((char *) &dir_header_p->overflow_file - (char *) dir_root_page_p);
-  log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, dir_root_page_p, offset, sizeof (VFID),
-			 &dir_header_p->overflow_file);
-
-  /* Create the overflow file */
-  dir_header_p->overflow_file.volid = ehid_p->vfid.volid;
-  if (file_create (thread_p, &dir_header_p->overflow_file, -1, file_type, NULL, NULL, 0) == NULL)
-    {
-      VFID_SET_NULL (&dir_header_p->overflow_file);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-      return ER_FAILED;
-    }
-
-  pgbuf_set_dirty (thread_p, dir_root_page_p, DONT_FREE);
-
-  /* Log this change on the directory header for redo */
-  log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, dir_root_page_p, offset, sizeof (VFID),
-			 &dir_header_p->overflow_file);
-
-  if (file_is_new_file (thread_p, &(ehid_p->vfid)) == FILE_NEW_FILE)
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-    }
-  else
-    {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-      file_new_declare_as_old (thread_p, &dir_header_p->overflow_file);
-    }
-
-  return NO_ERROR;
-}
-#endif
-
 /*
  * ehash_insert () - Insert (key, assoc_value) pair to ext. hashing
  *   return: void * (NULL is returned in case of error)
@@ -1516,7 +1462,7 @@ ehash_insert (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p
 static int
 ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 				     EHASH_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, int location,
-				     EHASH_HASH_KEY hash_key, FILE_TYPE file_type, void *key_p, OID * value_p,
+				     EHASH_HASH_KEY hash_key, bool is_temp, void *key_p, OID * value_p,
 				     VPID * existing_ovf_vpid_p)
 {
   PAGE_PTR bucket_page_p;
@@ -1526,6 +1472,8 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
   EHASH_RESULT ins_result;
 
+  int error_code = NO_ERROR;
+
   found_depth = ehash_find_depth (thread_p, ehid_p, location, &null_vpid, &null_vpid);
   if (found_depth == 0)
     {
@@ -1534,40 +1482,42 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
 
   init_bucket_data[0] = dir_header_p->alignment;
   init_bucket_data[1] = dir_header_p->depth - found_depth;
+  init_bucket_data[2] = is_temp;
   bucket_header.local_depth = init_bucket_data[1];
 
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
+  log_sysop_start (thread_p);
 
-  if (file_alloc_pages (thread_p, &dir_header_p->bucket_file, bucket_vpid_p, 1, NULL, ehash_initialize_bucket_new_page,
-			init_bucket_data) == NULL)
+  error_code =
+    file_alloc_and_init (thread_p, &dir_header_p->bucket_file, ehash_initialize_bucket_new_page, init_bucket_data,
+			 bucket_vpid_p);
+  if (error_code != NO_ERROR)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
       return ER_FAILED;
     }
 
   bucket_page_p = ehash_fix_old_page (thread_p, &dir_header_p->bucket_file, bucket_vpid_p, PGBUF_LATCH_WRITE);
   if (bucket_page_p == NULL)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
       return ER_FAILED;
     }
 
-  if (ehash_connect_bucket (thread_p, ehid_p, bucket_header.local_depth, hash_key, bucket_vpid_p) != NO_ERROR)
+  if (ehash_connect_bucket (thread_p, ehid_p, bucket_header.local_depth, hash_key, bucket_vpid_p, is_temp) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
       return ER_FAILED;
     }
 
-  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, (int) bucket_header.local_depth, 1);
+  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, (int) bucket_header.local_depth, 1,
+			    is_temp);
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  log_sysop_commit (thread_p);
 
   ins_result =
-    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, file_type, bucket_page_p,
+    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
 			    dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
 
   if (ins_result != EHASH_SUCCESSFUL_COMPLETION)
@@ -1585,7 +1535,7 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
 static PAGE_PTR
 ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p, EHASH_DIR_HEADER * dir_header_p,
 		     PAGE_PTR bucket_page_p, void *key_p, EHASH_HASH_KEY hash_key, int *out_new_bit_p,
-		     VPID * bucket_vpid)
+		     VPID * bucket_vpid, bool is_temp)
 {
   VPID sibling_vpid;
   PAGE_PTR sibling_page_p = NULL;
@@ -1593,17 +1543,20 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
   int old_local_depth;
   int new_local_depth;
 
-  if (log_start_system_op (thread_p) == NULL)
+  if (!is_temp)
     {
-      return NULL;
+      log_sysop_start (thread_p);
     }
 
   sibling_page_p =
     ehash_split_bucket (thread_p, dir_header_p, bucket_page_p, key_p, &old_local_depth, &new_local_depth,
-			&sibling_vpid);
+			&sibling_vpid, is_temp);
   if (sibling_page_p == NULL)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      if (!is_temp)
+	{
+	  log_sysop_abort (thread_p);
+	}
       return NULL;
     }
 
@@ -1611,16 +1564,19 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
    * to the new sibling bucket. */
   *out_new_bit_p = GETBIT (hash_key, new_local_depth);
 
-  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -1);
-  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, new_local_depth, 2);
+  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -1, is_temp);
+  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, new_local_depth, 2, is_temp);
 
   /* Check directory expansion condition */
   if (new_local_depth > dir_header_p->depth)
     {
-      if (ehash_expand_directory (thread_p, ehid_p, new_local_depth) != NO_ERROR)
+      if (ehash_expand_directory (thread_p, ehid_p, new_local_depth, is_temp) != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  if (!is_temp)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
 	  return NULL;
 	}
     }
@@ -1629,40 +1585,52 @@ ehash_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_p
   if ((new_local_depth - old_local_depth) > 1)
     {
       /* First, set all of them to NULL_PAGEID */
-      if (ehash_connect_bucket (thread_p, ehid_p, old_local_depth, hash_key, &null_vpid) != NO_ERROR)
+      if (ehash_connect_bucket (thread_p, ehid_p, old_local_depth, hash_key, &null_vpid, is_temp) != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  if (!is_temp)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
 	  return NULL;
 	}
 
       /* Then, connect the Bucket page */
       hash_key = CLEARBIT (hash_key, new_local_depth);
-      if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, bucket_vpid) != NO_ERROR)
+      if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, bucket_vpid, is_temp) != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  if (!is_temp)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
 	  return NULL;
 	}
     }
 
   /* Finally, connect the Sibling bucket page */
   hash_key = SETBIT (hash_key, new_local_depth);
-  if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, &sibling_vpid) != NO_ERROR)
+  if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, &sibling_vpid, is_temp) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      if (!is_temp)
+	{
+	  log_sysop_abort (thread_p);
+	}
       return NULL;
     }
 
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+  if (!is_temp)
+    {
+      log_sysop_commit (thread_p);
+    }
   return sibling_page_p;
 }
 
 static EHASH_RESULT
 ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 					  EHASH_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, void *key_p,
-					  EHASH_HASH_KEY hash_key, int lock_type, FILE_TYPE file_type, OID * value_p,
+					  EHASH_HASH_KEY hash_key, int lock_type, bool is_temp, OID * value_p,
 					  VPID * existing_ovf_vpid_p)
 {
   PAGE_PTR bucket_page_p;
@@ -1679,7 +1647,7 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p
     }
 
   result =
-    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, file_type, bucket_page_p,
+    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
 			    dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
   if (result == EHASH_BUCKET_FULL)
     {
@@ -1691,7 +1659,7 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p
 
       sibling_page_p =
 	ehash_extend_bucket (thread_p, ehid_p, dir_root_page_p, dir_header_p, bucket_page_p, key_p, hash_key, &new_bit,
-			     bucket_vpid_p);
+			     bucket_vpid_p, is_temp);
       if (sibling_page_p == NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, bucket_page_p);
@@ -1714,7 +1682,7 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p
 	}
 
       result =
-	ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, file_type, target_bucket_page_p,
+	ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, target_bucket_page_p,
 				dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
     }
@@ -1744,11 +1712,11 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
   EHASH_HASH_KEY hash_key;
   int location;
   EHASH_RESULT result;
-  FILE_TYPE file_type;
+  bool is_temp = false;
 
-  file_type = file_get_type (thread_p, &ehid_p->vfid);
-  if (file_type == FILE_UNKNOWN_TYPE)
+  if (file_is_temp (thread_p, &ehid_p->vfid, &is_temp) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return NULL;
     }
 
@@ -1805,7 +1773,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
       else
 	{
 	  if (ehash_insert_to_bucket_after_create
-	      (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, location, hash_key, file_type, key_p,
+	      (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, location, hash_key, is_temp, key_p,
 	       value_p, existing_ovf_vpid_p) != NO_ERROR)
 	    {
 	      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
@@ -1817,7 +1785,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
     {
       result =
 	ehash_insert_bucket_after_extend_if_need (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, key_p,
-						  hash_key, lock_type, file_type, value_p, existing_ovf_vpid_p);
+						  hash_key, lock_type, is_temp, value_p, existing_ovf_vpid_p);
       if (result == EHASH_ERROR_OCCURRED)
 	{
 	  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
@@ -1839,7 +1807,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
  *   return: EHASH_RESULT
  *   ehid(in): identifier for the extendible hashing structure
  *   overflow_file(in): Overflow file for extendible hash
- *   file_type(in): TYpe of extendible hash
+ *   is_temp(in): is extensible hash temporary?
  *   buc_pgptr(in): bucket page to insert the key
  *   key_type(in): type of the key
  *   key_ptr(in): Pointer to the key
@@ -1856,7 +1824,7 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
  * for the new record, etc.) an appropriate error code is returned.
  */
 static EHASH_RESULT
-ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p, FILE_TYPE file_type,
+ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p, bool is_temp,
 			PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p,
 			VPID * existing_ovf_vpid_p)
 {
@@ -2003,7 +1971,7 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_
   /* Copy (the assoc-value, key) pair from the bucket record */
   memcpy (log_record_p, bucket_recdes.data, bucket_recdes.length);
 
-  if (file_type != FILE_TEMP)
+  if (!is_temp)
     {
       if (is_replaced_oid)
 	{
@@ -2027,12 +1995,15 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_
   if (is_replaced_oid)
     {
       /* 
-       * This insertion has actully replaced the original oid. The redo logging
+       * This insertion has actually replaced the original oid. The redo logging
        * should cause this new oid to be written at its current physical
        * location.
        */
-      log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, bucket_page_p,
-			     (int) (old_bucket_recdes.data - bucket_page_p), sizeof (OID), old_bucket_recdes.data);
+      if (!is_temp)
+	{
+	  log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, bucket_page_p,
+				 (int) (old_bucket_recdes.data - bucket_page_p), sizeof (OID), old_bucket_recdes.data);
+	}
     }
   else
     {
@@ -2040,7 +2011,7 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_
       log_recdes.area_size = log_recdes.length = bucket_recdes.length + sizeof (short);
 
       /* 
-       * If undo looging was done the log_recdes.data should have enough space
+       * If undo logging was done the log_recdes.data should have enough space
        * for the redo logging since the redo log record is shorter than
        * the undo log record. Otherwise, allocate space for redo log record.
        */
@@ -2678,6 +2649,7 @@ ehash_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEA
  *   old_local_depth(in): old local depth before the split operation; to be set
  *   new_local_depth(in): new local depth after the split operation; to be set
  *   sib_vpid(in): vpid of the sibling bucket; to be set
+ *   is_temp(in): true if file is temporary (logging not required)
  *
  * Note: This function splits the given bucket into two buckets.
  * First, the new local depth of the bucket is found. Then a
@@ -2697,7 +2669,7 @@ ehash_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEA
  */
 static PAGE_PTR
 ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PAGE_PTR bucket_page_p, void *key_p,
-		    int *out_old_local_depth_p, int *out_new_local_depth_p, VPID * sibling_vpid_p)
+		    int *out_old_local_depth_p, int *out_new_local_depth_p, VPID * sibling_vpid_p, bool is_temp)
 {
   EHASH_BUCKET_HEADER *bucket_header_p;
   VFID bucket_vfid;
@@ -2705,11 +2677,16 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
   RECDES recdes;
   PGSLOTID first_slot_id = -1;
   int num_records;
-  char init_bucket_data[2];
+  char init_bucket_data[3];
 
-  /* Log the contents of the bucket page before the split operation */
-  log_append_undo_data2 (thread_p, RVEH_REPLACE, &dir_header_p->bucket_file, bucket_page_p, 0, DB_PAGESIZE,
-			 bucket_page_p);
+  int error_code = NO_ERROR;
+
+  if (!is_temp)
+    {
+      /* Log the contents of the bucket page before the split operation */
+      log_append_undo_data2 (thread_p, RVEH_REPLACE, &dir_header_p->bucket_file, bucket_page_p, 0, DB_PAGESIZE,
+			     bucket_page_p);
+    }
 
   num_records = spage_number_of_records (bucket_page_p);
   /* Retrieve the bucket header and update it */
@@ -2731,17 +2708,23 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
   bucket_vfid = dir_header_p->bucket_file;
   init_bucket_data[0] = dir_header_p->alignment;
   init_bucket_data[1] = *out_new_local_depth_p;
+  init_bucket_data[2] = is_temp;
 
-  if (file_alloc_pages (thread_p, &bucket_vfid, sibling_vpid_p, 1, NULL, ehash_initialize_bucket_new_page,
-			init_bucket_data) == NULL)
+  error_code =
+    file_alloc_and_init (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, sibling_vpid_p);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return NULL;
     }
 
   sibling_page_p = ehash_fix_old_page (thread_p, &bucket_vfid, sibling_vpid_p, PGBUF_LATCH_WRITE);
   if (sibling_page_p == NULL)
     {
-      (void) file_dealloc_page (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH);
+      if (file_dealloc (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
       VPID_SET_NULL (sibling_vpid_p);
       return NULL;
     }
@@ -2750,20 +2733,26 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
 						first_slot_id, sibling_page_p) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
-      (void) file_dealloc_page (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH);
+      if (file_dealloc (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
       VPID_SET_NULL (sibling_vpid_p);
       return NULL;
     }
 
-  /* 
-   * TODO: We are logging too much. It is unlikely that the page is full.
-   *       we just distribute the keys among two buckets. It may be better
-   *       to use crumbs to log different portions of the page.
-   */
-  log_append_redo_data2 (thread_p, RVEH_REPLACE, &dir_header_p->bucket_file, bucket_page_p, 0, DB_PAGESIZE,
-			 bucket_page_p);
-  log_append_redo_data2 (thread_p, RVEH_REPLACE, &dir_header_p->bucket_file, sibling_page_p, 0, DB_PAGESIZE,
-			 sibling_page_p);
+  if (!is_temp)
+    {
+      /* 
+       * TODO: We are logging too much. It is unlikely that the page is full.
+       *       we just distribute the keys among two buckets. It may be better
+       *       to use crumbs to log different portions of the page.
+       */
+      log_append_redo_data2 (thread_p, RVEH_REPLACE, &dir_header_p->bucket_file, bucket_page_p, 0, DB_PAGESIZE,
+			     bucket_page_p);
+      log_append_redo_data2 (thread_p, RVEH_REPLACE, &dir_header_p->bucket_file, sibling_page_p, 0, DB_PAGESIZE,
+			     sibling_page_p);
+    }
 
   pgbuf_set_dirty (thread_p, sibling_page_p, DONT_FREE);
   pgbuf_set_dirty (thread_p, bucket_page_p, DONT_FREE);
@@ -2776,6 +2765,7 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
  *   return: NO_ERROR, or ER_FAILED
  *   ehid(in): identifier for the extendible hashing structure to expand
  *   new_depth(in): requested new depth
+ *   is_temp(in): true if file is temporary (logging not required)
  *
  * Note: This function expands the given extendible hashing directory
  * as many times as necessary to attain the requested depth.
@@ -2787,12 +2777,12 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
  * original directory is not large enough some new pages are
  * allocated for the new directory. If the disk becomes full
  * during this operation, or any system error occurs, the
- * directory expansion is cancelled and an error code is
+ * directory expansion is canceled and an error code is
  * returned. For recovery purposes, the contents of the
  * directory pages are logged during the expansion operation.
  */
 static int
-ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
+ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, bool is_temp)
 {
   int old_pages;
   int old_ptrs;
@@ -2806,7 +2796,6 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
   int new_end_offset;
   int needed_pages;
   VPID expand_vpid;
-  DKNPAGES expand_nth_page;
   int i, j;
   int exp_times;
 
@@ -2818,6 +2807,8 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
   PGLENGTH new_dir_offset;
   int new_dir_nth_page;
 
+  int error_code = NO_ERROR;
+
   dir_header_page_p = ehash_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_WRITE);
   if (dir_header_page_p == NULL)
     {
@@ -2825,7 +2816,13 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
     }
   dir_header_p = (EHASH_DIR_HEADER *) dir_header_page_p;
 
-  old_pages = file_get_numpages (thread_p, &ehid_p->vfid) - 1;	/* The first page starts with 0 */
+  error_code = file_get_num_user_pages (thread_p, &ehid_p->vfid, &old_pages);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  old_pages -= 1;		/* The first page starts with 0 */
   old_ptrs = 1 << dir_header_p->depth;
   exp_times = 1 << (new_depth - dir_header_p->depth);
 
@@ -2847,14 +2844,14 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
   ehash_dir_locate (&new_pages, &new_end_offset);
   needed_pages = new_pages - old_pages;
 
-  if (needed_pages != 0)
+  for (; needed_pages > 0; needed_pages--)
     {
-      if (file_alloc_pages_as_noncontiguous
-	  (thread_p, &ehid_p->vfid, &expand_vpid, &expand_nth_page, needed_pages, NULL, ehash_initialize_dir_new_pages,
-	   NULL, NULL) == NULL)
+      error_code = file_alloc_and_init (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, &is_temp, &expand_vpid);
+      if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  pgbuf_unfix_and_init (thread_p, dir_header_page_p);
-	  return ER_FAILED;
+	  return error_code;
 	}
     }
 
@@ -2885,7 +2882,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
     }
   new_dir_offset = new_end_offset;
 
-  if (new_dir_nth_page <= old_pages)
+  if (new_dir_nth_page <= old_pages && !is_temp)
     {
       /* 
        * This page is part of old directory.
@@ -2942,8 +2939,11 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 	       * There is not any more entries in the new directory page.
 	       * Log this updated directory page, and get next one
 	       */
-	      log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE,
-				     new_dir_page_p);
+	      if (!is_temp)
+		{
+		  log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE,
+					 new_dir_page_p);
+		}
 	      pgbuf_set_dirty (thread_p, new_dir_page_p, FREE);
 
 	      /* get another page */
@@ -2957,7 +2957,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 		  return ER_FAILED;
 		}
 
-	      if (new_dir_nth_page <= old_pages)
+	      if (new_dir_nth_page <= old_pages && !is_temp)
 		{
 		  /* Log the initial content of this original directory page */
 		  log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE,
@@ -2996,24 +2996,34 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
    */
   dir_header_p->depth = new_depth;
 
-  /* Log the first directory page which also contains the directory header */
-  log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE, new_dir_page_p);
+  if (!is_temp)
+    {
+      /* Log the first directory page which also contains the directory header */
+      log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE, new_dir_page_p);
+    }
 
   /* Release the old and new directory pages */
   pgbuf_unfix_and_init (thread_p, old_dir_page_p);
   pgbuf_set_dirty (thread_p, new_dir_page_p, FREE);
 
 #ifdef EHASH_DEBUG
-  if (((new_ptrs / file_get_numpages (&dir_header_p->bucket_file)) > EHASH_BALANCE_FACTOR)
-      || (file_get_numpages (&ehid_p->vfid) > file_get_numpages (&dir_header_p->bucket_file)))
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "WARNING: Ext. Hash EHID=%d|%d|%d is unbalanced.\n Num_bucket_pages = %d, num_dir_pages = %d,\n"
-		    " num_dir_pointers = %d, directory_depth = %d.\n"
-		    " You may want to consider another hash function.\n", ehid_p->vfid.volid, ehid_p->vfid.fileid,
-		    ehid_p->pageid, file_get_numpages (&dir_header_p->bucket_file), file_get_numpages (&ehid_p->vfid),
-		    new_ptrs, dir_header_p->depth);
-    }
+  {
+    DKNPAGES npages_bucket = 0;
+    DKNPAGES npages_ehash = 0;
+    if (file_get_num_user_pages (thread_p, &dir_header_p->bucket_file, &npages_bucket) == NO_ERROR
+	&& file_get_num_user_pages (thread_p, &ehid_p->vfid, &npages_ehash) == NO_ERROR)
+      {
+	if (new_ptrs / npages > EHASH_BALANCE_FACTOR || npages_ehash > npages_bucket)
+	  {
+	    er_log_debug (ARG_FILE_LINE,
+			  "WARNING: Ext. Hash EHID=%d|%d|%d is unbalanced.\n Num_bucket_pages = %d, "
+			  "num_dir_pages = %d,\n num_dir_pointers = %d, directory_depth = %d.\n"
+			  " You may want to consider another hash function.\n", ehid_p->vfid.volid,
+			  ehid_p->vfid.fileid, ehid_p->pageid, npages_bucket, npages_ehash,
+			  new_ptrs, dir_header_p->depth);
+	  }
+      }
+  }
 #endif /* EHASH_DEBUG */
 
   /* Release the root page holding the directory header */
@@ -3031,6 +3041,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
  *   hash_key(in): pseudo key that led to the bucket page; determines which
  *                   pointers to be updated
  *   bucket_vpid(in): Identifier of the bucket page to connect
+ *   is_temp(in): true if temporary (logging is not required)
  *
  * Note: This function connects the given bucket to the directory of
  * specified extendible hashing structure. All the directory
@@ -3046,7 +3057,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
  */
 static int
 ehash_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth, EHASH_HASH_KEY hash_key,
-		      VPID * bucket_vpid_p)
+		      VPID * bucket_vpid_p, bool is_temp)
 {
   EHASH_DIR_HEADER dir_header;
   EHASH_DIR_RECORD *dir_record_p;
@@ -3132,8 +3143,11 @@ ehash_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth, E
       bef_length = end_offset - start_offset;
       repetition.count = bef_length / sizeof (EHASH_DIR_RECORD);
 
-      log_append_undoredo_data2 (thread_p, RVEH_CONNECT_BUCKET, &ehid_p->vfid, page_p, start_offset, bef_length,
-				 sizeof (EHASH_REPETITION), (char *) page_p + start_offset, &repetition);
+      if (!is_temp)
+	{
+	  log_append_undoredo_data2 (thread_p, RVEH_CONNECT_BUCKET, &ehid_p->vfid, page_p, start_offset, bef_length,
+				     sizeof (EHASH_REPETITION), (char *) page_p + start_offset, &repetition);
+	}
 
       /* Update the directory page */
       dir_record_p = (EHASH_DIR_RECORD *) ((char *) page_p + start_offset);
@@ -3415,7 +3429,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
   PGSLOTID max_free;
   PGSLOTID slot_no;
   bool is_long_str = false;
-  FILE_TYPE file_type;
+  bool is_temp = false;
 
   bool do_merge;
 
@@ -3424,9 +3438,9 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
       return NULL;
     }
 
-  file_type = file_get_type (thread_p, &ehid_p->vfid);
-  if (file_type == FILE_UNKNOWN_TYPE)
+  if (file_is_temp (thread_p, &ehid_p->vfid, &is_temp) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return NULL;
     }
 
@@ -3545,15 +3559,15 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 	  /* Log this deletion operation */
 
-	  if (file_type != FILE_TEMP)
+	  if (!is_temp)
 	    {
 	      log_append_undo_data2 (thread_p, RVEH_DELETE, &ehid_p->vfid, NULL, bucket_recdes.type,
 				     log_recdes_undo.length, log_recdes_undo.data);
-	      ehash_free_recdes (&log_recdes_undo);
-	    }
 
-	  log_append_redo_data2 (thread_p, RVEH_DELETE, &ehid_p->vfid, bucket_page_p, slot_no, log_recdes_redo.length,
-				 log_recdes_redo.data);
+	      log_append_redo_data2 (thread_p, RVEH_DELETE, &ehid_p->vfid, bucket_page_p, slot_no,
+				     log_recdes_redo.length, log_recdes_redo.data);
+	    }
+	  ehash_free_recdes (&log_recdes_undo);
 	  ehash_free_recdes (&log_recdes_redo);
 
 	  /* Remove the overflow pages, if any. */
@@ -3581,7 +3595,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	  /* do merge routine */
 	  if (do_merge)
 	    {
-	      ehash_merge (thread_p, ehid_p, key_p);
+	      ehash_merge (thread_p, ehid_p, key_p, is_temp);
 	    }
 
 	  return (key_p);
@@ -3590,7 +3604,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 }
 
 static void
-ehash_shrink_directory_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, EHASH_DIR_HEADER * dir_header_p)
+ehash_shrink_directory_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, EHASH_DIR_HEADER * dir_header_p, bool is_temp)
 {
   int i;
 
@@ -3603,13 +3617,13 @@ ehash_shrink_directory_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, EHASH_DI
 
   if ((dir_header_p->depth - i) > 1)
     {
-      ehash_shrink_directory (thread_p, ehid_p, i + 1);
+      ehash_shrink_directory (thread_p, ehid_p, i + 1, is_temp);
     }
 }
 
 static void
 ehash_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
-			  EHASH_DIR_HEADER * dir_header_p, int depth, int delta)
+			  EHASH_DIR_HEADER * dir_header_p, int depth, int delta, bool is_temp)
 {
   int redo_inc, undo_inc, offset;
 
@@ -3622,15 +3636,18 @@ ehash_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_r
   redo_inc = delta;
   undo_inc = -delta;
 
-  log_append_undoredo_data2 (thread_p, RVEH_INC_COUNTER, &ehid_p->vfid, dir_root_page_p, offset, sizeof (int),
-			     sizeof (int), &undo_inc, &redo_inc);
+  if (!is_temp)
+    {
+      log_append_undoredo_data2 (thread_p, RVEH_INC_COUNTER, &ehid_p->vfid, dir_root_page_p, offset, sizeof (int),
+				 sizeof (int), &undo_inc, &redo_inc);
+    }
 }
 
 static int
 ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 		       EHASH_DIR_HEADER * dir_header_p, PAGE_PTR bucket_page_p, PAGE_PTR sibling_page_p,
 		       VPID * bucket_vpid_p, VPID * sibling_vpid_p, int num_records, int location,
-		       PGSLOTID first_slot_id, int *out_new_local_depth_p)
+		       PGSLOTID first_slot_id, int *out_new_local_depth_p, bool is_temp)
 {
   PGSLOTID slot_id;
   RECDES recdes;
@@ -3641,7 +3658,10 @@ ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root
   EHASH_BUCKET_HEADER sibling_bucket_header;
   char found_depth;
 
-  log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, sibling_page_p, 0, DB_PAGESIZE, sibling_page_p);
+  if (!is_temp)
+    {
+      log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, sibling_page_p, 0, DB_PAGESIZE, sibling_page_p);
+    }
 
   /* Move records of original page into the sibling bucket */
   for (slot_id = 1; slot_id < num_records; slot_id++)
@@ -3716,7 +3736,10 @@ ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root
 
   pgbuf_set_dirty (thread_p, sibling_page_p, DONT_FREE);
 
-  log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, sibling_page_p, 0, DB_PAGESIZE, sibling_page_p);
+  if (!is_temp)
+    {
+      log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, sibling_page_p, 0, DB_PAGESIZE, sibling_page_p);
+    }
 
   return NO_ERROR;
 }
@@ -3726,6 +3749,7 @@ ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root
  *   return:
  *   ehid(in): identifier for the extendible hashing structure
  *   key(in): key value that has just been removed; used to locate the bucket.
+ *   is_temp(in): true if temporary (logging is not required)
  *
  * Note: This function checks to determine if it is possible (and
  * desirable) to merge the bucket (that contained the given key
@@ -3736,7 +3760,7 @@ ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root
  * a more tolerable size before concluding the system permanent operation.
  */
 static void
-ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
+ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, bool is_temp)
 {
   EHASH_DIR_HEADER *dir_header_p;
   PAGE_PTR dir_root_page_p;
@@ -3807,21 +3831,36 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 	      if ((bucket_status == EHASH_BUCKET_EMPTY) && (old_local_depth != 0))
 		{
-		  log_start_system_op (thread_p);
+		  if (!is_temp)
+		    {
+		      log_sysop_start (thread_p);
+		    }
 
-		  (void) file_dealloc_page (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH);
+		  if (file_dealloc (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH)
+		      != NO_ERROR)
+		    {
+		      assert_release (false);
+		    }
 
 		  /* Set all pointers to the bucket to NULL */
-		  if (ehash_connect_bucket (thread_p, ehid_p, old_local_depth, hash_key, &null_vpid) != NO_ERROR)
+		  if (ehash_connect_bucket (thread_p, ehid_p, old_local_depth, hash_key, &null_vpid, is_temp) !=
+		      NO_ERROR)
 		    {
 		      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
-		      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		      if (!is_temp)
+			{
+			  log_sysop_abort (thread_p);
+			}
 		      return;
 		    }
 
-		  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -1);
-		  ehash_shrink_directory_if_need (thread_p, ehid_p, dir_header_p);
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+		  ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -1,
+					    is_temp);
+		  ehash_shrink_directory_if_need (thread_p, ehid_p, dir_header_p, is_temp);
+		  if (!is_temp)
+		    {
+		      log_sysop_commit (thread_p);
+		    }
 		}
 	      break;
 
@@ -3833,37 +3872,53 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 
 	    case EHASH_SUCCESSFUL_COMPLETION:
 	      /* Perform actual merge operation */
-	      log_start_system_op (thread_p);
+	      if (!is_temp)
+		{
+		  log_sysop_start (thread_p);
+		}
 
 	      if (ehash_merge_permanent (thread_p, ehid_p, dir_root_page_p, dir_header_p, bucket_page_p, sibling_page_p,
 					 &bucket_vpid, &sibling_vpid, num_records, sibling_location, first_slot_id,
-					 &new_local_depth) != NO_ERROR)
+					 &new_local_depth, is_temp) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, sibling_page_p);
 		  pgbuf_unfix_and_init (thread_p, bucket_page_p);
 		  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  if (!is_temp)
+		    {
+		      log_sysop_abort (thread_p);
+		    }
 		  return;
 		}
 
 	      pgbuf_unfix_and_init (thread_p, sibling_page_p);
 	      pgbuf_unfix_and_init (thread_p, bucket_page_p);
 
-	      (void) file_dealloc_page (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH);
+	      if (file_dealloc (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH) != NO_ERROR)
+		{
+		  assert_release (false);
+		}
 
-	      ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -2);
-	      ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, new_local_depth, 1);
-	      ehash_shrink_directory_if_need (thread_p, ehid_p, dir_header_p);
+	      ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -2, is_temp);
+	      ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, new_local_depth, 1, is_temp);
+	      ehash_shrink_directory_if_need (thread_p, ehid_p, dir_header_p, is_temp);
 
 	      /* Update some directory pointers */
-	      if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, &sibling_vpid) != NO_ERROR)
+	      if (ehash_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, &sibling_vpid, is_temp)
+		  != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
-		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+		  if (!is_temp)
+		    {
+		      log_sysop_abort (thread_p);
+		    }
 		  return;
 		}
 
-	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	      if (!is_temp)
+		{
+		  log_sysop_commit (thread_p);
+		}
 	      break;
 
 	    case EHASH_ERROR_OCCURRED:
@@ -3892,6 +3947,7 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
  *   return:
  *   ehid(in): identifier for the extendible hashing structure to shrink
  *   new_depth(in): requested new depth of directory
+ *   is_temp(in): true if temporary file (logging is not required)
  *
  * Note: This function shrinks the directory of specified extendible
  * hashing structure as many times as necessary to attain
@@ -3903,7 +3959,7 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
  * before the extra part is deallocated.
  */
 static void
-ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
+ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, bool is_temp)
 {
   int old_pages;
   int old_ptrs;
@@ -3945,7 +4001,17 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 
   old_ptrs = 1 << dir_header_p->depth;
   times = 1 << (dir_header_p->depth - new_depth);
-  old_pages = file_get_numpages (thread_p, &ehid_p->vfid) - 1;	/* The first page starts with 0 */
+  ret = file_get_num_user_pages (thread_p, &ehid_p->vfid, &old_pages);
+  if (ret != NO_ERROR)
+    {
+#ifdef EHASH_DEBUG
+      er_log_debug (ARG_FILE_LINE, "WARNING: error reading user page number from file, shrink is cancelled.\n");
+#endif
+      ASSERT_ERROR ();
+      pgbuf_unfix (thread_p, (PAGE_PTR) dir_header_p);
+      return;
+    }
+  old_pages -= 1;		/* The first page starts with 0 */
 
   new_ptrs = old_ptrs / times;	/* Calculate how many pointers will remain */
 
@@ -3973,7 +4039,10 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
   new_dir_page_p = (PAGE_PTR) dir_header_p;
   new_dir_offset = EHASH_DIR_HEADER_SIZE;
 
-  log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE, new_dir_page_p);
+  if (!is_temp)
+    {
+      log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE, new_dir_page_p);
+    }
 
   dir_header_p->depth = new_depth;	/* Decrease the directory global depth */
 
@@ -4009,8 +4078,12 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 	{
 	  /* There is no more place in the directory page for new bucket pointers */
 
-	  /* Log this updated directory page */
-	  log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE, new_dir_page_p);
+	  if (!is_temp)
+	    {
+	      /* Log this updated directory page */
+	      log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE,
+				     new_dir_page_p);
+	    }
 
 	  pgbuf_set_dirty (thread_p, new_dir_page_p, FREE);
 
@@ -4026,8 +4099,12 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 	    }
 	  new_dir_offset = 0;
 
-	  /* Log the initial content of this directory page */
-	  log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE, new_dir_page_p);
+	  if (!is_temp)
+	    {
+	      /* Log the initial content of this directory page */
+	      log_append_undo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE,
+				     new_dir_page_p);
+	    }
 	}
 
       /* Perform the copy operation */
@@ -4035,8 +4112,11 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
 	      sizeof (EHASH_DIR_RECORD));
     }
 
-  /* Log this updated directory page */
-  log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE, new_dir_page_p);
+  if (!is_temp)
+    {
+      /* Log this updated directory page */
+      log_append_redo_data2 (thread_p, RVEH_REPLACE, &ehid_p->vfid, new_dir_page_p, 0, DB_PAGESIZE, new_dir_page_p);
+    }
 
   /* Release the source and destination pages */
   pgbuf_unfix_and_init (thread_p, old_dir_page_p);
@@ -4045,7 +4125,11 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
   /* remove unwanted part of directory. */
   new_end_offset = new_ptrs - 1;
   ehash_dir_locate (&new_pages, &new_end_offset);
-  ret = file_truncate_to_numpages (thread_p, &ehid_p->vfid, new_pages + 1);
+  ret = file_numerable_truncate (thread_p, &ehid_p->vfid, new_pages + 1);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
 }
 
 static EHASH_HASH_KEY
@@ -4067,7 +4151,7 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
 
   if (length > 0)
     {
-      /* Eliminate any traling space characters */
+      /* Eliminate any trailing space characters */
       if (char_isspace (*(char *) (key_p + length - 1)))
 	{
 	  for (p = key_p + length - 1; char_isspace (*p) && (p > key_p); p--)
@@ -4552,76 +4636,6 @@ exit_on_error:
 }
 #endif
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * ehash_estimate_npages_needed () - Estimate number of hash pages needed
- *   return: int npages
- *   total_nkeys(in): Total number of keys
- *   avg_key_size(in): Average key size
- *
- * Note: Find the number of needed pages to populate a hash with a set
- * of keys of the given length.
- *
- * The aproximation formulas has been taken from the book:
- * Algorithms by Robert Sedgewick, Second Edition
- *
- * With pages that can hold M records, extendible hashing may be
- * expected to require about 1.44(N/M)pages for a set of N
- * instances. The directory may be expected to have about
- * (N ** (1 + 1/M)) / M entries.
- */
-int
-ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_keys, int avg_key_size)
-{
-  int user_area;
-  int record_pages;
-  int bucket_pages;
-  int dir_pages;
-
-  avg_key_size += sizeof (OID);
-  avg_key_size = DB_ALIGN (avg_key_size, MAX_ALIGNMENT);
-
-  user_area = DB_PAGESIZE - spage_header_size () - sizeof (EHASH_BUCKET_HEADER) + spage_slot_size ();
-
-  record_pages = user_area / (avg_key_size + spage_slot_size ());
-  if (record_pages > 0)
-    {
-      bucket_pages = CEIL_PTVDIV (total_keys, record_pages);
-    }
-  else
-    {
-      /* Overflow insertion */
-      avg_key_size -= DB_PAGESIZE;
-      if (avg_key_size > 0)
-	{
-	  /* The rest of the pages */
-	  bucket_pages = DB_PAGESIZE;
-	  bucket_pages = CEIL_PTVDIV (avg_key_size, bucket_pages);
-	}
-      else
-	{
-	  bucket_pages = 1;
-	}
-
-      bucket_pages = bucket_pages + user_area / (sizeof (VPID) + spage_slot_size ());
-    }
-
-  bucket_pages = (int) ceil (1.44 * bucket_pages);
-  bucket_pages += file_guess_numpages_overhead (thread_p, NULL, bucket_pages);
-
-  /* Find directory pages */
-
-  user_area = DB_PAGESIZE - spage_header_size () - sizeof (EHASH_DIR_HEADER) + spage_slot_size ();
-
-  record_pages = user_area / sizeof (EHASH_DIR_RECORD);
-  record_pages = (int) (pow ((double) total_keys, (1.0 + 1.0 / record_pages)) / record_pages);
-  dir_pages = CEIL_PTVDIV (record_pages, user_area) + 1;
-  dir_pages += file_guess_numpages_overhead (thread_p, NULL, dir_pages);
-
-  return bucket_pages + dir_pages;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 static int
 ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_TYPE key_type, char *bucket_record_p,
 		  OID * assoc_value_p, int *out_apply_error, int (*apply_function) (THREAD_ENTRY * thread_p, void *key,
@@ -4770,7 +4784,10 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
     }
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
-  num_pages = file_get_numpages (thread_p, &dir_header_p->bucket_file);
+  if (file_get_num_user_pages (thread_p, &dir_header_p->bucket_file, &num_pages) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   /* Retrieve each bucket page and apply the given function to its entries */
   for (bucket_page_no = 0; apply_error_code == NO_ERROR && bucket_page_no < num_pages; bucket_page_no++)
@@ -4855,7 +4872,12 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_root_page_p;
 
-  num_pages = file_get_numpages (thread_p, &ehid_p->vfid) - 1;	/* The first page starts with 0 */
+  if (file_get_num_user_pages (thread_p, &ehid_p->vfid, &num_pages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+  num_pages -= 1;		/* The first page starts with 0 */
 
   num_ptrs = 1 << dir_header_p->depth;
   end_offset = num_ptrs - 1;	/* Directory first pointer has an offset of 0 */
@@ -5011,7 +5033,12 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
   /* Print buckets */
 
-  num_pages = file_get_numpages (thread_p, &dir_header_p->bucket_file) - 1;
+  if (file_get_num_user_pages (thread_p, &dir_header_p->bucket_file, &num_pages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+  num_pages -= 1;
 
   for (bucket_page_no = 0; bucket_page_no <= num_pages; bucket_page_no++)
     {
@@ -5289,7 +5316,7 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   record_p += sizeof (char);
   bucket_header.local_depth = *(char *) record_p;
 
-  (void) pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
 
   /* 
    * Initilize the bucket to contain variable-length records
@@ -5325,7 +5352,7 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 int
 ehash_rv_init_dir_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 {
-  (void) pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
+  pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
 
   return log_rv_copy_char (thread_p, recv_p);
 }
@@ -5618,6 +5645,7 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	      /* Copy (the assoc-value, key) pair from the bucket record */
 	      memcpy (log_redo_record_p, bucket_recdes.data, bucket_recdes.length);
 
+	      /* why is redo logged inside an undo? */
 	      log_append_redo_data2 (thread_p, RVEH_DELETE, &ehid_p->vfid, bucket_page_p, slot_no,
 				     log_recdes_redo.length, log_recdes_redo.data);
 

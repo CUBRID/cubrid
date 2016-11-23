@@ -868,10 +868,6 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_Restore_Option, ua_Restore_Option_Map},
   {ADDVOLDB, SA_CS, 2, UTIL_OPTION_ADDVOLDB, "addvoldb",
    ua_Addvol_Option, ua_Addvol_Option_Map},
-#if 0
-  {DELVOLDB, SA_CS, 2, UTIL_OPTION_DELVOLDB, "delvoldb",
-   ua_Delvol_Option, ua_Delvol_Option_Map},
-#endif
   {SPACEDB, SA_CS, 1, UTIL_OPTION_SPACEDB, "spacedb",
    ua_Space_Option, ua_Space_Option_Map},
   {LOCKDB, CS_ONLY, 1, UTIL_OPTION_LOCKDB, "lockdb",

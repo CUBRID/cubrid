@@ -248,7 +248,11 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   npages = estimated_nobjs = 0;
 
   /* do not use estimated npages, get correct info */
-  npages = file_get_numpages (thread_p, &(cls_info_p->ci_hfid.vfid));
+  if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &npages) != NO_ERROR)
+    {
+      goto error;
+    }
+  assert (npages > 0);
   cls_info_p->ci_tot_pages = MAX (npages, 0);
 
   estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->ci_hfid));
@@ -632,13 +636,13 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
       /* do not use estimated npages, get correct info */
       assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
-      npages = file_get_numpages (thread_p, &cls_info_p->ci_hfid.vfid);
-      if (npages < 0)
+      if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  /* cannot get #pages from the heap, use ones from the catalog */
 	  npages = cls_info_p->ci_tot_pages;
 	}
-      assert (npages >= 0);
+      assert (npages > 0);
 
       OR_PUT_INT (buf_p, npages);	/* #pages */
       buf_p += OR_INT_SIZE;
@@ -687,7 +691,12 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  /* If the btree file has currently more pages than when we gathered statistics, assume that all growth happen 
 	   * at the leaf level. If the btree is smaller, we use the gathered statistics since the btree may have an
 	   * external file (unknown at this level) to keep overflow keys. */
-	  npages = file_get_numpages (thread_p, &btree_stats_p->btid.vfid);
+	  if (file_get_num_user_pages (thread_p, &btree_stats_p->btid.vfid, &npages) != NO_ERROR)
+	    {
+	      /* what to do here? */
+	      npages = btree_stats_p->pages;
+	    }
+	  assert (npages > 0);
 	  if (npages > btree_stats_p->pages)
 	    {
 	      OR_PUT_INT (buf_p, (btree_stats_p->leafs + (npages - btree_stats_p->pages)));
@@ -1130,10 +1139,6 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 
 	case DB_TYPE_DATE:
 	  fprintf (fpp, "DB_TYPE_DATE \n");
-	  break;
-
-	case DB_TYPE_ELO:
-	  fprintf (fpp, "DB_TYPE_ELO \n");
 	  break;
 
 	case DB_TYPE_BLOB:

@@ -1175,7 +1175,6 @@ spage_is_slotted_page_type (PAGE_TYPE ptype)
     case PAGE_HEAP:
     case PAGE_BTREE:
     case PAGE_EHASH:
-    case PAGE_LARGEOBJ:
     case PAGE_CATALOG:
       return true;
 

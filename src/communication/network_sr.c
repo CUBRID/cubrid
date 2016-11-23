@@ -139,13 +139,6 @@ net_server_init (void)
   req_p->processing_function = sboot_add_volume_extension;
   req_p->name = "NET_SERVER_BO_ADD_VOLEXT";
 
-#if 0
-  req_p = &net_Requests[NET_SERVER_BO_DEL_VOLEXT];
-  req_p->action_attribute = (CHECK_AUTHORIZATION);
-  req_p->processing_function = sboot_del_volume_extension;
-  req_p->name = "NET_SERVER_BO_DEL_VOLEXT";
-#endif
-
   req_p = &net_Requests[NET_SERVER_BO_CHECK_DBCONSISTENCY];
   req_p->action_attribute = (CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_check_db_consistency;
@@ -424,57 +417,6 @@ net_server_init (void)
   req_p->processing_function = shf_heap_reclaim_addresses;
   req_p->name = "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
 
-  /* large object manager */
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_CREATE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_create;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_CREATE";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_READ];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slargeobjmgr_read;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_READ";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_WRITE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_write;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_WRITE";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_INSERT];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_insert;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_INSERT";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_DESTROY];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_destroy;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_DESTROY";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_DELETE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_delete;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_DELETE";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_APPEND];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_append;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_APPEND";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_TRUNCATE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_truncate;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_TRUNCATE";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_COMPRESS];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = slargeobjmgr_compress;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_COMPRESS";
-
-  req_p = &net_Requests[NET_SERVER_LARGEOBJMGR_LENGTH];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slargeobjmgr_length;
-  req_p->name = "NET_SERVER_LARGEOBJMGR_LENGTH";
-
   /* log */
   req_p = &net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS];
   req_p->processing_function = slogtb_reset_wait_msecs;
@@ -579,10 +521,6 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_DISK_REMARKS];
   req_p->processing_function = sdk_remarks;
   req_p->name = "NET_SERVER_DISK_REMARKS";
-
-  req_p = &net_Requests[NET_SERVER_DISK_PURPOSE];
-  req_p->processing_function = sdk_purpose;
-  req_p->name = "NET_SERVER_DISK_PURPOSE";
 
   req_p = &net_Requests[NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO];
   req_p->processing_function = sdisk_get_purpose_and_space_info;

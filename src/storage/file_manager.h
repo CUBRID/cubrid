@@ -33,8 +33,7 @@
 #include "disk_manager.h"
 #include "log_manager.h"
 #include "oid.h"
-
-#define FILE_DUMP_DES_AREA_SIZE 100
+#include "page_buffer.h"
 
 typedef enum
 {
@@ -46,7 +45,6 @@ typedef enum
   FILE_BTREE_OVERFLOW_KEY,
   FILE_EXTENDIBLE_HASH,
   FILE_EXTENDIBLE_HASH_DIRECTORY,
-  FILE_LONGDATA,
   FILE_CATALOG,
   FILE_DROPPED_FILES,
   FILE_VACUUM_DATA,
@@ -55,19 +53,6 @@ typedef enum
   FILE_UNKNOWN_TYPE,
   FILE_LAST = FILE_UNKNOWN_TYPE
 } FILE_TYPE;
-
-typedef enum
-{
-  FILE_OLD_FILE,
-  FILE_NEW_FILE,
-  FILE_ERROR
-} FILE_IS_NEW_FILE;
-
-enum FILE_SYSTEM_OP
-{
-  FILE_WITHOUT_OUTER_SYSTEM_OP = 0,
-  FILE_WITH_OUTER_SYSTEM_OP = 1
-};
 
 /* Set a vfid with values of volid and fileid */
 #define VFID_SET(vfid_ptr, volid_value, fileid_value) \
@@ -129,229 +114,123 @@ struct file_ehash_des
   int attr_id;
 };
 
-/* LO file descriptor */
-typedef struct file_lo_des FILE_LO_DES;
-struct file_lo_des
+typedef struct file_tablespace FILE_TABLESPACE;
+struct file_tablespace
 {
-  OID oid;
+  int initial_size;
+  float expand_ratio;
+  int expand_min_size;
+  int expand_max_size;
 };
 
-/*
- * Description of allocated sectors and pages for a volume. Note that the same
- * volume can be repeated in different sets of allocation. This is needed since
- * we need to record the pages in the order they were allocated
- */
-typedef struct file_allocset FILE_ALLOCSET;
-struct file_allocset
+typedef union file_descriptors FILE_DESCRIPTORS;
+union file_descriptors
 {
-  INT16 volid;			/* Volume identifier */
-  int num_sects;		/* Number of sectors */
-  int num_pages;		/* Number of pages */
-  INT32 curr_sectid;		/* Sector on which last page was allocated. It is used as a guess for next page
-				 * allocation */
-  int num_holes;		/* Indicate the number of identifiers (pages or slots) that can be compacted */
-  VPID start_sects_vpid;	/* Starting vpid address for sector table for this allocation set. See below for
-				 * offset. */
-  INT16 start_sects_offset;	/* Offset where the sector table starts at the starting vpid. */
-  VPID end_sects_vpid;		/* Ending vpid address for sector table for this allocation set. See below for offset. */
-  INT16 end_sects_offset;	/* Offset where the sector table ends at ending vpid. */
-  VPID start_pages_vpid;	/* Starting vpid address for page table for this allocation set. See below for offset. */
-  INT16 start_pages_offset;	/* Offset where the page table starts at the starting vpid. */
-  VPID end_pages_vpid;		/* Ending vpid address for page table for this allocation set. See below for offset. */
-  INT16 end_pages_offset;	/* Offset where the page table ends at ending vpid. */
-  VPID next_allocset_vpid;	/* Address of next allocation set */
-  INT16 next_allocset_offset;	/* Offset of next allocation set at vpid */
+  FILE_HEAP_DES heap;
+  FILE_OVF_HEAP_DES heap_overflow;
+  FILE_BTREE_DES btree;
+  FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
+  FILE_EHASH_DES ehash;
 };
 
-/* File header */
-typedef struct file_header FILE_HEADER;
-struct file_header
-{
-  VFID vfid;			/* The File identifier itself, this is used for debugging purposes. */
-  INT64 creation;		/* Time of the creation of the file */
-  INT16 type;			/* Type of the file such as Heap, B+tree, Extendible hashing, etc */
-  INT16 ismark_as_deleted;	/* Is the file marked as deleted ? */
-  int num_table_vpids;		/* Number of total pages for file table. The file header and the arrays describing the
-				 * allocated pages reside in these pages */
-  VPID next_table_vpid;		/* Next file table page */
-  VPID last_table_vpid;		/* Last file table page */
-  int num_user_pages;		/* Number of user allocated pages. It does not include the file table pages */
-  int num_user_pages_mrkdelete;	/* Num marked deleted pages */
-  int num_allocsets;		/* Number of volume arrays. Each volume array contains information of the volume
-				 * identifier and the allocated sectors and pages */
-  FILE_ALLOCSET allocset;	/* The first allocation set */
-  VPID last_allocset_vpid;	/* Address of last allocation set */
-  INT16 last_allocset_offset;	/* Offset of last allocation set at vpid */
+typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+typedef int (*FILE_MAP_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
 
-  VPID first_alloc_vpid;	/* The first allocation page */
+extern int file_manager_init (void);
+extern void file_manager_final (void);
 
-  struct
-  {
-    int total_length;		/* Total length of description of file */
-    int first_length;		/* Length of the first part */
-    VPID next_part_vpid;	/* Location of the rest of file description comments */
-    char piece[1];		/* Really more than one */
-  } des;
-};
+extern int file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tablespace,
+			FILE_DESCRIPTORS * des, bool is_temp, bool is_numerable, VFID * vfid);
+extern int file_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npages, FILE_DESCRIPTORS * des,
+				    VFID * vfid);
+extern int file_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_oid, VFID * vfid);
+extern int file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
+extern int file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
+extern int file_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid);
+extern int file_create_ehash (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash,
+			      VFID * vfid);
+extern int file_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_tmp, FILE_EHASH_DES * des_ehash,
+				  VFID * vfid);
 
-/* buffer for saving allocated vpids */
-typedef struct file_alloc_vpids FILE_ALLOC_VPIDS;
-struct file_alloc_vpids
-{
-  VPID *vpids;
-  int index;
-};
-
-typedef struct file_alloc_iterator FILE_ALLOC_ITERATOR;
-struct file_alloc_iterator
-{
-  VFID *vfid;
-  VPID current_vpid;
-  int current_index;
-  int num_pages;
-};
-
-extern int file_manager_initialize (THREAD_ENTRY * thread_p);
-extern int file_manager_finalize (THREAD_ENTRY * thread_p);
-
-extern FILE_IS_NEW_FILE file_is_new_file (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern FILE_IS_NEW_FILE file_is_new_file_ext (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * file_type,
-					      bool * has_undolog);
-extern int file_new_declare_as_old (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_new_set_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type);
-
-extern VFID *file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
-					    FILE_TYPE file_type, const void *file_des, VPID * first_prealloc_vpid,
-					    INT32 prealloc_npages);
-extern VFID *file_create (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, FILE_TYPE file_type,
-			  const void *file_des, VPID * first_prealloc_vpid, INT32 prealloc_npages);
-extern VFID *file_create_tmp (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, const void *file_des);
-extern VFID *file_create_tmp_no_cache (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, const void *file_des);
-extern int file_destroy_cached_tmp (THREAD_ENTRY * thread_p, VOLID volid);
-extern VFID *file_create_queryarea (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, const void *file_des);
-extern int file_create_hint_numpages (THREAD_ENTRY * thread_p, INT32 exp_numpages, FILE_TYPE file_type);
-extern int file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_destroy_without_reuse (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid);
-extern bool file_does_marked_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern FILE_TYPE file_get_type_by_fhdr_pgptr (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR fhdr_pgptr);
-extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid, void *area_des, int maxsize);
-extern INT32 file_get_numpages (THREAD_ENTRY * thread_p, const VFID * vfid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern INT32 file_get_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern INT32 file_get_numpages_plus_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 * numpages,
-						       INT32 * overhead_numpages);
-#endif
-extern VPID *file_get_first_alloc_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_vpid);
-extern int file_get_numfiles (THREAD_ENTRY * thread_p);
-extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 npages);
-extern int file_find_nthpages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * nth_vpids, INT32 start_nthpage,
-			       INT32 num_desired_pages);
-extern VPID *file_find_last_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * last_vpid);
-extern INT32 file_find_maxpages_allocable (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_find_nthfile (THREAD_ENTRY * thread_p, VFID * vfid, int nthfile);
-#if defined(CUBRID_DEBUG)
-extern DISK_ISVALID file_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid);
-#endif
-extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid, const VFID * vfid);
-extern VFID *file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type, const void *file_des);
-extern int file_reclaim_all_deleted (THREAD_ENTRY * thread_p);
-extern VPID *file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid, INT32 npages,
-			       const VPID * near_vpid, bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
-								    const FILE_TYPE file_type,
-								    const VPID * first_alloc_vpid, INT32 npages,
-								    void *args), void *args);
-extern VPID *file_alloc_pages_with_outer_sys_op (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid,
-						 INT32 npages, const VPID * near_vpid, FILE_TYPE * p_file_type,
-						 bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
-							      const FILE_TYPE file_type, const VPID * first_alloc_vpid,
-							      INT32 npages, void *args), void *args);
-extern VPID *file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid,
-						INT32 * first_alloc_nthpage, INT32 npages, const VPID * near_vpid,
-						bool (*fun) (THREAD_ENTRY * thread_p, const VFID * vfid,
-							     const FILE_TYPE file_type, const VPID * first_alloc_vpid,
-							     const INT32 * first_alloc_nthpage, INT32 npages,
-							     void *args), void *args, FILE_ALLOC_VPIDS * alloc_vpids);
-extern VPID *file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * first_alloc_vpid,
-					INT32 npages, const VPID * near_vpid, INT16 desired_volid,
-					bool (*fun) (const VFID * vfid, const FILE_TYPE file_type,
-						     const VPID * first_alloc_vpid, INT32 npages, void *args),
-					void *args);
-extern int file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * dealloc_vpid, FILE_TYPE file_type);
-extern int file_truncate_to_numpages (THREAD_ENTRY * thread_p, const VFID * vfid, INT32 keep_first_npages);
-extern DISK_ISVALID file_update_used_pages_of_vol_header (THREAD_ENTRY * thread_p);
+extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 
-extern int file_tracker_cache_vfid (VFID * vfid);
-extern VFID *file_get_tracker_vfid (void);
-extern VFID *file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid);
-extern int file_tracker_compress (THREAD_ENTRY * thread_p);
+extern int file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
+extern int file_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
+				void *f_init_args, VPID * vpid_alloc);
+extern int file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
+				void *f_init_args, int npages, VPID * vpids_out);
+extern int file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
+extern int file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
+extern int file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FILE_TYPE file_type_hint);
 
-extern int file_typecache_clear (void);
+extern int file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user_pages_out);
+extern DISK_ISVALID file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
+extern int file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
+extern int file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp);
+extern int file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,
+			   PGBUF_LATCH_CONDITION latch_cond, FILE_MAP_PAGE_FUNC func, void *args);
+extern int file_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 
-extern FILE_ALLOC_ITERATOR *file_alloc_iterator_init (THREAD_ENTRY * thread_p, VFID * vfid, FILE_ALLOC_ITERATOR * iter);
-extern VPID *file_alloc_iterator_get_current_page (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter, VPID * vpid);
-extern FILE_ALLOC_ITERATOR *file_alloc_iterator_next (THREAD_ENTRY * thread_p, FILE_ALLOC_ITERATOR * iter);
+extern int file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
+				    VPID * vpid_nth);
+extern int file_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, DKNPAGES npages);
 
-/* This are for debugging purposes */
-extern int file_dump (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
-extern int file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp);
+extern void file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
+
+extern void file_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
+
+extern int file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);
+extern int file_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out);
+extern int file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_ftype, VFID * vfid,
+					       OID * class_oid);
 extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
-extern DISK_ISVALID file_tracker_cross_check_with_disk_idsmap (THREAD_ENTRY * thread_p);
-extern int file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
-extern int file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid);
-extern int file_rv_undo_create_tmp (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_dump_create_tmp (FILE * fp, int length_ignore, void *data);
-extern int file_rv_redo_ftab_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_dump_ftab_chain (FILE * fp, int length_ignore, void *data);
-extern int file_rv_redo_fhdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_dump_fhdr (FILE * fp, int length_ignore, void *data);
-extern void file_rv_dump_idtab (FILE * fp, int length, void *data);
-extern void file_rv_dump_allocset (FILE * fp, int length_ignore, void *data);
+extern int file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp);
+extern int file_tracker_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+extern int file_tracker_dump_all_heap (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records);
+extern int file_tracker_dump_all_heap_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+extern int file_tracker_dump_all_btree_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+#if defined (SA_MODE)
+extern int file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p);
+#endif /* SA_MODE */
 
-extern int file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_dump_marked_as_deleted (FILE * fp, int length_ignore, void *data);
+extern int file_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_DESCRIPTORS * desc_out);
+extern int file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
+extern int file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 
-extern int file_rv_fhdr_undoredo_expansion (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_dump_expansion (FILE * fp, int length_ignore, void *data);
-extern int file_rv_fhdr_add_last_allocset (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhdr_remove_last_allocset (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhdr_change_last_allocset (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_dump_last_allocset (FILE * fp, int length_ignore, void *data);
-extern int file_rv_fhdr_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_dump_add_pages (FILE * fp, int length_ignore, void *data);
-extern int file_rv_fhdr_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_delete_pages_dump (FILE * fp, int length, void *data);
-extern int file_rv_fhdr_undoredo_mark_deleted_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_fhdr_dump_mark_deleted_pages (FILE * fp, int length_ignore, void *data);
-extern int file_rv_fhdr_undoredo_update_num_user_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+/* Recovery stuff */
+extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_partsect_set (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_partsect_clear (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_set_next (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_add (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_merge_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_merge_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_merge_compare_vsid_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_extdata_merge_compare_track_item_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
+extern int file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
-extern int file_rv_allocset_undoredo_sector (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_sector (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_page (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_link (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_add_pages (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_delete_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_delete_pages (FILE * fp, int length_ignore, void *data);
-extern int file_rv_allocset_undoredo_sectortab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_allocset_dump_sectortab (FILE * fp, int length_ignore, void *data);
-
-extern int file_rv_descriptor_undoredo_firstrest_nextvpid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_descriptor_dump_firstrest_nextvpid (FILE * fp, int length_ignore, void *data);
-extern int file_rv_descriptor_undoredo_nrest_nextvpid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_descriptor_dump_nrest_nextvpid (FILE * fp, int length_ignore, void *data);
-extern int file_rv_descriptor_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-
-extern int file_rv_tracker_undo_register (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void file_rv_tracker_dump_undo_register (FILE * fp, int length_ignore, void *data);
-
-extern int file_rv_logical_redo_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-
-extern int file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-
+/* Recovery dump stuff */
+extern void file_rv_dump_vfid_and_vpid (FILE * fp, int length, void *data);
+extern void file_rv_dump_extdata_set_next (FILE * fp, int length, void *data);
+extern void file_rv_dump_extdata_add (FILE * fp, int length, void *data);
+extern void file_rv_dump_extdata_remove (FILE * fp, int length, void *data);
 #endif /* _FILE_MANAGER_H_ */

@@ -254,16 +254,14 @@ extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID
 				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
 
 /* Recovery routines */
-extern int btree_rv_undo_create_index (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void btree_rv_dump_create_index (FILE * fp, int length_ignore, void *data);
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (BTID * btid, int key_delta, int oid_delta, int null_delta, RECDES * recdes);
 
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid);
 extern int btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVERFLOW_HEADER * ovf_header);
-extern int btree_init_node_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, BTREE_NODE_HEADER * header,
-				   bool redo);
+extern int btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR page_ptr,
+				   BTREE_NODE_HEADER * header, bool redo);
 extern int btree_init_root_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
 				   BTREE_ROOT_HEADER * root_header, TP_DOMAIN * key_type);
 extern BTREE_NODE_HEADER *btree_get_node_header (PAGE_PTR page_ptr);

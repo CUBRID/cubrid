@@ -95,9 +95,6 @@ extern void sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, ch
 extern void sboot_notify_unregister_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-#if 0
-extern void sboot_del_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-#endif
 extern void sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_find_number_temp_volumes (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -105,16 +102,6 @@ extern void sboot_find_last_permanent (THREAD_ENTRY * thread_p, unsigned int rid
 extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_write (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_insert (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_append (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_truncate (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_compress (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -129,7 +116,6 @@ extern void sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void sdk_totalpgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_freepgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

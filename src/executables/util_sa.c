@@ -1490,28 +1490,28 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE STATISTICS ***\n");
-      file_tracker_dump (NULL, outfp);
+      (void) file_tracker_dump (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_CAPACITIES)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE DESCRIPTIONS ***\n");
-      file_dump_all_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all heaps */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL HEAPS ***\n");
-      heap_dump_all_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_heap_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_INDEX_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all indices */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL INDICES ***\n");
-      btree_dump_capacity_all (NULL, outfp);
+      (void) file_tracker_dump_all_btree_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CLASSNAMES)
@@ -1606,7 +1606,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       /* this dumps the contents of all heaps */
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
       fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-      heap_dump_all (NULL, outfp, dump_records);
+      (void) file_tracker_dump_all_heap (NULL, outfp, dump_records);
     }
 
   db_shutdown ();
@@ -1701,34 +1701,7 @@ error_exit:
 int
 estimatedb_data (UTIL_FUNCTION_ARG * arg)
 {
-  UTIL_ARG_MAP *arg_map = arg->arg_map;
-  int num_instance;
-  int avg_inst_size;
-  int num_attr;
-  int num_var_attr;
-  int npages;
-
-  if (utility_get_option_string_table_size (arg_map) != 4)
-    {
-      goto print_estimate_data_usage;
-    }
-
-  num_instance = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0));
-  avg_inst_size = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1));
-  num_attr = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 2));
-  num_var_attr = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 3));
-
-  sysprm_load_and_init (NULL, NULL);
-  (void) db_set_page_size (IO_DEFAULT_PAGE_SIZE, IO_DEFAULT_PAGE_SIZE);
-  npages = heap_estimate_num_pages_needed (NULL, num_instance, avg_inst_size, num_attr, num_var_attr);
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_DATA, ESTIMATEDB_DATA_MSG_NPAGES),
-	   npages);
-  return EXIT_SUCCESS;
-
-print_estimate_data_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_DATA, ESTIMATEDB_DATA_MSG_USAGE),
-	   basename (arg->argv0));
-  return EXIT_FAILURE;
+  /* todo: remove me */
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 

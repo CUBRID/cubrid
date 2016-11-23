@@ -499,7 +499,6 @@
 #define db_push_elo(v, t, n) \
     ((v)->domain.general_info.type = (t), \
      (v)->data.elo.size = (n)->size, \
-     (v)->data.elo.loid = (n)->loid, \
      (v)->data.elo.locator = (n)->locator, \
      (v)->data.elo.meta_data = (n)->meta_data, \
      (v)->data.elo.type = (n)->type, \

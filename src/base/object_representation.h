@@ -84,12 +84,6 @@
 #define OR_VPID_PAGEID		0
 #define OR_VPID_VOLID		4
 
-#define OR_LOID_SIZE		12
-#define OR_LOID_VPID_PAGEID	0
-#define OR_LOID_VPID_VOLID	4
-#define OR_LOID_VFID_VOLID	6
-#define OR_LOID_VFID_FILEID	8
-
 #define OR_HFID_SIZE            12
 #define OR_HFID_PAGEID          0
 #define OR_HFID_VFID_FILEID     4
@@ -138,7 +132,7 @@
 #define OR_MONETARY_TYPE        0
 #define OR_MONETARY_AMOUNT      4
 #define OR_ELO_LENGTH_SIZE	4
-#define OR_ELO_HEADER_SIZE	(OR_LOID_SIZE + OR_ELO_LENGTH_SIZE)
+#define OR_ELO_HEADER_SIZE	(OR_ELO_LENGTH_SIZE)
 
 #define OR_SHA1_SIZE		(5 * OR_INT_SIZE)
 
@@ -439,30 +433,6 @@
     OR_PUT_INT (((char *) (ptr)) + OR_OID_PAGEID, NULL_PAGEID); \
     OR_PUT_SHORT (((char *) (ptr)) + OR_OID_SLOTID, 0); \
     OR_PUT_SHORT (((char *) (ptr)) + OR_OID_VOLID,  0); \
-  } while (0)
-
-#define OR_GET_LOID(ptr, loid) \
-  do { \
-    (loid)->vpid.pageid = OR_GET_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID); \
-    (loid)->vpid.volid  = OR_GET_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID); \
-    (loid)->vfid.volid  = OR_GET_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID); \
-    (loid)->vfid.fileid = OR_GET_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID); \
-  } while (0)
-
-#define OR_PUT_LOID(ptr, loid) \
-  do { \
-    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID,  (loid)->vpid.pageid); \
-    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID, (loid)->vpid.volid); \
-    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID, (loid)->vfid.volid); \
-    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID,  (loid)->vfid.fileid); \
-  } while (0)
-
-#define OR_PUT_NULL_LOID(ptr) \
-  do { \
-    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID,  -1); \
-    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID, -1); \
-    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID, -1); \
-    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID,  -1); \
   } while (0)
 
 #define OR_GET_HFID(ptr, hfid) \
@@ -1309,7 +1279,6 @@ extern char *or_pack_string_with_length (char *ptr, const char *string, int leng
 extern char *or_pack_errcode (char *ptr, int error);
 extern char *or_pack_oid (char *ptr, const OID * oid);
 extern char *or_pack_oid_array (char *ptr, int n, const OID * oids);
-extern char *or_pack_loid (char *ptr, LOID * loid);
 extern char *or_pack_hfid (const char *ptr, const HFID * hfid);
 extern char *or_pack_btid (char *buf, BTID * btid);
 extern char *or_pack_ehid (char *buf, EHID * btid);
@@ -1359,7 +1328,6 @@ extern char *or_unpack_string_nocopy (char *ptr, char **string);
 extern char *or_unpack_errcode (char *ptr, int *error);
 extern char *or_unpack_oid (char *ptr, OID * oid);
 extern char *or_unpack_oid_array (char *ptr, int n, OID ** oids);
-extern char *or_unpack_loid (char *ptr, LOID * loid);
 extern char *or_unpack_hfid (char *ptr, HFID * hfid);
 extern char *or_unpack_hfid_array (char *ptr, int n, HFID ** hfids);
 extern char *or_unpack_btid (char *buf, BTID * btid);
@@ -1439,7 +1407,6 @@ extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
 #endif
 extern int or_put_data (OR_BUF * buf, char *data, int length);
 extern int or_put_oid (OR_BUF * buf, const OID * oid);
-extern int or_put_loid (OR_BUF * buf, LOID * loid);
 extern int or_put_varbit (OR_BUF * buf, char *string, int bitlen);
 extern int or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen);
 extern int or_put_varchar (OR_BUF * buf, char *string, int charlen);
@@ -1466,7 +1433,6 @@ extern int or_get_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz);
 extern int or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary);
 extern int or_get_data (OR_BUF * buf, char *data, int length);
 extern int or_get_oid (OR_BUF * buf, OID * oid);
-extern int or_get_loid (OR_BUF * buf, LOID * loid);
 extern int or_get_offset (OR_BUF * buf, int *error);
 extern int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size);
 extern int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid);
