@@ -6703,9 +6703,11 @@ file_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp)
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pgbuf_unfix (thread_p, page_fhead);
       return error_code;
     }
 
+  pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
 
