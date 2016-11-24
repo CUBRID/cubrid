@@ -3988,6 +3988,12 @@ file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid)
       /* we should not have errors */
       assert_release (false);
     }
+
+  if (entry != NULL)
+    {
+      file_tempcache_retire_entry (entry);
+    }
+
   return error_code;
 }
 
