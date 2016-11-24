@@ -2926,7 +2926,6 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
 int
 file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
-  npages = 189189;
   return file_create_temp_internal (thread_p, npages, FILE_TEMP, false, vfid);
 }
 
