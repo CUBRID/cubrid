@@ -570,6 +570,10 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
 	  return ret;
 	}
 
+#if defined (SERVER_MODE)
+      perfmon_inc_stat (NULL, PSTAT_ELO_CREATE_FILE);
+#endif
+
       uri = db_private_strdup (NULL, out_uri);
       if (uri == NULL)
 	{
@@ -800,6 +804,10 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
       dest->locator = locator;
       dest->meta_data = meta_data;
 
+#if defined (SERVER_MODE)
+      perfmon_inc_stat (NULL, PSTAT_ELO_COPY_FILE);
+#endif
+
       return NO_ERROR;
 
     error_return:
@@ -847,12 +855,18 @@ elo_delete (DB_ELO * elo, bool force_delete)
       if (!ELO_NEEDS_TRANSACTION (elo) || force_delete)
 	{
 	  es_delete_file (elo->locator);
+#if defined (SERVER_MODE)
+	  perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+#endif
 	}
       else
 	{
 	  if (state == LOB_TRANSIENT_CREATED)
 	    {
 	      es_delete_file (elo->locator);
+#if defined (SERVER_MODE)
+	      perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+#endif
 	    }
 	  else
 	    {
@@ -870,7 +884,6 @@ elo_delete (DB_ELO * elo, bool force_delete)
 #endif
 	    }
 	}
-
       return ret;
     }
   else if (elo->type == ELO_LO)
@@ -948,6 +961,9 @@ elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count)
     {
       assert (elo->locator != NULL);
       ret = es_read_file (elo->locator, buf, count, pos);
+#if defined (SERVER_MODE)
+      perfmon_add_stat (NULL, PSTAT_ELO_BYTES_READ, ret);
+#endif
       return ret;
     }
   else if (elo->type == ELO_LO)
@@ -988,6 +1004,9 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
 	{
 	  return ret;
 	}
+#if defined (SERVER_MODE)
+      perfmon_add_stat (NULL, PSTAT_ELO_BYTES_WRITE, ret);
+#endif
       /* adjust size field */
       if ((INT64) (pos + count) > elo->size)
 	{
@@ -1140,6 +1159,10 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
   assert (((LOG_RCV *) rcv)->data != NULL);
 
   es_delete_file (((LOG_RCV *) rcv)->data);
+
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+#endif
 
   return NO_ERROR;
 }
