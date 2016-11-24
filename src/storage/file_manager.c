@@ -7992,7 +7992,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
       vpid_next = extdata_part_ftab->vpid_next;
       if (page_ftab != page_fhead)
 	{
-	  pgbuf_unfix (thread_p, page_fhead);
+	  pgbuf_unfix (thread_p, page_ftab);
 	}
       page_ftab = NULL;
       if (VPID_ISNULL (&vpid_next))
