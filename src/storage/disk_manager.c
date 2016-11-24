@@ -1418,6 +1418,19 @@ disk_rv_dump_init_pages (FILE * fp, int length_ignore, void *data)
 static int
 disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESERVE_CONTEXT * reserve_context)
 {
+#if defined (SERVER_MODE)
+#define DISK_EXTEND_TEMP_REGISTER() \
+  if (voltype == DB_TEMPORARY_VOLTYPE) \
+    {  \
+      tsc_getticks (&end_tick); \
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick); \
+      TSC_ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, tv_diff); \
+      thread_p->event_stats.temp_expand_pages += DISK_SECTS_NPAGES (nsect_temp_extended); \
+    }
+#define DISK_EXTEND_TEMP_COLLECT(nsects) \
+  if (voltype == DB_TEMPORARY_VOLTYPE) nsect_temp_extended += (nsects)
+#endif /* SERVER_MODE */
+
   DKNSECTS free = extend_info->nsect_free;
   DKNSECTS intention = extend_info->nsect_intention;
   DKNSECTS total = extend_info->nsect_total;
@@ -1431,6 +1444,12 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   VOLID volid_new = NULL_VOLID;
 
   DKNSECTS nsect_free_new = 0;
+
+#if defined (SERVER_MODE)
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  DKNSECTS nsect_temp_extended = 0;
+#endif /* SERVER_MODE */
 
   int error_code = NO_ERROR;
 
@@ -1475,6 +1494,13 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 
   disk_log ("disk_extend", "extend disk by %d sectors.", nsect_extend);
 
+#if defined (SERVER_MODE)
+  if (voltype == DB_TEMPORARY_VOLTYPE)
+    {
+      tsc_getticks (&start_tick);
+    }
+#endif /* SERVER_MODE */
+
   if (total < max)
     {
       /* first expand last volume to its capacity */
@@ -1509,9 +1535,16 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	}
       disk_cache_unlock_reserve (extend_info);
 
+#if defined (SERVER_MODE)
+      DISK_EXTEND_TEMP_COLLECT (nsect_free_new);
+#endif /* SERVER_MODE */
+
       if (nsect_extend <= 0)
 	{
 	  /* it is enough */
+#if defined (SERVER_MODE)
+	  DISK_EXTEND_TEMP_REGISTER ();
+#endif /* SERVER_MODE */
 	  return NO_ERROR;
 	}
     }
@@ -1588,13 +1621,25 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	}
 
       assert (disk_is_valid_volid (volid_new));
+
+#if defined (SERVER_MODE)
+      DISK_EXTEND_TEMP_COLLECT (volext.nsect_total);
+#endif /* SERVER_MODE */
     }
 
   /* finished expand */
 
   /* safe guard: if this was called during sector reservation, the expansion should cover all required sectors. */
   assert (reserve_context == NULL || reserve_context->n_cache_reserve_remaining == 0);
+#if defined (SERVER_MODE)
+  DISK_EXTEND_TEMP_REGISTER ();
+#endif /* SERVER_MODE */
   return NO_ERROR;
+
+#if defined (SERVER_MODE)
+#undef DISK_EXTEND_TEMP_COLLECT
+#undef DISK_EXTEND_TEMP_REGISTER
+#endif /* SERVER_MODE */
 }
 
 /*
