@@ -8291,6 +8291,8 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
       if (log_rec->type == LOG_SYSOP_END)
 	{
 	  /* Read the DATA HEADER */
+	  LOG_LSA prev_tran_lsa = log_rec->back_lsa;
+
 	  LSA_COPY (&tmp_log_lsa, &top_result_lsa);
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &tmp_log_lsa, log_pgptr);
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &tmp_log_lsa, log_pgptr);
@@ -8304,7 +8306,17 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 	  if (LSA_ISNULL (&prev_last_parent_lsa) || LSA_LE (&top_result_lsa, &prev_last_parent_lsa))
 	    {
 	      LSA_COPY (&(nxtop_stack[nxtop_count].start_lsa), &top_result->lastparent_lsa);
-	      LSA_COPY (&(nxtop_stack[nxtop_count].end_lsa), &top_result_lsa);
+	      if (top_result->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+		{
+		  /* we need to process this log record. end range at previous log record. */
+		  LSA_COPY (&(nxtop_stack[nxtop_count].end_lsa), &prev_tran_lsa);
+		}
+	      else
+		{
+		  /* end range at system op end log record */
+		  LSA_COPY (&(nxtop_stack[nxtop_count].end_lsa), &top_result_lsa);
+		}
+
 	      nxtop_count++;
 
 	      LSA_COPY (&prev_last_parent_lsa, &top_result->lastparent_lsa);
