@@ -5355,12 +5355,10 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
-#if defined (SERVER_MODE)
       if (xasl_unpack_info_p->use_xasl_clone && DB_NEED_CLEAR (&regu_var->value.dbval))
 	{
 	  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	}
-#endif
       break;
 
     case TYPE_CONSTANT:
@@ -5652,12 +5650,10 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	}
     }
   aggregate->accumulator.clear_value_at_clone_decache = false;
-#if defined (SERVER_MODE)
   if (xasl_unpack_info_p->use_xasl_clone && DB_NEED_CLEAR (aggregate->accumulator.value))
     {
       aggregate->accumulator.clear_value_at_clone_decache = true;
     }
-#endif
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5674,12 +5670,10 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
 
   aggregate->accumulator.clear_value2_at_clone_decache = false;
-#if defined (SERVER_MODE)
   if (xasl_unpack_info_p->use_xasl_clone && DB_NEED_CLEAR (aggregate->accumulator.value))
     {
       aggregate->accumulator.clear_value2_at_clone_decache = true;
     }
-#endif
 
   ptr = or_unpack_int (ptr, &aggregate->accumulator.curr_cnt);
 

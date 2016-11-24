@@ -2155,9 +2155,5 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 bool
 xcache_uses_clones (void)
 {
-#if defined (SERVER_MODE)
   return xcache_Max_clones > 0;
-#else
-  return false;
-#endif
 }
