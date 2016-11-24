@@ -4259,7 +4259,7 @@ vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID * dropped_fi
       return error_code;
     }
   error_code = file_alloc_sticky_first_page (thread_p, dropped_files_vfid, file_init_page_type, &ptype,
-					     &first_page_vpid, (PAGE_PTR *) dropped_files_page);
+					     &first_page_vpid, (PAGE_PTR *) & dropped_files_page);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

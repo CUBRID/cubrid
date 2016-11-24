@@ -1499,7 +1499,7 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
       log_sysop_abort (thread_p);
       return ER_FAILED;
     }
-  pgbuf_check_page_ptype (thread_p, bucket_page_p, PAGE_EHASH);
+  (void) pgbuf_check_page_ptype (thread_p, bucket_page_p, PAGE_EHASH);
 
   if (ehash_connect_bucket (thread_p, ehid_p, bucket_header.local_depth, hash_key, bucket_vpid_p, is_temp) != NO_ERROR)
     {
@@ -2834,7 +2834,8 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
   ehash_dir_locate (&new_pages, &new_end_offset);
   needed_pages = new_pages - old_pages;
 
-  error_code = file_alloc_multiple (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, &is_temp, new_pages, NULL);
+  error_code = file_alloc_multiple (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, &is_temp, needed_pages,
+				    NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

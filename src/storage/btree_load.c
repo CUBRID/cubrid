@@ -1888,13 +1888,13 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       ASSERT_ERROR ();
       goto end;
     }
-  if (page_new == NULL)
+  if (*page_new == NULL)
     {
       assert_release (false);
       error_code = ER_FAILED;
       goto end;
     }
-  assert (pgbuf_get_page_ptype (thread_p, *page_new) == PAGE_BTREE);
+  (void) pgbuf_check_page_ptype (thread_p, *page_new, PAGE_BTREE);
 
   if (header)
     {				/* This is going to be a leaf or non-leaf page */

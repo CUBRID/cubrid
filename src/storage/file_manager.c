@@ -4896,6 +4896,12 @@ exit:
 	}
     }
 
+  if (error_code != NO_ERROR && page_out != NULL && *page_out != NULL)
+    {
+      /* don't leak page. */
+      pgbuf_unfix_and_init (thread_p, *page_out);
+    }
+
   if (page_fhead != NULL)
     {
       pgbuf_unfix_and_init (thread_p, page_fhead);
