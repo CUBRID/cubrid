@@ -2781,6 +2781,7 @@ char *
 db_get_string (const DB_VALUE * value)
 {
   char *str = NULL;
+  DB_TYPE type;
 
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
@@ -2790,6 +2791,12 @@ db_get_string (const DB_VALUE * value)
     {
       return NULL;
     }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Needs to be checked !! */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
+	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
 
   switch (value->data.ch.info.style)
     {
@@ -2818,6 +2825,7 @@ char *
 db_get_char (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
+  DB_TYPE type;
 
 #if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
@@ -2828,6 +2836,11 @@ db_get_char (const DB_VALUE * value, int *length)
     {
       return NULL;
     }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
+	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
 
   switch (value->data.ch.info.style)
     {
@@ -2889,6 +2902,9 @@ db_get_bit (const DB_VALUE * value, int *length)
     {
       return NULL;
     }
+
+  /* Needs to be checked !! */
+  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_BIT || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARBIT);
 
   switch (value->data.ch.info.style)
     {
@@ -3001,6 +3017,8 @@ db_get_numeric (const DB_VALUE * value)
     }
   else
     {
+      /* Needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NUMERIC);
       return (DB_C_NUMERIC) value->data.num.d.buf;
     }
 }
@@ -3079,6 +3097,10 @@ db_get_set (const DB_VALUE * value)
     }
   else
     {
+      /* Needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_SET || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_MULTISET
+	      || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_SEQUENCE || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VOBJ);
+
       return value->data.set;
     }
 }
@@ -3101,6 +3123,8 @@ db_get_midxkey (const DB_VALUE * value)
     }
   else
     {
+      /* This one needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_MIDXKEY);
       return (DB_MIDXKEY *) (&(value->data.midxkey));
     }
 }
@@ -3123,6 +3147,8 @@ db_get_pointer (const DB_VALUE * value)
     }
   else
     {
+      /* Needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_POINTER);
       return value->data.p;
     }
 }
@@ -3378,6 +3404,7 @@ db_get_resultset (const DB_VALUE * value)
   CHECK_1ARG_ZERO (value);
 #endif
 
+  /* Needs to be checked !! */
   assert (value->domain.general_info.type == DB_TYPE_RESULTSET);
 
   return value->data.rset;
@@ -3757,7 +3784,7 @@ db_get_elo (const DB_VALUE * value)
 {
   CHECK_1ARG_NULL (value);
 
-  if (value->domain.general_info.is_null)
+  if (value->domain.general_info.is_null || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_ERROR)
     {
       return NULL;
     }
@@ -3767,6 +3794,10 @@ db_get_elo (const DB_VALUE * value)
     }
   else
     {
+      /* Needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_ELO || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_CLOB
+	      || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_BLOB);
+
       return (DB_ELO *) (&value->data.elo);
     }
 }
@@ -3779,7 +3810,16 @@ db_get_elo (const DB_VALUE * value)
 OID *
 db_get_oid (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_NULL (value);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+
+  /* Needs to be checked !! */
   assert (value->domain.general_info.type == DB_TYPE_OID);
 
   return (OID *) (&value->data.oid);

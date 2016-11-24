@@ -127,6 +127,7 @@
 #define DB_PULL_MULTISET(v) DB_PULL_SET(v)
 #define DB_PULL_LIST(v) DB_PULL_SET(v)
 #define DB_PULL_SEQUENCE(v) DB_PULL_LIST(v)
+/* Needs to be checked !! */
 #define DB_PULL_MIDXKEY(v) DB_GET_MIDXKEY(v)
 #define DB_PULL_ELO(v) \
       (assert (DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ELO \
