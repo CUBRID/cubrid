@@ -4007,17 +4007,23 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
 	{
 	  assert (false);
 	}
+      if (entry != NULL)
+	{
+	  entry->vfid = *vfid;
+	  /* type will be set later */
+	}
+      else
+	{
+	  assert (false);
+	}
     }
   else
     {
       entry = file_tempcache_pop_tran_file (thread_p, vfid);
+      assert (entry != NULL);
     }
 
-  if (entry == NULL)
-    {
-      assert_release (false);
-    }
-  else if (file_tempcache_put (thread_p, entry))
+  if (entry != NULL && file_tempcache_put (thread_p, entry))
     {
       /* cached */
       return NO_ERROR;
@@ -8453,6 +8459,10 @@ STATIC_INLINE bool
 file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 {
   FILE_HEADER fhead;
+
+  assert (entry != NULL);
+  assert (!VFID_ISNULL (&entry->vfid));
+  assert (entry->next == NULL);
 
   fhead.n_page_user = -1;
   if (file_header_copy (thread_p, &entry->vfid, &fhead) != NO_ERROR
