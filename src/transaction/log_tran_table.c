@@ -6932,7 +6932,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
   void *ptr_val;
   LOG_TDES *tdes;
   DB_VALUE *vals = NULL;
-  const int num_cols = 47;
+  const int num_cols = 46;
 
   *ptr = NULL;
 
@@ -7228,7 +7228,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
       idx++;
 
-      /* Num_new_temp_temp_files */
+      /* Num_temp_files */
       db_make_int (&vals[idx], file_get_tran_num_temp_files (thread_p));
       idx++;
 
