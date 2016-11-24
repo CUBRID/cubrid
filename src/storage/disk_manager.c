@@ -5649,11 +5649,11 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
 	  goto exit;
 	}
 
-      disk_map_clone[iter]->size_map = volheader->nsect_total / CHAR_BIT;
-      disk_map_clone[iter]->map = (char *) malloc (disk_map_clone[iter]->size_map);
-      if (disk_map_clone[iter]->map == NULL)
+      (*disk_map_clone)[iter].size_map = volheader->nsect_total / CHAR_BIT;
+      (*disk_map_clone)[iter].map = (char *) malloc ((*disk_map_clone)[iter].size_map);
+      if ((*disk_map_clone)[iter].map == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, disk_map_clone[iter]->size_map);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (*disk_map_clone)[iter].size_map);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit;
 	}
@@ -5661,7 +5661,7 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
       /* copy map */
       vpid_stab.volid = iter;
       vpid_stab.pageid = volheader->stab_first_page;
-      ptr_map = disk_map_clone[iter]->map;
+      ptr_map = (*disk_map_clone)[iter].map;
       for (nsects = volheader->nsect_total; nsects >= 0; nsects -= DISK_STAB_PAGE_BIT_COUNT)
 	{
 	  memsize = MIN (DB_PAGESIZE, nsects / CHAR_BIT);
@@ -5680,11 +5680,11 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
 	  ptr_map += memsize;
 	  vpid_stab.pageid++;
 	}
-      assert (ptr_map == disk_map_clone[iter]->map + disk_map_clone[iter]->size_map);
+      assert (ptr_map == (*disk_map_clone)[iter].map + (*disk_map_clone)[iter].size_map);
       assert (vpid_stab.pageid <= volheader->stab_first_page + volheader->stab_npages);
 
       /* clear sectors used by system */
-      ptr_map = disk_map_clone[iter]->map;
+      ptr_map = (*disk_map_clone)[iter].map;
       for (nsects = SECTOR_FROM_PAGEID (volheader->sys_lastpage) + 1; nsects >= DISK_STAB_UNIT_BIT_COUNT;
 	   nsects -= DISK_STAB_UNIT_BIT_COUNT)
 	{
@@ -5730,7 +5730,7 @@ disk_map_clone_free (DISK_VOLMAP_CLONE ** disk_map_clone)
 
   for (iter = 0; iter < disk_Cache->nvols_perm; iter++)
     {
-      free (disk_map_clone[iter]->map);
+      free ((*disk_map_clone)[iter].map);
     }
   free_and_init (*disk_map_clone);
 }
@@ -5749,7 +5749,7 @@ disk_map_clone_clear (VSID * vsid, DISK_VOLMAP_CLONE * disk_map_clone)
   int offset_bit = vsid->sectid % DISK_STAB_UNIT_BIT_COUNT;
   DISK_STAB_UNIT *unit = ((DISK_STAB_UNIT *) disk_map_clone[vsid->volid].map) + offset_unit;
 
-  if (vsid->sectid > disk_map_clone->size_map * CHAR_BIT)
+  if (vsid->sectid > disk_map_clone[vsid->volid].size_map * CHAR_BIT)
     {
       /* overflow */
       assert_release (false);
@@ -5782,8 +5782,8 @@ disk_map_clone_check_leaks (DISK_VOLMAP_CLONE * disk_map_clone)
 
   for (volid = 0; volid < disk_Cache->nvols_perm; volid++)
     {
-      for (unit = (DISK_STAB_UNIT *) disk_map_clone->map;
-	   (char *) unit < disk_map_clone->map + disk_map_clone->size_map; unit++)
+      for (unit = (DISK_STAB_UNIT *) disk_map_clone[volid].map;
+	   (char *) unit < disk_map_clone[volid].map + disk_map_clone[volid].size_map; unit++)
 	{
 	  if (*unit != 0)
 	    {
