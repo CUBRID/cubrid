@@ -481,10 +481,10 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr;		/* Address of logging data */
   const char *vol_fullname = ext_info->name;
-  DKNSECTS max_npages = ext_info->max_npages * DISK_SECTOR_NPAGES;
+  DKNSECTS max_npages = DISK_SECTS_NPAGES (ext_info->nsect_max);
   int kbytes_to_be_written_per_sec = ext_info->max_writesize_in_sec;
   DISK_VOLPURPOSE vol_purpose = ext_info->purpose;
-  DKNPAGES extend_npages = ext_info->nsect_total * DISK_SECTOR_NPAGES;
+  DKNPAGES extend_npages = DISK_SECTS_NPAGES (ext_info->nsect_total);
   INT16 prev_volid;
   int error_code = NO_ERROR;
 
@@ -569,7 +569,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
       (void) pgbuf_invalidate_all (thread_p, volid);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_BAD_NPAGES, 2, vol_fullname, max_npages);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_BAD_NPAGES, 2, vol_fullname, extend_npages);
       return ER_IO_FORMAT_BAD_NPAGES;
     }
 
@@ -1912,6 +1912,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
   ext_info.nsect_total = CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES);
   ext_info.nsect_total = DISK_SECTS_ROUND_UP (ext_info.nsect_total);
   ext_info.nsect_max = ext_info.nsect_total;
+  ext_info.max_npages = npages;	/* this is obsolete. I set it just to see it if a crash occurs. */
 
   /* extensions are permanent */
   ext_info.voltype = DB_PERMANENT_VOLTYPE;
