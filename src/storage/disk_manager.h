@@ -42,50 +42,70 @@
 #define VSID_COPY(dest, src) *((VSID *) dest) = *((VSID *) src)
 #define VSID_EQ(first, second) ((first)->volid == (second)->volid && (first)->sectid == (second)->sectid)
 
-#define OR_VOL_SPACE_INFO_SIZE      (OR_INT_SIZE * 6)
+#define OR_VOL_SPACE_INFO_SIZE      (OR_INT_SIZE * 9)
 
 /* todo: fix me */
-#define OR_PACK_VOL_SPACE_INFO(PTR, INFO)               \
-  do {                                                   \
-    if ((VOL_SPACE_INFO *) (INFO) != NULL) {                                          \
-      PTR = or_pack_int (PTR, ((INFO)->total_pages));    \
-      PTR = or_pack_int (PTR, ((INFO)->free_pages));     \
-      PTR = or_pack_int (PTR, ((INFO)->max_pages));      \
-      PTR = or_pack_int (PTR, ((INFO)->used_data_npages));\
-      PTR = or_pack_int (PTR, ((INFO)->used_index_npages));\
-      PTR = or_pack_int (PTR, ((INFO)->used_temp_npages));\
-    }                                                    \
-    else {                                               \
-      PTR = or_pack_int (PTR, -1);                       \
-      PTR = or_pack_int (PTR, -1);                       \
-      PTR = or_pack_int (PTR, -1);                       \
-      PTR = or_pack_int (PTR, -1);                       \
-      PTR = or_pack_int (PTR, -1);                       \
-      PTR = or_pack_int (PTR, -1);                       \
-    }                                                    \
-  } while (0)
+#define OR_PACK_VOL_SPACE_INFO(PTR, INFO) \
+  do \
+    { \
+      if ((VOL_SPACE_INFO *) (INFO) != NULL) \
+	{ \
+	  PTR = or_pack_int (PTR, ((INFO)->total_pages)); \
+	  PTR = or_pack_int (PTR, ((INFO)->free_pages)); \
+	  PTR = or_pack_int (PTR, ((INFO)->max_pages)); \
+	  PTR = or_pack_int (PTR, ((INFO)->used_data_npages)); \
+	  PTR = or_pack_int (PTR, ((INFO)->used_index_npages)); \
+	  PTR = or_pack_int (PTR, ((INFO)->used_temp_npages)); \
+	  PTR = or_pack_int (PTR, ((INFO)->n_max_sects)); \
+	  PTR = or_pack_int (PTR, ((INFO)->n_total_sects)); \
+	  PTR = or_pack_int (PTR, ((INFO)->n_free_sects)); \
+	} \
+      else \
+	{ \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	} \
+    } \
+  while (0)
 
 /* todo: fix me */
-#define OR_UNPACK_VOL_SPACE_INFO(PTR, INFO)             \
-  do {                                                   \
-    if ((VOL_SPACE_INFO *) (INFO) != NULL) {                                          \
-      PTR = or_unpack_int (PTR, &((INFO)->total_pages)); \
-      PTR = or_unpack_int (PTR, &((INFO)->free_pages));  \
-      PTR = or_unpack_int (PTR, &((INFO)->max_pages));   \
-      PTR = or_unpack_int (PTR, &((INFO)->used_data_npages));\
-      PTR = or_unpack_int (PTR, &((INFO)->used_index_npages));\
-      PTR = or_unpack_int (PTR, &((INFO)->used_temp_npages));\
-    }                                   \
-    else {                              \
-      int dummy;                        \
-      PTR = or_unpack_int (PTR, &dummy);\
-      PTR = or_unpack_int (PTR, &dummy);\
-      PTR = or_unpack_int (PTR, &dummy);\
-      PTR = or_unpack_int (PTR, &dummy);\
-      PTR = or_unpack_int (PTR, &dummy);\
-      PTR = or_unpack_int (PTR, &dummy);\
-    }\
-  } while (0)
+#define OR_UNPACK_VOL_SPACE_INFO(PTR, INFO) \
+  do \
+    { \
+      if ((VOL_SPACE_INFO *) (INFO) != NULL) \
+	{ \
+	  PTR = or_unpack_int (PTR, &((INFO)->total_pages)); \
+	  PTR = or_unpack_int (PTR, &((INFO)->free_pages)); \
+	  PTR = or_unpack_int (PTR, &((INFO)->max_pages)); \
+	  PTR = or_unpack_int (PTR, &((INFO)->used_data_npages)); \
+	  PTR = or_unpack_int (PTR, &((INFO)->used_index_npages)); \
+	  PTR = or_unpack_int (PTR, &((INFO)->used_temp_npages)); \
+	  PTR = or_unpack_int (PTR, &((INFO)->n_max_sects)); \
+	  PTR = or_unpack_int (PTR, &((INFO)->n_total_sects)); \
+	  PTR = or_unpack_int (PTR, &((INFO)->n_free_sects)); \
+	} \
+      else \
+	{ \
+	  int dummy; \
+	  PTR = or_unpack_int (PTR, &dummy); \
+	  PTR = or_unpack_int (PTR, &dummy); \
+	  PTR = or_unpack_int (PTR, &dummy); \
+	  PTR = or_unpack_int (PTR, &dummy); \
+	  PTR = or_unpack_int (PTR, &dummy); \
+	  PTR = or_unpack_int (PTR, &dummy); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	  PTR = or_pack_int (PTR, -1); \
+	} \
+    } \
+  while (0)
 
 typedef enum
 {
@@ -118,6 +138,8 @@ struct vol_space_info
   INT32 n_total_sects;
   INT32 n_free_sects;
 };
+
+#define VOL_SPACE_INFO_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 
 #define DISK_SECTS_SIZE(nsects)  ((INT64) nsects * IO_SECTORSIZE)
 #define DISK_SECTS_NPAGES(nsects) (nsects * DISK_SECTOR_NPAGES)

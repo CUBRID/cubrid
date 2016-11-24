@@ -1591,17 +1591,16 @@
    db_add_volext API function. */
 typedef enum
 {
-
-  DISK_PERMVOL_DATA_PURPOSE = 0,
-  DISK_PERMVOL_INDEX_PURPOSE = 1,
-  DISK_PERMVOL_GENERIC_PURPOSE = 2,
-  DISK_PERMVOL_TEMP_PURPOSE = 3,
-
-  DISK_TEMPVOL_TEMP_PURPOSE = 4,	/* internal use only */
-  DISK_UNKNOWN_PURPOSE = 5,	/* internal use only: Does not mean anything */
-  DISK_EITHER_TEMP_PURPOSE = 6	/* internal use only: Either pervol_temp or tempvol_tmp.. Used only to select a volume */
+  DB_PERMANENT_DATA_PURPOSE = 0,
+  DB_TEMPORARY_DATA_PURPOSE = 1,	/* internal use only */
+  DISK_UNKNOWN_PURPOSE = 2,	/* internal use only: Does not mean anything */
 } DB_VOLPURPOSE;
 
+typedef enum
+{
+  DB_PERMANENT_VOLTYPE,
+  DB_TEMPORARY_VOLTYPE
+} DB_VOLTYPE;
 
 /* These are the status codes that can be returned by db_value_compare. */
 typedef enum
