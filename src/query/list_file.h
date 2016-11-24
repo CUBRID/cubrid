@@ -67,6 +67,8 @@ struct qfile_page_header
   VOLID next_volid;		/* next page volume identifier */
   VOLID ovfl_volid;		/* overflow page volume identifier */
 };
+#define QFILE_PAGE_HEADER_INITIALIZER \
+  { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID }
 
 /* query result(list file) cache entry type definition */
 typedef struct qfile_list_cache_entry QFILE_LIST_CACHE_ENTRY;

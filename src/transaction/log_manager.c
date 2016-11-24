@@ -140,7 +140,7 @@ static int rv;
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
    (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
-    && ((RCVI) != RVBT_DELETE_INDEX) \
+    && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
@@ -204,6 +204,10 @@ static bool log_No_logging = false;
 
 extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
+#define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
+#define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
+#define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
+
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
@@ -219,7 +223,11 @@ static bool log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
 				       LOG_DATA_ADDR * addr);
 static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr);
 static void log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa);
-static void log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa);
+static void log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+					     LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int data_size,
+					     const char *data);
+static void log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
+				  int data_size, const char *data);
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -236,8 +244,6 @@ static int lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTR
 /* RB_PROTOTYPE_STATIC declares red-black tree functions. see base/rb_tree.h */
 RB_PROTOTYPE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 
-static TRAN_STATE log_complete_system_op (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result,
-					  TRAN_STATE back_to_state);
 static void log_dump_record_header_to_string (LOG_RECORD_HEADER * log, char *buf, size_t len);
 static void log_ascii_dump (FILE * out_fp, int length, void *data);
 static void log_hexa_dump (FILE * out_fp, int length, void *data);
@@ -268,12 +274,16 @@ static LOG_PAGE *log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FI
 						     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 					      LOG_PAGE * log_page_p);
-static LOG_PAGE *log_dump_record_commit_topope_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
-							 LOG_PAGE * log_page_p);
-static LOG_PAGE *log_dump_record_topope_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
-						LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
+						       LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
+static LOG_PAGE *log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+					    LOG_ZIP * log_zip_p, FILE * out_fp);
+static LOG_PAGE *log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end,
+						     LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p,
+						     FILE * out_fp);
 static LOG_PAGE *log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 					     LOG_PAGE * log_page_p);
+static void log_dump_checkpoint_topops (FILE * out_fp, int length, void *data);
 static LOG_PAGE *log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
@@ -293,12 +303,9 @@ static int log_undo_rec_restartable (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa_ptr);
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
-static TRAN_STATE log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result);
-static void log_complete_topop_attach (LOG_TDES * tdes);
 
 static int log_is_valid_locator (const char *locator);
 
-static bool log_is_class_being_modified_internal (THREAD_ENTRY * thread_p, const OID * class_oid);
 static void log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg);
 static void log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
 					 void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * class,
@@ -306,11 +313,24 @@ static void log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tde
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
 
-static LOG_LSA *log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type,
-					      LOG_LSA * compensate_undo_nxlsa);
 static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
 					    LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
+
+STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
+static void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
+				       const char *data, bool is_rv_finish_postpone);
+STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
+						      LOG_TDES ** tdes_out) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+
+static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
+				   int data_size, const char *data);
 
 /*
  * log_rectype_string - RETURN TYPE OF LOG RECORD IN STRING FORMAT
@@ -374,17 +394,14 @@ log_to_string (LOG_RECTYPE type)
     case LOG_COMMIT:
       return "LOG_COMMIT";
 
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-      return "LOG_COMMIT_TOPOPE_WITH_POSTPONE";
+    case LOG_SYSOP_START_POSTPONE:
+      return "LOG_SYSOP_START_POSTPONE";
 
-    case LOG_COMMIT_TOPOPE:
-      return "LOG_COMMIT_TOPOPE";
+    case LOG_SYSOP_END:
+      return "LOG_SYSOP_END";
 
     case LOG_ABORT:
       return "LOG_ABORT";
-
-    case LOG_ABORT_TOPOPE:
-      return "LOG_ABORT_TOPOPE";
 
     case LOG_START_CHKPT:
       return "LOG_START_CHKPT";
@@ -431,9 +448,15 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_HA_SERVER_STATE";
     case LOG_DUMMY_OVF_RECORD:
       return "LOG_DUMMY_OVF_RECORD";
+    case LOG_DUMMY_GENERIC:
+      return "LOG_DUMMY_GENERIC";
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
+      break;
+
+    default:
+      assert (false);
       break;
     }
 
@@ -2653,16 +2676,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       rcv.pgptr = addr->pgptr;
       rcv.data = (char *) data;
 
-      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
-	{
-	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, NULL);
-	  addr->pgptr = rcv.pgptr;	/* pgptr could be changed by pgbuf_fix_with_retry */
-	}
-      else
-	{
-	  assert (RV_fun[rcvindex].redofun != NULL);
-	  (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	}
+      assert (RV_fun[rcvindex].redofun != NULL);
+      (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
 
       LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
       log_skip_logging (thread_p, addr);
@@ -2693,9 +2708,6 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       return;
     }
 
-  /* We cannot append postpone during a postpone system operation. */
-  assert (tdes->topops.type != LOG_TOPOPS_POSTPONE);
-
   skipredo = log_can_skip_redo_logging (rcvindex, tdes, addr);
   if (skipredo == true || (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes)))
     {
@@ -2708,20 +2720,11 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       rcv.pgptr = addr->pgptr;
       rcv.data = (char *) data;
 
-      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
+      assert (RV_fun[rcvindex].redofun != NULL);
+      (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+      if (skipredo == false)
 	{
-	  assert (skipredo == true);
-	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, NULL);
-	  addr->pgptr = rcv.pgptr;	/* pgptr could be changed by pgbuf_fix_with_retry */
-	}
-      else
-	{
-	  assert (RV_fun[rcvindex].redofun != NULL);
-	  (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	  if (skipredo == false)
-	    {
-	      log_append_redo_data (thread_p, rcvindex, addr, length, data);
-	    }
+	  log_append_redo_data (thread_p, rcvindex, addr, length, data);
 	}
 
       return;
@@ -2868,10 +2871,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
       start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
       /* 
-       * Set the LSA on the data page of the corresponding log record for page
-       * operation logging.
-       * Make sure that I should log. Page operational logging is not done for
-       * temporary data of temporary files and volumes
+       * Set the LSA on the data page of the corresponding log record for page operation logging.
+       * Make sure that I should log. Page operational logging is not done for temporary data of temporary files/volumes
        */
       if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
 	{
@@ -3472,68 +3473,46 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
  */
 
 /*
- * log_start_system_op - Start a macro system operation
+ * log_sysop_end_type_string () - string for log sys op end type
  *
- * return: lsa of parent  or NULL in case of error.
- *
+ * return        : string for log sys op end type
+ * end_type (in) : log sys op end type
  */
-LOG_LSA *
-log_start_system_op (THREAD_ENTRY * thread_p)
+const char *
+log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
 {
-  return log_start_system_op_internal (thread_p, LOG_TOPOPS_NORMAL, NULL);
-}
-
-/*
- * log_start_compensate_system_op - Start a macro system operation for log
- *				    compensate.
- *
- * return		      : Void.
- * thread_p (in)	      : Thread entry.
- * compensate_undo_nxlsa (in) : Log lsa to 
- */
-void
-log_start_compensate_system_op (THREAD_ENTRY * thread_p, LOG_LSA * compensate_undo_nxlsa)
-{
-  if (log_start_system_op_internal (thread_p, LOG_TOPOPS_COMPENSATE_TRAN_ABORT, compensate_undo_nxlsa) == NULL)
+  switch (end_type)
     {
+    case LOG_SYSOP_END_COMMIT:
+      return "LOG_SYSOP_END_COMMIT";
+    case LOG_SYSOP_END_ABORT:
+      return "LOG_SYSOP_END_ABORT";
+    case LOG_SYSOP_END_LOGICAL_UNDO:
+      return "LOG_SYSOP_END_LOGICAL_UNDO";
+    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
+      return "LOG_SYSOP_END_LOGICAL_MVCC_UNDO";
+    case LOG_SYSOP_END_LOGICAL_COMPENSATE:
+      return "LOG_SYSOP_END_LOGICAL_COMPENSATE";
+    case LOG_SYSOP_END_LOGICAL_RUN_POSTPONE:
+      return "LOG_SYSOP_END_LOGICAL_RUN_POSTPONE";
+    default:
       assert (false);
+      return "UNKNOWN LOG_SYSOP_END_TYPE";
     }
 }
 
 /*
- * log_start_postpone_system_op () - Start a macro system operation for
- *				     postpone.
+ * log_sysop_start () - Start a new system operation. This can also be nested in another system operation.
  *
- * return	      : Void.
- * thread_p (in)      : Thread entry.
- * reference_lsa (in) : Postpone reference lsa.
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
  */
 void
-log_start_postpone_system_op (THREAD_ENTRY * thread_p, LOG_LSA * reference_lsa)
+log_sysop_start (THREAD_ENTRY * thread_p)
 {
-  if (log_start_system_op_internal (thread_p, LOG_TOPOPS_POSTPONE, reference_lsa) == NULL)
-    {
-      assert (false);
-    }
-}
-
-/*
- * log_start_system_op_internal - Start a macro system operation
- *
- * return: lsa of parent  or NULL in case of error.
- *
- */
-static LOG_LSA *
-log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG_LSA * reference_lsa)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
+  LOG_TDES *tdes = NULL;
   int tran_index;
-  int error_code = NO_ERROR, r;
-
-  /* 
-   * Remember the current tail of the transaction, so we can allow partial
-   * aborts or commits of nested top actions
-   */
+  int r = NO_ERROR;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
@@ -3555,6 +3534,21 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
       /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
       VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_TOPOP);
+
+      if (tdes->topops.last < 0)
+	{
+	  assert (tdes->topops.last == -1);
+
+	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
+	   * are not  nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
+	   * records to undo will process all system operations until the first one. Since vacuum workers.master never
+	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
+	   * system operations will not be linked between them. */
+	  LSA_SET_NULL (&tdes->head_lsa);
+	  LSA_SET_NULL (&tdes->tail_lsa);
+	  LSA_SET_NULL (&tdes->undo_nxlsa);
+	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
+	}
     }
   else
     {
@@ -3563,8 +3557,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
       if (tdes == NULL)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-	  error_code = ER_LOG_UNKNOWN_TRANINDEX;
-	  return NULL;
+	  return;
 	}
 
       if (LOG_ISRESTARTED ())
@@ -3574,6 +3567,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	}
     }
 
+  /* Can current tdes.topops stack handle another system operation? */
   if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
     {
       if (logtb_realloc_topops_stack (tdes, 1) == NULL)
@@ -3584,7 +3578,6 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
 	      assert (r == NO_ERROR);
 	    }
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
 	      /* Restore state */
@@ -3595,78 +3588,11 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	      /* Else */
 	      /* Leave state as VACUUM_WORKER_STATE_TOPOP */
 	    }
-	  return NULL;
+	  return;
 	}
     }
 
-  /* Is system op started to execute log compensate? */
-  if (type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT)
-    {
-      bool compensate_debug = prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG);
-
-      assert (!LOG_ISTRAN_ACTIVE (tdes));
-      assert (reference_lsa != NULL);
-
-      if (tdes->topops.last == -1)
-	{
-	  /* Transaction rollback. */
-	  tdes->topops.type = LOG_TOPOPS_COMPENSATE_TRAN_ABORT;
-
-	  if (compensate_debug)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Start compensate system op for transaction rollback. Tran_ID=%d. "
-			     "Undo_nxlsa=%llu|%d\n", tdes->trid, (long long int) reference_lsa->pageid,
-			     (int) reference_lsa->offset);
-	    }
-	}
-      else
-	{
-	  /* System op is aborted. */
-	  assert (tdes->topops.type == LOG_TOPOPS_NORMAL);
-	  tdes->topops.type = LOG_TOPOPS_COMPENSATE_SYSOP_ABORT;
-	  /* Set compensate level. It must be known in order to: 1. Attach all top operations with higher level to
-	   * their parent. 2. Commit the top operation with the same level. Initially, only level -1 and 0 were
-	   * allowed here. However, it seems there can be nested qexec_execute_insert calls, each opening a different
-	   * system operation. If one of the nested calls is aborted, we require to compensate its changes (among
-	   * others updating unique statistics, which is a logical operation and which requires a logical compensation
-	   * using system operation). Remember the level here, and it will be used by log_end_system_op. */
-	  tdes->topops.compensate_level = tdes->topops.last + 1;
-
-	  if (compensate_debug)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Start compensate system op for system op abort. Tran_ID=%d. "
-			     "Undo_nxlsa=%llu|%d\n", tdes->trid, (long long int) reference_lsa->pageid,
-			     (int) reference_lsa->offset);
-	    }
-	}
-      LSA_COPY (&tdes->topops.ref_lsa, reference_lsa);
-    }
-  else if (type == LOG_TOPOPS_POSTPONE)
-    {
-      assert (tdes->topops.last == -1);
-      assert (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
-      assert (reference_lsa != NULL);
-
-      tdes->topops.type = LOG_TOPOPS_POSTPONE;
-      LSA_COPY (&tdes->topops.ref_lsa, reference_lsa);
-
-      if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "POSTPONE_DEBUG: Start postpone system op. Tran_ID=%d. Ref_lsa=%lld|%d.\n",
-			 tdes->trid, (long long int) reference_lsa->pageid, (int) reference_lsa->offset);
-	}
-    }
-  else if (tdes->topops.last == -1)
-    {
-      tdes->topops.type = LOG_TOPOPS_NORMAL;
-    }
-
-  /* 
-   * NOTE if tdes->topops.last >= 0, there is an already defined
-   * top system operation.
-   */
+  /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &tdes->tail_lsa);
   LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
@@ -3674,266 +3600,80 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
-
-  return &tdes->topops.stack[tdes->topops.last].lastparent_lsa;
 }
 
 /*
- * log_end_system_op - END A MACRO SYSTEM OPERATION
+ * log_sysop_end_random_exit () - Random exit from system operation end functions. Used to simulate crashes.
  *
- * return: state of end of the system operation
- *
- *   result(in): Result of the nested top action
- *
- * NOTE: Make a macro system operation either permanent (commit) or
- *              forget about it (abort). The system operation is not
- *              associated with the current transaction.
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
  */
-TRAN_STATE
-log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
+STATIC_INLINE void
+log_sysop_end_random_exit (THREAD_ENTRY * thread_p)
 {
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
-  TRAN_STATE state;
-  int tran_index;
-  int error_code = NO_ERROR, r;
+  int mod_factor = 5000;	/* 0.02% */
 
-  {
-    int mod_factor = 5000;	/* 0.02% */
+  FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
+}
 
-    FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
-  }
+/*
+ * log_sysop_end_begin () - Used at the beginning of system operation end functions. Verifies valid context and outputs
+ *			    transaction index and descriptor.
+ *
+ * return		: Void.
+ * thread_p (in)	: Thread entry.
+ * tran_index_out (out) : Transaction index.
+ * tdes_out (out)       : Transaction descriptor.
+ */
+STATIC_INLINE void
+log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
+{
+  log_sysop_end_random_exit (thread_p);
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+  log_sysop_get_tran_index_and_tdes (thread_p, tran_index_out, tdes_out);
+  if ((*tdes_out) != NULL && (*tdes_out)->topops.last < 0)
     {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
-
-      if (tdes->topops.last == 0)
-	{
-	  /* Do not allow to attach to vacuum worker's parent tdes since it will be never committed. */
-	  if (result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
-	    {
-	      assert (result != LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
-	      result = LOG_RESULT_TOPOP_COMMIT;
-	    }
-	}
-      else
-	{
-	  if (result == LOG_RESULT_TOPOP_COMMIT)
-	    {
-	      /* Do not commit nested top operations. */
-	      result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
-	    }
-	}
-
-      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
-	{
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-			 "VACUUM: End system operation. Worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-			 "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). Worker state=%d."
-			 "LOG_RESULT_TOPOP=%d.\n", tdes->trid, tdes->topops.last,
-			 (long long int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.pageid,
-			 (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
-			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-			 VACUUM_GET_WORKER_STATE (thread_p), result);
-	}
-      else
-	{
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_MASTER,
-			 "VACUUM: End system operation for master. tdes->trid=%d, tdes->topops.last=%d, "
-			 "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). LOG_RESULT_TOPOP=%d.\n",
-			 tdes->trid, tdes->topops.last,
-			 (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
-			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, result);
-	}
-    }
-  else
-    {
-      tdes = LOG_FIND_TDES (tran_index);
-      if (tdes == NULL)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-	  error_code = ER_LOG_UNKNOWN_TRANINDEX;
-	  return TRAN_UNACTIVE_UNKNOWN;
-	}
-    }
-
-  if (tdes->topops.last < 0)
-    {
-      /* There is not any active top system operation */
+      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_NOTACTIVE_TOPOPS, 0);
-      error_code = ER_LOG_NOTACTIVE_TOPOPS;
-      return TRAN_UNACTIVE_UNKNOWN;
+      *tdes_out = NULL;
+      return;
     }
+}
 
-  save_state = tdes->state;
-
-  /* 
-   * A top system operation should not have any distributed transaction stuff
-   */
-
-  if (!LOG_ISTRAN_ACTIVE (tdes))
+/*
+ * log_sysop_end_unstack () - Used for ending system operations, removes last sysop from transaction descriptor's stack.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * tdes (in/out) : Transaction descriptor.
+ */
+STATIC_INLINE void
+log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  tdes->topops.last--;
+  if (tdes->topops.last >= 0)
     {
-      /* 
-       * The transaction is not active. That is, it is in the process of commit
-       * or abort. It is possible that the fate of the top system operation can
-       * be decided at this moment.  Nested topops, however, must still be
-       * allowed to attach to their parents.
-       */
-      bool compensate_debug = prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG);
-      bool postpone_debug = prm_get_bool_value (PRM_ID_POSTPONE_DEBUG);
-
-      if (tdes->topops.last == 0 && result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
-	{
-	  /* 
-	   *
-	   * This could be the case of in the middle of an abort. The top system
-	   * operation must be committed to undo whatever we were doing.
-	   */
-	  result = LOG_RESULT_TOPOP_COMMIT;
-
-	  /* TODO: It would be useful to print a call-stack here. */
-	  _er_log_debug (ARG_FILE_LINE,
-			 "WARNING: Attach to outer is used for top system "
-			 "operation, even though transaction is not active.Tran_ID=%d", tdes->trid);
-	}
-      else if (tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
-	       && tdes->topops.compensate_level == tdes->topops.last)
-	{
-	  /* This is a compensate system op. It must be committed. */
-	  if (compensate_debug && result != LOG_RESULT_TOPOP_COMMIT)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
-			     result, LOG_RESULT_TOPOP_COMMIT, tdes->trid, tdes->topops.last);
-	    }
-	  result = LOG_RESULT_TOPOP_COMMIT;
-	}
-      else if (tdes->topops.type != LOG_TOPOPS_NORMAL && tdes->topops.last > 0 && result == LOG_RESULT_TOPOP_COMMIT)
-	{
-	  /* Compensate/Postpone will no longer work correctly if nested system operations are committed. All
-	   * operations inside a compensate/postpone system operation should be committed together. */
-	  if (tdes->topops.type != LOG_TOPOPS_POSTPONE && compensate_debug)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
-			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, tdes->trid, tdes->topops.last);
-	    }
-	  if (tdes->topops.type == LOG_TOPOPS_POSTPONE && postpone_debug)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "POSTPONE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
-			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, tdes->trid, tdes->topops.last);
-	    }
-	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
-	}
-      if (compensate_debug
-	  && (tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
-	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "COMPENSATE_DEBUG: End system operation under compensate. Tran_ID=%d, system op depth=%d, "
-			 "result=%d.\n", tdes->trid, tdes->topops.last, result);
-	}
-      if (postpone_debug && tdes->topops.type == LOG_TOPOPS_POSTPONE)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "POSTPONE_DEBUG: End system operation under postpone. Tran_ID=%d, system op depth=%d, "
-			 "result=%d.\n", tdes->trid, tdes->topops.last, result);
-	}
+      LSA_COPY (&tdes->topop_lsa, &LOG_TDES_LAST_SYSOP (tdes)->lastparent_lsa);
     }
   else
     {
-      assert (tdes->topops.type == LOG_TOPOPS_NORMAL);
+      LSA_SET_NULL (&tdes->topop_lsa);
     }
+}
 
-  if (result != LOG_RESULT_TOPOP_ATTACH_TO_OUTER && !LSA_ISNULL (&tdes->tail_lsa)
-      && (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last].lastparent_lsa)
-	  || LSA_GT (&tdes->tail_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa)))
-    {
-      /* 
-       * A top system operation executed something and it is not attached back
-       * to its parent, therefore, the top system operation is either committed
-       * or aborted at this point and will not depend on the outcome of the
-       * parent
-       */
-      if (result == LOG_RESULT_TOPOP_COMMIT)
-	{
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
-	      && log_does_allow_replication () == true)
-	    {
-	      /* for the replication agent guarantee the order of transaction */
-	      /* for CC(Click Counter) : at here */
-	      log_append_repl_info (thread_p, tdes, false);
-	    }
+/*
+ * log_sysop_end_final () - Used to complete a system operation at the end of system operation end functions.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * tdes (in/out) : Transaction descriptor.
+ */
+STATIC_INLINE void
+log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  int r = NO_ERROR;
 
-	  /* 
-	   * The top system operation may have some commit postpone
-	   * operations to do. If it does, we need to execute them at this
-	   * point. We need to remove postpone operations of nested top system
-	   * operations.
-	   */
-	  log_do_postpone (thread_p, tdes, &tdes->topops.stack[tdes->topops.last].posp_lsa,
-			   LOG_COMMIT_TOPOPE_WITH_POSTPONE, true);
-	  state = log_complete_system_op (thread_p, tdes, result, save_state);
-	}
-      else
-	{
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
-	      && log_does_allow_replication () == true)
-	    {
-	      repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-	    }
-
-	  /* Abort the top system operation */
-	  tdes->state = TRAN_UNACTIVE_ABORTED;
-	  log_rollback (thread_p, tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-
-	  log_rollback_classrepr_cache (thread_p, tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-
-	  state = log_complete_system_op (thread_p, tdes, result, save_state);
-	}
-    }
-  else
-    {
-      /* 
-       * The top system operation did not do anything, or the result is to
-       * attach the transaction to back to its parent
-       */
-
-      if (result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER)
-	{
-	  state = save_state;
-	}
-      else if (result == LOG_RESULT_TOPOP_COMMIT)
-	{
-	  state = TRAN_UNACTIVE_COMMITTED;
-	}
-      else
-	{
-	  state = TRAN_UNACTIVE_ABORTED;
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
-	      && log_does_allow_replication () == true)
-	    {
-	      repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-	    }
-	}
-
-      if (tdes->topops.type == LOG_TOPOPS_NORMAL)
-	{
-	  /* Always attach to parent. */
-	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
-	}
-      else
-	{
-	  /* Even if inside compensation nothing was executed, we need to complete system operation in order to
-	   * "compensate" and to reset type. */
-	  /* Don't attach to outer. */
-	}
-      (void) log_complete_system_op (thread_p, tdes, result, save_state);
-    }
+  log_sysop_end_unstack (thread_p, tdes);
 
   if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
@@ -3969,8 +3709,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 			 VACUUM_GET_WORKER_STATE (thread_p));
 
 	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
-	   * are not  nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
-	   * records to undo will process all system operations until the first one. Since vacuum workers.master never
+	   * are not nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
+	   * records to undo will process all system operations until the first one. Since vacuum workers/master never
 	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
 	   * system operations will not be linked between them. */
 	  LSA_SET_NULL (&tdes->head_lsa);
@@ -3980,13 +3720,435 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	}
     }
 
-  {
-    int mod_factor = 5000;	/* 0.02% */
+  log_sysop_end_random_exit (thread_p);
 
-    FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
-  }
+  if (LOG_ISCHECKPOINT_TIME ())
+    {
+#if defined(SERVER_MODE)
+      logpb_do_checkpoint ();
+#else /* SERVER_MODE */
+      (void) logpb_checkpoint (thread_p);
+#endif /* SERVER_MODE */
+    }
+}
 
-  return state;
+/*
+ * log_sysop_commit_internal () - Commit system operation. This can be used just to guarantee atomicity or permanence of
+ *				  all changes in system operation. Or it can be extended to also act as an undo,
+ *				  compensate or run postpone log record. The type is decided using log_record argument.
+ *
+ * return	              : Void.
+ * thread_p (in)              : Thread entry.
+ * log_record (in)            : All information that are required to build the log record for commit system operation.
+ * data_size (in)             : recovery data size
+ * data (in)                  : recovery data
+ * is_rv_finish_postpone (in) : true if this is called during recovery to finish a system op postpone
+ */
+void
+log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size, const char *data,
+			   bool is_rv_finish_postpone)
+{
+  int tran_index;
+  LOG_TDES *tdes = NULL;
+
+  assert (log_record != NULL);
+  assert (log_record->type != LOG_SYSOP_END_ABORT);
+
+  log_sysop_end_begin (thread_p, &tran_index, &tdes);
+  if (tdes == NULL)
+    {
+      assert_release (false);
+      return;
+    }
+
+  if ((LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)))
+      && log_record->type == LOG_SYSOP_END_COMMIT)
+    {
+      /* No change. */
+      assert (LSA_ISNULL (&LOG_TDES_LAST_SYSOP (tdes)->posp_lsa));
+    }
+  else
+    {
+      LOG_PRIOR_NODE *node = NULL;
+      TRAN_STATE save_state;
+
+      /* we are here because either system operation is not empty, or this is the end of a logical system operation.
+       * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
+       * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
+       * such a case, you should add a dummy log record to trick this assert. */
+      assert (!LSA_ISNULL (&tdes->tail_lsa) && LSA_GT (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)));
+
+      save_state = tdes->state;
+
+      /* now that we have access to tdes, we can do some updates on log record and sanity checks */
+      if (log_record->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+	{
+	  /* only allowed for postpones */
+	  assert (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
+		  || tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
+
+	  /* this is relevant for proper recovery */
+	  log_record->run_postpone.is_sysop_postpone = (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
+	}
+      else if (log_record->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
+	{
+	  /* we should be doing rollback or undo recovery */
+	  assert (tdes->state == TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
+		  || (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && is_rv_finish_postpone));
+	}
+      else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO || log_record->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+	{
+	  /* ... no restrictions I can think of */
+	}
+      else
+	{
+	  assert (log_record->type == LOG_SYSOP_END_COMMIT);
+	  assert (tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
+		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
+	}
+
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
+	  && log_does_allow_replication () == true)
+	{
+	  /* for the replication agent guarantee the order of transaction */
+	  /* for CC(Click Counter) : at here */
+	  log_append_repl_info (thread_p, tdes, false);
+	}
+
+      log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
+      log_record->prv_topresult_lsa = tdes->tail_topresult_lsa;
+
+      /* do postpone */
+      log_sysop_do_postpone (thread_p, tdes, log_record, data_size, data);
+
+      /* log system operation end */
+      log_append_sysop_end (thread_p, tdes, log_record, data_size, data);
+
+      /* Remember last partial result */
+      LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
+
+      /* Restore transaction state. */
+      tdes->state = save_state;
+    }
+
+  log_sysop_end_final (thread_p, tdes);
+}
+
+/*
+ * log_sysop_commit () - Commit system operation. This is the default type to end a system operation successfully and
+ *			 to guarantee atomicity/permanency of all its operations.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+log_sysop_commit (THREAD_ENTRY * thread_p)
+{
+  LOG_REC_SYSOP_END log_record;
+
+  log_record.type = LOG_SYSOP_END_COMMIT;
+
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
+}
+
+/*
+ * log_sysop_end_logical_undo () - Commit system operation and add an undo log record. This is a logical undo for complex
+ *				  operations that cannot be easily located when rollback or recovery undo is executed.
+ *
+ * return	  : Void.
+ * thread_p (in)  : Thread entry.
+ * rcvindex (in)  : Recovery index for undo operation.
+ * vfid (in)      : NULL or file identifier. Must be not NULL for mvcc operations.
+ * undo_size (in) : Undo data size.
+ * undo_data (in) : Undo data.
+ *
+ * note: sys ops used for logical undo have a limitation: they cannot use postpone log records. this limitation can
+ *       be changed if needed by extending sys op start postpone log record to support undo data. so far, the extension
+ *       was not necessary.
+ */
+void
+log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, int undo_size,
+			    const char *undo_data)
+{
+  LOG_REC_SYSOP_END log_record;
+
+  if (LOG_IS_MVCC_OPERATION (rcvindex))
+    {
+      log_record.type = LOG_SYSOP_END_LOGICAL_MVCC_UNDO;
+      log_record.mvcc_undo.undo.data.offset = NULL_OFFSET;
+      log_record.mvcc_undo.undo.data.volid = NULL_VOLID;
+      log_record.mvcc_undo.undo.data.pageid = NULL_PAGEID;
+      log_record.mvcc_undo.undo.data.rcvindex = rcvindex;
+      log_record.mvcc_undo.undo.length = undo_size;
+      log_record.mvcc_undo.mvccid = logtb_get_current_mvccid (thread_p);
+      log_record.mvcc_undo.vacuum_info.vfid = *vfid;
+      LSA_SET_NULL (&log_record.mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa);
+    }
+  else
+    {
+      log_record.type = LOG_SYSOP_END_LOGICAL_UNDO;
+      log_record.undo.data.offset = NULL_OFFSET;
+      log_record.undo.data.volid = NULL_VOLID;
+      log_record.undo.data.pageid = NULL_PAGEID;
+      log_record.undo.data.rcvindex = rcvindex;
+      log_record.undo.length = undo_size;
+    }
+
+  log_sysop_commit_internal (thread_p, &log_record, undo_size, undo_data, false);
+}
+
+/*
+ * log_sysop_commit_and_compensate () - Commit system operation and add a compensate log record. This is a logical
+ *					compensation that is too complex to be included in a single log record.
+ *
+ * return	   : Void.
+ * thread_p (in)   : Thread entry.
+ * undo_nxlsa (in) : LSA of next undo LSA (equivalent to compensated undo record previous LSA).
+ */
+void
+log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa)
+{
+  LOG_REC_SYSOP_END log_record;
+
+  log_record.type = LOG_SYSOP_END_LOGICAL_COMPENSATE;
+  log_record.compensate_lsa = *undo_nxlsa;
+
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
+}
+
+/*
+ * log_sysop_end_logical_run_postpone () - Commit system operation and add a run postpone log record. This is a logical
+ *					   run postpone that is too complex to be included in a single log record.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * posp_lsa (in) : The LSA of postpone record which was executed by this run postpone.
+ */
+void
+log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa)
+{
+  LOG_REC_SYSOP_END log_record;
+
+  log_record.type = LOG_SYSOP_END_LOGICAL_RUN_POSTPONE;
+  log_record.run_postpone.postpone_lsa = *posp_lsa;
+  /* is_sysop_postpone will be set in log_sysop_commit_internal */
+
+  log_sysop_commit_internal (thread_p, &log_record, 0, NULL, false);
+}
+
+/*
+ * log_sysop_end_recovery_postpone () - called during recovery to finish the postpone phase of system op
+ *
+ * return          : void
+ * thread_p (in)   : thread entry
+ * log_record (in) : end system op log record as it was read from start postpone log record
+ * data_size (in)  : undo data size
+ * data (in)       : undo data
+ */
+void
+log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
+				 const char *data)
+{
+  return log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
+}
+
+/*
+ * log_sysop_abort () - Abort sytem operations (usually due to errors). All changes in this system operation are
+ *			rollbacked.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+log_sysop_abort (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+  LOG_TDES *tdes = NULL;
+  LOG_REC_SYSOP_END sysop_end;
+
+  log_sysop_end_begin (thread_p, &tran_index, &tdes);
+  if (tdes == NULL)
+    {
+      assert_release (false);
+      return;
+    }
+
+  if (LSA_ISNULL (&tdes->tail_lsa) || LSA_LE (&tdes->tail_lsa, &LOG_TDES_LAST_SYSOP (tdes)->lastparent_lsa))
+    {
+      /* No change. */
+    }
+  else
+    {
+      LOG_PRIOR_NODE *node = NULL;
+      TRAN_STATE save_state;
+
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
+	  && log_does_allow_replication () == true)
+	{
+	  repl_log_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	}
+
+      /* Abort changes in system op. */
+      save_state = tdes->state;
+      tdes->state = TRAN_UNACTIVE_ABORTED;
+
+      /* Rollback changes. */
+      log_rollback (thread_p, tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+      log_rollback_classrepr_cache (thread_p, tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+
+      /* Log abort system operation. */
+      sysop_end.type = LOG_SYSOP_END_ABORT;
+      sysop_end.lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
+      sysop_end.prv_topresult_lsa = tdes->tail_topresult_lsa;
+      log_append_sysop_end (thread_p, tdes, &sysop_end, 0, NULL);
+
+      /* Remember last partial result */
+      LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
+
+      /* Restore transaction state. */
+      tdes->state = save_state;
+    }
+
+  log_sysop_end_final (thread_p, tdes);
+}
+
+/*
+ * log_sysop_attach_to_outer () - Attach system operation to its immediate parent (another system operation or, if this
+ *				  is top system operation, to transaction descriptor).
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+  LOG_TDES *tdes = NULL;
+
+  log_sysop_end_begin (thread_p, &tran_index, &tdes);
+  if (tdes == NULL)
+    {
+      assert_release (false);
+      return;
+    }
+
+  /* Is attach to outer allowed? */
+  if (tdes->topops.last == 0 && (!LOG_ISTRAN_ACTIVE (tdes) || VACUUM_IS_THREAD_VACUUM (thread_p)))
+    {
+      /* Nothing to attach to. Be conservative and commit the transaction. */
+      assert_release (false);
+      log_sysop_commit (thread_p);
+      return;
+    }
+
+  /* Attach to outer: transfer postpone LSA. Not much to do really :) */
+  if (tdes->topops.last - 1 >= 0)
+    {
+      if (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa))
+	{
+	  LSA_COPY (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa,
+		    &tdes->topops.stack[tdes->topops.last].posp_lsa);
+	}
+    }
+  else
+    {
+      if (LSA_ISNULL (&tdes->posp_nxlsa))
+	{
+	  LSA_COPY (&tdes->posp_nxlsa, &tdes->topops.stack[tdes->topops.last].posp_lsa);
+	}
+    }
+
+  log_sysop_end_final (thread_p, tdes);
+}
+
+/*
+ * log_sysop_get_level () - Get current system operation level. If no system operation is started, it returns -1.
+ *
+ * return        : System op level
+ * thread_p (in) : Thread entry
+ */
+STATIC_INLINE int
+log_sysop_get_level (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+  LOG_TDES *tdes = NULL;
+
+  log_sysop_get_tran_index_and_tdes (thread_p, &tran_index, &tdes);
+  if (tdes == NULL)
+    {
+      assert_release (false);
+      return -1;
+    }
+  return tdes->topops.last;
+}
+
+/*
+ * log_sysop_get_tran_index_and_tdes () - Get transaction descriptor for system operations (in case of VACUUM, it will
+ *                                        return the thread special tdes instead of system tdes).
+ *
+ * return               : Void
+ * thread_p (in)        : Thread entry
+ * tran_index_out (out) : Transaction index
+ * tdes_out (out)       : Transaction descriptor
+ */
+STATIC_INLINE void
+log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
+{
+  *tran_index_out = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      *tdes_out = VACUUM_GET_WORKER_TDES (thread_p);
+    }
+  else
+    {
+      *tdes_out = LOG_FIND_TDES (*tran_index_out);
+    }
+
+  if (*tdes_out == NULL)
+    {
+      assert_release (false);
+      return;
+    }
+}
+
+/*
+ * log_check_system_op_is_started () - Check system op is started.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ */
+bool
+log_check_system_op_is_started (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+    }
+  else
+    {
+      tdes = LOG_FIND_TDES (tran_index);
+    }
+
+  if (tdes == NULL)
+    {
+      assert_release (false);
+      return false;
+    }
+
+  if (!LOG_IS_SYSTEM_OP_STARTED (tdes))
+    {
+      assert_release (false);
+      return false;
+    }
+
+  return true;
 }
 
 /*
@@ -4069,23 +4231,16 @@ log_is_tran_in_system_op (THREAD_ENTRY * thread_p)
  *   tdes(in):
  *   addr(in):
  *
- * NOTE: Find if it is safe to skip undo logging for data related to
- *              given file.
- *              Some rcvindex values should never be skipped.
+ * NOTE: Find if it is safe to skip undo logging for data related to given file.
+ *       Some rcvindex values should never be skipped.
  */
 static bool
 log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const LOG_TDES * tdes, LOG_DATA_ADDR * addr)
 {
-  bool canskip = false;
-  bool has_undolog;
-  FILE_TYPE ftype = FILE_UNKNOWN_TYPE;
-  FILE_IS_NEW_FILE is_new_file = FILE_ERROR;
-
   /* 
    * Some log record types (rcvindex) should never be skipped.
-   * In the case of LINK_PERM_VOLEXT, the link of a permanent temp
-   * volume must be logged to support media failures.
-   * See also canskip_redo.
+   * In the case of LINK_PERM_VOLEXT, the link of a permanent temp volume must be logged to support media failures.
+   * See also log_can_skip_redo_logging.
    */
   if (LOG_ISUNSAFE_TO_SKIP_RCVINDEX (rcvindex))
     {
@@ -4099,14 +4254,13 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
     }
 
   /* 
-   * Operation level undo can be skipped on temporary pages. For example,
-   * those of temporary files.
-   * No-operational level undo (i.e., logical logging) can be skipped for
-   * temporary files.
+   * Operation level undo can be skipped on temporary pages. For example, those of temporary files.
+   * No-operational level undo (i.e., logical logging) can be skipped for temporary files.
    */
-
   if (addr->pgptr != NULL && pgbuf_is_lsa_temporary (addr->pgptr) == true)
     {
+      /* why do we log temporary files */
+      assert (false);
       return true;
     }
 
@@ -4115,54 +4269,11 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
       return false;
     }
 
-  /* Check if temporary file. */
-  if (addr->pgptr == NULL && tdes->num_new_temp_files > 0)
-    {
-      is_new_file = file_is_new_file_ext (thread_p, addr->vfid, &ftype, &has_undolog);
-      assert (is_new_file != FILE_ERROR);
-      if (ftype == FILE_TEMP)
-	{
-	  return true;
-	}
-    }
-  /* Check if new file. */
-  if (tdes->num_new_files <= 0)
-    {
-      return false;
-    }
-  if (is_new_file == FILE_ERROR)
-    {
-      is_new_file = file_is_new_file_ext (thread_p, addr->vfid, &ftype, &has_undolog);
-    }
-  if (is_new_file == FILE_NEW_FILE && has_undolog == false)
-    {
-      /* 
-       * We may be able to skip undo logging if we are not in a savepoint or
-       * a top system operation.
-       */
-      if (tdes->topops.last < 0 && LSA_ISNULL (&tdes->savept_lsa))
-	{
-	  canskip = true;
-	}
-      else
-	{
-	  /* 
-	   * We cannot skip the undo logging. In addition we must declare that
-	   * logging must be done on this file from now on, otherwise, we may
-	   * not be able to rollback properly. For example:
-	   * insert (without top op), delete (with top op),
-	   * insert (without top op), rollback. We may not be able to undo the
-	   * delete due to lack of space.
-	   */
-	  (void) file_new_set_has_undolog (thread_p, addr->vfid);
-	}
-    }
-
-  return canskip;
+  return false;
 }
 
 /*
- * log_can_skip_redo_logging - IS IT SAFE TO SKIP REDO LOGGING FOR GIVEN FILE ?
+ * log_can_skip_redo_logging - Is it safe to skip redo logging for given file ?
  *
  * return:
  *
@@ -4170,33 +4281,25 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
  *   ignore_tdes(in):
  *   addr(in): Address (Volume, page, and offset) of data
  *
- * NOTE: Find if it is safe to skip redo logging for data related to
- *              given file. Redo logging can be skip on any temporary page.
- *              For example, pages of temporary files on any volume.
- *              Some rcvindex values should never be skipped.
+ * NOTE: Find if it is safe to skip redo logging for data related to given file. 
+ *       Redo logging can be skip on any temporary page. For example, pages of temporary files on any volume.
+ *       Some rcvindex values should never be skipped.
  */
 static bool
 log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr)
 {
   /* 
    * Some log record types (rcvindex) should never be skipped.
-   * In the case of LINK_PERM_VOLEXT, the link of a permanent temp
-   * volume must be logged to support media failures.
-   * See also canskip_undo.
+   * In the case of LINK_PERM_VOLEXT, the link of a permanent temp volume must be logged to support media failures.
+   * See also log_can_skip_undo_logging.
    */
   if (LOG_ISUNSAFE_TO_SKIP_RCVINDEX (rcvindex))
     {
       return false;
     }
 
-  if (rcvindex == RVVAC_DROPPED_FILE_ADD)
-    {
-      return false;
-    }
-
   /* 
-   * Operation level redo can be skipped on temporary pages. For example,
-   * those of temporary files
+   * Operation level redo can be skipped on temporary pages. For example, those of temporary files
    */
   if (addr->pgptr != NULL && pgbuf_is_lsa_temporary (addr->pgptr) == true)
     {
@@ -4216,9 +4319,8 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
  *   tdes(in/out): State structure of transaction being committed
  *   start_posplsa(in): Address where the first postpone log record start
  *
- * NOTE: The transaction is declared as committed with postpone actions
- *              The transaction is not fully committed until all postpone
- *              actions are executed.
+ * NOTE: The transaction is declared as committed with postpone actions.
+ *       The transaction is not fully committed until all postpone actions are executed.
  *
  *       The postpone operations are not invoked by this function.
  */
@@ -4246,59 +4348,70 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
 }
 
 /*
- * log_append_topope_commit_postpone - APPEND TOP SYSTEM COMMIT WITH POSTPONE
+ * log_append_sysop_start_postpone () - append a log record when system op starts postpone.
  *
- * return: nothing
- *
- *   tdes(in): State structure of transaction being committed
- *   start_posplsa(in): Address where the first postpone log record start
- *
- * NOTE: The top system operation is declared as committed with
- *              postpone actions. The top system operation is not fully
- *              committed until all postpone actions are executed.
- *
- *       The postpone operations are not invoked by this function.
+ * return                    : void
+ * thread_p (in)             : thread entry
+ * tdes (in)                 : transaction descriptor
+ * sysop_start_postpone (in) : start postpone log record
+ * data_size (in)            : undo data size
+ * data (in)                 : undo data
  */
 static void
-log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
+log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				 LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int data_size, const char *data)
 {
-  LOG_REC_TOPOPE_START_POSTPONE *top_start_posp;	/* Start postpone of top system operations */
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
 
   node =
-    prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_TOPOPE_WITH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_START_POSTPONE, RV_NOT_DEFINED, NULL, data_size, (char *) data,
+				   0, NULL);
   if (node == NULL)
     {
       return;
     }
 
-  top_start_posp = (LOG_REC_TOPOPE_START_POSTPONE *) node->data_header;
-  if (tdes->topops.type != LOG_TOPOPS_NORMAL)
+  *(LOG_REC_SYSOP_START_POSTPONE *) node->data_header = *sysop_start_postpone;
+  (void) prior_lsa_next_record (thread_p, node, tdes);
+}
+
+/*
+ * log_append_sysop_end () - append sys op end log record
+ *
+ * return         : void
+ * thread_p (in)  : thread entry
+ * tdes (in)      : transaction descriptor
+ * sysop_end (in) : sys op end log record
+ * data_size (in) : data size
+ * data (in)      : recovery data
+ */
+static void
+log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end, int data_size,
+		      const char *data)
+{
+  LOG_PRIOR_NODE *node = NULL;
+
+  assert (tdes != NULL);
+  assert (sysop_end != NULL);
+  assert (data_size == 0 || data != NULL);
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_END, RV_NOT_DEFINED, NULL, data_size, data, 0, NULL);
+  if (node == NULL)
     {
-      assert (tdes->topops.last == 0 || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
-      assert (tdes->topops.type != LOG_TOPOPS_POSTPONE);
-
-      /* Overwrite lastparent_lsa with compensate ref_lsa. */
-      LSA_COPY (&top_start_posp->lastparent_lsa, &tdes->topops.ref_lsa);
-
-      /* Do not reset type yet. It is reset when system op is completed. */
-      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "COMPENSATE_DEBUG: Successful commit postpone for "
-			 "compensate. Tran_ID=%d, system op depth=%d.\n", tdes->trid, tdes->topops.last);
-	}
+      /* Is this possible? */
+      assert (false);
     }
   else
     {
-      LSA_COPY (&top_start_posp->lastparent_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
+      /* Save data head. */
+      /* First save lastparent_lsa and prv_topresult_lsa. */
+      LOG_LSA start_lsa = LSA_INITIALIZER;
+
+      memcpy (node->data_header, sysop_end, node->data_header_length);
+
+      start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+      assert (!LSA_ISNULL (&start_lsa));
     }
-  LSA_COPY (&top_start_posp->posp_lsa, start_postpone_lsa);
-
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-
-  tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
 }
 
 /*
@@ -4385,17 +4498,16 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool i
 }
 
 /*
- * log_append_repl_info_and_commit_log - APPEND REPL LOG ALONG WITH COMMIT LOG.
+ * log_append_repl_info_and_commit_log - append repl log along with commit log.
  *
  * return: none
  *
  *   tdes(in): 
  *   commit_lsa(out): LSA of commit log
  *
- * NOTE: Atomic write of replication log and commit log is crucial for replication
- *       consistencies. When a commit log of others is written in the middle of 
- *       one's replication and commit log, a restart of replication will break 
- *       consistencies of slaves/replicas.
+ * NOTE: Atomic write of replication log and commit log is crucial for replication consistencies. 
+ *       When a commit log of others is written in the middle of one's replication and commit log, 
+ *       a restart of replication will break consistencies of slaves/replicas.
  */
 static void
 log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
@@ -4411,8 +4523,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 }
 
 /*
- * log_append_donetime_internal - APPEND COMMIT/ABORT LOG RECORD ALONG WITH TIME OF
- *                      TERMINATION.
+ * log_append_donetime_internal - APPEND COMMIT/ABORT LOG RECORD ALONG WITH TIME OF TERMINATION.
  *
  * return: none
  *
@@ -4421,8 +4532,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
  *   iscommitted(in): Is transaction been finished as committed?
  *   with_lock(in): whether it has mutex or not.
  *
- * NOTE: An append commit or abort record is recorded along with the
- *              current time as the termination time of the transaction.
+ * NOTE: a commit or abort record is recorded along with the current time as the termination time of the transaction.
  */
 static void
 log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa, LOG_RECTYPE iscommitted,
@@ -4458,7 +4568,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
 }
 
 /*
- * log_change_tran_as_completed - CHANGE THE STATE OF A TRANSACTION AS COMMITTED/ABORTED
+ * log_change_tran_as_completed - change the state of a transaction as committed/aborted
  *
  * return: nothing
  *
@@ -4500,7 +4610,7 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
 }
 
 /*
- * log_append_commit_log - APPEND COMMIT LOG RECORD ALONG WITH TIME OF TERMINATION.
+ * log_append_commit_log - append commit log record along with time of termination.
  *
  * return: nothing
  *
@@ -4514,8 +4624,7 @@ log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commi
 }
 
 /*
- * log_append_commit_log_with_lock - APPEND COMMIT LOG RECORD ALONG WITH TIME OF
- *                      TERMINATION WITH PRIOR LSA MUTEX.
+ * log_append_commit_log_with_lock - append commit log record along with time of termination with prior lsa mutex.
  *
  * return: none
  *
@@ -4529,7 +4638,7 @@ log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 }
 
 /*
- * log_append_abort_log - APPEND ABORT LOG RECORD ALONG WITH TIME OF TERMINATION 
+ * log_append_abort_log - append abort log record along with time of termination 
  *
  * return: nothing
  *
@@ -4629,15 +4738,14 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, 
 }
 
 /*
- * log_is_class_being_modified () - check if a class is being modified by
- *				    the transaction which is executed by the
+ * log_is_class_being_modified () - check if a class is being modified by the transaction which is executed by the
  *				    thread parameter
  * return : true if the class is being modified, false otherwise
  * thread_p (in)  : thread entry
  * class_oid (in) : class identifier
  */
-static bool
-log_is_class_being_modified_internal (THREAD_ENTRY * thread_p, const OID * class_oid)
+bool
+log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   LOG_TDES *tdes;
   int tran_index;
@@ -4668,20 +4776,6 @@ log_is_class_being_modified_internal (THREAD_ENTRY * thread_p, const OID * class
 }
 
 /*
- * log_is_class_being_modified () - check if a class is being modified by
- *				    the transaction which is executed by the
- *				    thread parameter
- * return : true if the class is being modified, false otherwise
- * thread_p (in)  : thread entry
- * class_oid (in) : class identifier
- */
-bool
-log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
-{
-  return log_is_class_being_modified_internal (thread_p, class_oid);
-}
-
-/*
  * log_cleanup_modified_class -
  *
  * return:
@@ -4690,8 +4784,7 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
  *   arg(in):
  *
  * NOTE: Function for LOG_TDES.modified_class_list
- *       This will be used to decache the class representations and XASLs
- *       when a transaction is finished.
+ *       This will be used to decache the class representations and XASLs when a transaction is finished.
  */
 static void
 log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg)
@@ -4725,8 +4818,7 @@ extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, L
  *   arg(in): optional
  *
  * NOTE: Function for LOG_TDES.modified_class_list
- *       This will be used to traverse a modified class list and to do
- *       something on each entry.
+ *       This will be used to traverse a modified class list and to do something on each entry.
  */
 static void
 log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
@@ -5114,8 +5206,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
 									 "LOB_TRANSIENT_DELETED"
 									 : ((entry->top->state ==
 									     LOB_PERMANENT_CREATED) ?
-									    "LOB_PERMANENT_CREATED" : (entry->top->
-												       state ==
+									    "LOB_PERMANENT_CREATED" : (entry->
+												       top->state ==
 												       LOB_PERMANENT_DELETED)
 									    ? "LOB_PERMANENT_DELETED" : "LOB_UNKNOWN")),
 		    entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
@@ -5220,8 +5312,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
  * NOTE:
  *
  * Ordering relation of lob locator entry is defined as (key_hash, key).
- * Because it is very UNLIKELY in normal case that two different locators
- * have same hash value, this compare function is very efficient.
+ * Because it is very UNLIKELY in normal case that two different locators have same hash value, this compare function 
+ * is very efficient.
  *
  */
 static int
@@ -5253,16 +5345,11 @@ RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
  *                    true  = retain locks
  *   is_local_tran(in): Is a local transaction?
  *
- * NOTE:  Commit the current transaction locally. If there are postpone
- *	  actions, the transaction is declared committed_with_postpone_actions
- *	  by logging a log record indicating this state. Then, the postpone
- *        actions are executed.
- *	  When the transaction is declared as fully committed, the locks
- *	  acquired by the transaction are released and query cursors are
- *	  closed. A committed transaction is not subject to deadlock when
- *	  postpone operations are executed.
- *	  The function returns the state of the transaction
- *	  (i.e. notify if the transaction is completely committed or not).
+ * NOTE:  Commit the current transaction locally. If there are postpone actions, the transaction is declared 
+ *        committed_with_postpone_actions by logging a log record indicating this state. Then, the postpone actions 
+ *        are executed. When the transaction is declared as fully committed, the locks acquired by the transaction 
+ *        are released. A committed transaction is not subject to deadlock when postpone operations are executed.
+ *	  The function returns the state of the transaction(i.e. whether it is completely committed or not).
  */
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
@@ -5290,11 +5377,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    */
   LSA_SET_NULL (&tdes->undo_nxlsa);
 
-  if (tdes->num_new_temp_files > 0)
-    {
-      (void) file_new_destroy_all_tmp (thread_p, FILE_TEMP);
-    }
-  assert (tdes->num_new_temp_files == 0);
+  /* destroy all transaction's remaining temporary files */
+  file_tempcache_drop_tran_temp_files (thread_p);
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
@@ -5302,7 +5386,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        * Transaction updated data.
        */
 
-      log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa, LOG_COMMIT_WITH_POSTPONE, true);
+      log_tran_do_postpone (thread_p, tdes);
 
       /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
        * too. */
@@ -5312,12 +5396,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  tdes->first_save_entry = NULL;
 	}
 
-      if (tdes->num_new_files > 0)
-	{
-	  (void) file_new_declare_as_old (thread_p, NULL);
-	}
-      assert (tdes->num_new_files == 0);
-
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
 
       if (is_local_tran)
@@ -5326,7 +5404,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
 	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction 
-	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
+	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
@@ -5367,12 +5445,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  tdes->first_save_entry = NULL;
 	}
 
-      if (tdes->num_new_files > 0)
-	{
-	  (void) file_new_declare_as_old (thread_p, NULL);
-	}
-      assert (tdes->num_new_files == 0);
-
       if (retain_lock != true)
 	{
 	  lock_unlock_all (thread_p);
@@ -5385,7 +5457,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 }
 
 /*
- * log_abort_local - PERFORM THE LOCAL ABORT OPERATIONS OF A TRANSACTION
+ * log_abort_local - Perform the local abort operations of a transaction
  *
  * return: state of abort operation
  *
@@ -5393,8 +5465,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
  *   is_local_tran(in): Is a local transaction? (It is not used at this point)
  *
  * NOTE: Abort the current transaction locally.
- *	 When the transaction is declared as fully aborted, the locks acquired
- *       by the transaction are released and query cursors are closed.
+ *	 When the transaction is declared as fully aborted, the locks acquired by the transaction are released and 
+ *	 query cursors are closed.
  *       This function is used for both local and coordinator transactions.
  */
 TRAN_STATE
@@ -5404,15 +5476,8 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 
   tdes->state = TRAN_UNACTIVE_ABORTED;
 
-  /* Delete only temporary files created on volumes with temporary purposes Temporary files created on volumes with
-   * permanent purposes (e.g., generic) are cleaned by undo records. */
-  if (tdes->num_new_temp_files > 0)
-    {
-      (void) file_new_destroy_all_tmp (thread_p, FILE_TEMP);
-    }
-  assert (tdes->num_new_temp_files == 0);
-
-  (void) file_typecache_clear ();
+  /* destroy transaction's temporary files */
+  file_tempcache_drop_tran_temp_files (thread_p);
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
@@ -5421,12 +5486,6 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
        */
 
       log_rollback (thread_p, tdes, NULL);
-
-      if (tdes->num_new_files > 0)
-	{
-	  (void) file_new_declare_as_old (thread_p, NULL);
-	}
-      assert (tdes->num_new_files == 0);
 
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, true);
 
@@ -5447,11 +5506,6 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
       /* 
        * Transaction did not update anything or we are not logging
        */
-      if (tdes->num_new_files > 0)
-	{
-	  (void) file_new_declare_as_old (thread_p, NULL);
-	}
-      assert (tdes->num_new_files == 0);
 
       if (tdes->first_save_entry != NULL)
 	{
@@ -5497,6 +5551,8 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
   LOG_2PC_EXECUTE execute_2pc_type;
   int error_code = NO_ERROR;
 
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5528,9 +5584,10 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
        * operations attached to it. Commit those operations too */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT, 2, tdes->trid,
 	      tdes->tran_index);
+      assert (false);
       while (tdes->topops.last >= 0)
 	{
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
@@ -5563,8 +5620,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
   else
     {
       /* 
-       * This is a local transaction or is a participant of a distributed
-       * transaction
+       * This is a local transaction or is a participant of a distributed transaction
        */
       state = log_commit_local (thread_p, tdes, retain_lock, true);
       state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
@@ -5613,6 +5669,8 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
   bool decision;
   int error_code = NO_ERROR;
 
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+
   if (tran_index == NULL_TRAN_INDEX)
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5651,9 +5709,10 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
        */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT, 2, tdes->trid,
 	      tdes->tran_index);
+      assert (false);
       while (tdes->topops.last >= 0)
 	{
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
@@ -5683,8 +5742,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
   else
     {
       /* 
-       * This is a local transaction or is a participant of a distributed
-       * transaction.
+       * This is a local transaction or is a participant of a distributed transaction.
        * Perform the server rollback first.
        */
       state = log_abort_local (thread_p, tdes, true);
@@ -5714,7 +5772,6 @@ TRAN_STATE
 log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA * savept_lsa)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
-  TRAN_STATE state;
   int tran_index;
 
   /* Find current transaction descriptor */
@@ -5750,21 +5807,19 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
     {
       /* 
        * This is likely a system error since the transaction is being partially
-       * aborted when there are nested top system permananet operations
+       * aborted when there are nested top system permanent operations
        * attached to it. Abort those operations too.
        */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_HAS_TOPOPS_DURING_COMMIT_ABORT, 2, tdes->trid,
 	      tdes->tran_index);
+      assert (false);
       while (tdes->topops.last >= 0)
 	{
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return TRAN_UNACTIVE_UNKNOWN;
-    }
+  log_sysop_start (thread_p);
 
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, savept_lsa);
 
@@ -5781,7 +5836,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
 	}
     }
 
-  state = log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+  log_sysop_abort (thread_p);
 
   log_cleanup_modified_class_list (thread_p, tdes, savept_lsa, false, true);
 
@@ -5792,7 +5847,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
    * get undefined and cannot get call by the user any longer.
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
-  return state;
+  return TRAN_UNACTIVE_ABORTED;
 }
 
 /*
@@ -5815,6 +5870,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   TRAN_STATE state;		/* State of transaction */
 
   assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   state = tdes->state;
 
@@ -6220,171 +6276,6 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
   return state;
 }
 
-static TRAN_STATE
-log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result)
-{
-  TRAN_STATE state;
-  LOG_REC_TOPOP_RESULT *top_result;	/* Partial outcome */
-  LOG_RECTYPE rectype;
-  LOG_PRIOR_NODE *node;
-
-  assert (tdes != NULL);
-
-  {
-    int mod_factor = 5000;	/* 0.02% */
-
-    FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
-  }
-
-  if (result == LOG_RESULT_TOPOP_COMMIT)
-    {
-      rectype = LOG_COMMIT_TOPOPE;
-      state = TRAN_UNACTIVE_COMMITTED;
-    }
-  else
-    {
-      rectype = LOG_ABORT_TOPOPE;
-      state = TRAN_UNACTIVE_ABORTED;
-    }
-  node = prior_lsa_alloc_and_copy_data (thread_p, rectype, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
-  if (node == NULL)
-    {
-      return state;
-    }
-
-  top_result = (LOG_REC_TOPOP_RESULT *) node->data_header;
-
-  if (result == LOG_RESULT_TOPOP_COMMIT && tdes->topops.type != LOG_TOPOPS_NORMAL)
-    {
-      assert (tdes->topops.last == 0 || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
-
-      /* Overwrite lastparent_lsa with compensate/postpone ref_lsa. */
-      LSA_COPY (&top_result->lastparent_lsa, &tdes->topops.ref_lsa);
-
-      /* Reset type field. */
-      tdes->topops.type = LOG_TOPOPS_NORMAL;
-
-      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG)
-	  && (tdes->topops.type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT
-	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "COMPENSATE_DEBUG: Successfully completed compensate. Tran_ID=%d, system op depth=%d.\n",
-			 tdes->trid, tdes->topops.last);
-	}
-      if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG) && tdes->topops.type == LOG_TOPOPS_POSTPONE)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "POSTPONE_DEBUG: Successfully completed postpone. Tran_ID=%d, system op depth=%d.\n",
-			 tdes->trid, tdes->topops.last);
-	}
-    }
-  else
-    {
-      if (result != LOG_RESULT_TOPOP_COMMIT && tdes->topops.type != LOG_TOPOPS_NORMAL)
-	{
-	  /* Failed to compensate/postpone. */
-	  assert (false);
-
-	  /* Reset type field. */
-	  tdes->topops.type = LOG_TOPOPS_NORMAL;
-	}
-      LSA_COPY (&top_result->lastparent_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-    }
-  LSA_COPY (&top_result->prv_topresult_lsa, &tdes->tail_topresult_lsa);
-
-  (void) prior_lsa_next_record (thread_p, node, tdes);
-
-  /* Remember last partial result */
-  LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
-
-  return state;
-}
-
-static void
-log_complete_topop_attach (LOG_TDES * tdes)
-{
-  if (tdes->topops.last - 1 >= 0)
-    {
-      if (LSA_ISNULL (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa))
-	{
-	  LSA_COPY (&tdes->topops.stack[tdes->topops.last - 1].posp_lsa,
-		    &tdes->topops.stack[tdes->topops.last].posp_lsa);
-	}
-    }
-  else
-    {
-      if (LSA_ISNULL (&tdes->posp_nxlsa))
-	{
-	  LSA_COPY (&tdes->posp_nxlsa, &tdes->topops.stack[tdes->topops.last].posp_lsa);
-	}
-    }
-}
-
-/*
- * log_complete_system_op - Complete a system top operation
- *
- * return: state of transaction
- *
- *   tdes(in/out): State structure of transaction of the log record
- *   result(in): Result of the top system operation
- *   back_to_state(in): The outter sysop (or transaction) returns to this state.
- *
- * Note:Declare the system top operation as completely finished. A top
- *              is finished by logging a top system commit or abort log
- *              record (depending upon the result flag).
- */
-static TRAN_STATE
-log_complete_system_op (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result, TRAN_STATE back_to_state)
-{
-  TRAN_STATE state;
-
-  {
-    int mod_factor = 5000;	/* 0.02% */
-
-    FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, &mod_factor, 0);
-  }
-
-  state = tdes->state;
-
-  switch (result)
-    {
-    case LOG_RESULT_TOPOP_COMMIT:
-    case LOG_RESULT_TOPOP_ABORT:
-      state = log_complete_topop (thread_p, tdes, result);
-      break;
-
-    case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:
-      log_complete_topop_attach (tdes);
-      break;
-    }
-
-  /* 
-   * Release the top system operation from the transaction and
-   * return to normal transaction state
-   */
-  tdes->topops.last--;
-  if (tdes->topops.last >= 0)
-    {
-      LSA_COPY (&tdes->topop_lsa, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-    }
-  else
-    {
-      LSA_SET_NULL (&tdes->topop_lsa);
-    }
-  tdes->state = back_to_state;
-  if (LOG_ISCHECKPOINT_TIME ())
-    {
-#if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
-#else /* SERVER_MODE */
-      (void) logpb_checkpoint (thread_p);
-#endif /* SERVER_MODE */
-    }
-
-  return state;
-}
-
 /*
  *
  *              FUNCTIONS RELATED TO DUMPING THE LOG AND ITS DATA
@@ -6422,7 +6313,7 @@ log_ascii_dump (FILE * out_fp, int length, void *data)
  * length (in) : Recovery data length.
  * data (in)   : Recovery data.
  */
-static void
+void
 log_hexa_dump (FILE * out_fp, int length, void *data)
 {
   char *ptr;			/* Pointer to data */
@@ -6508,6 +6399,12 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
    * Otherwise, allocate a contiguous area, copy the data and pass this
    * area. At the end deallocate the area
    */
+
+  if (dumpfun == NULL)
+    {
+      /* Set default to log_hexa_dump */
+      dumpfun = log_hexa_dump;
+    }
 
   if (ZIP_CHECK (length))
     {
@@ -6630,12 +6527,10 @@ log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), log_lsa, log_page_p);
   /* Print UNDO(BEFORE) DATA */
   fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_undofun != NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump), log_zip_p);
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
   /* Print REDO (AFTER) DATA */
   fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), log_zip_p);
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6662,8 +6557,7 @@ log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 
   /* Print UNDO(BEFORE) DATA */
   fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_undofun != NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump), log_zip_p);
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6690,8 +6584,7 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 
   /* Print REDO(AFTER) DATA */
   fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), log_zip_p);
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6726,12 +6619,10 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa, log_page_p);
   /* Print UNDO(BEFORE) DATA */
   fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_undofun != NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump), log_zip_p);
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
   /* Print REDO (AFTER) DATA */
   fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), log_zip_p);
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6763,8 +6654,7 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
 
   /* Print UNDO(BEFORE) DATA */
   fprintf (out_fp, "-->> Undo (Before) Data:\n");
-  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_undofun != NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump), log_zip_p);
+  log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6793,8 +6683,7 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
 
   /* Print REDO(AFTER) DATA */
   fprintf (out_fp, "-->> Redo (After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), log_zip_p);
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, log_zip_p);
 
   return log_page_p;
 }
@@ -6821,8 +6710,7 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
 
   /* Print RUN POSTPONE (REDO/AFTER) DATA */
   fprintf (out_fp, "-->> Run Postpone (Redo/After) Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), NULL);
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, NULL);
 
   return log_page_p;
 }
@@ -6847,8 +6735,7 @@ log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 
   /* Print Database External DATA */
   fprintf (out_fp, "-->> Database external Data:\n");
-  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p,
-		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].dump_redofun : log_hexa_dump), NULL);
+  log_dump_data (thread_p, out_fp, redo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_redofun, NULL);
 
   return log_page_p;
 }
@@ -6875,8 +6762,7 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 
   /* Print COMPENSATE DATA */
   fprintf (out_fp, "-->> Compensate Data:\n");
-  log_dump_data (thread_p, out_fp, length_compensate, log_lsa, log_page_p,
-		 (RV_fun[rcvindex].dump_undofun != NULL) ? RV_fun[rcvindex].dump_undofun : log_hexa_dump, NULL);
+  log_dump_data (thread_p, out_fp, length_compensate, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, NULL);
 
   return log_page_p;
 }
@@ -6960,35 +6846,161 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
   return log_page_p;
 }
 
+/*
+ * log_dump_record_sysop_start_postpone () - dump system op start postpone log record
+ *
+ * return              : log page
+ * thread_p (in)       : thread entry
+ * out_fp (in/out)     : dump output
+ * log_lsa (in/out)    : log lsa
+ * log_page_p (in/out) : log page
+ * log_zip_p (in/out)  : log unzip
+ */
 static LOG_PAGE *
-log_dump_record_commit_topope_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-					LOG_PAGE * log_page_p)
+log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				      LOG_ZIP * log_zip_p)
 {
-  LOG_REC_TOPOPE_START_POSTPONE *top_start_posp;
+  LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 
   /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_start_posp), log_lsa, log_page_p);
-  top_start_posp = ((LOG_REC_TOPOPE_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, ", Lastparent_LSA = %lld|%d, First postpone_LSA at or after = %lld|%d\n",
-	   (long long int) top_start_posp->lastparent_lsa.pageid, top_start_posp->lastparent_lsa.offset,
-	   (long long int) top_start_posp->posp_lsa.pageid, top_start_posp->posp_lsa.offset);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (sysop_start_postpone), log_lsa, log_page_p);
+  sysop_start_postpone = *((LOG_REC_SYSOP_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset));
+
+  (void) log_dump_record_sysop_end_internal (thread_p, &sysop_start_postpone.sysop_end, log_lsa, log_page_p, log_zip_p,
+					     out_fp);
+  fprintf (out_fp, "     postpone_lsa = %lld|%d \n", LSA_AS_ARGS (&sysop_start_postpone.posp_lsa));
 
   return log_page_p;
 }
 
+/*
+ * log_dump_record_sysop_end_internal () - dump sysop end log record types
+ *
+ * return              : log page
+ * thread_p (in)       : thread entry
+ * sysop_end (in)      : system op end log record
+ * log_lsa (in/out)    : LSA of undo data (logical undo only)
+ * log_page_p (in/out) : page of undo data (logical undo only)
+ * log_zip_p (in/out)  : log unzip
+ * out_fp (in/out)     : dump output
+ */
 static LOG_PAGE *
-log_dump_record_topope_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end, LOG_LSA * log_lsa,
+				    LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p, FILE * out_fp)
 {
-  LOG_REC_TOPOP_RESULT *top_result;
+  int undo_length;
+  LOG_RCVINDEX rcvindex;
 
-  /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_result), log_lsa, log_page_p);
-  top_result = ((LOG_REC_TOPOP_RESULT *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, ",\n     Next UNDO at/before = %lld|%d, Prev_topresult_lsa = %lld|%d\n",
-	   (long long int) top_result->lastparent_lsa.pageid, top_result->lastparent_lsa.offset,
-	   (long long int) top_result->prv_topresult_lsa.pageid, top_result->prv_topresult_lsa.offset);
+  fprintf (out_fp, ",\n     Prev parent LSA = %lld|%d, Prev_topresult_lsa = %lld|%d, %s \n",
+	   LSA_AS_ARGS (&sysop_end->lastparent_lsa), LSA_AS_ARGS (&sysop_end->prv_topresult_lsa),
+	   log_sysop_end_type_string (sysop_end->type));
+  switch (sysop_end->type)
+    {
+    case LOG_SYSOP_END_ABORT:
+    case LOG_SYSOP_END_COMMIT:
+      /* nothing else to print */
+      break;
+    case LOG_SYSOP_END_LOGICAL_COMPENSATE:
+      fprintf (out_fp, "     compansate_lsa = %lld|%d \n", LSA_AS_ARGS (&sysop_end->compensate_lsa));
+      break;
+    case LOG_SYSOP_END_LOGICAL_RUN_POSTPONE:
+      fprintf (out_fp, "     run_postpone_lsa = %lld|%d, postpone = %s \n",
+	       LSA_AS_ARGS (&sysop_end->run_postpone.postpone_lsa),
+	       sysop_end->run_postpone.is_sysop_postpone ? "sysop" : "transaction");
+      break;
+    case LOG_SYSOP_END_LOGICAL_UNDO:
+      assert (log_lsa != NULL && log_page_p != NULL && log_zip_p != NULL);
+
+      fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (sysop_end->undo.data.rcvindex));
+      fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
+	       sysop_end->undo.data.volid, sysop_end->undo.data.pageid, sysop_end->undo.data.offset,
+	       (int) GET_ZIP_LEN (sysop_end->undo.length));
+
+      undo_length = sysop_end->undo.length;
+      rcvindex = sysop_end->undo.data.rcvindex;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
+      log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+      break;
+    case LOG_SYSOP_END_LOGICAL_MVCC_UNDO:
+      assert (log_lsa != NULL && log_page_p != NULL && log_zip_p != NULL);
+
+      fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (sysop_end->mvcc_undo.undo.data.rcvindex));
+      fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
+	       sysop_end->mvcc_undo.undo.data.volid, sysop_end->mvcc_undo.undo.data.pageid,
+	       sysop_end->mvcc_undo.undo.data.offset, (int) GET_ZIP_LEN (sysop_end->mvcc_undo.undo.length));
+      fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
+	       (unsigned long long int) sysop_end->mvcc_undo.mvccid,
+	       LSA_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa),
+	       VFID_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.vfid));
+
+      undo_length = sysop_end->mvcc_undo.undo.length;
+      rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
+      log_dump_data (thread_p, out_fp, undo_length, log_lsa, log_page_p, RV_fun[rcvindex].dump_undofun, log_zip_p);
+      break;
+    default:
+      assert (false);
+      break;
+    }
+  return log_page_p;
+}
+
+/*
+ * log_dump_record_sysop_end () - Dump sysop end log record types. Side-effect: log_lsa and log_page_p will be
+ *				  positioned after the log record.
+ *
+ * return	       : NULL if something bad happens, pointer to log page otherwise.
+ * thread_p (in)       : Thread entry.
+ * log_lsa (in/out)    : in - LSA of log record, out - LSA after log record.
+ * log_page_p (in/out) : in - page of log record, out - page after log record.
+ * log_zip_p (in)      : Unzip context.
+ * out_fp (in/out)     : Dump output.
+ */
+static LOG_PAGE *
+log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p,
+			   FILE * out_fp)
+{
+  LOG_REC_SYSOP_END *sysop_end;
+
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_end), log_lsa, log_page_p);
+  sysop_end = (LOG_REC_SYSOP_END *) ((char *) log_page_p->area + log_lsa->offset);
+
+  log_dump_record_sysop_end_internal (thread_p, sysop_end, log_lsa, log_page_p, log_zip_p, out_fp);
 
   return log_page_p;
+}
+
+/*
+ * log_dump_checkpoint_topops - DUMP CHECKPOINT OF TOP SYSTEM OPERATIONS
+ *
+ * return: nothing
+ *
+ *   length(in): Length to dump in bytes
+ *   data(in): The data being logged
+ *
+ * NOTE: Dump the checkpoint top system operation structure.
+ */
+static void
+log_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
+{
+  int ntops, i;
+  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+							 * mode */
+  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topone;	/* One top system ope */
+
+  chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) data;
+  ntops = length / sizeof (*chkpt_topops);
+
+  /* Start dumping each checkpoint top system operation */
+
+  for (i = 0; i < ntops; i++)
+    {
+      chkpt_topone = &chkpt_topops[i];
+      fprintf (out_fp, "     Trid = %d \n", chkpt_topone->trid);
+      fprintf (out_fp, "     Sysop start postpone LSA = %lld|%d \n",
+	       LSA_AS_ARGS (&chkpt_topone->sysop_start_postpone_lsa));
+    }
+  (void) fprintf (out_fp, "\n");
 }
 
 static LOG_PAGE *
@@ -7006,12 +7018,12 @@ log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   fprintf (out_fp, "     Redo_LSA = %lld|%d\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
 
   length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
-  length_topope = (sizeof (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP) * chkpt->ntops);
+  length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP_START_POSTPONE) * chkpt->ntops);
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
   log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, logpb_dump_checkpoint_trans, NULL);
   if (length_topope > 0)
     {
-      log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, logpb_dump_checkpoint_topops, NULL);
+      log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, log_dump_checkpoint_topops, NULL);
     }
 
   return log_page_p;
@@ -7184,13 +7196,12 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_replication (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-      log_page_p = log_dump_record_commit_topope_postpone (thread_p, out_fp, log_lsa, log_page_p);
+    case LOG_SYSOP_START_POSTPONE:
+      log_page_p = log_dump_record_sysop_start_postpone (thread_p, out_fp, log_lsa, log_page_p, log_zip_p);
       break;
 
-    case LOG_COMMIT_TOPOPE:
-    case LOG_ABORT_TOPOPE:
-      log_page_p = log_dump_record_topope_finish (thread_p, out_fp, log_lsa, log_page_p);
+    case LOG_SYSOP_END:
+      log_page_p = log_dump_record_sysop_end (thread_p, log_lsa, log_page_p, log_zip_p, out_fp);
       break;
 
     case LOG_END_CHKPT:
@@ -7225,6 +7236,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_GENERIC:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
@@ -7535,7 +7547,6 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 		     VPID * rcv_vpid, LOG_RCV * rcv, LOG_TDES * tdes, LOG_ZIP * log_unzip_ptr)
 {
   char *area = NULL;
-  LOG_LSA logical_undo_nxlsa;
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   int rv_err;
   bool is_zipped = false;
@@ -7554,14 +7565,17 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
     }
 #endif /* CUBRID_DEBUG */
 
-  if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex)
-      || (disk_isvalid_page (thread_p, rcv_vpid->volid, rcv_vpid->pageid) != DISK_VALID))
+  if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
     {
       rcv->pgptr = NULL;
     }
   else
     {
       rcv->pgptr = pgbuf_fix (thread_p, rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (rcv->pgptr == NULL)
+	{
+	  assert (false);
+	}
     }
 
   /* GET BEFORE DATA */
@@ -7633,22 +7647,19 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
        * redo/CLR log to describe the undo. This in turn will be translated
        * to a compensating record.
        */
-      if (rcvindex == RVVAC_DROPPED_FILE_ADD)
+      if (rcvindex == RVBT_MVCC_INCREMENTS_UPD)
 	{
-	  rv_err = vacuum_notify_dropped_file (thread_p, rcv, NULL);
-	  if (rv_err != NO_ERROR)
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
-			    "Log record %lld|%d, rcvindex = %s, was not undone due to error (%d)\n",
-			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
-			    rv_rcvindex_string (rcvindex), rv_err);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
-	      assert (false);
-	    }
+	  /* this is a special case. we need to undo changes to transaction local stats. this only has an impact on
+	   * this transaction during runtime, and recovery has no interest, so we don't have to add a compensate log
+	   * record. */
+	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
+	  assert (rv_err == NO_ERROR);
 	}
-      else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex))
+      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+	{
+	  /* do nothing */
+	}
+      else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
 	   * compensation since the "undone" page can be accessed and logged. Only no-page logical operations require
@@ -7667,7 +7678,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 		      fileio_get_volume_label (rcv_vpid->volid, PEEK));
 	      assert (false);
 	    }
-	  else if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	  else if (RCV_IS_BTREE_LOGICAL_LOG (rcvindex) && prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
 			     "BTREE_ROLLBACK: Successfully executed undo/compensate for log entry before "
@@ -7696,23 +7707,17 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	}
       else
 	{
-	  /* 
-	   * Logical logging. The undo function is responsible for logging the
-	   * needed undo and redo records to make the logical undo operation
-	   * atomic.
-	   * The recovery manager sets a dummy compensating record, to fix the
-	   * undo_nxlsa record at crash recovery time.
+	  /* Logical logging? This is a logical undo. For now, we also use a logical compensation, meaning that we
+	   * open a system operation that is committed & compensate at the same time.
+	   * However, there might be cases when compensation is not necessarily logical. If the compensation can be
+	   * made in a single log record and can be attached to a page, the system operation becomes useless. Take the
+	   * example of some b-tree cases for compensations. There might be other cases too.
 	   */
-	  LSA_COPY (&logical_undo_nxlsa, &tdes->undo_nxlsa);
 	  save_state = tdes->state;
 
-	  /* 
-	   * A system operation is needed since the postpone operations of an
-	   * undo log must be done at the end of the logical undo. Without
-	   * this if there is a crash, we will be in trouble since we will not
-	   * be able to undo a postpone operation.
-	   */
-	  log_start_compensate_system_op (thread_p, &logical_undo_nxlsa);
+	  LSA_COPY (&rcv->reference_lsa, &tdes->undo_nxlsa);
+
+	  log_sysop_start (thread_p);
 
 #if defined(CUBRID_DEBUG)
 	  {
@@ -7726,7 +7731,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	    rv_err = log_undo_rec_restartable (rcvindex, rcv);
 
 	    /* Make sure that a CLR was logged */
-	    if (LSA_EQ (&check_tail_lsa, &tdes->tail_lsa) && rcvindex != RVFL_CREATE_TMPFILE)
+	    if (LSA_EQ (&check_tail_lsa, &tdes->tail_lsa))
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MISSING_COMPENSATING_RECORD, 1,
 			rv_rcvindex_string (rcvindex));
@@ -7734,6 +7739,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  }
 #else /* CUBRID_DEBUG */
 	  /* Invoke Undo recovery function */
+	  /* TODO: Is undo restartable needed? */
 	  rv_err = log_undo_rec_restartable (thread_p, rcvindex, rcv);
 #endif /* CUBRID_DEBUG */
 
@@ -7749,7 +7755,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	      assert (false);
 	    }
 
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_end_logical_compensate (thread_p, &rcv->reference_lsa);
 	  tdes->state = save_state;
 	}
     }
@@ -7864,7 +7870,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_REC_UNDO *undo = NULL;	/* An undo log record */
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* An undo log record */
   LOG_REC_COMPENSATE *compensate = NULL;	/* A compensating log record */
-  LOG_REC_TOPOP_RESULT *top_result = NULL;	/* Partial result from top system operation */
+  LOG_REC_SYSOP_END *sysop_end = NULL;	/* Partial result from top system operation */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
   LOG_RCVINDEX rcvindex;	/* Recovery index */
@@ -8067,18 +8073,65 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LSA_COPY (&prev_tranlsa, &compensate->undo_nxlsa);
 	      break;
 
-	    case LOG_COMMIT_TOPOPE:
-	    case LOG_ABORT_TOPOPE:
+	    case LOG_SYSOP_END:
 	      /* 
-	       * We found a system top operation that should be skipped from
-	       * rollback
+	       * We found a system top operation that should be skipped from rollback.
 	       */
 
 	      /* Read the DATA HEADER */
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_result), &log_lsa, log_pgptr);
-	      top_result = ((LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + log_lsa.offset));
-	      LSA_COPY (&prev_tranlsa, &top_result->lastparent_lsa);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
+	      sysop_end = ((LOG_REC_SYSOP_END *) ((char *) log_pgptr->area + log_lsa.offset));
+
+	      if (sysop_end->type == LOG_SYSOP_END_LOGICAL_UNDO)
+		{
+		  rcvindex = sysop_end->undo.data.rcvindex;
+		  rcv.offset = sysop_end->undo.data.offset;
+		  rcv_vpid.volid = sysop_end->undo.data.volid;
+		  rcv_vpid.pageid = sysop_end->undo.data.pageid;
+		  rcv.length = sysop_end->undo.length;
+		  rcv.mvcc_id = MVCCID_NULL;
+
+		  /* will jump to parent LSA. save it now before advancing to undo data */
+		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		  LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
+
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
+		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
+		}
+	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+		{
+		  rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+		  rcv.offset = sysop_end->mvcc_undo.undo.data.offset;
+		  rcv_vpid.volid = sysop_end->mvcc_undo.undo.data.volid;
+		  rcv_vpid.pageid = sysop_end->mvcc_undo.undo.data.pageid;
+		  rcv.length = sysop_end->mvcc_undo.undo.length;
+		  rcv.mvcc_id = sysop_end->mvcc_undo.mvccid;
+
+		  /* will jump to parent LSA. save it now before advancing to undo data */
+		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		  LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
+
+		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
+		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
+		}
+	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
+		{
+		  /* compensate */
+		  LSA_COPY (&prev_tranlsa, &sysop_end->compensate_lsa);
+		}
+	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+		{
+		  /* this must be partial rollback during recovery of another logical run postpone */
+		  assert (!LOG_ISRESTARTED ());
+		  /* we have to stop */
+		  LSA_SET_NULL (&prev_tranlsa);
+		}
+	      else
+		{
+		  /* jump to last parent */
+		  LSA_COPY (&prev_tranlsa, &sysop_end->lastparent_lsa);
+		}
 	      break;
 
 	    case LOG_REDO_DATA:
@@ -8097,12 +8150,14 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
+	    case LOG_DUMMY_GENERIC:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
 	    case LOG_COMMIT_WITH_POSTPONE:
-	    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-	      /* Undo of postpone system operation. End here. */
+	    case LOG_SYSOP_START_POSTPONE:
+	      /* Undo of run postpone system operation. End here. */
+	      assert (!LOG_ISRESTARTED ());
 	      LSA_SET_NULL (&prev_tranlsa);
 	      break;
 
@@ -8162,7 +8217,7 @@ int
 log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 			 LOG_TOPOP_RANGE ** out_nxtop_range_stack)
 {
-  LOG_REC_TOPOP_RESULT *top_result;
+  LOG_REC_SYSOP_END *top_result;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
@@ -8231,13 +8286,13 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 
       log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &top_result_lsa);
 
-      if (log_rec->type == LOG_COMMIT_TOPOPE || log_rec->type == LOG_ABORT_TOPOPE)
+      if (log_rec->type == LOG_SYSOP_END)
 	{
 	  /* Read the DATA HEADER */
 	  LSA_COPY (&tmp_log_lsa, &top_result_lsa);
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &tmp_log_lsa, log_pgptr);
-	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &tmp_log_lsa, log_pgptr);
-	  top_result = (LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + tmp_log_lsa.offset);
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &tmp_log_lsa, log_pgptr);
+	  top_result = (LOG_REC_SYSOP_END *) ((char *) log_pgptr->area + tmp_log_lsa.offset);
 	  last_fetch_page_id = tmp_log_lsa.pageid;
 
 	  /* 
@@ -8273,30 +8328,85 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 }
 
 /*
- * log_do_postpone - Scan forward doing postpone operations of given
- *                  transaction
+ * log_tran_do_postpone () - do postpone for transaction.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * tdes (in)     : transaction descriptor
+ */
+static void
+log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  if (LSA_ISNULL (&tdes->posp_nxlsa))
+    {
+      /* nothing to do */
+      return;
+    }
+
+  assert (tdes->topops.last < 0);
+
+  log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+  log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+}
+
+/*
+ * log_sysop_do_postpone () - do postpone for system operation
+ *
+ * return         : void
+ * thread_p (in)  : thread entry
+ * tdes (in)      : transaction descriptor
+ * sysop_end (in) : system end op log record
+ * data_size (in) : data size (for logical undo)
+ * data (in)      : data (for logical undo)
+ */
+static void
+log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end, int data_size,
+		       const char *data)
+{
+  LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
+
+  if (LSA_ISNULL (LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
+    {
+      /* nothing to postpone */
+      return;
+    }
+
+  assert (sysop_end != NULL);
+  assert (sysop_end->type != LOG_SYSOP_END_ABORT);
+  /* we cannot have TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE inside TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE */
+  assert (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
+
+  sysop_start_postpone.sysop_end = *sysop_end;
+  sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
+  tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
+  log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
+
+  if (VACUUM_IS_THREAD_VACUUM (thread_p)
+      && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
+    {
+      /* Do postpone was run from cached postpone entries. */
+      return;
+    }
+
+  log_do_postpone (thread_p, tdes, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes));
+}
+
+/*
+ * log_do_postpone - Scan forward doing postpone operations of given transaction
  *
  * return: nothing
  *
  *   tdes(in): Transaction descriptor
  *   start_posplsa(in): Where to start looking for postpone records
- *   posp_type(in): Type of postpone executed
- *   append_commit_postpone(in): Should a log record be appended for commit
- *				 postpone (or commit top-ope with postpone).
- *				 This is false when postpone is executed based
- *				 on an existing such log record, during
- *				 recovery.
  *
- * NOTE: Scan the log forward doing postpone operations of given
- *              transaction. This function is invoked after a transaction is
- *              declared committed with postpone actions.
+ * NOTE: Scan the log forward doing postpone operations of given transaction. 
+ *       This function is invoked after a transaction is declared committed with postpone actions.
  */
 void
-log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa, LOG_RECTYPE postpone_type,
-		 bool append_commit_postpone)
+log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
 {
   LOG_LSA end_postpone_lsa;	/* The last postpone record of transaction cannot be after this address */
-  LOG_LSA start_seek_lsa;	/* start looking for posptpone records at this address */
+  LOG_LSA start_seek_lsa;	/* start looking for postpone records at this address */
   LOG_LSA *end_seek_lsa;	/* Stop looking for postpone records at this address */
   LOG_LSA next_start_seek_lsa;	/* Next address to look for postpone records. Usually the end of a top system
 				 * operation. */
@@ -8314,36 +8424,9 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
   LOG_TOPOP_RANGE *nxtop_range = NULL;
   int nxtop_count = 0;
 
-  if (LSA_ISNULL (start_postpone_lsa))
-    {
-      return;
-    }
-
-  if (append_commit_postpone)
-    {
-      /* Log the transaction as committed with postpone actions and then start executing the postpone actions. */
-      if (postpone_type == LOG_COMMIT_WITH_POSTPONE)
-	{
-	  assert (tdes->topops.last < 0);
-	  log_append_commit_postpone (thread_p, tdes, start_postpone_lsa);
-	}
-      else
-	{
-	  assert (postpone_type == LOG_COMMIT_TOPOPE_WITH_POSTPONE);
-	  assert (tdes->topops.last >= 0);
-	  log_append_topope_commit_postpone (thread_p, tdes, start_postpone_lsa);
-	  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_do_postpone_from_cache (thread_p, start_postpone_lsa))
-	    {
-	      /* Do postpone was run from cached postpone entries. */
-	      return;
-	    }
-	}
-    }
-  else
-    {
-      assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || tdes->state == TRAN_UNACTIVE_WILL_COMMIT
-	      || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
-    }
+  assert (!LSA_ISNULL (start_postpone_lsa));
+  assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || tdes->state == TRAN_UNACTIVE_WILL_COMMIT
+	  || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -8395,6 +8478,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
       while (!LSA_ISNULL (&forward_lsa) && !isdone)
 	{
 	  LOG_LSA fetch_lsa;
+
 	  /* Fetch the page where the postpone LSA record is located */
 	  LSA_COPY (&log_lsa, &forward_lsa);
 	  fetch_lsa.pageid = log_lsa.pageid;
@@ -8413,11 +8497,11 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		  isdone = true;
 		  break;
 		}
+
 	      /* 
-	       * If an offset is missing, it is because we archive an incomplete
-	       * log record. This log_record was completed later.
-	       * Thus, we have to find the offset by searching
-	       * for the next log_record in the page.
+	       * If an offset is missing, it is because we archive an incomplete log record.
+	       * This log_record was completed later.
+	       * Thus, we have to find the offset by searching for the next log_record in the page.
 	       */
 	      if (forward_lsa.offset == NULL_OFFSET)
 		{
@@ -8470,6 +8554,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_REPLICATION_STATEMENT:
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
+		    case LOG_DUMMY_GENERIC:
 		      break;
 
 		    case LOG_POSTPONE:
@@ -8483,11 +8568,13 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 			{
 			  goto end;
 			}
+
+		      /* TODO: consider to add FI here */
 		      break;
 
 		    case LOG_WILL_COMMIT:
 		    case LOG_COMMIT_WITH_POSTPONE:
-		    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
+		    case LOG_SYSOP_START_POSTPONE:
 		    case LOG_2PC_PREPARE:
 		    case LOG_2PC_START:
 		    case LOG_2PC_COMMIT_DECISION:
@@ -8495,8 +8582,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		      LSA_SET_NULL (&forward_lsa);
 		      break;
 
-		    case LOG_COMMIT_TOPOPE:
-		    case LOG_ABORT_TOPOPE:
+		    case LOG_SYSOP_END:
 		      if (!LSA_EQ (&log_lsa, &start_seek_lsa))
 			{
 #if defined(CUBRID_DEBUG)
@@ -8537,8 +8623,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		}
 
 	      /* 
-	       * We can fix the lsa.pageid in the case of log_records without
-	       * forward address at this moment.
+	       * We can fix the lsa.pageid in the case of log_records without forward address at this moment.
 	       */
 
 	      if (forward_lsa.offset == NULL_OFFSET && forward_lsa.pageid != NULL_PAGEID
@@ -8580,10 +8665,8 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 
   /* GET AFTER DATA */
 
-  /* 
-   * If data is contained in only one buffer, pass pointer
-   * directly. Otherwise, allocate a contiguous area, copy the
-   * data and pass this area. At the end deallocate the area
+  /* If data is contained in only one buffer, pass pointer directly. Otherwise, allocate a contiguous area, copy
+   * data and pass this area. At the end deallocate the area.
    */
   if (log_lsa->offset + redo.length < (int) LOGAREA_SIZE)
     {
@@ -8640,80 +8723,58 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   rcv.length = redo->length;
   rcv.data = redo_rcv_data;
 
-  if (rcvindex == RVVAC_DROPPED_FILE_ADD || rcvindex == RVFL_POSTPONE_DESTROY_FILE)
+  if (VPID_ISNULL (&rcv_vpid))
     {
+      /* logical */
       rcv.pgptr = NULL;
     }
   else
     {
-      if (rcv_vpid.volid == NULL_VOLID || rcv_vpid.pageid == NULL_PAGEID
-	  || (disk_isvalid_page (thread_p, rcv_vpid.volid, rcv_vpid.pageid) != DISK_VALID))
+      error_code =
+	pgbuf_fix_if_not_deallocated (thread_p, &rcv_vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, &rcv.pgptr);
+      if (error_code != NO_ERROR)
 	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
+		  fileio_get_volume_label (rcv_vpid.volid, PEEK));
+	  return ER_LOG_MAYNEED_MEDIA_RECOVERY;
+	}
+      if (rcv.pgptr == NULL)
+	{
+	  /* deallocated */
 	  return NO_ERROR;
 	}
-
-      rcv.pgptr = pgbuf_fix_with_retry (thread_p, &rcv_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, 10);
     }
 
-  rvaddr.offset = rcv.offset;
-  rvaddr.pgptr = rcv.pgptr;
-
-  /* 
-   * if rcvindex is RVDK_IDDEALLOC_WITH_VOLHEADER,
-   * Don't append same log like others.
-   * because it modify two pages (volume header & bit map)
-   * so, we must append two WAL logs for each page later
-   * (after below RV_fun call ends successfully)
-   */
-
   /* Now call the REDO recovery function */
-  if (rcv.pgptr != NULL || (redo->data.volid == NULL_VOLID && redo->data.pageid == NULL_PAGEID))
-    {
-      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
-	{
-	  error_code = disk_rv_alloctable_with_volheader (thread_p, &rcv, log_lsa);
-	  assert (error_code == NO_ERROR);
-	}
-      else if (rcvindex == RVVAC_DROPPED_FILE_ADD)
-	{
-	  /* We don't know yet in which page the dropped file will end up so we have to do a special call here. */
-	  error_code = vacuum_notify_dropped_file (thread_p, &rcv, log_lsa);
-	  assert (error_code == NO_ERROR);
-	}
-      else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
-	{
-	  if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
-	    {
-	      _er_log_debug (ARG_FILE_LINE, "POSTPONE_DEBUG: Run postpone of drop file for ", "%lld|%d.\n",
-			     (long long int) log_lsa->pageid, (int) log_lsa->offset);
-	    }
-	  LSA_COPY (&rcv.reference_lsa, log_lsa);
-	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	  assert (error_code == NO_ERROR);
-	}
-      else
-	{
-	  /* 
-	   * Write the corresponding run postpone record for
-	   * the postpone action
-	   */
-	  log_append_run_postpone (thread_p, rcvindex, &rvaddr, &rcv_vpid, rcv.length, rcv.data, log_lsa);
 
-	  /* Now call the REDO recovery function */
-	  error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
-	  assert (error_code == NO_ERROR);
-	}
+  if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
+    {
+      LSA_COPY (&rcv.reference_lsa, log_lsa);
+
+      error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+      assert (error_code == NO_ERROR);
+    }
+  else if (RCV_IS_LOGICAL_LOG (&rcv_vpid, rcvindex))
+    {
+      /* Logical postpone. Use a system operation and commit with run postpone */
+      log_sysop_start (thread_p);
+
+      error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+      assert (error_code == NO_ERROR);
+
+      log_sysop_end_logical_run_postpone (thread_p, log_lsa);
     }
   else
     {
-      /* 
-       * Unable to fetch page of volume... May need media recovery
-       * on such page
-       */
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-	      fileio_get_volume_label (rcv_vpid.volid, PEEK));
-      error_code = ER_LOG_MAYNEED_MEDIA_RECOVERY;
+      /* Write the corresponding run postpone record for the postpone action */
+      rvaddr.offset = rcv.offset;
+      rvaddr.pgptr = rcv.pgptr;
+
+      log_append_run_postpone (thread_p, rcvindex, &rvaddr, &rcv_vpid, rcv.length, rcv.data, log_lsa);
+
+      error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+      assert (error_code == NO_ERROR);
     }
 
   if (rcv.pgptr != NULL)
@@ -8731,8 +8792,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
  *
  *   end_lsa(in/out): Address of end of log
  *
- * NOTE: Find the end of the log (i.e., the end of the active portion
- *              of the log).
+ * NOTE: Find the end of the log (i.e., the end of the active portion of the log).
  */
 static void
 log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
@@ -8924,8 +8984,9 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 
       /* Find the current pages of the volume and its descriptor */
 
-      if (xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info) != volid)
+      if (xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info) != NO_ERROR)
 	{
+	  /* we just give up? */
 	  continue;
 	}
 
@@ -8944,7 +9005,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
       (void) pgbuf_flush_all (thread_p, volid);
       (void) pgbuf_invalidate_all (thread_p, volid);	/* it flush and invalidate */
 
-      if (vol_purpose != DISK_PERMVOL_TEMP_PURPOSE && vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE)
+      if (vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
 	{
 	  (void) fileio_reset_volume (thread_p, vdes, vlabel, space_info.total_pages, &init_nontemp_lsa);
 	}
@@ -9941,4 +10002,93 @@ exit:
     }
 
   return scan;
+}
+
+/*
+ * log_read_sysop_start_postpone () - read system op start postpone and its recovery data
+ *
+ * return                     : error code
+ * thread_p (in)              : thread entry
+ * log_lsa (in/out)           : log address
+ * log_page (in/out)          : log page
+ * with_undo_data (in)        : true to read undo data
+ * sysop_start_postpone (out) : output system op start postpone log record
+ * undo_buffer_size (in/out)  : size for undo data buffer
+ * undo_buffer (in/out)       : undo data buffer
+ * undo_size (out)            : output undo data size
+ * undo_data (out)            : output undo data
+ */
+int
+log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page, bool with_undo_data,
+			       LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int *undo_buffer_size,
+			       char **undo_buffer, int *undo_size, char **undo_data)
+{
+  int error_code = NO_ERROR;
+
+  if (log_page->hdr.logical_pageid != log_lsa->pageid)
+    {
+      error_code = logpb_fetch_page (thread_p, log_lsa, LOG_CS_FORCE_USE, log_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
+  assert (((LOG_RECORD_HEADER *) (log_page->area + log_lsa->offset))->type == LOG_SYSOP_START_POSTPONE);
+
+  /* skip log record header */
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page);
+
+  *sysop_start_postpone = *(LOG_REC_SYSOP_START_POSTPONE *) (log_page->area + log_lsa->offset);
+  if (!with_undo_data
+      || (sysop_start_postpone->sysop_end.type != LOG_SYSOP_END_LOGICAL_UNDO
+	  && sysop_start_postpone->sysop_end.type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
+    {
+      /* no undo */
+      return NO_ERROR;
+    }
+
+  /* read undo data and size */
+  assert (undo_buffer_size != NULL);
+  assert (undo_buffer != NULL);
+  assert (undo_size != NULL);
+  assert (undo_data != NULL);
+
+  if (sysop_start_postpone->sysop_end.type == LOG_SYSOP_END_LOGICAL_UNDO)
+    {
+      *undo_size = sysop_start_postpone->sysop_end.undo.length;
+    }
+  else
+    {
+      assert (sysop_start_postpone->sysop_end.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
+      *undo_size = sysop_start_postpone->sysop_end.mvcc_undo.undo.length;
+    }
+
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), log_lsa, log_page);
+  if (log_lsa->offset + (*undo_size) < (int) LOGAREA_SIZE)
+    {
+      *undo_data = log_page->area + log_lsa->offset;
+    }
+  else
+    {
+      if (*undo_buffer_size == 0)
+	{
+	  *undo_buffer = (char *) db_private_alloc (thread_p, *undo_size);
+	}
+      else if (*undo_buffer_size < *undo_size)
+	{
+	  char *new_ptr = (char *) db_private_realloc (thread_p, *undo_buffer, *undo_size);
+	  if (new_ptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, *undo_size);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  *undo_buffer_size = *undo_size;
+	  *undo_buffer = new_ptr;
+	}
+      *undo_data = *undo_buffer;
+      logpb_copy_from_log (thread_p, *undo_data, *undo_size, log_lsa, log_page);
+    }
+  return NO_ERROR;
 }

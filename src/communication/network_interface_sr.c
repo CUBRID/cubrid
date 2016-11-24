@@ -35,7 +35,6 @@
 #include "memory_alloc.h"
 #include "storage_common.h"
 #include "xserver_interface.h"
-#include "large_object.h"
 #include "statistics_sr.h"
 #include "btree_load.h"
 #include "perf_monitor.h"
@@ -3371,10 +3370,14 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   DBDEF_VOL_EXT_INFO ext_info;
   int tmp;
   VOLID volid;
+  char *unpack_char;		/* to suppress warning */
 
-  ptr = or_unpack_string_nocopy (request, &ext_info.path);
-  ptr = or_unpack_string_nocopy (ptr, &ext_info.name);
-  ptr = or_unpack_string_nocopy (ptr, &ext_info.comments);
+  ptr = or_unpack_string_nocopy (request, &unpack_char);
+  ext_info.path = unpack_char;
+  ptr = or_unpack_string_nocopy (ptr, &unpack_char);
+  ext_info.name = unpack_char;
+  ptr = or_unpack_string_nocopy (ptr, &unpack_char);
+  ext_info.comments = unpack_char;
   ptr = or_unpack_int (ptr, &ext_info.max_npages);
   ptr = or_unpack_int (ptr, &ext_info.max_writesize_in_sec);
   ptr = or_unpack_int (ptr, &tmp);
@@ -3392,48 +3395,6 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   (void) or_pack_int (reply, (int) volid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
-
-#if 0
-/*
- * sboot_del_volume_extension -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sboot_del_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr;
-  int tmp;
-  int success;
-  VOLID volid;
-  bool clear_cached = false;
-
-  ptr = or_unpack_int (request, &tmp);
-  volid = (VOLID) tmp;
-  ptr = or_unpack_int (ptr, &tmp);
-  if (tmp)
-    {
-      clear_cached = true;
-    }
-
-  success = xboot_del_volume_extension (thread_p, volid, clear_cached);
-  if (success != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_int (reply, success);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-#endif
 
 
 /*
@@ -3667,455 +3628,6 @@ sboot_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, unsigned int rid, ch
       status = ER_FAILED;
     }
   or_pack_int (reply, status);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
- * slargeobjmgr_create () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  OID oid;
-  int est_length, datasize;
-  int length, csserror;
-  char *buffer, *ptr;
-  OR_ALIGNED_BUF (OR_LOID_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_unpack_int (ptr, &datasize);
-  ptr = or_unpack_int (ptr, &est_length);
-  ptr = or_unpack_loid (ptr, &loid);
-  ptr = or_unpack_oid (ptr, &oid);
-
-  csserror = 0;
-  buffer = NULL;
-  if (datasize)
-    {
-      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &buffer, &length);
-    }
-
-  if (csserror)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-    }
-  else
-    {
-      /* make sure length matches datasize ? */
-      if (xlargeobjmgr_create (thread_p, &loid, datasize, buffer, est_length, &oid) == NULL)
-	{
-	  return_error_to_client (thread_p, rid);
-	}
-
-      ptr = or_pack_loid (reply, &loid);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
-
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
-    }
-}
-
-/*
- * slargeobjmgr_destroy () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  int success = NO_ERROR;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_unpack_loid (request, &loid);
-
-  success = (xlargeobjmgr_destroy (thread_p, &loid) == NO_ERROR) ? NO_ERROR : ER_FAILED;
-  if (success != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_int (reply, success);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
- * slargeobjmgr_read () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  INT64 offset;
-  int length, rlength;
-  char *buffer, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_unpack_int64 (ptr, &offset);
-  ptr = or_unpack_int (ptr, &length);
-  ptr = or_unpack_loid (ptr, &loid);
-
-  buffer = (char *) db_private_alloc (thread_p, length);
-  if (buffer == NULL)
-    {
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-    }
-  else
-    {
-      rlength = xlargeobjmgr_read (thread_p, &loid, offset, length, buffer);
-      if (rlength < 0)
-	{
-	  return_error_to_client (thread_p, rid);
-	}
-
-      ptr = or_pack_int (reply, rlength);
-      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
-					 rlength);
-      db_private_free_and_init (thread_p, buffer);
-    }
-}
-
-/*
- * slargeobjmgr_write () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_write (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  INT64 offset;
-  int datasize, rlength, length = 0;
-  int csserror;
-  char *buffer, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_unpack_int64 (ptr, &offset);
-  ptr = or_unpack_int (ptr, &datasize);
-  ptr = or_unpack_loid (ptr, &loid);
-
-  csserror = 0;
-  buffer = NULL;
-
-  if (datasize)
-    {
-      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &buffer, &length);
-    }
-
-  if (csserror)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-    }
-  else
-    {
-      rlength = xlargeobjmgr_write (thread_p, &loid, offset, length, buffer);
-      if (rlength < 0)
-	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur, but if it occurs, rollback transaction */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (thread_p, rid);
-	}
-      ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
-
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
-    }
-}
-
-/*
- * slargeobjmgr_insert () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_insert (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  int datasize;
-  INT64 offset;
-  int csserror;
-  int rlength, length = 0;
-  char *ptr;
-  char *buffer = NULL;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_unpack_int64 (ptr, &offset);
-  ptr = or_unpack_int (ptr, &datasize);
-  ptr = or_unpack_loid (ptr, &loid);
-
-  csserror = 0;
-  if (datasize)
-    {
-      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &buffer, &length);
-    }
-
-  if (csserror || buffer == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-    }
-  else
-    {
-      rlength = xlargeobjmgr_insert (thread_p, &loid, offset, length, buffer);
-      if (rlength < 0)
-	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur, but if it occurs, rollback transaction */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (thread_p, rid);
-	}
-      ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
-
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
-    }
-}
-
-/*
- * slargeobjmgr_delete () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  INT64 offset, length, rlength;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_unpack_int64 (ptr, &offset);
-  ptr = or_unpack_int64 (ptr, &length);
-  ptr = or_unpack_loid (ptr, &loid);
-
-  rlength = xlargeobjmgr_delete (thread_p, &loid, offset, length);
-  if (rlength < 0)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  ptr = or_pack_int64 (reply, rlength);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
- * slargeobjmgr_append () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_append (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  int datasize, rlength, length = 0;
-  int csserror;
-  char *ptr;
-  char *buffer = NULL;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_unpack_int (request, &datasize);
-  ptr = or_unpack_loid (ptr, &loid);
-
-  csserror = 0;
-
-  if (datasize)
-    {
-      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &buffer, &length);
-    }
-
-  if (csserror || buffer == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-    }
-  else
-    {
-      rlength = xlargeobjmgr_append (thread_p, &loid, length, buffer);
-      if (rlength < 0)
-	{
-	  /* ER_LK_UNILATERALLY_ABORTED may not occur, but if it occurs, rollback transaction */
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return_error_to_client (thread_p, rid);
-	}
-      ptr = or_pack_int (reply, rlength);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
-
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
-    }
-}
-
-/*
- * slargeobjmgr_truncate () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_truncate (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  INT64 offset, rlength;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_unpack_int64 (request, &offset);
-  ptr = or_unpack_loid (ptr, &loid);
-
-  rlength = xlargeobjmgr_truncate (thread_p, &loid, offset);
-  if (rlength < 0)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  ptr = or_pack_int64 (reply, rlength);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
- * slargeobjmgr_compress () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_compress (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  int success;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_unpack_loid (request, &loid);
-
-  success = xlargeobjmgr_compress (thread_p, &loid);
-  if (success != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_int (reply, success);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
- * slargeobjmgr_length () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slargeobjmgr_length (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  LOID loid;
-  INT64 length;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_unpack_loid (request, &loid);
-
-  length = xlargeobjmgr_length (thread_p, &loid);
-  if (length < 0)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  ptr = or_pack_int64 (reply, length);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -4858,41 +4370,6 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 }
 
 /*
- * sdk_purpose -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-#if defined (ENABLE_UNUSED_FUNCTION)
-  DISK_VOLPURPOSE vol_purpose;
-  VOLID volid;
-  int int_volid;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_unpack_int (request, &int_volid);
-  volid = (VOLID) int_volid;
-
-  vol_purpose = xdisk_get_purpose (thread_p, volid);
-  if (vol_purpose < DISK_UNKNOWN_PURPOSE)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_int (reply, vol_purpose);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-#endif
-}
-
-/*
  * sdisk_get_purpose_and_space_info -
  *
  * return:
@@ -4914,19 +4391,20 @@ sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
+  int error_code = NO_ERROR;
+
   (void) or_unpack_int (request, &int_volid);
   volid = (VOLID) int_volid;
 
-  volid = xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info);
-
-  if (volid == NULL_VOLID)
+  error_code = xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return_error_to_client (thread_p, rid);
     }
-
   ptr = or_pack_int (reply, vol_purpose);
   OR_PACK_VOL_SPACE_INFO (ptr, (&space_info));
-  ptr = or_pack_int (ptr, (int) volid);
+  ptr = or_pack_int (ptr, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

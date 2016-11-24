@@ -2352,16 +2352,13 @@ thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag)
 {
   bool old_val = true;
 
-  if (BO_IS_SERVER_RESTARTED ())
+  if (thread_p == NULL)
     {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      old_val = thread_p->check_page_validation;
-      thread_p->check_page_validation = flag;
+      thread_p = thread_get_thread_entry_info ();
     }
+
+  old_val = thread_p->check_page_validation;
+  thread_p->check_page_validation = flag;
 
   return old_val;
 }
@@ -2373,19 +2370,12 @@ thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag)
 bool
 thread_get_check_page_validation (THREAD_ENTRY * thread_p)
 {
-  bool ret_val = true;
-
-  if (BO_IS_SERVER_RESTARTED ())
+  if (thread_p == NULL)
     {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      ret_val = thread_p->check_page_validation;
+      thread_p = thread_get_thread_entry_info ();
     }
 
-  return ret_val;
+  return thread_p->check_page_validation;
 }
 
 /*
@@ -3777,12 +3767,14 @@ thread_log_clock_thread (void *arg_p)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_auto_volume_expansion_thread (void *arg_p)
 {
+#define THREAD_AUTO_VOL_WAKEUP_TIME_SEC     60
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
   int rv;
-  short volid;
-  int npages;
+
+  struct timeval time_crt;
+  struct timespec to = { 0, 0 };
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finish */
@@ -3797,79 +3789,34 @@ thread_auto_volume_expansion_thread (void *arg_p)
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
-  pthread_mutex_init (&boot_Auto_addvol_job.lock, NULL);
-  boot_Auto_addvol_job.ret_volid = NULL_VOLID;
-  memset (&boot_Auto_addvol_job.ext_info, '\0', sizeof (DBDEF_VOL_EXT_INFO));
-
-  rv = pthread_cond_init (&boot_Auto_addvol_job.cond, NULL);
-  if (rv != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_INIT, 0);
-      tsd_ptr->status = TS_DEAD;
-
-      return (THREAD_RET_T) 0;
-    }
-
   while (!tsd_ptr->shutdown)
     {
-      er_clear ();
+      gettimeofday (&time_crt, NULL);
+      to.tv_sec = time_crt.tv_sec + THREAD_AUTO_VOL_WAKEUP_TIME_SEC;
+
       rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
       thread_Auto_volume_expansion_thread.is_running = false;
+      pthread_cond_timedwait (&thread_Auto_volume_expansion_thread.cond, &thread_Auto_volume_expansion_thread.lock,
+			      &to);
 
       if (tsd_ptr->shutdown)
 	{
 	  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
 	  break;
 	}
-      pthread_cond_wait (&thread_Auto_volume_expansion_thread.cond, &thread_Auto_volume_expansion_thread.lock);
 
       thread_Auto_volume_expansion_thread.is_running = true;
-
       pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
 
-      rv = pthread_mutex_lock (&boot_Auto_addvol_job.lock);
-      npages = boot_Auto_addvol_job.ext_info.extend_npages;
-      if (npages <= 0)
-	{
-	  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-	  continue;
-	}
-      pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-
-      volid = disk_cache_get_auto_extend_volid (tsd_ptr);
-
-      if (volid != NULL_VOLID)
-	{
-	  if (csect_enter (tsd_ptr, CSECT_BOOT_SR_DBPARM, INF_WAIT) == NO_ERROR)
-	    {
-	      if (disk_expand_perm (tsd_ptr, volid, npages) <= 0)
-		{
-		  volid = NULL_VOLID;
-		}
-
-	      csect_exit (tsd_ptr, CSECT_BOOT_SR_DBPARM);
-	    }
-	  else
-	    {
-	      volid = NULL_VOLID;
-	    }
-	}
-
-      pthread_mutex_lock (&boot_Auto_addvol_job.lock);
-      boot_Auto_addvol_job.ret_volid = volid;
-      (void) pthread_cond_broadcast (&boot_Auto_addvol_job.cond);
-      memset (&boot_Auto_addvol_job.ext_info, '\0', sizeof (DBDEF_VOL_EXT_INFO));
-      pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
+      (void) disk_auto_expand (tsd_ptr);
     }
-
-  (void) pthread_mutex_destroy (&boot_Auto_addvol_job.lock);
-  (void) pthread_cond_destroy (&boot_Auto_addvol_job.cond);
 
   er_final (ER_THREAD_FINAL);
   thread_Auto_volume_expansion_thread.is_available = false;
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
+#undef THREAD_AUTO_VOL_WAKEUP_TIME_SEC
 }
 
 /*
@@ -4974,12 +4921,6 @@ thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_R
     {
       switch (cs_idx)
 	{
-	  /* CSECT_DISK_REFRESH_GOODVOL -> CSECT_BOOT_SR_DBPARM is NOK */
-	  /* CSECT_BOOT_SR_DBPARM -> CSECT_DISK_REFRESH_GOODVOL is OK */
-	case CSECT_BOOT_SR_DBPARM:
-	  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, meter->m_hold_buf[CSECT_DISK_REFRESH_GOODVOL] == 0);
-	  break;
-
 	  /* CSECT_CT_OID_TABLE -> CSECT_LOCATOR_SR_CLASSNAME_TABLE is NOK */
 	  /* CSECT_LOCATOR_SR_CLASSNAME_TABLE -> CSECT_CT_OID_TABLE is OK */
 	case CSECT_LOCATOR_SR_CLASSNAME_TABLE:

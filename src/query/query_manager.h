@@ -41,7 +41,6 @@
   while (0)
 
 #define NULL_PAGEID_IN_PROGRESS -2
-#define QMGR_VPID_ARRAY_SIZE    20
 
 typedef enum
 {
@@ -73,12 +72,6 @@ struct qmgr_temp_file
   QMGR_TEMP_FILE *prev;
   FILE_TYPE temp_file_type;
   VFID temp_vfid;
-  int curr_free_page_index;	/* current free page index */
-  int last_free_page_index;	/* last free page index */
-  int vpid_index;		/* index into vpid_array */
-  int vpid_count;		/* index into vpid_array */
-  VPID vpid_array[QMGR_VPID_ARRAY_SIZE];	/* an array of vpids */
-  int total_count;		/* total number of file pages alloc'd */
   int membuf_last;
   PAGE_PTR *membuf;
   int membuf_npages;

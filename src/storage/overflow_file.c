@@ -54,39 +54,27 @@ struct overflow_rest_part
   char data[1];			/* Really more than one */
 };
 
-typedef struct overflow_recv_links OVERFLOW_RECV_LINKS;
-struct overflow_recv_links
-{
-  VFID ovf_vfid;
-  VPID new_vpid;
-};
-
 typedef enum
 {
   OVERFLOW_DO_DELETE,
   OVERFLOW_DO_FLUSH
 } OVERFLOW_DO_FUNC;
 
-typedef enum
-{
-  OVERFLOW_NORMAL_LOGGING,
-  OVERFLOW_SKIP_UNDO_LOGGING,
-  OVERFLOW_SKIP_LOGGING
-} OVERFLOW_LOGGING_TYPE;
-
 static void overflow_next_vpid (const VPID * ovf_vpid, VPID * vpid, PAGE_PTR pgptr);
 static const VPID *overflow_traverse (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid,
 				      OVERFLOW_DO_FUNC func);
 static int overflow_delete_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * vpid, PAGE_PTR pgptr);
 static int overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
-static VPID *overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
-				       OVERFLOW_LOGGING_TYPE logging_type, int *ovf_first_page);
+
 /*
- * overflow_insert () - Insert a multipage data in overflow
- *   return: ovf_vpid on success or NULL on failure
- *   ovf_vfid(in): File where the overflow data is going to be stored
- *   ovf_vpid(out): Overflow address
- *   recdes(in): Record descriptor
+ * overflow_insert () - Insert an overflow record (multiple-pages size record).
+ *
+ * return         : Error code
+ * thread_p (in)  : Thread entry
+ * ovf_vfid (in)  : Overflow file identifier
+ * ovf_vpid (out) : Output VPID of first page in multi-page data
+ * recdes (in)    : Multi-page data
+ * file_type (in) : Overflow file type
  *
  * Note: Data in overflow is composed of several pages. Pages in the overflow
  *       area are not shared among other pieces of overflow data.
@@ -96,85 +84,42 @@ static VPID *overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf
  *       --------------------------------         ------------------------
  *
  *       Single link list of pages.
- *       The length of the multipage data is stored on its first overflow page
+ *       The length of the multi-page data is stored on its first overflow page
  *
  *       Overflow pages are not locked in any mode since they are not shared
  *       by other pieces of data and its address is only know by accessing the
  *       relocation overflow record data which has been appropriately locked.
  */
-VPID *
-overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes, int *ovf_first_page)
+int
+overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes, FILE_TYPE file_type)
 {
-  return overflow_insert_internal (thread_p, ovf_vfid, ovf_vpid, recdes, OVERFLOW_NORMAL_LOGGING, ovf_first_page);
-}
-
-VPID *
-overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
-				      int *ovf_first_page)
-{
-  return overflow_insert_internal (thread_p, ovf_vfid, ovf_vpid, recdes, OVERFLOW_SKIP_UNDO_LOGGING, ovf_first_page);
-}
-
-static VPID *
-overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
-			  OVERFLOW_LOGGING_TYPE logging_type, int *ovf_first_page)
-{
-  PAGE_PTR vfid_fhdr_pgptr = NULL;
   OVERFLOW_FIRST_PART *first_part;
   OVERFLOW_REST_PART *rest_parts;
-  OVERFLOW_RECV_LINKS undo_recv;
   char *copyto;
   int length, copy_length;
-  INT32 npages = 0, alloc_npages = 0;
+  INT32 npages = 0;
   char *data;
-  int alloc_nth;
   LOG_DATA_ADDR addr;
-  LOG_DATA_ADDR logical_undoaddr;
   int i;
-  VPID *vpids, fhdr_vpid;
+  VPID *vpids = NULL;
   VPID vpids_buffer[OVERFLOW_ALLOCVPID_ARRAY_SIZE + 1];
-  FILE_ALLOC_VPIDS alloc_vpids;
-  bool need_alloc = ovf_first_page == NULL;
+  bool is_sysop_started = false;
 
-  /* 
-   * We don't need to lock the overflow pages since these pages are not
-   * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock
-   */
+  int error_code = NO_ERROR;
+
+  assert (ovf_vfid != NULL && !VFID_ISNULL (ovf_vfid));
+  assert (ovf_vpid != NULL);
+  assert (recdes != NULL);
+  assert (file_type == FILE_TEMP	/* sort files */
+	  || file_type == FILE_BTREE_OVERFLOW_KEY	/* b-tree overflow key */
+	  || file_type == FILE_MULTIPAGE_OBJECT_HEAP /* heap overflow file */ );
 
   addr.vfid = ovf_vfid;
   addr.offset = 0;
 
-  logical_undoaddr.vfid = ovf_vfid;
-  logical_undoaddr.offset = 0;
-  logical_undoaddr.pgptr = NULL;
-
-  undo_recv.ovf_vfid = *ovf_vfid;
-
   /* 
-   * Temporary:
-   *   Lock the file header, so I am the only one changing the file table
-   *   of allocated pages. This is needed since this function is using
-   *   file_find_nthpages, which could give me not the expected page, if someone
-   *   else remove pages, after the initial allocation.
-   */
-
-  fhdr_vpid.volid = ovf_vfid->volid;
-  fhdr_vpid.pageid = ovf_vfid->fileid;
-
-  vfid_fhdr_pgptr = pgbuf_fix (thread_p, &fhdr_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (vfid_fhdr_pgptr == NULL)
-    {
-      return NULL;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, vfid_fhdr_pgptr, PAGE_FTAB);
-
-  /* 
-   * Guess the number of pages. The total number of pages is found by
-   * dividing length by pagesize - the smallest header. Then, we make sure
-   * that this estimate is correct.
-   */
+   * Guess the number of pages. The total number of pages is found by dividing length by page size - the smallest
+   * header. Then, we make sure that this estimate is correct. */
   length = recdes->length - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
   if (length > 0)
     {
@@ -192,8 +137,7 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
       if (vpids == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (npages + 1) * sizeof (VPID));
-	  pgbuf_unfix (thread_p, vfid_fhdr_pgptr);
-	  return NULL;
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
   else
@@ -210,77 +154,15 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
 
   VPID_SET_NULL (&vpids[npages]);
 
-  alloc_vpids.vpids = vpids;
-  alloc_vpids.index = 0;
+  log_sysop_start (thread_p);
+  is_sysop_started = true;
 
-  /* 
-   * We do not initialize the pages during allocation since they are not
-   * pointed by anyone until we return from this function, at that point
-   * they are initialized.
-   */
-  alloc_npages = npages;
-  if (!need_alloc)
+  error_code = file_alloc_multiple (thread_p, ovf_vfid, NULL, NULL, npages, vpids);
+  if (error_code != NO_ERROR)
     {
-      int num_obtained_pages;
-      assert (ovf_first_page != NULL);
-      if (*ovf_first_page < 0)
-	{
-	  /* first page cannot be negative */
-	  *ovf_first_page = 0;
-	}
-      if (file_get_numpages (thread_p, ovf_vfid) <= *ovf_first_page)
-	{
-	  /* need to allocate more pages */
-	  need_alloc = true;
-	}
-      else
-	{
-	  num_obtained_pages = file_find_nthpages (thread_p, ovf_vfid, alloc_vpids.vpids, *ovf_first_page, npages);
-	  if (num_obtained_pages == -1)
-	    {
-	      /* error obtaining pages */
-	      if (vpids != vpids_buffer)
-		{
-		  free_and_init (vpids);
-		}
-	      pgbuf_unfix (thread_p, vfid_fhdr_pgptr);
-	      return NULL;
-	    }
-
-	  if (num_obtained_pages < npages)
-	    {
-	      /* couldn't obtain npages, allocation is still necessary */
-	      alloc_npages -= num_obtained_pages;
-	      need_alloc = true;
-	    }
-	  /* update current index of alloc_vpids */
-	  alloc_vpids.index += num_obtained_pages;
-	}
+      ASSERT_ERROR ();
+      goto exit_on_error;
     }
-
-  if (need_alloc)
-    {
-      if (file_alloc_pages_as_noncontiguous (thread_p, ovf_vfid, (alloc_vpids.vpids + alloc_vpids.index), &alloc_nth,
-					     alloc_npages, NULL, NULL, NULL, &alloc_vpids) == NULL)
-	{
-	  if (vpids != vpids_buffer)
-	    {
-	      free_and_init (vpids);
-	    }
-
-	  pgbuf_unfix (thread_p, vfid_fhdr_pgptr);
-	  return NULL;
-	}
-    }
-
-  if (ovf_first_page != NULL)
-    {
-      /* update first page for the next call */
-      *ovf_first_page += npages;
-    }
-
-  assert (alloc_vpids.index == npages);
-
 #if !defined(NDEBUG)
   for (i = 0; i < npages; i++)
     {
@@ -300,10 +182,10 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
       addr.pgptr = pgbuf_fix (thread_p, &vpids[i], NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (addr.pgptr == NULL)
 	{
+	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-
-      (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+      pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 
       /* Is this the first page ? */
       if (i == 0)
@@ -322,7 +204,10 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
 	    }
 
 	  /* notify the first part of overflow recdes */
-	  log_append_empty_record (thread_p, LOG_DUMMY_OVF_RECORD, &addr);
+	  if (file_type != FILE_TEMP)
+	    {
+	      log_append_empty_record (thread_p, LOG_DUMMY_OVF_RECORD, &addr);
+	    }
 	}
       else
 	{
@@ -340,70 +225,51 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
 
       memcpy (copyto, data, copy_length);
 
-      if (file_is_new_file (thread_p, ovf_vfid) == FILE_OLD_FILE && logging_type == OVERFLOW_NORMAL_LOGGING)
+      if (file_type != FILE_TEMP)
 	{
-	  pgbuf_get_vpid (addr.pgptr, &undo_recv.new_vpid);
-	  /* we don't do undo logging for new files */
-	  log_append_undo_data (thread_p, RVOVF_NEWPAGE_LOGICAL_UNDO, &logical_undoaddr, sizeof (undo_recv),
-				&undo_recv);
+	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr,
+				copy_length + CAST_BUFLEN (copyto - (char *) addr.pgptr), (char *) addr.pgptr);
 	}
-
-      log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr,
-			    copy_length + CAST_BUFLEN (copyto - (char *) addr.pgptr), (char *) addr.pgptr);
 
       data += copy_length;
       length -= copy_length;
 
-      pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
-      addr.pgptr = NULL;
+      pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
     }
 
   assert (length == 0);
 #if defined (CUBRID_DEBUG)
   if (length > 0)
     {
+      assert (false);
       er_log_debug (ARG_FILE_LINE,
 		    "ovf_insert: ** SYSTEM ERROR calculation of number of pages needed to store overflow data seems"
 		    " incorrect. Need no more than %d pages", npages);
+      error_code = ER_FAILED;
       goto exit_on_error;
     }
 #endif
 
-  /* 
-   * Temporary:
-   *   Unlock the file header, so I am the only one changing the file table
-   *   of allocated pages. This is needed since curently, I am using
-   *   file_find_nthpages, which could give me not the expected page, if someone
-   *   else remove pages.
-   */
+  log_sysop_attach_to_outer (thread_p);
 
   if (vpids != vpids_buffer)
     {
       free_and_init (vpids);
     }
-
-  pgbuf_unfix (thread_p, vfid_fhdr_pgptr);
-  return ovf_vpid;
+  return NO_ERROR;
 
 exit_on_error:
 
-  {
-    FILE_TYPE file_type;
-
-    file_type = file_get_type_by_fhdr_pgptr (thread_p, ovf_vfid, vfid_fhdr_pgptr);
-    for (i = 0; i < npages; i++)
-      {
-	(void) file_dealloc_page (thread_p, ovf_vfid, &vpids[i], file_type);
-      }
-  }
+  if (is_sysop_started)
+    {
+      log_sysop_abort (thread_p);
+    }
 
   if (vpids != vpids_buffer)
     {
       free_and_init (vpids);
     }
-
-  pgbuf_unfix (thread_p, vfid_fhdr_pgptr);
-  return NULL;
+  return error_code;
 }
 
 /*
@@ -494,27 +360,28 @@ exit_on_error:
 }
 
 /*
- * overflow_update () - Update the content of a multipage data
- *   return: ovf_vpid on success or NULL on failure
- *   ovf_vfid(in): File where the overflow data is stored
- *                 WARNING: MUST BE THE SAME AS IT WAS GIVEN DURING INSERT
- *   ovf_vpid(in): Overflow address
- *   recdes(in): Record descriptor
+ * overflow_update () - Update the content of multi-page data.
  *
- * Note: The function may allocate or deallocate several overflow pages if
- *       the multipage data increase/decrease in length.
+ * return         : Error code
+ * thread_p (in)  : Thread entry
+ * ovf_vfid (in)  : Overflow file identifier
+ * ovf_vpid (in)  : VPID of first page in multi-page data
+ * recdes (in)    : New multi-page data
+ * file_type (in) : Overflow file type
  *
- *       Overflow pages are not locked in any mode since they are not shared
- *       by other data and its address is know by accessing the relocation
- *       overflow record which has been appropriately locked.
+ * Note: The function may allocate or deallocate several overflow pages if the multipage data increase/decrease in
+ *       length.
+ *
+ *       Overflow pages are not locked in any mode since they are not shared by other data and its address is know by
+ *       accessing the relocation overflow record which has been appropriately locked.
  */
-const VPID *
-overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid, RECDES * recdes)
+int
+overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid, RECDES * recdes,
+		 FILE_TYPE file_type)
 {
   OVERFLOW_FIRST_PART *first_part = NULL;
   OVERFLOW_REST_PART *rest_parts = NULL;
   char *copyto;
-  OVERFLOW_RECV_LINKS recv;
   VPID tmp_vpid;
   int hdr_length;
   int copy_length;
@@ -524,27 +391,28 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
   VPID next_vpid;
   VPID *addr_vpid_ptr;
   LOG_DATA_ADDR addr;
-  LOG_DATA_ADDR logical_undoaddr;
   bool isnewpage = false;
+  bool is_sysop_started = false;
 
-  /* 
-   * We don't need to lock the overflow pages since these pages are not
-   * shared among several pieces of overflow data. The overflow pages are
-   * know by accessing the relocation-overflow record with the appropiate lock
-   */
+  int error_code = NO_ERROR;
+
+  assert (ovf_vfid != NULL && !VFID_ISNULL (ovf_vfid));
+  assert (file_type == FILE_MULTIPAGE_OBJECT_HEAP);	/* used only for heap for now... I left this here just in case
+							 * other file types start using this. If you hit this assert,
+							 * check the code is alright for your usage (e.g. this doesn't
+							 * consider temporary files).
+							 */
 
   addr.vfid = ovf_vfid;
   addr.offset = 0;
-  logical_undoaddr.vfid = ovf_vfid;
-  logical_undoaddr.offset = 0;
-  logical_undoaddr.pgptr = NULL;
-
-  recv.ovf_vfid = *ovf_vfid;
-
   next_vpid = *ovf_vpid;
 
   data = recdes->data;
   length = recdes->length;
+
+  log_sysop_start (thread_p);
+  is_sysop_started = true;
+
   while (length > 0)
     {
       if (isnewpage == true)
@@ -552,16 +420,17 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	  addr.pgptr = pgbuf_fix (thread_p, &next_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (addr.pgptr == NULL)
 	    {
+	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit_on_error;
 	    }
-
-	  (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+	  pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 	}
       else
 	{
 	  addr.pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (addr.pgptr == NULL)
 	    {
+	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit_on_error;
 	    }
 
@@ -653,7 +522,14 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
       data += copy_length;
       length -= copy_length;
 
-      log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
+      if (isnewpage)
+	{
+	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr, copy_length + hdr_length, addr.pgptr);
+	}
+      else
+	{
+	  log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
+	}
 
       if (length > 0)
 	{
@@ -661,26 +537,18 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	  if (VPID_ISNULL (&next_vpid))
 	    {
 	      /* We need to allocate a new page */
-	      if (file_alloc_pages (thread_p, ovf_vfid, &next_vpid, 1, addr_vpid_ptr, NULL, NULL) == NULL)
+	      error_code = file_alloc (thread_p, ovf_vfid, &next_vpid);
+	      if (error_code != NO_ERROR)
 		{
-		  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
-		  addr.pgptr = NULL;
+		  ASSERT_ERROR ();
+		  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 
 		  goto exit_on_error;
 		}
-	      recv.new_vpid = next_vpid;
 
-	      log_append_undoredo_data (thread_p, RVOVF_NEWPAGE_LINK, &addr, sizeof (recv), sizeof (next_vpid), &recv,
-					&next_vpid);
+	      log_append_undoredo_data (thread_p, RVOVF_NEWPAGE_LINK, &addr, 0, sizeof (next_vpid), NULL, &next_vpid);
 
 	      isnewpage = true;	/* So that its link can be set to NULL */
-
-	      /* This logical undo is to remove the page in case of rollback */
-	      if (file_is_new_file (thread_p, ovf_vfid) == FILE_OLD_FILE)
-		{
-		  /* we don't do undo logging for new files */
-		  log_append_undo_data (thread_p, RVOVF_NEWPAGE_LOGICAL_UNDO, &logical_undoaddr, sizeof (recv), &recv);
-		}
 
 	      if (rest_parts == NULL)
 		{
@@ -693,8 +561,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 		  rest_parts->next_vpid = next_vpid;
 		}
 	    }
-	  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
-	  addr.pgptr = NULL;
+	  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 	}
       else
 	{
@@ -714,14 +581,14 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	      /* This is part of rest part */
 	      VPID_SET_NULL (&rest_parts->next_vpid);
 	    }
-	  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
-	  addr.pgptr = NULL;
+	  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 
 	  while (!(VPID_ISNULL (&next_vpid)))
 	    {
 	      addr.pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	      if (addr.pgptr == NULL)
 		{
+		  ASSERT_ERROR_AND_SET (error_code);
 		  goto exit_on_error;
 		}
 
@@ -733,9 +600,10 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 
 	      pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
-	      /* TODO: clarify file_type */
-	      if (file_dealloc_page (thread_p, ovf_vfid, &tmp_vpid, FILE_UNKNOWN_TYPE) != NO_ERROR)
+	      error_code = file_dealloc (thread_p, ovf_vfid, &tmp_vpid, file_type);
+	      if (error_code != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  goto exit_on_error;
 		}
 	    }
@@ -743,11 +611,14 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	}
     }
 
-  return ovf_vpid;
+  /* done */
+  log_sysop_attach_to_outer (thread_p);
+
+  return NO_ERROR;
 
 exit_on_error:
 
-  return NULL;
+  return error_code;
 }
 
 /*
@@ -767,7 +638,7 @@ overflow_delete_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
   pgbuf_unfix_and_init (thread_p, pgptr);
 
   /* TODO: clarify file_type */
-  ret = file_dealloc_page (thread_p, ovf_vfid, vpid, FILE_UNKNOWN_TYPE);
+  ret = file_dealloc (thread_p, ovf_vfid, vpid, FILE_UNKNOWN_TYPE);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -1241,70 +1112,6 @@ overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
   return ret;
 }
 #endif
-
-/*
- * overflow_estimate_npages_needed () - Guess the number of pages needed to insert
- *                                 a set of overflow datas
- *   return: npages
- *   total_novf_sets(in): Number of set of overflow data
- *   avg_ovfdata_size(in): Avergae size of overflow data
- */
-int
-overflow_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_novf_sets, int avg_ovfdata_size)
-{
-  int npages;
-
-  /* Overflow insertion First page.. Substract length for insertion in first page */
-  avg_ovfdata_size -= (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
-  if (avg_ovfdata_size > 0)
-    {
-      /* The rest of the pages */
-      npages = DB_PAGESIZE - offsetof (OVERFLOW_REST_PART, data);
-      npages = CEIL_PTVDIV (avg_ovfdata_size, npages);
-    }
-  else
-    {
-      npages = 1;
-    }
-
-  npages *= total_novf_sets;
-  npages += file_guess_numpages_overhead (thread_p, NULL, npages);
-
-  return npages;
-}
-
-/*
- * overflow_rv_newpage_logical_undo () - Undo new overflow page creation
- *   return: 0 if no error, or error code
- *   rcv(in): Recovery structure
- */
-int
-overflow_rv_newpage_logical_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  OVERFLOW_RECV_LINKS *newpg;
-
-  newpg = (OVERFLOW_RECV_LINKS *) rcv->data;
-  /* TODO: clarify file_type */
-  (void) file_dealloc_page (thread_p, &newpg->ovf_vfid, &newpg->new_vpid, FILE_UNKNOWN_TYPE);
-  return NO_ERROR;
-}
-
-/*
- * overflow_rv_newpage_logical_dump_undo () - Dump undo information of new overflow
- *                                       page creation
- *   return: void
- *   length_ignore(in): Length of Recovery Data
- *   data(in): The data being logged
- */
-void
-overflow_rv_newpage_logical_dump_undo (FILE * fp, int length_ignore, void *data)
-{
-  OVERFLOW_RECV_LINKS *newpg;
-
-  newpg = (OVERFLOW_RECV_LINKS *) data;
-  (void) fprintf (fp, "Deallocating page %d|%d from Volid = %d, Fileid = %d\n", newpg->new_vpid.volid,
-		  newpg->new_vpid.pageid, newpg->ovf_vfid.volid, newpg->ovf_vfid.fileid);
-}
 
 /*
  * overflow_rv_newpage_insert_redo () -

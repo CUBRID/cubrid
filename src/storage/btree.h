@@ -578,8 +578,6 @@ extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);
 
 /* Dump routines */
 extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid);
-extern int btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp);
-
 extern void btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level);
 /* Recovery routines */
 extern int btree_rv_util_save_page_records (PAGE_PTR page_ptr, INT16 first_slotid, int rec_cnt, INT16 ins_slotid,
@@ -589,7 +587,7 @@ extern void btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID
 extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * Rec);
 #endif
 extern int btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int btree_rv_mvcc_undo_redo_increments_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern void btree_rv_roothdr_dump (FILE * fp, int length, void *data);
 extern int btree_rv_ovfid_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern void btree_rv_ovfid_dump (FILE * fp, int length, void *data);
@@ -604,8 +602,6 @@ extern void btree_rv_noderec_dump_slot_id (FILE * fp, int length, void *data);
 extern int btree_rv_pagerec_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_pagerec_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int btree_rv_newpage_undo_alloc (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern void btree_rv_newpage_dump_undo_alloc (FILE * fp, int length, void *data);
 extern int btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, OID * oid,
 					  BTREE_MVCC_INFO * mvcc_info, BTREE_OP_PURPOSE purpose,
 					  char *preallocated_buffer, char **data, int *capacity, int *length);
@@ -684,7 +680,8 @@ extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *dat
 					      OR_BUF * key_buf);
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);
-extern VPID *btree_get_root_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid);
+extern void btree_get_root_vpid_from_btid (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid);
+extern int btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * btid_out);
 
 extern int btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_SCAN_ID * index_scan_id_p,
 			      KEY_VAL_RANGE * key_val_range, FILTER_INFO * filter, const OID * match_class_oid,
@@ -696,8 +693,7 @@ extern void btree_mvcc_info_to_heap_mvcc_header (BTREE_MVCC_INFO * mvcc_info, MV
 
 extern int btree_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int btree_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int btree_rv_undo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int btree_rv_redo_delete_index (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 						    VPID * new_overflow_vpid, char **rv_undo_data_ptr,
@@ -706,4 +702,6 @@ extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTI
 extern int btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern unsigned int btree_hash_btid (void *btid, int hash_size);
+
+extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 #endif /* _BTREE_H_ */

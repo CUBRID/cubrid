@@ -1118,8 +1118,6 @@ qdump_data_type_string (DB_TYPE type)
       return "MULTISET";
     case DB_TYPE_SEQUENCE:
       return "SEQUENCE";
-    case DB_TYPE_ELO:
-      return "ELO";
     case DB_TYPE_BLOB:
       return "BLOB";
     case DB_TYPE_CLOB:

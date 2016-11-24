@@ -276,7 +276,7 @@ TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3}
 };
-TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };
+TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };	/* todo: remove me */
 TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DOMAIN_INIT };
 TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DOMAIN_INIT };
 TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
@@ -1524,7 +1524,6 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_BIGINT:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
@@ -1932,7 +1931,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_BIGINT:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
@@ -3192,7 +3190,6 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_BIGINT:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_DOUBLE:
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	case DB_TYPE_TIME:
@@ -3487,7 +3484,6 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_BIGINT:
 	    case DB_TYPE_FLOAT:
 	    case DB_TYPE_DOUBLE:
-	    case DB_TYPE_ELO:
 	    case DB_TYPE_BLOB:
 	    case DB_TYPE_CLOB:
 	    case DB_TYPE_TIME:
@@ -3634,7 +3630,6 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_BIGINT:
 	    case DB_TYPE_FLOAT:
 	    case DB_TYPE_DOUBLE:
-	    case DB_TYPE_ELO:
 	    case DB_TYPE_BLOB:
 	    case DB_TYPE_CLOB:
 	    case DB_TYPE_TIME:
@@ -9902,7 +9897,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     case DB_TYPE_BLOB:
       switch (original_type)
 	{
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	  err = db_value_clone ((DB_VALUE *) src, target);
 	  break;
@@ -9938,7 +9932,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     case DB_TYPE_CLOB:
       switch (original_type)
 	{
-	case DB_TYPE_ELO:
 	case DB_TYPE_CLOB:
 	  err = db_value_clone ((DB_VALUE *) src, target);
 	  break;
@@ -9958,20 +9951,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
 	    break;
 	  }
-	default:
-	  status = DOMAIN_INCOMPATIBLE;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_ELO:
-      switch (original_type)
-	{
-	case DB_TYPE_CLOB:
-	case DB_TYPE_BLOB:
-	case DB_TYPE_ELO:
-	  db_value_clone ((DB_VALUE *) src, target);
-	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;

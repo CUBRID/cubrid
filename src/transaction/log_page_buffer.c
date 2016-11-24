@@ -373,8 +373,8 @@ static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
 
-static int prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data);
-static int prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data);
+static int prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, const char *data);
+static int prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node, int length, const char *data);
 static int prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node, int num_crumbs, const LOG_CRUMB * crumbs);
 static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node, int num_crumbs, const LOG_CRUMB * crumbs);
 static void prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES * tdes);
@@ -382,11 +382,11 @@ static void prior_lsa_end_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node
 static void prior_lsa_append_data (int length);
 static void prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * crumbs);
 static int prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
-					  LOG_DATA_ADDR * addr, int length, char *data);
+					  LOG_DATA_ADDR * addr, int length, const char *data);
 static int prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
-					    int length, char *data);
+					    int length, const char *data);
 static int prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYPE rec_type, int length,
-				 char *data);
+				 const char *data);
 static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int num_ucrumbs,
 						      const LOG_CRUMB * ucrumbs, int num_rcrumbs,
@@ -2590,7 +2590,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
  *   data(in):
  */
 static int
-prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data)
+prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, const char *data)
 {
   if (length <= 0 || data == NULL)
     {
@@ -2621,7 +2621,7 @@ prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data)
  *   data(in):
  */
 static int
-prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node, int length, char *data)
+prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node, int length, const char *data)
 {
   if (length <= 0 || data == NULL)
     {
@@ -3156,7 +3156,7 @@ error:
  */
 static int
 prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
-			       LOG_DATA_ADDR * addr, int length, char *data)
+			       LOG_DATA_ADDR * addr, int length, const char *data)
 {
   LOG_REC_REDO *redo;
   VPID *vpid;
@@ -3203,7 +3203,7 @@ prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, L
  */
 static int
 prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex, int length,
-				 char *data)
+				 const char *data)
 {
   LOG_REC_DBOUT_REDO *dbout_redo;
   int error_code = NO_ERROR;
@@ -3238,7 +3238,7 @@ prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
  */
 static int
 prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, int gtran_length,
-				  char *gtran_data, int lock_length, char *lock_data)
+				  const char *gtran_data, int lock_length, const char *lock_data)
 {
   int error_code = NO_ERROR;
 
@@ -3274,8 +3274,8 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node
  *   topop_data(in):
  */
 static int
-prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, int tran_length, char *tran_data,
-				int topop_length, char *topop_data)
+prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, int tran_length, const char *tran_data,
+				int topop_length, const char *topop_data)
 {
   int error_code = NO_ERROR;
 
@@ -3310,7 +3310,8 @@ prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
  *   data(in):
  */
 static int
-prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYPE rec_type, int length, char *data)
+prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYPE rec_type, int length,
+		      const char *data)
 {
   int error_code = NO_ERROR;
 
@@ -3320,6 +3321,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_GENERIC:
     case LOG_2PC_COMMIT_DECISION:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -3349,8 +3351,8 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_START_POSTPONE);
       break;
 
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-      node->data_header_length = sizeof (LOG_REC_TOPOPE_START_POSTPONE);
+    case LOG_SYSOP_START_POSTPONE:
+      node->data_header_length = sizeof (LOG_REC_SYSOP_START_POSTPONE);
       break;
 
     case LOG_COMMIT:
@@ -3359,10 +3361,8 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_DONETIME);
       break;
 
-    case LOG_COMMIT_TOPOPE:
-    case LOG_ABORT_TOPOPE:
-      assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (LOG_REC_TOPOP_RESULT);
+    case LOG_SYSOP_END:
+      node->data_header_length = sizeof (LOG_REC_SYSOP_END);
       break;
 
     case LOG_REPLICATION_DATA:
@@ -3415,7 +3415,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
  */
 LOG_PRIOR_NODE *
 prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
-			       LOG_DATA_ADDR * addr, int ulength, char *udata, int rlength, char *rdata)
+			       LOG_DATA_ADDR * addr, int ulength, const char *udata, int rlength, const char *rdata)
 {
   LOG_PRIOR_NODE *node;
   int error_code = NO_ERROR;
@@ -3480,17 +3480,17 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_GENERIC:
 
     case LOG_2PC_COMMIT_DECISION:
     case TRAN_UNACTIVE_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
+    case LOG_SYSOP_START_POSTPONE:
     case LOG_COMMIT:
     case LOG_ABORT:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
-    case LOG_COMMIT_TOPOPE:
-    case LOG_ABORT_TOPOPE:
+    case LOG_SYSOP_END:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
@@ -3647,7 +3647,9 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
   /* Is this a valid MVCC operations: 1. node must be undoredo/undo type and must have undo data. 2. record index must
    * the index of MVCC operations. */
   if (node->log_header.type == LOG_MVCC_UNDO_DATA || node->log_header.type == LOG_MVCC_UNDOREDO_DATA
-      || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+      || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA
+      || (node->log_header.type == LOG_SYSOP_END
+	  && ((LOG_REC_SYSOP_END *) node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
     {
       /* Link the log record to previous MVCC delete/update log record */
       /* Will be used by vacuum */
@@ -3655,6 +3657,13 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	{
 	  /* Read from mvcc_undo structure */
 	  mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
+	  vacuum_info = &mvcc_undo->vacuum_info;
+	  mvccid = mvcc_undo->mvccid;
+	}
+      else if (node->log_header.type == LOG_SYSOP_END)
+	{
+	  /* Read from mvcc_undo structure */
+	  mvcc_undo = &((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
 	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 	}
@@ -3708,6 +3717,12 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 
       /* Replace last MVCC deleted/updated log record */
       LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &start_lsa);
+    }
+  else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
+    {
+      /* we need the system operation start postpone LSA for recovery. we have to save it under prior_lsa_mutex
+       * protection */
+      tdes->rcv.sysop_start_postpone_lsa = start_lsa;
     }
 
   LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (node->data_header_length);
@@ -5573,7 +5588,7 @@ logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
 
   do
     {
-      if (logpb_add_volume (NULL, volid, next_vol_fullname, DISK_PERMVOL_GENERIC_PURPOSE) != volid)
+      if (logpb_add_volume (NULL, volid, next_vol_fullname, DB_PERMANENT_DATA_PURPOSE) != volid)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -5609,10 +5624,11 @@ error:
  *
  * NOTE: Add a new entry to the volume information
  */
+/* todo: remove purpose */
 VOLID
 logpb_add_volume (const char *db_fullname, VOLID new_volid, const char *new_volfullname, DISK_VOLPURPOSE new_volpurpose)
 {
-  if (new_volpurpose != DISK_TEMPVOL_TEMP_PURPOSE)
+  if (new_volpurpose != DB_TEMPORARY_DATA_PURPOSE)
     {
       char vol_fullname[PATH_MAX];
       char *volinfo_fullname;
@@ -7556,9 +7572,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
   LOG_INFO_CHKPT_TRANS *chkpt_trans;	/* Checkpoint tdes */
   LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
 							 * mode */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topone;	/* One top system ope */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
   LOG_LSA newchkpt_lsa;		/* New address of the checkpoint record */
@@ -7779,7 +7795,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
       length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-      chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) malloc (length_all_tops);
+      chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) malloc (length_all_tops);
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
@@ -7819,13 +7835,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 			      TR_TABLE_CS_EXIT (thread_p);
 			      goto error_cannot_chkpt;
 			    }
-			  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) ptr;
+			  chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) ptr;
 			}
 
 		      chkpt_topone = &chkpt_topops[ntops];
 		      chkpt_topone->trid = act_tdes->trid;
-		      LSA_COPY (&chkpt_topone->lastparent_lsa, &act_tdes->topops.stack[j].lastparent_lsa);
-		      LSA_COPY (&chkpt_topone->posp_lsa, &act_tdes->topops.stack[j].posp_lsa);
+		      chkpt_topone->sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
 		      ntops++;
 		      break;
 		    default:
@@ -8111,39 +8126,6 @@ logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 }
 
 /*
- * logpb_dump_checkpoint_topops - DUMP CHECKPOINT OF TOP SYSTEM OPERATIONS
- *
- * return: nothing
- *
- *   length(in): Length to dump in bytes
- *   data(in): The data being logged
- *
- * NOTE: Dump the checkpoint top system operation structure.
- */
-void
-logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
-{
-  int ntops, i;
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
-							 * mode */
-  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
-
-  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) data;
-  ntops = length / sizeof (*chkpt_topops);
-
-  /* Start dumping each checkpoint top system operation */
-
-  for (i = 0; i < ntops; i++)
-    {
-      chkpt_topone = &chkpt_topops[i];
-      fprintf (out_fp, "     Trid = %d, Lastparent_lsa = %lld|%d, Postpone_lsa = %lld|%d\n", chkpt_topone->trid,
-	       (long long int) chkpt_topone->lastparent_lsa.pageid, chkpt_topone->lastparent_lsa.offset,
-	       (long long int) chkpt_topone->posp_lsa.pageid, chkpt_topone->posp_lsa.offset);
-    }
-  (void) fprintf (out_fp, "\n");
-}
-
-/*
  * logpb_backup_for_volume - Execute a full backup for the given volume
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -8183,7 +8165,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
       error_code = ER_FAILED;
       return error_code;
     }
-  else if (volpurpose == DISK_PERMVOL_TEMP_PURPOSE || volpurpose == DISK_TEMPVOL_TEMP_PURPOSE)
+  else if (volpurpose == DB_TEMPORARY_DATA_PURPOSE)
     {
       /* 
        * Do not allow incremental backups of temp volumes; but since we
@@ -10049,7 +10031,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 	}
 
       /* Write information about this volume in the volume information file */
-      if (logpb_add_volume (to_db_fullname, volid, to_volname, DISK_PERMVOL_GENERIC_PURPOSE) != volid)
+      if (logpb_add_volume (to_db_fullname, volid, to_volname, DB_PERMANENT_DATA_PURPOSE) != volid)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -10578,7 +10560,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	}
 
       /* Write information about this volume in the volume information file */
-      if (logpb_add_volume (to_db_fullname, volid, to_volname, DISK_PERMVOL_GENERIC_PURPOSE) != volid)
+      if (logpb_add_volume (to_db_fullname, volid, to_volname, DB_PERMANENT_DATA_PURPOSE) != volid)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -11246,7 +11228,7 @@ logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid)
       return ER_FAILED;
     }
 
-  if (xdisk_get_purpose (thread_p, volid) == DISK_PERMVOL_TEMP_PURPOSE)
+  if (xdisk_get_purpose (thread_p, volid) == DB_TEMPORARY_DATA_PURPOSE)
     {
       pgbuf_reset_temp_lsa (pgptr);
       pgbuf_set_dirty (thread_p, pgptr, FREE);

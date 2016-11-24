@@ -689,9 +689,6 @@ struct log_topops_stack
 {
   int max;			/* Size of stack */
   int last;			/* Last entry in stack */
-  LOG_TOPOPS_TYPE type;		/* Used by compensate/postpone log operation. */
-  LOG_LSA ref_lsa;		/* Compensate undo_nxlsa or postpone next lsa. */
-  int compensate_level;		/* The level of top operations when compensate was started. */
   LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
 };
 
@@ -841,122 +838,6 @@ struct log_tran_update_stats
 								 * assigned */
   MHT_TABLE *unique_stats_hash;	/* hash of unique statistics for indexes used during transaction. */
 };
-
-typedef struct log_tdes LOG_TDES;
-struct log_tdes
-{
-/* Transaction descriptor */
-  MVCC_INFO mvccinfo;		/* MVCC info */
-
-  int tran_index;		/* Index onto transaction table */
-  TRANID trid;			/* Transaction identifier */
-
-  int isloose_end;
-  TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
-  TRAN_ISOLATION isolation;	/* Isolation level */
-  int wait_msecs;		/* Wait until this number of milliseconds for locks; also see xlogtb_reset_wait_msecs */
-  LOG_LSA head_lsa;		/* First log address of transaction */
-  LOG_LSA tail_lsa;		/* Last log record address of transaction */
-  LOG_LSA undo_nxlsa;		/* Next log record address of transaction for UNDO purposes. Needed since compensating
-				 * log records are logged during UNDO */
-  LOG_LSA posp_nxlsa;		/* Next address of a postpone record to be executed. Most of the time is the first
-				 * address of a postpone log record */
-  LOG_LSA savept_lsa;		/* Address of last savepoint */
-  LOG_LSA topop_lsa;		/* Address of last top operation */
-  LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
-  int client_id;		/* unique client id */
-  int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
-				 * global transaction and it is prepared to commit. */
-  LOG_CLIENTIDS client;		/* Client identification */
-  SYNC_RMUTEX rmutex_topop;	/* reentrant mutex to serialize system top operations */
-  LOG_TOPOPS_STACK topops;	/* Active top system operations. Used for system permanent nested operations which are
-				 * independent from current transaction outcome. */
-  LOG_2PC_GTRINFO gtrinfo;	/* Global transaction user information; used to store XID of XA interface. */
-  LOG_2PC_COORDINATOR *coord;	/* Information about the participants of the distributed transactions. Used only if
-				 * this site is the coordinator. Will be NULL if the transaction is a local one, or if
-				 * this site is a participant. */
-  int num_unique_btrees;	/* # of unique btrees contained in unique_stat_info array */
-  int max_unique_btrees;	/* size of unique_stat_info array */
-  BTREE_UNIQUE_STATS *tran_unique_stats;	/* Store local statistical info for multiple row update performed by
-						 * client. */
-#if defined(_AIX)
-  sig_atomic_t interrupt;
-#else				/* _AIX */
-  volatile sig_atomic_t interrupt;
-#endif				/* _AIX */
-  /* Set to one when the current execution must be stopped somehow. We stop it by sending an error message during
-   * fetching of a page. */
-  MODIFIED_CLASS_ENTRY *modified_class_list;	/* List of classes made dirty. */
-
-  int num_transient_classnames;	/* # of transient classnames by this transaction */
-  int num_repl_records;		/* # of replication records */
-  int cur_repl_record;		/* # of replication records */
-  int append_repl_recidx;	/* index of append replication records */
-  int fl_mark_repl_recidx;	/* index of flush marked replication record at first */
-  struct log_repl *repl_records;	/* replication records */
-  LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
-  LOG_LSA repl_update_lsa;	/* in-place update target lsa */
-  void *first_save_entry;	/* first save entry for the transaction */
-
-  int num_new_files;		/* # of new files created */
-  int num_new_temp_files;	/* # of new FILE_TEMP files created */
-  int suppress_replication;	/* suppress writing replication logs when flag is set */
-
-  struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
-
-  INT64 query_timeout;		/* a query should be executed before query_timeout time. */
-
-  INT64 query_start_time;
-  INT64 tran_start_time;
-  XASL_ID xasl_id;		/* xasl id of current query */
-  LK_RES *waiting_for_res;	/* resource that i'm waiting for */
-  int disable_modifications;	/* db_Disable_modification for each tran */
-
-  TRAN_ABORT_REASON tran_abort_reason;
-
-  /* bind values of executed queries in transaction */
-  int num_exec_queries;
-  DB_VALUE_ARRAY bind_history[MAX_NUM_EXEC_QUERY_HISTORY];
-
-  int num_log_records_written;	/* # of log records generated */
-
-  LOG_TRAN_UPDATE_STATS log_upd_stats;	/* Collects data about inserted/ deleted records during last
-					 * command/transaction */
-  bool has_deadlock_priority;
-
-  bool block_global_oldest_active_until_commit;
-};
-
-typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
-struct log_addr_tdesarea
-{
-  LOG_TDES *tdesarea;
-  LOG_ADDR_TDESAREA *next;
-};
-
-/* Transaction Table */
-typedef struct trantable TRANTABLE;
-struct trantable
-{
-  int num_total_indices;	/* Number of total transaction indices */
-  int num_assigned_indices;	/* Number of assigned transaction indices (i.e., number of active thread/clients) */
-  /* Number of coordinator loose end indices */
-  int num_coord_loose_end_indices;
-  /* Number of prepared participant loose end indices */
-  int num_prepared_loose_end_indices;
-  int hint_free_index;		/* Hint for a free index */
-  /* Number of transactions that must be interrupted */
-#if defined(_AIX)
-  sig_atomic_t num_interrupts;
-#else				/* _AIX */
-  volatile sig_atomic_t num_interrupts;
-#endif				/* _AIX */
-  LOG_ADDR_TDESAREA *area;	/* Contiguous area to transaction descriptors */
-  LOG_TDES **all_tdes;		/* Pointers to all transaction descriptors */
-};
-
-#define TRANTABLE_INITIALIZER \
-  { 0, 0, 0, 0, 0, 0, NULL, NULL }
 
 /*
  * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
@@ -1280,11 +1161,31 @@ enum log_rectype
   LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Obsolete */
 #endif
   LOG_COMMIT = 17,		/* A commit record */
-  LOG_COMMIT_TOPOPE_WITH_POSTPONE = 18,	/* Committing server top system postpone operations */
+  LOG_SYSOP_START_POSTPONE = 18,	/* Committing server top system postpone operations */
 #if 0
   LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 19,	/* Obsolete */
 #endif
-  LOG_COMMIT_TOPOPE = 20,	/* A partial commit record, usually from a top system operation */
+  LOG_SYSOP_END = 20,		/* end of system operation record. Its functionality can vary based on LOG_SYSOP_END_TYPE:
+				 *
+				 * - LOG_SYSOP_END_COMMIT: the usual functionality. changes under system operation become
+				 *   permanent immediately
+				 *
+				 * - LOG_SYSOP_END_LOGICAL_UNDO: system operation is used for complex logical operation (that
+				 *   usually affects more than one page). end system operation also includes undo data that
+				 *   is processed during rollback or undo.
+				 *
+				 * - LOG_SYSOP_END_LOGICAL_COMPENSATE: system operation is used for complex logical operation
+				 *   that has the purpose of compensating a change on undo or rollback. end system operation
+				 *   also includes the LSA of previous undo log record.
+				 *
+				 * - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE: system operation is used for complex logical operation
+				 *   that has the purpose of running a postpone record. end system operation also includes the
+				 *   postpone LSA and is_sysop_postpone (recovery is different for logical run postpones during
+				 *   system operation postpone compared to transaction postpone).
+				 *
+				 * - LOG_SYSOP_END_ABORT: any of the above system operations are not ended due to crash or
+				 *   errors. the system operation is rollbacked and ended with this type.
+				 */
 #if 0
   LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS = 21,	/* Obsolete */
 #endif
@@ -1292,8 +1193,7 @@ enum log_rectype
 #if 0
   LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 23,	/* Obsolete */
 #endif
-  LOG_ABORT_TOPOPE = 24,	/* A partial abort record, usually from a top system operation or partial rollback to a 
-				 * save point */
+  LOG_ABORT_TOPOPE = 24,	/* obsolete */
   LOG_START_CHKPT = 25,		/* Start a checkpoint */
   LOG_END_CHKPT = 26,		/* Checkpoint information */
   LOG_SAVEPOINT = 27,		/* A user savepoint record */
@@ -1328,6 +1228,10 @@ enum log_rectype
   LOG_MVCC_UNDO_DATA = 47,	/* Undo for MVCC operations */
   LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
+
+  LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
+				 * case. we should find a different approach */
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 
@@ -1520,12 +1424,52 @@ struct log_rec_start_postpone
   LOG_LSA posp_lsa;
 };
 
-/* This entry is included during the commit of top system operations */
-typedef struct log_rec_topope_start_postpone LOG_REC_TOPOPE_START_POSTPONE;
-struct log_rec_topope_start_postpone
+/* types of end system operation */
+typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
+enum log_sysop_end_type
 {
-  LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. */
-  LOG_LSA posp_lsa;		/* Address where the first postpone operation start */
+  LOG_SYSOP_END_COMMIT,		/* permanent changes */
+  LOG_SYSOP_END_ABORT,		/* aborted system op */
+  LOG_SYSOP_END_LOGICAL_UNDO,	/* logical undo */
+  LOG_SYSOP_END_LOGICAL_MVCC_UNDO,	/* logical mvcc undo */
+  LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
+  LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
+};
+#define LOG_SYSOP_END_TYPE_CHECK(type) \
+  assert ((type) == LOG_SYSOP_END_COMMIT \
+          || (type) == LOG_SYSOP_END_ABORT \
+          || (type) == LOG_SYSOP_END_LOGICAL_UNDO \
+          || (type) == LOG_SYSOP_END_LOGICAL_MVCC_UNDO \
+          || (type) == LOG_SYSOP_END_LOGICAL_COMPENSATE \
+          || (type) == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+
+/* end system operation log record */
+typedef struct log_rec_sysop_end LOG_REC_SYSOP_END;
+struct log_rec_sysop_end
+{
+  LOG_LSA lastparent_lsa;	/* last address before the top action */
+  LOG_LSA prv_topresult_lsa;	/* previous top action (either, partial abort or partial commit) address */
+  LOG_SYSOP_END_TYPE type;	/* end system op type */
+  union				/* other info based on type */
+  {
+    LOG_REC_UNDO undo;		/* undo data for logical undo */
+    LOG_REC_MVCC_UNDO mvcc_undo;	/* undo data for logical undo of MVCC operation */
+    LOG_LSA compensate_lsa;	/* compensate lsa for logical compensate */
+    struct
+    {
+      LOG_LSA postpone_lsa;	/* postpone lsa */
+      bool is_sysop_postpone;	/* true if run postpone is used during a system op postpone, false if used during
+				 * transaction postpone */
+    } run_postpone;		/* run postpone info */
+  };
+};
+
+/* This entry is included during the commit of top system operations */
+typedef struct log_rec_sysop_start_postpone LOG_REC_SYSOP_START_POSTPONE;
+struct log_rec_sysop_start_postpone
+{
+  LOG_REC_SYSOP_END sysop_end;	/* log record used for end of system operation */
+  LOG_LSA posp_lsa;		/* address where the first postpone operation start */
 };
 
 /* Information of execution of a postpone data */
@@ -1573,14 +1517,11 @@ struct log_info_chkpt_trans
 
 };
 
-typedef struct log_info_chkpt_topops_commit_posp LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP;
-struct log_info_chkpt_topops_commit_posp
+typedef struct log_info_chkpt_sysop_start_postpone LOG_INFO_CHKPT_SYSOP_START_POSTPONE;
+struct log_info_chkpt_sysop_start_postpone
 {
   TRANID trid;			/* Transaction identifier */
-  LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. This is needed for undo of the top
-				 * system action */
-  LOG_LSA posp_lsa;		/* The first address of a postpone log record for top system operation. We add this
-				 * since it is reset during recovery to the last reference postpone address. */
+  LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
 };
 
 typedef struct log_rec_savept LOG_REC_SAVEPT;
@@ -1588,14 +1529,6 @@ struct log_rec_savept
 {
   LOG_LSA prv_savept;		/* Previous savepoint record */
   int length;			/* Savepoint name */
-};
-
-typedef struct log_rec_topop_result LOG_REC_TOPOP_RESULT;
-struct log_rec_topop_result
-{
-  LOG_LSA lastparent_lsa;	/* Next log record address of transaction for UNDO purposes. Last address before the
-				 * top action */
-  LOG_LSA prv_topresult_lsa;	/* Previous top action (either, partial abort or partial commit) address */
 };
 
 /* Log a prepare to commit record */
@@ -1621,7 +1554,7 @@ struct log_rec_2pc_start
 };
 
 /*
- * Log the acknowledgement from a participant that it received the commit/abort
+ * Log the acknowledgment from a participant that it received the commit/abort
  * decision
  */
 typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
@@ -1646,6 +1579,131 @@ struct log_rec_ha_server_state
 
   INT64 at_time;		/* time recorded by active server */
 };
+
+typedef struct log_rcv_tdes LOG_RCV_TDES;
+struct log_rcv_tdes
+{
+  /* structure stored in transaction descriptor and used for recovery purpose.
+   * currently we store the LSA of a system op start postpone. it is required to finish the system op postpone phase
+   * correctly */
+  LOG_LSA sysop_start_postpone_lsa;
+};
+
+typedef struct log_tdes LOG_TDES;
+struct log_tdes
+{
+/* Transaction descriptor */
+  MVCC_INFO mvccinfo;		/* MVCC info */
+
+  int tran_index;		/* Index onto transaction table */
+  TRANID trid;			/* Transaction identifier */
+
+  int isloose_end;
+  TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
+  TRAN_ISOLATION isolation;	/* Isolation level */
+  int wait_msecs;		/* Wait until this number of milliseconds for locks; also see xlogtb_reset_wait_msecs */
+  LOG_LSA head_lsa;		/* First log address of transaction */
+  LOG_LSA tail_lsa;		/* Last log record address of transaction */
+  LOG_LSA undo_nxlsa;		/* Next log record address of transaction for UNDO purposes. Needed since compensating
+				 * log records are logged during UNDO */
+  LOG_LSA posp_nxlsa;		/* Next address of a postpone record to be executed. Most of the time is the first
+				 * address of a postpone log record */
+  LOG_LSA savept_lsa;		/* Address of last savepoint */
+  LOG_LSA topop_lsa;		/* Address of last top operation */
+  LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
+  int client_id;		/* unique client id */
+  int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
+				 * global transaction and it is prepared to commit. */
+  LOG_CLIENTIDS client;		/* Client identification */
+  SYNC_RMUTEX rmutex_topop;	/* reentrant mutex to serialize system top operations */
+  LOG_TOPOPS_STACK topops;	/* Active top system operations. Used for system permanent nested operations which are
+				 * independent from current transaction outcome. */
+  LOG_2PC_GTRINFO gtrinfo;	/* Global transaction user information; used to store XID of XA interface. */
+  LOG_2PC_COORDINATOR *coord;	/* Information about the participants of the distributed transactions. Used only if
+				 * this site is the coordinator. Will be NULL if the transaction is a local one, or if
+				 * this site is a participant. */
+  int num_unique_btrees;	/* # of unique btrees contained in unique_stat_info array */
+  int max_unique_btrees;	/* size of unique_stat_info array */
+  BTREE_UNIQUE_STATS *tran_unique_stats;	/* Store local statistical info for multiple row update performed by
+						 * client. */
+#if defined(_AIX)
+  sig_atomic_t interrupt;
+#else				/* _AIX */
+  volatile sig_atomic_t interrupt;
+#endif				/* _AIX */
+  /* Set to one when the current execution must be stopped somehow. We stop it by sending an error message during
+   * fetching of a page. */
+  MODIFIED_CLASS_ENTRY *modified_class_list;	/* List of classes made dirty. */
+
+  int num_transient_classnames;	/* # of transient classnames by this transaction */
+  int num_repl_records;		/* # of replication records */
+  int cur_repl_record;		/* # of replication records */
+  int append_repl_recidx;	/* index of append replication records */
+  int fl_mark_repl_recidx;	/* index of flush marked replication record at first */
+  struct log_repl *repl_records;	/* replication records */
+  LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
+  LOG_LSA repl_update_lsa;	/* in-place update target lsa */
+  void *first_save_entry;	/* first save entry for the transaction */
+
+  int suppress_replication;	/* suppress writing replication logs when flag is set */
+
+  struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
+
+  INT64 query_timeout;		/* a query should be executed before query_timeout time. */
+
+  INT64 query_start_time;
+  INT64 tran_start_time;
+  XASL_ID xasl_id;		/* xasl id of current query */
+  LK_RES *waiting_for_res;	/* resource that i'm waiting for */
+  int disable_modifications;	/* db_Disable_modification for each tran */
+
+  TRAN_ABORT_REASON tran_abort_reason;
+
+  /* bind values of executed queries in transaction */
+  int num_exec_queries;
+  DB_VALUE_ARRAY bind_history[MAX_NUM_EXEC_QUERY_HISTORY];
+
+  int num_log_records_written;	/* # of log records generated */
+
+  LOG_TRAN_UPDATE_STATS log_upd_stats;	/* Collects data about inserted/ deleted records during last
+					 * command/transaction */
+  bool has_deadlock_priority;
+
+  bool block_global_oldest_active_until_commit;
+
+  LOG_RCV_TDES rcv;
+};
+
+typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
+struct log_addr_tdesarea
+{
+  LOG_TDES *tdesarea;
+  LOG_ADDR_TDESAREA *next;
+};
+
+/* Transaction Table */
+typedef struct trantable TRANTABLE;
+struct trantable
+{
+  int num_total_indices;	/* Number of total transaction indices */
+  int num_assigned_indices;	/* Number of assigned transaction indices (i.e., number of active thread/clients) */
+  /* Number of coordinator loose end indices */
+  int num_coord_loose_end_indices;
+  /* Number of prepared participant loose end indices */
+  int num_prepared_loose_end_indices;
+  int hint_free_index;		/* Hint for a free index */
+  /* Number of transactions that must be interrupted */
+#if defined(_AIX)
+  sig_atomic_t num_interrupts;
+#else				/* _AIX */
+  volatile sig_atomic_t num_interrupts;
+#endif				/* _AIX */
+  LOG_ADDR_TDESAREA *area;	/* Contiguous area to transaction descriptors */
+  LOG_TDES **all_tdes;		/* Pointers to all transaction descriptors */
+};
+
+#define TRANTABLE_INITIALIZER \
+  { 0, 0, 0, 0, 0, 0, NULL, NULL }
 
 typedef struct log_crumb LOG_CRUMB;
 struct log_crumb
@@ -1991,7 +2049,7 @@ extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int ulength,
-						      char *udata, int rlength, char *rdata);
+						      const char *udata, int rlength, const char *rdata);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 							LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 							const int num_ucrumbs, const LOG_CRUMB * ucrumbs,
@@ -2031,7 +2089,6 @@ extern void logpb_do_checkpoint (void);
 #endif /* SERVER_MODE */
 extern LOG_PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
 extern void logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data);
-extern void logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data);
 extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path,
 			 FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file_path, int num_threads, FILEIO_ZIP_METHOD zip_method,

@@ -2714,59 +2714,6 @@ or_get_oid (OR_BUF * buf, OID * oid)
 }
 
 /*
- * or_put_loid - write a long oid to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    loid(in): pointer to LOID
- */
-int
-or_put_loid (OR_BUF * buf, LOID * loid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_LOID_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      if (loid == NULL)
-	{
-	  OR_PUT_NULL_LOID (buf->ptr);
-	}
-      else
-	{
-	  OR_PUT_LOID (buf->ptr, loid);
-	}
-      buf->ptr += OR_LOID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_loid - read a long oid from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    loid(out): pointer to LOID
- */
-int
-or_get_loid (OR_BUF * buf, LOID * loid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_LOID_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_LOID (buf->ptr, loid);
-      buf->ptr += OR_LOID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
  * or_put_data - write an array of bytes to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
@@ -3564,7 +3511,7 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 
 /*
  * DISK IDENTIFIER TRANSLATORS
- *    Translators for the disk identifiers OID, LOID, HFID, BTID, EHID.
+ *    Translators for the disk identifiers OID, HFID, BTID, EHID.
  */
 
 
@@ -3662,44 +3609,6 @@ or_unpack_oid_array (char *ptr, int n, OID ** oids)
     }
 
   return (ptr);
-}
-
-/*
- * or_pack_loid - write a LOID value
- *    return: advanced buffer pointer
- *    ptr(out): output buffer
- *    loid(in): LOID value
- */
-char *
-or_pack_loid (char *ptr, LOID * loid)
-{
-  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-
-  if (loid != NULL)
-    {
-      OR_PUT_LOID (ptr, loid);
-    }
-  else
-    {
-      OR_PUT_NULL_LOID (ptr);
-    }
-
-  return (ptr + OR_LOID_SIZE);
-}
-
-/*
- * or_unpack_loid - read a LOID value
- *    return: advanced buffer pointer
- *    ptr(in): input buffer
- *    loid(out): LOID value
- */
-char *
-or_unpack_loid (char *ptr, LOID * loid)
-{
-  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-
-  OR_GET_LOID (ptr, loid);
-  return (ptr + OR_LOID_SIZE);
 }
 
 /*
@@ -5377,7 +5286,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      precision = tp_get_fixed_precision (type);
 
 	    case DB_TYPE_NULL:
-	    case DB_TYPE_ELO:
 	    case DB_TYPE_BLOB:
 	    case DB_TYPE_CLOB:
 	      dom = tp_domain_find_noparam (type, is_desc);

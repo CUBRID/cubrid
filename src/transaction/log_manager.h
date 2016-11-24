@@ -77,6 +77,8 @@ struct log_topop_range
   LOG_LSA end_lsa;
 };
 
+#define LOG_IS_SYSTEM_OP_STARTED(tdes) ((tdes)->topops.last >= 0)
+
 extern const char *log_to_string (LOG_RECTYPE type);
 extern bool log_is_in_crash_recovery (void);
 extern LOG_LSA *log_get_restart_lsa (void);
@@ -149,10 +151,7 @@ extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
 extern LOG_LSA *log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name);
-extern LOG_LSA *log_start_system_op (THREAD_ENTRY * thread_p);
-extern void log_start_compensate_system_op (THREAD_ENTRY * thread_p, LOG_LSA * compensate_undo_nxlsa);
-extern void log_start_postpone_system_op (THREAD_ENTRY * thread_p, LOG_LSA * reference_lsa);
-extern TRAN_STATE log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result);
+extern bool log_check_system_op_is_started (THREAD_ENTRY * thread_p);
 extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p, LOG_LSA * parent_lsa);
 extern bool log_is_tran_in_system_op (THREAD_ENTRY * thread_p);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
@@ -166,8 +165,7 @@ extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RE
 				LOG_GETNEWTRID get_newtrid, LOG_WRITE_EOT_LOG wrote_eot_log);
 extern TRAN_STATE log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					LOG_GETNEWTRID get_newtrid);
-extern void log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_posplsa, LOG_RECTYPE posp_type,
-			     bool append_commit_postpone);
+extern void log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_posplsa);
 extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_REDO * redo,
 				     char *redo_rcv_data);
 extern int log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -209,4 +207,19 @@ extern int log_archive_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa,
 				      RECDES * recdes);
 
+extern void log_sysop_start (THREAD_ENTRY * thread_p);
+extern void log_sysop_abort (THREAD_ENTRY * thread_p);
+extern void log_sysop_attach_to_outer (THREAD_ENTRY * thread_p);
+extern void log_sysop_commit (THREAD_ENTRY * thread_p);
+extern void log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid,
+					int undo_size, const char *undo_data);
+extern void log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa);
+extern void log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa);
+extern void log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
+					     const char *data);
+extern int log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page,
+					  bool with_undo_data, LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone,
+					  int *undo_buffer_size, char **undo_buffer, int *undo_size, char **undo_data);
+
+extern const char *log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type);
 #endif /* _LOG_MANAGER_H_ */
