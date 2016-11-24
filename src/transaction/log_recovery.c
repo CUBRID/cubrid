@@ -3665,7 +3665,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
       /* We need to read the log record for system op start postpone */
-      LOG_LSA log_lsa;
+      LOG_LSA sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
       char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
       LOG_PAGE *log_page = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
       LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
@@ -3673,11 +3673,11 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       char *undo_buffer = NULL, *undo_data = NULL;
 
       assert (tdes->topops.last == 0);
-      assert (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa));
+      assert (!LSA_ISNULL (&sysop_start_postpone_lsa));
       LSA_SET_NULL (&first_postpone_to_apply);
 
       /* first verify it didn't crash in the middle of a run postpone system op */
-      if (!LSA_ISNULL (&tdes->undo_nxlsa) && LSA_LT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->undo_nxlsa))
+      if (!LSA_ISNULL (&tdes->undo_nxlsa) && LSA_LT (&sysop_start_postpone_lsa, &tdes->undo_nxlsa))
 	{
 	  /* rollback. simulate a new system op */
 
@@ -3689,14 +3689,13 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	   * tdes->tail_topresult_lsa. if it is a run postpone, we won't know, but rollback skips them. so we can set
 	   * this system op parent to either tail_topresult_lsa or to sysop_start_postpone_lsa, whichever comes last.
 	   */
-	  if (!LSA_ISNULL (&tdes->tail_topresult_lsa)
-	      && LSA_GT (&tdes->tail_topresult_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+	  if (!LSA_ISNULL (&tdes->tail_topresult_lsa) && LSA_GT (&tdes->tail_topresult_lsa, &sysop_start_postpone_lsa))
 	    {
 	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->tail_topresult_lsa;
 	    }
 	  else
 	    {
-	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.sysop_start_postpone_lsa;
+	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone_lsa;
 	    }
 	  /* rollback */
 	  log_sysop_abort (thread_p);
@@ -3715,10 +3714,9 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       /* simulate system op commit */
       /* we need the data from system op start postpone */
-      log_lsa = tdes->rcv.sysop_start_postpone_lsa;
       log_page->hdr.logical_pageid = NULL_PAGEID;
-      if (log_read_sysop_start_postpone (thread_p, &log_lsa, log_page, true, &sysop_start_postpone, &undo_buffer_size,
-					 &undo_buffer, &undo_data_size, &undo_data) != NO_ERROR)
+      if (log_read_sysop_start_postpone (thread_p, &sysop_start_postpone_lsa, log_page, true, &sysop_start_postpone,
+					 &undo_buffer_size, &undo_buffer, &undo_data_size, &undo_data) != NO_ERROR)
 	{
 	  /* give up */
 	  assert_release (false);
