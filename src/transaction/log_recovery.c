@@ -1179,6 +1179,7 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
   /* Nothing to undo */
   LSA_SET_NULL (&tdes->undo_nxlsa);
   LSA_COPY (&tdes->tail_lsa, log_lsa);
+  tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
 
   /* 
    * Need to read the start postpone record to set the postpone address
@@ -1711,6 +1712,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
       LSA_COPY (&tdes->posp_nxlsa, &chkpt_one->posp_nxlsa);
       LSA_COPY (&tdes->savept_lsa, &chkpt_one->savept_lsa);
       LSA_COPY (&tdes->tail_topresult_lsa, &chkpt_one->tail_topresult_lsa);
+      LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt_one->start_postpone_lsa);
       logtb_set_client_ids_all (&tdes->client, 0, NULL, chkpt_one->user_name, NULL, NULL, NULL, -1);
       if (LOG_ISTRAN_2PC (tdes))
 	{
@@ -3671,15 +3673,31 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       char *undo_buffer = NULL, *undo_data = NULL;
 
       assert (tdes->topops.last == 0);
+      assert (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa));
       LSA_SET_NULL (&first_postpone_to_apply);
 
       /* first verify it didn't crash in the middle of a run postpone system op */
       if (!LSA_ISNULL (&tdes->undo_nxlsa) && LSA_LT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->undo_nxlsa))
 	{
 	  /* rollback. simulate a new system op */
+
 	  log_sysop_start (thread_p);
-	  /* stop at sysop_start_postpone_lsa */
-	  tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.sysop_start_postpone_lsa;
+
+	  /* now we don't really know where to stop the rollback, however we can estimate. the postpone phase should be
+	   * only populated with run postpone log records and logical run postpone system operations.
+	   * if last log record before this system op is a logical run postpone, its LSA is stored in
+	   * tdes->tail_topresult_lsa. if it is a run postpone, we won't know, but rollback skips them. so we can set
+	   * this system op parent to either tail_topresult_lsa or to sysop_start_postpone_lsa, whichever comes last.
+	   */
+	  if (!LSA_ISNULL (&tdes->tail_topresult_lsa)
+	      && LSA_GT (&tdes->tail_topresult_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+	    {
+	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->tail_topresult_lsa;
+	    }
+	  else
+	    {
+	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.sysop_start_postpone_lsa;
+	    }
 	  /* rollback */
 	  log_sysop_abort (thread_p);
 	  assert (tdes->topops.last == 0);
@@ -3743,17 +3761,29 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       LSA_SET_NULL (&first_postpone_to_apply);
 
       assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+      assert (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa));
 
       /* 
        * The transaction was the one that was committing
        */
-      if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE && !LSA_ISNULL (&tdes->undo_nxlsa))
+      if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE && !LSA_ISNULL (&tdes->undo_nxlsa)
+	  && LSA_GT (&tdes->undo_nxlsa, &tdes->rcv.tran_start_postpone_lsa))
 	{
 	  /* Transaction stopped in the middle of a logical postpone. We must rollback it. */
 	  assert (tdes->topops.last == -1);
 	  log_sysop_start (thread_p);
-	  /* We need to rollback everything. */
-	  LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].lastparent_lsa);
+
+	  /* same as with the system op case, we need to set last parent to tail_topresult_lsa or
+	   * tran_start_postpone_lsa, whichever is last. */
+	  if (!LSA_ISNULL (&tdes->tail_topresult_lsa)
+	      && LSA_GT (&tdes->tail_topresult_lsa, &tdes->rcv.tran_start_postpone_lsa))
+	    {
+	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->tail_topresult_lsa;
+	    }
+	  else
+	    {
+	      tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.tran_start_postpone_lsa;
+	    }
 	  log_sysop_abort (thread_p);
 	  /* no more undo */
 	  LSA_SET_NULL (&tdes->undo_nxlsa);

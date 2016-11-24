@@ -3548,6 +3548,8 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	  LSA_SET_NULL (&tdes->tail_lsa);
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
 	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
+	  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
+	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 	}
     }
   else

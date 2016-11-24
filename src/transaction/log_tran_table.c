@@ -1947,6 +1947,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->has_deadlock_priority = false;
 
   tdes->num_log_records_written = 0;
+
+  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 }
 
 /*
@@ -2039,6 +2042,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
   tdes->block_global_oldest_active_until_commit = false;
   tdes->modified_class_list = NULL;
+
+  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 }
 
 /*
