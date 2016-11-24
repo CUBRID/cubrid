@@ -117,7 +117,7 @@ struct file_ehash_des
 typedef struct file_tablespace FILE_TABLESPACE;
 struct file_tablespace
 {
-  int initial_size;
+  INT64 initial_size;
   float expand_ratio;
   int expand_min_size;
   int expand_max_size;
