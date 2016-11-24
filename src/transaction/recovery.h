@@ -97,7 +97,7 @@ typedef enum
   RVHF_MVCC_UPDATE_OVERFLOW = 52,
   RVHF_MARK_DELETED = 53,
 
-  RVOVF_NEWPAGE_INSERT = 54,
+  RVOVF_NEWPAGE_INSERT = 54,	/* obsolete */
   RVOVF_NEWPAGE_LINK = 55,
   RVOVF_PAGE_UPDATE = 56,
   RVOVF_CHANGE_LINK = 57,
@@ -258,13 +258,10 @@ extern void rv_check_rvfuns (void);
 #define RCV_IS_NEW_PAGE_INIT(idx) \
   ((idx) == RVPGBUF_NEW_PAGE \
    || (idx) == RVHF_NEWPAGE \
-   || (idx) == RVOVF_NEWPAGE_INSERT \
    || (idx) == RVEH_INIT_BUCKET \
    || (idx) == RVEH_INIT_NEW_DIR_PAGE \
-   || (idx) == RVEH_INIT_DIR \
    || (idx) == RVBT_GET_NEWPAGE \
    || (idx) == RVCT_NEWPAGE \
-   || (idx) == RVVAC_DATA_INIT_NEW_PAGE \
    || (idx) == RVHF_CREATE_HEADER)
 
 #endif /* _RECOVERY_H_ */

@@ -104,6 +104,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
   VPID *vpids = NULL;
   VPID vpids_buffer[OVERFLOW_ALLOCVPID_ARRAY_SIZE + 1];
   bool is_sysop_started = false;
+  PAGE_TYPE ptype = PAGE_OVERFLOW;
 
   int error_code = NO_ERROR;
 
@@ -157,7 +158,8 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
   log_sysop_start (thread_p);
   is_sysop_started = true;
 
-  error_code = file_alloc_multiple (thread_p, ovf_vfid, NULL, NULL, npages, vpids);
+  error_code = file_alloc_multiple (thread_p, ovf_vfid, file_type != FILE_TEMP ? file_init_page_type : NULL, &ptype,
+				    npages, vpids);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -227,7 +229,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 
       if (file_type != FILE_TEMP)
 	{
-	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr,
+	  log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr,
 				copy_length + CAST_BUFLEN (copyto - (char *) addr.pgptr), (char *) addr.pgptr);
 	}
 
@@ -393,6 +395,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
   LOG_DATA_ADDR addr;
   bool isnewpage = false;
   bool is_sysop_started = false;
+  PAGE_TYPE ptype = PAGE_OVERFLOW;
 
   int error_code = NO_ERROR;
 
@@ -415,27 +418,13 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 
   while (length > 0)
     {
-      if (isnewpage == true)
+      addr.pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (addr.pgptr == NULL)
 	{
-	  addr.pgptr = pgbuf_fix (thread_p, &next_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	  if (addr.pgptr == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto exit_on_error;
-	    }
-	  pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit_on_error;
 	}
-      else
-	{
-	  addr.pgptr = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	  if (addr.pgptr == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto exit_on_error;
-	    }
-
-	  (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
-	}
+      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 
       addr_vpid_ptr = pgbuf_get_vpid_ptr (addr.pgptr);
 
@@ -522,14 +511,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
       data += copy_length;
       length -= copy_length;
 
-      if (isnewpage)
-	{
-	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr, copy_length + hdr_length, addr.pgptr);
-	}
-      else
-	{
-	  log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
-	}
+      log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
 
       if (length > 0)
 	{
@@ -537,7 +519,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	  if (VPID_ISNULL (&next_vpid))
 	    {
 	      /* We need to allocate a new page */
-	      error_code = file_alloc (thread_p, ovf_vfid, &next_vpid);
+	      error_code = file_alloc (thread_p, ovf_vfid, file_init_page_type, &ptype, &next_vpid, NULL);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

@@ -4475,7 +4475,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: we don't have multiple page allocation, but allocation should be fast enough */
   for (; file_pg_cnt_est > 0; file_pg_cnt_est--)
     {
-      ret = file_alloc (thread_p, vfid, &new_vpid);
+      ret = file_alloc (thread_p, vfid, NULL, NULL, &new_vpid, NULL);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4522,7 +4522,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   for (i = 0; i < num_pages; i++)
     {
       /* file is automatically expanded if page is not allocated (as long as it is missing only one page) */
-      ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, &vpid);
+      ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, NULL, NULL, &vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4570,7 +4570,7 @@ sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_
 
   for (i = 0; i < num_pages; i++)
     {
-      ret = file_numerable_find_nth (thread_p, vfid, page_no++, false, &vpid);
+      ret = file_numerable_find_nth (thread_p, vfid, page_no++, false, NULL, NULL, &vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4661,8 +4661,6 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
   int contains;
   int alloc_pages;
   int i, j;
-  VPID new_vpid;
-  int nthpg;
 
   for (i = 0; i < (int) DIM (needed_pages); i++)
     {

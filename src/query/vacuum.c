@@ -4154,6 +4154,7 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
 {
   VPID first_page_vpid;
   VACUUM_DATA_PAGE *data_page = NULL;
+  PAGE_TYPE ptype = PAGE_VACUUM_DATA;
 
   int error_code = NO_ERROR;
 
@@ -4164,18 +4165,16 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
       ASSERT_ERROR ();
       return error_code;
     }
-  error_code = file_alloc (thread_p, vacuum_data_vfid, &first_page_vpid);
+  error_code = file_alloc (thread_p, vacuum_data_vfid, file_init_page_type, &ptype, &first_page_vpid,
+			   (PAGE_PTR *) & data_page);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
-  /* Load first page of file */
-  data_page =
-    (VACUUM_DATA_PAGE *) pgbuf_fix (thread_p, &first_page_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (data_page == NULL)
     {
-      assert (false);
+      assert_release (false);
       return ER_FAILED;
     }
   vacuum_data_initialize_new_page (thread_p, data_page);
@@ -4249,6 +4248,7 @@ vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID * dropped_fi
 {
   VPID first_page_vpid;
   VACUUM_DROPPED_FILES_PAGE *dropped_files_page = NULL;
+  PAGE_TYPE ptype = PAGE_DROPPED_FILES;
   int error_code = NO_ERROR;
 
   /* Create disk file to keep dropped files */
@@ -4258,16 +4258,13 @@ vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID * dropped_fi
       ASSERT_ERROR ();
       return error_code;
     }
-  error_code = file_alloc_sticky_first_page (thread_p, dropped_files_vfid, &first_page_vpid);
+  error_code = file_alloc_sticky_first_page (thread_p, dropped_files_vfid, file_init_page_type, &ptype,
+					     &first_page_vpid, (PAGE_PTR *) dropped_files_page);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
-  /* Load first page of file */
-  dropped_files_page =
-    (VACUUM_DROPPED_FILES_PAGE *) pgbuf_fix (thread_p, &first_page_vpid, NEW_PAGE, PGBUF_LATCH_WRITE,
-					     PGBUF_UNCONDITIONAL_LATCH);
   if (dropped_files_page == NULL)
     {
       assert (false);
@@ -4868,6 +4865,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
   VACUUM_DATA_ENTRY *page_free_data = NULL;
   VACUUM_DATA_ENTRY *save_page_free_data = NULL;
   VACUUM_LOG_BLOCKID next_blockid;
+  PAGE_TYPE ptype = PAGE_VACUUM_DATA;
 
   int error_code = NO_ERROR;
 
@@ -4923,7 +4921,8 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
 	      log_sysop_start (thread_p);
 
-	      error_code = file_alloc (thread_p, &vacuum_Data.vacuum_data_file, &next_vpid);
+	      error_code = file_alloc (thread_p, &vacuum_Data.vacuum_data_file, file_init_page_type, &ptype, &next_vpid,
+				       (PAGE_PTR *) & data_page);
 	      if (error_code != NO_ERROR)
 		{
 		  /* Could not allocate new page. */
@@ -4933,15 +4932,10 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 		  log_sysop_abort (thread_p);
 		  return error_code;
 		}
-	      data_page =
-		(VACUUM_DATA_PAGE *) pgbuf_fix (thread_p, &next_vpid, NEW_PAGE, PGBUF_LATCH_WRITE,
-						PGBUF_UNCONDITIONAL_LATCH);
 	      if (data_page == NULL)
 		{
-		  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
-				 "VACUUM ERROR: Invalid vacuum data page - %d|%d!!!!",
-				 next_vpid.volid, next_vpid.pageid);
 		  assert_release (false);
+		  log_sysop_abort (thread_p);
 		  return ER_FAILED;
 		}
 	      vacuum_data_initialize_new_page (thread_p, data_page);
@@ -5500,6 +5494,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   bool found = false;
+  PAGE_TYPE ptype = PAGE_DROPPED_FILES;
 
 #if !defined (NDEBUG)
   VACUUM_TRACK_DROPPED_FILES *track_page = NULL;
@@ -5677,20 +5672,17 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
   assert (page != NULL);
 
   /* Extend file */
-  error_code = file_alloc (thread_p, &vacuum_Dropped_files_vfid, &vpid);
+  error_code = file_alloc (thread_p, &vacuum_Dropped_files_vfid, file_init_page_type, &ptype, &vpid,
+			   (PAGE_PTR *) & new_page);
   if (error_code != NO_ERROR)
     {
       assert (false);
       vacuum_unfix_dropped_entries_page (thread_p, page);
       return ER_FAILED;
     }
-
-  /* Add new entry to new page */
-  new_page =
-    (VACUUM_DROPPED_FILES_PAGE *) pgbuf_fix (thread_p, &vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (new_page == NULL)
     {
-      assert (false);
+      assert_release (false);
       vacuum_unfix_dropped_entries_page (thread_p, page);
       return ER_FAILED;
     }
