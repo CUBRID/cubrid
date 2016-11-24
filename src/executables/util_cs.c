@@ -925,36 +925,33 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   if (summarize && purpose)
     {
       title_format = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE;
-      size_title_format =
-	(size_unit_type ==
-	 SPACEDB_SIZE_UNIT_PAGE) ? SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_PAGE :
-	SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_SIZE;
+      size_title_format = ((size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
+			   ? SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_PAGE
+			   : SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_SIZE);
       output_format = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_FORMAT;
       underline = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_UNDERLINE;
     }
   else if (summarize && !purpose)
     {
       title_format = SPACEDB_OUTPUT_SUMMARIZED_TITLE;
-      size_title_format =
-	(size_unit_type ==
-	 SPACEDB_SIZE_UNIT_PAGE) ? SPACEDB_OUTPUT_SUMMARIZED_TITLE_PAGE : SPACEDB_OUTPUT_SUMMARIZED_TITLE_SIZE;
+      size_title_format = ((size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
+			   ? SPACEDB_OUTPUT_SUMMARIZED_TITLE_PAGE : SPACEDB_OUTPUT_SUMMARIZED_TITLE_SIZE);
       output_format = SPACEDB_OUTPUT_SUMMARIZED_FORMAT;
       underline = SPACEDB_OUTPUT_SUMMARIZED_UNDERLINE;
     }
   else if (!summarize && purpose)
     {
       title_format = SPACEDB_OUTPUT_PURPOSE_TITLE;
-      size_title_format =
-	(size_unit_type ==
-	 SPACEDB_SIZE_UNIT_PAGE) ? SPACEDB_OUTPUT_PURPOSE_TITLE_PAGE : SPACEDB_OUTPUT_PURPOSE_TITLE_SIZE;
+      size_title_format = ((size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
+			   ? SPACEDB_OUTPUT_PURPOSE_TITLE_PAGE : SPACEDB_OUTPUT_PURPOSE_TITLE_SIZE);
       output_format = SPACEDB_OUTPUT_PURPOSE_FORMAT;
       underline = SPACEDB_OUTPUT_PURPOSE_UNDERLINE;
     }
   else				/* !summarize && !purpose */
     {
       title_format = SPACEDB_OUTPUT_TITLE;
-      size_title_format =
-	(size_unit_type == SPACEDB_SIZE_UNIT_PAGE) ? SPACEDB_OUTPUT_TITLE_PAGE : SPACEDB_OUTPUT_TITLE_SIZE;
+      size_title_format = ((size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
+			   ? SPACEDB_OUTPUT_TITLE_PAGE : SPACEDB_OUTPUT_TITLE_SIZE);
       output_format = SPACEDB_OUTPUT_FORMAT;
       underline = SPACEDB_OUTPUT_UNDERLINE;
     }
@@ -1000,7 +997,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	      if (vol_purpose < DISK_UNKNOWN_PURPOSE)
 		{
 		  db_summarize_ntotal_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.n_total_sects);
-		  db_summarize_nfree_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.free_pages);
+		  db_summarize_nfree_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.n_free_sects);
 		  db_summarize_nvols[vol_purpose]++;
 		}
 	    }
@@ -1019,6 +1016,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
 	      if (purpose)
 		{
+		  /* FIXME: server just returns 0 */
 		  db_ndata_pages += space_info.used_data_npages;
 		  db_nindex_pages += space_info.used_index_npages;
 		  db_ntemp_pages += space_info.used_temp_npages;
@@ -1056,6 +1054,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
       if (purpose)
 	{
+	  /* FIXME: server just returns 0 */
 	  spacedb_get_size_str (num_data_used_str, db_ndata_pages, size_unit_type);
 	  spacedb_get_size_str (num_index_used_str, db_nindex_pages, size_unit_type);
 	  spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
@@ -1104,31 +1103,33 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      if (vol_purpose < DISK_UNKNOWN_PURPOSE)
 		{
-		  db_summarize_ntotal_pages[vol_purpose] += space_info.total_pages;
-		  db_summarize_nfree_pages[vol_purpose] += space_info.free_pages;
+		  db_summarize_ntotal_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.n_total_sects);
+		  db_summarize_nfree_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.n_free_sects);
 		  db_summarize_nvols[vol_purpose]++;
 
 		  if (purpose)
 		    {
+		      /* FIXME: server just returns 0 */
 		      db_summarize_ntemp_pages[vol_purpose] += space_info.used_temp_npages;
 		    }
 		}
 	    }
 	  else
 	    {
-	      db_ntotal_pages += space_info.total_pages;
-	      db_nfree_pages += space_info.free_pages;
+	      db_ntotal_pages += DISK_SECTS_NPAGES (space_info.n_total_sects);
+	      db_nfree_pages += DISK_SECTS_NPAGES (space_info.n_free_sects);
 
 	      if (db_vol_label (i, vol_label) == NULL)
 		{
 		  strcpy (vol_label, " ");
 		}
 
-	      spacedb_get_size_str (num_total_str, (UINT64) space_info.total_pages, size_unit_type);
-	      spacedb_get_size_str (num_free_str, (UINT64) space_info.free_pages, size_unit_type);
+	      spacedb_get_size_str (num_total_str, DISK_SECTS_NPAGES (space_info.n_total_sects), size_unit_type);
+	      spacedb_get_size_str (num_free_str, DISK_SECTS_NPAGES (space_info.n_free_sects), size_unit_type);
 
 	      if (purpose)
 		{
+		  /* FIXME: server just returns 0 */
 		  db_ntemp_pages += space_info.used_temp_npages;
 
 		  spacedb_get_size_str (num_data_used_str, (UINT64) 0, size_unit_type);
@@ -1165,6 +1166,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
 	  if (purpose)
 	    {
+	      /* FIXME: server just returns 0 */
 	      spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
 
 	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
@@ -1201,6 +1203,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
 	  if (purpose)
 	    {
+	      /* FIXME: server just returns 0 */
 	      db_ndata_pages += db_summarize_ndata_pages[i];
 	      db_nindex_pages += db_summarize_nindex_pages[i];
 	      db_ntemp_pages += db_summarize_ntemp_pages[i];
@@ -1228,6 +1231,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
       if (purpose)
 	{
+	  /* FIXME: server just returns 0 */
 	  spacedb_get_size_str (num_data_used_str, db_ndata_pages, size_unit_type);
 	  spacedb_get_size_str (num_index_used_str, db_nindex_pages, size_unit_type);
 	  spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
@@ -1255,6 +1259,7 @@ print_space_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_USAGE),
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   if (outfp != stdout && outfp != NULL)
     {

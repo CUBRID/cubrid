@@ -2061,7 +2061,7 @@ disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 {
   DB_VOLPURPOSE vol_purpose;
   DB_VOLTYPE vol_type;
-  VOL_SPACE_INFO space_info;
+  VOL_SPACE_INFO space_info = VOL_SPACE_INFO_INITIALIZER;
 
   if (disk_volume_boot (thread_p, volid, &vol_purpose, &vol_type, &space_info) != NO_ERROR)
     {
@@ -4926,6 +4926,9 @@ xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOL
       /* we don't cache total/max sectors */
       PAGE_PTR page_volheader;
       DISK_VOLUME_HEADER *volheader;
+
+      space_info->max_pages = space_info->total_pages = space_info->free_pages = 0;
+      space_info->used_data_npages = space_info->used_index_npages = space_info->used_temp_npages = 0;
 
       error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &page_volheader, &volheader);
       if (error_code != NO_ERROR)
