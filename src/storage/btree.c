@@ -4839,15 +4839,12 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
 }
 
 /*
- * btree_initialize_new_page () -
- *   return: bool
- *   vfid(in): File where the new page belongs
- *   file_type(in):
- *   vpid(in): The new page
- *   ignore_npages(in): Number of contiguous allocated pages (Ignored in this function. We allocate only one page)
- *   ignore_args(in): More arguments to function. Ignored at this moment.
+ * btree_initialize_new_page () - initialize a new b-tree page
  *
- * Note: Initialize a newly allocated btree page.
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * page (in)     : new b-tree page
+ * args (in)     : ignored
  */
 int
 btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
