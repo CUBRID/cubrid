@@ -39,6 +39,7 @@
 #include "memory_alloc.h"
 #include "heap_file.h"
 #include "release_string.h"
+#include "dbval.h"
 #if defined(SERVER_MODE)
 #include "thread.h"
 #endif /* SERVER_MODE */
@@ -5355,7 +5356,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
 #if defined (SERVER_MODE)
-      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (&regu_var->value.dbval))
+      if (xasl_unpack_info_p->use_xasl_clone && DB_NEED_CLEAR (&regu_var->value.dbval))
 	{
 	  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	}
@@ -5652,7 +5653,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   aggregate->accumulator.clear_value_at_clone_decache = false;
 #if defined (SERVER_MODE)
-  if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value))
+  if (xasl_unpack_info_p->use_xasl_clone && DB_NEED_CLEAR (aggregate->accumulator.value))
     {
       aggregate->accumulator.clear_value_at_clone_decache = true;
     }
@@ -5674,7 +5675,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   aggregate->accumulator.clear_value2_at_clone_decache = false;
 #if defined (SERVER_MODE)
-  if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value2))
+  if (xasl_unpack_info_p->use_xasl_clone && DB_NEED_CLEAR (aggregate->accumulator.value))
     {
       aggregate->accumulator.clear_value2_at_clone_decache = true;
     }
