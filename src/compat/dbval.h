@@ -160,15 +160,15 @@
 #define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
       ((elem)->str_val.medium.size = (sz))
 #define DB_GET_STRING_SAFE(v) \
-  ((DB_IS_NULL (v) \
-  || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
-  : ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
-  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
-  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
-  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
-  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
-  || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
-  (v)->data.ch.medium.buf))
+      ((DB_IS_NULL (v) \
+	|| DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
+       : ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
+	  (v)->data.ch.medium.buf))
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
 #define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
