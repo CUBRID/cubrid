@@ -6493,6 +6493,9 @@ peekmem_elo (OR_BUF * buf, DB_ELO * elo)
       assert (false);
       goto error;
     }
+  
+  elo->es_type = es_get_type (elo->locator);
+
   rc = or_advance (buf, locator_len);
   if (rc != NO_ERROR)
     {
