@@ -2128,6 +2128,9 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	    pg_cnt += qexec_clear_xasl (thread_p, buildlist->eptr_list, final);
 	  }
 
+	pg_cnt += qexec_clear_sort_list (xasl, buildlist->groupby_list, final);
+	pg_cnt += qexec_clear_sort_list (xasl, buildlist->after_groupby_list, final);
+
 	if (xasl->curr_spec)
 	  {
 	    scan_end_scan (thread_p, &xasl->curr_spec->s_id);

@@ -1899,6 +1899,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (xasl->ordbynum_val));
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2113,6 +2114,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (xasl->instnum_val));
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2127,6 +2129,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (xasl->save_instnum_val));
     }
 
   ptr = or_unpack_int (ptr, (int *) &xasl->instnum_flag);
@@ -2185,6 +2188,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (xasl->level_val));
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2213,6 +2217,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (xasl->isleaf_val));
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2241,6 +2246,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (xasl->iscycle_val));
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2694,6 +2700,7 @@ stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *ptr, FETCH_PROC_NODE * obj_
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      assert (!DB_NEED_CLEAR (obj_set_fetch_proc->arg));
     }
 
   ptr = or_unpack_int (ptr, &i);
@@ -2869,6 +2876,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (stx_build_list_proc->g_grbynum_val));
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hash_eligible);
@@ -3068,6 +3076,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (stx_build_list_proc->a_instnum_val));
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->a_instnum_flag);
@@ -3113,6 +3122,7 @@ stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_N
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      assert (!DB_NEED_CLEAR (stx_build_value_proc->grbynum_val));
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3529,6 +3539,10 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
   else
     {
       assign->constant = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (assign->constant == NULL)
+	{
+	  return NULL;
+	}
     }
 
   /* regu_var */
@@ -3921,6 +3935,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	{
 	  return NULL;
 	}
+      assert (!DB_NEED_CLEAR (insert_info->obj_oid));
     }
 
   return ptr;
@@ -5527,6 +5542,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (arith_type->value));
     }
 
   ptr = or_unpack_int (ptr, &tmp);
@@ -5801,6 +5817,7 @@ stx_build_function_type (THREAD_ENTRY * thread_p, char *ptr, FUNCTION_TYPE * fun
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      assert (!DB_NEED_CLEAR (function->value));
     }
 
   ptr = or_unpack_int (ptr, &tmp);
@@ -5849,6 +5866,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (analytic->value));
     }
 
   /* value2 */
@@ -5864,6 +5882,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (analytic->value2));
     }
 
   /* out_value */
@@ -5879,6 +5898,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 	{
 	  goto error;
 	}
+      assert (!DB_NEED_CLEAR (analytic->out_value));
     }
 
   /* offset_idx */
