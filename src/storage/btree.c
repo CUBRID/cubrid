@@ -9361,12 +9361,10 @@ btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE
   assert (leaf_record != NULL);
   assert (next_ovfl_vpid != NULL);
   assert (delete_helper->rv_redo_data != NULL && delete_helper->rv_redo_data_ptr != NULL);
+  assert (delete_helper->is_system_op_started);
 
-  if (delete_helper->is_system_op_started)
-    {
-      /* We need undoredo logging. */
-      rv_undo_data_ptr = rv_undo_data;
-    }
+  /* We need undoredo logging. */
+  rv_undo_data_ptr = rv_undo_data;
 
 #if !defined (NDEBUG)
   /* For debugging recovery. */
@@ -9390,23 +9388,9 @@ btree_modify_leaf_ovfl_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE
 
   /* Add logging. */
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr, delete_helper->rv_redo_data, rv_redo_data_length);
-  if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
-    {
-      /* Add undo/redo logging. */
-      assert (delete_helper->is_system_op_started == false);
-      log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr,
-				delete_helper->rv_keyval_data_length, rv_redo_data_length,
-				delete_helper->rv_keyval_data, delete_helper->rv_redo_data);
-    }
-  else
-    {
-      assert (delete_helper->is_system_op_started == true);
-      assert (rv_undo_data_ptr != NULL);
-
-      BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, rv_undo_data_length,
-				rv_redo_data_length, rv_undo_data, delete_helper->rv_redo_data);
-    }
+  BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
+  log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, rv_undo_data_length,
+			    rv_redo_data_length, rv_undo_data, delete_helper->rv_redo_data);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -9453,21 +9437,19 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   assert (ovfl_page != NULL);
   assert (next_ovfl_vpid != NULL);
   assert (delete_helper->rv_redo_data != NULL && delete_helper->rv_redo_data_ptr != NULL);
+  assert (delete_helper->is_system_op_started);
 
   /* Create record with new overflow header info and update page. */
 
-  if (delete_helper->is_system_op_started)
+  /* We need undoredo logging. */
+  overflow_header_record.area_size = sizeof (BTREE_OVERFLOW_HEADER);
+  overflow_header_record.data = rv_undo_data;
+  if (spage_get_record (ovfl_page, HEADER, &overflow_header_record, COPY) != S_SUCCESS)
     {
-      /* We need undoredo logging. */
-      overflow_header_record.area_size = sizeof (BTREE_OVERFLOW_HEADER);
-      overflow_header_record.data = rv_undo_data;
-      if (spage_get_record (ovfl_page, HEADER, &overflow_header_record, COPY) != S_SUCCESS)
-	{
-	  assert_release (false);
-	  return ER_FAILED;
-	}
-      rv_undo_data_length = sizeof (BTREE_OVERFLOW_HEADER);
+      assert_release (false);
+      return ER_FAILED;
     }
+  rv_undo_data_length = sizeof (BTREE_OVERFLOW_HEADER);
 
   /* Update overflow header info. */
   VPID_COPY (&ovf_header_info.next_vpid, next_ovfl_vpid);
@@ -9501,19 +9483,8 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
 
   /* Add logging. */
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr, delete_helper->rv_redo_data, rv_redo_data_length);
-  if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
-    {
-      /* Add undo/redo logging. */
-      log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &ovf_addr, delete_helper->rv_keyval_data_length,
-				rv_redo_data_length, delete_helper->rv_keyval_data, delete_helper->rv_redo_data);
-    }
-  else
-    {
-      assert (delete_helper->is_system_op_started);
-
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &ovf_addr, rv_undo_data_length,
-				rv_redo_data_length, rv_undo_data, delete_helper->rv_redo_data);
-    }
+  log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &ovf_addr, rv_undo_data_length,
+			    rv_redo_data_length, rv_undo_data, delete_helper->rv_redo_data);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
