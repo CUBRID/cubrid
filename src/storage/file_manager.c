@@ -702,6 +702,8 @@ static int file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_A
 STATIC_INLINE int file_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid,
 				      FILE_TYPE ftype) __attribute__ ((ALWAYS_INLINE));
 static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid);
+STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
+  __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* Temporary cache section                                              */
@@ -3955,7 +3957,7 @@ file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 }
 
 /*
- * file_temp_retire () - retire temporary file. put it in cache is possible or destroy the file.
+ * file_temp_retire () - retire temporary file (must not be preserved)
  *
  * return        : error code
  * thread_p (in) : thread entry
@@ -3964,9 +3966,50 @@ file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 int
 file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  FILE_TEMPCACHE_ENTRY *entry = file_tempcache_pop_tran_file (thread_p, vfid);
+  return file_temp_retire_internal (thread_p, vfid, false);
+}
+
+/*
+ * file_temp_retire_preserved () - retire temporary file that was preserved
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ */
+int
+file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  return file_temp_retire_internal (thread_p, vfid, true);
+}
+
+/*
+ * file_temp_retire_internal () - retire temporary file. put it in cache is possible or destroy the file.
+ *
+ * return             : error code
+ * thread_p (in)      : thread entry
+ * vfid (in)          : file identifier
+ * was_preserved (in) : true if entry was preserved in session. it is important to know because we cannot find it in
+ *                      transaction list.
+ */
+STATIC_INLINE int
+file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
+{
+  FILE_TEMPCACHE_ENTRY *entry = NULL;
   bool save_interrupt;
   int error_code = NO_ERROR;
+
+  if (was_preserved)
+    {
+      error_code = file_tempcache_alloc_entry (&entry);
+      if (error_code != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  else
+    {
+      entry = file_tempcache_pop_tran_file (thread_p, vfid);
+    }
 
   if (entry == NULL)
     {
@@ -8419,6 +8462,8 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 		", fhead->n_page_user = %d ", FILE_TEMPCACHE_ENTRY_AS_ARGS (entry), fhead.n_page_user);
       return false;
     }
+  /* make sure entry has correct type. */
+  entry->ftype = fhead.type;
 
   /* lock temporary cache */
   file_tempcache_lock ();

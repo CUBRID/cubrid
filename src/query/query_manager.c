@@ -2702,9 +2702,11 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
  * tfile_vfid_p (in)  : temporary files list
  * query_id (in)      : query id
  * is_error (in)      : true if query was unsuccessful
+ * was_preserved (in) : true if query was preserved
  */
 int
-qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, QUERY_ID query_id, bool is_error)
+qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, QUERY_ID query_id, bool is_error,
+			  bool was_preserved)
 {
   QMGR_TEMP_FILE *temp = NULL;
   int rc = NO_ERROR, fd_ret = NO_ERROR;
@@ -2717,11 +2719,25 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
       fd_ret = NO_ERROR;
       if ((tfile_vfid_p->temp_file_type != FILE_QUERY_AREA || is_error) && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  fd_ret = file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
-	  if (fd_ret != NO_ERROR)
+	  if (was_preserved)
 	    {
-	      /* set error but continue with the destroy process */
-	      rc = ER_FAILED;
+	      fd_ret = file_temp_retire_preserved (thread_p, &tfile_vfid_p->temp_vfid);
+	      if (fd_ret != NO_ERROR)
+		{
+		  /* set error but continue with the destroy process */
+		  ASSERT_ERROR ();
+		  rc = ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      fd_ret = file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	      if (fd_ret != NO_ERROR)
+		{
+		  /* set error but continue with the destroy process */
+		  ASSERT_ERROR ();
+		  rc = ER_FAILED;
+		}
 	    }
 	}
 
@@ -2763,7 +2779,7 @@ qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qu
       tfile_vfid_p = query_p->temp_vfid;
       tfile_vfid_p->prev->next = NULL;
 
-      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error);
+      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error, false);
 
       query_p->temp_vfid = NULL;
     }
