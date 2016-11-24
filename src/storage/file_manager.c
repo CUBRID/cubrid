@@ -4000,7 +4000,9 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
 
   if (was_preserved)
     {
+      file_tempcache_lock ();
       error_code = file_tempcache_alloc_entry (&entry);
+      file_tempcache_unlock ();
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
