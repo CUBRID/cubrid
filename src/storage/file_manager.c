@@ -9112,7 +9112,7 @@ file_tracker_map (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode, FILE_TRA
   PAGE_PTR page_extdata = NULL;
   FILE_EXTENSIBLE_DATA *extdata;
   VPID vpid_next = VPID_INITIALIZER;
-  bool stop;
+  bool stop = false;
   int index_item;
   int error_code = NO_ERROR;
 
