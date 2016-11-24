@@ -263,13 +263,13 @@ struct file_partial_sector
 #define FILE_TABLESPACE_DEFAULT_MAX_EXPAND (DISK_SECTOR_NPAGES * DB_PAGESIZE * 1024);	/* 1k sectors */
 
 #define FILE_TABLESPACE_FOR_PERM_NPAGES(tabspace, npages) \
-  ((FILE_TABLESPACE *) (tabspace))->initial_size = MAX (1, npages) * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = (INT64) MAX (1, npages) * DB_PAGESIZE; \
   ((FILE_TABLESPACE *) (tabspace))->expand_ratio = FILE_TABLESPACE_DEFAULT_RATIO_EXPAND; \
   ((FILE_TABLESPACE *) (tabspace))->expand_min_size = FILE_TABLESPACE_DEFAULT_MIN_EXPAND; \
   ((FILE_TABLESPACE *) (tabspace))->expand_max_size = FILE_TABLESPACE_DEFAULT_MAX_EXPAND
 
 #define FILE_TABLESPACE_FOR_TEMP_NPAGES(tabspace, npages) \
-  ((FILE_TABLESPACE *) (tabspace))->initial_size = MAX (1, npages) * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = (INT64) MAX (1, npages) * DB_PAGESIZE; \
   ((FILE_TABLESPACE *) (tabspace))->expand_ratio = 0; \
   ((FILE_TABLESPACE *) (tabspace))->expand_min_size = 0; \
   ((FILE_TABLESPACE *) (tabspace))->expand_max_size = 0
@@ -296,9 +296,10 @@ static bool file_Logging = false;
 #define FILE_NUMERABLE_REGULAR_STRING(is_numerable) ((is_numerable) ? "numerable" : "regular")
 
 #define FILE_TABLESPACE_MSG \
-  "\ttablespace = { init_size = %d, expand_ratio = %f, expand_min_size = %d, expand_max_size = %d } \n"
+  "\ttablespace = { init_size = %lld, expand_ratio = %f, expand_min_size = %d, expand_max_size = %d } \n"
 #define FILE_TABLESPACE_AS_ARGS(tabspace) \
-  (tabspace)->initial_size, (tabspace)->expand_ratio, (tabspace)->expand_min_size, (tabspace)->expand_max_size
+  (long long int) (tabspace)->initial_size, (tabspace)->expand_ratio, (tabspace)->expand_min_size, \
+  (tabspace)->expand_max_size
 
 #define FILE_HEAD_ALLOC_MSG \
  "\tfile header: \n" \
@@ -2925,6 +2926,7 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
 int
 file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
+  npages = 189189;
   return file_create_temp_internal (thread_p, npages, FILE_TEMP, false, vfid);
 }
 
@@ -3020,7 +3022,7 @@ int
 file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	     FILE_TABLESPACE * tablespace, FILE_DESCRIPTORS * des, bool is_temp, bool is_numerable, VFID * vfid)
 {
-  int total_size;
+  INT64 total_size;
   int n_sectors;
   VSID *vsids_reserved = NULL;
   DB_VOLPURPOSE volpurpose = DISK_UNKNOWN_PURPOSE;
