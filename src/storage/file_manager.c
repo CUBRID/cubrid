@@ -5175,7 +5175,11 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 	  goto exit;
 	}
       fhead = (FILE_HEADER *) page_fhead;
-      assert (file_type_hint == FILE_UNKNOWN_TYPE || file_type_hint == fhead->type);
+      /* check file type hint is not incorrect.
+       * note: sometimes the caller may not know if file is FILE_HEAP or FILE_HEAP_REUSE_SLOTS. it doesn't make a
+       * difference here, so it is accepted to give the generic FILE_HEAP hint. */
+      assert (file_type_hint == FILE_UNKNOWN_TYPE || file_type_hint == fhead->type
+	      || (file_type_hint == FILE_HEAP && fhead->type == FILE_HEAP_REUSE_SLOTS));
       file_type_hint = fhead->type;
 
       assert (!VPID_EQ (&fhead->vpid_sticky_first, vpid));
