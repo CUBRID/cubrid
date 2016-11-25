@@ -7661,6 +7661,12 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	{
 	  /* do nothing */
 	}
+      else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
+	{
+	  /* impossible. we cannot rollback anymore. */
+	  assert_release (false);
+	  rv_err = ER_FAILED;
+	}
       else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical
