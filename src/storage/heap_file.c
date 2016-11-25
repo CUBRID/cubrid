@@ -11634,7 +11634,7 @@ re_check:
 	  column_size = pr_data_writeval_disk_size (&value->dbvalue);
 	  size += column_size;
 	  if (pr_is_oor_value (&value->dbvalue)
-	      && column_size > OBJECT_OOR_THRESHOLD_SIZE)
+	      && column_size > (int) OBJECT_OOR_THRESHOLD_SIZE)
 	    {
 	      size_gain_overflow_columns += column_size - OBJECT_OOR_THRESHOLD_SIZE;
 	    }
@@ -11780,8 +11780,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   if (attr_info->num_values > 1
       && (oor_context != NULL && oor_context->oor_atts != NULL)
       && size_without_overflow_columns < expected_size
-      && !heap_is_big_length (size_without_overflow_columns)
-      /* TODO[arnia] : remove this line */
       && !heap_is_big_length (expected_size))
     {
       check_oor_column = true;
@@ -25299,7 +25297,7 @@ void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid, OID * class_oid,
 		       RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
-  context->oid_p = oid;
+  context->oid_p = (OID *) oid;
   context->class_oid_p = class_oid;
   OID_SET_NULL (&context->forward_oid);
   context->recdes_p = recdes;
@@ -25487,13 +25485,8 @@ heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
       goto exit;
     }
 
-  if (context->ispeeking == COPY)
-    {
-      /* TODO[arnia] : need to clear recdes_p ?*/
-      assert (false);
-      
-    }
-  else
+retry:
+  if (context->ispeeking == PEEK)
     {
       error = heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, context->recdes_p, DB_PAGESIZE);
       if (error != NO_ERROR)
@@ -25506,10 +25499,25 @@ heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 						     &expanded_oor_context, LOB_DELETE_ON_ATTR_INIT);
   if (scan != S_SUCCESS)
     {
+      if (scan == S_DOESNT_FIT)
+	{
+	  context->recdes_p->area_size = -context->recdes_p->length;
+	  context->recdes_p->data = (char *) db_private_realloc (thread_p, context->scan_cache->area,
+								 context->recdes_p->area_size);
+	  if (context->recdes_p->data == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto exit;
+	    }
+	  context->scan_cache->area_size = context->recdes_p->area_size;
+	  context->scan_cache->area = context->recdes_p->data;
+	  goto retry;
+
+	}
       error = ER_FAILED;
       goto exit;      
     }
-  /* TODO[arnia] : handle doesn't fit error */
+
 exit:
   if (context->attr_info_inited == true)
     {
@@ -25579,16 +25587,30 @@ heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID *class_oid_p, RECDES *o
   new_recdes->data = *new_recdes_buffer;
   new_recdes->area_size = DB_PAGESIZE;
 
+retry:
   scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, &attr_info, old_recdes, new_recdes,
 						     &shrink_oor_context, LOB_DELETE_ON_ATTR_INIT);
   if (scan != S_SUCCESS)
     {
       error = ER_FAILED;
+      if (scan == S_DOESNT_FIT)
+	{
+	  new_recdes->area_size = -new_recdes->length;
+	  new_recdes->data = (char *) db_private_realloc (thread_p, new_recdes->data, new_recdes->area_size);
+	  if (new_recdes->data == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto exit;
+	    }
+	  *new_recdes_buffer = new_recdes->data;
+	  goto retry;
+	}
+      error = ER_FAILED;
       goto exit;      
     }
 
   *old_recdes = *new_recdes;
-  /* TODO[arnia] : handle doesn't fit error */
+
 exit:
 
   heap_free_oor_context (thread_p, &shrink_oor_context);
