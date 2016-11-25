@@ -38,6 +38,9 @@
 #include "tz_support.h"
 #include "xml_parser.h"
 #include "md5.h"
+#include "db.h"
+#include "db_query.h"
+#include "dbi.h"
 
 #define TZ_FILENAME_MAX_LEN	    17
 #define TZ_MAX_LINE_LEN		    512
@@ -458,6 +461,7 @@ static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
 static int tzc_extend (TZ_DATA * tzd, bool * write_checksum);
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
+static int tzc_update (TZ_DATA * tzd);
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
@@ -6093,6 +6097,8 @@ exit:
   tzd->ds_rules = all_ds_rules;
   tzd->ds_rule_count = all_ds_rule_count;
 
+  tzc_update (tzd);
+
   if (err_status == NO_ERROR)
     {
       if (is_compat == false)
@@ -6334,5 +6340,215 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
   free (input_buf);
   md5_hash_to_hex (tzd->checksum, tzd->checksum);
 
+  return error;
+}
+
+/*
+ * tzc_update() - Do a data migration in case that tzc_extend fails 
+ *
+ * Returns: error or no error
+ * tzd (in): Timezone library used to the data migration
+ */
+static int
+tzc_update (TZ_DATA * tzd)
+{
+  char query_buf[1024];
+  DB_SESSION *session = NULL, *session2 = NULL, *session3 = NULL;
+  STATEMENT_ID stmt_id;
+  DB_QUERY_RESULT *result;
+  DB_VALUE value, value2, value3;
+  int error = NO_ERROR;
+  DB_INFO *dir = NULL;
+  DB_INFO *db_info_p = NULL;
+  bool need_db_shutdown = false;
+  const char *program_name = "extend";
+  char *table_name = NULL;
+
+  tz_set_new_timezone_data (tzd);
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+
+  /* Read the directory with the databases names */
+  error = cfg_read_directory (&dir, false);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* Iterate through all the databases */
+  for (db_info_p = dir; db_info_p != NULL; db_info_p = db_info_p->next)
+    {
+      /* Open the database */
+      error = db_restart (program_name, TRUE, db_info_p->name);
+      if (error != NO_ERROR)
+	{
+	  need_db_shutdown = true;
+	  goto exit;
+	}
+
+      memset (query_buf, 0, sizeof (query_buf));
+      strcat (query_buf, "show tables");
+      session = db_open_buffer (query_buf);
+      if (session == NULL)
+	{
+	  goto exit;
+	}
+
+      stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  db_close_session (session);
+	  need_db_shutdown = true;
+	  goto exit;
+	}
+
+      /* Here in error is returned the number of rows for show tables query */
+      error = db_execute_statement_local (session, stmt_id, &result);
+      if (error <= 0)
+	{
+	  db_close_session (session);
+	  need_db_shutdown = true;
+	  goto exit;
+	}
+
+      /* First get the names for the tables in the database */
+      while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+	{
+	  error = db_query_get_tuple_value (result, 0, &value);
+	  if (error != NO_ERROR)
+	    {
+	      db_query_end (result);
+	      db_close_session (session);
+	      need_db_shutdown = true;
+	      goto exit;
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      if (DB_IS_NULL (&value))
+		{
+		  need_db_shutdown = true;
+		  goto exit;
+		}
+	      else
+		{
+		  /* First get the name of the table */
+		  table_name = db_get_string (&value);
+		  memset (query_buf, 0, sizeof (query_buf));
+		  snprintf (query_buf,
+			    sizeof (query_buf) - 1,
+			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
+			    table_name);
+		  session2 = db_open_buffer (query_buf);
+		  if (session2 == NULL)
+		    {
+		      need_db_shutdown = true;
+		      goto exit;
+		    }
+
+		  stmt_id = db_compile_statement (session2);
+		  if (stmt_id < 0)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		      db_close_session (session2);
+		      need_db_shutdown = true;
+		      goto exit;
+		    }
+
+		  error = db_execute_statement_local (session2, stmt_id, &result);
+		  if (error <= 0)
+		    {
+		      db_close_session (session2);
+		      need_db_shutdown = true;
+		      goto exit;
+		    }
+
+		  while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+		    {
+		      char *column_name = NULL;
+		      int column_type = 0;
+
+		      /* Get the column name */
+		      error = db_query_get_tuple_value (result, 0, &value2);
+		      if (error != NO_ERROR)
+			{
+			  db_query_end (result);
+			  db_close_session (session);
+			  need_db_shutdown = true;
+			  goto exit;
+			}
+
+		      /* Get the column type */
+		      error = db_query_get_tuple_value (result, 1, &value3);
+		      if (error != NO_ERROR)
+			{
+			  db_query_end (result);
+			  db_close_session (session);
+			  need_db_shutdown = true;
+			  goto exit;
+			}
+
+		      assert (DB_VALUE_TYPE (&value2) == DB_TYPE_STRING);
+		      assert (DB_VALUE_TYPE (&value3) == DB_TYPE_INTEGER);
+		      column_name = db_get_string (&value2);
+		      column_type = db_get_int (&value3);
+
+		      if (column_type == DB_TYPE_DATETIMETZ ||
+			  column_type == DB_TYPE_DATETIMELTZ ||
+			  column_type == DB_TYPE_TIMESTAMPTZ || column_type == DB_TYPE_TIMESTAMPLTZ)
+			//Now do the update
+			{
+			  memset (query_buf, 0, sizeof (query_buf));
+			  snprintf (query_buf, sizeof (query_buf) - 1,
+				    "update %s set %s = conv_tz(%s)", table_name, column_name, column_name);
+
+			  session3 = db_open_buffer (query_buf);
+			  if (session3 == NULL)
+			    {
+			      need_db_shutdown = true;
+			      goto exit;
+			    }
+
+			  stmt_id = db_compile_statement (session3);
+			  if (stmt_id < 0)
+			    {
+			      assert (er_errid () != NO_ERROR);
+			      error = er_errid ();
+			      db_close_session (session2);
+			      need_db_shutdown = true;
+			      goto exit;
+			    }
+
+			  error = db_execute_statement_local (session3, stmt_id, &result);
+			  if (error <= 0)
+			    {
+			      db_close_session (session3);
+			      need_db_shutdown = true;
+			      goto exit;
+			    }
+			  db_close_session (session3);
+			}
+		    }
+		  db_close_session (session2);;
+		}
+	    }
+	}
+      db_close_session (session);
+      db_shutdown ();
+    }
+
+exit:
+  if (dir != NULL)
+    {
+      cfg_free_directory (dir);
+    }
+  if (need_db_shutdown == true)
+    {
+      db_shutdown ();
+    }
   return error;
 }
