@@ -4560,7 +4560,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 	{
 	  goto error;
 	}
-      if (xasl_unpack_info->use_xasl_clone && access_spec->s_dbval->need_clear)
+      if (xasl_unpack_info->use_xasl_clone && !db_value_is_null (access_spec->s_dbval))
 	{
 	  access_spec->clear_value_at_clone_decache = true;
 	}
@@ -5374,7 +5374,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
-      if (xasl_unpack_info_p->use_xasl_clone && regu_var->value.dbval.need_clear)
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (&regu_var->value.dbval))
 	{
 	  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	}
@@ -5670,7 +5670,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	  goto error;
 	}
     }
-  if (xasl_unpack_info_p->use_xasl_clone && aggregate->accumulator.value->need_clear)
+  if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value))
     {
       aggregate->accumulator.clear_value_at_clone_decache = true;
     }
@@ -5690,7 +5690,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
 
   aggregate->accumulator.clear_value2_at_clone_decache = false;
-  if (xasl_unpack_info_p->use_xasl_clone && aggregate->accumulator.value2->need_clear)
+  if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value2))
     {
       aggregate->accumulator.clear_value2_at_clone_decache = true;
     }
