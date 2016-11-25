@@ -5754,11 +5754,6 @@ log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_siz
  * thread_p (in) : thread entry
  * vpid_rcv (in) : page identifier
  * rcvindex (in) : recovery index of log record to redo
- *
- * note: based on recovery index we will do two types of fixing:
- *       1. if recovery index belong to any new page initialization, we will fix using fetch type NEW_PAGE
- *       2. for other indexes, we will fix the page only if it is not deallocated (if it is deallocated, recovery is
- *          not necessary).
  */
 STATIC_INLINE PAGE_PTR
 log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
@@ -5766,9 +5761,26 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
   PAGE_PTR page = NULL;
 
   assert (vpid_rcv != NULL && !VPID_ISNULL (vpid_rcv));
-  if (RCV_IS_NEW_PAGE_INIT (rcvindex))
+
+  /* how it works:
+   * since we are during recovery, we don't know the current state of page. it may be unreserved (its file is destroyed)
+   * or it may not be allocated. these are expected cases and we don't want to raise errors if it happens.
+   * some redo records are used to initialize a page for the first time (also setting its page type which is necessary
+   * to consider a page allocated). even first attempt to fix page fails, but the page's sector is reserved, we will
+   * fix the page as NEW_PAGE and apply its initialization redo log record.
+   */
+
+  /* let's first try to fix page if it is not deallocated. */
+  if (pgbuf_fix_if_not_deallocated (thread_p, vpid_rcv, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, &page)
+      != NO_ERROR)
     {
-      /* even if this is a new page, the file may have been deallocated. first check it is still reserved. */
+      ASSERT_ERROR ();
+      return NULL;
+    }
+  if (page == NULL && RCV_IS_NEW_PAGE_INIT (rcvindex))
+    {
+      /* page is deallocated. however, this is redo of a new page initialization, we still have to apply it.
+       * page must still be reserved, otherwise it means its file was completely destroyed. */
       DISK_ISVALID isvalid;
       isvalid = disk_is_page_sector_reserved (thread_p, vpid_rcv->volid, vpid_rcv->pageid);
       if (isvalid == DISK_ERROR)
@@ -5781,17 +5793,9 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
 	  /* not reserved */
 	  return NULL;
 	}
+      assert (isvalid == DISK_VALID);
       page = pgbuf_fix (thread_p, vpid_rcv, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page == NULL)
-	{
-	  ASSERT_ERROR ();
-	  return NULL;
-	}
-    }
-  else
-    {
-      if (pgbuf_fix_if_not_deallocated (thread_p, vpid_rcv, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, &page)
-	  != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return NULL;
