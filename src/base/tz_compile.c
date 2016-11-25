@@ -663,8 +663,21 @@ timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, 
       err_status = tzc_extend (&tzd, &write_checksum);
       if (err_status != NO_ERROR)
 	{
-	  /* failed to load file */
-	  goto exit;
+	  /* In this case a data migration is needed because the data could not
+	   * be made backward compatible
+	   */
+	  if (err_status == ER_TZ_COMPILE_ERROR)
+	    {
+	      err_status = tzc_update (&tzd);
+	      if (err_status != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+	  else
+	    {
+	      goto exit;
+	    }
 	}
     }
 
@@ -6097,8 +6110,6 @@ exit:
   tzd->ds_rules = all_ds_rules;
   tzd->ds_rule_count = all_ds_rule_count;
 
-  tzc_update (tzd);
-
   if (err_status == NO_ERROR)
     {
       if (is_compat == false)
@@ -6533,7 +6544,7 @@ tzc_update (TZ_DATA * tzd)
 			  db_close_session (session3);
 			}
 		    }
-		  db_close_session (session2);;
+		  db_close_session (session2);
 		}
 	    }
 	}
@@ -6545,6 +6556,18 @@ exit:
   if (dir != NULL)
     {
       cfg_free_directory (dir);
+    }
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+  if (session2 != NULL)
+    {
+      db_close_session (session2);
+    }
+  if (session3 != NULL)
+    {
+      db_close_session (session3);
     }
   if (need_db_shutdown == true)
     {
