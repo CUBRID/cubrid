@@ -428,27 +428,27 @@ struct partition_spec_node
 typedef struct access_spec_node ACCESS_SPEC_TYPE;
 struct access_spec_node
 {
-  TARGET_TYPE type;		/* target class or list */
-  ACCESS_METHOD access;		/* access method */
-  INDX_INFO *indexptr;		/* index info if index accessing */
+  TARGET_TYPE type;			/* target class or list */
+  ACCESS_METHOD access;			/* access method */
+  INDX_INFO *indexptr;			/* index info if index accessing */
   INDX_ID indx_id;
-  PRED_EXPR *where_key;		/* key filter expression */
-  PRED_EXPR *where_pred;	/* predicate expression */
-  PRED_EXPR *where_range;	/* used in mvcc UPDATE/DELETE reevaluation */
-  HYBRID_NODE s;		/* class/list access specification */
-  SCAN_ID s_id;			/* scan identifier */
-  int grouped_scan;		/* grouped or regular scan? */
-  int fixed_scan;		/* scan pages are kept fixed? */
-  int qualified_block;		/* qualified scan block */
+  PRED_EXPR *where_key;			/* key filter expression */
+  PRED_EXPR *where_pred;		/* predicate expression */
+  PRED_EXPR *where_range;		/* used in mvcc UPDATE/DELETE reevaluation */
+  HYBRID_NODE s;			/* class/list access specification */
+  SCAN_ID s_id;				/* scan identifier */
+  int grouped_scan;			/* grouped or regular scan? */
+  int fixed_scan;			/* scan pages are kept fixed? */
+  int qualified_block;			/* qualified scan block */
   QPROC_SINGLE_FETCH single_fetch;	/* open scan in single fetch mode */
-  DB_VALUE *s_dbval;		/* single fetch mode db_value */
-  bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
-  ACCESS_SPEC_TYPE *next;	/* next access specification */
-  PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
-  PARTITION_SPEC_TYPE *curent;	/* current partition */
-  bool pruned;			/* true if partition pruning has been performed */
-  int pruning_type;		/* how pruning should be performed on this access spec performed */
-  ACCESS_SPEC_FLAG flags;	/* flags from ACCESS_SPEC_FLAG enum */
+  DB_VALUE *s_dbval;			/* single fetch mode db_value */  
+  ACCESS_SPEC_TYPE *next;		/* next access specification */
+  PARTITION_SPEC_TYPE *parts;		/* partitions of the current spec */
+  PARTITION_SPEC_TYPE *curent;		/* current partition */  
+  int pruning_type;			/* how pruning should be performed on this access spec performed */
+  ACCESS_SPEC_FLAG flags;		/* flags from ACCESS_SPEC_FLAG enum */
+  bool pruned;				/* true if partition pruning has been performed */
+  bool clear_value_at_clone_decache;	/* true, if need to clear s_dbval at clone decache */
 };
 
 
@@ -611,10 +611,11 @@ struct upddel_mvcc_cond_reeval
 typedef struct update_assignment UPDATE_ASSIGNMENT;
 struct update_assignment
 {
-  int cls_idx;			/* index of the class that contains attribute to be updated */
-  int att_idx;			/* index in the class attributes array */
-  DB_VALUE *constant;		/* constant to be assigned to an attribute or NULL */
-  REGU_VARIABLE *regu_var;	/* regu variable for rhs in assignment */
+  int cls_idx;				/* index of the class that contains attribute to be updated */
+  int att_idx;				/* index in the class attributes array */
+  DB_VALUE *constant;			/* constant to be assigned to an attribute or NULL */  
+  REGU_VARIABLE *regu_var;		/* regu variable for rhs in assignment */
+  bool clear_value_at_clone_decache;	/* true, if need to clear constant db_value at clone decache */
 };
 
 /* type of reevaluation */
@@ -956,8 +957,7 @@ struct xasl_node
   int *tcard_list;		/* list of #pages of the class OIDs */
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
-  bool iscan_oid_order;
-  bool use_xasl_clone;		/* true, if use xasl clone */
+  bool iscan_oid_order;  
 };
 
 struct pred_expr_with_context

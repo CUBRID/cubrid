@@ -339,8 +339,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool us
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
-  xasl->query_in_progress = false;
-  xasl->use_xasl_clone = unpack_info_p->use_xasl_clone;
+  xasl->query_in_progress = false;  
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
@@ -3521,7 +3520,7 @@ static char *
 stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNMENT * assign)
 {
   int offset = 0;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
 
   /* cls_idx */
   ptr = or_unpack_int (ptr, &assign->cls_idx);
@@ -3530,6 +3529,7 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
   ptr = or_unpack_int (ptr, &assign->att_idx);
 
   /* constant */
+  assign->clear_value_at_clone_decache = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -3537,10 +3537,14 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
     }
   else
     {
-      assign->constant = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      assign->constant = stx_restore_db_value (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (assign->constant == NULL)
 	{
 	  return NULL;
+	}
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (assign->constant))
+	{
+	  assign->clear_value_at_clone_decache = true;
 	}
     }
 
@@ -3552,7 +3556,7 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
     }
   else
     {
-      assign->regu_var = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      assign->regu_var = stx_restore_regu_variable (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (assign->regu_var == NULL)
 	{
 	  return NULL;
@@ -5393,6 +5397,10 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	  if (regu_var->value.dbvalptr == NULL)
 	    {
 	      goto error;
+	    }
+	  if (xasl_unpack_info_p->use_xasl_clone && regu_var->value.dbvalptr->need_clear)
+	    {
+	      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	    }
 	}
       break;
