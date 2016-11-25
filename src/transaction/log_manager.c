@@ -8291,7 +8291,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
       if (log_rec->type == LOG_SYSOP_END)
 	{
 	  /* Read the DATA HEADER */
-	  LOG_LSA prev_tran_lsa = log_rec->prev_tranlsa;
+	  LOG_LSA prev_tran_lsa = log_rec->back_lsa;
 
 	  LSA_COPY (&tmp_log_lsa, &top_result_lsa);
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &tmp_log_lsa, log_pgptr);
