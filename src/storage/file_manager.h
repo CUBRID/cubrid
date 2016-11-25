@@ -155,6 +155,7 @@ extern int file_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_t
 extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 
 extern int file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
 extern int file_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,

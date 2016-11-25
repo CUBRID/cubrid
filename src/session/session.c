@@ -2466,7 +2466,7 @@ session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_
 
   if (sentry_p->temp_file != NULL)
     {
-      qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false);
+      qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false, true);
     }
 
   sessions.num_holdable_cursors--;
