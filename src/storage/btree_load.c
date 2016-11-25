@@ -1872,9 +1872,6 @@ static int
 btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 		     VPID * vpid_new, PAGE_PTR * page_new)
 {
-  LOG_DATA_ADDR addr;
-  unsigned short alignment;
-
   int error_code = NO_ERROR;
 
   assert ((header != NULL && node_level >= 1)	/* leaf, non-leaf */
@@ -1885,28 +1882,19 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
   log_sysop_start (thread_p);
 
   /* allocate new page */
-  error_code = file_alloc (thread_p, &btid->vfid, vpid_new);
+  error_code = file_alloc (thread_p, &btid->vfid, btree_initialize_new_page, NULL, vpid_new, page_new);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto end;
     }
-  *page_new = pgbuf_fix (thread_p, vpid_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (*page_new == NULL)
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      assert_release (false);
+      error_code = ER_FAILED;
       goto end;
     }
-  pgbuf_set_page_ptype (thread_p, *page_new, PAGE_BTREE);
-  alignment = BTREE_MAX_ALIGN;
-
-  spage_initialize (thread_p, *page_new, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
-
-  addr.vfid = &btid->vfid;
-  addr.offset = -1;		/* No header slot is initialized */
-  addr.pgptr = *page_new;
-
-  log_append_redo_data (thread_p, RVBT_GET_NEWPAGE, &addr, sizeof (alignment), &alignment);
+  (void) pgbuf_check_page_ptype (thread_p, *page_new, PAGE_BTREE);
 
   if (header)
     {				/* This is going to be a leaf or non-leaf page */

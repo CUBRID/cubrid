@@ -263,13 +263,13 @@ struct file_partial_sector
 #define FILE_TABLESPACE_DEFAULT_MAX_EXPAND (DISK_SECTOR_NPAGES * DB_PAGESIZE * 1024);	/* 1k sectors */
 
 #define FILE_TABLESPACE_FOR_PERM_NPAGES(tabspace, npages) \
-  ((FILE_TABLESPACE *) (tabspace))->initial_size = MAX (1, npages) * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = (INT64) MAX (1, npages) * DB_PAGESIZE; \
   ((FILE_TABLESPACE *) (tabspace))->expand_ratio = FILE_TABLESPACE_DEFAULT_RATIO_EXPAND; \
   ((FILE_TABLESPACE *) (tabspace))->expand_min_size = FILE_TABLESPACE_DEFAULT_MIN_EXPAND; \
   ((FILE_TABLESPACE *) (tabspace))->expand_max_size = FILE_TABLESPACE_DEFAULT_MAX_EXPAND
 
 #define FILE_TABLESPACE_FOR_TEMP_NPAGES(tabspace, npages) \
-  ((FILE_TABLESPACE *) (tabspace))->initial_size = MAX (1, npages) * DB_PAGESIZE; \
+  ((FILE_TABLESPACE *) (tabspace))->initial_size = (INT64) MAX (1, npages) * DB_PAGESIZE; \
   ((FILE_TABLESPACE *) (tabspace))->expand_ratio = 0; \
   ((FILE_TABLESPACE *) (tabspace))->expand_min_size = 0; \
   ((FILE_TABLESPACE *) (tabspace))->expand_max_size = 0
@@ -296,9 +296,10 @@ static bool file_Logging = false;
 #define FILE_NUMERABLE_REGULAR_STRING(is_numerable) ((is_numerable) ? "numerable" : "regular")
 
 #define FILE_TABLESPACE_MSG \
-  "\ttablespace = { init_size = %d, expand_ratio = %f, expand_min_size = %d, expand_max_size = %d } \n"
+  "\ttablespace = { init_size = %lld, expand_ratio = %f, expand_min_size = %d, expand_max_size = %d } \n"
 #define FILE_TABLESPACE_AS_ARGS(tabspace) \
-  (tabspace)->initial_size, (tabspace)->expand_ratio, (tabspace)->expand_min_size, (tabspace)->expand_max_size
+  (long long int) (tabspace)->initial_size, (tabspace)->expand_ratio, (tabspace)->expand_min_size, \
+  (tabspace)->expand_max_size
 
 #define FILE_HEAD_ALLOC_MSG \
  "\tfile header: \n" \
@@ -702,6 +703,8 @@ static int file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_A
 STATIC_INLINE int file_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid,
 				      FILE_TYPE ftype) __attribute__ ((ALWAYS_INLINE));
 static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid);
+STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
+  __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* Temporary cache section                                              */
@@ -733,6 +736,7 @@ STATIC_INLINE void file_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE
 /* File tracker section                                                 */
 /************************************************************************/
 
+static int file_tracker_init_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 static int file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE ftype,
 				  FILE_TRACK_METADATA * metadata);
 static int file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid);
@@ -3020,7 +3024,7 @@ int
 file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	     FILE_TABLESPACE * tablespace, FILE_DESCRIPTORS * des, bool is_temp, bool is_numerable, VFID * vfid)
 {
-  int total_size;
+  INT64 total_size;
   int n_sectors;
   VSID *vsids_reserved = NULL;
   DB_VOLPURPOSE volpurpose = DISK_UNKNOWN_PURPOSE;
@@ -3955,7 +3959,7 @@ file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 }
 
 /*
- * file_temp_retire () - retire temporary file. put it in cache is possible or destroy the file.
+ * file_temp_retire () - retire temporary file (must not be preserved)
  *
  * return        : error code
  * thread_p (in) : thread entry
@@ -3964,15 +3968,64 @@ file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 int
 file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  FILE_TEMPCACHE_ENTRY *entry = file_tempcache_pop_tran_file (thread_p, vfid);
+  return file_temp_retire_internal (thread_p, vfid, false);
+}
+
+/*
+ * file_temp_retire_preserved () - retire temporary file that was preserved
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * vfid (in)     : file identifier
+ */
+int
+file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  return file_temp_retire_internal (thread_p, vfid, true);
+}
+
+/*
+ * file_temp_retire_internal () - retire temporary file. put it in cache is possible or destroy the file.
+ *
+ * return             : error code
+ * thread_p (in)      : thread entry
+ * vfid (in)          : file identifier
+ * was_preserved (in) : true if entry was preserved in session. it is important to know because we cannot find it in
+ *                      transaction list.
+ */
+STATIC_INLINE int
+file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
+{
+  FILE_TEMPCACHE_ENTRY *entry = NULL;
   bool save_interrupt;
   int error_code = NO_ERROR;
 
-  if (entry == NULL)
+  if (was_preserved)
     {
-      assert_release (false);
+      file_tempcache_lock ();
+      error_code = file_tempcache_alloc_entry (&entry);
+      file_tempcache_unlock ();
+      if (error_code != NO_ERROR)
+	{
+	  assert (false);
+	}
+      if (entry != NULL)
+	{
+	  entry->vfid = *vfid;
+	  /* type will be set later */
+	}
+      else
+	{
+	  assert (false);
+	}
     }
-  else if (file_tempcache_put (thread_p, entry))
+  else
+    {
+      entry = file_tempcache_pop_tran_file (thread_p, vfid);
+      assert (entry != NULL);
+    }
+
+  if (entry != NULL && file_tempcache_put (thread_p, entry))
     {
       /* cached */
       return NO_ERROR;
@@ -3988,6 +4041,12 @@ file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid)
       /* we should not have errors */
       assert_release (false);
     }
+
+  if (entry != NULL)
+    {
+      file_tempcache_retire_entry (entry);
+    }
+
   return error_code;
 }
 
@@ -4729,15 +4788,38 @@ exit:
 }
 
 /*
- * file_alloc () - Allocate an user page for file.
+ * file_init_page_type () - initialize new page by setting its type
  *
- * return	  : Error code
- * thread_p (in)  : Thread entry
- * vfid (in)	  : File identifier
- * vpid_out (out) : VPID of page.
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * page (in)     : new page
+ * args (in)     : PAGE_TYPE *
  */
 int
-file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out)
+file_init_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
+{
+  PAGE_TYPE ptype = *(PAGE_TYPE *) args;
+
+  pgbuf_set_page_ptype (thread_p, page, ptype);
+  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) ptype, 0, NULL);
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * file_alloc () - Allocate an user page for file.
+ *
+ * return	    : Error code
+ * thread_p (in)    : Thread entry
+ * vfid (in)	    : File identifier
+ * f_init (in)      : init page function (must not be NULL for permanent page allocation)
+ * f_init_args (in) : arguments for init page function
+ * vpid_out (out)   : VPID of page.
+ * page_out (out)   : if not null, it will output newly allocated page.
+ */
+int
+file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_out,
+	    PAGE_PTR * page_out)
 {
 #define UNDO_DATA_SIZE (sizeof (VFID) + sizeof (VPID))
   VPID vpid_fhead;
@@ -4752,6 +4834,10 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out)
   assert (vpid_out != NULL);
 
   VPID_SET_NULL (vpid_out);
+  if (page_out != NULL)
+    {
+      *page_out = NULL;
+    }
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
@@ -4811,6 +4897,45 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out)
 	}
     }
 
+  if (f_init)
+    {
+      /* initialize page */
+      PAGE_PTR page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_alloc == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      error_code = f_init (thread_p, page_alloc, f_init_args);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix (thread_p, page_alloc);
+	  goto exit;
+	}
+      if (page_out != NULL)
+	{
+	  *page_out = page_alloc;
+	}
+      else
+	{
+	  pgbuf_unfix (thread_p, page_alloc);
+	}
+    }
+  else
+    {
+      assert (FILE_IS_TEMPORARY (fhead));
+      if (page_out != NULL)
+	{
+	  *page_out = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (*page_out == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	}
+    }
+
   /* done */
   assert (error_code == NO_ERROR);
 
@@ -4829,6 +4954,12 @@ exit:
 	}
     }
 
+  if (error_code != NO_ERROR && page_out != NULL && *page_out != NULL)
+    {
+      /* don't leak page. */
+      pgbuf_unfix_and_init (thread_p, *page_out);
+    }
+
   if (page_fhead != NULL)
     {
       pgbuf_unfix_and_init (thread_p, page_fhead);
@@ -4836,51 +4967,6 @@ exit:
 
   return error_code;
 #undef UNDO_DATA_SIZE
-}
-
-/*
- * file_alloc_and_init () - Allocate page and initialize it.
- *
- * return	    : Error code.
- * thread_p (in)    : Thread entry.
- * vfid (in)	    : File identifier.
- * f_init (in)	    : Page init function.
- * f_init_args (in) : Page init arguments.
- * vpid_alloc (out) : VPID of allocated page.
- */
-int
-file_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid,
-		     FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_alloc)
-{
-  PAGE_PTR page_alloc = NULL;
-  int error_code = NO_ERROR;
-
-  /* allocate new page */
-  error_code = file_alloc (thread_p, vfid, vpid_alloc);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  if (f_init)
-    {
-      /* initialize page */
-      page_alloc = pgbuf_fix (thread_p, vpid_alloc, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_alloc == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
-	}
-      error_code = f_init (thread_p, page_alloc, f_init_args);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	}
-      pgbuf_unfix (thread_p, page_alloc);
-    }
-
-  return error_code;
 }
 
 /*
@@ -4938,7 +5024,7 @@ file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid,
   for (iter = 0; iter < npages; iter++)
     {
       vpid_iter = vpids_out ? vpids_out + iter : &local_vpid;
-      error_code = file_alloc_and_init (thread_p, vfid, f_init, f_init_args, vpid_iter);
+      error_code = file_alloc (thread_p, vfid, f_init, f_init_args, vpid_iter, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4976,19 +5062,32 @@ exit:
  * file_alloc_sticky_first_page () - Allocate first file page and make it sticky. It is usually used as special headers
  *                                   and should never be deallocated.
  *
- * return         : Error code
- * thread_p (in)  : Thread entry
- * vfid (in)      : File identifier
- * vpid_out (out) : Allocated page VPID
+ * return           : Error code
+ * thread_p (in)    : Thread entry
+ * vfid (in)        : File identifier
+ * f_init (in)      : init page function (must not be NULL for permanent page allocation)
+ * f_init_args (in) : arguments for init page function
+ * vpid_out (out)   : Allocated page VPID
+ * page_out (out)   : if not null, it will output newly allocated page.
  */
 int
-file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out)
+file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
+			      VPID * vpid_out, PAGE_PTR * page_out)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   LOG_LSA save_lsa;
   int error_code = NO_ERROR;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+  assert (vpid_out != NULL);
+
+  VPID_SET_NULL (vpid_out);
+  if (page_out != NULL)
+    {
+      *page_out = NULL;
+    }
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
@@ -5005,7 +5104,7 @@ file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID *
   assert (fhead->n_page_user == 0);
   assert (VPID_ISNULL (&fhead->vpid_sticky_first));
 
-  error_code = file_alloc (thread_p, vfid, vpid_out);
+  error_code = file_alloc (thread_p, vfid, f_init, f_init_args, vpid_out, page_out);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5168,7 +5267,11 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 	  goto exit;
 	}
       fhead = (FILE_HEADER *) page_fhead;
-      assert (file_type_hint == FILE_UNKNOWN_TYPE || file_type_hint == fhead->type);
+      /* check file type hint is not incorrect.
+       * note: sometimes the caller may not know if file is FILE_HEAP or FILE_HEAP_REUSE_SLOTS. it doesn't make a
+       * difference here, so it is accepted to give the generic FILE_HEAP hint. */
+      assert (file_type_hint == FILE_UNKNOWN_TYPE || file_type_hint == fhead->type
+	      || (file_type_hint == FILE_HEAP && fhead->type == FILE_HEAP_REUSE_SLOTS));
       file_type_hint = fhead->type;
 
       assert (!VPID_EQ (&fhead->vpid_sticky_first, vpid));
@@ -7199,15 +7302,18 @@ file_extdata_find_nth_vpid_and_skip_marked (THREAD_ENTRY * thread_p,
 /*
  * file_numerable_find_nth () - Find nth page VPID in numerable file.
  *
- * return	   : Error code
- * thread_p (in)   : Thread entry
- * vfid (in)	   : File identifier
- * nth (in)	   : Index of page
- * auto_alloc (in) : True to allow file extension.
- * vpid_nth (out)  : VPID at index
+ * return	    : Error code
+ * thread_p (in)    : Thread entry
+ * vfid (in)	    : File identifier
+ * nth (in)	    : Index of page
+ * auto_alloc (in)  : True to allow file extension.
+ * f_init (in)      : init page function (must not be NULL for permanent page allocation)
+ * f_init_args (in) : arguments for init page function
+ * vpid_nth (out)   : VPID at index
  */
 int
-file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc, VPID * vpid_nth)
+file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
+			 FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_nth)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
@@ -7259,7 +7365,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  file_header_sanity_check (fhead);
 	  if (auto_alloc && nth == (fhead->n_page_user - fhead->n_page_mark_delete))
 	    {
-	      error_code = file_alloc (thread_p, vfid, vpid_nth);
+	      error_code = file_alloc (thread_p, vfid, f_init, f_init_args, vpid_nth, NULL);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -7278,7 +7384,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  goto exit;
 	}
 
-      error_code = file_alloc (thread_p, vfid, vpid_nth);
+      error_code = file_alloc (thread_p, vfid, f_init, f_init_args, vpid_nth, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -7579,7 +7685,7 @@ file_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, DKNPAGES np
   while (fhead->n_page_user > npages)
     {
       /* maybe this can be done in a more optimal way... but for now it will have to do */
-      error_code = file_numerable_find_nth (thread_p, vfid, npages, false, &vpid);
+      error_code = file_numerable_find_nth (thread_p, vfid, npages, false, NULL, NULL, &vpid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -7992,7 +8098,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
       vpid_next = extdata_part_ftab->vpid_next;
       if (page_ftab != page_fhead)
 	{
-	  pgbuf_unfix (thread_p, page_fhead);
+	  pgbuf_unfix (thread_p, page_ftab);
 	}
       page_ftab = NULL;
       if (VPID_ISNULL (&vpid_next))
@@ -8409,6 +8515,10 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 {
   FILE_HEADER fhead;
 
+  assert (entry != NULL);
+  assert (!VFID_ISNULL (&entry->vfid));
+  assert (entry->next == NULL);
+
   fhead.n_page_user = -1;
   if (file_header_copy (thread_p, &entry->vfid, &fhead) != NO_ERROR
       || fhead.n_page_user > prm_get_integer_value (PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE))
@@ -8419,6 +8529,8 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 		", fhead->n_page_user = %d ", FILE_TEMPCACHE_ENTRY_AS_ARGS (entry), fhead.n_page_user);
       return false;
     }
+  /* make sure entry has correct type. */
+  entry->ftype = fhead.type;
 
   /* lock temporary cache */
   file_tempcache_lock ();
@@ -8689,8 +8801,6 @@ file_tempcache_dump (FILE * fp)
 int
 file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out)
 {
-  PAGE_PTR page_tracker = NULL;
-  FILE_EXTENSIBLE_DATA *extdata = NULL;
   int error_code = NO_ERROR;
 
   /* start sys op */
@@ -8702,37 +8812,18 @@ file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out)
       ASSERT_ERROR ();
       goto exit;
     }
-
-  error_code = file_alloc_sticky_first_page (thread_p, vfid_tracker_out, &file_Tracker_vpid);
+  error_code = file_alloc_sticky_first_page (thread_p, vfid_tracker_out, file_tracker_init_page, NULL,
+					     &file_Tracker_vpid, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit;
     }
 
-  page_tracker = pgbuf_fix (thread_p, &file_Tracker_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_tracker == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      goto exit;
-    }
-
-  pgbuf_set_page_ptype (thread_p, page_tracker, PAGE_FTAB);
-  extdata = (FILE_EXTENSIBLE_DATA *) page_tracker;
-  file_extdata_init (sizeof (FILE_TRACK_ITEM), DB_PAGESIZE, extdata);
-  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_tracker, (PGLENGTH) PAGE_FTAB, sizeof (*extdata),
-			 page_tracker);
-  pgbuf_set_dirty (thread_p, page_tracker, DONT_FREE);
-
   /* success */
   assert (error_code == NO_ERROR);
 
 exit:
-
-  if (page_tracker != NULL)
-    {
-      pgbuf_unfix (thread_p, page_tracker);
-    }
 
   if (error_code != NO_ERROR)
     {
@@ -8771,6 +8862,27 @@ file_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
 
   file_Tracker_vfid = *vfid;
+
+  return NO_ERROR;
+}
+
+/*
+ * file_tracker_init_page () - initialize new file tracker page
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * page (in)     : new page
+ * args (in)     : ignored
+ */
+static int
+file_tracker_init_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
+{
+  FILE_EXTENSIBLE_DATA *extdata = (FILE_EXTENSIBLE_DATA *) page;
+
+  pgbuf_set_page_ptype (thread_p, page, PAGE_FTAB);
+  file_extdata_init (sizeof (FILE_TRACK_ITEM), DB_PAGESIZE, extdata);
+  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) PAGE_FTAB, sizeof (*extdata), page);
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;
 }
@@ -8838,7 +8950,7 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
       /* allocate a new page */
       VPID vpid_new_page;
 
-      error_code = file_alloc (thread_p, &file_Tracker_vfid, &vpid_new_page);
+      error_code = file_alloc (thread_p, &file_Tracker_vfid, file_tracker_init_page, NULL, &vpid_new_page, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -8857,20 +8969,16 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE fty
 	}
 
       /* initialize new page */
-      page_track_other = pgbuf_fix (thread_p, &vpid_new_page, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      page_track_other = pgbuf_fix (thread_p, &vpid_new_page, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_track_other == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+      assert (pgbuf_get_page_ptype (thread_p, page_track_other) == PAGE_FTAB);
+
       page_extdata = page_track_other;
       extdata = (FILE_EXTENSIBLE_DATA *) page_extdata;
-
-      pgbuf_set_page_ptype (thread_p, page_extdata, PAGE_FTAB);
-      file_extdata_init (sizeof (FILE_TRACK_ITEM), DB_PAGESIZE, extdata);
-      log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_extdata, (PGLENGTH) PAGE_FTAB, sizeof (*extdata),
-			     page_extdata);
-      pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
     }
 
   assert (page_extdata != NULL);
@@ -9112,7 +9220,7 @@ file_tracker_map (THREAD_ENTRY * thread_p, PGBUF_LATCH_MODE latch_mode, FILE_TRA
   PAGE_PTR page_extdata = NULL;
   FILE_EXTENSIBLE_DATA *extdata;
   VPID vpid_next = VPID_INITIALIZER;
-  bool stop;
+  bool stop = false;
   int index_item;
   int error_code = NO_ERROR;
 
@@ -9412,8 +9520,6 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
   int idx_item;
 
   VPID vpid_merged = VPID_INITIALIZER;
-
-  LOG_LSA save_lsa;
 
   int error_code = NO_ERROR;
 

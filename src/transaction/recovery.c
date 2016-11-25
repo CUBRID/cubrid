@@ -375,7 +375,7 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL},
 
-  {RVOVF_NEWPAGE_INSERT,
+  {RVOVF_NEWPAGE_INSERT,	/* required for HA */
    "RVOVF_NEWPAGE_INSERT",
    NULL,
    overflow_rv_newpage_insert_redo,
