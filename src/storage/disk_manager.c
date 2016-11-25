@@ -4351,13 +4351,23 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VOLUME_HEADER * volheader)
 
       if (volheader->purpose != DB_TEMPORARY_DATA_PURPOSE)
 	{
-	  log_append_redo_data2 (thread_p, RVDK_INITMAP, NULL, page_stab, NULL_OFFSET, sizeof (nsects_sys),
-				 &nsects_sys);
-	  nsects_sys = 0;
+	  DKNSECTS nsects_set = nsects_sys - nsect_copy;
+	  log_append_redo_data2 (thread_p, RVDK_INITMAP, NULL, page_stab, NULL_OFFSET, sizeof (nsects_set),
+				 &nsects_set);
 	}
-      pgbuf_set_dirty_and_free (thread_p, page_stab);
+      if (!LOG_ISRESTARTED ())
+	{
+	  /* page buffer will invalidated and pages will not be flushed. */
+	  pgbuf_set_dirty (thread_p, page_stab, DONT_FREE);
+	  pgbuf_flush (thread_p, page_stab, FREE);
+	  page_stab = NULL;
+	}
+      else
+	{
+	  pgbuf_set_dirty_and_free (thread_p, page_stab);
+	}
 
-      nsects_sys -= nsect_copy;
+      nsects_sys = nsect_copy;
       nsect_copy = 0;
     }
 
