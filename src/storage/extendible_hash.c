@@ -954,13 +954,13 @@ static EHID *
 ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, int exp_num_entries, OID * class_oid_p,
 		     int attr_id, bool is_tmp)
 {
-  EHASH_DIR_HEADER *dir_header_p;
-  EHASH_DIR_RECORD *dir_record_p;
-  VFID dir_vfid;
-  VPID dir_vpid;
-  PAGE_PTR dir_page_p;
-  VFID bucket_vfid;
-  VPID bucket_vpid;
+  EHASH_DIR_HEADER *dir_header_p = NULL;
+  EHASH_DIR_RECORD *dir_record_p = NULL;
+  VFID dir_vfid = VFID_INITIALIZER;
+  VPID dir_vpid = VPID_INITIALIZER;
+  PAGE_PTR dir_page_p = NULL;
+  VFID bucket_vfid = VFID_INITIALIZER;
+  VPID bucket_vpid = VPID_INITIALIZER;
   char init_bucket_data[3];
   DKNPAGES exp_bucket_pages;
   DKNPAGES exp_dir_pages;
