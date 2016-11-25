@@ -274,6 +274,13 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	{
 	  /* nothing to do */
 	}
+      else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
+	{
+	  /* this only modifies in memory data that is only flushed to disk on checkpoints. we need to execute undo
+	   * every time recovery is run, and we cannot compensate it. */
+	  error_code = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
+	  assert (error_code == NO_ERROR);
+	}
       else if (RCV_IS_LOGICAL_COMPENSATE_MANUAL (rcvindex))
 	{
 	  /* B-tree logical logs will add a regular compensate in the modified pages. They do not require a logical

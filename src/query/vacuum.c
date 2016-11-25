@@ -4166,7 +4166,7 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
       return error_code;
     }
   error_code = file_alloc (thread_p, vacuum_data_vfid, file_init_page_type, &ptype, &first_page_vpid,
-			   (PAGE_PTR *) & data_page);
+			   (PAGE_PTR *) (&data_page));
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4259,7 +4259,7 @@ vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID * dropped_fi
       return error_code;
     }
   error_code = file_alloc_sticky_first_page (thread_p, dropped_files_vfid, file_init_page_type, &ptype,
-					     &first_page_vpid, (PAGE_PTR *) & dropped_files_page);
+					     &first_page_vpid, (PAGE_PTR *) (&dropped_files_page));
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4922,7 +4922,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      log_sysop_start (thread_p);
 
 	      error_code = file_alloc (thread_p, &vacuum_Data.vacuum_data_file, file_init_page_type, &ptype, &next_vpid,
-				       (PAGE_PTR *) & data_page);
+				       (PAGE_PTR *) (&data_page));
 	      if (error_code != NO_ERROR)
 		{
 		  /* Could not allocate new page. */
@@ -5673,7 +5673,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 
   /* Extend file */
   error_code = file_alloc (thread_p, &vacuum_Dropped_files_vfid, file_init_page_type, &ptype, &vpid,
-			   (PAGE_PTR *) & new_page);
+			   (PAGE_PTR *) (&new_page));
   if (error_code != NO_ERROR)
     {
       assert (false);

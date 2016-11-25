@@ -1420,15 +1420,26 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 {
 #if defined (SERVER_MODE)
 #define DISK_EXTEND_TEMP_REGISTER() \
-  if (voltype == DB_TEMPORARY_VOLTYPE) \
-    {  \
-      tsc_getticks (&end_tick); \
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick); \
-      TSC_ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, tv_diff); \
-      thread_p->event_stats.temp_expand_pages += DISK_SECTS_NPAGES (nsect_temp_extended); \
-    }
+  do \
+    { \
+      if (voltype == DB_TEMPORARY_VOLTYPE) \
+        {  \
+          tsc_getticks (&end_tick); \
+          tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick); \
+          TSC_ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, tv_diff); \
+          thread_p->event_stats.temp_expand_pages += DISK_SECTS_NPAGES (nsect_temp_extended); \
+        } \
+    } \
+  while (0)
 #define DISK_EXTEND_TEMP_COLLECT(nsects) \
-  if (voltype == DB_TEMPORARY_VOLTYPE) nsect_temp_extended += (nsects)
+  do \
+    { \
+      if (voltype == DB_TEMPORARY_VOLTYPE) \
+        { \
+          nsect_temp_extended += (nsects); \
+        } \
+    } \
+  while (0)
 #endif /* SERVER_MODE */
 
   DKNSECTS free = extend_info->nsect_free;
@@ -4340,13 +4351,23 @@ disk_stab_init (THREAD_ENTRY * thread_p, DISK_VOLUME_HEADER * volheader)
 
       if (volheader->purpose != DB_TEMPORARY_DATA_PURPOSE)
 	{
-	  log_append_redo_data2 (thread_p, RVDK_INITMAP, NULL, page_stab, NULL_OFFSET, sizeof (nsects_sys),
-				 &nsects_sys);
-	  nsects_sys = 0;
+	  DKNSECTS nsects_set = nsects_sys - nsect_copy;
+	  log_append_redo_data2 (thread_p, RVDK_INITMAP, NULL, page_stab, NULL_OFFSET, sizeof (nsects_set),
+				 &nsects_set);
 	}
-      pgbuf_set_dirty_and_free (thread_p, page_stab);
+      if (!LOG_ISRESTARTED ())
+	{
+	  /* page buffer will invalidated and pages will not be flushed. */
+	  pgbuf_set_dirty (thread_p, page_stab, DONT_FREE);
+	  pgbuf_flush (thread_p, page_stab, FREE);
+	  page_stab = NULL;
+	}
+      else
+	{
+	  pgbuf_set_dirty_and_free (thread_p, page_stab);
+	}
 
-      nsects_sys -= nsect_copy;
+      nsects_sys = nsect_copy;
       nsect_copy = 0;
     }
 
