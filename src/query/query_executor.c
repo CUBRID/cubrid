@@ -15224,6 +15224,8 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		}
 	      else
 		{
+		  /* optimisation: use non-recursive list id for both reading and writing
+		   * the recursive xasl will iterate through this list id while appending new results at its end */
 		  rec_part->list_id = non_rec_part->list_id;
 		  qfile_reopen_list_as_append_mode (thread_p, rec_part->list_id);
 		}

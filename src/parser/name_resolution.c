@@ -7929,8 +7929,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
   return statement;
 }
 
-/* pt_resolve_spec_to_cte - search for matches of specs in each CTE from
- *			    cte_defs, where CTE->etc = true (referenceable)
+/* pt_resolve_spec_to_cte - search for matches of specs in each CTE from cte_defs
+ *
  *   return:
  *   parser(in):
  *   node(in/out):
@@ -7942,13 +7942,17 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   PT_NODE *cte_defs = (PT_NODE *) arg;
   PT_NODE *cte = NULL;
-  int match_count = 0;
+  int *match_count;
 
   if (node == NULL)
     {
       assert (false);
       return NULL;
     }
+
+  /* init match counter from the beginning; it is important for pt_count_ctes_post() */
+  match_count = &(node->etc);
+  *match_count = 0;
 
   if (cte_defs == NULL)
     {
@@ -7975,7 +7979,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
       if (pt_name_equal (parser, cte_name, node->info.spec.entity_name))
 	{
-	  if (match_count > 0)
+	  if (*match_count > 0)
 	    {
 	      /* there are more CTEs with the same name */
 	      PT_INTERNAL_ERROR (parser, "CTE name ambiguity");
@@ -7985,15 +7989,16 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	  node->info.spec.cte_pointer = pt_point (parser, cte);
 	  node->info.spec.cte_pointer->info.pointer.do_walk = false;
 	  node->info.spec.as_attr_list = cte->info.cte.as_attr_list;
-	  ++match_count;
+	  (*match_count)++;
 	  *continue_walk = PT_LIST_WALK;
 	}
     }
-  if (match_count)
+
+  if (*match_count > 0)
     {
-      node->info.spec.entity_name = NULL;;
+      node->info.spec.entity_name = NULL;
     }
-  node->etc = match_count;
+
   return node;
 }
 
@@ -8032,6 +8037,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 {
   PT_NODE *cte_defs = NULL, *with = NULL, *saved_with = NULL;
   PT_NODE *curr_cte, *previous_cte;
+  PT_NODE *saved_curr_cte_next;
 
   assert (parser != NULL);
   assert (node != NULL);
@@ -8063,6 +8069,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       PT_INTERNAL_ERROR (parser, "expecting cte definitions");
       return NULL;
     }
+
   /* For NON-recursive WITH CLAUSE forward referencing is not allowed */
   for (previous_cte = cte_defs, curr_cte = previous_cte->next; curr_cte != NULL;
        previous_cte = previous_cte->next, curr_cte = curr_cte->next)
@@ -8078,8 +8085,12 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	  previous_cte->next = NULL;	/* keep in list only previous CTEs */
 	}
 
-      curr_cte = parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
+      /* izolate curr_cte to avoid following next links in parser_walk_tree */
+      saved_curr_cte_next = curr_cte->next;
+      curr_cte->next = NULL;
 
+      /* curr_cte->next should be set to NULL; next CTEs will be resolved for each previous CTE */
+      curr_cte = parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
       if (curr_cte == NULL)
 	{
 	  /* we expect error to be set */
@@ -8090,14 +8101,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       if ((curr_cte->info.cte.non_rec_part->node_type == PT_UNION) && (!curr_cte->info.cte.rec_part))
 	{
 	  PT_NODE *recursive_part = curr_cte->info.cte.non_rec_part->info.query.q.union_.arg2;
-	  PT_NODE *saved_curr_cte_next = curr_cte->next;
 	  int curr_cte_count = 0;
 
-	  curr_cte->next = NULL;
-	  recursive_part =
-	    parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte, curr_cte, pt_count_ctes_post,
-			      &curr_cte_count);
-
+	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte, curr_cte,
+					     pt_count_ctes_post, &curr_cte_count);
 	  if (!recursive_part)
 	    {
 	      /* error in walk */
@@ -8110,8 +8117,6 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_rec_part->info.query.all_distinct;
 	      curr_cte->info.cte.non_rec_part = curr_cte->info.cte.non_rec_part->info.query.q.union_.arg1;
 	    }
-
-	  curr_cte->next = saved_curr_cte_next;	/*restore next node */
 	}
 
       curr_cte->info.cte.non_rec_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
@@ -8120,8 +8125,11 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	  curr_cte->info.cte.rec_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
 	}
 
-      /*reconnect list, previous->next was curr_cte */
+      /* reconnect list, previous->next was curr_cte */
       previous_cte->next = curr_cte;
+
+      /* restore next node */
+      curr_cte->next = saved_curr_cte_next;
     }
 
   saved_with = with;
