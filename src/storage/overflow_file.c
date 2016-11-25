@@ -187,7 +187,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-      pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 
       /* Is this the first page ? */
       if (i == 0)

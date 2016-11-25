@@ -1420,15 +1420,26 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 {
 #if defined (SERVER_MODE)
 #define DISK_EXTEND_TEMP_REGISTER() \
-  if (voltype == DB_TEMPORARY_VOLTYPE) \
-    {  \
-      tsc_getticks (&end_tick); \
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick); \
-      TSC_ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, tv_diff); \
-      thread_p->event_stats.temp_expand_pages += DISK_SECTS_NPAGES (nsect_temp_extended); \
-    }
+  do \
+    { \
+      if (voltype == DB_TEMPORARY_VOLTYPE) \
+        {  \
+          tsc_getticks (&end_tick); \
+          tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick); \
+          TSC_ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, tv_diff); \
+          thread_p->event_stats.temp_expand_pages += DISK_SECTS_NPAGES (nsect_temp_extended); \
+        } \
+    } \
+  while (0)
 #define DISK_EXTEND_TEMP_COLLECT(nsects) \
-  if (voltype == DB_TEMPORARY_VOLTYPE) nsect_temp_extended += (nsects)
+  do \
+    { \
+      if (voltype == DB_TEMPORARY_VOLTYPE) \
+        { \
+          nsect_temp_extended += (nsects); \
+        } \
+    } \
+  while (0)
 #endif /* SERVER_MODE */
 
   DKNSECTS free = extend_info->nsect_free;
