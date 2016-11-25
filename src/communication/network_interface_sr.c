@@ -10098,3 +10098,30 @@ end:
   ptr = or_pack_int (reply, success);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
+
+/*
+ * ses_es_mark_delete_file -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+ses_es_mark_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *path;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_string_nocopy (request, &path);
+
+  es_notify_vacuum_for_delete (thread_p, path);
+
+  ptr = or_pack_int (reply, NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}

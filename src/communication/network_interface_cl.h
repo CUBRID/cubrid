@@ -406,4 +406,8 @@ extern int tran_lock_rep_read (LOCK lock_rr_tran);
 extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID * class_oidp);
 
 extern int log_does_active_user_exist (const char *user_name, bool * existed);
+#if defined (CS_MODE)
+extern int es_mark_delete_file (const char *path);
+#endif
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

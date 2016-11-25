@@ -930,6 +930,11 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
+
+  req_p = &net_Requests[NET_SERVER_ES_MARK_DELETE_FILE];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = ses_es_mark_delete_file;
+  req_p->name = "NET_SERVER_ES_MARK_DELETE_FILE";
 }
 
 #if defined(CUBRID_DEBUG)

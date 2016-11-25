@@ -249,6 +249,8 @@ enum net_server_request
 
   NET_SERVER_TZ_GET_CHECKSUM,
 
+  NET_SERVER_ES_MARK_DELETE_FILE,
+
   /* Followings are not grouped because they are appended after the above. It is necessary to rearrange with changing
    * network compatibility. */
 

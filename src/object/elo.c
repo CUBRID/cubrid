@@ -870,10 +870,11 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	    }
 	  else
 	    {
-#if defined (SERVER_MODE)
+#if defined (CS_MODE)
+	      es_mark_delete_file (elo->locator);
+#elif defined (SERVER_MODE)
 	      es_notify_vacuum_for_delete (thread_get_thread_entry_info (), elo->locator);
-#endif
-#if defined (SA_MODE)
+#elif defined (SA_MODE)
 	      LOG_DATA_ADDR addr;
 
 	      addr.offset = NULL_SLOTID;

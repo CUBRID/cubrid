@@ -10823,3 +10823,49 @@ locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_lis
   return success;
 #endif /* !CS_MODE */
 }
+
+#if defined(CS_MODE)
+/*
+ * es_mark_delete_file () - mark an LOB file as deleted
+ *
+ * return : error code
+ *
+ * thread_p (in)      :
+ * path (in)     : parent class OID
+ */
+int
+es_mark_delete_file (const char *path)
+{
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (path, &strlen);
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, path, strlen);
+
+      req_error =
+	net_client_request (NET_SERVER_ES_MARK_DELETE_FILE, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			    NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int (reply, &error);
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) request_size);
+    }
+
+  return error;
+}
+#endif
