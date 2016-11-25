@@ -229,7 +229,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 
       if (file_type != FILE_TEMP)
 	{
-	  log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr,
+	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr,
 				copy_length + CAST_BUFLEN (copyto - (char *) addr.pgptr), (char *) addr.pgptr);
 	}
 
@@ -1103,8 +1103,6 @@ overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
 int
 overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_OVERFLOW);
-
   return log_rv_copy_char (thread_p, rcv);
 }
 
