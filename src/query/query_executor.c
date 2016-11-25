@@ -1686,7 +1686,21 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  p->curent = NULL;
 	}
 
-      pr_clear_value (p->s_dbval);
+      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	{
+	  if (p->clear_value_at_clone_decache)
+	    {
+	      pr_clear_value (p->s_dbval);
+	    }
+	}
+      else
+	{
+	  if (!p->clear_value_at_clone_decache)
+	    {
+	      pr_clear_value (p->s_dbval);
+	    }
+	}
+
       pg_cnt += qexec_clear_pred (xasl_p, p->where_pred, final);
       pg_cnt += qexec_clear_pred (xasl_p, p->where_key, final);
       pg_cnt += qexec_clear_pred (xasl_p, p->where_range, final);

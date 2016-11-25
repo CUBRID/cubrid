@@ -442,6 +442,7 @@ struct access_spec_node
   int qualified_block;		/* qualified scan block */
   QPROC_SINGLE_FETCH single_fetch;	/* open scan in single fetch mode */
   DB_VALUE *s_dbval;		/* single fetch mode db_value */
+  bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
   ACCESS_SPEC_TYPE *next;	/* next access specification */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
