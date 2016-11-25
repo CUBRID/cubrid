@@ -147,7 +147,9 @@ static SORT_LIST *stx_restore_sort_list (THREAD_ENTRY * thread_p, char *ptr);
 static char *stx_restore_string (THREAD_ENTRY * thread_p, char *ptr);
 static VAL_LIST *stx_restore_val_list (THREAD_ENTRY * thread_p, char *ptr);
 static DB_VALUE *stx_restore_db_value (THREAD_ENTRY * thread_p, char *ptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static QPROC_DB_VALUE_LIST stx_restore_db_value_list (THREAD_ENTRY * thread_p, char *ptr);
+#endif
 static XASL_NODE *stx_restore_xasl_node (THREAD_ENTRY * thread_p, char *ptr);
 static PRED_EXPR_WITH_CONTEXT *stx_restore_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr);
 static FUNC_PRED *stx_restore_func_pred (THREAD_ENTRY * thread_p, char *ptr);
@@ -200,7 +202,9 @@ static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr, REGU
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp, SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, METHOD_SPEC_TYPE * ptr);
 static char *stx_build_val_list (THREAD_ENTRY * thread_p, char *tmp, VAL_LIST * ptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_DB_VALUE_LIST ptr);
+#endif
 static char *stx_build_regu_variable (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_build_attr_descr (THREAD_ENTRY * thread_p, char *tmp, ATTR_DESCR * ptr);
@@ -339,7 +343,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool us
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
-  xasl->query_in_progress = false;  
+  xasl->query_in_progress = false;
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
@@ -976,6 +980,7 @@ stx_restore_db_value (THREAD_ENTRY * thread_p, char *ptr)
   return value;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static QPROC_DB_VALUE_LIST
 stx_restore_db_value_list (THREAD_ENTRY * thread_p, char *ptr)
 {
@@ -1007,6 +1012,7 @@ stx_restore_db_value_list (THREAD_ENTRY * thread_p, char *ptr)
 
   return value_list;
 }
+#endif
 
 static XASL_NODE *
 stx_restore_xasl_node (THREAD_ENTRY * thread_p, char *ptr)
@@ -1474,6 +1480,7 @@ stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int neleme
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      assert (value_array[i]->need_clear == false);
     }
 
   for (; i < total_nelements; ++i)
@@ -5228,6 +5235,7 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
 	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	      return NULL;
 	    }
+	  assert (value_list[i].val->need_clear == false);
 	}
 
       if (i < val_list->val_cnt - 1)
@@ -5245,6 +5253,7 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
   return ptr;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static char *
 stx_build_db_value_list (THREAD_ENTRY * thread_p, char *ptr, QPROC_DB_VALUE_LIST value_list)
 {
@@ -5283,6 +5292,7 @@ stx_build_db_value_list (THREAD_ENTRY * thread_p, char *ptr, QPROC_DB_VALUE_LIST
 
   return ptr;
 }
+#endif
 
 static char *
 stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * regu_var)
@@ -5677,12 +5687,13 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	{
 	  goto error;
 	}
-    }
-  if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value))
-    {
-      aggregate->accumulator.clear_value_at_clone_decache = true;
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value))
+	{
+	  aggregate->accumulator.clear_value_at_clone_decache = true;
+	}
     }
 
+  aggregate->accumulator.clear_value2_at_clone_decache = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -5695,12 +5706,10 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	{
 	  goto error;
 	}
-    }
-
-  aggregate->accumulator.clear_value2_at_clone_decache = false;
-  if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value2))
-    {
-      aggregate->accumulator.clear_value2_at_clone_decache = true;
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value2))
+	{
+	  aggregate->accumulator.clear_value2_at_clone_decache = true;
+	}
     }
 
   ptr = or_unpack_int (ptr, &aggregate->accumulator.curr_cnt);
