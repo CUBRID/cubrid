@@ -156,6 +156,7 @@ static void qmgr_free_tran_entries (THREAD_ENTRY * thread_p);
 static void qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p);
 static OID_BLOCK_LIST *qmgr_allocate_oid_block (THREAD_ENTRY * thread_p);
 static void qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block);
+static int qmgr_init_external_file_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 static PAGE_PTR qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid, QMGR_TEMP_FILE * vfid);
 static int qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p);
 static int qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qptr, int tran_idx);
@@ -2455,6 +2456,26 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 }
 
 /*
+ * qmgr_init_external_file_page () - initialize new query result page
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * page (in)     : new page
+ * args (in)     : not used
+ */
+static int
+qmgr_init_external_file_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
+{
+  QFILE_PAGE_HEADER page_header = QFILE_PAGE_HEADER_INITIALIZER;
+
+  pgbuf_set_page_ptype (thread_p, page, PAGE_QRESULT);
+  qmgr_put_page_header (page, &page_header);
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+/*
  * qmgr_get_external_file_page () -
  *   return: PAGE_PTR
  *   vpid(in)   : Set to the allocated virtual page identifier
@@ -2468,25 +2489,15 @@ static PAGE_PTR
 qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tmp_vfid_p)
 {
   PAGE_PTR page_p = NULL;
-  QFILE_PAGE_HEADER page_header = QFILE_PAGE_HEADER_INITIALIZER;
 
   VPID_SET_NULL (vpid_p);
-  if (file_alloc (thread_p, &tmp_vfid_p->temp_vfid, vpid_p) != NO_ERROR)
+  if (file_alloc (thread_p, &tmp_vfid_p->temp_vfid, qmgr_init_external_file_page, NULL, vpid_p, &page_p) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
     }
-  /* Fix newly allocated page */
-  page_p = pgbuf_fix (thread_p, vpid_p, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_p == NULL)
-    {
-      ASSERT_ERROR ();
-      VPID_SET_NULL (vpid_p);
-      return NULL;
-    }
-  pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
-  qmgr_put_page_header (page_p, &page_header);
-  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+  assert (page_p != NULL);
+  assert (pgbuf_get_page_ptype (thread_p, page_p) == PAGE_QRESULT);
   return page_p;
 }
 

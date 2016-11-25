@@ -1513,6 +1513,7 @@ struct log_info_chkpt_trans
   LOG_LSA posp_nxlsa;		/* First address of a postpone record */
   LOG_LSA savept_lsa;		/* Address of last savepoint */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
+  LOG_LSA start_postpone_lsa;	/* Address of start postpone (if transaction was doing postpone during checkpoint) */
   char user_name[LOG_USERNAME_MAX];	/* Name of the client */
 
 };
@@ -1587,6 +1588,8 @@ struct log_rcv_tdes
    * currently we store the LSA of a system op start postpone. it is required to finish the system op postpone phase
    * correctly */
   LOG_LSA sysop_start_postpone_lsa;
+  /* we need to know where transaction postpone has started. */
+  LOG_LSA tran_start_postpone_lsa;
 };
 
 typedef struct log_tdes LOG_TDES;

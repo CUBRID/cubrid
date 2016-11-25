@@ -337,9 +337,9 @@ static int catalog_drop_representation_class_from_page (THREAD_ENTRY * thread_p,
 							VPID * page_id, PGSLOTID slot_id);
 static int catalog_get_rep_dir (THREAD_ENTRY * thread_p, OID * class_oid_p, OID * rep_dir_p, bool lookup_hash);
 static PAGE_PTR catalog_get_representation_record (THREAD_ENTRY * thread_p, OID * rep_dir_p, RECDES * record_p,
-						   int latch, int is_peek, int *out_repr_count_p);
+						   PGBUF_LATCH_MODE latch, int is_peek, int *out_repr_count_p);
 static PAGE_PTR catalog_get_representation_record_after_search (THREAD_ENTRY * thread_p, OID * class_id_p,
-								RECDES * record_p, int latch, int is_peek,
+								RECDES * record_p, PGBUF_LATCH_MODE latch, int is_peek,
 								OID * rep_dir_p, int *out_repr_count_p,
 								bool lookup_hash);
 static int catalog_adjust_directory_count (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_p, int delta);
@@ -657,26 +657,19 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, bool is_overflo
 
   log_sysop_start (thread_p);
 
-  if (file_alloc_and_init (thread_p, &catalog_Id.vfid, catalog_initialize_new_page, &is_overflow_page, page_id_p)
+  if (file_alloc (thread_p, &catalog_Id.vfid, catalog_initialize_new_page, &is_overflow_page, page_id_p, &page_p)
       != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  /* 
-   * Note: we fetch the page as old since it was initialized during the
-   * allocation by catalog_initialize_new_page, we want the current
-   * contents of the page.
-   */
-
-  page_p = pgbuf_fix (thread_p, page_id_p, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_p == NULL)
     {
       ASSERT_ERROR ();
       log_sysop_abort (thread_p);
       return NULL;
     }
-
+  if (page_p == NULL)
+    {
+      assert_release (false);
+      log_sysop_abort (thread_p);
+      return NULL;
+    }
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
   log_sysop_commit (thread_p);
 
@@ -1880,8 +1873,8 @@ catalog_get_rep_dir (THREAD_ENTRY * thread_p, OID * class_oid_p, OID * rep_dir_p
 }
 
 static PAGE_PTR
-catalog_get_representation_record (THREAD_ENTRY * thread_p, OID * rep_dir_p, RECDES * record_p, int latch, int is_peek,
-				   int *out_repr_count_p)
+catalog_get_representation_record (THREAD_ENTRY * thread_p, OID * rep_dir_p, RECDES * record_p, PGBUF_LATCH_MODE latch,
+				   int is_peek, int *out_repr_count_p)
 {
   PAGE_PTR page_p;
   VPID vpid;
@@ -1920,8 +1913,9 @@ catalog_get_representation_record (THREAD_ENTRY * thread_p, OID * rep_dir_p, REC
 }
 
 static PAGE_PTR
-catalog_get_representation_record_after_search (THREAD_ENTRY * thread_p, OID * class_id_p, RECDES * record_p, int latch,
-						int is_peek, OID * rep_dir_p, int *out_repr_count_p, bool lookup_hash)
+catalog_get_representation_record_after_search (THREAD_ENTRY * thread_p, OID * class_id_p, RECDES * record_p,
+						PGBUF_LATCH_MODE latch, int is_peek, OID * rep_dir_p,
+						int *out_repr_count_p, bool lookup_hash)
 {
   assert (class_id_p != NULL);
   assert (!OID_ISNULL (class_id_p));
@@ -2626,7 +2620,8 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p)
       goto error;
     }
 
-  if (file_alloc_sticky_first_page (thread_p, &catalog_id_p->vfid, &first_page_vpid) != NO_ERROR)
+  if (file_alloc_sticky_first_page (thread_p, &catalog_id_p->vfid, catalog_initialize_new_page, &is_overflow_page,
+				    &first_page_vpid, &page_p) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
@@ -2636,15 +2631,9 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p)
       assert_release (false);
       goto error;
     }
-  page_p = pgbuf_fix (thread_p, &first_page_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_p == NULL)
     {
-      ASSERT_ERROR ();
-      goto error;
-    }
-  if (catalog_initialize_new_page (thread_p, page_p, &is_overflow_page) != NO_ERROR)
-    {
-      ASSERT_ERROR ();
+      assert_release (false);
       goto error;
     }
   catalog_id_p->hpgid = first_page_vpid.pageid;
@@ -4983,10 +4972,7 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
   DISK_REPR *disk_repr_p = NULL;
   int repr_count;
   CLS_INFO *class_info_p = NULL;
-  int i, n, overflow_count;
-  VPID page_id;
-  PAGE_PTR page_p;
-  RECDES record;
+  int n, overflow_count;
 
   CATALOG_PAGE_DUMP_CONTEXT page_dump_context;
 

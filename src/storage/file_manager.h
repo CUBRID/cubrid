@@ -157,12 +157,13 @@ extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 
-extern int file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
-extern int file_alloc_and_init (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
-				void *f_init_args, VPID * vpid_alloc);
+extern int file_init_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+extern int file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
+		       VPID * vpid_out, PAGE_PTR * page_out);
 extern int file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
 				void *f_init_args, int npages, VPID * vpids_out);
-extern int file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
+extern int file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
+					 void *f_init_args, VPID * vpid_out, PAGE_PTR * page_out);
 extern int file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
 extern int file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FILE_TYPE file_type_hint);
 
@@ -175,7 +176,7 @@ extern int file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LAT
 extern int file_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 
 extern int file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
-				    VPID * vpid_nth);
+				    FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_nth);
 extern int file_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, DKNPAGES npages);
 
 extern void file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);

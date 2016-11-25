@@ -704,4 +704,5 @@ extern int btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * r
 extern unsigned int btree_hash_btid (void *btid, int hash_size);
 
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
+extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 #endif /* _BTREE_H_ */

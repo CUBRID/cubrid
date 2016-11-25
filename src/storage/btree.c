@@ -1277,7 +1277,6 @@ static int btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTI
 						    DB_VALUE * key, void *rec_header, int node_type, bool * clear_key,
 						    int *offset, int copy);
 static PAGE_PTR btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID * near_vpid);
-static int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 static int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 				      INT16 * slot_id, VPID * child_vpid);
 static int btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
@@ -4823,26 +4822,15 @@ static PAGE_PTR
 btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID * near_vpid)
 {
   PAGE_PTR page_ptr = NULL;
-  unsigned short alignment;
 
-  alignment = BTREE_MAX_ALIGN;
-
-  if (file_alloc_and_init (thread_p, &btid->sys_btid->vfid, btree_initialize_new_page, (void *) (&alignment), vpid)
-      != NO_ERROR)
+  if (file_alloc (thread_p, &btid->sys_btid->vfid, btree_initialize_new_page, NULL, vpid, &page_ptr) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
     }
-
-  /* 
-   * Note: we fetch the page as old since it was initialized during the
-   * allocation by btree_initialize_new_page, therefore, we care about
-   * the current content of the page.
-   */
-  page_ptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
-      ASSERT_ERROR ();
+      assert_release (false);
       return NULL;
     }
   pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
@@ -4851,26 +4839,20 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
 }
 
 /*
- * btree_initialize_new_page () -
- *   return: bool
- *   vfid(in): File where the new page belongs
- *   file_type(in):
- *   vpid(in): The new page
- *   ignore_npages(in): Number of contiguous allocated pages (Ignored in this function. We allocate only one page)
- *   ignore_args(in): More arguments to function. Ignored at this moment.
+ * btree_initialize_new_page () - initialize a new b-tree page
  *
- * Note: Initialize a newly allocated btree page.
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * page (in)     : new b-tree page
+ * args (in)     : ignored
  */
-static int
+int
 btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 {
-  unsigned short alignment;
-
   pgbuf_set_page_ptype (thread_p, page, PAGE_BTREE);
 
-  alignment = *((unsigned short *) args);
-  spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
-  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, sizeof (alignment), &alignment);
+  spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, BTREE_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, 0, NULL);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;
@@ -17361,12 +17343,9 @@ btree_rv_pagerec_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 int
 btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  unsigned short alignment;
-
   (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_BTREE);
 
-  alignment = *(unsigned short *) recv->data;
-  spage_initialize (thread_p, recv->pgptr, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
+  spage_initialize (thread_p, recv->pgptr, UNANCHORED_KEEP_SEQUENCE, BTREE_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
 
   return NO_ERROR;
 }
@@ -32848,8 +32827,6 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
 {
   FILE_BTREE_DES des;
   VPID vpid_root;
-  PAGE_PTR page_root;
-  unsigned short alignment;
 
   int error_code = NO_ERROR;
 
@@ -32866,7 +32843,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   /* index page allocations need to be committed. they are not individually deallocated on undo; all pages are
    * deallocated when the file is destroyed. */
   log_sysop_start (thread_p);
-  error_code = file_alloc_sticky_first_page (thread_p, &btid->vfid, &vpid_root);
+  error_code = file_alloc_sticky_first_page (thread_p, &btid->vfid, btree_initialize_new_page, NULL, &vpid_root, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -32881,20 +32858,6 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
       return ER_FAILED;
     }
   btid->root_pageid = vpid_root.pageid;
-
-  /* page allocation is complete only when its type is set */
-  page_root = pgbuf_fix (thread_p, &vpid_root, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_root == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      log_sysop_abort (thread_p);
-      return error_code;
-    }
-  pgbuf_set_page_ptype (thread_p, page_root, PAGE_BTREE);
-  alignment = BTREE_MAX_ALIGN;
-  spage_initialize (thread_p, page_root, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
-  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page_root, NULL_OFFSET, sizeof (alignment), &alignment);
-  pgbuf_set_dirty_and_free (thread_p, page_root);
 
   log_sysop_commit (thread_p);
   return NO_ERROR;

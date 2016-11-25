@@ -3724,6 +3724,16 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
        * protection */
       tdes->rcv.sysop_start_postpone_lsa = start_lsa;
     }
+  else if (node->log_header.type == LOG_SYSOP_END)
+    {
+      /* reset tdes->rcv.sysop_start_postpone_lsa */
+      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+    }
+  else if (node->log_header.type == LOG_COMMIT_WITH_POSTPONE)
+    {
+      /* we need the commit with postpone LSA for recovery. we have to save it under prior_lsa_mutex protection */
+      tdes->rcv.tran_start_postpone_lsa = start_lsa;
+    }
 
   LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (node->data_header_length);
   LOG_PRIOR_LSA_APPEND_ADD_ALIGN (node->data_header_length);
@@ -7761,6 +7771,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  LSA_COPY (&chkpt_one->posp_nxlsa, &act_tdes->posp_nxlsa);
 	  LSA_COPY (&chkpt_one->savept_lsa, &act_tdes->savept_lsa);
 	  LSA_COPY (&chkpt_one->tail_topresult_lsa, &act_tdes->tail_topresult_lsa);
+	  LSA_COPY (&chkpt_one->start_postpone_lsa, &act_tdes->rcv.tran_start_postpone_lsa);
 	  strncpy (chkpt_one->user_name, act_tdes->client.db_user, LOG_USERNAME_MAX);
 	  ntrans++;
 	  if (act_tdes->topops.last >= 0 && (act_tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))

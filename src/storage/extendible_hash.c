@@ -969,6 +969,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   OID value;
   unsigned int i;
   FILE_EHASH_DES ehdes;
+  PAGE_TYPE ptype = PAGE_EHASH;
 
   assert (key_type == DB_TYPE_STRING || key_type == DB_TYPE_OBJECT);
 
@@ -1048,7 +1049,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   init_bucket_data[1] = 0;
   init_bucket_data[2] = is_tmp;
 
-  if (file_alloc_and_init (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, &bucket_vpid)
+  if (file_alloc (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, &bucket_vpid, NULL)
       != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1084,20 +1085,17 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
       ASSERT_ERROR ();
       goto exit_on_error;
     }
-  if (file_alloc (thread_p, &dir_vfid, &dir_vpid) != NO_ERROR)
+  if (file_alloc (thread_p, &dir_vfid, file_init_page_type, &ptype, &dir_vpid, &dir_page_p) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit_on_error;
     }
-
-  dir_page_p = pgbuf_fix (thread_p, &dir_vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (dir_page_p == NULL)
     {
-      ASSERT_ERROR ();
+      assert_release (false);
       goto exit_on_error;
     }
-
-  pgbuf_set_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
+  pgbuf_check_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_page_p;
 
@@ -1228,7 +1226,7 @@ ehash_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, PG
 {
   VPID vpid;
 
-  if (file_numerable_find_nth (thread_p, vfid_p, offset, false, &vpid) != NO_ERROR)
+  if (file_numerable_find_nth (thread_p, vfid_p, offset, false, NULL, NULL, &vpid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -1468,7 +1466,7 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
   PAGE_PTR bucket_page_p;
   EHASH_BUCKET_HEADER bucket_header;
   char found_depth;
-  char init_bucket_data[2];
+  char init_bucket_data[3];
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
   EHASH_RESULT ins_result;
 
@@ -1487,22 +1485,21 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
 
   log_sysop_start (thread_p);
 
-  error_code =
-    file_alloc_and_init (thread_p, &dir_header_p->bucket_file, ehash_initialize_bucket_new_page, init_bucket_data,
-			 bucket_vpid_p);
+  error_code = file_alloc (thread_p, &dir_header_p->bucket_file, ehash_initialize_bucket_new_page, init_bucket_data,
+			   bucket_vpid_p, &bucket_page_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       log_sysop_abort (thread_p);
       return ER_FAILED;
     }
-
-  bucket_page_p = ehash_fix_old_page (thread_p, &dir_header_p->bucket_file, bucket_vpid_p, PGBUF_LATCH_WRITE);
   if (bucket_page_p == NULL)
     {
+      assert_release (false);
       log_sysop_abort (thread_p);
       return ER_FAILED;
     }
+  (void) pgbuf_check_page_ptype (thread_p, bucket_page_p, PAGE_EHASH);
 
   if (ehash_connect_bucket (thread_p, ehid_p, bucket_header.local_depth, hash_key, bucket_vpid_p, is_temp) != NO_ERROR)
     {
@@ -2710,22 +2707,16 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
   init_bucket_data[1] = *out_new_local_depth_p;
   init_bucket_data[2] = is_temp;
 
-  error_code =
-    file_alloc_and_init (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, sibling_vpid_p);
+  error_code = file_alloc (thread_p, &bucket_vfid, ehash_initialize_bucket_new_page, init_bucket_data, sibling_vpid_p,
+			   &sibling_page_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
     }
-
-  sibling_page_p = ehash_fix_old_page (thread_p, &bucket_vfid, sibling_vpid_p, PGBUF_LATCH_WRITE);
   if (sibling_page_p == NULL)
     {
-      if (file_dealloc (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-      VPID_SET_NULL (sibling_vpid_p);
+      assert_release (false);
       return NULL;
     }
 
@@ -2795,7 +2786,6 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
   int end_offset;
   int new_end_offset;
   int needed_pages;
-  VPID expand_vpid;
   int i, j;
   int exp_times;
 
@@ -2844,15 +2834,13 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
   ehash_dir_locate (&new_pages, &new_end_offset);
   needed_pages = new_pages - old_pages;
 
-  for (; needed_pages > 0; needed_pages--)
+  error_code = file_alloc_multiple (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, &is_temp, needed_pages,
+				    NULL);
+  if (error_code != NO_ERROR)
     {
-      error_code = file_alloc_and_init (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, &is_temp, &expand_vpid);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  pgbuf_unfix_and_init (thread_p, dir_header_page_p);
-	  return error_code;
-	}
+      ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+      return error_code;
     }
 
   /*****************************

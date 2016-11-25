@@ -4142,7 +4142,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
   /* allocate new page and initialize it */
-  error_code = file_alloc_and_init (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, &vpid);
+  error_code = file_alloc (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, &vpid, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5021,6 +5021,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   int i;
   FILE_HEAP_DES hfdes;
   const FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
+  PAGE_TYPE ptype = PAGE_HEAP;
 
   int error_code = NO_ERROR;
 
@@ -5097,7 +5098,8 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       ASSERT_ERROR ();
       goto error;
     }
-  error_code = file_alloc_sticky_first_page (thread_p, &hfid->vfid, &vpid);
+  error_code = file_alloc_sticky_first_page (thread_p, &hfid->vfid, file_init_page_type, &ptype, &vpid,
+					     &addr_hdr.pgptr);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5110,12 +5112,10 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       error_code = ER_FAILED;
       goto error;
     }
-
-  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (addr_hdr.pgptr == NULL)
     {
       /* something went wrong, destroy the file, and return */
-      ASSERT_ERROR_AND_SET (error_code);
+      assert_release (false);
       goto error;
     }
 
