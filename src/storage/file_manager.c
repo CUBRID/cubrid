@@ -8750,6 +8750,7 @@ file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE 
       assert_release (false);
       return ER_FAILED;
     }
+  entry->vfid = *vfid;
   entry->ftype = file_type;
   file_tempcache_push_tran_file (thread_p, entry);
   return NO_ERROR;
