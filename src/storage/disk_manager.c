@@ -1149,14 +1149,20 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (volid == disk_Cache->nvols_perm - 1)
     {
       /* volume was added to cache. now remove it */
+      disk_cache_lock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
+      disk_cache_update_vol_free (volid, -disk_Cache->vols[volid].nsect_free);
+      disk_cache_unlock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
+
+      assert (disk_Cache->vols[volid].nsect_free == 0);
       disk_Cache->nvols_perm--;
       disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
-      disk_Cache->vols[volid].nsect_free = 0;
     }
   else
     {
       /* must be next volume that was not added yet to cache */
       assert (disk_Cache->nvols_perm == volid);
+      assert (disk_Cache->vols[volid].purpose == DISK_UNKNOWN_PURPOSE);
+      assert (disk_Cache->vols[volid].nsect_free == 0);
     }
 
   return NO_ERROR;
@@ -1185,8 +1191,11 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* add to disk cache */
       disk_Cache->nvols_perm++;
       disk_Cache->vols[volheader->volid].purpose = volheader->purpose;
-      disk_Cache->vols[volheader->volid].nsect_free =
-	volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1;
+      disk_Cache->vols[volheader->volid].nsect_free = 0;
+      disk_cache_lock_reserve_for_purpose (volheader->purpose);
+      disk_cache_update_vol_free (volheader->volid,
+				  volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1);
+      disk_cache_unlock_reserve_for_purpose (volheader->purpose);
     }
   else
     {
