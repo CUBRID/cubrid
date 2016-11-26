@@ -8726,11 +8726,12 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
  * file_temp_save_tran_file () - cache temporary file in transaction list
  *
  * return         : error code
+ * thread_p (in)  : thread entry
  * vfid (in)      : file identifier
  * file_type (in) : file type
  */
 int
-file_temp_save_tran_file (const VFID * vfid, FILE_TYPE file_type)
+file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_type)
 {
   FILE_TEMPCACHE_ENTRY *entry = NULL;
   int error_code = NO_ERROR;
