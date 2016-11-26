@@ -1170,7 +1170,6 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  VOLID volid = (VOLID) rcv->offset;
   int error_code = NO_ERROR;
   DISK_VOLUME_HEADER *volheader;
 
@@ -1181,19 +1180,20 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   disk_verify_volume_header (thread_p, rcv->pgptr);
   volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
 
-  if (disk_Cache->nvols_perm == volid)
+  if (disk_Cache->nvols_perm == volheader->volid)
     {
       /* add to disk cache */
       disk_Cache->nvols_perm++;
-      disk_Cache->vols[volid].purpose = volheader->purpose;
-      disk_Cache->vols[volid].nsect_free = volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1;
+      disk_Cache->vols[volheader->volid].purpose = volheader->purpose;
+      disk_Cache->vols[volheader->volid].nsect_free =
+	volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1;
     }
   else
     {
       /* disk_rv_redo_format is called twice. it must be already added. */
-      assert (disk_Cache->nvols_perm == volid + 1);
-      assert (disk_Cache->vols[volid].purpose == volheader->purpose);
-      assert (disk_Cache->vols[volid].nsect_free
+      assert (disk_Cache->nvols_perm == volheader->volid + 1);
+      assert (disk_Cache->vols[volheader->volid].purpose == volheader->purpose);
+      assert (disk_Cache->vols[volheader->volid].nsect_free
 	      == volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1);
     }
 
