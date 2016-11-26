@@ -4904,7 +4904,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
       if (page_alloc == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  goto exit;
 	}
       error_code = f_init (thread_p, page_alloc, f_init_args);
       if (error_code != NO_ERROR)
