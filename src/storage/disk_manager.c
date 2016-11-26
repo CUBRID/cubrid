@@ -515,7 +515,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   /* undo must be logical since we are going to remove the volume in the case of rollback (really a crash since we are
    * in a top operation) */
-  addr.offset = 0;
+  addr.offset = (PGLENGTH) volid;
   addr.pgptr = NULL;
   log_append_undo_data (thread_p, RVDK_FORMAT, &addr, (int) strlen (vol_fullname) + 1, vol_fullname);
 
@@ -1140,10 +1140,25 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  VOLID volid = (VOLID) rcv->offset;
   int ret = NO_ERROR;
 
   ret = disk_unformat (thread_p, (char *) rcv->data);
   log_append_dboutside_redo (thread_p, RVLOG_OUTSIDE_LOGICAL_REDO_NOOP, 0, NULL);
+
+  if (volid == disk_Cache->nvols_perm - 1)
+    {
+      /* volume was added to cache. now remove it */
+      disk_Cache->nvols_perm--;
+      disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
+      disk_Cache->vols[volid].nsect_free = 0;
+    }
+  else
+    {
+      /* must be next volume that was not added yet to cache */
+      assert (disk_Cache->nvols_perm == volid);
+    }
+
   return NO_ERROR;
 }
 
@@ -1155,11 +1170,34 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  VOLID volid = (VOLID) rcv->offset;
+  int error_code = NO_ERROR;
+  DISK_VOLUME_HEADER *volheader;
+
   (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLHEADER);
+  error_code = log_rv_copy_char (thread_p, rcv);
+  assert (error_code == NO_ERROR);
 
-  /* todo: what about new volumes found at recovery? how do we deal with cache in this case? */
+  disk_verify_volume_header (thread_p, rcv->pgptr);
+  volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
 
-  return log_rv_copy_char (thread_p, rcv);
+  if (disk_Cache->nvols_perm == volid)
+    {
+      /* add to disk cache */
+      disk_Cache->nvols_perm++;
+      disk_Cache->vols[volid].purpose = volheader->purpose;
+      disk_Cache->vols[volid].nsect_free = volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1;
+    }
+  else
+    {
+      /* disk_rv_redo_format is called twice. it must be already added. */
+      assert (disk_Cache->nvols_perm == volid + 1);
+      assert (disk_Cache->vols[volid].purpose == volheader->purpose);
+      assert (disk_Cache->vols[volid].nsect_free
+	      == volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1);
+    }
+
+  return error_code;
 }
 
 /*
