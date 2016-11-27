@@ -3725,7 +3725,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
       /* invalid */
-      assert (false);
+      assert (!debug_crash);
       isvalid = DISK_INVALID;
       goto exit;
     }
@@ -3788,6 +3788,7 @@ disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * vol
   disk_stab_cursor_set_at_sectid (volheader, sectid, &cursor_sectid);
   if (disk_stab_cursor_fix (thread_p, &cursor_sectid, PGBUF_LATCH_READ) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return DISK_ERROR;
     }
 
