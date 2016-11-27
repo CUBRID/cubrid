@@ -23407,6 +23407,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  assert_release (false);
 	  boot_find_root_heap (&entry->hfid);
 	  entry->ftype = FILE_HEAP;
+	  lf_tran_end_with_mb (t_entry);
 	  return NO_ERROR;
 	}
 
@@ -23417,6 +23418,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  lf_tran_end_with_mb (t_entry);
 	  return error_code;
 	}
       entry->hfid = hfid_local;
@@ -23430,6 +23432,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  lf_tran_end_with_mb (t_entry);
 	  return error_code;
 	}
       entry->ftype = ftype_local;
