@@ -4627,13 +4627,13 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   /* recheck the dealloc flag after all latches are acquired */
   if (pgbuf_has_prevent_dealloc (crt_watcher.pgptr))
     {
-      assert (pgbuf_has_any_waiters (crt_watcher.pgptr) == false);
       /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We 
        * cannot deallocate it. */
       vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WARNING,
 		     "VACUUM: Candidate heap page %d|%d to remove has waiters.\n", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
+  assert (pgbuf_has_any_waiters (crt_watcher.pgptr) == false);
 
   /* Start changes under the protection of system operation. */
   log_sysop_start (thread_p);
