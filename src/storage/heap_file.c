@@ -17117,10 +17117,12 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    {
 	      set_default_value = true;
 	    }
+	  /* clear the error */
+	  er_clear ();
 
 	  log_warning = true;
 
-	  /* the casted value will be overwriten, so a clear is needed, here */
+	  /* the casted value will be overwritten, so a clear is needed, here */
 	  pr_clear_value (&(value->dbvalue));
 
 	  if (set_max_value)
