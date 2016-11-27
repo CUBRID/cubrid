@@ -3052,6 +3052,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 
   /* File extensible data */
   FILE_EXTENSIBLE_DATA *extdata_part_ftab = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_part_ftab_in_fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_full_ftab = NULL;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab = NULL;
 
@@ -3329,6 +3330,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
    * extend on other pages, we will keep track of pages/sectors used for file table using extdata_part_ftab.
    */
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
+  extdata_part_ftab_in_fhead = extdata_part_ftab;
   for (vsid_iter = vsids_reserved; vsid_iter < vsids_reserved + n_sectors; vsid_iter++)
     {
       if (file_extdata_is_full (extdata_part_ftab))
@@ -3358,7 +3360,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	    {
 	      /* move to next partial sector. */
 	      partsect_ftab++;
-	      if ((void *) partsect_ftab >= file_extdata_end (extdata_part_ftab))
+	      if ((void *) partsect_ftab >= file_extdata_end (extdata_part_ftab_in_fhead))
 		{
 		  /* This is not possible! */
 		  assert_release (false);
