@@ -264,7 +264,7 @@ static int sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page
 static int sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start);
 
 static int sort_get_num_half_tmpfiles (int tot_buffers, int input_pages);
-static void sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
+static int sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_get_numpages_of_active_infiles (const SORT_PARAM * sort_param);
 static int sort_find_inbuf_size (int tot_buffers, int in_sections);
 static char *sort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * memory);
@@ -2936,7 +2936,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   while ((act_infiles = sort_get_numpages_of_active_infiles (sort_param)) > 1)
     {
       /* Check if output files has enough pages; if not allocate new pages */
-      sort_checkalloc_numpages_of_outfiles (thread_p, sort_param);
+      error = sort_checkalloc_numpages_of_outfiles (thread_p, sort_param);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto bailout;
+	}
 
       /* Initialize the current pages of all temp files to 0 */
       for (i = 0; i < sort_param->tot_tempfiles; i++)
@@ -3710,7 +3715,12 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   while ((act_infiles = sort_get_numpages_of_active_infiles (sort_param)) > 1)
     {
       /* Check if output files has enough pages; if not allocate new pages */
-      sort_checkalloc_numpages_of_outfiles (thread_p, sort_param);
+      error = sort_checkalloc_numpages_of_outfiles (thread_p, sort_param);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto bailout;
+	}
 
       /* Initialize the current pages of all temp files to 0 */
       for (i = 0; i < sort_param->tot_tempfiles; i++)
@@ -4641,7 +4651,7 @@ sort_get_num_half_tmpfiles (int tot_buffers, int input_pages)
 
 /*
  * sort_checkalloc_numpages_of_outfiles () - Check sizes of output files
- *   return: void
+ *   return: error code
  *   sort_param(in): sort parameters
  *
  * Note: This function determines how many pages will be needed by each output
@@ -4652,7 +4662,7 @@ sort_get_num_half_tmpfiles (int tot_buffers, int input_pages)
  *       files.) It then checks whether these output files have that many pages
  *       already. If some of them need more pages, it allocates new pages.
  */
-static void
+static int
 sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int out_file;
@@ -4661,6 +4671,8 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
   int contains;
   int alloc_pages;
   int i, j;
+
+  int error_code = NO_ERROR;
 
   for (i = 0; i < (int) DIM (needed_pages); i++)
     {
@@ -4708,20 +4720,20 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
       if (needed_pages[i] > 0)
 	{
 	  assert (!VFID_ISNULL (&sort_param->temp[i]));
-	  if (file_get_num_user_pages (thread_p, &sort_param->temp[i], &contains) != NO_ERROR)
+	  error_code = file_get_num_user_pages (thread_p, &sort_param->temp[i], &contains);
+	  if (error_code != NO_ERROR)
 	    {
-	      /* what happened? */
-	      assert (false);
-	      return;
+	      ASSERT_ERROR ();
+	      return error_code;
 	    }
 	  alloc_pages = (needed_pages[i] - contains);
 	  if (alloc_pages > 0)
 	    {
-	      if (file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL) != NO_ERROR)
+	      error_code = file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL);
+	      if (error_code != NO_ERROR)
 		{
-		  /* shouldn't we make this safe? */
-		  assert (false);
-		  return;
+		  ASSERT_ERROR ();
+		  return error_code;
 		}
 	    }
 	}
@@ -4730,13 +4742,17 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      if (file_temp_retire (thread_p, &sort_param->temp[i]) == NO_ERROR)
+	      error_code = file_temp_retire (thread_p, &sort_param->temp[i]);
+	      if (error_code != NO_ERROR)
 		{
-		  VFID_SET_NULL (&sort_param->temp[i]);
+		  ASSERT_ERROR ();
+		  return error_code;
 		}
+	      VFID_SET_NULL (&sort_param->temp[i]);
 	    }
 	}
     }
+  return NO_ERROR;
 }
 
 /*
