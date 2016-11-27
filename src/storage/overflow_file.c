@@ -158,7 +158,8 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
   log_sysop_start (thread_p);
   is_sysop_started = true;
 
-  error_code = file_alloc_multiple (thread_p, ovf_vfid, file_type != FILE_TEMP ? file_init_page_type : NULL, &ptype,
+  error_code = file_alloc_multiple (thread_p, ovf_vfid,
+				    file_type != FILE_TEMP ? file_init_page_type : file_init_temp_page_type, &ptype,
 				    npages, vpids);
   if (error_code != NO_ERROR)
     {
