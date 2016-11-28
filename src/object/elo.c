@@ -1181,7 +1181,7 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
       }
     else
       {
-	es_notify_vacuum_for_delete (thread_get_thread_entry_info (), elo_path);  
+	es_notify_vacuum_for_delete (thread_p, elo_path);  
       }
   }
 #else
