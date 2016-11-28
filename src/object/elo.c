@@ -1177,7 +1177,7 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
     if (state == LOB_TRANSIENT_CREATED)
       {
 	es_delete_file (elo_path);
-	perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+	perfmon_inc_stat (thread_p, PSTAT_ELO_DELETE_FILE);
       }
     else
       {
