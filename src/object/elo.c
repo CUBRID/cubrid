@@ -113,7 +113,6 @@ static LOB_LOCATOR_STATE find_lob_locator (const char *locator, char *real_locat
 static int add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);
 static int change_state_of_locator (const char *locator, const char *new_locator, LOB_LOCATOR_STATE state);
 static int drop_lob_locator (const char *locator);
-static LOB_LOCATOR_STATE get_lob_state_from_locator (const char *locator);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -874,18 +873,19 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	    {
 #if defined (CS_MODE)
 	      es_mark_delete_file (elo->locator);
-#elif defined (SERVER_MODE)
-	      es_notify_vacuum_for_delete (thread_get_thread_entry_info (), elo->locator);
-	      er_print_callstack (ARG_FILE_LINE, "uri:%s", elo->locator);
-#elif defined (SA_MODE)
-	      LOG_DATA_ADDR addr;
+#else
+	      {
+		/* SA and server mode : postpone operation which means either a immediate delete at commit (SA) or
+		 * a notify vacuum for delete */
+		LOG_DATA_ADDR addr;
 
-	      addr.offset = NULL_SLOTID;
-	      addr.pgptr = NULL;
-	      addr.vfid = NULL;
-	      log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
-				   elo->locator);
-	      er_print_callstack (ARG_FILE_LINE, "uri:%s", elo->locator);
+		addr.offset = NULL_SLOTID;
+		addr.pgptr = NULL;
+		addr.vfid = NULL;
+		log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
+				     elo->locator);
+		er_print_callstack (ARG_FILE_LINE, "uri:%s", elo->locator);
+	      }
 #endif
 	    }
 	}
@@ -1140,8 +1140,10 @@ elo_set_meta (DB_ELO * elo, const char *key, const char *val)
  * get_lob_state_from_locator () - 
  * return: LOB_LOCATOR_STATE
  * locator(in):
+ *
+ *  Note : use 'int' return type instead of LOB_LOCATOR_STATE due to additional required dependencies
  */
-static LOB_LOCATOR_STATE
+int
 get_lob_state_from_locator (const char *locator)
 {
 #define SIZE_PREFIX_TEMP 9
@@ -1165,10 +1167,25 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
 {
   assert (((LOG_RCV *) rcv)->data != NULL);
 
-  es_delete_file (((LOG_RCV *) rcv)->data);
-
 #if defined (SERVER_MODE)
-  perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+  {      
+    LOB_LOCATOR_STATE state;
+    char *elo_path;
+
+    elo_path = ((LOG_RCV *) rcv)->data;
+    state = get_lob_state_from_locator (elo_path);
+    if (state == LOB_TRANSIENT_CREATED)
+      {
+	es_delete_file (elo_path);
+	perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+      }
+    else
+      {
+	es_notify_vacuum_for_delete (thread_get_thread_entry_info (), elo_path);  
+      }
+  }
+#else
+  es_delete_file (((LOG_RCV *) rcv)->data);
 #endif
 
   return NO_ERROR;
