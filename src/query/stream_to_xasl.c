@@ -303,12 +303,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool us
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
   unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
-#if defined (SERVER_MODE)
   unpack_info_p->use_xasl_clone = use_xasl_clone;
-#else
-  unpack_info_p->use_xasl_clone = false;
-#endif
-
   unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to XASL tree in the stream buffer */
