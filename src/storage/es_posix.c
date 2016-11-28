@@ -394,6 +394,7 @@ xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
     {
       if (errno == ENOENT)
 	{
+	  abort ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_FILE_NOT_FOUND, 1, path);
 	  return ER_ES_FILE_NOT_FOUND;
 	}
