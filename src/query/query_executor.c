@@ -1433,8 +1433,7 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
     case TYPE_CONSTANT:
 #if 0				/* TODO - */
     case TYPE_ORDERBY_NUM:
-#endif
-      pg_cnt += pr_clear_value (regu_var->value.dbvalptr);
+#endif      
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
 	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
