@@ -5136,14 +5136,6 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
       goto exit_on_error;
     }
 
-  pgptr = pgbuf_fix (thread_p, &ctx->vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (pgptr == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto exit_on_error;
-    }
-
   ptype = pgbuf_get_page_ptype (thread_p, pgptr);
   if (!spage_is_slotted_page_type (ptype))
     {
