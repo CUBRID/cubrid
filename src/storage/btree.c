@@ -28473,24 +28473,28 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
   bool has_debug_info = false;
 
   /* >>>>>>>>>>>> */
-  BTREE_RV_DEBUG_ID rv_debug_id;	/* Debug ID to help developers find the source of bug in logging/recovery code. */
+  /* Debug ID to help developers find the source of bug in logging/recovery code. */
+  BTREE_RV_DEBUG_ID rv_debug_id;
   /* <<<<<<<<<<<< */
 
   /* Get flags and slot ID. */
   flags = rcv->offset & BTREE_RV_FLAGS_MASK;
   slotid = rcv->offset & (~BTREE_RV_FLAGS_MASK);
 
-  /* There are four major cases here: 1. LOG_RV_RECORD_DELETE: Key is removed completely. 2. LOG_RV_RECORD_UPDATE_ALL:
-   * Entire record is updated (overflow header). 2. LOG_RV_RECORD_INSERT: Key is inserted or overflow is created. 4.
-   * LOG_RV_RECORD_UPDATE_PARTIAL: Record is updated by bits. If is_undo flag is true, the cases are reversed. */
+  /* There are four major cases here:
+   * 1. LOG_RV_RECORD_DELETE: Key is removed completely.
+   * 2. LOG_RV_RECORD_UPDATE_ALL:
+   *    Entire record is updated (overflow header).
+   * 3. LOG_RV_RECORD_INSERT: Key is inserted or overflow is created.
+   * 4. LOG_RV_RECORD_UPDATE_PARTIAL: Record is updated by bits.
+   * If is_undo flag is true, the cases are reversed. */
 
   /* Case 1: Is key being removed completely? */
-  /* Logged by: btree_delete_key_from_leaf */
+  /* Logged by: btree_delete_key_from_leaf or btree_key_insert_new_key */
   if ((!is_undo && LOG_RV_RECORD_IS_DELETE (flags)) || (is_undo && LOG_RV_RECORD_IS_INSERT (flags)))
     {
       /* Record is completely removed from page. Redo of key removal from leaf page, when all its objects have been
-       * deleted. */
-      assert (!BTREE_RV_HAS_DEBUG_INFO (flags));
+       * deleted or undo of new key being inserted. */
 
       /* Delete key record. */
       node_header = btree_get_node_header (rcv->pgptr);
