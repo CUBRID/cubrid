@@ -963,6 +963,7 @@ elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count)
       assert (elo->locator != NULL);
       ret = es_read_file (elo->locator, buf, count, pos);
 #if defined (SERVER_MODE)
+      perfmon_inc_stat (NULL, PSTAT_ELO_READS);
       perfmon_add_stat (NULL, PSTAT_ELO_BYTES_READ, ret);
 #endif
       return ret;
@@ -1006,6 +1007,7 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
 	  return ret;
 	}
 #if defined (SERVER_MODE)
+      perfmon_inc_stat (NULL, PSTAT_ELO_WRITES);
       perfmon_add_stat (NULL, PSTAT_ELO_BYTES_WRITE, ret);
 #endif
       /* adjust size field */
