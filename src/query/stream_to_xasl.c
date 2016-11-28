@@ -384,7 +384,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, pred_stream, pred_stream_size);
   unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
-  unpack_info_p->use_xasl_clone = false;
+  unpack_info_p->use_xasl_clone = true;
   unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to filter predicate in the stream buffer */
@@ -5302,6 +5302,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
+  /* save the original domain */
   regu_var->original_domain = regu_var->domain;
 
   ptr = or_unpack_int (ptr, &tmp);
@@ -5550,6 +5551,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
+  /* save the original domain */
   arith_type->original_domain = arith_type->domain;
 
   ptr = or_unpack_int (ptr, &offset);
@@ -6463,6 +6465,7 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
       ptr = or_unpack_int (ptr, &tmp);
       regu->type = (REGU_DATATYPE) tmp;
       regu->domain = domain;
+      /* save te original domain */
       regu->original_domain = domain;
 
       if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH && regu->type != TYPE_POS_VALUE)

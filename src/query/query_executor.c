@@ -1370,6 +1370,7 @@ qexec_clear_arith_list (XASL_NODE * xasl_p, ARITH_TYPE * list, int final)
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+      /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
       p->domain = p->original_domain;
       pr_clear_value (p->value);
       pg_cnt += qexec_clear_regu_var (xasl_p, p->leftptr, final);
@@ -1404,7 +1405,7 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       return pg_cnt;
     }
 
-  /* restore the original domain, in order to avoid coerce when use XASL clones */
+  /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
   regu_var->domain = regu_var->original_domain;
 
 #if !defined(NDEBUG)
@@ -1434,24 +1435,20 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
     case TYPE_ORDERBY_NUM:
 #endif
       pg_cnt += pr_clear_value (regu_var->value.dbvalptr);
-
-      if (!XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
+      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
-	  if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 	    {
-	      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-		{
-		  /* clear the value since we decache the XASL clone. */
-		  (void) pr_clear_value (regu_var->value.dbvalptr);
-		}
+	      /* clear the value since we decache the XASL clone. */
+	      (void) pr_clear_value (regu_var->value.dbvalptr);
 	    }
-	  else
+	}
+      else
+	{
+	  if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 	    {
-	      if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-		{
-		  /* clear the value since we decache the XASL (not a clone). */
-		  (void) pr_clear_value (regu_var->value.dbvalptr);
-		}
+	      /* clear the value since we decache the XASL (not a clone). */
+	      (void) pr_clear_value (regu_var->value.dbvalptr);
 	    }
 	}
       /* Fall through */
@@ -1473,23 +1470,20 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       pg_cnt += qexec_clear_regu_value_list (xasl_p, regu_var->value.reguval_list, final);
       break;
     case TYPE_DBVAL:
-      if (!XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
+      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
-	  if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 	    {
-	      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-		{
-		  /* clear the value since we decache the XASL clone. */
-		  (void) pr_clear_value (&regu_var->value.dbval);
-		}
+	      /* clear the value since we decache the XASL clone. */
+	      (void) pr_clear_value (&regu_var->value.dbval);
 	    }
-	  else
+	}
+      else
+	{
+	  if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 	    {
-	      if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-		{
-		  /* clear the value since we decache the XASL (not a clone). */
-		  (void) pr_clear_value (&regu_var->value.dbval);
-		}
+	      /* clear the value since we decache the XASL (not a clone). */
+	      (void) pr_clear_value (&regu_var->value.dbval);
 	    }
 	}
       break;
@@ -2482,21 +2476,18 @@ qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDA
   int pg_cnt;
 
   pg_cnt = 0;
-  if (!XASL_IS_FLAGED (xasl_p, XASL_KEEP_DBVAL))
+  if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
     {
-      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+      if (assignment->clear_value_at_clone_decache)
 	{
-	  if (assignment->clear_value_at_clone_decache)
-	    {
-	      (void) pr_clear_value (assignment->constant);
-	    }
+	  (void) pr_clear_value (assignment->constant);
 	}
-      else
+    }
+  else
+    {
+      if (!assignment->clear_value_at_clone_decache)
 	{
-	  if (!assignment->clear_value_at_clone_decache)
-	    {
-	      (void) pr_clear_value (assignment->constant);
-	    }
+	  (void) pr_clear_value (assignment->constant);
 	}
     }
 
@@ -20670,9 +20661,9 @@ qexec_clear_pred_context (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT * pred
 
   memset (&xasl_node, 0, sizeof (XASL_NODE));
 
-  if (!dealloc_dbvalues)
+  if (dealloc_dbvalues)
     {
-      XASL_SET_FLAG (&xasl_node, XASL_KEEP_DBVAL);
+      XASL_SET_FLAG (&xasl_node, XASL_DECACHE_CLONE);
     }
 
   qexec_clear_pred (&xasl_node, pred_filter->pred, true);

@@ -189,16 +189,16 @@ struct regu_variable_node
   REGU_DATATYPE type;
 
   /* regu variable flags */
-#define REGU_VARIABLE_HIDDEN_COLUMN       0x01	/* does not go to list file */
-#define REGU_VARIABLE_FIELD_COMPARE       0x02	/* for FIELD function, marks the bottom of regu tree */
-#define REGU_VARIABLE_FIELD_NESTED        0x04	/* for FIELD function, reguvar is child in T_FIELD tree */
-#define REGU_VARIABLE_APPLY_COLLATION	  0x08	/* Apply collation from domain; flag used in context of COLLATE
-						 * modifier */
-#define REGU_VARIABLE_ANALYTIC_WINDOW     0x10	/* for analytic window func */
-#define REGU_VARIABLE_INFER_COLLATION	  0x20	/* infer collation for default parameter */
-#define REGU_VARIABLE_FETCH_ALL_CONST     0x40	/* is all constant */
-#define REGU_VARIABLE_FETCH_NOT_CONST     0x80	/* is not constant */
-#define REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE   0x100	/* clear regu variable at clone decache */
+#define REGU_VARIABLE_HIDDEN_COLUMN		0x01	/* does not go to list file */
+#define REGU_VARIABLE_FIELD_COMPARE		0x02	/* for FIELD function, marks the bottom of regu tree */
+#define REGU_VARIABLE_FIELD_NESTED		0x04	/* for FIELD function, reguvar is child in T_FIELD tree */
+#define REGU_VARIABLE_APPLY_COLLATION		0x08	/* Apply collation from domain; flag used in context of COLLATE
+							 * modifier */
+#define REGU_VARIABLE_ANALYTIC_WINDOW		0x10	/* for analytic window func */
+#define REGU_VARIABLE_INFER_COLLATION		0x20	/* infer collation for default parameter */
+#define REGU_VARIABLE_FETCH_ALL_CONST		0x40	/* is all constant */
+#define REGU_VARIABLE_FETCH_NOT_CONST		0x80	/* is not constant */
+#define REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE   0x100	/* clears regu variable at clone decache */
   int flags;			/* flags */
 #define REGU_VARIABLE_IS_FLAGED(e, f)    ((e)->flags & (short) (f))
 #define REGU_VARIABLE_SET_FLAG(e, f)     (e)->flags |= (short) (f)
@@ -479,7 +479,7 @@ struct arith_list_node
 {
   ARITH_TYPE *next;		/* next arithmetic expression */
   TP_DOMAIN *domain;		/* resultant domain */
-  TP_DOMAIN *original_domain;	/* resultant domain */
+  TP_DOMAIN *original_domain;	/* original resultant domain, used at execution in case of XASL clones  */
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
