@@ -1159,8 +1159,8 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
-      /* must be next volume that was not added yet to cache */
-      assert (disk_Cache->nvols_perm == volid);
+      /* must be next volume that was not added yet to cache or a temporary volume */
+      assert (disk_Cache->nvols_perm <= volid);
       assert (disk_Cache->vols[volid].purpose == DISK_UNKNOWN_PURPOSE);
       assert (disk_Cache->vols[volid].nsect_free == 0);
     }
