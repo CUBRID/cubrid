@@ -4960,7 +4960,7 @@ spage_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg
   if (pgptr == NULL)
     {
       /* page deallocated. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2, VPID_AS_ARGS (&ctx->vpid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2, ctx->vpid.pageid, ctx->vpid.volid);
       error = ER_DIAG_PAGE_NOT_FOUND;
       goto exit_on_error;
     }
@@ -5123,7 +5123,7 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   if (pgptr == NULL)
     {
       /* page deallocated. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2, VPID_AS_ARGS (&ctx->vpid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2, ctx->vpid.pageid, ctx->vpid.volid);
       error = ER_DIAG_PAGE_NOT_FOUND;
       goto exit_on_error;
     }
