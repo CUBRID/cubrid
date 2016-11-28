@@ -7144,6 +7144,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   return error_code;
 
 exit_on_error:
+  assert_release (error_code == ER_FAILED || error_code == er_errid ());
+
   if (DB_IS_NULL (&key_value) == false)
     {
       pr_clear_value (&key_value);
@@ -7156,7 +7158,6 @@ exit_on_error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
-  assert_release (error_code == ER_FAILED || error_code == er_errid ());
   return error_code;
 }
 
@@ -7365,6 +7366,7 @@ error:
 
   /* The reevaluation at update phase of update is currently disabled */
   assert (error_code != ER_MVCC_NOT_SATISFIED_REEVALUATION);
+  assert_release (error_code == ER_FAILED || error_code == er_errid ());
 
   if (force_scancache != NULL)
     {
@@ -7373,7 +7375,6 @@ error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
-  assert_release (error_code == ER_FAILED || error_code == er_errid ());
   return error_code;
 }
 
