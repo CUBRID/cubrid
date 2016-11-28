@@ -110,7 +110,7 @@ struct xasl_unpack_info
   /* 1 if additional buffers should be tracked */
   int track_allocated_bufers;
 
-  bool use_xasl_clone;		/* true,if use xasl clone */
+  bool use_xasl_clone;		/* true, if uses xasl clone */
 };
 
 #if !defined(SERVER_MODE)

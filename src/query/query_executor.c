@@ -1570,10 +1570,10 @@ qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list)
 
 /*
  * qexec_clear_sort_list () - clear the sort list
- *   return:
+ *   return: clear count
  *   xasl_p(in) : xasl
  *   list(in)   : the sort list
- *   final(in)  : true, if finalize
+ *   final(in)  : true, if finalize needed
  */
 static int
 qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, int final)
@@ -1584,6 +1584,7 @@ qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, int final)
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+      /* restores the original domain */
       p->pos_descr.dom = p->original_value_domain;
     }
   return pg_cnt;
@@ -1712,6 +1713,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	{
 	  if (p->clear_value_at_clone_decache)
 	    {
+	      /* clear the value since we decache the XASL clone. */
 	      pr_clear_value (p->s_dbval);
 	    }
 	}
@@ -1719,6 +1721,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	{
 	  if (!p->clear_value_at_clone_decache)
 	    {
+	      /* clear the value since we decache the XASL (not a clone). */
 	      pr_clear_value (p->s_dbval);
 	    }
 	}
@@ -1945,11 +1948,13 @@ qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, int final)
 	{
 	  if (p->accumulator.clear_value_at_clone_decache)
 	    {
+	      /* clear the value since we decache the XASL clone. */
 	      pr_clear_value (p->accumulator.value);
 	    }
 
 	  if (p->accumulator.clear_value2_at_clone_decache)
 	    {
+	      /* clear the value since we decache the XASL (not a clone). */
 	      pr_clear_value (p->accumulator.value2);
 	    }
 	}
@@ -2464,11 +2469,11 @@ qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 }
 
 /*
- * qexec_clear_update_assignment () -
- *   return:
- *   thread_p(in) :
- *   assignment(in)   :
- *   final(in)  :
+ * qexec_clear_update_assignment () - clear update assignement
+ *   return: clear count
+ *   thread_p(in)   : thread entry
+ *   assignment(in) : the assignement
+ *   final(in)	    : true, if finalize needed
  */
 static int
 qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment, int final)
@@ -2480,6 +2485,7 @@ qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDA
     {
       if (assignment->clear_value_at_clone_decache)
 	{
+	  /* clear the value since we decache the XASL clone. */
 	  (void) pr_clear_value (assignment->constant);
 	}
     }
@@ -2487,6 +2493,7 @@ qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDA
     {
       if (!assignment->clear_value_at_clone_decache)
 	{
+	  /* clear the value since we decache the XASL (not a clone). */
 	  (void) pr_clear_value (assignment->constant);
 	}
     }
