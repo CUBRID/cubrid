@@ -10130,7 +10130,6 @@ ses_es_mark_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   else
     {
       es_notify_vacuum_for_delete (thread_p, path);
-      er_print_callstack (ARG_FILE_LINE, "uri:%s", path);
     }
 
   ptr = or_pack_int (reply, NO_ERROR);

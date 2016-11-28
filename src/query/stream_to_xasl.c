@@ -394,9 +394,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
 
   /* set result */
   pwc->unpack_info = unpack_info_p;
-  printf ("fpcache_retire:pred_expr:%p", pwc);
   fflush (stdout);
-  er_print_callstack (ARG_FILE_LINE, "stx_map_stream_to_filter_pred:pwc->unpack_info:%p", unpack_info_p);
 
   *pred = pwc;
 

@@ -607,7 +607,6 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
 	  log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
 			       elo->locator);
 
-	  er_print_callstack (ARG_FILE_LINE, "uri:%s", elo->locator);
 	}
 #endif
 
@@ -884,7 +883,6 @@ elo_delete (DB_ELO * elo, bool force_delete)
 		addr.vfid = NULL;
 		log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
 				     elo->locator);
-		er_print_callstack (ARG_FILE_LINE, "uri:%s", elo->locator);
 	      }
 #endif
 	    }
