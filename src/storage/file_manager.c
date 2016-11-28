@@ -6437,8 +6437,8 @@ file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_
       if (idx_sect == collect->nsects)
 	{
 	  /* not found, append new sector */
-	  collect->partsect_ftab->vsid = vsid_this;
-	  collect->partsect_ftab->page_bitmap = FILE_EMPTY_PAGE_BITMAP;
+	  collect->partsect_ftab[collect->nsects].vsid = vsid_this;
+	  collect->partsect_ftab[collect->nsects].page_bitmap = FILE_EMPTY_PAGE_BITMAP;
 	  collect->nsects++;
 
 	  file_log ("file_extdata_collect_ftab_pages",
