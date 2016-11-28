@@ -422,10 +422,6 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  fprintf (file_p, "DB_TYPE_DATE\n");
 	  break;
 
-	case DB_TYPE_ELO:
-	  fprintf (file_p, "DB_TYPE_ELO\n");
-	  break;
-
 	case DB_TYPE_BLOB:
 	  fprintf (file_p, "DB_TYPE_BLOB\n");
 	  break;

@@ -691,6 +691,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
       rc = (*(pr_type_p->data_readval)) (&buf, &dbval2, domain_p, -1, is_copy, NULL, 0);
       if (rc != NO_ERROR)
 	{
+	  pr_clear_value (&dbval1);
 	  return ER_FAILED;
 	}
     }
@@ -712,11 +713,8 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
       *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL, domain_p->collation_id);
     }
 
-  if (is_copy)
-    {
-      pr_clear_value (&dbval1);
-      pr_clear_value (&dbval2);
-    }
+  pr_clear_value (&dbval1);
+  pr_clear_value (&dbval2);
 
   return NO_ERROR;
 }
@@ -2076,7 +2074,7 @@ qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 	  /* because qmgr_free_list_temp_file() destroy only FILE_TEMP file */
 	  if (!VFID_ISNULL (&list_id_p->temp_vfid))
 	    {
-	      file_destroy (thread_p, &list_id_p->temp_vfid);
+	      file_temp_retire (thread_p, &list_id_p->temp_vfid);
 	    }
 	}
 
@@ -5511,7 +5509,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 	}
 
       /* destroy the temp file of XASL_ID */
-      if (!VFID_ISNULL (&lent->list_id.temp_vfid) && file_destroy (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
+      if (!VFID_ISNULL (&lent->list_id.temp_vfid) && file_temp_retire (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for vfid { %d %d }\n",
 			lent->list_id.temp_vfid.fileid, lent->list_id.temp_vfid.volid);

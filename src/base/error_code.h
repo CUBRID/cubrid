@@ -237,7 +237,7 @@
 
 #define ER_DATE_CONVERSION                          -176
 
-#define ER_ELO_CANT_CREATE_LARGE_OBJECT             -177
+#define ER_ELO_CANT_CREATE_LARGE_OBJECT             -177	/* obsolete */
 
 #define ER_MR_TEMP_OID_WITHOUT_MOP                  -178
 
@@ -509,7 +509,7 @@
 #define ER_IT_MULTIPLE_STATEMENT                    -435
 #define ER_IT_NOT_QUERY                             -436
 
-#define ER_LO_INVALID_LOID                          -437
+#define ER_LO_INVALID_LOID                          -437	/* Unused */
 #define ER_LO_DESCRIPTOR_CONFLICT                   -438
 #define ER_LO_OVER_OFFSET                           -439
 
@@ -1533,7 +1533,10 @@
 
 #define ER_PRECISION_OVERFLOW			    -1192
 #define ER_PARTITION_EXPRESSION_TOO_LONG            -1193
-#define ER_LAST_ERROR                               -1194
+
+#define ER_CANNOT_CHECK_FILE                        -1194
+
+#define ER_LAST_ERROR                               -1195
 
 /*
  * CAUTION!

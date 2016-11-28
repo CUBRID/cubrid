@@ -2355,7 +2355,10 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY *
       tfile_vfid_p->prev->next = NULL;
       while (tfile_vfid_p)
 	{
-	  file_preserve_temporary (thread_p, &tfile_vfid_p->temp_vfid);
+	  if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
+	    {
+	      file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
+	    }
 	  temp = tfile_vfid_p;
 	  tfile_vfid_p = tfile_vfid_p->next;
 	}
@@ -2386,6 +2389,22 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p, QMGR_QUERY_ENTRY * qentr
   qentry_p->xasl_ent = NULL;
   qentry_p->er_msg = NULL;
   qentry_p->is_holdable = true;
+
+  if (qentry_p->temp_vfid)
+    {
+      /* when files were preserved, they were removed from transaction list of temporary files. we need to add them
+       * back to make sure they are never leaked. */
+      QMGR_TEMP_FILE *iter_temp_file;
+      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+      for (iter_temp_file = qentry_p->temp_vfid; iter_temp_file != NULL; iter_temp_file = iter_temp_file->next)
+	{
+	  if (!VFID_ISNULL (&iter_temp_file->temp_vfid))
+	    {
+	      (void) file_temp_save_tran_file (thread_p, &iter_temp_file->temp_vfid, iter_temp_file->temp_file_type);
+	    }
+	}
+    }
 }
 
 /*
@@ -2441,7 +2460,6 @@ session_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qent
     }
 
   sessions.num_holdable_cursors++;
-  perfmon_Sessions_num_holdable_cursors++;
 }
 
 /*
@@ -2467,11 +2485,10 @@ session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_
 
   if (sentry_p->temp_file != NULL)
     {
-      qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false);
+      qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false, true);
     }
 
   sessions.num_holdable_cursors--;
-  perfmon_Sessions_num_holdable_cursors--;
 }
 
 /*
@@ -2586,7 +2603,6 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
 
 	  free_and_init (sentry_p);
 	  sessions.num_holdable_cursors--;
-	  perfmon_Sessions_num_holdable_cursors--;
 
 	  break;
 	}
@@ -2988,3 +3004,15 @@ session_state_decrease_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * state
   return NO_ERROR;
 }
 #endif
+
+/*
+ * session_get_number_of_holdable_cursors () - return the number of holdable cursors
+ *	                              
+ * return : the number of holdable cursors
+ * 
+ */
+int
+session_get_number_of_holdable_cursors (void)
+{
+  return sessions.num_holdable_cursors;
+}

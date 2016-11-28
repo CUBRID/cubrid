@@ -73,6 +73,16 @@ extern const VPID vpid_Null_vpid;
   (((oid_ptr1)->volid == (oid_ptr2)->volid)  \
    && ((oid_ptr1)->pageid == (oid_ptr2)->pageid))
 
+#define PGBUF_PAGE_VPID_AS_ARGS(pg) pgbuf_get_volume_id (pg), pgbuf_get_page_id (pg)
+#define PGBUF_PAGE_LSA_AS_ARGS(pg) (long long int) pgbuf_get_lsa (pg)->pageid, (int) pgbuf_get_lsa (pg)->offset
+
+#define PGBUF_PAGE_STATE_MSG(name) name " { VPID = %d|%d, crt_lsa = %lld|%d } "
+#define PGBUF_PAGE_STATE_ARGS(pg) PGBUF_PAGE_VPID_AS_ARGS (pg), PGBUF_PAGE_LSA_AS_ARGS (pg)
+
+#define PGBUF_PAGE_MODIFY_MSG(name) name " { VPID = %d|%d, prev_lsa = %lld|%d, crt_lsa = %lld|%d } "
+#define PGBUF_PAGE_MODIFY_ARGS(pg, prev_lsa) \
+  PGBUF_PAGE_VPID_AS_ARGS (pg), LSA_AS_ARGS (prev_lsa), PGBUF_PAGE_LSA_AS_ARGS (pg)
+
 #define pgbuf_unfix_and_init(thread_p, pgptr) \
   do { \
     pgbuf_unfix ((thread_p), (pgptr)); \
@@ -181,6 +191,7 @@ typedef enum
 				 * deallocated or flushed and invalidated from buffer, in which case fixing page is not
 				 * necessary. */
   OLD_PAGE_PREVENT_DEALLOC,	/* Fetch existing page and mark its memory buffer, to prevent deallocation. */
+  OLD_PAGE_DEALLOCATED,		/* Fetch page that has been deallocated. */
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */
@@ -392,7 +403,10 @@ extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int
 				 bool do_fetch);
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				   bool do_fetch);
+
 extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page);
+#define pgbuf_set_dirty_and_free(thread_p, pgptr) pgbuf_set_dirty (thread_p, pgptr, FREE); pgptr = NULL
+
 extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
 extern int pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa);
 extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr);
@@ -461,5 +475,23 @@ extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
 extern int pgbuf_get_hold_count (THREAD_ENTRY * thread_p);
 
 extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (PAGE_PTR pgptr);
+
+extern void pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
+extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR * page_dealloc);
+extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid,
+						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
+						     PAGE_PTR * page, const char *caller_file, int caller_line);
+#if defined (NDEBUG)
+#define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
+  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, NULL, 0)
+#else /* !NDEBUG */
+#define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
+  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)
+#endif /* !NDEBUG */
 
 #endif /* _PAGE_BUFFER_H_ */

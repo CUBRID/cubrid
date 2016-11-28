@@ -72,10 +72,6 @@ typedef enum boot_server_shutdown_mode BOOT_SERVER_SHUTDOWN_MODE;
 enum boot_server_shutdown_mode
 { BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES, BOOT_SHUTDOWN_ALL_MODULES };
 
-#if defined (SERVER_MODE)
-extern AUTO_ADDVOL_JOB boot_Auto_addvol_job;
-#endif
-
 typedef struct check_args CHECK_ARGS;
 
 struct check_args
@@ -97,9 +93,7 @@ extern void xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_in
 #endif /* SERVER_MODE */
 
 extern const char *boot_db_name (void);
-#if defined (ENABLE_UNUSED_FUNCTION)
 extern const char *boot_db_full_name (void);
-#endif
 #if !defined(CS_MODE)
 extern const char *boot_get_lob_path (void);
 #endif /* !CS_MODE */
@@ -110,11 +104,7 @@ extern int boot_reset_db_parm (THREAD_ENTRY * thread_p);
 extern DKNPAGES boot_max_pages_new_volume (void);
 extern DKNPAGES boot_max_pages_for_new_auto_volume_extension (void);
 extern DKNPAGES boot_max_pages_for_new_temp_volume (void);
-extern VOLID boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
-					     DISK_SETPAGE_TYPE setpage_type, DISK_VOLPURPOSE vol_purpose, bool wait);
-extern VOLID boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES npages);
-extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);
-extern int boot_add_temp_volume_and_file (VFID * vfid, DKNPAGES npages);
+extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);	/* todo: remove me */
 
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
 				CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args);
@@ -144,10 +134,10 @@ extern int boot_compact_start (THREAD_ENTRY * thread_p);
 extern int boot_compact_stop (THREAD_ENTRY * thread_p);
 extern bool boot_can_compact (THREAD_ENTRY * thread_p);
 extern bool boot_set_skip_check_ct_classes (bool val);
-#if 0
-extern int boot_rv_del_volume_extension (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-#endif
-extern void boot_rv_dump_del_volume (FILE * fp, int length_ignore, void *data);
 extern const char *boot_client_type_to_string (BOOT_CLIENT_TYPE type);
 
+extern int boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, const char *given_path,
+					    const char *given_name, char *fullname_newvol_out,
+					    VOLID * volid_newvol_out);
+extern int boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID volid);
 #endif /* _BOOT_SR_H_ */

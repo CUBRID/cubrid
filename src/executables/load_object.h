@@ -88,8 +88,6 @@ extern void desc_value_fprint (FILE * fp, DB_VALUE * value);
 #if defined (CUBRID_DEBUG)
 extern void desc_value_print (DB_VALUE * value);
 #endif
-extern int lo_migrate_out (LOID * lo, const char *pathname);
-extern int lo_migrate_in (LOID * lo, const char *pathname);
 extern int er_filter_fileset (FILE * ef);
 extern int er_filter_errid (bool ignore_warning);
 

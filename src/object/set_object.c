@@ -639,11 +639,11 @@ col_expand_array (COL * col, long blockindex)
 
   if (col->array)
     {
-      col->array = db_private_realloc (NULL, col->array, EXPAND (blockindex) * sizeof (DB_VALUE *));
+      col->array = (DB_VALUE **) db_private_realloc (NULL, col->array, EXPAND (blockindex) * sizeof (DB_VALUE *));
     }
   else
     {
-      col->array = db_private_alloc (NULL, EXPAND (blockindex) * sizeof (DB_VALUE *));
+      col->array = (DB_VALUE **) db_private_alloc (NULL, EXPAND (blockindex) * sizeof (DB_VALUE *));
     }
   if (!col->array)
     {

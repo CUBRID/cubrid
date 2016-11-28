@@ -112,10 +112,7 @@ extern int heap_reclaim_addresses (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern DISK_VOLPURPOSE disk_get_purpose (VOLID volid);
-#endif
-extern VOLID disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info);
+extern int disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
 extern bool disk_is_volume_exist (VOLID volid);
 extern int log_reset_wait_msecs (int wait_msecs);
@@ -166,9 +163,6 @@ extern int boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_leve
 			const char *backup_verbose_file, int num_threads, FILEIO_ZIP_METHOD zip_method,
 			FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
 extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
-#if 0
-extern int boot_del_volume_extension (VOLID volid, bool clear_cached);
-#endif
 extern int boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * idx_btid);
 extern int boot_find_number_permanent_volumes (void);
 extern int boot_find_number_temp_volumes (void);
@@ -188,16 +182,6 @@ extern int boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGE
 				 FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout);
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
-extern LOID *largeobjmgr_create (LOID * loid, int length, char *buffer, int est_lo_length, OID * oid);
-extern int largeobjmgr_destroy (LOID * loid);
-extern int largeobjmgr_read (LOID * loid, INT64 offset, int length, char *buffer);
-extern int largeobjmgr_write (LOID * loid, INT64 offset, int length, char *buffer);
-extern int largeobjmgr_insert (LOID * loid, INT64 offset, int length, char *buffer);
-extern INT64 largeobjmgr_delete (LOID * loid, INT64 offset, INT64 length);
-extern int largeobjmgr_append (LOID * loid, int length, char *buffer);
-extern INT64 largeobjmgr_truncate (LOID * loid, INT64 offset);
-extern int largeobjmgr_compress (LOID * loid);
-extern INT64 largeobjmgr_length (LOID * loid);
 extern char *stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr);
 extern int stats_update_statistics (OID * classoid, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);

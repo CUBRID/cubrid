@@ -1406,7 +1406,7 @@ PR_TYPE tp_Object = {
 
 PR_TYPE *tp_Type_object = &tp_Object;
 
-PR_TYPE tp_Elo = {
+PR_TYPE tp_Elo = {		/* todo: remove me */
   "*elo*", DB_TYPE_ELO, 1, sizeof (DB_ELO *), 0, 8,
   help_fprint_value,
   help_sprint_value,
@@ -2096,9 +2096,20 @@ pr_clear_value (DB_VALUE * value)
 	    }
 	  DB_SET_COMPRESSED_STRING (value, NULL, 0, false);
 	}
+      else if (db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
+	{
+	  assert (value->data.ch.info.compressed_need_clear == false);
+	  if (value->data.ch.medium.compressed_buf != NULL)
+	    {
+	      if (value->data.ch.info.compressed_need_clear == true)
+		{
+		  db_private_free_and_init (NULL, value->data.ch.medium.compressed_buf);
+		}
+	    }
+
+	}
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       if (value->need_clear)
@@ -6372,9 +6383,9 @@ mr_data_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
 
       if (elo != NULL && elo->type != ELO_NULL)
 	{
-	  len = (OR_BIGINT_SIZE + OR_LOID_SIZE
-		 + or_packed_string_length (elo->locator, NULL) + or_packed_string_length (elo->meta_data, NULL)
-		 + OR_INT_SIZE);
+	  len = (OR_BIGINT_SIZE
+		 + or_packed_string_length (elo->locator, NULL)
+		 + or_packed_string_length (elo->meta_data, NULL) + OR_INT_SIZE);
 	}
     }
   else
@@ -6419,9 +6430,6 @@ mr_data_writemem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
       /* size */
       or_put_bigint (buf, elo->size);
 
-      /* loid */
-      or_put_loid (buf, &elo->loid);
-
       /* locator */
       assert (elo->locator != NULL);
       or_put_int (buf, or_packed_string_length (elo->locator, NULL) - OR_INT_SIZE);
@@ -6451,14 +6459,6 @@ peekmem_elo (OR_BUF * buf, DB_ELO * elo)
   /* size */
   elo->size = or_get_bigint (buf, &rc);
 
-  if (rc != NO_ERROR)
-    {
-      assert (false);
-      goto error;
-    }
-
-  /* loid */
-  rc = or_get_loid (buf, &elo->loid);
   if (rc != NO_ERROR)
     {
       assert (false);
@@ -16501,7 +16501,7 @@ pr_get_compression_length (const char *string, int charlen)
 
   length = charlen;
 
-  if (!pr_Enable_string_compression)	/* compession is not set */
+  if (!pr_Enable_string_compression)	/* compression is not set */
     {
       return length;
     }
@@ -16600,7 +16600,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
   str_length = DB_GET_STRING_SIZE (value);
   *val_size = 0;
 
-  if (!pr_Enable_string_compression)	/* compession is not set */
+  if (!pr_Enable_string_compression)	/* compression is not set */
     {
       length = str_length;
       compression_length = 0;
@@ -16866,6 +16866,12 @@ pr_data_compress_string (char *string, int str_length, char *compressed_string, 
 
   if (str_length < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
+      return rc;
+    }
+
+  if (!pr_Enable_string_compression)	/* compression is not set */
+    {
+      *compressed_length = -1;
       return rc;
     }
 

@@ -5603,7 +5603,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
   if (apply->head == NULL || LSA_LE (commit_lsa, &la_Info.last_committed_lsa))
     {
-      if (rectype == LOG_COMMIT_TOPOPE)
+      if (rectype == LOG_SYSOP_END)
 	{
 	  la_free_all_repl_items (apply);
 	}
@@ -5714,7 +5714,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
       if ((item != NULL) && LSA_GT (&item->lsa, commit_lsa))
 	{
-	  assert (rectype == LOG_COMMIT_TOPOPE);
+	  assert (rectype == LOG_SYSOP_END);
 	  has_more_commit_items = true;
 	  break;
 	}
@@ -5723,7 +5723,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 end:
   *total_rows += apply_repl_log_cnt;
 
-  if (rectype == LOG_COMMIT_TOPOPE)
+  if (rectype == LOG_SYSOP_END)
     {
       if (has_more_commit_items)
 	{
@@ -5761,7 +5761,7 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
   LSA_SET_NULL (lsa);
 
   commit = la_Info.commit_head;
-  if (commit && (commit->type == LOG_COMMIT || commit->type == LOG_COMMIT_TOPOPE || commit->type == LOG_ABORT))
+  if (commit && (commit->type == LOG_COMMIT || commit->type == LOG_SYSOP_END || commit->type == LOG_ABORT))
     {
       error = la_apply_repl_log (commit->tranid, commit->type, &commit->log_lsa, &la_Info.total_rows, final_pageid);
       if (error != NO_ERROR)
@@ -6017,13 +6017,13 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	}
       break;
 
-    case LOG_COMMIT_TOPOPE:
+    case LOG_SYSOP_END:
     case LOG_COMMIT:
       /* apply the replication log to the slave */
       if (LSA_GT (final, &la_Info.committed_lsa))
 	{
 	  /* add the repl_list to the commit_list */
-	  if (lrec->type == LOG_COMMIT_TOPOPE)
+	  if (lrec->type == LOG_SYSOP_END)
 	    {
 	      eot_time = 0;
 	    }
