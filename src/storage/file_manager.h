@@ -158,6 +158,7 @@ extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 
 extern int file_init_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+extern int file_init_temp_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 extern int file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
 		       VPID * vpid_out, PAGE_PTR * page_out);
 extern int file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
@@ -182,6 +183,7 @@ extern int file_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern void file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
 
 extern void file_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_type);
 extern int file_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
 
 extern int file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);

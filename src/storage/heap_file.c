@@ -4627,13 +4627,13 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   /* recheck the dealloc flag after all latches are acquired */
   if (pgbuf_has_prevent_dealloc (crt_watcher.pgptr))
     {
-      assert (pgbuf_has_any_waiters (crt_watcher.pgptr) == false);
       /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We 
        * cannot deallocate it. */
       vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WARNING,
 		     "VACUUM: Candidate heap page %d|%d to remove has waiters.\n", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
+  assert (pgbuf_has_any_waiters (crt_watcher.pgptr) == false);
 
   /* Start changes under the protection of system operation. */
   log_sysop_start (thread_p);
@@ -17117,10 +17117,12 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    {
 	      set_default_value = true;
 	    }
+	  /* clear the error */
+	  er_clear ();
 
 	  log_warning = true;
 
-	  /* the casted value will be overwriten, so a clear is needed, here */
+	  /* the casted value will be overwritten, so a clear is needed, here */
 	  pr_clear_value (&(value->dbvalue));
 
 	  if (set_max_value)
@@ -23405,6 +23407,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  assert_release (false);
 	  boot_find_root_heap (&entry->hfid);
 	  entry->ftype = FILE_HEAP;
+	  lf_tran_end_with_mb (t_entry);
 	  return NO_ERROR;
 	}
 
@@ -23415,6 +23418,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  lf_tran_end_with_mb (t_entry);
 	  return error_code;
 	}
       entry->hfid = hfid_local;
@@ -23428,6 +23432,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  lf_tran_end_with_mb (t_entry);
 	  return error_code;
 	}
       entry->ftype = ftype_local;

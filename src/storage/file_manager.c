@@ -561,6 +561,11 @@ STATIC_INLINE void file_extdata_append_array (FILE_EXTENSIBLE_DATA * extdata,
 STATIC_INLINE void *file_extdata_at (const FILE_EXTENSIBLE_DATA * extdata, int index) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool file_extdata_can_merge (const FILE_EXTENSIBLE_DATA * extdata_src,
 					   const FILE_EXTENSIBLE_DATA * extdata_dest) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest,
+					  FILE_EXTENSIBLE_DATA * extdata_dest,
+					  int (*compare_func) (const void *, const void *),
+					  LOG_RCVINDEX rcvindex, VPID * merged_vpid_out)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_merge_unordered (const FILE_EXTENSIBLE_DATA * extdata_src,
 						 FILE_EXTENSIBLE_DATA * extdata_dest) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
@@ -652,15 +657,12 @@ static int file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_
 					    void *args);
 STATIC_INLINE bool file_table_collector_has_page (FILE_FTAB_COLLECTOR * collector, VPID * vpid)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_init_page_type_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PAGE_TYPE ptype, bool is_temp)
+  __attribute__ ((ALWAYS_INLINE));
 static int file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 			    VPID * vpid_alloc_out);
 static int file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid_dealloc,
 			      FILE_ALLOC_TYPE alloc_type);
-STATIC_INLINE int file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest,
-					  FILE_EXTENSIBLE_DATA * extdata_dest,
-					  int (*compare_func) (const void *, const void *),
-					  LOG_RCVINDEX rcvindex, VPID * merged_vpid_out)
-  __attribute__ ((ALWAYS_INLINE));
 static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensate_or_run_postpone);
 
 STATIC_INLINE int file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable,
@@ -3050,6 +3052,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 
   /* File extensible data */
   FILE_EXTENSIBLE_DATA *extdata_part_ftab = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_part_ftab_in_fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_full_ftab = NULL;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab = NULL;
 
@@ -3327,6 +3330,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
    * extend on other pages, we will keep track of pages/sectors used for file table using extdata_part_ftab.
    */
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
+  extdata_part_ftab_in_fhead = extdata_part_ftab;
   for (vsid_iter = vsids_reserved; vsid_iter < vsids_reserved + n_sectors; vsid_iter++)
     {
       if (file_extdata_is_full (extdata_part_ftab))
@@ -3356,7 +3360,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	    {
 	      /* move to next partial sector. */
 	      partsect_ftab++;
-	      if ((void *) partsect_ftab >= file_extdata_end (extdata_part_ftab))
+	      if ((void *) partsect_ftab >= file_extdata_end (extdata_part_ftab_in_fhead))
 		{
 		  /* This is not possible! */
 		  assert_release (false);
@@ -4788,7 +4792,7 @@ exit:
 }
 
 /*
- * file_init_page_type () - initialize new page by setting its type
+ * file_init_page_type () - initialize new permanent page by setting its type
  *
  * return        : NO_ERROR
  * thread_p (in) : thread entry
@@ -4800,8 +4804,42 @@ file_init_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 {
   PAGE_TYPE ptype = *(PAGE_TYPE *) args;
 
+  return file_init_page_type_internal (thread_p, page, ptype, false);
+}
+
+/*
+ * file_init_temp_page_type () - initialize new temporary page by setting its type
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * page (in)     : new page
+ * args (in)     : PAGE_TYPE *
+ */
+int
+file_init_temp_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
+{
+  PAGE_TYPE ptype = *(PAGE_TYPE *) args;
+
+  return file_init_page_type_internal (thread_p, page, ptype, true);
+}
+
+/*
+ * file_init_page_type_internal () - initialize new page by setting its type
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * page (in)     : new page
+ * ptype (in)    : page type
+ * is_temp (in)  : true if temporary page, false if permanent
+ */
+STATIC_INLINE int
+file_init_page_type_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PAGE_TYPE ptype, bool is_temp)
+{
   pgbuf_set_page_ptype (thread_p, page, ptype);
-  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) ptype, 0, NULL);
+  if (!is_temp)
+    {
+      log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) ptype, 0, NULL);
+    }
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
   return NO_ERROR;
 }
@@ -4904,7 +4942,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
       if (page_alloc == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  goto exit;
 	}
       error_code = f_init (thread_p, page_alloc, f_init_args);
       if (error_code != NO_ERROR)
@@ -8720,6 +8758,40 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
 
   file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
+}
+
+/*
+ * file_temp_save_tran_file () - cache temporary file in transaction list
+ *
+ * return         : error code
+ * thread_p (in)  : thread entry
+ * vfid (in)      : file identifier
+ * file_type (in) : file type
+ */
+int
+file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_type)
+{
+  FILE_TEMPCACHE_ENTRY *entry = NULL;
+  int error_code = NO_ERROR;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+  file_tempcache_lock ();
+  error_code = file_tempcache_alloc_entry (&entry);
+  file_tempcache_unlock ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (entry == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  entry->vfid = *vfid;
+  entry->ftype = file_type;
+  file_tempcache_push_tran_file (thread_p, entry);
+  return NO_ERROR;
 }
 
 /*

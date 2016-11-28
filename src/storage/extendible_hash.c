@@ -2833,14 +2833,16 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth, b
   new_end_offset = new_ptrs - 1;
   ehash_dir_locate (&new_pages, &new_end_offset);
   needed_pages = new_pages - old_pages;
-
-  error_code = file_alloc_multiple (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, &is_temp, needed_pages,
-				    NULL);
-  if (error_code != NO_ERROR)
+  if (needed_pages > 0)
     {
-      ASSERT_ERROR ();
-      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
-      return error_code;
+      error_code = file_alloc_multiple (thread_p, &ehid_p->vfid, ehash_initialize_dir_new_page, &is_temp, needed_pages,
+					NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+	  return error_code;
+	}
     }
 
   /*****************************

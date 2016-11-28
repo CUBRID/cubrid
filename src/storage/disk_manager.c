@@ -515,7 +515,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   /* undo must be logical since we are going to remove the volume in the case of rollback (really a crash since we are
    * in a top operation) */
-  addr.offset = 0;
+  addr.offset = (PGLENGTH) volid;
   addr.pgptr = NULL;
   log_append_undo_data (thread_p, RVDK_FORMAT, &addr, (int) strlen (vol_fullname) + 1, vol_fullname);
 
@@ -1140,10 +1140,31 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  VOLID volid = (VOLID) rcv->offset;
   int ret = NO_ERROR;
 
   ret = disk_unformat (thread_p, (char *) rcv->data);
   log_append_dboutside_redo (thread_p, RVLOG_OUTSIDE_LOGICAL_REDO_NOOP, 0, NULL);
+
+  if (volid == disk_Cache->nvols_perm - 1)
+    {
+      /* volume was added to cache. now remove it */
+      disk_cache_lock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
+      disk_cache_update_vol_free (volid, -disk_Cache->vols[volid].nsect_free);
+      disk_cache_unlock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
+
+      assert (disk_Cache->vols[volid].nsect_free == 0);
+      disk_Cache->nvols_perm--;
+      disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
+    }
+  else
+    {
+      /* must be next volume that was not added yet to cache */
+      assert (disk_Cache->nvols_perm == volid);
+      assert (disk_Cache->vols[volid].purpose == DISK_UNKNOWN_PURPOSE);
+      assert (disk_Cache->vols[volid].nsect_free == 0);
+    }
+
   return NO_ERROR;
 }
 
@@ -1155,11 +1176,37 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  int error_code = NO_ERROR;
+  DISK_VOLUME_HEADER *volheader;
+
   (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLHEADER);
+  error_code = log_rv_copy_char (thread_p, rcv);
+  assert (error_code == NO_ERROR);
 
-  /* todo: what about new volumes found at recovery? how do we deal with cache in this case? */
+  disk_verify_volume_header (thread_p, rcv->pgptr);
+  volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
 
-  return log_rv_copy_char (thread_p, rcv);
+  if (disk_Cache->nvols_perm == volheader->volid)
+    {
+      /* add to disk cache */
+      disk_Cache->nvols_perm++;
+      disk_Cache->vols[volheader->volid].purpose = volheader->purpose;
+      disk_Cache->vols[volheader->volid].nsect_free = 0;
+      disk_cache_lock_reserve_for_purpose (volheader->purpose);
+      disk_cache_update_vol_free (volheader->volid,
+				  volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1);
+      disk_cache_unlock_reserve_for_purpose (volheader->purpose);
+    }
+  else
+    {
+      /* disk_rv_redo_format is called twice. it must be already added. */
+      assert (disk_Cache->nvols_perm == volheader->volid + 1);
+      assert (disk_Cache->vols[volheader->volid].purpose == volheader->purpose);
+      assert (disk_Cache->vols[volheader->volid].nsect_free
+	      == volheader->nsect_total - SECTOR_FROM_PAGEID (volheader->sys_lastpage) - 1);
+    }
+
+  return error_code;
 }
 
 /*
@@ -3678,7 +3725,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
       /* invalid */
-      assert (false);
+      assert (!debug_crash);
       isvalid = DISK_INVALID;
       goto exit;
     }
@@ -3741,6 +3788,7 @@ disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * vol
   disk_stab_cursor_set_at_sectid (volheader, sectid, &cursor_sectid);
   if (disk_stab_cursor_fix (thread_p, &cursor_sectid, PGBUF_LATCH_READ) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return DISK_ERROR;
     }
 
