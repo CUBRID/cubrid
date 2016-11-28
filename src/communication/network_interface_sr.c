@@ -10121,7 +10121,7 @@ ses_es_mark_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   ptr = or_unpack_string_nocopy (request, &path);
 
   es_notify_vacuum_for_delete (thread_p, path);
-  er_print_callstack (ARG_FILE_LINE, "uri:%s", elo->locator);
+  er_print_callstack (ARG_FILE_LINE, "uri:%s", path);
 
   ptr = or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
