@@ -246,7 +246,8 @@ extern void rv_check_rvfuns (void);
 #define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
   ((idx) == RVFL_DEALLOC \
    || (idx) == RVHF_MARK_DELETED \
-   || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
+   || (idx) == RVBT_DELETE_OBJECT_POSTPONE \
+   || (idx) == RVELO_DELETE_FILE)
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   (((vpid)->volid == NULL_VOLID) \
