@@ -546,7 +546,7 @@ elo_create (DB_ELO * elo)
   char *uri = NULL;
   int ret = NO_ERROR;
 #if !defined (CS_MODE)
-  LOG_DATA_ADDR addr;
+  LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
   LOG_CRUMB undo_crumbs[2];
   int num_undo_crumbs;
   LOB_LOCATOR_STATE state;
@@ -581,10 +581,6 @@ elo_create (DB_ELO * elo)
 #if !defined (CS_MODE)
   if (ELO_NEEDS_TRANSACTION (elo))
     {
-      addr.offset = NULL_SLOTID;
-      addr.pgptr = NULL;
-      addr.vfid = NULL;
-
       undo_crumbs[0].length = strlen (uri) + 1;
       undo_crumbs[0].data = (char *) uri;
       num_undo_crumbs = 1;
@@ -595,10 +591,7 @@ elo_create (DB_ELO * elo)
       state = get_lob_state_from_locator (elo->locator);
       if (state == LOB_TRANSIENT_CREATED)
 	{
-	  addr.offset = NULL_SLOTID;
-	  addr.pgptr = NULL;
-	  addr.vfid = NULL;
-	  log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
+	  log_append_postpone (thread_get_thread_entry_info (), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
 			       elo->locator);
 	}
     }
@@ -839,29 +832,26 @@ elo_delete (DB_ELO * elo, bool force_delete)
       assert (elo->locator != NULL);
 
       state = get_lob_state_from_locator (elo->locator);
-	  if (state == LOB_TRANSIENT_CREATED)
-	    {
-	      es_delete_file (elo->locator);
+      if (state == LOB_TRANSIENT_CREATED)
+	{
+	  es_delete_file (elo->locator);
 #if defined (SERVER_MODE)
-	      perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+	  perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
 #endif
-	    }
-	  else
-	    {
+	}
+      else
+	{
 #if defined (CS_MODE)
-	      es_mark_delete_file (elo->locator);
+	  es_mark_delete_file (elo->locator);
 #else
-	      {
-		/* SA and server mode : postpone operation which means either a immediate delete at commit (SA) or
-		 * a notify vacuum for delete */
-		LOG_DATA_ADDR addr;
+	  {
+	    /* SA and server mode : postpone operation which means either a immediate delete at commit (SA) or
+	     * a notify vacuum for delete */
+	    LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
 
-		addr.offset = NULL_SLOTID;
-		addr.pgptr = NULL;
-		addr.vfid = NULL;
-		log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
-				     elo->locator);
-	      }
+	    log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
+				 elo->locator);
+	  }
 #endif
 	}
       return ret;
