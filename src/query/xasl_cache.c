@@ -2011,14 +2011,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	      continue;
 	    }
 
-	  /* Acquire the mutex and decache the clones even if the entry will not be deleted from xcache_Ht. */
-	  pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
-	  while (xcache_entry->n_cache_clones > 0)
-	    {
-	      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
-	    }
-	  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
-
 	  (void) bh_try_insert (bh, &candidate, NULL);
 	}
 
@@ -2063,7 +2055,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       /* Set intention to cleanup the entry. */
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
 
-      /* Try delete. */
+      /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
+       * clone decache is postponed - is decached when retired list will be cleared.
+       */
       if (lf_hash_delete (t_entry, &xcache_Ht, &candidate.xid, &success) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
