@@ -562,7 +562,7 @@ elo_create (DB_ELO * elo)
     }
 
 #if defined (SERVER_MODE)
-      perfmon_inc_stat (NULL, PSTAT_ELO_CREATE_FILE);
+  perfmon_inc_stat (NULL, PSTAT_ELO_CREATE_FILE);
 #endif
 
   uri = db_private_strdup (NULL, out_uri);
@@ -579,26 +579,28 @@ elo_create (DB_ELO * elo)
   elo->es_type = es_get_type (uri);
 
 #if !defined (CS_MODE)
-
-  addr.offset = NULL_SLOTID;
-  addr.pgptr = NULL;
-  addr.vfid = NULL;
-
-  undo_crumbs[0].length = strlen (uri) + 1;
-  undo_crumbs[0].data = (char *) uri;
-  num_undo_crumbs = 1;
-  log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
-			      undo_crumbs, NULL);
-
-  /* delete temporary LOB file after commit */
-  state = get_lob_state_from_locator (elo->locator);
-  if (state == LOB_TRANSIENT_CREATED)
+  if (ELO_NEEDS_TRANSACTION (elo))
     {
       addr.offset = NULL_SLOTID;
       addr.pgptr = NULL;
       addr.vfid = NULL;
-      log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
-			   elo->locator);
+
+      undo_crumbs[0].length = strlen (uri) + 1;
+      undo_crumbs[0].data = (char *) uri;
+      num_undo_crumbs = 1;
+      log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
+				  undo_crumbs, NULL);
+
+      /* delete temporary LOB file after commit */
+      state = get_lob_state_from_locator (elo->locator);
+      if (state == LOB_TRANSIENT_CREATED)
+	{
+	  addr.offset = NULL_SLOTID;
+	  addr.pgptr = NULL;
+	  addr.vfid = NULL;
+	  log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
+			       elo->locator);
+	}
     }
 #endif
 
@@ -791,7 +793,6 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
       perfmon_inc_stat (NULL, PSTAT_ELO_COPY_FILE);
 #endif
 
-
   return NO_ERROR;
 
 error_return:
@@ -825,21 +826,19 @@ elo_delete (DB_ELO * elo, bool force_delete)
   elo->es_type = es_get_type (elo->locator);
   if (!ELO_NEEDS_TRANSACTION (elo) || force_delete)
     {
+      es_delete_file (elo->locator);
+#if defined (SERVER_MODE)
+      perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+#endif
+    }
+  else
+    {
       int ret = NO_ERROR;
       LOB_LOCATOR_STATE state;
 
       assert (elo->locator != NULL);
 
       state = get_lob_state_from_locator (elo->locator);
-      if (!ELO_NEEDS_TRANSACTION (elo) || force_delete)
-	{
-	  es_delete_file (elo->locator);
-#if defined (SERVER_MODE)
-	  perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
-#endif
-	}
-      else
-	{
 	  if (state == LOB_TRANSIENT_CREATED)
 	    {
 	      es_delete_file (elo->locator);
@@ -864,7 +863,6 @@ elo_delete (DB_ELO * elo, bool force_delete)
 				     elo->locator);
 	      }
 #endif
-	    }
 	}
       return ret;
     }
@@ -973,61 +971,6 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
     }
   return ret;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * elo_meta_set () - set meta data to DB_ELO
- * return: NO_ERROR if successful, error code otherwise
- * elo(in): DB_ELO instance
- * key(in): meta key
- * val(in): meta data
- */
-int
-elo_set_meta (DB_ELO * elo, const char *key, const char *val)
-{
-  ELO_META *meta;
-  int r;
-  char *new_meta;
-
-  assert (elo != NULL);
-  assert (key != NULL);
-
-  meta = meta_create (elo->meta_data);
-  if (meta == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
-      return ER_ELO_CANT_CREATE_LARGE_OBJECT;
-    }
-
-  r = meta_set (meta, key, val);
-  if (r != NO_ERROR)
-    {
-      (void) meta_destroy (meta);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
-      return ER_ELO_CANT_CREATE_LARGE_OBJECT;
-    }
-
-  new_meta = meta_to_string (meta);
-  if (new_meta == NULL)
-    {
-      (void) meta_destroy (meta);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
-      return ER_ELO_CANT_CREATE_LARGE_OBJECT;
-    }
-
-  (void) meta_destroy (meta);
-  if (elo->meta_data != NULL)
-    {
-      db_private_free_and_init (NULL, elo->meta_data);
-    }
-  elo->meta_data = new_meta;
-
-  return NO_ERROR;
-}
-
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * get_lob_state_from_locator () - 
