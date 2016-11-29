@@ -853,12 +853,25 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
       return;
     }
 
-  /* check if spec contains a CTE pointer and not a derived table */
   derived_table = spec->info.spec.derived_table;
+
+  /* check if spec contains a CTE pointer and not a derived table */
   if (derived_table == NULL && spec->info.spec.cte_pointer != NULL
       && spec->info.spec.cte_pointer->info.pointer.node != NULL)
     {
-      derived_table = spec->info.spec.cte_pointer->info.pointer.node->info.cte.non_rec_part;
+      PT_NODE *cte = spec->info.spec.cte_pointer->info.pointer.node;
+
+      assert (cte != NULL);
+      /* for recursive CTEs bind only the types from the recursive part; 
+       * it must contain references of the non-recursive part */
+      if (cte->info.cte.rec_part)
+	{
+	  derived_table = cte->info.cte.rec_part;
+	}
+      else
+	{
+	  derived_table = cte->info.cte.non_rec_part;
+	}
     }
 
   if (!derived_table)

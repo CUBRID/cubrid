@@ -15175,8 +15175,6 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      save_rec_list_id = rec_part->list_id;
-
       /* the recursive part XASL is executed totally (all iterations) 
          and the results will be inserted in non_rec_part->list_id */
       while (non_rec_part->list_id->tuple_cnt > 0)
@@ -15187,24 +15185,37 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  if (first_iteration && qfile_unify_types (non_rec_part->list_id, rec_part->list_id) != NO_ERROR)
+	  if (first_iteration)
 	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
+	      /* unify list_id types after the first execution of the recursive part */
+	      if (qfile_unify_types (non_rec_part->list_id, rec_part->list_id) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 
-	  /* copy non_rec_part->list_id to xasl->list_id (final results) */
-	  t_list_id = qfile_combine_two_list (thread_p, xasl->list_id, non_rec_part->list_id, ls_flag);
-	  if (!t_list_id)
-	    {
-	      GOTO_EXIT_ON_ERROR;
+	      qfile_clear_list_id (xasl->list_id);
+	      if (qfile_copy_list_id (xasl->list_id, non_rec_part->list_id, true) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 	    }
+	  else
+	    {
+	      /* copy non_rec_part->list_id to xasl->list_id (final results) */
+	      t_list_id = qfile_combine_two_list (thread_p, xasl->list_id, non_rec_part->list_id, ls_flag);
+	      if (!t_list_id)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 
-	  qfile_clear_list_id (xasl->list_id);
-	  if (qfile_copy_list_id (xasl->list_id, t_list_id, true) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
+	      /* what's the purpose of t_list_id?? */
+	      qfile_clear_list_id (xasl->list_id);
+	      if (qfile_copy_list_id (xasl->list_id, t_list_id, true) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 	    }
-	  QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 
 	  qfile_clear_list_id (non_rec_part->list_id);
 	  if (rec_part->list_id->tuple_cnt
@@ -15226,6 +15237,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		{
 		  /* optimisation: use non-recursive list id for both reading and writing
 		   * the recursive xasl will iterate through this list id while appending new results at its end */
+		    save_rec_list_id = rec_part->list_id;
 		  rec_part->list_id = non_rec_part->list_id;
 		  qfile_reopen_list_as_append_mode (thread_p, rec_part->list_id);
 		}
