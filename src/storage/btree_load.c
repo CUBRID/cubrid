@@ -631,6 +631,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 #if !defined(NDEBUG)
   int track_id;
 #endif
+  bool is_sysop_started = false;
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -658,6 +659,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
    */
 
   log_sysop_start (thread_p);
+  is_sysop_started = true;
 
 #if !defined(NDEBUG)
   track_id = thread_rc_track_enter (thread_p);
@@ -925,11 +927,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 			 load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
 			 load_args->btid->sys_btid->vfid.fileid);
 	}
-      /* there are no index entries, destroy index file and call index creation */
-      if (file_destroy (thread_p, &btid->vfid) != NO_ERROR)
-	{
-	  goto error;
-	}
+      /* redo an empty index, but first destroy the one we created. the safest way is to abort changes so far. */
+      log_sysop_abort (thread_p);
+      is_sysop_started = false;
+
       os_free_and_init (load_args->leaf_nleaf_recdes.data);
       os_free_and_init (load_args->ovf_recdes.data);
       pr_clear_value (&load_args->current_key);
@@ -985,12 +986,19 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
 #endif
 
-  /* todo: we have the option to commit & undo here. on undo, we can destroy the file directly. */
-  log_sysop_attach_to_outer (thread_p);
-  if (unique_pk)
+  if (is_sysop_started)
     {
-      /* drop statistics if aborted */
-      log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
+      /* todo: we have the option to commit & undo here. on undo, we can destroy the file directly. */
+      log_sysop_attach_to_outer (thread_p);
+      if (unique_pk)
+	{
+	  /* drop statistics if aborted */
+	  log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
+	}
+    }
+  else
+    {
+      /* index was not loaded and xbtree_add_index was called instead. we have nothing to log here. */
     }
 
   LOG_CS_ENTER (thread_p);
@@ -1082,7 +1090,10 @@ error:
     }
 #endif
 
-  log_sysop_abort (thread_p);
+  if (is_sysop_started)
+    {
+      log_sysop_abort (thread_p);
+    }
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
