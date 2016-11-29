@@ -307,8 +307,6 @@ es_delete_file (const char *uri)
 
   assert (uri != NULL);
 
-  er_print_callstack (ARG_FILE_LINE, "uri:%s", uri);
-
   if (es_initialized_type == ES_NONE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
