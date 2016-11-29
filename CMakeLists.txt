@@ -575,7 +575,6 @@ if(USE_DUMA)
     message(FATAL_ERROR "Cannot find DUMA library")
   endif(NOT DUMA_LIBRARIES)
   message(STATUS "Use DUMA library")
-  set(SYS_LIBS $SYS_LIBS -lduma)
 endif(USE_DUMA)
 
 

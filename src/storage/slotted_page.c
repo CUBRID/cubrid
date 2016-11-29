@@ -1175,7 +1175,6 @@ spage_is_slotted_page_type (PAGE_TYPE ptype)
     case PAGE_HEAP:
     case PAGE_BTREE:
     case PAGE_EHASH:
-    case PAGE_LARGEOBJ:
     case PAGE_CATALOG:
       return true;
 
@@ -4929,7 +4928,7 @@ spage_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg
   int error = NO_ERROR;
   DB_VALUE *arg_val0, *arg_val1;
   SPAGE_HEADER_CONTEXT *ctx;
-  PAGE_PTR pgptr;
+  PAGE_PTR pgptr = NULL;
   PAGE_TYPE ptype;
 
   *ptr = NULL;
@@ -4952,18 +4951,17 @@ spage_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg
   ctx->vpid.volid = db_get_int (arg_val0);
   ctx->vpid.pageid = db_get_int (arg_val1);
 
-  if (pgbuf_is_valid_page (thread_p, &ctx->vpid, true, NULL, NULL) != DISK_VALID)
+  error = pgbuf_fix_if_not_deallocated (thread_p, &ctx->vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &pgptr);
+  if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2, ctx->vpid.pageid, ctx->vpid.volid);
-      error = ER_DIAG_PAGE_NOT_FOUND;
+      ASSERT_ERROR ();
       goto exit_on_error;
     }
-
-  pgptr = pgbuf_fix (thread_p, &ctx->vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      /* page deallocated. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2, ctx->vpid.pageid, ctx->vpid.volid);
+      error = ER_DIAG_PAGE_NOT_FOUND;
       goto exit_on_error;
     }
 
@@ -5091,7 +5089,7 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   SPAGE_HEADER *header = NULL;
   DB_VALUE *arg_val0, *arg_val1;
   SPAGE_SLOTS_CONTEXT *ctx;
-  PAGE_PTR pgptr;
+  PAGE_PTR pgptr = NULL;
   PAGE_TYPE ptype;
 
   *ptr = NULL;
@@ -5116,8 +5114,15 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   ctx->vpid.volid = db_get_int (arg_val0);
   ctx->vpid.pageid = db_get_int (arg_val1);
 
-  if (pgbuf_is_valid_page (thread_p, &ctx->vpid, true, NULL, NULL) != DISK_VALID)
+  error = pgbuf_fix_if_not_deallocated (thread_p, &ctx->vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &pgptr);
+  if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+  if (pgptr == NULL)
+    {
+      /* page deallocated. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2, ctx->vpid.pageid, ctx->vpid.volid);
       error = ER_DIAG_PAGE_NOT_FOUND;
       goto exit_on_error;
@@ -5125,14 +5130,6 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
 
   ctx->pgptr = (PAGE_PTR) db_private_alloc (thread_p, SPAGE_DB_PAGESIZE);
   if (ctx->pgptr == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto exit_on_error;
-    }
-
-  pgptr = pgbuf_fix (thread_p, &ctx->vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (pgptr == NULL)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();

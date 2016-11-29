@@ -1260,7 +1260,8 @@ $ LOADDB
 1191 Stand-alone vakum yürütme sona erer.
 1192 Değeri hassas %1$zu izin verilen maksimum %2$d aşıyor.
 1193 İşlenmiş bölüm ifade uzunluğu izin verilen sınırı (%1$d) aşıyor.
-1194 Son Hata
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

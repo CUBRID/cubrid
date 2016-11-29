@@ -2436,7 +2436,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
  *	  written at their designated places.
  */
 DKNPAGES
-fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DISK_VOLPURPOSE purpose)
+fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_VOLTYPE voltype)
 {
   int vol_fd;
   const char *vol_label_p;
@@ -2526,7 +2526,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DIS
   start_pageid = (DKNPAGES) (start_offset / IO_PAGESIZE);
   last_pageid = (DKNPAGES) (last_offset / IO_PAGESIZE);
 
-  if (purpose == DISK_TEMPVOL_TEMP_PURPOSE)
+  if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
       if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE) != malloc_io_page_p)
@@ -2537,7 +2537,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DIS
   else
     {
       /* support generic volume only */
-      assert_release (purpose == DISK_PERMVOL_GENERIC_PURPOSE);
+      assert_release (voltype == DB_PERMANENT_VOLTYPE);
 
       if (fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, start_pageid, last_pageid - start_pageid + 1,
 				   IO_PAGESIZE, -1) == NULL)
@@ -4797,6 +4797,80 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
       assert (npages <= INT_MAX);
 
       return (int) npages;
+    }
+
+#endif /* WINDOWS */
+}
+
+/*
+ * fileio_get_number_of_partition_free_pages () - document me!
+ *
+ * return      : Number of free sectors
+ * path_p (in) : Path to disk partition
+ */
+DKNSECTS
+fileio_get_number_of_partition_free_sectors (const char *path_p)
+{
+#if defined(WINDOWS)
+  return (DKNSECTS) free_space (path_p, IO_SECTORSIZE);
+#else /* WINDOWS */
+  int vol_fd;
+  INT64 nsects = -1;
+
+#if defined(SOLARIS)
+  struct statvfs buf;
+#else /* SOLARIS */
+  struct statfs buf;
+#endif /* SOLARIS */
+
+#if defined(SOLARIS)
+  if (statvfs (path_p, &buf) == -1)
+    {
+#elif defined(AIX)
+  if (statfs ((char *) path_p, &buf) == -1)
+    {
+#else /* AIX */
+  if (statfs (path_p, &buf) == -1)
+    {
+#endif /* AIX */
+
+      if (errno == ENOENT
+	  && ((vol_fd = fileio_open (path_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE)) != NULL_VOLDES))
+	{
+	  /* The given file did not exist. We create it for temporary consumption then it is removed */
+	  nsects = fileio_get_number_of_partition_free_sectors (path_p);
+	  /* Close the file and remove it */
+	  fileio_close (vol_fd);
+	  (void) remove (path_p);
+	}
+      else
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, path_p);
+	}
+    }
+  else
+    {
+#if defined(SOLARIS)
+      nsects = (buf.f_bavail / IO_SECTORSIZE) * ((off_t) buf.f_frsize);
+#else /* SOLARIS */
+      nsects = (buf.f_bavail / IO_SECTORSIZE) * ((off_t) buf.f_bsize);
+#endif /* SOLARIS */
+
+      if (nsects < 0 || nsects > INT_MAX)
+	{
+	  nsects = INT_MAX;
+	}
+    }
+
+  if (nsects < 0)
+    {
+      return -1;
+    }
+  else
+    {
+      assert (nsects <= INT_MAX);
+
+      return (DKNSECTS) nsects;
     }
 
 #endif /* WINDOWS */

@@ -47,7 +47,6 @@
 #include "set_object.h"
 #include "db.h"
 #include "schema_manager.h"
-#include "large_object.h"
 #include "server_interface.h"
 #include "load_object.h"
 #include "object_print.h"
@@ -1604,7 +1603,6 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
       CHECK_PRINT_ERROR (fprint_special_set (tout, DB_GET_SET (value)));
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
@@ -1645,7 +1643,6 @@ desc_value_fprint (FILE * fp, DB_VALUE * value)
       fprint_set (fp, DB_GET_SET (value));
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
@@ -1669,154 +1666,6 @@ desc_value_print (DB_VALUE * value)
   desc_value_fprint (stdout, value);
 }
 #endif
-
-/*
- * lo_migrate_out - This dumps the contents of an internal LO to the specified
- * file.
- *    return: non-zero if errors
- *    loid(in): long object identifier
- *    pathname(in): pathname to dump it to
- */
-int
-lo_migrate_out (LOID * loid, const char *pathname)
-{
-  unsigned int remaining;
-  unsigned int chunk;
-  int error, fd, length, offset, readlen;
-
-  error = 0;
-  if ((length = (int) largeobjmgr_length (loid)) < 0)
-    {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_ACCESS_LO));
-      error = 1;
-    }
-  else if ((fd = open (pathname, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO)) <= 0)
-    {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_OPEN_LO_FILE));
-      error = 1;
-    }
-  else
-    {
-      /* ftruncate(fd, (long int)0); */
-      offset = 0;
-      remaining = length;
-      chunk = MIGRATION_CHUNK;
-      if (remaining < chunk)
-	{
-	  chunk = remaining;
-	}
-
-      while (remaining && !error)
-	{
-	  readlen = largeobjmgr_read (loid, offset, chunk, migration_buffer);
-	  if (readlen < 0)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	    }
-	  if (error)
-	    {
-	      fprintf (stderr, "%s\n", db_error_string (3));
-	    }
-	  else
-	    {
-	      if (readlen <= 0 || readlen > MIGRATION_CHUNK)
-		{
-		  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_READ_ERROR));
-		  error = 1;
-		}
-	      else if (write (fd, migration_buffer, readlen) != readlen)
-		{
-		  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_WRITE_ERROR));
-		  error = 1;
-		}
-	    }
-	  remaining -= readlen;
-	  offset += readlen;
-	  if (remaining < chunk)
-	    {
-	      chunk = remaining;
-	    }
-	}
-      close (fd);
-      if (error)
-	{
-	  unlink (pathname);
-	}
-    }
-  return (error);
-}
-
-
-/*
- * lo_migrate_in - loads an internal LO from an external file.
- *    return: non-zero if errors
- *    loid(in): long object identifier
- *    pathname(in): external file pathname
- */
-int
-lo_migrate_in (LOID * loid, const char *pathname)
-{
-  unsigned int chunk;
-  int error, fd, length, offset, writelen;
-
-  error = 0;
-  if ((fd = open (pathname, O_RDONLY, 0)) <= 0)
-    {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_OPEN_ELO), pathname);
-      error = 1;
-    }
-  else
-    {
-      /* Need to have the correct volume id here !!! */
-      loid->vpid.volid = 0;
-      loid->vfid.volid = 0;
-      if (largeobjmgr_create (loid, 0, NULL, -1, NULL) == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  fprintf (stderr, "%s\n", db_error_string (3));
-	}
-      else
-	{
-	  /* 
-	   * read seems to get real confused if we use a number higher
-	   * than 1024 ?
-	   */
-	  chunk = 1024;
-	  offset = 0;
-
-	  while (!error && ((length = (int) read (fd, migration_buffer, chunk)) > 0))
-	    {
-
-	      writelen = largeobjmgr_write (loid, offset, length, migration_buffer);
-	      if (writelen < 0)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
-		}
-
-	      /* flag this as an error, already detected by lom ? */
-	      if (!error && writelen != length)
-		{
-		  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_WRITE_ERROR));
-		  error = 1;
-		}
-	      offset += writelen;
-	    }
-	  if (error)
-	    {
-	      largeobjmgr_destroy (loid);
-	      LOID_SET_NULL (loid);
-	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_OPEN_ELO),
-		       pathname);
-	    }
-	}
-      close (fd);
-    }
-  return (error);
-}
-
 
 static bool filter_ignore_errors[-ER_LAST_ERROR] = { false, };
 

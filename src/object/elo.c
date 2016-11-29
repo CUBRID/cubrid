@@ -40,10 +40,6 @@
  * - simple key, value pair
  * - format: <key>=<value>[,<key>=<value>[...]]
  *           key, value should not contain '=', or ',' character
- *
- * FBO TODO:
- * handle error message (ER_ELO_CANT_CREATE_LARGE_OBJECT) is quick and
- * dirty fix.
  */
 
 #ident "$Id$"
@@ -73,9 +69,7 @@
 #include "xserver_interface.h"
 #endif
 
-static const DB_ELO elo_Initializer = { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL,
-ES_NONE
-};
+static const DB_ELO elo_Initializer = { -1LL, NULL, NULL, ELO_NULL, ES_NONE };
 
 #define ELO_NEEDS_TRANSACTION(e) \
         ((e)->es_type == ES_OWFS || (e)->es_type == ES_POSIX)
@@ -546,77 +540,69 @@ drop_lob_locator (const char *locator)
  * type(in): DB_ELO_TYPE
  */
 int
-elo_create (DB_ELO * elo, DB_ELO_TYPE type)
+elo_create (DB_ELO * elo)
 {
-  assert (elo != NULL);
-  assert (type == ELO_FBO || type == ELO_LO);
-
-  if (type == ELO_FBO)
-    {
-      ES_URI out_uri;
-      char *uri;
-      int ret;
+  ES_URI out_uri;
+  char *uri = NULL;
+  int ret = NO_ERROR;
 #if !defined (CS_MODE)
-      LOG_DATA_ADDR addr;
-      LOG_CRUMB undo_crumbs[2];
-      int num_undo_crumbs;
-      LOB_LOCATOR_STATE state;
+  LOG_DATA_ADDR addr;
+  LOG_CRUMB undo_crumbs[2];
+  int num_undo_crumbs;
+  LOB_LOCATOR_STATE state;
 #endif
 
-      ret = es_create_file (out_uri);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
+  assert (elo != NULL);
+
+  ret = es_create_file (out_uri);
+  if (ret < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
 
 #if defined (SERVER_MODE)
       perfmon_inc_stat (NULL, PSTAT_ELO_CREATE_FILE);
 #endif
 
-      uri = db_private_strdup (NULL, out_uri);
-      if (uri == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
+  uri = db_private_strdup (NULL, out_uri);
+  if (uri == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (out_uri));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
-      elo_init_structure (elo);
-      elo->size = 0;
-      elo->locator = uri;
-      elo->type = type;
-      elo->es_type = es_get_type (uri);
+  elo_init_structure (elo);
+  elo->size = 0;
+  elo->locator = uri;
+  elo->type = ELO_FBO;
+  elo->es_type = es_get_type (uri);
 
 #if !defined (CS_MODE)
 
+  addr.offset = NULL_SLOTID;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  undo_crumbs[0].length = strlen (uri) + 1;
+  undo_crumbs[0].data = (char *) uri;
+  num_undo_crumbs = 1;
+  log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
+			      undo_crumbs, NULL);
+
+  /* delete temporary LOB file after commit */
+  state = get_lob_state_from_locator (elo->locator);
+  if (state == LOB_TRANSIENT_CREATED)
+    {
       addr.offset = NULL_SLOTID;
       addr.pgptr = NULL;
       addr.vfid = NULL;
-
-      undo_crumbs[0].length = strlen (uri) + 1;
-      undo_crumbs[0].data = (char *) uri;
-      num_undo_crumbs = 1;
-      log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
-				  undo_crumbs, NULL);
-
-      /* delete temporary LOB file after commit */
-      state = get_lob_state_from_locator (elo->locator);
-      if (state == LOB_TRANSIENT_CREATED)
-	{
-	  addr.offset = NULL_SLOTID;
-	  addr.pgptr = NULL;
-	  addr.vfid = NULL;
-	  log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
-			       elo->locator);
-
-	}
+      log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
+			   elo->locator);
+    }
 #endif
 
-      return ret;
-    }
-  else				/* ELO_LO */
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-    }
+  return ret;
 }
 
 /*
@@ -709,6 +695,10 @@ elo_free_structure (DB_ELO * elo)
 int
 elo_copy (DB_ELO * elo, DB_ELO * dest)
 {
+  int ret;
+  ES_URI out_uri;
+  char *locator = NULL;
+  char *meta_data = NULL;
 #if !defined (CS_MODE)
   LOG_DATA_ADDR addr;
   LOG_CRUMB undo_crumbs[1];
@@ -717,57 +707,49 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 
   assert (elo != NULL);
   assert (dest != NULL);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
-  
-  if (elo->type == ELO_FBO)
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
+
+  /* create elo instance and copy file */
+  if (elo->meta_data != NULL)
     {
-      int ret;
-      ES_URI out_uri;
-      char *locator = NULL;
-      char *meta_data = NULL;
-
-      assert (elo->locator != NULL);
-
-      /* create elo instance and copy file */
-      if (elo->meta_data != NULL)
+      meta_data = db_private_strdup (NULL, elo->meta_data);
+      if (meta_data == NULL)
 	{
-	  meta_data = db_private_strdup (NULL, elo->meta_data);
-	  if (meta_data == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+    }
+
+  /* if it uses external storage, do transaction work */
+  elo->es_type = es_get_type (elo->locator);
+  if (!ELO_NEEDS_TRANSACTION (elo))
+    {
+      ret = es_copy_file (elo->locator, elo->meta_data, out_uri);
+      if (ret != NO_ERROR)
+	{
+	  goto error_return;
 	}
 
-      /* if it uses external storage, do transaction work */
-      elo->es_type = es_get_type (elo->locator);
-      if (!ELO_NEEDS_TRANSACTION (elo))
+      locator = db_private_strdup (NULL, out_uri);
+      if (locator == NULL)
 	{
-	  ret = es_copy_file (elo->locator, elo->meta_data, out_uri);
-	  if (ret != NO_ERROR)
-	    {
-	      goto error_return;
-	    }
-
-	  locator = db_private_strdup (NULL, out_uri);
-	  if (locator == NULL)
-	    {
-	      es_delete_file (out_uri);
-	      goto error_return;
-	    }
+	  es_delete_file (out_uri);
+	  goto error_return;
 	}
-      else
+    }
+  else
+    {
+      LOB_LOCATOR_STATE state;
+      ES_URI real_locator;
+
+      state = get_lob_state_from_locator (elo->locator);
+      strlcpy (real_locator, elo->locator, sizeof (ES_URI));
+
+      switch (state)
 	{
-	  LOB_LOCATOR_STATE state;
-	  ES_URI real_locator;
-
-	  state = get_lob_state_from_locator (elo->locator);
-	  strlcpy (real_locator, elo->locator, sizeof (ES_URI));
-
-	  switch (state)
-	    {
-	    case LOB_PERMANENT_CREATED:
-	    case LOB_TRANSIENT_CREATED:
+	  case LOB_PERMANENT_CREATED:
+	  case LOB_TRANSIENT_CREATED:
 	      {
 		ret = es_copy_file (real_locator, elo->meta_data, out_uri);
 		if (ret != NO_ERROR)
@@ -791,14 +773,15 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
 					    undo_crumbs, NULL);
 #endif
+
 	      }
-	      break;
+	  break;
 
 	    default:
 	      assert (0);
 	      return ER_FAILED;
 	    }
-	}
+    }
 
       *dest = *elo;
       dest->locator = locator;
@@ -808,29 +791,20 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
       perfmon_inc_stat (NULL, PSTAT_ELO_COPY_FILE);
 #endif
 
-      return NO_ERROR;
 
-    error_return:
-      if (locator != NULL)
-	{
-	  db_private_free_and_init (NULL, locator);
-	}
+  return NO_ERROR;
 
-      if (meta_data != NULL)
-	{
-	  db_private_free_and_init (NULL, meta_data);
-	}
-      return ret;
-    }
-  else if (elo->type == ELO_LO)
+error_return:
+  if (locator != NULL)
     {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+      db_private_free_and_init (NULL, locator);
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  if (meta_data != NULL)
+    {
+      db_private_free_and_init (NULL, meta_data);
+    }
+  return ret;
 }
 
 /*
@@ -841,10 +815,15 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 int
 elo_delete (DB_ELO * elo, bool force_delete)
 {
-  assert (elo != NULL);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  int ret = NO_ERROR;
 
-  if (elo->type == ELO_FBO)
+  assert (elo != NULL);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
+
+  /* if it uses external storage, do transaction work */
+  elo->es_type = es_get_type (elo->locator);
+  if (!ELO_NEEDS_TRANSACTION (elo) || force_delete)
     {
       int ret = NO_ERROR;
       LOB_LOCATOR_STATE state;
@@ -889,15 +868,8 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	}
       return ret;
     }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-    }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  return ret;
 }
 
 /*
@@ -911,35 +883,22 @@ elo_size (DB_ELO * elo)
   off_t ret;
 
   assert (elo != NULL);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
 
   if (elo->size >= 0)
     {
       return elo->size;
     }
 
-  if (elo->type == ELO_FBO)
+  ret = es_get_file_size (elo->locator);
+  if (ret < 0)
     {
-      assert (elo->locator != NULL);
-
-      ret = es_get_file_size (elo->locator);
-      if (ret < 0)
-	{
-	  return ret;
-	}
-
-      elo->size = ret;
       return ret;
     }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-    }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  elo->size = ret;
+  return ret;
 }
 
 /*
@@ -958,27 +917,23 @@ elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count)
   assert (elo != NULL);
   assert (pos >= 0);
   assert (buf != NULL);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
 
-  if (elo->type == ELO_FBO)
+  ret = es_read_file (elo->locator, buf, count, pos);
+  if (ret < NO_ERROR)
     {
-      assert (elo->locator != NULL);
-      ret = es_read_file (elo->locator, buf, count, pos);
+      ASSERT_ERROR ();
+    }
 #if defined (SERVER_MODE)
+  else
+    {
       perfmon_inc_stat (NULL, PSTAT_ELO_READS);
       perfmon_add_stat (NULL, PSTAT_ELO_BYTES_READ, ret);
+    }
 #endif
-      return ret;
-    }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-    }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  return ret;
 }
 
 /*
@@ -997,89 +952,29 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
   assert (pos >= 0);
   assert (buf != NULL);
   assert (count > 0);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
 
-  if (elo->type == ELO_FBO)
+  ret = es_write_file (elo->locator, buf, count, pos);
+  if (ret < 0)
     {
-      assert (elo->locator != NULL);
-
-      ret = es_write_file (elo->locator, buf, count, pos);
-      if (ret < 0)
-	{
-	  return ret;
-	}
-#if defined (SERVER_MODE)
-      perfmon_inc_stat (NULL, PSTAT_ELO_WRITES);
-      perfmon_add_stat (NULL, PSTAT_ELO_BYTES_WRITE, ret);
-#endif
-      /* adjust size field */
-      if ((INT64) (pos + count) > elo->size)
-	{
-	  elo->size = pos + count;
-	}
+      ASSERT_ERROR ();
       return ret;
     }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-    }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (NULL, PSTAT_ELO_WRITES);
+  perfmon_add_stat (NULL, PSTAT_ELO_BYTES_WRITE, ret);
+#endif
+  /* adjust size field */
+  if ((INT64) (pos + count) > elo->size)
+    {
+      elo->size = pos + count;
+    }
+  return ret;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * elo_meta_get () - get meta data from DB_ELO
- * return: NO_ERROR if successful, error code otherwise
- * elo(in): DB_ELO instance
- * key(in): meta key
- * buf(out): buffer for value
- * bufsz(in): size of 'buf'
- */
-int
-elo_get_meta (const DB_ELO * elo, const char *key, char *buf, int bufsz)
-{
-  ELO_META *meta;
-  const char *value;
-  int ret = NO_ERROR;
-
-  assert (elo != NULL);
-  assert (key != NULL);
-  assert (buf != NULL);
-  assert (bufsz > 0);
-
-  meta = meta_create (elo->meta_data);
-  if (meta == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
-      return ER_ELO_CANT_CREATE_LARGE_OBJECT;
-    }
-
-  value = meta_get (meta, key);
-  if (value != NULL)
-    {
-      int len = strlen (value);
-
-      if (len + 1 > bufsz)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_BUFFER_TOO_SMALL, 0);
-	  return ER_OBJ_BUFFER_TOO_SMALL;
-	}
-
-      strncpy (buf, value, bufsz);
-    }
-  else
-    {
-      buf[0] = '\0';
-    }
-
-  (void) meta_destroy (meta);
-  return NO_ERROR;
-}
-
 /*
  * elo_meta_set () - set meta data to DB_ELO
  * return: NO_ERROR if successful, error code otherwise
@@ -1220,3 +1115,4 @@ elo_rv_rename_elo (THREAD_ENTRY * thread_p, void * rcv)
   
   return NO_ERROR;
 }
+

@@ -2907,7 +2907,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   original_ctype = db_constraint_type (idx);
   if (ctype != original_ctype)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE, 1, index_name);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE, 1, index_name);
     }
 
   /* get attributes of the index */

@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include "object_representation.h"
 
-extern int elo_create (DB_ELO * elo, DB_ELO_TYPE type);
+extern int elo_create (DB_ELO * elo);
 
 extern void elo_init_structure (DB_ELO * elo);
 extern int elo_copy_structure (const DB_ELO * elo, DB_ELO * dest);

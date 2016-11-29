@@ -497,7 +497,8 @@ typedef enum
   DB_TYPE_SET = 6,
   DB_TYPE_MULTISET = 7,
   DB_TYPE_SEQUENCE = 8,
-  DB_TYPE_ELO = 9,
+  DB_TYPE_ELO = 9,		/* obsolete... keep for backward compatibility. maybe we can replace with something else
+				 */
   DB_TYPE_TIME = 10,
   DB_TYPE_TIMESTAMP = 11,
   DB_TYPE_DATE = 12,
@@ -702,58 +703,51 @@ struct db_midxkey
  * This is the run-time state structure for an ELO. The ELO is part of
  * the implementation of large object type and not intended to be used
  * directly by the API.
- *
- * NOTE:
- *  1. LOID and related definition which were in storage_common.h moved here.
- *  2. DB_ELO definition in dbi_compat.h does not expose the LOID and
- *     related data type. BE CAREFUL when you change following definitions.
- *     - VPID
- *     - VFID
  */
 
 typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
 struct vpid
 {
   INT32 pageid;			/* Page identifier */
-  INT16 volid;			/* Volume identifier where the page reside */
+  INT16 volid;			/* Volume identifier where the page resides */
 };
 #define VPID_INITIALIZER \
   { NULL_PAGEID, NULL_VOLID }
 
 #define VPID_AS_ARGS(vpidp) (vpidp)->volid, (vpidp)->pageid
 
+typedef struct vsid VSID;	/* REAL SECTOR IDENTIFIER */
+struct vsid
+{
+  INT32 sectid;			/* Sector identifier */
+  INT16 volid;			/* Volume identifier where the sector resides */
+};
+#define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
+#define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
+
 typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
 struct vfid
 {
   INT32 fileid;			/* File identifier */
-  INT16 volid;			/* Volume identifier where the file reside */
+  INT16 volid;			/* Volume identifier where the file resides */
 };
 #define VFID_INITIALIZER \
   { NULL_FILEID, NULL_VOLID }
 
 #define VFID_AS_ARGS(vfidp) (vfidp)->volid, (vfidp)->fileid
 
-typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
-struct loid
-{
-  VPID vpid;			/* Real page identifier */
-  VFID vfid;			/* Real file identifier */
-};
-
 typedef enum db_elo_type DB_ELO_TYPE;
 typedef struct db_elo DB_ELO;
 
 enum db_elo_type
 {
-  ELO_NULL,
-  ELO_LO,
+  ELO_NULL,			/* do we need this anymore? */
   ELO_FBO
 };
 
 struct db_elo
 {
   INT64 size;
-  LOID loid;
   char *locator;
   char *meta_data;
   DB_ELO_TYPE type;

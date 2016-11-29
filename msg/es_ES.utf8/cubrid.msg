@@ -1260,7 +1260,8 @@ $ LOADDB
 1191 Ejecucion stand-alone de aspirar finalizada.
 1192 La precision de %1$zu del valor excede lo maximo permitido %2$d
 1193 La longitud de la expresion de particion procesada excede lo maximo permitido (%1$d).
-1194 Ultimo error
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

@@ -246,10 +246,12 @@ phase3:
   catalog_reclaim_space (NULL);
   db_commit_transaction ();
 
-  file_reclaim_all_deleted (NULL);
-  db_commit_transaction ();
-
-  file_tracker_compress (NULL);
+  if (file_tracker_reclaim_marked_deleted (NULL) != NO_ERROR)
+    {
+      /* how to handle error? */
+      ASSERT_ERROR ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
   db_commit_transaction ();
 
   /* 
@@ -494,7 +496,6 @@ process_value (DB_VALUE * value)
       }
 
     case DB_TYPE_NULL:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     default:
