@@ -10129,7 +10129,8 @@ ses_es_mark_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
     }
   else
     {
-      es_notify_vacuum_for_delete (thread_p, path);
+      MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
+      es_notify_vacuum_for_delete (thread_p, mvcc_id, path);
     }
 
   ptr = or_pack_int (reply, NO_ERROR);

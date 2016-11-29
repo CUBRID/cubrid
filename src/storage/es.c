@@ -614,7 +614,7 @@ es_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * uri (in)	 : File location URI.
  */
 void
-es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
+es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const MVCCID mvvc_id, const char *uri)
 {
 #define ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE \
   (INT_ALIGNMENT +	/* Aligning buffer start */	      \
@@ -626,12 +626,13 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
   int length;
   char data_buf[ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE];
   char *data = NULL;
+  LOG_TDES *tdes;
+  MVCCID saved_mvcc_id;
 
   addr.offset = -1;
   addr.pgptr = NULL;
   addr.vfid = NULL;
 
-  (void) logtb_get_current_mvccid (thread_p);
 
   /* Compute the total length required to pack string */
   length = or_packed_string_length (uri, NULL);
@@ -645,8 +646,21 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
   /* Pack string */
   (void) or_pack_string (data, uri);
 
+  /* temporary solution : appending a log record requires a valid mvccid into tdes;
+   * since this function may be used in postpone context, when the mvcc_id is already reset, we need to use mvcc_id
+   * of transaction before it was completed
+   */
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  saved_mvcc_id = tdes->mvccinfo.id;
+
+  assert (saved_mvcc_id != MVCCID_NULL);
+
+  tdes->mvccinfo.id = mvvc_id;
+
   /* This is not actually ever undone, but vacuum will process undo data of log entry. */
   log_append_undo_data (thread_p, RVES_NOTIFY_VACUUM, &addr, length, data);
+
+  tdes->mvccinfo.id = saved_mvcc_id;
 }
 #endif /* SERVER_MODE */
 

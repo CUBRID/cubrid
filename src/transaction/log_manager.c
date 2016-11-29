@@ -5297,6 +5297,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * be rolled back. */
   logtb_complete_mvcc (thread_p, tdes, true);
 
+  assert (tdes->mvccinfo.id == MVCCID_NULL);
+
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
    * during TRAN_UNACTIVE_WILL_COMMIT phase.
@@ -8342,7 +8344,9 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
       if (postpone_type == LOG_COMMIT_WITH_POSTPONE)
 	{
 	  assert (tdes->topops.last < 0);
+	  assert (tdes->mvccinfo.id == MVCCID_NULL);
 	  log_append_commit_postpone (thread_p, tdes, start_postpone_lsa);
+	  assert (tdes->mvccinfo.id == MVCCID_NULL);
 	}
       else
 	{
@@ -8499,6 +8503,11 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		      if (log_run_postpone_op (thread_p, &log_lsa, log_pgptr) != NO_ERROR)
 			{
 			  goto end;
+			}
+
+		      if (postpone_type == LOG_COMMIT_WITH_POSTPONE)
+			{
+			  assert (tdes->mvccinfo.id == MVCCID_NULL);
 			}
 		      break;
 

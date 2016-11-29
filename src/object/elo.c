@@ -1168,7 +1168,7 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
 #if defined (SERVER_MODE)
   {      
     LOB_LOCATOR_STATE state;
-    char *elo_path;
+    const char *elo_path;
 
     elo_path = ((LOG_RCV *) rcv)->data;
     state = get_lob_state_from_locator (elo_path);
@@ -1179,7 +1179,9 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
       }
     else
       {
-	es_notify_vacuum_for_delete (thread_p, elo_path);  
+	MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
+
+	es_notify_vacuum_for_delete (thread_p, mvcc_id, elo_path);  
       }
   }
 #else
