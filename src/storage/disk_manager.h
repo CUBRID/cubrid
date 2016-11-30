@@ -33,6 +33,8 @@
 #include "storage_common.h"
 #include "recovery.h"
 
+#define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */
+
 /*
  * Disk sectors
  */
