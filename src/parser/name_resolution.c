@@ -1063,6 +1063,10 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 		{
 		  col->data_type = parser_copy_tree_list (parser, att->data_type);
 		}
+	      else
+		{
+		  parser_free_tree (parser, col->data_type);
+		}
 
 	      /* tag it as resolved */
 	      col->info.name.spec_id = spec->info.spec.id;
