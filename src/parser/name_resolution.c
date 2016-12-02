@@ -1066,6 +1066,7 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 	      else
 		{
 		  parser_free_tree (parser, col->data_type);
+		  col->data_type = NULL;
 		}
 
 	      /* tag it as resolved */
