@@ -169,7 +169,6 @@ struct lk_res_key
   LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
   OID oid;
   OID class_oid;
-  BTID btid;
 };
 
 /*
