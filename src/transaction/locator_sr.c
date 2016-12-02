@@ -2068,9 +2068,6 @@ xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid, OID * perm_oid,
       assert (error_code == NO_ERROR);
     }
 
-  /* Release the lock which was set in heap_assign_address_with_class_oid according to isolation level */
-  lock_unlock_object (thread_p, perm_oid, class_oid, X_LOCK, false);
-
   return error_code;
 }
 
@@ -5287,21 +5284,12 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     }
 #endif
 
-  /* Unlock the object according to isolation level */
-  /* locked by heap_insert */
-  /* manual duration */
-  lock_unlock_object (thread_p, &null_oid, &real_class_oid, X_LOCK, false);
-
   *force_count = 1;
 
 error1:
   /* update the OID of the class with the actual partition in which the object was inserted */
   COPY_OID (class_oid, &real_class_oid);
   HFID_COPY (hfid, &real_hfid);
-  if (error_code != NO_ERROR)
-    {
-      lock_unlock_object (thread_p, oid, class_oid, X_LOCK, false);
-    }
 
 error2:
   if (cache_attr_copyarea != NULL)
@@ -9263,10 +9251,6 @@ xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p, LC_COPYAREA ** synch_
   else if (recdes.area_size >= SSIZEOF (*obj))
     {
       more_synch = true;
-    }
-  else
-    {
-      lock_unlock_by_isolation_level (thread_p);
     }
 
   return more_synch;

@@ -7022,30 +7022,12 @@ static int
 heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool scan_state)
 {
   int ret = NO_ERROR;
-  HEAP_SCANCACHE_NODE_LIST *p = NULL;
 
   if (scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN)
     {
       er_log_debug (ARG_FILE_LINE, "heap_scancache_end_internal: Your scancache is not initialized");
       return ER_FAILED;
     }
-
-  if (!OID_ISNULL (&scan_cache->node.class_oid))
-    {
-      lock_unlock_scan (thread_p, &scan_cache->node.class_oid, scan_state);
-    }
-
-  p = scan_cache->partition_list;
-  while (p != NULL)
-    {
-      if (!OID_EQ (&p->node.class_oid, &scan_cache->node.class_oid))
-	{
-	  lock_unlock_scan (thread_p, &p->node.class_oid, scan_state);
-	}
-      p = p->next;
-    }
-
-  OID_SET_NULL (&scan_cache->node.class_oid);
 
   ret = heap_scancache_quick_end (thread_p, scan_cache);
 

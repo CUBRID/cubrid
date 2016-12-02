@@ -116,7 +116,7 @@ extern int disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_p
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
 extern bool disk_is_volume_exist (VOLID volid);
 extern int log_reset_wait_msecs (int wait_msecs);
-extern int log_reset_isolation (TRAN_ISOLATION isolation, bool unlock_by_isolation);
+extern int log_reset_isolation (TRAN_ISOLATION isolation);
 extern void log_set_interrupt (int set);
 extern int log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);

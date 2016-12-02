@@ -148,7 +148,7 @@ extern void xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set);
 extern void xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set);
 
 extern int xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs);
-extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool unlock_by_isolation);
+extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation);
 
 extern LOG_LSA *log_get_final_restored_lsa (void);
 extern float log_get_db_compatibility (void);
