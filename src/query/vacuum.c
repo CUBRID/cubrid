@@ -3676,6 +3676,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   LOG_REC_UNDOREDO *undoredo = NULL;
   LOG_REC_UNDO *undo = NULL;
   LOG_REC_SYSOP_END *sysop_end = NULL;
+  LOG_REC_OOT_DATA *oot_data = NULL;
   int ulength;
   char *new_undo_data_buffer = NULL;
   bool is_zipped = false;
@@ -3773,6 +3774,17 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
+    }
+  else if (log_rec_type == LOG_OUT_OF_TRAN_DATA)
+    {
+      /* Get log record undoredo information */
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*oot_data), log_lsa_p, log_page_p);
+      oot_data = (LOG_REC_OOT_DATA *) (log_page_p->area + log_lsa_p->offset);
+
+      /* Get undo data length */
+      ulength = oot_data->length;
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*oot_data), log_lsa_p, log_page_p);
     }
   else
     {

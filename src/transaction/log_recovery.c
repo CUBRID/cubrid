@@ -2243,6 +2243,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+    case LOG_OUT_OF_TRAN_DATA:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:

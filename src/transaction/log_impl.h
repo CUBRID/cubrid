@@ -1231,8 +1231,9 @@ enum log_rectype
   LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
 
-  LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
+  LOG_DUMMY_GENERIC = 50,	/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
+  LOG_OUT_OF_TRAN_DATA = 51,	/* used for logging outside transaction (for instance, during execute postpone) */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -1405,6 +1406,14 @@ struct log_rec_mvcc_redo
 /* Information of database external redo log records */
 typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
 struct log_rec_dbout_redo
+{
+  LOG_RCVINDEX rcvindex;	/* Index to recovery function */
+  int length;			/* Length of redo data */
+};
+
+/* Information of out of transaction log records */
+typedef struct log_rec_oot_data LOG_REC_OOT_DATA;
+struct log_rec_oot_data
 {
   LOG_RCVINDEX rcvindex;	/* Index to recovery function */
   int length;			/* Length of redo data */

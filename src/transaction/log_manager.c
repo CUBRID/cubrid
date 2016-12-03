@@ -457,6 +457,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_GENERIC:
       return "LOG_DUMMY_GENERIC";
+    case LOG_OUT_OF_TRAN_DATA:
+      return "LOG_OUT_OF_TRAN_DATA";
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
@@ -2620,6 +2622,75 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_DBEXTERN_REDO_DATA, rcvindex, NULL, 0, NULL, length, (char *) data);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  (void) prior_lsa_next_record (thread_p, node, tdes);
+}
+
+/*
+ * log_append_out_of_tran_data - Log data for operations outside the transaction context
+ *
+ * return: nothing
+ *
+ *   rcvindex(in): Index to recovery function
+ *   length(in): Length of redo(after) data
+ *   data(in): Redo (after) data
+ *
+ */
+void
+log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int length, const void *data)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+  int error_code = NO_ERROR;
+  LOG_PRIOR_NODE *node;
+
+#if defined(CUBRID_DEBUG)
+  if (RV_fun[rcvindex].redofun == NULL)
+    {
+      assert (false);
+      return;
+    }
+#endif /* CUBRID_DEBUG */
+
+  if (log_No_logging)
+    {
+      /* We are not logging */
+      LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
+      return;
+    }
+
+  /* Vacuum workers are not allowed to use this type of log records. */
+  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      error_code = ER_LOG_UNKNOWN_TRANINDEX;
+      return;
+    }
+
+  /* 
+   * If we are not in a top system operation, the transaction is unactive, and
+   * the transaction is not in the process of been aborted, we do nothing.
+   */
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+    {
+      /* 
+       * We do not log anything when the transaction is unactive and it is not
+       * in the process of aborting.
+       */
+      return;
+    }
+
+  node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_OUT_OF_TRAN_DATA, rcvindex, NULL, 0, NULL, length, (char *) data);
   if (node == NULL)
     {
       return;
@@ -7256,6 +7327,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+    case LOG_OUT_OF_TRAN_DATA:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
@@ -8176,6 +8248,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
+	    case LOG_OUT_OF_TRAN_DATA:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -8592,6 +8665,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
+		    case LOG_OUT_OF_TRAN_DATA:
 		      break;
 
 		    case LOG_POSTPONE:

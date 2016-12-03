@@ -3225,6 +3225,41 @@ prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
   return error_code;
 }
 
+
+/*
+ * prior_lsa_gen_out_of_tran_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_gen_out_of_tran_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex, int length,
+				  const char *data)
+{
+  LOG_REC_OOT_DATA *oot_data;
+  int error_code = NO_ERROR;
+
+  node->data_header_length = sizeof (LOG_REC_OOT_DATA);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  oot_data = (LOG_REC_OOT_DATA *) node->data_header;
+
+  oot_data->rcvindex = rcvindex;
+  oot_data->length = length;
+
+  error_code = prior_lsa_copy_redo_data_to_node (node, oot_data->length, data);
+
+  return error_code;
+}
+
 /*
  * prior_lsa_gen_2pc_prepare_record -
  *
@@ -3454,6 +3489,10 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
 
     case LOG_DBEXTERN_REDO_DATA:
       error_code = prior_lsa_gen_dbout_redo_record (thread_p, node, rcvindex, rlength, rdata);
+      break;
+
+    case LOG_OUT_OF_TRAN_DATA:
+      error_code = prior_lsa_gen_out_of_tran_record (thread_p, node, rcvindex, rlength, rdata);
       break;
 
     case LOG_POSTPONE:

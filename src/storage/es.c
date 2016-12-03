@@ -655,7 +655,7 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const MVCCID mvcc_id, cons
   tdes->mvccinfo.id = mvcc_id;
 
   /* This is not actually ever undone, but vacuum will process undo data of log entry. */
-  log_append_undo_data (thread_p, RVES_NOTIFY_VACUUM, &addr, length, data);
+  log_append_out_of_tran_data (thread_p, RVES_NOTIFY_VACUUM, length, data);
 
   tdes->mvccinfo.id = saved_mvcc_id;
 }
