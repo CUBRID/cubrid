@@ -626,9 +626,7 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const MVCCID mvcc_id, cons
   int length;
   char data_buf[ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE];
   char *data = NULL;
-  LOG_TDES *tdes;
-  MVCCID saved_mvcc_id;
-
+ 
   addr.offset = -1;
   addr.pgptr = NULL;
   addr.vfid = NULL;
@@ -645,19 +643,8 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const MVCCID mvcc_id, cons
   /* Pack string */
   (void) or_pack_string (data, uri);
 
-  /* temporary solution : appending a log record requires a valid mvccid into tdes;
-   * since this function may be used in postpone context, when the mvcc_id is already reset, we need to use mvcc_id
-   * of transaction before it was completed
-   */
-  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  saved_mvcc_id = tdes->mvccinfo.id;
-
-  tdes->mvccinfo.id = mvcc_id;
-
   /* This is not actually ever undone, but vacuum will process undo data of log entry. */
   log_append_out_of_tran_data (thread_p, RVES_NOTIFY_VACUUM, length, data);
-
-  tdes->mvccinfo.id = saved_mvcc_id;
 }
 #endif /* SERVER_MODE */
 
