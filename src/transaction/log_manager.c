@@ -5964,6 +5964,8 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 
   state = tdes->state;
 
+  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
+
   /* 
    * DECLARE THE TRANSACTION AS COMPLETED
    */
