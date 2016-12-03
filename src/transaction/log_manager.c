@@ -8466,6 +8466,9 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last < 0);
 
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+
+  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
+
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
@@ -8652,6 +8655,9 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		{
 		  forward_lsa.pageid = log_lsa.pageid + 1;
 		}
+
+	       er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
+
 
 	      if (log_rec->trid == tdes->trid)
 		{
