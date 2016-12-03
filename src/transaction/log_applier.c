@@ -5160,10 +5160,6 @@ la_apply_insert_log (LA_ITEM * item)
 
   error = obj_repl_add_object (class_obj, &item->key, item->item_type, recdes);
 
-  _er_log_debug (ARG_FILE_LINE, "la_apply_insert_log: item->item_type:%d, la_enable_sql_logging:%d, recdes->length:%d,"
-    " recdes->type:%d, item->class_name:%s",
-    item->item_type, la_enable_sql_logging, recdes->length, recdes->type, item->class_name ? item->class_name : "");
-
   if (la_enable_sql_logging == true)
     {
       bool sql_logging_failed = false;
