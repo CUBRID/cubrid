@@ -5466,6 +5466,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   /* destroy all transaction's remaining temporary files */
   file_tempcache_drop_tran_temp_files (thread_p);
 
+  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
+
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
       /* 
@@ -5473,6 +5475,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        */
 
       log_tran_do_postpone (thread_p, tdes);
+
+      er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
       /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
        * too. */
@@ -5483,6 +5487,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	}
 
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
+
+      er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
       if (is_local_tran)
 	{
@@ -5502,6 +5508,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
+
+	  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
 	  if (retain_lock != true)
 	    {
