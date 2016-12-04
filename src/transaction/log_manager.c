@@ -8847,6 +8847,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   VPID rcv_vpid;		/* Location of data to redo */
   LOG_RCVINDEX rcvindex;	/* The recovery index */
   LOG_DATA_ADDR rvaddr;
+  MVCCID mvccid;
 
   rcvindex = redo->data.rcvindex;
   rcv_vpid.volid = redo->data.volid;
@@ -8882,6 +8883,17 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 
   /* Now call the REDO recovery function */
 
+{
+  
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+
+  er_print_callstack (ARG_FILE_LINE, "rcvindex:%d, mvccinfo.id:%d", rcvindex, tdes->mvccinfo.id);
+  mvccid = tdes->mvccinfo.id;
+}
+
   if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
     {
       LSA_COPY (&rcv.reference_lsa, log_lsa);
@@ -8915,6 +8927,20 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
     {
       pgbuf_unfix (thread_p, rcv.pgptr);
     }
+
+{
+  
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+
+  er_print_callstack (ARG_FILE_LINE, "rcvindex:%d, mvccinfo.id:%d", rcvindex, tdes->mvccinfo.id);
+  if (mvccid != tdes->mvccinfo.id)
+    {
+      abort();
+    }
+}
 
   return error_code;
 }
