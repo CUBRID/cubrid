@@ -2676,6 +2676,8 @@ log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int
       return;
     }
 
+  assert (tdes->mvccinfo.id == 0);
+
   /* 
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
@@ -2696,7 +2698,11 @@ log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int
       return;
     }
 
+  assert (tdes->mvccinfo.id == 0);
+
   (void) prior_lsa_next_record (thread_p, node, tdes);
+
+  assert (tdes->mvccinfo.id == 0);
 }
 
 /*
