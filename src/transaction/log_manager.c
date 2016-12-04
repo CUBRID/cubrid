@@ -8696,6 +8696,11 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 			  goto end;
 			}
 
+		      if (tdes->mvccinfo.id != 0 )
+			{
+			  abort ();
+			}
+
 		      /* TODO: consider to add FI here */
 		      break;
 
