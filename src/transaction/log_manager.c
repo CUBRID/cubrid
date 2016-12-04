@@ -8696,10 +8696,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 			  goto end;
 			}
 
-		      if (tdes->mvccinfo.id != 0 )
-			{
-			  abort ();
-			}
+		      er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
 		      /* TODO: consider to add FI here */
 		      break;
