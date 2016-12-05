@@ -3713,7 +3713,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  /* Read from mvcc_undo structure */
 	  oot_data = (LOG_REC_OOT_DATA *) node->data_header;
 	  vacuum_info = &oot_data->vacuum_info;
-	  mvccid = mvcc_undo->mvccid;
+	  mvccid = oot_data->mvccid;
 	}
       else
 	{
