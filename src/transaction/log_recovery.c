@@ -1484,9 +1484,6 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       break;
 
     case LOG_SYSOP_END_LOGICAL_RUN_POSTPONE:
-      assert (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
-	      || tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
-
       /* we have a complicated story here, because logical run postpone can be run in two situations: transaction
        * postpone or system op postpone.
        * logical run postpone in transaction postpone can have other postpones inside it (e.g. file destroy).
@@ -1504,7 +1501,6 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	  /* run postpone for log record inside a system op */
 	  if (tdes->topops.last < 0 || tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
 	    {
-	      assert_release (false);
 	      tdes->topops.last = 0;
 	      tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
 	    }
@@ -1514,6 +1510,16 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	{
 	  /* run postpone for log record inside transaction */
 	  tdes->posp_nxlsa = sysop_end->run_postpone.postpone_lsa;
+	  if (tdes->topops.last != -1)
+	    {
+	      assert (tdes->topops.last == 0);
+	      assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
+	    }
+	  else
+	    {
+	      /* state must be TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE. it may be TRAN_UNACTIVE_UNILATERALLY_ABORTED */
+	      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+	    }
 
 	  /* no undo */
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
