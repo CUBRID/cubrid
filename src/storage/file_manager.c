@@ -10410,21 +10410,23 @@ file_tracker_check (THREAD_ENTRY * thread_p)
       disk_map_clone_free (&disk_map_clone);
       return allvalid == DISK_VALID ? DISK_ERROR : allvalid;
     }
-
-  /* check all sectors have been cleared */
-  valid = disk_map_clone_check_leaks (disk_map_clone);
-  if (valid == DISK_INVALID)
+  else
     {
-      assert_release (false);
-      allvalid = DISK_INVALID;
-    }
-  else if (valid == DISK_ERROR)
-    {
-      ASSERT_ERROR ();
-      allvalid = allvalid == DISK_VALID ? DISK_ERROR : allvalid;
+      /* check all sectors have been cleared */
+      valid = disk_map_clone_check_leaks (disk_map_clone);
+      if (valid == DISK_INVALID)
+	{
+	  assert_release (false);
+	  allvalid = DISK_INVALID;
+	}
+      else if (valid == DISK_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  allvalid = allvalid == DISK_VALID ? DISK_ERROR : allvalid;
+	}
+      disk_map_clone_free (&disk_map_clone);
     }
 
-  disk_map_clone_free (&disk_map_clone);
 #endif /* SA_MODE */
 
   return allvalid;
