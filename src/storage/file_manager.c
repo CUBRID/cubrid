@@ -7517,7 +7517,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  goto exit;
 	}
 
-      if (FILE_CACHE_LAST_FIND_NTH (fhead) && page_ftab_nth_location)
+      if (FILE_CACHE_LAST_FIND_NTH (fhead))
 	{
 	  /* note that we consider this file cannot be accessed concurrently. therefore we do not promote to write latch
 	   * and we do not set page dirty to update the cached search location. */
