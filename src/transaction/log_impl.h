@@ -1416,6 +1416,8 @@ typedef struct log_rec_oot_data LOG_REC_OOT_DATA;
 struct log_rec_oot_data
 {
   LOG_RCVINDEX rcvindex;	/* Index to recovery function */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
+  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
   int length;			/* Length of redo data */
 };
 

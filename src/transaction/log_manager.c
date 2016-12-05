@@ -2641,7 +2641,8 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
  *
  */
 void
-log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int length, const void *data)
+log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const MVCCID mvccid, int length,
+			     const void * data)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
@@ -2676,8 +2677,6 @@ log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int
       return;
     }
 
-  assert (tdes->mvccinfo.id == 0);
-
   /* 
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
@@ -2698,11 +2697,11 @@ log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int
       return;
     }
 
-  assert (tdes->mvccinfo.id == 0);
+  ((LOG_REC_OOT_DATA *) node->data_header)->mvccid = mvccid;
+  LSA_SET_NULL (&((LOG_REC_OOT_DATA *) node->data_header)->vacuum_info.prev_mvcc_op_log_lsa);
+  VFID_SET_NULL (&((LOG_REC_OOT_DATA *) node->data_header)->vacuum_info.vfid);
 
   (void) prior_lsa_next_record (thread_p, node, tdes);
-
-  assert (tdes->mvccinfo.id == 0);
 }
 
 /*
@@ -5472,8 +5471,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   /* destroy all transaction's remaining temporary files */
   file_tempcache_drop_tran_temp_files (thread_p);
 
-  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
-
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
       /* 
@@ -5481,8 +5478,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
        */
 
       log_tran_do_postpone (thread_p, tdes);
-
-      er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
       /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
        * too. */
@@ -5493,8 +5488,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	}
 
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
-
-      er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
       if (is_local_tran)
 	{
@@ -5514,8 +5507,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
-
-	  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
 	  if (retain_lock != true)
 	    {
@@ -5977,8 +5968,6 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   state = tdes->state;
-
-  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
   /* 
    * DECLARE THE TRANSACTION AS COMPLETED
@@ -8473,8 +8462,6 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 
-  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
-
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
@@ -8662,9 +8649,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		  forward_lsa.pageid = log_lsa.pageid + 1;
 		}
 
-	       er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
-
-
 	      if (log_rec->trid == tdes->trid)
 		{
 		  switch (log_rec->type)
@@ -8701,8 +8685,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 			{
 			  goto end;
 			}
-
-		      er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
 		      /* TODO: consider to add FI here */
 		      break;
@@ -8850,7 +8832,6 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   VPID rcv_vpid;		/* Location of data to redo */
   LOG_RCVINDEX rcvindex;	/* The recovery index */
   LOG_DATA_ADDR rvaddr;
-  MVCCID mvccid;
 
   rcvindex = redo->data.rcvindex;
   rcv_vpid.volid = redo->data.volid;
@@ -8886,17 +8867,6 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 
   /* Now call the REDO recovery function */
 
-{
-  
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-
-
-  er_print_callstack (ARG_FILE_LINE, "rcvindex:%d, mvccinfo.id:%d", rcvindex, tdes->mvccinfo.id);
-  mvccid = tdes->mvccinfo.id;
-}
-
   if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
     {
       LSA_COPY (&rcv.reference_lsa, log_lsa);
@@ -8930,20 +8900,6 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
     {
       pgbuf_unfix (thread_p, rcv.pgptr);
     }
-
-{
-  
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-
-
-  er_print_callstack (ARG_FILE_LINE, "rcvindex:%d, mvccinfo.id:%d", rcvindex, tdes->mvccinfo.id);
-  if (mvccid != tdes->mvccinfo.id)
-    {
-      abort();
-    }
-}
 
   return error_code;
 }

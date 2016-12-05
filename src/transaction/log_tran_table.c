@@ -4825,8 +4825,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   assert (tdes != NULL);
 
-  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
-
   is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
@@ -5221,7 +5219,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     }
 
   MVCC_CLEAR_MVCC_INFO (curr_mvcc_info);
-  er_print_callstack (ARG_FILE_LINE, "thread_p:%p, tdes:%p, mvcc_id:%d", thread_p, tdes, tdes->mvccinfo.id);
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 

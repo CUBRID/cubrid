@@ -591,8 +591,21 @@ elo_create (DB_ELO * elo)
       state = get_lob_state_from_locator (elo->locator);
       if (state == LOB_TRANSIENT_CREATED)
 	{
-	  log_append_postpone (thread_get_thread_entry_info (), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
-			       elo->locator);
+	  char log_data_buffer[sizeof (MVCCID) + PATH_MAX + 1];
+	  char *log_data = log_data_buffer;
+	  char *ptr;
+	  int path_len = strlen (uri);
+	  MVCCID mvccid;
+
+	  mvccid = logtb_get_current_mvccid (thread_get_thread_entry_info ());
+
+	  ptr = log_data;
+	  memcpy (ptr, &mvccid, sizeof (mvccid));
+	  ptr += sizeof (mvccid);
+	  memcpy (ptr, uri, path_len + 1);
+	  ptr += path_len + 1;
+
+	  log_append_postpone (thread_get_thread_entry_info (), RVELO_DELETE_FILE, &addr, ptr - log_data, log_data);
 	}
     }
 #endif
@@ -847,10 +860,22 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	  {
 	    /* SA and server mode : postpone operation which means either a immediate delete at commit (SA) or
 	     * a notify vacuum for delete */
+	    char log_data_buffer[sizeof (MVCCID) + PATH_MAX + 1];
+	    char *log_data = log_data_buffer;
+	    char *ptr;
 	    LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
+	    int path_len = strlen (elo->locator);
+	    MVCCID mvccid;
 
-	    log_append_postpone (thread_get_thread_entry_info(), RVELO_DELETE_FILE, &addr, strlen (elo->locator) + 1,
-				 elo->locator);
+	    mvccid = logtb_get_current_mvccid (thread_get_thread_entry_info ());
+
+	    ptr = log_data;
+	    memcpy (ptr, &mvccid, sizeof (mvccid));
+	    ptr += sizeof (mvccid);
+	    memcpy (ptr, elo->locator, path_len + 1);
+	    ptr += path_len + 1;
+
+	    log_append_postpone (thread_get_thread_entry_info (), RVELO_DELETE_FILE, &addr, ptr - log_data, log_data);
 	  }
 #endif
 	}
@@ -989,16 +1014,39 @@ get_lob_state_from_locator (const char *locator)
 }
 
 int
+elo_rv_undo_create_elo (THREAD_ENTRY * thread_p, void * rcv)
+{
+  const char *elo_path;
+
+  elo_path = ((LOG_RCV *) rcv)->data;
+  assert (elo_path != NULL);
+
+  es_delete_file (elo_path);
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (thread_p, PSTAT_ELO_DELETE_FILE);
+#endif
+  return NO_ERROR;
+}
+
+int
 elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
 {
+  const char *elo_path;
+  MVCCID mvccid;
+  const char *ptr;
+
   assert (((LOG_RCV *) rcv)->data != NULL);
+  
+  ptr = ((LOG_RCV *) rcv)->data;
+  mvccid = *((MVCCID *) ptr);
+  ptr += sizeof (mvccid);
+
+  elo_path = ptr;
 
 #if defined (SERVER_MODE)
   {      
     LOB_LOCATOR_STATE state;
-    const char *elo_path;
-
-    elo_path = ((LOG_RCV *) rcv)->data;
+ 
     state = get_lob_state_from_locator (elo_path);
     if (state == LOB_TRANSIENT_CREATED)
       {
@@ -1007,13 +1055,11 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
       }
     else
       {
-	MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
-
-	es_notify_vacuum_for_delete (thread_p, mvcc_id, elo_path);  
+	es_notify_vacuum_for_delete (thread_p, mvccid, elo_path);  
       }
   }
 #else
-  es_delete_file (((LOG_RCV *) rcv)->data);
+  es_delete_file (elo_path);
 #endif
 
   return NO_ERROR;

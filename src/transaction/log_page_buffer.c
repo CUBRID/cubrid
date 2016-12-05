@@ -3671,6 +3671,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   LOG_VACUUM_INFO *vacuum_info = NULL;
+  LOG_REC_OOT_DATA *oot_data;
   int rv;
   MVCCID mvccid = MVCCID_NULL;
 
@@ -3687,6 +3688,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
    * the index of MVCC operations. */
   if (node->log_header.type == LOG_MVCC_UNDO_DATA || node->log_header.type == LOG_MVCC_UNDOREDO_DATA
       || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA
+      || node->log_header.type == LOG_OUT_OF_TRAN_DATA
       || (node->log_header.type == LOG_SYSOP_END
 	  && ((LOG_REC_SYSOP_END *) node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
     {
@@ -3704,6 +3706,13 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  /* Read from mvcc_undo structure */
 	  mvcc_undo = &((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
 	  vacuum_info = &mvcc_undo->vacuum_info;
+	  mvccid = mvcc_undo->mvccid;
+	}
+      else if (node->log_header.type == LOG_OUT_OF_TRAN_DATA)
+	{
+	  /* Read from mvcc_undo structure */
+	  oot_data = (LOG_REC_OOT_DATA *) node->data_header;
+	  vacuum_info = &oot_data->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 	}
       else
