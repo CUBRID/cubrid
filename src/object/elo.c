@@ -1017,11 +1017,16 @@ int
 elo_rv_undo_create_elo (THREAD_ENTRY * thread_p, void * rcv)
 {
   const char *elo_path;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
   elo_path = ((LOG_RCV *) rcv)->data;
   assert (elo_path != NULL);
 
   es_delete_file (elo_path);
+#if !defined (CS_MODE)
+  log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, &addr);
+#endif
+
 #if defined (SERVER_MODE)
   perfmon_inc_stat (thread_p, PSTAT_ELO_DELETE_FILE);
 #endif
