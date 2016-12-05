@@ -8136,6 +8136,8 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
       VPID_SET_NULL (&extdata_user_page_ftab->vpid_next);
       extdata_user_page_ftab->n_items = 0;
       fhead->vpid_last_user_page_ftab = vpid_fhead;
+      fhead->vpid_find_nth_last = vpid_fhead;
+      fhead->first_index_find_nth_last = 0;
     }
 
   /* collect table pages */
