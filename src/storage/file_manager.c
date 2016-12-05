@@ -338,7 +338,8 @@ static bool file_Logging = false;
   "\t\ttable offsets: partial = %d, full = %d, user page = %d \n" \
   "\t\tvpid_sticky_first = %d|%d \n" \
   "\t\tvpid_last_temp_alloc = %d|%d, offset_to_last_temp_alloc=%d \n" \
-  "\t\tvpid_last_user_page_ftab = %d|%d \n"
+  "\t\tvpid_last_user_page_ftab = %d|%d \n" \
+  "\t\tvpid_find_nth_last = %d|%d, first_index_find_nth_last = %d \n"
 #define FILE_HEAD_FULL_AS_ARGS(fhead) \
   FILE_HEAD_ALLOC_AS_ARGS (fhead), \
   VFID_AS_ARGS (&(fhead)->self), (long long int) fhead->time_creation, file_type_to_string ((fhead)->type), \
@@ -346,7 +347,8 @@ static bool file_Logging = false;
   (fhead)->offset_to_partial_ftab, (fhead)->offset_to_full_ftab, (fhead)->offset_to_user_page_ftab, \
   VPID_AS_ARGS (&(fhead)->vpid_sticky_first), \
   VPID_AS_ARGS (&(fhead)->vpid_last_temp_alloc), (fhead)->offset_to_last_temp_alloc, \
-  VPID_AS_ARGS (&(fhead)->vpid_last_user_page_ftab)
+  VPID_AS_ARGS (&(fhead)->vpid_last_user_page_ftab) \
+  VPID_AS_ARGS (&(fhead)->vpid_find_nth_last), (fhead)->first_index_find_nth_last
 
 #define FILE_EXTDATA_MSG(name) \
   "\t" name ": { vpid_next = %d|%d, max_size = %d, item_size = %d, n_items = %d } \n"
@@ -7389,7 +7391,8 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab = NULL;
-  PAGE_PTR page_ftab = NULL;
+  PAGE_PTR page_ftab_start = NULL;
+  PAGE_PTR page_ftab_nth_location = NULL;
   FILE_FIND_NTH_CONTEXT find_nth_context;
   int error_code = NO_ERROR;
 
@@ -7489,14 +7492,14 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  && !VPID_EQ (&vpid_fhead, &fhead->vpid_find_nth_last) && nth >= fhead->first_index_find_nth_last)
 	{
 	  /* start searching from last search location */
-	  page_ftab =
+	  page_ftab_start =
 	    pgbuf_fix (thread_p, &fhead->vpid_find_nth_last, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (page_ftab == NULL)
+	  if (page_ftab_start == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
-	  extdata_user_page_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
+	  extdata_user_page_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab_start;
 	  find_nth_context.first_index = fhead->first_index_find_nth_last;
 	  find_nth_context.nth -= fhead->first_index_find_nth_last;
 	}
@@ -7507,19 +7510,29 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	}
       /* we can go directly to the right VPID. */
       error_code = file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, file_extdata_find_nth_vpid,
-					     &find_nth_context, NULL, NULL, false, NULL, NULL);
+					     &find_nth_context, NULL, NULL, false, NULL, &page_ftab_nth_location);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
 
-      if (FILE_CACHE_LAST_FIND_NTH (fhead))
+      if (FILE_CACHE_LAST_FIND_NTH (fhead) && page_ftab_nth_location)
 	{
 	  /* note that we consider this file cannot be accessed concurrently. therefore we do not promote to write latch
 	   * and we do not set page dirty to update the cached search location. */
-	  fhead->vpid_find_nth_last = *find_nth_context.vpid_nth;
+	  if (page_ftab_nth_location == NULL)
+	    {
+	      /* it was found in the starting page */
+	      page_ftab_nth_location = page_ftab_start != NULL ? page_ftab_start : page_fhead;
+	    }
+	  pgbuf_get_vpid (page_ftab_nth_location, &fhead->vpid_find_nth_last);
 	  fhead->first_index_find_nth_last = find_nth_context.first_index;
+
+	  file_log ("file_numerable_find_nth", "update fhead.fist_index_find_nth_last to %d "
+		    "and fhead->vpid_find_nth_last to %d|%d while searching nth=%d in file %d|%d",
+		    fhead->first_index_find_nth_last, VPID_AS_ARGS (&fhead->vpid_find_nth_last), nth,
+		    VFID_AS_ARGS (vfid));
 	}
     }
 
@@ -7534,9 +7547,14 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
   assert (error_code == NO_ERROR);
 
 exit:
-  if (page_ftab != NULL)
+  if (page_ftab_nth_location != NULL && page_ftab_nth_location != page_ftab_start
+      && page_ftab_nth_location != page_fhead)
     {
-      pgbuf_unfix (thread_p, page_ftab);
+      pgbuf_unfix (thread_p, page_ftab_nth_location);
+    }
+  if (page_ftab_start != NULL)
+    {
+      pgbuf_unfix (thread_p, page_ftab_start);
     }
   if (page_fhead != NULL)
     {
