@@ -347,7 +347,7 @@ static bool file_Logging = false;
   (fhead)->offset_to_partial_ftab, (fhead)->offset_to_full_ftab, (fhead)->offset_to_user_page_ftab, \
   VPID_AS_ARGS (&(fhead)->vpid_sticky_first), \
   VPID_AS_ARGS (&(fhead)->vpid_last_temp_alloc), (fhead)->offset_to_last_temp_alloc, \
-  VPID_AS_ARGS (&(fhead)->vpid_last_user_page_ftab) \
+  VPID_AS_ARGS (&(fhead)->vpid_last_user_page_ftab), \
   VPID_AS_ARGS (&(fhead)->vpid_find_nth_last), (fhead)->first_index_find_nth_last
 
 #define FILE_EXTDATA_MSG(name) \
