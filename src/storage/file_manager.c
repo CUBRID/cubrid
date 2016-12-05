@@ -131,11 +131,26 @@ struct file_header
    * page of user page table. Newly allocated page is appended here. */
   VPID vpid_last_user_page_ftab;
 
+  /* cache last file_numerable_find_nth page and index of its entry. used as an optimization for external sort files.
+   * the extensible hash case is not interesting for this optimization (because they are usually small files and because
+   * the access pattern is less predictable.
+   * the usual pattern external sort files is find nth, find nth+1, find nth+2 and so on. so we can cache the page and
+   * index of its first entry from last search to predict where the next file_numerable_find_nth will land.
+   *
+   * how it works:
+   * cache last search location for file_numerable_find_nth by saving user page table page VPID and index of first entry
+   * in page. next search will probably land in the same page (and it will just need to get to the right offset).
+   * if a page is deallocated, the cached location is reset (this is just a safe-guard since external sort does not
+   * deallocate pages currently.
+   * if a page is allocated, since it is appended at the end, will not affect the cached search location. current thread
+   * is actually the only one accessing the file so it can change it safely without promoting to write latch. to avoid
+   * safe-guards, we won't set the page dirty (it is hot anyway and likely to remain in memory).
+   */
+  VPID vpid_find_nth_last;
+  int first_index_find_nth_last;
+
   /* reserved area for future extension */
   INT32 reserved0;
-  INT32 reserved1;
-  INT32 reserved2;
-  INT32 reserved3;
 };
 
 /* Disk size of file header. */
@@ -147,6 +162,9 @@ struct file_header
 
 #define FILE_IS_NUMERABLE(fh) (((fh)->file_flags & FILE_FLAG_NUMERABLE) != 0)
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
+
+#define FILE_CACHE_LAST_FIND_NTH(fh) \
+  (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP)
 
 /* Numerable file types. Currently, we used this property for extensible hashes and sort files. */
 #define FILE_TYPE_CAN_BE_NUMERABLE(ftype) ((ftype) == FILE_EXTENDIBLE_HASH \
@@ -413,6 +431,7 @@ struct file_find_nth_context
 {
   VPID *vpid_nth;
   int nth;
+  int first_index;
 };
 
 /************************************************************************/
@@ -829,6 +848,8 @@ file_header_init (FILE_HEADER * fhead)
   VPID_SET_NULL (&fhead->vpid_last_temp_alloc);
   fhead->offset_to_last_temp_alloc = NULL_OFFSET;
   VPID_SET_NULL (&fhead->vpid_last_user_page_ftab);
+  VPID_SET_NULL (&fhead->vpid_find_nth_last);
+  fhead->first_index_find_nth_last = 0;
   VPID_SET_NULL (&fhead->vpid_sticky_first);
 
   fhead->n_page_total = 0;
@@ -845,7 +866,7 @@ file_header_init (FILE_HEADER * fhead)
   fhead->offset_to_full_ftab = NULL_OFFSET;
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
 
-  fhead->reserved0 = fhead->reserved1 = fhead->reserved2 = fhead->reserved3 = 0;
+  fhead->reserved0 = 0;
 }
 
 /*
@@ -3220,6 +3241,8 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   VPID_SET_NULL (&fhead->vpid_last_temp_alloc);
   fhead->offset_to_last_temp_alloc = NULL_OFFSET;
   VPID_SET_NULL (&fhead->vpid_last_user_page_ftab);
+  VPID_SET_NULL (&fhead->vpid_find_nth_last);
+  fhead->first_index_find_nth_last = 0;
   VPID_SET_NULL (&fhead->vpid_sticky_first);
 
   fhead->n_page_total = 0;
@@ -3495,6 +3518,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
     {
       /* set last user page table VPID to header */
       fhead->vpid_last_user_page_ftab = vpid_fhead;
+      fhead->vpid_find_nth_last = vpid_fhead;
     }
 
   /* set all stats */
@@ -5416,6 +5440,13 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 
   file_log ("file_dealloc", "file %d|%d marked vpid %|%d as deleted", VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
 
+  if (FILE_CACHE_LAST_FIND_NTH (fhead))
+    {
+      /* reset cached search location */
+      VPID_SET_NULL (&fhead->vpid_find_nth_last);
+      fhead->first_index_find_nth_last = 0;
+    }
+
   /* done */
   assert (error_code != NO_ERROR);
 
@@ -7286,6 +7317,7 @@ file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA 
     {
       /* not in this extensible data. continue searching. */
       find_nth_context->nth -= count_vpid;
+      find_nth_context->first_index += count_vpid;
     }
   else
     {
@@ -7357,6 +7389,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab = NULL;
+  PAGE_PTR page_ftab = NULL;
   FILE_FIND_NTH_CONTEXT find_nth_context;
   int error_code = NO_ERROR;
 
@@ -7382,6 +7415,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (fhead);
+  assert (FILE_IS_NUMERABLE (fhead));
   assert (nth < fhead->n_page_user || (auto_alloc && nth == fhead->n_page_user));
 
   if (auto_alloc && nth == (fhead->n_page_user - fhead->n_page_mark_delete))
@@ -7451,6 +7485,26 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   else
     {
+      if (FILE_CACHE_LAST_FIND_NTH (fhead) && !VPID_ISNULL (&fhead->vpid_find_nth_last)
+	  && !VPID_EQ (&vpid_fhead, &fhead->vpid_find_nth_last) && nth >= fhead->first_index_find_nth_last)
+	{
+	  /* start searching from last search location */
+	  page_ftab =
+	    pgbuf_fix (thread_p, &fhead->vpid_find_nth_last, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_ftab == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	  extdata_user_page_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
+	  find_nth_context.first_index = fhead->first_index_find_nth_last;
+	  find_nth_context.nth -= fhead->first_index_find_nth_last;
+	}
+      else
+	{
+	  /* no last search location or it could not be used. start searching from the beginning. */
+	  find_nth_context.first_index = 0;
+	}
       /* we can go directly to the right VPID. */
       error_code = file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, file_extdata_find_nth_vpid,
 					     &find_nth_context, NULL, NULL, false, NULL, NULL);
@@ -7458,6 +7512,14 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+
+      if (FILE_CACHE_LAST_FIND_NTH (fhead))
+	{
+	  /* note that we consider this file cannot be accessed concurrently. therefore we do not promote to write latch
+	   * and we do not set page dirty to update the cached search location. */
+	  fhead->vpid_find_nth_last = *find_nth_context.vpid_nth;
+	  fhead->first_index_find_nth_last = find_nth_context.first_index;
 	}
     }
 
@@ -7472,6 +7534,10 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
   assert (error_code == NO_ERROR);
 
 exit:
+  if (page_ftab != NULL)
+    {
+      pgbuf_unfix (thread_p, page_ftab);
+    }
   if (page_fhead != NULL)
     {
       pgbuf_unfix (thread_p, page_fhead);
