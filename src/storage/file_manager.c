@@ -3260,7 +3260,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   fhead->offset_to_full_ftab = NULL_OFFSET;
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
 
-  fhead->reserved0 = fhead->reserved1 = fhead->reserved2 = fhead->reserved3 = 0;
+  fhead->reserved0 = 0;
 
   /* start with a negative empty sector (because we have allocated header). */
   fhead->n_sector_empty--;
