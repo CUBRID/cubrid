@@ -3745,7 +3745,11 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  assert (log_Gl.hdr.last_block_oldest_mvccid <= vacuum_get_global_oldest_active_mvccid ());
 	  log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	  log_Gl.hdr.last_block_newest_mvccid = mvccid;
-	  assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
+	  
+	  /* last_block_oldest_mvccid is used for managing dropped files; we don't use this type of record
+	   * (LOG_OUT_OF_TRAN_DATA) for dropping files */
+	  assert (node->log_header.type == LOG_OUT_OF_TRAN_DATA
+		  || !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
 	}
       else
 	{
@@ -3760,7 +3764,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	    {
 	      log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	    }
-	  assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
+	  assert (node->log_header.type == LOG_OUT_OF_TRAN_DATA
+		  || !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
 	}
 
       /* Replace last MVCC deleted/updated log record */
