@@ -61,8 +61,6 @@
 /* Define structures, globals, and macro's                              */
 /************************************************************************/
 
-#define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */
-
 /* DON'T USE sizeof on this structure.. size if variable */
 typedef struct disk_volume_header DISK_VOLUME_HEADER;
 struct disk_volume_header

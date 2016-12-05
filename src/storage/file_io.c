@@ -9945,7 +9945,7 @@ exit_on_error:
  *   session_p(in/out):  The session array
  *   to_vlabel_p(in): Restore the next file using this name
  *   verbose_to_vlabel_p(in): Printable volume name
- *   prev_vlabel_p(in): Previous restored file name
+ *   prev_vlabel_p(out): Previous restored file name
  *   page_bitmap(in): Page bitmap to record which pages have already 
  *                    been restored
  *   is_remember_pages(in): true if we need to track which pages are restored
@@ -9965,6 +9965,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
   int unit;
   int i;
   char *buffer_p;
+  bool incremental_includes_volume_header = false;
 
   npages = (int) CEIL_PTVDIV (session_p->dbfile.nbytes, IO_PAGESIZE);
   session_p->dbfile.vlabel = to_vol_label_p;
@@ -10079,7 +10080,13 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
       /* Restore the page we just read in */
       if (session_p->dbfile.level != FILEIO_BACKUP_FULL_LEVEL)
-	next_page_id = FILEIO_GET_BACKUP_PAGE_ID (session_p->dbfile.area);
+	{
+	  next_page_id = FILEIO_GET_BACKUP_PAGE_ID (session_p->dbfile.area);
+	  if (next_page_id == DISK_VOLHEADER_PAGE)
+	    {
+	      incremental_includes_volume_header = true;
+	    }
+	}
 
       buffer_p = (char *) &session_p->dbfile.area->iopage;
       for (i = 0; i < unit && next_page_id < npages; i++)
@@ -10118,35 +10125,42 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
   /* check for restoring the database and log volumes to the path specified in the database-loc-file */
   if (session_p->bkup.loc_db_fullname[0] != '\0' && session_p->dbfile.volid >= LOG_DBFIRST_VOLID)
     {
-      VOLID volid;
-
-      volid = session_p->dbfile.volid;
-      if (disk_set_creation (thread_p, volid, to_vol_label_p, &backup_header_p->db_creation,
-			     &session_p->bkup.last_chkpt_lsa, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+      /* Volume header page may not be included in incremental backup volumes.
+       * This means that volume header of a partially restoredb volume may not exist.
+       */
+      if (session_p->dbfile.level == FILEIO_BACKUP_FULL_LEVEL || incremental_includes_volume_header == true)
 	{
-	  goto error;
-	}
+	  VOLID volid;
 
-      if (volid != LOG_DBFIRST_VOLID)
-	{
-	  VOLID prev_volid;
-	  int prev_vdes;
-
-	  /* previous vol */
-	  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
-	  prev_vdes = fileio_mount (thread_p, NULL, prev_vol_label_p, prev_volid, false, false);
-	  if (prev_vdes == NULL_VOLDES)
+	  volid = session_p->dbfile.volid;
+	  if (disk_set_creation (thread_p, volid, to_vol_label_p, &backup_header_p->db_creation,
+				 &session_p->bkup.last_chkpt_lsa, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  if (disk_set_link (thread_p, prev_volid, volid, to_vol_label_p, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+	  if (volid != LOG_DBFIRST_VOLID)
 	    {
+	      VOLID prev_volid;
+	      int prev_vdes;
+
+	      /* previous vol */
+	      prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
+	      prev_vdes = fileio_mount (thread_p, NULL, prev_vol_label_p, prev_volid, false, false);
+	      if (prev_vdes == NULL_VOLDES)
+		{
+		  goto error;
+		}
+
+	      if (disk_set_link (thread_p, prev_volid, volid, to_vol_label_p, false, DISK_FLUSH_AND_INVALIDATE) !=
+		  NO_ERROR)
+		{
+		  fileio_dismount (thread_p, prev_vdes);
+		  goto error;
+		}
+
 	      fileio_dismount (thread_p, prev_vdes);
-	      goto error;
 	    }
-
-	  fileio_dismount (thread_p, prev_vdes);
 	}
 
       /* save current volname */
