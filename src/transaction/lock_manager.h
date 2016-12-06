@@ -75,14 +75,6 @@ typedef enum
   KEY_LOCK_ESCALATED = 2
 } KEY_LOCK_ESCALATION;
 
-typedef struct lk_acquisition_history LK_ACQUISITION_HISTORY;
-struct lk_acquisition_history
-{
-  LOCK req_mode;
-  LK_ACQUISITION_HISTORY *next;
-  LK_ACQUISITION_HISTORY *prev;
-};
-
 /*****************************/
 /* Lock Heap Entry Structure */
 /*****************************/
@@ -102,8 +94,6 @@ struct lk_entry
   LK_ENTRY *tran_next;		/* list of locks that trans. holds */
   LK_ENTRY *tran_prev;		/* list of locks that trans. holds */
   LK_ENTRY *class_entry;	/* ptr. to class lk_entry */
-  LK_ACQUISITION_HISTORY *history;	/* lock acquisition history */
-  LK_ACQUISITION_HISTORY *recent;	/* last node of history list */
   int ngranules;		/* number of finer granules */
   int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
@@ -179,7 +169,6 @@ struct lk_res_key
   LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
   OID oid;
   OID class_oid;
-  BTID btid;
 };
 
 /*
@@ -220,10 +209,8 @@ extern void lock_unlock_object_donot_move_to_non2pl (THREAD_ENTRY * thread_p, co
 						     LOCK lock);
 extern void lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int force);
 extern void lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset);
-extern void lock_unlock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool scan_state);
 extern void lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint);
 extern void lock_unlock_all (THREAD_ENTRY * thread_p);
-extern void lock_unlock_by_isolation_level (THREAD_ENTRY * thread_p);
 extern LOCK lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index);
 extern bool lock_has_xlock (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)

@@ -3009,17 +3009,15 @@ logtb_find_log_records_count (int tran_index)
  *                         TRAN_SERIALIZABLE
  *                         TRAN_REPEATABLE_READ
  *                         TRAN_READ_COMMITTED
- *   unlock_by_isolation(in): unlock by isolation during reset
  *
- * Note:Reset the default isolation level for the current transaction
- *              index (client).
+ * Note:Reset the default isolation level for the current transaction index (client).
  *
  * Note/Warning: This function must be called when the current transaction has
  *               not been done any work (i.e, just after restart, commit, or
  *               abort), otherwise, its isolation behaviour will be undefined.
  */
 int
-xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool unlock_by_isolation)
+xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation)
 {
   TRAN_ISOLATION old_isolation;
   int error_code = NO_ERROR;
@@ -3033,10 +3031,6 @@ xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool 
     {
       old_isolation = tdes->isolation;
       tdes->isolation = isolation;
-      if (unlock_by_isolation == true)
-	{
-	  lock_unlock_by_isolation_level (thread_p);
-	}
     }
   else
     {
