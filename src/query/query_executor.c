@@ -9859,7 +9859,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
   if (idx_info->has_single_col)
     {
       error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, NULL, index_attr_info,
-					        &oor_context);
+						&oor_context);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;

@@ -756,47 +756,47 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 
       switch (state)
 	{
-	  case LOB_PERMANENT_CREATED:
-	  case LOB_TRANSIENT_CREATED:
+	case LOB_PERMANENT_CREATED:
+	case LOB_TRANSIENT_CREATED:
+	  {
+	    ret = es_copy_file (real_locator, elo->meta_data, out_uri);
+	    if (ret != NO_ERROR)
 	      {
-		ret = es_copy_file (real_locator, elo->meta_data, out_uri);
-		if (ret != NO_ERROR)
-		  {
-		    goto error_return;
-		  }
-		locator = db_private_strdup (NULL, out_uri);
-		if (locator == NULL)
-		  {
-		    es_delete_file (out_uri);
-		    goto error_return;
-		  }
+		goto error_return;
+	      }
+	    locator = db_private_strdup (NULL, out_uri);
+	    if (locator == NULL)
+	      {
+		es_delete_file (out_uri);
+		goto error_return;
+	      }
 #if !defined (CS_MODE)
-		addr.offset = NULL_SLOTID;
-		addr.pgptr = NULL;
-		addr.vfid = NULL;
+	    addr.offset = NULL_SLOTID;
+	    addr.pgptr = NULL;
+	    addr.vfid = NULL;
 
-		undo_crumbs[0].length = strlen (out_uri) + 1;
-		undo_crumbs[0].data = (char *) out_uri;
-		num_undo_crumbs = 1;
-		log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
-					    undo_crumbs, NULL);
+	    undo_crumbs[0].length = strlen (out_uri) + 1;
+	    undo_crumbs[0].data = (char *) out_uri;
+	    num_undo_crumbs = 1;
+	    log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
+					undo_crumbs, NULL);
 #endif
 
-	      }
+	  }
 	  break;
 
-	    default:
-	      assert (0);
-	      return ER_FAILED;
-	    }
+	default:
+	  assert (0);
+	  return ER_FAILED;
+	}
     }
 
-      *dest = *elo;
-      dest->locator = locator;
-      dest->meta_data = meta_data;
+  *dest = *elo;
+  dest->locator = locator;
+  dest->meta_data = meta_data;
 
 #if defined (SERVER_MODE)
-      perfmon_inc_stat (NULL, PSTAT_ELO_COPY_FILE);
+  perfmon_inc_stat (NULL, PSTAT_ELO_COPY_FILE);
 #endif
 
   return NO_ERROR;
@@ -1014,7 +1014,7 @@ get_lob_state_from_locator (const char *locator)
 }
 
 int
-elo_rv_undo_create_elo (THREAD_ENTRY * thread_p, void * rcv)
+elo_rv_undo_create_elo (THREAD_ENTRY * thread_p, void *rcv)
 {
   const char *elo_path;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
@@ -1034,14 +1034,14 @@ elo_rv_undo_create_elo (THREAD_ENTRY * thread_p, void * rcv)
 }
 
 int
-elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
+elo_rv_delete_elo (THREAD_ENTRY * thread_p, void *rcv)
 {
   const char *elo_path;
   MVCCID mvccid;
   const char *ptr;
 
   assert (((LOG_RCV *) rcv)->data != NULL);
-  
+
   ptr = ((LOG_RCV *) rcv)->data;
   mvccid = *((MVCCID *) ptr);
   ptr += sizeof (mvccid);
@@ -1049,9 +1049,9 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
   elo_path = ptr;
 
 #if defined (SERVER_MODE)
-  {      
+  {
     LOB_LOCATOR_STATE state;
- 
+
     state = get_lob_state_from_locator (elo_path);
     if (state == LOB_TRANSIENT_CREATED)
       {
@@ -1060,7 +1060,7 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
       }
     else
       {
-	es_notify_vacuum_for_delete (thread_p, mvccid, elo_path);  
+	es_notify_vacuum_for_delete (thread_p, mvccid, elo_path);
       }
   }
 #else
@@ -1071,7 +1071,7 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void * rcv)
 }
 
 int
-elo_rv_rename_elo (THREAD_ENTRY * thread_p, void * rcv)
+elo_rv_rename_elo (THREAD_ENTRY * thread_p, void *rcv)
 {
   INT16 offset, size_dst_uri, size_src_uri;
   const char *rcv_data;
@@ -1096,7 +1096,6 @@ elo_rv_rename_elo (THREAD_ENTRY * thread_p, void * rcv)
   src_uri[size_src_uri] = '\0';
 
   es_rename_file_with_new (dst_uri, src_uri);
-  
+
   return NO_ERROR;
 }
-

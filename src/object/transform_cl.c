@@ -127,7 +127,7 @@ static void tf_free_fixup (OR_FIXUP * fix);
 static void fixup_callback (LC_OIDMAP * oidmap);
 static int tf_do_fixup (OR_FIXUP * fix);
 static int put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size);
-static int object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr, bool *oor_flag);
+static int object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr, bool * oor_flag);
 static int put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_);
 static char *get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag, int offset_size);
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
@@ -640,7 +640,7 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
  *    obj(in): instance to examine
  */
 static int
-object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr, bool *oor_flag)
+object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr, bool * oor_flag)
 {
   SM_ATTRIBUTE *att;
   char *mem;
@@ -768,7 +768,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
  *    setjmp/longjmp.
  */
 TF_STATUS
-tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record, bool * index_flag, bool *oor_flag)
+tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record, bool * index_flag, bool * oor_flag)
 {
   OR_BUF orep, *buf;
   SM_CLASS *volatile class_;	/* prevent register optimization */
@@ -999,7 +999,8 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 
 	      att = &(class_->attributes[i]);
 	      mem = obj + att->offset;
-	      oor_flag = OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL (OR_GET_OBJECT_VAR_TABLE (buf->buffer), j, offset_size);
+	      oor_flag =
+		OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL (OR_GET_OBJECT_VAR_TABLE (buf->buffer), j, offset_size);
 
 	      assert (oor_flag == 0);
 	      PRIM_READ (att->type, att->domain, buf, mem, vars[j]);

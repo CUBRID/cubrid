@@ -626,7 +626,7 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const MVCCID mvcc_id, cons
   int length;
   char data_buf[ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE];
   char *data = NULL;
- 
+
   addr.offset = -1;
   addr.pgptr = NULL;
   addr.vfid = NULL;

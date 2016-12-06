@@ -147,7 +147,7 @@ static int rv;
     && ((RCVI) != RVELO_RENAME_FILE) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
-#if 0 /* LOB locator disabled code */
+#if 0				/* LOB locator disabled code */
 /* Assume that locator end with <path>/<meta_name>.<key_name> */
 #define LOCATOR_KEY(locator_) (strrchr (locator_, '.') + 1)
 #define LOCATOR_META(locator_) (strrchr (locator_, PATH_SEPARATOR) + 1)
@@ -2642,7 +2642,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
  */
 void
 log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const MVCCID mvccid, int length,
-			     const void * data)
+			     const void *data)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
@@ -2690,8 +2690,7 @@ log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
       return;
     }
 
-  node =
-    prior_lsa_alloc_and_copy_data (thread_p, LOG_OUT_OF_TRAN_DATA, rcvindex, NULL, 0, NULL, length, (char *) data);
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_OUT_OF_TRAN_DATA, rcvindex, NULL, 0, NULL, length, (char *) data);
   if (node == NULL)
     {
       return;
@@ -5461,7 +5460,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must 
    * be rolled back. */
   logtb_complete_mvcc (thread_p, tdes, true);
-  
+
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
    * during TRAN_UNACTIVE_WILL_COMMIT phase.
@@ -8841,7 +8840,7 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   rcv.data = redo_rcv_data;
 
   /* TODO[arnia] : merge */
-  /* if (rcvindex == RVVAC_DROPPED_FILE_ADD || rcvindex == RVFL_POSTPONE_DESTROY_FILE || rcvindex == RVELO_DELETE_FILE)*/
+  /* if (rcvindex == RVVAC_DROPPED_FILE_ADD || rcvindex == RVFL_POSTPONE_DESTROY_FILE || rcvindex == RVELO_DELETE_FILE) */
   if (VPID_ISNULL (&rcv_vpid))
     {
       /* logical */

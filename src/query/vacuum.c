@@ -3075,7 +3075,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
 #if !defined (NDEBUG)
       if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid)
-	  || (MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid) && log_record_data.rcvindex == RVES_NOTIFY_VACUUM) 
+	  || (MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid) && log_record_data.rcvindex == RVES_NOTIFY_VACUUM)
 	  || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
 	{
 	  /* threshold_mvccid or mvccid or block data may be invalid */

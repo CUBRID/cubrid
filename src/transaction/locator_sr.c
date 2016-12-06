@@ -160,7 +160,7 @@ static bool locator_notify_decache (const OID * class_oid, const OID * oid, void
 static int locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subclasses);
 static int locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, RECDES * old_recdes,
 				       RECDES * recdes, DB_VALUE * key_value, HEAP_SCANCACHE * force_scancache,
-				       LC_COPYAREA **copyarea);
+				       LC_COPYAREA ** copyarea);
 static int locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_COPYAREA_ONEOBJ * obj);
 static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, LC_COPYAREA_ONEOBJ * obj,
 						DB_VALUE * key_value, int err_code, const char *err_msg);
@@ -5189,7 +5189,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	  OR_PUT_OID (rep_dir_offset, &rep_dir);
 
-	  heap_create_update_context (&update_context, &real_hfid, oid, &real_class_oid, recdes, NULL, local_scan_cache);
+	  heap_create_update_context (&update_context, &real_hfid, oid, &real_class_oid, recdes, NULL,
+				      local_scan_cache);
 	  update_context.force_non_mvcc = true;
 
 	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
@@ -5448,7 +5449,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
  *              index entries are updated.
  */
 locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * oldrecdes,
-		      RECDES * recdes, OUT_OF_ROW_CONTEXT * oor_context_p, 
+		      RECDES * recdes, OUT_OF_ROW_CONTEXT * oor_context_p,
 		      int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk, REPL_INFO_TYPE repl_info_type,
 		      int pruning_type, PRUNING_CONTEXT * pcontext, MVCC_REEV_DATA * mvcc_reev_data,
@@ -6584,7 +6585,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
   int has_index;
   OUT_OF_ROW_ATTS out_of_row_attrs = OUT_OF_ROW_ATTS_INITILIAZER;
   OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
-  
+
   oor_context.oor_atts = &out_of_row_attrs;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -6704,7 +6705,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 
 	  /* update */
 	  error_code =
-	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, &oor_context, 
+	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, &oor_context,
 				  has_index, NULL, 0, MULTI_ROW_UPDATE, &scan_cache, &force_count, false, repl_info,
 				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true);
 	  if (error_code != NO_ERROR)
@@ -6916,7 +6917,7 @@ locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, L
  */
 static int
 locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, RECDES * old_recdes, RECDES * recdes,
-			    DB_VALUE * key_value, HEAP_SCANCACHE * force_scancache, LC_COPYAREA **copyarea)
+			    DB_VALUE * key_value, HEAP_SCANCACHE * force_scancache, LC_COPYAREA ** copyarea)
 {
 #define IS_OOR_REPLICATION_OP(op) \
   ((op) == LC_FLUSH_INSERT || (op) == LC_FLUSH_INSERT_PRUNE || (op) == LC_FLUSH_INSERT_PRUNE_VERIFY \
@@ -7137,7 +7138,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   OUT_OF_ROW_ATTS out_of_row_attrs = OUT_OF_ROW_ATTS_INITILIAZER;
   OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
   LC_COPYAREA *copyarea_without_oor = NULL;
-  
+
   oor_context.oor_atts = &out_of_row_attrs;
 
   /* need to start a topop to ensure the atomic operation. */
@@ -7428,7 +7429,8 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
       /* delete old row must be set to true for system classes and false for others, therefore it must be updated for
        * each object. */
 
-      switch (obj->operation){
+      switch (obj->operation)
+	{
 	case LC_FLUSH_INSERT:
 	case LC_FLUSH_INSERT_PRUNE:
 	case LC_FLUSH_INSERT_PRUNE_VERIFY:
@@ -7596,7 +7598,7 @@ error:
 LC_COPYAREA *
 locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 					 RECDES * new_recdes, const int copyarea_length_hint,
-					 OUT_OF_ROW_CONTEXT *oor_context, int lob_create_flag, int lob_delete_flag)
+					 OUT_OF_ROW_CONTEXT * oor_context, int lob_create_flag, int lob_delete_flag)
 {
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
@@ -7822,14 +7824,14 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       if (oor_context.oor_atts->att_cnt > 0 &&
 	  !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	   copyarea_expanded_oor =
-	     locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &oor_context.repl_record, -1,
-						      NULL, LOB_FLAG_EXCLUDE_LOB, LOB_SKIP_DELETE_ON_ATTR_INIT);
-	    if (copyarea_expanded_oor == NULL)
-	      {
-		error_code = ER_FAILED;
-		break;
-	      }
+	  copyarea_expanded_oor =
+	    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &oor_context.repl_record, -1,
+						     NULL, LOB_FLAG_EXCLUDE_LOB, LOB_SKIP_DELETE_ON_ATTR_INIT);
+	  if (copyarea_expanded_oor == NULL)
+	    {
+	      error_code = ER_FAILED;
+	      break;
+	    }
 	}
 
       /* Assume that it has indices */
@@ -13899,7 +13901,7 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
     }
 
 end:
-  
+
   heap_free_oor_context (thread_p, &oor_context);
 
   return ev_res;
@@ -13971,8 +13973,8 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 
   if (mvcc_cond_reeval->rest_attrs->num_attrs != 0)
     {
-       if (heap_attrinfo_read_dbvalues (thread_p, oid_inst, recdesp, NULL, mvcc_cond_reeval->rest_attrs->attr_cache,
-	  &oor_context) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, oid_inst, recdesp, NULL, mvcc_cond_reeval->rest_attrs->attr_cache,
+				       &oor_context) != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
 	  goto end;
@@ -14034,7 +14036,7 @@ locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * 
   if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
     {
       if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache, &oor_context)
-				       != NO_ERROR)
+	  != NO_ERROR)
 	{
 	  return V_ERROR;
 	}
@@ -14053,7 +14055,7 @@ locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * 
   if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
     {
       if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache, &oor_context)
-  				       != NO_ERROR)
+	  != NO_ERROR)
 	{
 	  return V_ERROR;
 	}

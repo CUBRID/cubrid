@@ -854,7 +854,7 @@ es_owfs_rename_file_with_new (const char *src_path, char *new_path)
       return ER_ES_GENERAL;
     }
 
- return NO_ERROR;
+  return NO_ERROR;
 }
 
 /*

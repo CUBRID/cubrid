@@ -288,7 +288,7 @@ struct heap_operation_context
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
-  OUT_OF_ROW_CONTEXT *oor_context_p;  /* OOR context */
+  OUT_OF_ROW_CONTEXT *oor_context_p;	/* OOR context */
 
   /* overflow transient data */
   RECDES map_recdes;		/* built record descriptor during multipage insert */
@@ -374,8 +374,8 @@ struct heap_get_context
   OID *class_oid_p;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache;	/* scan cache */
-  
-  HEAP_CACHE_ATTRINFO attr_info;  /* attribute info (required to expand OOR attributes) */
+
+  HEAP_CACHE_ATTRINFO attr_info;	/* attribute info (required to expand OOR attributes) */
   bool attr_info_inited;
   bool is_fetch_context;
 
@@ -481,7 +481,7 @@ extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * at
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 					HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
-					OUT_OF_ROW_CONTEXT *oor_context);
+					OUT_OF_ROW_CONTEXT * oor_context);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
@@ -491,10 +491,10 @@ extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * a
 			      HEAP_CACHE_ATTRINFO * attr_info);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, RECDES * new_recdes,
-						  OUT_OF_ROW_CONTEXT *oor_context, int lob_delete_flag);
+						  OUT_OF_ROW_CONTEXT * oor_context, int lob_delete_flag);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
-							     OUT_OF_ROW_CONTEXT *oor_context, int lob_delete_flag);
+							     OUT_OF_ROW_CONTEXT * oor_context, int lob_delete_flag);
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
@@ -695,8 +695,8 @@ extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * cla
 extern int heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_get_best_space_num_stats_entries (void);
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
-extern void heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_CONTEXT *oor_context);
+extern void heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_CONTEXT * oor_context);
 extern int heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
-extern int heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID *class_oid_p, RECDES *old_recdes,
-				       RECDES *new_recdes, char **new_recdes_buffer);
+extern int heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID * class_oid_p, RECDES * old_recdes,
+				       RECDES * new_recdes, char **new_recdes_buffer);
 #endif /* _HEAP_FILE_H_ */

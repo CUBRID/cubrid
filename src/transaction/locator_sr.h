@@ -79,7 +79,7 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * h
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
 							     const int copyarea_length_hint,
-							     OUT_OF_ROW_CONTEXT *oor_context, int lob_create_flag,
+							     OUT_OF_ROW_CONTEXT * oor_context, int lob_create_flag,
 							     int lob_delete_flag);
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, BTID * btid,
 					bool btid_dup_key_locked, HFID * newhfid, OID * newoid,

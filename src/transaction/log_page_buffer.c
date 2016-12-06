@@ -3745,7 +3745,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  assert (log_Gl.hdr.last_block_oldest_mvccid <= vacuum_get_global_oldest_active_mvccid ());
 	  log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	  log_Gl.hdr.last_block_newest_mvccid = mvccid;
-	  
+
 	  /* last_block_oldest_mvccid is used for managing dropped files; we don't use this type of record
 	   * (LOG_OUT_OF_TRAN_DATA) for dropping files */
 	  assert (node->log_header.type == LOG_OUT_OF_TRAN_DATA

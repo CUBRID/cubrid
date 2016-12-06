@@ -739,7 +739,7 @@ enum lob_locator_state
   LOB_NOT_FOUND
 };
 
-#if 0 /* LOB locator disabled code */
+#if 0				/* LOB locator disabled code */
 /* lob entry */
 typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
 

@@ -2646,7 +2646,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		    }
 		}
 	    }			/* if (a->att->type->id == DB_TYPE_BLOB) || */
-	  
+
 	  if (error != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
