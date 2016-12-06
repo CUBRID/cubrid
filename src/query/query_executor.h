@@ -445,9 +445,10 @@ struct access_spec_node
   ACCESS_SPEC_TYPE *next;	/* next access specification */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
-  bool pruned;			/* true if partition pruning has been performed */
   int pruning_type;		/* how pruning should be performed on this access spec performed */
   ACCESS_SPEC_FLAG flags;	/* flags from ACCESS_SPEC_FLAG enum */
+  bool pruned;			/* true if partition pruning has been performed */
+  bool clear_value_at_clone_decache;	/* true, if need to clear s_dbval at clone decache */
 };
 
 
@@ -614,6 +615,7 @@ struct update_assignment
   int att_idx;			/* index in the class attributes array */
   DB_VALUE *constant;		/* constant to be assigned to an attribute or NULL */
   REGU_VARIABLE *regu_var;	/* regu variable for rhs in assignment */
+  bool clear_value_at_clone_decache;	/* true, if need to clear constant db_value at clone decache */
 };
 
 /* type of reevaluation */
@@ -975,21 +977,21 @@ struct func_pred
   HEAP_CACHE_ATTRINFO *cache_attrinfo;
 };
 
-#define XASL_LINK_TO_REGU_VARIABLE 1	/* is linked to regu variable ? */
-#define XASL_SKIP_ORDERBY_LIST     2	/* skip sorting for orderby_list ? */
-#define XASL_ZERO_CORR_LEVEL       4	/* is zero-level uncorrelated subquery ? */
-#define XASL_TOP_MOST_XASL         8	/* this is a top most XASL */
-#define XASL_TO_BE_CACHED         16	/* the result will be cached */
-#define	XASL_HAS_NOCYCLE	  32	/* NOCYCLE is specified */
-#define	XASL_HAS_CONNECT_BY	  64	/* has CONNECT BY clause */
-#define XASL_MULTI_UPDATE_AGG	 128	/* is for multi-update with aggregate */
-#define XASL_IGNORE_CYCLES	 256	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
-#define	XASL_OBJFETCH_IGNORE_CLASSOID 512	/* fetch proc should ignore class oid */
-#define XASL_IS_MERGE_QUERY	      1024	/* query belongs to a merge statement */
-#define XASL_USES_MRO	      2048	/* query uses multi range optimization */
-#define XASL_KEEP_DBVAL	      4096	/* do not clear db_value */
-#define XASL_RETURN_GENERATED_KEYS	     8192	/* return generated keys */
-#define XASL_NO_FIXED_SCAN    16384	/* disable fixed scan for this proc */
+#define XASL_LINK_TO_REGU_VARIABLE	0x01	/* is linked to regu variable ? */
+#define XASL_SKIP_ORDERBY_LIST		0x02	/* skip sorting for orderby_list ? */
+#define XASL_ZERO_CORR_LEVEL		0x04	/* is zero-level uncorrelated subquery ? */
+#define XASL_TOP_MOST_XASL		0x08	/* this is a top most XASL */
+#define XASL_TO_BE_CACHED		0x10	/* the result will be cached */
+#define	XASL_HAS_NOCYCLE		0x20	/* NOCYCLE is specified */
+#define	XASL_HAS_CONNECT_BY		0x40	/* has CONNECT BY clause */
+#define XASL_MULTI_UPDATE_AGG		0x80	/* is for multi-update with aggregate */
+#define XASL_IGNORE_CYCLES	       0x100	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
+#define	XASL_OBJFETCH_IGNORE_CLASSOID  0x200	/* fetch proc should ignore class oid */
+#define XASL_IS_MERGE_QUERY	       0x400	/* query belongs to a merge statement */
+#define XASL_USES_MRO		       0x800	/* query uses multi range optimization */
+#define XASL_DECACHE_CLONE	      0x1000	/* decache clone */
+#define XASL_RETURN_GENERATED_KEYS    0x2000	/* return generated keys */
+#define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -1064,8 +1066,8 @@ extern int xts_map_func_pred_to_stream (const FUNC_PRED * xasl, char **stream, i
 
 extern void xts_final (void);
 
-extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, char *xasl_stream,
-				   int xasl_stream_size, void **xasl_unpack_info_ptr);
+extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone,
+				   char *xasl_stream, int xasl_stream_size, void **xasl_unpack_info_ptr);
 extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred_expr_tree,
 					  char *pred_stream, int pred_stream_size);
 extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream,

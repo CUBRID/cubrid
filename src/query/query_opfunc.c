@@ -7710,6 +7710,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   PR_TYPE *pr_type_p;
   OR_BUF buf;
   double dbl;
+  int i;
 
   DB_MAKE_NULL (&sqr_val);
   DB_MAKE_NULL (&dbval);
@@ -8426,6 +8427,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
   DB_TYPE dom_type, val_type;
   TP_DOMAIN_STATUS dom_status;
   int result;
+  HL_HEAPID save_heapid = 0;
 
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
@@ -8462,7 +8464,16 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		}
 	      else
 		{
+		  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		    {
+		      save_heapid = db_change_private_heap (thread_p, 0);
+		    }
+
 		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
+		    }
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
 		      result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
@@ -12188,6 +12199,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;
   DB_DOMAIN *dom;
+  HL_HEAPID save_heapid = 0;
 
   assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operand.type == TYPE_REGU_VAR_LIST);
 
@@ -12243,9 +12255,24 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	  /* Note: we must cast the const value to the same domain as the compared field in the order by clause */
 	  dom = regu_tmp_node->value.domain;
 
+	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_node->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      save_heapid = db_change_private_heap (thread_p, 0);
+	    }
+
 	  if (db_value_coerce (*val_node_p, *val_node_p, dom) != NO_ERROR)
 	    {
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		}
+
 	      goto exit_on_error;
+	    }
+
+	  if (save_heapid != 0)
+	    {
+	      (void) db_change_private_heap (thread_p, save_heapid);
 	    }
 
 	  regu_var_node = regu_var_node->next;

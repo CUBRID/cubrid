@@ -123,4 +123,5 @@ extern bool xcache_can_entry_cache_list (XASL_CACHE_ENTRY * xcache_entry);
 
 extern void xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, XASL_CLONE * xclone);
 extern int xcache_get_entry_count (void);
+extern bool xcache_uses_clones (void);
 #endif /* _XASL_CACHE_H_ */

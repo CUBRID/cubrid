@@ -1,4 +1,5 @@
 /*
+ne_stack_head = -1;
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify
@@ -215,7 +216,7 @@ fpcache_finalize (THREAD_ENTRY * thread_p)
       bh_destroy (thread_p, fpcache_Cleanup_bh);
       fpcache_Cleanup_bh = NULL;
     }
-  (void) db_change_private_heap (thread_p, 0);
+  (void) db_change_private_heap (thread_p, save_heapid);
 
   fpcache_Enabled = false;
 }
@@ -302,8 +303,14 @@ fpcache_entry_uninit (void *entry)
     }
 
   (void) db_change_private_heap (thread_p, old_private_heap);
+  fpcache_entry->clone_stack_head = -1;
 
-  free (fpcache_entry->clone_stack);
+  if (fpcache_entry->clone_stack)
+    {
+      free (fpcache_entry->clone_stack);
+      fpcache_entry->clone_stack = NULL;
+    }
+
   return NO_ERROR;
 }
 
