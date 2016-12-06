@@ -6110,6 +6110,7 @@ exit:
   tzd->ds_rules = all_ds_rules;
   tzd->ds_rule_count = all_ds_rule_count;
 
+  //tzc_update (tzd);
   if (err_status == NO_ERROR)
     {
       if (is_compat == false)
@@ -6366,7 +6367,7 @@ tzc_update (TZ_DATA * tzd)
   char query_buf[1024];
   DB_SESSION *session = NULL, *session2 = NULL, *session3 = NULL;
   STATEMENT_ID stmt_id;
-  DB_QUERY_RESULT *result;
+  DB_QUERY_RESULT *result, *result2, *result3;
   DB_VALUE value, value2, value3;
   int error = NO_ERROR;
   DB_INFO *dir = NULL;
@@ -6411,7 +6412,6 @@ tzc_update (TZ_DATA * tzd)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  db_close_session (session);
 	  need_db_shutdown = true;
 	  goto exit;
 	}
@@ -6420,7 +6420,6 @@ tzc_update (TZ_DATA * tzd)
       error = db_execute_statement_local (session, stmt_id, &result);
       if (error <= 0)
 	{
-	  db_close_session (session);
 	  need_db_shutdown = true;
 	  goto exit;
 	}
@@ -6432,7 +6431,6 @@ tzc_update (TZ_DATA * tzd)
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (result);
-	      db_close_session (session);
 	      need_db_shutdown = true;
 	      goto exit;
 	    }
@@ -6446,13 +6444,19 @@ tzc_update (TZ_DATA * tzd)
 		}
 	      else
 		{
+		  char table_name_buf[100];
 		  /* First get the name of the table */
 		  table_name = db_get_string (&value);
 		  memset (query_buf, 0, sizeof (query_buf));
+		  memset (table_name_buf, 0, sizeof (table_name_buf));
+		  strcat (table_name_buf, "'");
+		  strcat (table_name_buf, table_name);
+		  strcat (table_name_buf, "'");
+
 		  snprintf (query_buf,
 			    sizeof (query_buf) - 1,
 			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
-			    table_name);
+			    table_name_buf);
 		  session2 = db_open_buffer (query_buf);
 		  if (session2 == NULL)
 		    {
@@ -6465,40 +6469,36 @@ tzc_update (TZ_DATA * tzd)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
-		      db_close_session (session2);
 		      need_db_shutdown = true;
 		      goto exit;
 		    }
 
-		  error = db_execute_statement_local (session2, stmt_id, &result);
+		  error = db_execute_statement_local (session2, stmt_id, &result2);
 		  if (error <= 0)
 		    {
-		      db_close_session (session2);
 		      need_db_shutdown = true;
 		      goto exit;
 		    }
 
-		  while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
 		    {
 		      char *column_name = NULL;
 		      int column_type = 0;
 
 		      /* Get the column name */
-		      error = db_query_get_tuple_value (result, 0, &value2);
+		      error = db_query_get_tuple_value (result2, 0, &value2);
 		      if (error != NO_ERROR)
 			{
-			  db_query_end (result);
-			  db_close_session (session);
+			  db_query_end (result2);
 			  need_db_shutdown = true;
 			  goto exit;
 			}
 
 		      /* Get the column type */
-		      error = db_query_get_tuple_value (result, 1, &value3);
+		      error = db_query_get_tuple_value (result2, 1, &value3);
 		      if (error != NO_ERROR)
 			{
-			  db_query_end (result);
-			  db_close_session (session);
+			  db_query_end (result2);
 			  need_db_shutdown = true;
 			  goto exit;
 			}
@@ -6508,10 +6508,10 @@ tzc_update (TZ_DATA * tzd)
 		      column_name = db_get_string (&value2);
 		      column_type = db_get_int (&value3);
 
+		      /* Now do the update if the datatype is of timezone type */
 		      if (column_type == DB_TYPE_DATETIMETZ ||
 			  column_type == DB_TYPE_DATETIMELTZ ||
 			  column_type == DB_TYPE_TIMESTAMPTZ || column_type == DB_TYPE_TIMESTAMPLTZ)
-			//Now do the update
 			{
 			  memset (query_buf, 0, sizeof (query_buf));
 			  snprintf (query_buf, sizeof (query_buf) - 1,
@@ -6529,26 +6529,29 @@ tzc_update (TZ_DATA * tzd)
 			    {
 			      assert (er_errid () != NO_ERROR);
 			      error = er_errid ();
-			      db_close_session (session2);
 			      need_db_shutdown = true;
 			      goto exit;
 			    }
 
-			  error = db_execute_statement_local (session3, stmt_id, &result);
-			  if (error <= 0)
+			  error = db_execute_statement_local (session3, stmt_id, &result3);
+			  if (error < 0)
 			    {
-			      db_close_session (session3);
+			      db_abort_transaction ();
 			      need_db_shutdown = true;
 			      goto exit;
 			    }
 			  db_close_session (session3);
+			  session3 = NULL;
 			}
 		    }
 		  db_close_session (session2);
+		  session2 = NULL;
 		}
 	    }
 	}
+      db_commit_transaction ();
       db_close_session (session);
+      session = NULL;
       db_shutdown ();
     }
 

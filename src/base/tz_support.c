@@ -5601,6 +5601,7 @@ conv_tz (void *p, DB_TYPE type)
 
   /* Save the state */
   save_data = timezone_data;
+  tz_set_new_timezone_data (&timezone_data);
   switch (type)
     {
     case DB_TYPE_TIMESTAMPTZ:
