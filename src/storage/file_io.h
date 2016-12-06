@@ -390,7 +390,7 @@ extern void fileio_close (int vdes);
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			  DKNPAGES npages, bool sweep_clean, bool dolock, bool dosync, size_t page_size,
 			  int kbytes_to_be_written_per_sec, bool reuse_file);
-extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DISK_VOLPURPOSE purpose);
+extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DB_VOLTYPE voltype);
 extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, void *io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
 extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p);
@@ -436,7 +436,8 @@ extern VOLID fileio_find_previous_temp_volume (THREAD_ENTRY * thread_p, VOLID vo
 extern int fileio_get_volume_descriptor (VOLID volid);
 extern bool fileio_map_mounted (THREAD_ENTRY * thread_p, bool (*fun) (THREAD_ENTRY * thread_p, VOLID volid, void *args),
 				void *args);
-extern int fileio_get_number_of_partition_free_pages (const char *path, size_t page_size);
+extern int fileio_get_number_of_partition_free_pages (const char *path, size_t page_size);	/* remove me */
+extern DKNSECTS fileio_get_number_of_partition_free_sectors (const char *path_p);
 extern const char *fileio_rename (VOLID volid, const char *old_vlabel, const char *new_vlabel);
 extern bool fileio_is_volume_exist (const char *vlabel);
 extern int fileio_find_volume_descriptor_with_label (const char *vol_label_p);

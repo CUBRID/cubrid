@@ -9039,6 +9039,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_CRC32:
+    case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
       return true;
 
@@ -21702,7 +21703,6 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
     case PT_IF:
     case PT_FIELD:
     case PT_REVERSE:
-    case PT_DISK_SIZE:
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
     case PT_QPRIOR:
@@ -23736,7 +23736,6 @@ coerce_result:
     case PT_TIMEF:
     case PT_IF:
     case PT_REVERSE:
-    case PT_DISK_SIZE:
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
     case PT_QPRIOR:

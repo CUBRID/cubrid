@@ -3693,21 +3693,11 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       goto error;
     }
 
-#if defined(SERVER_MODE)
-  lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-#endif /* SERVER_MODE */
   free_and_init (record.data);
 
   return NO_ERROR;
 
 error:
-
-#if defined(SERVER_MODE)
-  if (is_lock_inited)
-    {
-      lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-    }
-#endif /* SERVER_MODE */
 
   if (record.data)
     {
@@ -3798,21 +3788,11 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
       goto error;
     }
 
-#if defined(SERVER_MODE)
-  lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-#endif /* SERVER_MODE */
   catcls_free_or_value (value_p);
 
   return NO_ERROR;
 
 error:
-
-#if defined(SERVER_MODE)
-  if (is_lock_inited)
-    {
-      lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-    }
-#endif /* SERVER_MODE */
 
   if (value_p)
     {
@@ -3957,9 +3937,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       free_and_init (record.data);
     }
 
-#if defined(SERVER_MODE)
-  lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-#endif /* SERVER_MODE */
   catcls_free_or_value (old_value_p);
 
   return NO_ERROR;

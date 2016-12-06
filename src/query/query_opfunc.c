@@ -8301,6 +8301,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  domain_p = list_id_p->type_list.domp[i];
 	  if (domain_p == NULL || domain_p->type == NULL)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
 	      return ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
 	    }
@@ -8308,6 +8309,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  if (db_value_domain_init (value_list->val, TP_DOMAIN_TYPE (domain_p), domain_p->precision, domain_p->scale) !=
 	      NO_ERROR)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
 	      return ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
 	    }
@@ -8315,6 +8317,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  pr_type_p = domain_p->type;
 	  if (pr_type_p == NULL)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      return ER_FAILED;
 	    }
 

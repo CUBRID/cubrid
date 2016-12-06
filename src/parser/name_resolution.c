@@ -6721,11 +6721,11 @@ exit_on_error:
     {
       parser_free_tree (parser, *use_idx);
     }
-  if (*index_ss != NULL)
+  if (index_ss != NULL && *index_ss != NULL)
     {
       parser_free_tree (parser, *index_ss);
     }
-  if (*index_ls != NULL)
+  if (index_ls != NULL && *index_ls != NULL)
     {
       parser_free_tree (parser, *index_ls);
     }

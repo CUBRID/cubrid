@@ -1487,7 +1487,8 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, L
 	  assert (false);
 	}
 
-      if (disk_isvalid_page (thread_p, class_oid.volid, class_oid.pageid) != DISK_VALID)
+      if (disk_is_page_sector_reserved_with_debug_crash (thread_p, class_oid.volid, class_oid.pageid, true)
+	  != DISK_VALID)
 	{
 	  assert (false);
 	}
@@ -1539,7 +1540,8 @@ locator_defence_drop_class_name_entry (const void *name, void *ent, void *args)
 	  assert (false);
 	}
 
-      if (disk_isvalid_page (thread_p, class_oid.volid, class_oid.pageid) != DISK_VALID)
+      if (disk_is_page_sector_reserved_with_debug_crash (thread_p, class_oid.volid, class_oid.pageid, true)
+	  != DISK_VALID)
 	{
 	  assert (false);
 	}
@@ -2065,9 +2067,6 @@ xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid, OID * perm_oid,
       error_code = locator_permoid_class_name (thread_p, classname, perm_oid);
       assert (error_code == NO_ERROR);
     }
-
-  /* Release the lock which was set in heap_assign_address_with_class_oid according to isolation level */
-  lock_unlock_object (thread_p, perm_oid, class_oid, X_LOCK, false);
 
   return error_code;
 }
@@ -5285,21 +5284,12 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     }
 #endif
 
-  /* Unlock the object according to isolation level */
-  /* locked by heap_insert */
-  /* manual duration */
-  lock_unlock_object (thread_p, &null_oid, &real_class_oid, X_LOCK, false);
-
   *force_count = 1;
 
 error1:
   /* update the OID of the class with the actual partition in which the object was inserted */
   COPY_OID (class_oid, &real_class_oid);
   HFID_COPY (hfid, &real_hfid);
-  if (error_code != NO_ERROR)
-    {
-      lock_unlock_object (thread_p, oid, class_oid, X_LOCK, false);
-    }
 
 error2:
   if (cache_attr_copyarea != NULL)
@@ -7142,6 +7132,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   return error_code;
 
 exit_on_error:
+  assert_release (error_code == ER_FAILED || error_code == er_errid ());
+
   if (DB_IS_NULL (&key_value) == false)
     {
       pr_clear_value (&key_value);
@@ -7154,7 +7146,6 @@ exit_on_error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
-  assert_release (error_code == ER_FAILED || error_code == er_errid ());
   return error_code;
 }
 
@@ -7363,6 +7354,7 @@ error:
 
   /* The reevaluation at update phase of update is currently disabled */
   assert (error_code != ER_MVCC_NOT_SATISFIED_REEVALUATION);
+  assert_release (error_code == ER_FAILED || error_code == er_errid ());
 
   if (force_scancache != NULL)
     {
@@ -7371,7 +7363,6 @@ error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
-  assert_release (error_code == ER_FAILED || error_code == er_errid ());
   return error_code;
 }
 
@@ -9261,10 +9252,6 @@ xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p, LC_COPYAREA ** synch_
     {
       more_synch = true;
     }
-  else
-    {
-      lock_unlock_by_isolation_level (thread_p);
-    }
 
   return more_synch;
 }
@@ -9284,18 +9271,18 @@ locator_repair_btree_by_insert (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
       return DISK_INVALID;
     }
 
-  log_start_system_op (thread_p);
+  log_sysop_start (thread_p);
 
   if (btree_insert (thread_p, btid, key, class_oid, inst_oid, SINGLE_ROW_INSERT, NULL, NULL, NULL /* TO DO */ )
       == NO_ERROR)
     {
       isvalid = DISK_VALID;
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
     }
   else
     {
-      assert (er_errid () != NO_ERROR);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
     }
 
 #if defined(SERVER_MODE)
@@ -9325,17 +9312,18 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
 
   if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) == LK_GRANTED)
     {
-      log_start_system_op (thread_p);
+      log_sysop_start (thread_p);
 
       if (btree_physical_delete (thread_p, btid, &key, inst_oid, class_oid, &dummy_unique, SINGLE_ROW_DELETE, NULL) ==
 	  NO_ERROR)
 	{
 	  isvalid = DISK_VALID;
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_commit (thread_p);
 	}
       else
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
 	}
 
 #if defined(SERVER_MODE)
@@ -11571,10 +11559,7 @@ xlocator_assign_oid_batch (THREAD_ENTRY * thread_p, LC_OIDSET * oidset)
   int error_code = NO_ERROR;
 
   /* establish a rollback point in case we get an error part way through */
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
+  log_sysop_start (thread_p);
 
   /* Now assign the OID's stop on the first error */
   for (class_oidset = oidset->classes; class_oidset != NULL; class_oidset = class_oidset->next)
@@ -11592,13 +11577,13 @@ xlocator_assign_oid_batch (THREAD_ENTRY * thread_p, LC_OIDSET * oidset)
     }
 
   /* accept the operation */
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+  log_sysop_attach_to_outer (thread_p);
 
   return error_code;
 
 error:
   /* rollback the operation */
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+  log_sysop_abort (thread_p);
   return error_code;
 }
 
@@ -12738,14 +12723,8 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  /* 
-   * need to start a topop to make sure the repl log is
-   * inserted in a correct order
-   */
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return er_errid ();
-    }
+  /* need to start a topop to make sure the repl log is inserted in a correct order */
+  log_sysop_start (thread_p);
 
   repl_start_flush_mark (thread_p);
 
@@ -12755,14 +12734,15 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
 
   if (error != NO_ERROR)
     {
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
     }
   else
     {
       /* manually append repl info */
       log_append_repl_info (thread_p, tdes, false);
 
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
     }
 
 #if defined (SERVER_MODE)
@@ -13620,6 +13600,10 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 		  goto end;
 		}
 	      rc = heap_attrinfo_set (oid, assign->att_id, dbval, mvcc_reev_data->curr_attrinfo);
+	      if (dbval->need_clear)
+		{
+		  pr_clear_value (dbval);
+		}
 	    }
 	  if (rc != NO_ERROR)
 	    {

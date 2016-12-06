@@ -4087,6 +4087,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 			assert (false);	/* is impossible */
 			error = ER_QPROC_INVALID_DATATYPE;
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+			if (index != NULL && index->need_clear == true)
+			  {
+			    pr_clear_value (index);
+			  }
 			goto exit_on_error;
 		      }
 
@@ -4541,6 +4545,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	      pr_clear_value (regup->value.vfetch_to);
 	      return ER_FAILED;
 	    }
+
 	  PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
 	}
     }

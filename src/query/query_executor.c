@@ -80,6 +80,9 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 
+/* this must be the last header file included!!! */
+#include "dbval.h"
+
 #define GOTO_EXIT_ON_ERROR \
   do \
     { \
@@ -1461,6 +1464,11 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       break;
     }
 
+  if (regu_var->vfetch_to != NULL)
+    {
+      pr_clear_value (regu_var->vfetch_to);
+    }
+
   return pg_cnt;
 }
 
@@ -1658,6 +1666,8 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	case S_CLASS_ATTR_SCAN:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.scan_pred.regu_list, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.rest_regu_list, final);
+
+	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.recordinfo_regu_list, final);
 
 	  hsidp = &p->s_id.s.hsid;
 	  if (hsidp->caches_inited)
@@ -4494,24 +4504,28 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
 			  TP_DOMAIN ** rght_dom, int tval_cnt)
 {
   OR_BUF buf;
-  DB_VALUE left_dbval, rght_dbval;
-  int i, cmp, left_len, rght_len;
-  bool left_is_set, rght_is_set;
+  DB_VALUE left_dbval, right_dbval;
+  int i, cmp, left_len, right_len;
+  bool left_is_set, right_is_set;
 
   cmp = DB_UNK;			/* init */
 
   for (i = 0; i < tval_cnt; i++)
     {
+      PRIM_SET_NULL (&left_dbval);
+      PRIM_SET_NULL (&right_dbval);
+
       /* get tpl values into db_values for the comparison */
 
       /* zero length means NULL */
-      if ((left_len = QFILE_GET_TUPLE_VALUE_LENGTH (left_tval[i])) == 0)
+      left_len = QFILE_GET_TUPLE_VALUE_LENGTH (left_tval[i]);
+      if (left_len == 0)
 	{
 	  cmp = DB_LT;
 	  break;
 	}
-      rght_len = QFILE_GET_TUPLE_VALUE_LENGTH (rght_tval[i]);
-      if (rght_len == 0)
+      right_len = QFILE_GET_TUPLE_VALUE_LENGTH (rght_tval[i]);
+      if (right_len == 0)
 	{
 	  cmp = DB_GT;
 	  break;
@@ -4532,39 +4546,42 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
 	  break;
 	}
 
-      or_init (&buf, (char *) (rght_tval[i] + QFILE_TUPLE_VALUE_HEADER_SIZE), rght_len);
+      or_init (&buf, (char *) (rght_tval[i] + QFILE_TUPLE_VALUE_HEADER_SIZE), right_len);
       /* Do not copy the string--just use the pointer.  The pr_ routines for strings and sets have different semantics
        * for length. */
-      rght_is_set = pr_is_set_type (TP_DOMAIN_TYPE (rght_dom[i])) ? true : false;
-      if ((*(rght_dom[i]->type->data_readval)) (&buf, &rght_dbval, rght_dom[i], -1, rght_is_set, NULL, 0) != NO_ERROR)
+      right_is_set = pr_is_set_type (TP_DOMAIN_TYPE (rght_dom[i])) ? true : false;
+      if ((*(rght_dom[i]->type->data_readval)) (&buf, &right_dbval, rght_dom[i], -1, right_is_set, NULL, 0) != NO_ERROR)
 	{
 	  cmp = DB_UNK;		/* is error */
-	  break;
+	  goto clear;
 	}
-      if (DB_IS_NULL (&rght_dbval))
+      if (DB_IS_NULL (&right_dbval))
 	{
 	  cmp = DB_GT;
-	  break;
+	  goto clear;
 	}
 
-      /* both left_dbval, rght_dbval is non-null */
-      cmp = tp_value_compare (&left_dbval, &rght_dbval, 1, 0);
+      /* both left_dbval, right_dbval is non-null */
+      cmp = tp_value_compare (&left_dbval, &right_dbval, 1, 0);
 
-      if (left_is_set)
+      if (left_is_set && cmp == DB_UNK && qexec_collection_has_null (&left_dbval))
 	{
-	  if (cmp == DB_UNK && qexec_collection_has_null (&left_dbval))
-	    {
-	      cmp = DB_LT;
-	    }
+	  cmp = DB_LT;
+	}
+      if (right_is_set && cmp == DB_UNK && qexec_collection_has_null (&right_dbval))
+	{
+	  cmp = DB_GT;
+	}
+
+    clear:
+      if (left_is_set || DB_NEED_CLEAR (&left_dbval))
+	{
 	  pr_clear_value (&left_dbval);
 	}
-      if (rght_is_set)
+
+      if (right_is_set || DB_NEED_CLEAR (&right_dbval))
 	{
-	  if (cmp == DB_UNK && qexec_collection_has_null (&rght_dbval))
-	    {
-	      cmp = DB_GT;
-	    }
-	  pr_clear_value (&rght_dbval);
+	  pr_clear_value (&right_dbval);
 	}
 
       if (cmp == DB_EQ)
@@ -7998,14 +8015,23 @@ static void
 qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist)
 {
   int idx;
+  bool save_interrupted;
   EHID *hash_list = buildlist->proc.buildlist.upddel_oid_locator_ehids;
+
+  save_interrupted = thread_set_check_interrupt (thread_p, false);
 
   for (idx = 0; idx < buildlist->upd_del_class_cnt; idx++)
     {
-      xehash_destroy (thread_p, &hash_list[idx]);
+      if (xehash_destroy (thread_p, &hash_list[idx]) != NO_ERROR)
+	{
+	  /* should not fail or we'll leak reserved sectors */
+	  assert (false);
+	}
     }
   db_private_free (thread_p, hash_list);
   buildlist->proc.buildlist.upddel_oid_locator_ehids = NULL;
+
+  (void) thread_set_check_interrupt (thread_p, save_interrupted);
 }
 
 /*
@@ -8661,7 +8687,20 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      mvcc_reev_class->inst_oid = DB_GET_OID (valp);
+	      /* FIXME: Function version of DB_GET_OID returns (probably) NULL_OID when the value is NULL,
+	       * while macro version returns NULL pointer. This may cause different behavior.
+	       * As a quick fix, I'm going to add DB_IS_NULL block to keep the existing behavior.
+	       * We need to investigate and get rid of differences of two implementation.
+	       * Inlining would be a good choice.
+	       */
+	      if (DB_IS_NULL (valp))
+		{
+		  OID_SET_NULL (mvcc_reev_class->inst_oid);
+		}
+	      else
+		{
+		  mvcc_reev_class->inst_oid = DB_GET_OID (valp);
+		}
 
 	      /* class OID */
 	      valp = vallist->next->val;
@@ -8669,7 +8708,16 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      class_oid = DB_GET_OID (valp);
+
+	      /* FIXME: please see above FIXME */
+	      if (DB_IS_NULL (valp))
+		{
+		  OID_SET_NULL (class_oid);
+		}
+	      else
+		{
+		  class_oid = DB_GET_OID (valp);
+		}
 
 	      /* class has changed to a new subclass */
 	      if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
@@ -8814,7 +8862,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  xasl->list_id->tuple_cnt++;
 		}
 	    }
-	continue_scan:;
+	continue_scan:
+	  ;
 	}
       if (ls_scan != S_END)
 	{
@@ -11794,7 +11843,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   list = xasl->selected_upd_list;
 
   /* in this function, several instances can be updated, so it need to be atomic */
-  log_start_system_op (thread_p);
+  log_sysop_start (thread_p);
   savepoint_used = 1;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -11845,17 +11894,14 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
 	  /* get oid and attrid to be fetched last at scan */
 	  rightvalp = varptr->value.arithptr->value;
-	  if (fetch_peek_dbval (thread_p, varptr->value.arithptr->thirdptr, NULL, NULL, NULL, NULL, &thirdvalp) !=
-	      NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
 
-	  /* we need the OID and the attribute id to perform increment */
 	  oid = DB_GET_OID (rightvalp);
-	  attrid = DB_GET_INTEGER (thirdvalp);
-	  n_increment = (varptr->value.arithptr->opcode == T_INCR ? 1 : -1);
-
+	  if (oid == NULL)
+	    {
+	      /* Probably this would be INCR(NULL). When the source value is NULL, INCR/DECR expression is also NULL. */
+	      clear_list_id = false;
+	      continue;
+	    }
 	  if (OID_ISNULL (oid))
 	    {
 	      /* in some cases, a query returns no result even if it should have an result on dirty read mode. it may
@@ -11865,6 +11911,16 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      clear_list_id = false;
 	      continue;
 	    }
+
+	  /* we also need attribute id to perform increment */
+	  if (fetch_peek_dbval (thread_p, varptr->value.arithptr->thirdptr, NULL, NULL, NULL, NULL, &thirdvalp) !=
+	      NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  attrid = DB_GET_INTEGER (thirdvalp);
+
+	  n_increment = (varptr->value.arithptr->opcode == T_INCR ? 1 : -1);
 
 	  /* check if class oid/hfid does not set, find class oid/hfid to access */
 	  if (!OID_EQ (&selupd->class_oid, &oid_Null_oid))
@@ -12040,11 +12096,11 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     {
       if (lock_is_instant_lock_mode (tran_index))
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_commit (thread_p);
 	}
       else
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
@@ -12074,8 +12130,6 @@ exit_on_error:
       scan_cache_inited = false;
     }
 
-  err = ER_FAILED;
-
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
       repl_end_flush_mark (thread_p, true);
@@ -12083,12 +12137,11 @@ exit_on_error:
 
   if (savepoint_used)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
     }
 
   /* clear some kinds of error code; it's click counter! */
-  assert (er_errid () != NO_ERROR);
-  err = er_errid ();
+  ASSERT_ERROR_AND_SET (err);
   if (err == ER_LK_UNILATERALLY_ABORTED || err == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG
       || err == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG || err == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG
       || err == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG)
@@ -15715,7 +15768,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
 	  equal = ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, 0, 1, NULL, domp->collation_id) == DB_EQ);
 	}
 
-      if (copy)
+      if (copy || DB_NEED_CLEAR (&dbval1))
 	{
 	  pr_clear_value (&dbval1);
 	}
@@ -15732,7 +15785,9 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
     }
 
   if (i < outptr_list->valptr_cnt - PCOL_FIRST_TUPLE_OFFSET)
-    *are_equal = 0;
+    {
+      *are_equal = 0;
+    }
 
   return NO_ERROR;
 }
@@ -18063,9 +18118,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   QFILE_TUPLE_RECORD tuple_rec;
   REGU_VARIABLE_LIST regu_list;
   int tuple_cnt = 0;
+  DB_VALUE val;
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+
+  DB_MAKE_NULL (&val);
 
   if (buildlist->groupby_list == NULL)
     {
@@ -18187,8 +18245,6 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       regu_list = xasl->outptr_list->valptrp;
       for (i = 0; i < ncolumns; i++)
 	{
-	  DB_VALUE val;
-
 	  if (regu_list == NULL)
 	    {
 	      gbstate.state = ER_FAILED;
@@ -18225,6 +18281,11 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	    }
 
 	  db_value_clone (&val, &list_dbvals[i]);
+
+	  if (DB_NEED_CLEAR (&val))
+	    {
+	      pr_clear_value (&val);
+	    }
 
 	  regu_list = regu_list->next;
 	}
@@ -18293,6 +18354,11 @@ exit_on_error:
 	  pr_clear_value (&(list_dbvals[i]));
 	}
       db_private_free (thread_p, list_dbvals);
+    }
+
+  if (DB_NEED_CLEAR (&val))
+    {
+      pr_clear_value (&val);
     }
 
   /* SORT_PUT_STOP set by 'qexec_gby_finalize_group_dim ()' isn't error */
@@ -21845,7 +21911,6 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    {
 	      out_values[idx_val]->need_clear = true;
 	    }
-
 	  idx_val++;
 
 	  /* attribute type */
@@ -21861,22 +21926,24 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_ENUMERATION:
-		  db_make_string (out_values[idx_val++], lang_get_collation_name (attrepr->domain->collation_id));
+		  db_make_string (out_values[idx_val], lang_get_collation_name (attrepr->domain->collation_id));
 		  break;
 		default:
-		  db_make_null (out_values[idx_val++]);
+		  db_make_null (out_values[idx_val]);
 		}
+	      idx_val++;
 	    }
 
 	  /* attribute can store NULL ? */
 	  if (attrepr->is_notnull == 0)
 	    {
-	      db_make_string (out_values[idx_val++], "YES");
+	      db_make_string (out_values[idx_val], "YES");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[idx_val++], "NO");
+	      db_make_string (out_values[idx_val], "NO");
 	    }
+	  idx_val++;
 
 	  /* attribute has index or not */
 	  found_index_type = -1;
@@ -21909,23 +21976,24 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    {
 	    case BTREE_UNIQUE:
 	    case BTREE_REVERSE_UNIQUE:
-	      db_make_string (out_values[idx_val++], "UNI");
+	      db_make_string (out_values[idx_val], "UNI");
 	      break;
 
 	    case BTREE_INDEX:
 	    case BTREE_REVERSE_INDEX:
 	    case BTREE_FOREIGN_KEY:
-	      db_make_string (out_values[idx_val++], "MUL");
+	      db_make_string (out_values[idx_val], "MUL");
 	      break;
 
 	    case BTREE_PRIMARY_KEY:
-	      db_make_string (out_values[idx_val++], "PRI");
+	      db_make_string (out_values[idx_val], "PRI");
 	      break;
 
 	    default:
-	      db_make_string (out_values[idx_val++], "");
+	      db_make_string (out_values[idx_val], "");
 	      break;
 	    }
+	  idx_val++;
 
 	  /* default values */
 	  if (attrepr->default_value.default_expr != DB_DEFAULT_NONE)
@@ -21935,43 +22003,55 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		case DB_DEFAULT_NONE:
 		  break;
 		case DB_DEFAULT_SYSTIME:
-		  db_make_string (out_values[idx_val++], "SYS_TIME");
+		  db_make_string (out_values[idx_val], "SYS_TIME");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_SYSDATE:
-		  db_make_string (out_values[idx_val++], "SYS_DATE");
+		  db_make_string (out_values[idx_val], "SYS_DATE");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_SYSDATETIME:
-		  db_make_string (out_values[idx_val++], "SYS_DATETIME");
+		  db_make_string (out_values[idx_val], "SYS_DATETIME");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_SYSTIMESTAMP:
-		  db_make_string (out_values[idx_val++], "SYS_TIMESTAMP");
+		  db_make_string (out_values[idx_val], "SYS_TIMESTAMP");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURRENTTIME:
-		  db_make_string (out_values[idx_val++], "CURRENT_TIME");
+		  db_make_string (out_values[idx_val], "CURRENT_TIME");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURRENTDATE:
-		  db_make_string (out_values[idx_val++], "CURRENT_DATE");
+		  db_make_string (out_values[idx_val], "CURRENT_DATE");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURRENTDATETIME:
-		  db_make_string (out_values[idx_val++], "CURRENT_DATETIME");
+		  db_make_string (out_values[idx_val], "CURRENT_DATETIME");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURRENTTIMESTAMP:
-		  db_make_string (out_values[idx_val++], "CURRENT_TIMESTAMP");
+		  db_make_string (out_values[idx_val], "CURRENT_TIMESTAMP");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_UNIX_TIMESTAMP:
-		  db_make_string (out_values[idx_val++], "UNIX_TIMESTAMP");
+		  db_make_string (out_values[idx_val], "UNIX_TIMESTAMP");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_USER:
-		  db_make_string (out_values[idx_val++], "USER");
+		  db_make_string (out_values[idx_val], "USER");
+		  idx_val++;
 		  break;
 		case DB_DEFAULT_CURR_USER:
-		  db_make_string (out_values[idx_val++], "CURRENT_USER");
+		  db_make_string (out_values[idx_val], "CURRENT_USER");
+		  idx_val++;
 		  break;
 		}
 	    }
 	  else if (attrepr->current_default_value.value == NULL || attrepr->current_default_value.val_length <= 0)
 	    {
-	      db_make_null (out_values[idx_val++]);
+	      db_make_null (out_values[idx_val]);
+	      idx_val++;
 	    }
 	  else
 	    {
@@ -21992,12 +22072,13 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		    {
 		      (*(pr_type->data_readval)) (&buf, out_values[idx_val], attrepr->domain, disk_length, copy, NULL,
 						  0);
-		      valcnv_convert_value_to_string (out_values[idx_val++]);
+		      valcnv_convert_value_to_string (out_values[idx_val]);
 		    }
 		  else
 		    {
-		      db_make_null (out_values[idx_val++]);
+		      db_make_null (out_values[idx_val]);
 		    }
+		  idx_val++;
 		  break;
 		default:
 		  /* 
@@ -22013,12 +22094,13 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* attribute has auto_increment or not */
 	  if (attrepr->is_autoincrement == 0)
 	    {
-	      db_make_string (out_values[idx_val++], "");
+	      db_make_string (out_values[idx_val], "");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[idx_val++], "auto_increment");
+	      db_make_string (out_values[idx_val], "auto_increment");
 	    }
+	  idx_val++;
 
 	  /* attribute's comment */
 	  if (full_columns)
