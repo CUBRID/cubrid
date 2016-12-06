@@ -2491,6 +2491,8 @@ file_extdata_find_and_remove_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA
    * item).
    */
 
+  VPID_SET_NULL (vpid_merged);
+
   /* iterate through extensible data pages */
   extdata_crt = extdata_first;
   page_crt = page_first;
@@ -9120,7 +9122,7 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
   PAGE_PTR page_track_head = NULL;
   FILE_EXTENSIBLE_DATA *extdata = NULL;
   FILE_TRACK_ITEM item_search;
-  VPID vpid_merged;
+  VPID vpid_merged = VPID_INITIALIZER;
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
