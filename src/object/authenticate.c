@@ -2542,12 +2542,10 @@ match_password (const char *user, const char *database)
  *   user(in):  user object
  *   password(in): new password
  *   encode(in): flag to enable encryption of the string in the database
- *   encrypt_prefix(in): If encode flag is 0, then we assume that the
- *                      given password have been encrypted. So, All I have
- *                      to do is add prefix(DES or SHA1) to given password.
- *                       If encode flag is 1, then we should encrypt
- *                      password with sha1 and add prefix (SHA1) to it.
- *                      So, I don't care what encrypt_prefix value is.
+ *   encrypt_prefix(in): If encode flag is 0, then we assume that the given password have been encrypted. So, All I have
+ *                       to do is add prefix(SHA2) to given password.
+ *                       If encode flag is 1, then we should encrypt password with sha2 and add prefix (SHA2) to it.
+ *                       So, I don't care what encrypt_prefix value is.
  */
 static int
 au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix)
@@ -2594,6 +2592,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 		{
 		  pass = db_get_object (&value);
 		}
+
 	      if (pass == NULL)
 		{
 		  pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
@@ -2661,7 +2660,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 int
 au_set_password (MOP user, const char *password)
 {
-  return (au_set_password_internal (user, password, 1, ENCODE_PREFIX_DEFAULT));
+  return (au_set_password_internal (user, password, 1, ENCODE_PREFIX_SHA2_512));
 }
 
 /*
@@ -2748,8 +2747,7 @@ au_set_password_encoded_method (MOP user, DB_VALUE * returnval, DB_VALUE * passw
 }
 
 /*
- * au_set_password_encoded_sha1_method - Method interface for setting
- *                                      sha1 passwords.
+ * au_set_password_encoded_sha1_method - Method interface for setting sha1/2 passwords.
  *   return: none
  *   user(in): user object
  *   returnval(out): return value of this object
