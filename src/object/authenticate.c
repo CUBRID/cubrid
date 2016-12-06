@@ -53,6 +53,7 @@
 #include "set_object.h"
 #include "object_accessor.h"
 #include "encryption.h"
+#include "crypt_opfunc.h"
 #include "message_catalog.h"
 #include "string_opfunc.h"
 #include "locator_cl.h"
@@ -132,9 +133,12 @@ const char *AU_DBA_USER_NAME = "DBA";
 #define ENCODE_PREFIX_DEFAULT           (char)0
 #define ENCODE_PREFIX_DES               (char)1
 #define ENCODE_PREFIX_SHA1              (char)2
+#define ENCODE_PREFIX_SHA2_512          (char)3
 #define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
 #define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
-
+#define IS_ENCODED_SHA2_512(string)     (string[0] == ENCODE_PREFIX_SHA2_512)
+#define IS_ENCODED_ANY(string) \
+  (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
 
 /* Macro to determine if a dbvalue is a character strign type. */
 #define IS_STRING(n)    (db_value_type(n) == DB_TYPE_VARCHAR  || \
@@ -351,6 +355,7 @@ MOP Au_user = NULL;
 static char Au_user_name[DB_MAX_USER_LENGTH + 4] = { '\0' };
 char Au_user_password_des_oldstyle[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
 char Au_user_password_sha1[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+char Au_user_password_sha2_512[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
 
 /*
  * Au_password_class
@@ -508,6 +513,7 @@ static int au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask);
 static int check_user_name (const char *name);
 static void encrypt_password (const char *pass, int add_prefix, char *dest);
 static void encrypt_password_sha1 (const char *pass, int add_prefix, char *dest);
+static void encrypt_password_sha2_512 (const char *pass, char *dest);
 static int io_relseek (const char *pass, int has_prefix, char *dest);
 static bool match_password (const char *user, const char *database);
 static int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
@@ -2395,6 +2401,43 @@ encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
 }
 
 /*
+ * encrypt_password_sha2_512 -  hashing a password string using SHA2 512
+ *   return: none
+ *   pass(in): string to encrypt
+ *   dest(out): destination buffer
+ */
+static void
+encrypt_password_sha2_512 (const char *pass, char *dest)
+{
+  int error_status = NO_ERROR;
+  char *result_strp = NULL;
+  int result_len = 0;
+
+  if (pass == NULL)
+    {
+      strcpy (dest, "");
+    }
+  else
+    {
+      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len);
+      if (error_status == NO_ERROR)
+	{
+	  assert (result_strp != NULL);
+
+	  memcpy (dest + 1, result_strp, result_len);
+	  dest[result_len + 1] = '\0';	/* null termination for match_password () */
+	  dest[0] = ENCODE_PREFIX_SHA2_512;
+
+	  db_private_free_and_init (NULL, result_strp);
+	}
+      else
+	{
+	  strcpy (dest, "");
+	}
+    }
+}
+
+/*
  * au_user_name_dup -  Returns the duplicated string of the name of the current
  *                     user. The string must be freed after use.
  *   return: user name (strdup)
@@ -2485,7 +2528,7 @@ match_password (const char *user, const char *database)
     {
       /* DB: DES */
       strcpy (buf2, database);
-      if (IS_ENCODED_DES (user) || IS_ENCODED_SHA1 (user))
+      if (IS_ENCODED_ANY (user))
 	{
 	  /* USER : DES */
 	  strcpy (buf1, Au_user_password_des_oldstyle);
@@ -2500,7 +2543,7 @@ match_password (const char *user, const char *database)
     {
       /* DB: SHA1 */
       strcpy (buf2, database);
-      if (IS_ENCODED_DES (user) || IS_ENCODED_SHA1 (user))
+      if (IS_ENCODED_ANY (user))
 	{
 	  /* USER:SHA1 */
 	  strcpy (buf1, Au_user_password_sha1);
@@ -2511,11 +2554,26 @@ match_password (const char *user, const char *database)
 	  encrypt_password_sha1 (user, 1, buf1);
 	}
     }
+  else if (IS_ENCODED_SHA2_512 (database))
+    {
+      /* DB: SHA2 */
+      strcpy (buf2, database);
+      if (IS_ENCODED_ANY (user))
+	{
+	  /* USER:SHA2 */
+	  strcpy (buf1, Au_user_password_sha2_512);
+	}
+      else
+	{
+	  /* USER:PLAINTEXT -> SHA2 */
+	  encrypt_password_sha2_512 (user, buf1);
+	}
+    }
   else
     {
-      /* DB:PLAINTEXT -> SHA1 */
-      encrypt_password_sha1 (database, 1, buf2);
-      if (IS_ENCODED_DES (user) || IS_ENCODED_SHA1 (user))
+      /* DB:PLAINTEXT -> SHA2 */
+      encrypt_password_sha2_512 (database, buf2);
+      if (IS_ENCODED_ANY (user))
 	{
 	  /* USER : SHA1 */
 	  strcpy (buf1, Au_user_password_sha1);
@@ -2617,7 +2675,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 		{
 		  if (encode && password != NULL)
 		    {
-		      encrypt_password_sha1 (password, 1, pbuf);
+		      encrypt_password_sha2_512 (password, pbuf);
 		      db_make_string (&value, pbuf);
 		      error = obj_set (pass, "password", &value);
 		    }
@@ -2776,7 +2834,16 @@ au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval, DB_VALUE * 
 	    }
 	}
 
-      error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_SHA1);
+      /* in case of SHA2, prefix is not stripped */
+      if (string != NULL && IS_ENCODED_SHA2_512 (string))
+	{
+	  error = au_set_password_internal (user, string + 1 /* 1 for prefix */ , 0, ENCODE_PREFIX_SHA2_512);
+	}
+      else
+	{
+	  error = au_set_password_internal (user, string, 0, ENCODE_PREFIX_SHA1);
+	}
+
       if (error != NO_ERROR)
 	{
 	  db_make_error (returnval, error);
@@ -6564,6 +6631,9 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
   dbuser = (char *) name;
   dbpassword = (char *) password;
 
+  fprintf (stderr, "dbuser = (%s), dbpassword = (%s)\n", dbuser, dbpassword);
+  fflush (stderr);
+
   if (dbuser == NULL || strlen (dbuser) == 0)
     {
       error = ER_AU_NO_USER_LOGGED_IN;
@@ -6723,6 +6793,7 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
 	{
 	  strcpy (Au_user_password_des_oldstyle, "");
 	  strcpy (Au_user_password_sha1, "");
+	  strcpy (Au_user_password_sha2_512, "");
 	}
       else
 	{
@@ -6730,6 +6801,7 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
 	   * passwords in it. */
 	  encrypt_password (password, 1, Au_user_password_des_oldstyle);
 	  encrypt_password_sha1 (password, 1, Au_user_password_sha1);
+	  encrypt_password_sha2_512 (password, Au_user_password_sha2_512);
 	}
     }
   else
@@ -6905,7 +6977,7 @@ au_start (void)
 	      strcpy (Au_user_name, "PUBLIC");
 	    }
 
-	  error = au_perform_login (Au_user_name, Au_user_password_des_oldstyle, false);
+	  error = au_perform_login (Au_user_name, Au_user_password_sha2_512, false);
 	}
     }
 
@@ -7049,10 +7121,16 @@ au_export_users (FILE * outfp)
 			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
 			  encrypt_mode = ENCODE_PREFIX_SHA1;
 			}
+		      else if (IS_ENCODED_SHA2_512 (str))
+			{
+			  /* not strip off the prefix */
+			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str);
+			  encrypt_mode = ENCODE_PREFIX_SHA2_512;
+			}
 		      else if (strlen (str))
 			{
-			  /* sha1 hashing without prefix */
-			  encrypt_password_sha1 (str, 0, passbuf);
+			  /* sha2 hashing with prefix */
+			  encrypt_password_sha2_512 (str, passbuf);
 			}
 		      ws_free_string (str);
 		    }
