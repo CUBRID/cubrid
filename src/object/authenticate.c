@@ -6631,9 +6631,6 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
   dbuser = (char *) name;
   dbpassword = (char *) password;
 
-  fprintf (stderr, "dbuser = (%s), dbpassword = (%s)\n", dbuser, dbpassword);
-  fflush (stderr);
-
   if (dbuser == NULL || strlen (dbuser) == 0)
     {
       error = ER_AU_NO_USER_LOGGED_IN;
