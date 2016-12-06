@@ -10060,6 +10060,8 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
   /* skip log record header */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page);
 
+  /* read sysop_start_postpone */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), log_lsa, log_page);
   *sysop_start_postpone = *(LOG_REC_SYSOP_START_POSTPONE *) (log_page->area + log_lsa->offset);
   if (!with_undo_data
       || (sysop_start_postpone->sysop_end.type != LOG_SYSOP_END_LOGICAL_UNDO
