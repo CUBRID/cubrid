@@ -1,5 +1,4 @@
 /*
-ne_stack_head = -1;
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify
