@@ -514,7 +514,6 @@ static int check_user_name (const char *name);
 static void encrypt_password (const char *pass, int add_prefix, char *dest);
 static void encrypt_password_sha1 (const char *pass, int add_prefix, char *dest);
 static void encrypt_password_sha2_512 (const char *pass, char *dest);
-static int io_relseek (const char *pass, int has_prefix, char *dest);
 static bool match_password (const char *user, const char *database);
 static int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
 
@@ -2446,58 +2445,6 @@ char *
 au_user_name_dup (void)
 {
   return strdup (Au_user_name);
-}
-
-/* mangle the name so it isn't so obvious in nm */
-#define unencrypt_password              io_relseek
-
-/*
- * really unencrypt_password
- * io_relseek - Decode encrypted password
- *   return: error code
- *   pass(in): encrypted password
- *   has_prefix(in):
- *   dest(out): destination buffer
- */
-static int
-io_relseek (const char *pass, int has_prefix, char *dest)
-{
-  int error = NO_ERROR;
-  char buf[AU_MAX_PASSWORD_BUF];
-  int len;
-
-  if (pass == NULL || !strlen (pass))
-    {
-      strcpy (dest, "");
-    }
-  else
-    {
-      crypt_seed (PASSWORD_ENCRYPTION_SEED);
-      /* 
-       * Make sure the destination buffer is larger than actually required,
-       * the decryption stuff is sensitive about this. Basically for the
-       * scrambled strings, the destination buffer has to be the actual
-       * length rounded up to 8 plus another 8.
-       */
-      if (has_prefix)
-	{
-	  len = crypt_decrypt_printable (pass + 1, buf, AU_MAX_PASSWORD_BUF);
-	}
-      else
-	{
-	  len = crypt_decrypt_printable (pass, buf, AU_MAX_PASSWORD_BUF);
-	}
-      if (len != -1 && strlen (buf) <= AU_MAX_PASSWORD_CHARS)
-	{
-	  strcpy (dest, buf);
-	}
-      else
-	{
-	  error = ER_AU_CORRUPTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-    }
-  return error;
 }
 
 /*
@@ -5847,64 +5794,6 @@ au_user_name (void)
 
   return name;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * au_user_password - This returns the unencrypted password for the active user.
- *    return: error code
- *    buffer(in): output password buffer (must be at least 9 chars)
- *
- * Note:
- *    Note that this doesn't necessarily track the contents of
- *    Au_user_password_des_oldstyle.
- *    Note, we may only allow this to be called for the "original" user
- *    that logged in to the system.  If we allow it for all users,
- *    there is a potential hole where we could access the password
- *    while another user is temporarily active.
- */
-int
-au_user_password (char *buffer)
-{
-  int error;
-  DB_VALUE value;
-  int save;
-
-  strcpy (buffer, "");
-
-  if (Au_user == NULL)
-    {
-      /* 
-       * Database hasn't been started yet, return the registered password
-       * if any. Probably don't really have to handle this condition.
-       */
-      return unencrypt_password (Au_user_password_des_oldstyle, 1, buffer);
-    }
-
-  AU_DISABLE (save);
-
-  if (!(error = obj_get (Au_user, "password", &value)))
-    {
-      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT)
-	{
-	  if (!DB_IS_NULL (&value) && db_get_object (&value) != NULL
-	      && !(error = obj_get (db_get_object (&value), "password", &value)))
-	    {
-	      if (IS_STRING (&value))
-		{
-		  if (!DB_IS_NULL (&value) && db_get_string (&value) != NULL)
-		    {
-		      error = unencrypt_password (db_get_string (&value), 1, buffer);
-		    }
-		}
-	      pr_clear_value (&value);
-	    }
-	}
-    }
-  AU_ENABLE (save);
-
-  return error;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * CLASS ACCESSING
