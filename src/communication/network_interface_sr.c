@@ -9599,7 +9599,7 @@ ses_es_mark_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
 
   ptr = or_unpack_string_nocopy (request, &path);
 
-  state = get_lob_state_from_locator (path);
+  state = elo_get_lob_state_from_locator (path);
   if (state == LOB_TRANSIENT_CREATED)
     {
       es_delete_file (path);

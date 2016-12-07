@@ -588,7 +588,7 @@ elo_create (DB_ELO * elo)
 				  undo_crumbs, NULL);
 
       /* delete temporary LOB file after commit */
-      state = get_lob_state_from_locator (elo->locator);
+      state = elo_get_lob_state_from_locator (elo->locator);
       if (state == LOB_TRANSIENT_CREATED)
 	{
 	  char log_data_buffer[sizeof (MVCCID) + PATH_MAX + 1];
@@ -751,7 +751,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
       LOB_LOCATOR_STATE state;
       ES_URI real_locator;
 
-      state = get_lob_state_from_locator (elo->locator);
+      state = elo_get_lob_state_from_locator (elo->locator);
       strlcpy (real_locator, elo->locator, sizeof (ES_URI));
 
       switch (state)
@@ -844,7 +844,7 @@ elo_delete (DB_ELO * elo, bool force_delete)
 
       assert (elo->locator != NULL);
 
-      state = get_lob_state_from_locator (elo->locator);
+      state = elo_get_lob_state_from_locator (elo->locator);
       if (state == LOB_TRANSIENT_CREATED)
 	{
 	  es_delete_file (elo->locator);
@@ -988,14 +988,14 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
 }
 
 /*
- * get_lob_state_from_locator () - 
+ * elo_get_lob_state_from_locator () - 
  * return: LOB_LOCATOR_STATE
  * locator(in):
  *
  *  Note : use 'int' return type instead of LOB_LOCATOR_STATE due to additional required dependencies
  */
 int
-get_lob_state_from_locator (const char *locator)
+elo_get_lob_state_from_locator (const char *locator)
 {
 #define SIZE_PREFIX_TEMP 9
   const char *base_file_name;
@@ -1052,7 +1052,7 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void *rcv)
   {
     LOB_LOCATOR_STATE state;
 
-    state = get_lob_state_from_locator (elo_path);
+    state = elo_get_lob_state_from_locator (elo_path);
     if (state == LOB_TRANSIENT_CREATED)
       {
 	es_delete_file (elo_path);
