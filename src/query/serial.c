@@ -874,7 +874,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   new_recdesc.data = PTR_ALIGN (copyarea_buf, MAX_ALIGNMENT);
   new_recdesc.area_size = DB_PAGESIZE;
 
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc, NULL, LOB_DELETE_ON_ATTR_INIT);
+  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc, NULL, LOB_FLAG_INCLUDE_LOB,
+                                          LOB_DELETE_ON_ATTR_INIT);
   if (scan != S_SUCCESS)
     {
       assert (false);

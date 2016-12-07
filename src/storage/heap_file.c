@@ -695,7 +695,7 @@ static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_
 static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    OUT_OF_ROW_CONTEXT * oor_context, HEAP_CACHE_ATTRINFO * attr_info,
-					    LOCATOR_LOB_DELETE_FLAG lob_delete_flag);
+					    HEAP_LOB_DELETE_FLAG lob_delete_flag);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr,
 				       int *size_gain_overflow_columns);
@@ -745,11 +745,6 @@ static int heap_stats_bestspace_finalize (void);
 static int heap_get_spage_type (void);
 static bool heap_is_reusable_oid (const FILE_TYPE file_type);
 
-static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							   RECDES * old_recdes, RECDES * new_recdes,
-							   OUT_OF_ROW_CONTEXT * oor_context,
-                                                           LOCATOR_LOB_CREATE_FLAG lob_create_flag,
-							   LOCATOR_LOB_DELETE_FLAG lob_delete_flag);
 static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
 static HEAP_BESTSPACE heap_stats_get_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
@@ -11444,7 +11439,7 @@ exit_on_error:
 static int
 heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 				 OUT_OF_ROW_CONTEXT * oor_context, HEAP_CACHE_ATTRINFO * attr_info,
-                                 LOCATOR_LOB_DELETE_FLAG lob_delete_flag)
+                                 HEAP_LOB_DELETE_FLAG lob_delete_flag)
 {
   int i;
   REPR_ID reprid;		/* Representation of object */
@@ -11656,15 +11651,14 @@ re_check:
 }
 
 /*
- * heap_attrinfo_transform_to_disk () - Transform to disk an attribute information
- *                               kind of instance
+ * heap_attrinfo_transform_to_disk () - Transform to disk an attribute information kind of instance
  *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT,
- *                      S_ERROR)
+ *           (Either of S_SUCCESS, S_DOESNT_FIT, S_ERROR)
  *   attr_info(in/out): The attribute information structure
  *   old_recdes(in): where the object's disk format is deposited
  *   new_recdes(in):
  *   oor_context(in): out of row context
+ *   lob_create_flag(in): LOB create flag
  *   lob_delete_flag(in): LOB delete flag
  *
  * Note: Transform the object represented by attr_info to disk format
@@ -11672,61 +11666,7 @@ re_check:
 SCAN_CODE
 heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 				 RECDES * new_recdes, OUT_OF_ROW_CONTEXT * oor_context,
-                                 LOCATOR_LOB_DELETE_FLAG lob_delete_flag)
-{
-  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, oor_context,
-						   LOB_FLAG_INCLUDE_LOB, lob_delete_flag);
-}
-
-/*
- * heap_attrinfo_transform_to_disk_except_lob () -
- *                           Transform to disk an attribute information
- *                           kind of instance. Do not create lob.
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT,
- *                      S_ERROR)
- *   attr_info(in/out): The attribute information structure
- *   old_recdes(in): where the object's disk format is deposited
- *   new_recdes(in):
- *   oor_context(in): out of row context
- *   lob_delete_flag(in): LOB delete flag
- *
- * Note: Transform the object represented by attr_info to disk format
- */
-SCAN_CODE
-heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					    RECDES * old_recdes, RECDES * new_recdes, OUT_OF_ROW_CONTEXT * oor_context,
-					    LOCATOR_LOB_DELETE_FLAG lob_delete_flag)
-{
-  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, oor_context,
-						   LOB_FLAG_EXCLUDE_LOB, lob_delete_flag);
-}
-
-/*
- * heap_attrinfo_transform_to_disk_internal () -
- *                         Transform to disk an attribute information
- *                         kind of instance.
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT,
- *                      S_ERROR)
- *   attr_info(in/out): The attribute information structure
- *   old_recdes(in): where the object's disk format is deposited
- *   new_recdes(in):
- *   oor_context(in/out): out of row context
- *   lob_create_flag(in):
- *   lob_delete_flag(in):
- *
- * Note: Transform the object represented by attr_info to disk format
- *	 'oor_context' object is optional (can be NULL); if attr_info contains long strings, they are transformed to
- *	 OOR LOBs only if oor_context not-NULL or copied as LOB path if state of value is HEAP_READ_ATTRVALUE_OOR_LOB;
- *	 otherwise, the long string is stored as a normal string in heap.
- *	 
- */
-static SCAN_CODE
-heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-					  RECDES * new_recdes, OUT_OF_ROW_CONTEXT * oor_context,
-                                          LOCATOR_LOB_CREATE_FLAG lob_create_flag,
-                                          LOCATOR_LOB_DELETE_FLAG lob_delete_flag)
+                                 HEAP_LOB_CREATE_FLAG lob_create_flag, HEAP_LOB_DELETE_FLAG lob_delete_flag)
 {
   OR_BUF orep, *buf;
   char *ptr_bound, *ptr_varvals;
@@ -25310,8 +25250,8 @@ retry:
 	}
     }
 
-  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, &context->attr_info, NULL, context->recdes_p,
-						     &expanded_oor_context, LOB_DELETE_ON_ATTR_INIT);
+  scan = heap_attrinfo_transform_to_disk (thread_p, &context->attr_info, NULL, context->recdes_p, &expanded_oor_context,
+                                          LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
   if (scan != S_SUCCESS)
     {
       if (scan == S_DOESNT_FIT)
@@ -25403,8 +25343,8 @@ heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID * class_oid_p, RECDES *
   new_recdes->area_size = DB_PAGESIZE;
 
 retry:
-  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, &attr_info, old_recdes, new_recdes,
-						     &shrink_oor_context, LOB_DELETE_ON_ATTR_INIT);
+  scan = heap_attrinfo_transform_to_disk (thread_p, &attr_info, old_recdes, new_recdes, &shrink_oor_context,
+                                          LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
   if (scan != S_SUCCESS)
     {
       error = ER_FAILED;
