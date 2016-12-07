@@ -35,6 +35,7 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "intl_support.h"
+#include "util_support.h"
 #include "dbtype.h"
 
 /* MACROS FOR ERROR CHECKING */
@@ -186,43 +187,43 @@
   CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
 
 
-INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_COLLECTION *db_get_set (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_POINTER db_get_pointer (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_TIME *db_get_time (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_TIMETZ *db_get_timetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));;
-INLINE DB_DATETIME *db_get_datetime (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_DATETIMETZ *db_get_datetimetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_DATE *db_get_date (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_MONETARY *db_get_monetary (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE int db_get_string_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE int db_get_string_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE int db_get_enum_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-INLINE int db_get_enum_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_COLLECTION *db_get_set (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_POINTER db_get_pointer (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_TIME *db_get_time (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_TIMETZ *db_get_timetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));;
+STATIC_INLINE DB_DATETIME *db_get_datetime (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_DATETIMETZ *db_get_datetimetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_DATE *db_get_date (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_MONETARY *db_get_monetary (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_string_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_string_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_enum_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_enum_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * db_get_int() -
  * return :
  * value(in):
  */
-INLINE int
+STATIC_INLINE int
 db_get_int (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -239,7 +240,7 @@ db_get_int (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_C_SHORT
+STATIC_INLINE DB_C_SHORT
 db_get_short (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -256,7 +257,7 @@ db_get_short (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_BIGINT
+STATIC_INLINE DB_BIGINT
 db_get_bigint (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -273,7 +274,7 @@ db_get_bigint (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_C_CHAR
+STATIC_INLINE DB_C_CHAR
 db_get_string (const DB_VALUE * value)
 {
   char *str = NULL;
@@ -316,7 +317,7 @@ db_get_string (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_C_FLOAT
+STATIC_INLINE DB_C_FLOAT
 db_get_float (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -333,7 +334,7 @@ db_get_float (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_C_DOUBLE
+STATIC_INLINE DB_C_DOUBLE
 db_get_double (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -350,7 +351,7 @@ db_get_double (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_OBJECT *
+STATIC_INLINE DB_OBJECT *
 db_get_object (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -372,7 +373,7 @@ db_get_object (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_COLLECTION *
+STATIC_INLINE DB_COLLECTION *
 db_get_set (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -398,7 +399,7 @@ db_get_set (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_MIDXKEY *
+STATIC_INLINE DB_MIDXKEY *
 db_get_midxkey (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -422,7 +423,7 @@ db_get_midxkey (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_C_POINTER
+STATIC_INLINE DB_C_POINTER
 db_get_pointer (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -446,7 +447,7 @@ db_get_pointer (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_TIME *
+STATIC_INLINE DB_TIME *
 db_get_time (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -463,7 +464,7 @@ db_get_time (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_TIMETZ *
+STATIC_INLINE DB_TIMETZ *
 db_get_timetz (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -480,7 +481,7 @@ db_get_timetz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_TIMESTAMP *
+STATIC_INLINE DB_TIMESTAMP *
 db_get_timestamp (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -498,7 +499,7 @@ db_get_timestamp (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_TIMESTAMPTZ *
+STATIC_INLINE DB_TIMESTAMPTZ *
 db_get_timestamptz (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -515,7 +516,7 @@ db_get_timestamptz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_DATETIME *
+STATIC_INLINE DB_DATETIME *
 db_get_datetime (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -533,7 +534,7 @@ db_get_datetime (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_DATETIMETZ *
+STATIC_INLINE DB_DATETIMETZ *
 db_get_datetimetz (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -550,7 +551,7 @@ db_get_datetimetz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_DATE *
+STATIC_INLINE DB_DATE *
 db_get_date (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -567,7 +568,7 @@ db_get_date (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_MONETARY *
+STATIC_INLINE DB_MONETARY *
 db_get_monetary (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -584,7 +585,7 @@ db_get_monetary (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE int
+STATIC_INLINE int
 db_get_error (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -601,7 +602,7 @@ db_get_error (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_ELO *
+STATIC_INLINE DB_ELO *
 db_get_elo (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -631,7 +632,7 @@ db_get_elo (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_C_NUMERIC
+STATIC_INLINE DB_C_NUMERIC
 db_get_numeric (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -656,7 +657,7 @@ db_get_numeric (const DB_VALUE * value)
  * value(in):
  * length(out):
  */
-INLINE DB_C_BIT
+STATIC_INLINE DB_C_BIT
 db_get_bit (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
@@ -706,7 +707,7 @@ db_get_bit (const DB_VALUE * value, int *length)
  * value(in):
  * length(out):
  */
-INLINE DB_C_CHAR
+STATIC_INLINE DB_C_CHAR
 db_get_char (const DB_VALUE * value, int *length)
 {
   char *str = NULL;
@@ -761,7 +762,7 @@ db_get_char (const DB_VALUE * value, int *length)
  * value(in):
  * length(out):
  */
-INLINE DB_C_NCHAR
+STATIC_INLINE DB_C_NCHAR
 db_get_nchar (const DB_VALUE * value, int *length)
 {
   return db_get_char (value, length);
@@ -772,7 +773,7 @@ db_get_nchar (const DB_VALUE * value, int *length)
  * return :
  * value(in):
  */
-INLINE int
+STATIC_INLINE int
 db_get_string_size (const DB_VALUE * value)
 {
   int size = 0;
@@ -809,7 +810,7 @@ db_get_string_size (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE int
+STATIC_INLINE int
 db_get_string_codeset (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -824,7 +825,7 @@ db_get_string_codeset (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE int
+STATIC_INLINE int
 db_get_string_collation (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -839,7 +840,7 @@ db_get_string_collation (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE DB_RESULTSET
+STATIC_INLINE DB_RESULTSET
 db_get_resultset (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -858,7 +859,7 @@ db_get_resultset (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE int
+STATIC_INLINE int
 db_get_enum_codeset (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -873,7 +874,7 @@ db_get_enum_codeset (const DB_VALUE * value)
  * return :
  * value(in):
  */
-INLINE int
+STATIC_INLINE int
 db_get_enum_collation (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
