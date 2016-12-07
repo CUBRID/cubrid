@@ -766,7 +766,13 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val_p)
       name_p = heap_get_class_name (thread_p, class_oid_p);
       if (name_p == NULL)
 	{
-	  return NO_ERROR;
+	  db_make_null (oid_val_p);
+	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      er_clear ();
+	    }
+
+	  return er_errid ();
 	}
 
       if (catcls_find_oid_by_class_name (thread_p, name_p, oid_p) != NO_ERROR)
