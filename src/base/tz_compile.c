@@ -660,6 +660,7 @@ timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, 
 
   if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
     {
+      write_checksum = true;
       err_status = tzc_extend (&tzd);
       if (err_status != NO_ERROR)
 	{
