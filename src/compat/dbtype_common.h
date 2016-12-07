@@ -32,6 +32,7 @@
 
 #include "config.h"
 
+#include "assert.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "intl_support.h"
