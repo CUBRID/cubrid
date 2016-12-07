@@ -458,7 +458,7 @@ static int init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd, co
 static int copy_ds_rule (TZ_DS_RULE * dst, const TZ_DATA * tzd, const int index);
 static int tz_data_partial_clone (char **timezone_names, TZ_TIMEZONE * timezones, TZ_NAME * names, const TZ_DATA * tzd);
 static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
-static int tzc_extend (TZ_DATA * tzd, bool * write_checksum);
+static int tzc_extend (TZ_DATA * tzd);
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
 static int tzc_update (TZ_DATA * tzd);
@@ -660,7 +660,7 @@ timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, 
 
   if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
     {
-      err_status = tzc_extend (&tzd, &write_checksum);
+      err_status = tzc_extend (&tzd);
       if (err_status != NO_ERROR)
 	{
 	  /* In this case a data migration is needed because the data could not
@@ -5397,12 +5397,9 @@ exit:
  * Returns: error or no error
  * tzd (in/out): new timezone library data that needs to be merged with
  *               the old timezone library data
- * write_checksum(out): flag that tells if the new checksum of the new
- *                      library created with extend should be written in
- *                      the database
  */
 static int
-tzc_extend (TZ_DATA * tzd, bool * write_checksum)
+tzc_extend (TZ_DATA * tzd)
 {
   int err_status = NO_ERROR;
   TZ_DATA old_tzd;
@@ -6110,18 +6107,12 @@ exit:
   tzd->ds_rules = all_ds_rules;
   tzd->ds_rule_count = all_ds_rule_count;
 
-  //tzc_update (tzd);
   if (err_status == NO_ERROR)
     {
       if (is_compat == false)
 	{
 	  printf ("Could not make all the data backward compatible!\n");
-	  *write_checksum = false;
 	  err_status = ER_TZ_COMPILE_ERROR;
-	}
-      else
-	{
-	  *write_checksum = true;
 	}
     }
 
