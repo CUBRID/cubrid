@@ -7262,27 +7262,53 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   int try_max = 1;
   int ret;
   bool is_system_class = false;
+  int retry_count = 1, retry_max = 5;
+  VPID object_vpid;
+  PAGE_PTR page_ptr;
+  bool need_latch = false;
 
   assert (context->oid_p != NULL);
 
+  VPID_GET_FROM_OID (&object_vpid, context->oid_p);
+
+  need_latch = true;
 try_again:
-
-  /* First make sure object home_page is fixed. */
-  ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
-  if (ret != NO_ERROR)
+  if (latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY)
     {
-      if (ret == ER_HEAP_UNKNOWN_OBJECT)
+      page_ptr = PTR_ALIGN (context->home_page_copy_buffer, MAX_ALIGNMENT);
+      if (pgbuf_copy (thread_p, &object_vpid, page_ptr, IO_PAGESIZE) == NO_ERROR)
 	{
-	  /* bad page id, consider the object does not exist and let the caller handle the case */
-	  return S_DOESNT_EXIST;
+	  need_latch = false;
 	}
+      else
+	{
+	  if (retry_count < retry_max)
+	    {
+	      retry_count++;
+	      goto try_again;
+	    }
+	}
+    }
 
-      goto error;
+  if (need_latch)
+    {
+      ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
+      if (ret != NO_ERROR)
+	{
+	  if (ret == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* bad page id, consider the object does not exist and let the caller handle the case */
+	      return S_DOESNT_EXIST;
+	    }
+
+	  goto error;
+	}
+      page_ptr = context->home_page_watcher.pgptr;
     }
 
   /* Output class_oid if necessary. */
   if (context->class_oid_p != NULL && OID_ISNULL (context->class_oid_p)
-      && heap_get_class_oid_from_page (thread_p, context->home_page_watcher.pgptr, context->class_oid_p) != NO_ERROR)
+      && heap_get_class_oid_from_page (thread_p, page_ptr, context->class_oid_p) != NO_ERROR)
     {
       /* Unexpected. */
       assert_release (false);
@@ -7290,7 +7316,7 @@ try_again:
     }
 
   /* Get slot. */
-  slot_p = spage_get_slot (context->home_page_watcher.pgptr, context->oid_p->slotid);
+  slot_p = spage_get_slot (page_ptr, context->oid_p->slotid);
   if (slot_p == NULL)
     {
       /* Slot doesn't exist. */
@@ -7322,7 +7348,7 @@ try_again:
     {
     case REC_RELOCATION:
       /* Need to get forward_oid and fix forward page */
-      scan = spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, &peek_recdes, PEEK);
+      scan = spage_get_record (page_ptr, context->oid_p->slotid, &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
@@ -7333,7 +7359,11 @@ try_again:
       COPY_OID (&context->forward_oid, (OID *) peek_recdes.data);
 
       /* Try to latch forward_page. */
-      PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
+      if (context->home_page_watcher.pgptr == page_ptr)
+	{
+	  PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
+	}
+
       ret = heap_prepare_object_page (thread_p, &context->forward_oid, &context->fwd_page_watcher, latch_mode);
       if (ret == NO_ERROR)
 	{
@@ -7363,7 +7393,7 @@ try_again:
 
     case REC_BIGONE:
       /* Need to get forward_oid and forward_page (first overflow page). */
-      scan = spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, &peek_recdes, PEEK);
+      scan = spage_get_record (page_ptr, context->oid_p->slotid, &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
@@ -7376,7 +7406,10 @@ try_again:
       /* Fix overflow page. Since overflow pages should be always accessed with their home pages latched, unconditional 
        * latch should work; However, we need to use the same ordered_fix approach. */
       PGBUF_WATCHER_RESET_RANK (&context->fwd_page_watcher, PGBUF_ORDERED_HEAP_OVERFLOW);
-      PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
+      if (context->home_page_watcher.pgptr == page_ptr)
+	{
+	  PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
+	}
       ret = heap_prepare_object_page (thread_p, &context->forward_oid, &context->fwd_page_watcher, latch_mode);
       if (ret == NO_ERROR)
 	{
@@ -7399,7 +7432,7 @@ try_again:
 	  /* Just ignore record. */
 	  return S_DOESNT_EXIST;
 	}
-      if (spage_check_slot_owner (thread_p, context->home_page_watcher.pgptr, context->oid_p->slotid))
+      if (spage_check_slot_owner (thread_p, page_ptr, context->oid_p->slotid))
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_NODATA_NEWADDRESS, 3, context->oid_p->volid,
 		  context->oid_p->pageid, context->oid_p->slotid);
@@ -7498,15 +7531,21 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
   SCAN_CODE scan_code;
   PAGE_PTR home_page, forward_page;
   const OID *oid;
+  int num_slots;
 
   assert (context != NULL && context->oid_p != NULL);
 
   oid = context->oid_p;
   home_page = context->home_page_watcher.pgptr;
+  if (home_page == NULL)
+    {
+      home_page = PTR_ALIGN (context->home_page_copy_buffer, MAX_ALIGNMENT);
+    }
+  num_slots = spage_number_of_slots (home_page);
   forward_page = context->fwd_page_watcher.pgptr;
 
   assert (home_page != NULL);
-  assert (pgbuf_get_page_id (home_page) == oid->pageid && pgbuf_get_volume_id (home_page) == oid->volid);
+  //assert (pgbuf_get_page_id (home_page) == oid->pageid && pgbuf_get_volume_id (home_page) == oid->volid);
   assert (context->record_type == REC_HOME || context->record_type == REC_RELOCATION
 	  || context->record_type == REC_BIGONE);
   assert (context->record_type == REC_HOME
@@ -7588,9 +7627,18 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_SCANCACHE *scan_cache_p = context->scan_cache;
+  PAGE_PTR home_page_ptr;
+  int num_slots;
 
   /* We have everything set up to get record data. */
   assert (context != NULL);
+
+  home_page_ptr = context->home_page_watcher.pgptr;
+  if (home_page_ptr == NULL)
+    {
+      home_page_ptr = PTR_ALIGN (context->home_page_copy_buffer, MAX_ALIGNMENT);
+    }
+  num_slots = spage_number_of_slots (home_page_ptr);
 
   /* Assert ispeeking, scan_cache and recdes are compatible. If ispeeking is PEEK, it is the caller responsabilty to
    * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated
@@ -7623,8 +7671,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  ASSERT_ERROR ();
 	  return S_ERROR;
 	}
-      return spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
-			       context->ispeeking);
+      return spage_get_record (home_page_ptr, context->oid_p->slotid, context->recdes_p, context->ispeeking);
     default:
       break;
     }

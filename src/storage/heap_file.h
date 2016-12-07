@@ -373,6 +373,7 @@ struct heap_get_context
   HEAP_SCANCACHE *scan_cache;	/* scan cache */
 
   /* physical page watchers  */
+  char home_page_copy_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   PGBUF_WATCHER home_page_watcher;	/* home page */
   PGBUF_WATCHER fwd_page_watcher;	/* forward page */
 

@@ -1292,6 +1292,77 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid
 }
 #endif /* NDEBUG */
 
+
+#if !defined(NDEBUG)
+int
+pgbuf_copy_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR page_ptr, int size, const char *caller_file,
+		  int caller_line)
+#else
+int
+pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_ptr, int size)
+#endif
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  PAGE_PTR src_pgptr = NULL;
+
+  assert (page_ptr != NULL);
+
+  /* interrupt check */
+  if (thread_get_check_interrupt (thread_p) == true)
+    {
+      if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return ER_FAILED;
+	}
+    }
+
+  hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)];
+
+  bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
+
+  if (bufptr == NULL)
+    {
+      /* not in memory, I can't get the page */
+      return ER_FAILED;
+    }
+  else
+    {
+#if defined (ENABLE_SYSTEMTAP)
+      CUBRID_PGBUF_HIT ();
+      pgbuf_hit = true;
+#endif /* ENABLE_SYSTEMTAP */
+    }
+
+  (void) pgbuf_set_bcb_page_vpid (thread_p, bufptr);
+
+  if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
+    {
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      return ER_FAILED;
+    }
+
+
+  if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
+    {
+      /* this page is not allocated. we allow it if the caller wants to initialize new page or if it specifies it wants
+       * to fix the deallocated page */
+      int severity = pgbuf_get_check_page_validation (thread_p) ? ER_ERROR_SEVERITY : ER_WARNING_SEVERITY;
+      assert (!pgbuf_get_check_page_validation (thread_p));
+      er_set (severity, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+      return ER_FAILED;
+    }
+
+  CAST_BFPTR_TO_PGPTR (src_pgptr, bufptr);
+  memcpy (page_ptr, src_pgptr, IO_PAGESIZE);
+
+  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  return NO_ERROR;
+}
+
 /*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
