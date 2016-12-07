@@ -52,5 +52,5 @@ extern int elo_set_meta (DB_ELO * elo, const char *key, const char *val);
 extern int elo_rv_undo_create_elo (THREAD_ENTRY * thread_p, void *rcv);
 extern int elo_rv_delete_elo (THREAD_ENTRY * thread_p, void *rcv);
 extern int elo_rv_rename_elo (THREAD_ENTRY * thread_p, void *rcv);
-extern int get_lob_state_from_locator (const char *locator);
+extern int elo_get_lob_state_from_locator (const char *locator);
 #endif /* _ELO_H_ */
