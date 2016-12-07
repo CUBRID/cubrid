@@ -202,7 +202,6 @@ typedef enum
 #define LC_FLAG_HAS_UNIQUE_INDEX 0x04	/* Used for flushing, set if object has unique index */
 #define LC_FLAG_HAS_OOR_ATT	 0x08	/* Used for flushing, set if object has any attribute which needs to be stored OOR */
 
-
 #define LC_ONEOBJ_SET_HAS_INDEX(obj) \
   (obj)->flag |= LC_FLAG_HAS_INDEX
 

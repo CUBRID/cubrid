@@ -6441,7 +6441,6 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
     }
   *force_count = 1;
 
-
   if (!OID_IS_ROOTOID (&class_oid) && deleted == true)
     {
       HEAP_CACHE_ATTRINFO attr_info;
@@ -7598,7 +7597,8 @@ error:
 LC_COPYAREA *
 locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 					 RECDES * new_recdes, const int copyarea_length_hint,
-					 OUT_OF_ROW_CONTEXT * oor_context, int lob_create_flag, int lob_delete_flag)
+					 OUT_OF_ROW_CONTEXT * oor_context, LOCATOR_LOB_CREATE_FLAG lob_create_flag,
+                                         LOCATOR_LOB_DELETE_FLAG lob_delete_flag)
 {
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;

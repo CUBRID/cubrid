@@ -42,17 +42,17 @@
 #include "thread.h"
 #include "partition.h"
 
-enum
+typedef enum
 {
   LOB_FLAG_EXCLUDE_LOB,
   LOB_FLAG_INCLUDE_LOB
-};
+} LOCATOR_LOB_CREATE_FLAG;
 
-enum
+typedef enum
 {
   LOB_DELETE_ON_ATTR_INIT,
   LOB_SKIP_DELETE_ON_ATTR_INIT
-};
+} LOCATOR_LOB_DELETE_FLAG;
 
 extern bool locator_Dont_check_foreign_key;
 
@@ -79,8 +79,9 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * h
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
 							     const int copyarea_length_hint,
-							     OUT_OF_ROW_CONTEXT * oor_context, int lob_create_flag,
-							     int lob_delete_flag);
+							     OUT_OF_ROW_CONTEXT * oor_context,
+                                                             LOCATOR_LOB_CREATE_FLAG lob_create_flag,
+							     LOCATOR_LOB_DELETE_FLAG lob_delete_flag);
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, BTID * btid,
 					bool btid_dup_key_locked, HFID * newhfid, OID * newoid,
 					HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache, int *force_count,

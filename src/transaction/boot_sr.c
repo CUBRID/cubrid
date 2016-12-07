@@ -537,7 +537,6 @@ boot_max_pages_new_volume (void)
   return (DKNPAGES) nfree_pages;
 }
 
-
 /*
  * boot_remove_temp_volume () - remove a volume from the database
  *

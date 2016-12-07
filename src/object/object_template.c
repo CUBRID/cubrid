@@ -2649,7 +2649,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 
 	  if (error != NO_ERROR)
 	    {
-	      assert (er_errid () != NO_ERROR);
+	      ASSERT_ERROR ();
 	    }
 	}			/* if (db_get_client_type () != */
 
@@ -2674,7 +2674,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 
 	  if (error != NO_ERROR)
 	    {
-	      assert (er_errid () != NO_ERROR);
+	      ASSERT_ERROR ();
 	    }
 
 	}
@@ -2712,7 +2712,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 
 	      if (error != NO_ERROR)
 		{
-		  assert (er_errid () != NO_ERROR);
+		  ASSERT_ERROR ();
 		}
 	    }
 	  else
@@ -2722,7 +2722,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	      error = tr_after_object (trstate, object, temp);
 	      if (error != NO_ERROR)
 		{
-		  assert (er_errid () != NO_ERROR);
+		  ASSERT_ERROR ();
 		}
 	    }
 	}
@@ -2786,7 +2786,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
     }
   else
     {
-      assert (er_errid () != NO_ERROR);
+      ASSERT_ERROR ();
     }
 
   return error;

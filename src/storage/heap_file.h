@@ -332,7 +332,6 @@ typedef enum
   SNAPSHOT_TYPE_DIRTY		/* use dirty snapshot */
 } SNAPSHOT_TYPE;
 
-
 /* HEAP_PAGE_VACUUM_STATUS -
  * Heap page attribute used to predict when page is no longer going to need
  * another vacuum actions. This allows page deallocations without risking
@@ -395,11 +394,11 @@ struct heap_get_context
 struct mvcc_reev_data;
 extern int mvcc_header_size_lookup[8];
 
-enum
+typedef enum
 {
   DELETE_ALL_LOBS = 0,
   DELETE_ONLY_OOR_LOB
-};
+} HEAP_ATTR_LOB_DELETE_TYPE;
 
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid);
 #ifdef DEBUG_CLASSREPR_CACHE
@@ -485,16 +484,18 @@ extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * ins
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-				     bool delete_only_oor_lob);
+				     HEAP_ATTR_LOB_DELETE_TYPE delete_only_oor_lob);
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, RECDES * new_recdes,
-						  OUT_OF_ROW_CONTEXT * oor_context, int lob_delete_flag);
+						  OUT_OF_ROW_CONTEXT * oor_context,
+                                                  LOCATOR_LOB_DELETE_FLAG lob_delete_flag);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
-							     OUT_OF_ROW_CONTEXT * oor_context, int lob_delete_flag);
+							     OUT_OF_ROW_CONTEXT * oor_context,
+                                                             LOCATOR_LOB_DELETE_FLAG lob_delete_flag);
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
