@@ -829,14 +829,14 @@ struct rvfun RV_fun[] = {
   {RVREPL_OOR_INSERT,
    "RVREPL_OOR_INSERT",
    NULL,
-   NULL,
+   es_rv_nop,
    NULL,
    NULL},
 
   {RVREPL_OOR_UPDATE,
    "RVREPL_OOR_UPDATE",
    NULL,
-   NULL,
+   es_rv_nop,
    NULL,
    NULL}
 };

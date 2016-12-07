@@ -2879,13 +2879,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
 		}
 
-	      /* Do we need to redo anything ? */
-	      if (undoredo->data.rcvindex == RVREPL_OOR_INSERT || undoredo->data.rcvindex == RVREPL_OOR_UPDATE)
-		{
-		  /* do not apply redo for these changes */
-		  break;
-		}
-
 	      /* 
 	       * Fetch the page for physical log records and check if redo
 	       * is needed by comparing the log sequence numbers
@@ -3079,11 +3072,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		  /* Reset vacuum recover LSA */
 		  vacuum_notify_server_crashed (&null_lsa);
-		}
-	      else if (redo->data.rcvindex == RVREPL_OOR_INSERT || redo->data.rcvindex == RVREPL_OOR_UPDATE)
-		{
-		  /* do not apply redo for these changes */
-		  break;
 		}
 
 	      /* 
