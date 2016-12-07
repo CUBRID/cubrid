@@ -32,7 +32,6 @@
 #include "chartype.h"
 #include "misc_string.h"
 #include "error_manager.h"
-#include "dbtype_common.h"
 #include "db_date.h"
 #include "dbi.h"
 #include "system_parameter.h"
