@@ -13858,7 +13858,7 @@ mr_data_writemem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 static void
 mr_data_readmem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  return mr_data_readmem_string (buf, memptr, domain, size);
+  mr_data_readmem_string (buf, memptr, domain, size);
 }
 
 static void
@@ -17068,7 +17068,7 @@ error:
 bool
 pr_is_oor_value (DB_VALUE * val)
 {
-  if (TP_IS_OOR_TYPE (DB_VALUE_TYPE (val)) && DB_GET_STRING_SIZE (val) > OBJECT_OOR_THRESHOLD_SIZE)
+  if (TP_IS_OOR_TYPE (DB_VALUE_TYPE (val)) && pr_data_writeval_disk_size (val) > (int) OBJECT_OOR_THRESHOLD_SIZE)
     {
       return true;
     }

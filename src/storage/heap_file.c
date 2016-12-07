@@ -10300,8 +10300,7 @@ heap_attrvalue_read_oor_location (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP
   else
     {
       attrepr = value->read_attrepr;
-      if ((TP_DOMAIN_TYPE (attrepr->domain) != DB_TYPE_CHAR
-	   && TP_DOMAIN_TYPE (attrepr->domain) != DB_TYPE_VARCHAR)
+      if (!TP_IS_OOR_TYPE (TP_DOMAIN_TYPE (attrepr->domain))
 	  || OR_VAR_IS_NULL (recdes->data, value->read_attrepr->location))
 	{
 	  return NO_ERROR;
@@ -11526,7 +11525,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	      db_value_clone (save, &value->dbvalue);
 	      db_value_free (save);
 	    }
-	  else if (value->last_attrepr->type == DB_TYPE_CHAR || value->last_attrepr->type == DB_TYPE_VARCHAR)
+	  else if (TP_IS_OOR_TYPE (value->last_attrepr->type))
 	    {
 	      DB_VALUE oor_location;
 
@@ -11615,7 +11614,7 @@ re_check:
 	{
 	  column_size = pr_data_writeval_disk_size (&value->dbvalue);
 	  size += column_size;
-	  if (pr_is_oor_value (&value->dbvalue) && column_size > (int) OBJECT_OOR_THRESHOLD_SIZE)
+	  if (pr_is_oor_value (&value->dbvalue))
 	    {
 	      size_gain_overflow_columns += column_size - OBJECT_OOR_THRESHOLD_SIZE;
 	    }
@@ -11710,7 +11709,8 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 
   if (attr_info->num_values > 1
       && (oor_context != NULL && oor_context->oor_atts != NULL)
-      && size_without_overflow_columns < expected_size && !heap_is_big_length (expected_size))
+      && size_without_overflow_columns < expected_size
+      && !heap_is_big_length (size_without_overflow_columns))
     {
       check_oor_column = true;
     }
