@@ -547,8 +547,6 @@ elo_create (DB_ELO * elo)
   int ret = NO_ERROR;
 #if !defined (CS_MODE)
   LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
-  LOG_CRUMB undo_crumbs[2];
-  int num_undo_crumbs;
   LOB_LOCATOR_STATE state;
 #endif
 
@@ -581,11 +579,7 @@ elo_create (DB_ELO * elo)
 #if !defined (CS_MODE)
   if (ELO_NEEDS_TRANSACTION (elo))
     {
-      undo_crumbs[0].length = strlen (uri) + 1;
-      undo_crumbs[0].data = (char *) uri;
-      num_undo_crumbs = 1;
-      log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
-				  undo_crumbs, NULL);
+      log_append_undo_data (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, strlen (uri) + 1, (char *) uri);
 
       /* delete temporary LOB file after commit */
       state = elo_get_lob_state_from_locator (elo->locator);
@@ -709,8 +703,6 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
   char *meta_data = NULL;
 #if !defined (CS_MODE)
   LOG_DATA_ADDR addr;
-  LOG_CRUMB undo_crumbs[1];
-  int num_undo_crumbs;
 #endif
 
   assert (elo != NULL);
@@ -751,7 +743,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
       LOB_LOCATOR_STATE state;
       ES_URI real_locator;
 
-      state = elo_get_lob_state_from_locator (elo->locator);
+      state = (LOB_LOCATOR_STATE) elo_get_lob_state_from_locator (elo->locator);
       strlcpy (real_locator, elo->locator, sizeof (ES_URI));
 
       switch (state)
@@ -775,11 +767,8 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 	    addr.pgptr = NULL;
 	    addr.vfid = NULL;
 
-	    undo_crumbs[0].length = strlen (out_uri) + 1;
-	    undo_crumbs[0].data = (char *) out_uri;
-	    num_undo_crumbs = 1;
-	    log_append_undoredo_crumbs (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, num_undo_crumbs, 0,
-					undo_crumbs, NULL);
+	    log_append_undo_data (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, strlen (out_uri) + 1,
+                                  (char *) out_uri);
 #endif
 
 	  }
@@ -1066,36 +1055,6 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void *rcv)
 #else
   es_delete_file (elo_path);
 #endif
-
-  return NO_ERROR;
-}
-
-int
-elo_rv_rename_elo (THREAD_ENTRY * thread_p, void *rcv)
-{
-  INT16 offset, size_dst_uri, size_src_uri;
-  const char *rcv_data;
-  ES_URI src_uri;
-  ES_URI dst_uri;
-
-  rcv_data = ((LOG_RCV *) rcv)->data;
-
-  size_dst_uri = *(INT16 *) rcv_data;
-  offset = sizeof (size_dst_uri);
-  size_src_uri = *(INT16 *) (rcv_data + offset);
-  offset += sizeof (size_src_uri);
-
-  assert (size_dst_uri <= sizeof (dst_uri));
-  assert (size_src_uri <= sizeof (src_uri));
-
-  strncpy (dst_uri, rcv_data + offset, size_dst_uri);
-  dst_uri[size_dst_uri] = '\0';
-  offset += size_dst_uri;
-
-  strncpy (src_uri, rcv_data + offset, size_src_uri);
-  src_uri[size_src_uri] = '\0';
-
-  es_rename_file_with_new (dst_uri, src_uri);
 
   return NO_ERROR;
 }

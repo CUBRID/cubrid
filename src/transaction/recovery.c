@@ -819,12 +819,6 @@ struct rvfun RV_fun[] = {
    elo_rv_delete_elo,
    NULL,
    NULL},
-  {RVELO_RENAME_FILE,
-   "RVELO_RENAME_FILE",
-   elo_rv_rename_elo,
-   NULL,
-   NULL,
-   NULL},
 
   {RVREPL_OOR_INSERT,
    "RVREPL_OOR_INSERT",

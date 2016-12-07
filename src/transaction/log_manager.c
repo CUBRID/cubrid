@@ -144,7 +144,6 @@ static int rv;
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVELO_CREATE_FILE) \
     && ((RCVI) != RVELO_DELETE_FILE) \
-    && ((RCVI) != RVELO_RENAME_FILE) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
 #if 0				/* LOB locator disabled code */
