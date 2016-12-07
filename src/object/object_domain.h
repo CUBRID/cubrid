@@ -285,7 +285,7 @@ typedef enum tp_match
   (TP_IS_DATE_WITH_TZ_TYPE (typeid) || ((typeid) == DB_TYPE_TIMETZ) \
    || ((typeid) == DB_TYPE_TIMELTZ ))
 
-#define TP_IS_OOR_TYPE(typeid) (((typeid) == DB_TYPE_STRING) || ((typeid) == DB_TYPE_VARNCHAR)) \
+#define TP_IS_OOR_TYPE(typeid) (((typeid) == DB_TYPE_STRING) || ((typeid) == DB_TYPE_VARNCHAR))
 
 /*
  * Precision for non-parameterized predefined types
