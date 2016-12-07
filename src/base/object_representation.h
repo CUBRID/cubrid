@@ -597,6 +597,9 @@
 #define OR_OFFSET_SIZE_2BYTE 0x40000000
 #define OR_OFFSET_SIZE_4BYTE 0x60000000
 
+/* The record has at least one attribute stored out or record (OOR) */
+#define OR_OOR_BIT_FLAG			  0x10000000
+
 /* Use for MVCC flags the remainder of 5 bits in the first byte. */
 /* Flag will be shifter by 24 bits to the right */
 #define OR_MVCC_FLAG_MASK	    0x0f
@@ -611,9 +614,6 @@
 
 /* The record have an LSA with the location of the previous version */
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
-
-/* The record has at least one attribute stored out or record (OOR) */
-#define OR_OOR_BIT_FLAG			  0x10000000
 
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
