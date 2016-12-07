@@ -1327,13 +1327,6 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
       /* not in memory, I can't get the page */
       return ER_FAILED;
     }
-  else
-    {
-#if defined (ENABLE_SYSTEMTAP)
-      CUBRID_PGBUF_HIT ();
-      pgbuf_hit = true;
-#endif /* ENABLE_SYSTEMTAP */
-    }
 
   (void) pgbuf_set_bcb_page_vpid (thread_p, bufptr);
 
