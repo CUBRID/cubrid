@@ -593,22 +593,22 @@ elo_create (DB_ELO * elo)
 	{
 	  char log_data_buffer[sizeof (MVCCID) + PATH_MAX + 1];
 	  char *log_data = log_data_buffer;
-	  char *ptr;
+	  char *ptr = log_data;
 	  int path_len = strlen (uri);
+#if defined (SERVER_MODE)
 	  MVCCID mvccid;
 
 	  mvccid = logtb_get_current_mvccid (thread_get_thread_entry_info ());
-
-	  ptr = log_data;
 	  memcpy (ptr, &mvccid, sizeof (mvccid));
 	  ptr += sizeof (mvccid);
+#endif
 	  memcpy (ptr, uri, path_len + 1);
 	  ptr += path_len + 1;
 
 	  log_append_postpone (thread_get_thread_entry_info (), RVELO_DELETE_FILE, &addr, ptr - log_data, log_data);
 	}
     }
-#endif
+#endif /* CS_MODE */
 
   return ret;
 }
@@ -862,22 +862,23 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	     * a notify vacuum for delete */
 	    char log_data_buffer[sizeof (MVCCID) + PATH_MAX + 1];
 	    char *log_data = log_data_buffer;
-	    char *ptr;
+	    char *ptr = log_data;
 	    LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
 	    int path_len = strlen (elo->locator);
+#if defined (SERVER_MODE)
 	    MVCCID mvccid;
 
 	    mvccid = logtb_get_current_mvccid (thread_get_thread_entry_info ());
 
-	    ptr = log_data;
 	    memcpy (ptr, &mvccid, sizeof (mvccid));
 	    ptr += sizeof (mvccid);
+#endif
 	    memcpy (ptr, elo->locator, path_len + 1);
 	    ptr += path_len + 1;
 
 	    log_append_postpone (thread_get_thread_entry_info (), RVELO_DELETE_FILE, &addr, ptr - log_data, log_data);
 	  }
-#endif
+#endif /* CS_MODE */
 	}
       return ret;
     }
@@ -1043,8 +1044,10 @@ elo_rv_delete_elo (THREAD_ENTRY * thread_p, void *rcv)
   assert (((LOG_RCV *) rcv)->data != NULL);
 
   ptr = ((LOG_RCV *) rcv)->data;
+#if defined (SERVER_MODE)
   mvccid = *((MVCCID *) ptr);
   ptr += sizeof (mvccid);
+#endif
 
   elo_path = ptr;
 
