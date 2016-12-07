@@ -243,7 +243,6 @@ static void xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidat
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg);
 static XCACHE_CLEANUP_REASON xcache_need_cleanup (void);
 
-
 /*
  * xcache_initialize () - Initialize XASL cache.
  *

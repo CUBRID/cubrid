@@ -7703,14 +7703,11 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID scan_id;
   SCAN_CODE scan_code;
-  QFILE_TUPLE_RECORD tuple_record = {
-    NULL, 0
-  };
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   char *tuple_p;
   PR_TYPE *pr_type_p;
   OR_BUF buf;
   double dbl;
-  int i;
 
   DB_MAKE_NULL (&sqr_val);
   DB_MAKE_NULL (&dbval);
@@ -12273,6 +12270,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	  if (save_heapid != 0)
 	    {
 	      (void) db_change_private_heap (thread_p, save_heapid);
+	      save_heapid = 0;
 	    }
 
 	  regu_var_node = regu_var_node->next;

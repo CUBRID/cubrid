@@ -286,9 +286,11 @@ fpcache_entry_uninit (void *entry)
 {
   FPCACHE_ENTRY *fpcache_entry = FPCACHE_PTR_TO_ENTRY (entry);
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  HL_HEAPID old_private_heap = db_change_private_heap (thread_p, 0);
+  HL_HEAPID old_private_heap;
   PRED_EXPR_WITH_CONTEXT *pred_expr = NULL;
   int head;
+
+  old_private_heap = db_change_private_heap (thread_p, 0);
 
   for (head = fpcache_entry->clone_stack_head; head >= 0; head--)
     {
@@ -304,10 +306,9 @@ fpcache_entry_uninit (void *entry)
   (void) db_change_private_heap (thread_p, old_private_heap);
   fpcache_entry->clone_stack_head = -1;
 
-  if (fpcache_entry->clone_stack)
+  if (fpcache_entry->clone_stack != NULL)
     {
-      free (fpcache_entry->clone_stack);
-      fpcache_entry->clone_stack = NULL;
+      free_and_init (fpcache_entry->clone_stack);
     }
 
   return NO_ERROR;

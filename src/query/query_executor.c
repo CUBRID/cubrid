@@ -392,7 +392,7 @@ static int qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, i
 static int qexec_clear_regu_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list, int final);
 static int qexec_clear_regu_value_list (XASL_NODE * xasl_p, REGU_VALUE_LIST * list, int final);
 static void qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list);
-static int qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, int final);
+static void qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, int final);
 static int qexec_clear_pred (XASL_NODE * xasl_p, PRED_EXPR * pr, int final);
 static int qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * list,
 					 int final);
@@ -1569,24 +1569,21 @@ qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list)
 
 /*
  * qexec_clear_sort_list () - clear the sort list
- *   return: clear count
+ *   return: void
  *   xasl_p(in) : xasl
  *   list(in)   : the sort list
  *   final(in)  : true, if finalize needed
  */
-static int
+static void
 qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, int final)
 {
   SORT_LIST *p;
-  int pg_cnt;
 
-  pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
       /* restores the original domain */
       p->pos_descr.dom = p->original_value_domain;
     }
-  return pg_cnt;
 }
 
 /*
@@ -2082,8 +2079,15 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	  pr_clear_value (xasl->ordbynum_val);
 	}
 
-      pg_cnt += qexec_clear_sort_list (xasl, xasl->after_iscan_list, final);
-      pg_cnt += qexec_clear_sort_list (xasl, xasl->orderby_list, final);
+      if (xasl->after_iscan_list)
+	{
+	  qexec_clear_sort_list (xasl, xasl->after_iscan_list, final);
+	}
+
+      if (xasl->orderby_list)
+	{
+	  qexec_clear_sort_list (xasl, xasl->orderby_list, final);
+	}
       pg_cnt += qexec_clear_pred (xasl, xasl->ordbynum_pred, final);
 
       if (xasl->orderby_limit)
@@ -2170,8 +2174,14 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	    pg_cnt += qexec_clear_xasl (thread_p, buildlist->eptr_list, final);
 	  }
 
-	pg_cnt += qexec_clear_sort_list (xasl, buildlist->groupby_list, final);
-	pg_cnt += qexec_clear_sort_list (xasl, buildlist->after_groupby_list, final);
+	if (buildlist->groupby_list)
+	  {
+	    qexec_clear_sort_list (xasl, buildlist->groupby_list, final);
+	  }
+	if (buildlist->after_groupby_list)
+	  {
+	    qexec_clear_sort_list (xasl, buildlist->after_groupby_list, final);
+	  }
 
 	if (xasl->curr_spec)
 	  {
