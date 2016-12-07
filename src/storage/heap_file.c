@@ -11614,7 +11614,7 @@ re_check:
 	{
 	  column_size = pr_data_writeval_disk_size (&value->dbvalue);
 	  size += column_size;
-	  if (pr_is_oor_value (&value->dbvalue) && column_size > (int) OBJECT_OOR_THRESHOLD_SIZE)
+	  if (pr_is_oor_value (&value->dbvalue))
 	    {
 	      size_gain_overflow_columns += column_size - OBJECT_OOR_THRESHOLD_SIZE;
 	    }
