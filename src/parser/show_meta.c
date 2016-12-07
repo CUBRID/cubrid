@@ -37,7 +37,7 @@
 #include "error_manager.h"
 #include "parser.h"
 #include "schema_manager.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "error_code.h"
 #include "db.h"
 

@@ -2493,6 +2493,7 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
+  DB_ELO *elo;
 
   if (argc != 3)
     {
@@ -2509,8 +2510,8 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   net_arg_get_bigint (&offset, argv[1]);
   net_arg_get_str (&data_buf, &data_length, argv[2]);
 
-  cas_log_write (0, false, "lob_write lob_type=%d offset=%lld, length=%d", db_get_elo (&lob_dbval)->type, offset,
-		 data_length);
+  elo = db_get_elo (&lob_dbval);
+  cas_log_write (0, false, "lob_write lob_type=%d offset=%lld, length=%d", elo->type, offset, data_length);
   gettimeofday (&lob_new_begin, NULL);
 
   err_code = ux_lob_write (&lob_dbval, offset, data_length, data_buf, net_buf);
@@ -2533,6 +2534,7 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
+  DB_ELO *elo;
 
   if (argc != 3)
     {
@@ -2549,8 +2551,8 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   net_arg_get_bigint (&offset, argv[1]);
   net_arg_get_int (&data_length, argv[2]);
 
-  cas_log_write (0, false, "lob_read lob_type=%d offset=%lld, length=%d", db_get_elo (&lob_dbval)->type, offset,
-		 data_length);
+  elo = db_get_elo (&lob_dbval);
+  cas_log_write (0, false, "lob_read lob_type=%d offset=%lld, length=%d", elo->type, offset, data_length);
   gettimeofday (&lob_new_begin, NULL);
 
   err_code = ux_lob_read (&lob_dbval, offset, data_length, net_buf);

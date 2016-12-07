@@ -35,7 +35,7 @@
 #include <windows.h>
 #include <ws2tcpip.h>
 
-#include "dbtype.h"
+#include "dbtype_common.h"
 #ifdef SERVER_MODE
 #include "connection_error.h"
 #include "connection_sr.h"

@@ -631,8 +631,11 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_TIME:
 	case DB_TYPE_TIMELTZ:
-	  hash = (unsigned int) *(db_get_time (val));
-	  break;
+	  {
+	    unsigned int *time = db_get_time (val);
+	    hash = (unsigned int) (*time);
+	    break;
+	  }
 	case DB_TYPE_TIMETZ:
 	  {
 	    DB_TIMETZ *time_tz = db_get_timetz (val);
@@ -641,8 +644,11 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
-	  hash = (unsigned int) *(db_get_timestamp (val));
-	  break;
+	  {
+	    DB_TIMESTAMP *time_st = db_get_timestamp (val);
+	    hash = (unsigned int) (*time_st);
+	    break;
+	  }
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
 	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (val);
@@ -665,11 +671,17 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  }
 	  break;
 	case DB_TYPE_DATE:
-	  hash = (unsigned int) *(db_get_date (val));
-	  break;
+	  {
+	    DB_DATE *date = db_get_date (val);
+	    hash = (unsigned int) (*date);
+	    break;
+	  }
 	case DB_TYPE_MONETARY:
-	  hash = (unsigned int) db_get_monetary (val)->amount;
-	  break;
+	  {
+	    DB_MONETARY *mon = db_get_monetary (val);
+	    hash = (unsigned int) (mon->amount);
+	    break;
+	  }
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:

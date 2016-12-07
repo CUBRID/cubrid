@@ -36,7 +36,7 @@
 #include <stdarg.h>
 
 #include "db.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "server_interface.h"

@@ -42,7 +42,7 @@
 
 #include "error_manager.h"
 #include "memory_alloc.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "dbdef.h"
 #include "parser.h"
 #include "object_domain.h"

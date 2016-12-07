@@ -4676,7 +4676,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMETZ:
       {
-	DB_TIME time_local, time_utc;
+	DB_TIME time_local, *time_utc;
 	TZ_ID tz_id;
 	DB_TIMETZ *time_tz;
 	int err;
@@ -4685,8 +4685,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	if (db_value_type (val) == DB_TYPE_TIMELTZ)
 	  {
-	    time_utc = *db_get_time (val);
-	    err = tz_create_session_tzid_for_time (&time_utc, true, &tz_id);
+	    time_utc = db_get_time (val);
+	    err = tz_create_session_tzid_for_time (time_utc, true, &tz_id);
 	    if (err != NO_ERROR)
 	      {
 		net_buf_cp_int (net_buf, -1, NULL);
@@ -4697,11 +4697,11 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	else
 	  {
 	    time_tz = db_get_timetz (val);
-	    time_utc = time_tz->time;
+	    *time_utc = time_tz->time;
 	    tz_id = time_tz->tz_id;
 	  }
 
-	err = tz_utc_timetz_to_local (&time_utc, &tz_id, &time_local);
+	err = tz_utc_timetz_to_local (time_utc, &tz_id, &time_local);
 	if (err != NO_ERROR)
 	  {
 	    net_buf_cp_int (net_buf, -1, NULL);
@@ -4746,7 +4746,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
       {
-	DB_TIMESTAMP ts;
+	DB_TIMESTAMP *ts;
 	DB_TIMESTAMPTZ *ts_tz;
 	DB_DATE date;
 	DB_TIME time;
@@ -4757,8 +4757,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	if (db_value_type (val) == DB_TYPE_TIMESTAMPLTZ)
 	  {
-	    ts = *db_get_timestamp (val);
-	    err = tz_create_session_tzid_for_timestamp (&ts, &tz_id);
+	    ts = db_get_timestamp (val);
+	    err = tz_create_session_tzid_for_timestamp (ts, &tz_id);
 	    if (err != NO_ERROR)
 	      {
 		net_buf_cp_int (net_buf, -1, NULL);
@@ -4769,11 +4769,11 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	else
 	  {
 	    ts_tz = db_get_timestamptz (val);
-	    ts = ts_tz->timestamp;
+	    *ts = ts_tz->timestamp;
 	    tz_id = ts_tz->tz_id;
 	  }
 
-	err = db_timestamp_decode_w_tz_id (&ts, &tz_id, &date, &time);
+	err = db_timestamp_decode_w_tz_id (ts, &tz_id, &date, &time);
 	if (err != NO_ERROR)
 	  {
 	    net_buf_cp_int (net_buf, -1, NULL);
@@ -4815,7 +4815,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIMETZ:
       {
-	DB_DATETIME dt_local, dt_utc;
+	DB_DATETIME dt_local, *dt_utc;
 	TZ_ID tz_id;
 	DB_DATETIMETZ *dt_tz;
 	int err;
@@ -4824,8 +4824,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	if (db_value_type (val) == DB_TYPE_DATETIMELTZ)
 	  {
-	    dt_utc = *db_get_datetime (val);
-	    err = tz_create_session_tzid_for_datetime (&dt_utc, true, &tz_id);
+	    dt_utc = db_get_datetime (val);
+	    err = tz_create_session_tzid_for_datetime (dt_utc, true, &tz_id);
 	    if (err != NO_ERROR)
 	      {
 		net_buf_cp_int (net_buf, -1, NULL);
@@ -4836,11 +4836,11 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	else
 	  {
 	    dt_tz = db_get_datetimetz (val);
-	    dt_utc = dt_tz->datetime;
+	    *dt_utc = dt_tz->datetime;
 	    tz_id = dt_tz->tz_id;
 	  }
 
-	err = tz_utc_datetimetz_to_local (&dt_utc, &tz_id, &dt_local);
+	err = tz_utc_datetimetz_to_local (dt_utc, &tz_id, &dt_local);
 	if (err == ER_QPROC_TIME_UNDERFLOW)
 	  {
 	    db_datetime_encode (&dt_local, 0, 0, 0, 0, 0, 0, 0);
@@ -9857,6 +9857,7 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   int err_code;
   T_LOB_HANDLE cas_lob;
   int lob_handle_size;
+  DB_ELO *elo_debug;
 
   err_code = db_create_fbo (&lob_dbval, (lob_type == CCI_U_TYPE_BLOB) ? DB_TYPE_BLOB : DB_TYPE_CLOB);
   cas_log_debug (ARG_FILE_LINE, "ux_lob_new: result_code=%d", err_code);
@@ -9874,8 +9875,10 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   net_buf_cp_int (net_buf, lob_handle_size, NULL);
   net_buf_cp_lob_handle (net_buf, &cas_lob);
 
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: locator=%s, size=%lld, type=%u", db_get_elo (&lob_dbval)->locator,
-		 db_get_elo (&lob_dbval)->size, db_get_elo (&lob_dbval)->type);
+  elo_debug = db_get_elo (&lob_dbval);
+
+  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: locator=%s, size=%lld, type=%u", elo_debug->locator,
+		 elo_debug->size, elo_debug->type);
 
   db_value_clear (&lob_dbval);
   return 0;
@@ -9886,11 +9889,13 @@ ux_lob_write (DB_VALUE * lob_dbval, INT64 offset, int size, char *data, T_NET_BU
 {
   DB_BIGINT size_written;
   int err_code;
+  DB_ELO *elo_debug;
 
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: locator=%s, size=%lld, type=%u", db_get_elo (lob_dbval)->locator,
-		 db_get_elo (lob_dbval)->size, db_get_elo (lob_dbval)->type);
+  elo_debug = db_get_elo (lob_dbval);
+  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: locator=%s, size=%lld, type=%u", elo_debug->locator,
+		 elo_debug->size, elo_debug->type);
 
-  err_code = db_elo_write (db_get_elo (lob_dbval), offset, data, size, &size_written);
+  err_code = db_elo_write (elo_debug, offset, data, size, &size_written);
   cas_log_debug (ARG_FILE_LINE, "ux_lob_write: result_code=%d", size_written);
   if (err_code < 0)
     {
@@ -9912,9 +9917,11 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
   DB_BIGINT size_read;
   int err_code;
   char *data = NET_BUF_CURR_PTR (net_buf) + NET_SIZE_INT;
+  DB_ELO *elo_debug;
 
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: locator=%s, size=%lld, type=%u", db_get_elo (lob_dbval)->locator,
-		 db_get_elo (lob_dbval)->size, db_get_elo (lob_dbval)->type);
+  elo_debug = db_get_elo (lob_dbval);
+  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: locator=%s, size=%lld, type=%u", elo_debug->locator,
+		 elo_debug->size, elo_debug->type);
 
   if (size + NET_SIZE_INT > NET_BUF_FREE_SIZE (net_buf))
     {
@@ -9922,7 +9929,7 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
       cas_log_debug (ARG_FILE_LINE, "ux_lob_read: length reduced to %d", size);
     }
 
-  err_code = db_elo_read (db_get_elo (lob_dbval), offset, data, size, &size_read);
+  err_code = db_elo_read (elo_debug, offset, data, size, &size_read);
   cas_log_debug (ARG_FILE_LINE, "ux_lob_read: result_code=%d size_read=%lld", err_code, size_read);
   if (err_code < 0)
     {

@@ -24,7 +24,7 @@
 #include <errno.h>
 #include <string.h>
 #include "porting.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "dbdef.h"
 #include "load_object.h"
 #include "db.h"

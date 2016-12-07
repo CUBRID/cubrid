@@ -56,7 +56,7 @@
 #include "transform.h"		/* for CT_SERIAL_NAME */
 #include "serial.h"
 #include "object_primitive.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "db.h"
 #include "object_print.h"
 #include "xserver_interface.h"

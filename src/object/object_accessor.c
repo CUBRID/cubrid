@@ -37,7 +37,7 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "server_interface.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "work_space.h"
 #include "object_domain.h"
 #include "object_primitive.h"

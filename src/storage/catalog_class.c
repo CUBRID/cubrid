@@ -48,7 +48,7 @@
 #include "language_support.h"
 #include "numeric_opfunc.h"
 #include "string_opfunc.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "db_date.h"
 #include "mvcc.h"
 

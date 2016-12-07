@@ -391,11 +391,5 @@
 #define db_enum_put_cs_and_collation(v, cs, coll) \
     (v)->data.enumeration.str_val.info.codeset	  = (cs), \
     (v)->domain.char_info.collation_id		  = (coll)
-typedef enum
-{
-  SMALL_STRING,
-  MEDIUM_STRING,
-  LARGE_STRING
-} STRING_STYLE;
 
 #endif /* _DBVAL_H_ */

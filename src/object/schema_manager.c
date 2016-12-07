@@ -35,7 +35,7 @@
 #endif /* HPUX */
 
 
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "authenticate.h"
 #include "string_opfunc.h"
 #include "schema_manager.h"

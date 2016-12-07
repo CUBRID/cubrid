@@ -32,7 +32,7 @@
 #include "parser.h"
 #include "parser_message.h"
 #include "semantic_check.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "object_domain.h"
 #include "memory_alloc.h"
 #include "intl_support.h"

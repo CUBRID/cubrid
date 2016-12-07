@@ -32,7 +32,7 @@
 #include <stdio.h>
 #include "error_manager.h"
 #include "dbi.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "dbdef.h"
 #include "intl_support.h"
 #include "db_date.h"

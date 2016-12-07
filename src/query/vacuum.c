@@ -33,7 +33,7 @@
 #include "overflow_file.h"
 #include "lock_free.h"
 #include "perf_monitor.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "transaction_cl.h"
 
 /* The maximum number of slots in a page if all of them are empty.

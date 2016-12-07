@@ -235,7 +235,7 @@
 
 #include "dbi.h"
 #include "utility.h"
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "language_support.h"
 #include "message_catalog.h"
 #include "memory_alloc.h"

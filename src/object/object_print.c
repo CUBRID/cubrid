@@ -56,7 +56,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 
-#include "dbtype.h"
+#include "dbtype_common.h"
 #include "language_support.h"
 #include "string_opfunc.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
