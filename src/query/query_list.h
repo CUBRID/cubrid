@@ -590,6 +590,7 @@ struct sort_list
   struct sort_list *local_next;	/* for latch-free freelist */
   struct sort_list *next;	/* Next sort item */
   QFILE_TUPLE_VALUE_POSITION pos_descr;	/* Value position descriptor */
+  DB_DOMAIN *original_value_domain;	/* The original value domain, used at execution in case of XASL clones */
   SORT_ORDER s_order;		/* Ascending/Descending Order */
   SORT_NULLS s_nulls;		/* NULLS as First/Last position */
 };				/* Sort item list */
