@@ -6396,6 +6396,9 @@ tzc_update (TZ_DATA * tzd)
       session = db_open_buffer (query_buf);
       if (session == NULL)
 	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  need_db_shutdown = true;
 	  goto exit;
 	}
 
@@ -6452,6 +6455,8 @@ tzc_update (TZ_DATA * tzd)
 		  session2 = db_open_buffer (query_buf);
 		  if (session2 == NULL)
 		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
 		      need_db_shutdown = true;
 		      goto exit;
 		    }
@@ -6512,6 +6517,8 @@ tzc_update (TZ_DATA * tzd)
 			  session3 = db_open_buffer (query_buf);
 			  if (session3 == NULL)
 			    {
+			      assert (er_errid () != NO_ERROR);
+			      error = er_errid ();
 			      need_db_shutdown = true;
 			      goto exit;
 			    }
@@ -6547,6 +6554,7 @@ tzc_update (TZ_DATA * tzd)
       db_shutdown ();
     }
 
+  error = NO_ERROR;
 exit:
   if (dir != NULL)
     {
