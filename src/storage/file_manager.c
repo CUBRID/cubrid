@@ -9619,6 +9619,7 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
 	{
 	  pgbuf_unfix_and_init (thread_p, page_extdata);
 	}
+      page_extdata = NULL;
       if (VPID_ISNULL (&vpid_next))
 	{
 	  /* no next page */
