@@ -2003,7 +2003,6 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
     {
       ext_info.path = path;
     }
-  ext_info.path = path;
   ext_info.name = name;
   ext_info.comments = comments;
   ext_info.max_writesize_in_sec = max_write_size_in_sec;
