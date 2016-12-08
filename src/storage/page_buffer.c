@@ -866,6 +866,7 @@ struct pgbuf_buffer_pool
 
 #if defined(SERVER_MODE)
   bool is_flushing_victims;	/* flag set true when pgbuf flush thread is flushing victim candidates */
+  bool is_checkpoint;		/* flag set true when checkpoint is running */
   pthread_mutex_t volinfo_mutex;
 #endif				/* SERVER_MODE */
   VOLID last_perm_volid;	/* last perm. volume id */
@@ -1365,6 +1366,7 @@ pgbuf_initialize (void)
 
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = false;
+  pgbuf_Pool.is_checkpoint = false;
 #endif
 
   {
@@ -3766,11 +3768,23 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
    * number of pages to be flushed over the configured parameter), when miss rate is high. During flush phase, we can
    * abort the flushing if detecting a change in victimization pattern (LRU vs AIN). */
 
-  lru_dynamic_flush_adj = MAX (1.0f, 1 + (PGBUF_FLUSH_VICTIM_BOOST_MULT - 1) * lru_miss_rate);
-  lru_dynamic_flush_adj = MIN (PGBUF_FLUSH_VICTIM_BOOST_MULT, lru_dynamic_flush_adj);
+#if defined (SERVER_MODE)
+  /* do not apply flush boost during checkpoint; since checkpoint is already flushing pages we expect some of the victim
+   * candidates are already flushed by checkpoint */
+  if (pgbuf_Pool.is_checkpoint == false)
+    {
+      lru_dynamic_flush_adj = MAX (1.0f, 1 + (PGBUF_FLUSH_VICTIM_BOOST_MULT - 1) * lru_miss_rate);
+      lru_dynamic_flush_adj = MIN (PGBUF_FLUSH_VICTIM_BOOST_MULT, lru_dynamic_flush_adj);
 
-  ain_dynamic_flush_adj = MAX (1.0f, 1 + (PGBUF_FLUSH_VICTIM_BOOST_MULT - 1) * ain_miss_rate);
-  ain_dynamic_flush_adj = MIN (PGBUF_FLUSH_VICTIM_BOOST_MULT, ain_dynamic_flush_adj);
+      ain_dynamic_flush_adj = MAX (1.0f, 1 + (PGBUF_FLUSH_VICTIM_BOOST_MULT - 1) * ain_miss_rate);
+      ain_dynamic_flush_adj = MIN (PGBUF_FLUSH_VICTIM_BOOST_MULT, ain_dynamic_flush_adj);
+    }
+  else
+#endif
+    {
+      lru_dynamic_flush_adj = 1.0f;
+      ain_dynamic_flush_adj = 1.0f;
+    }
 
   if (PGBUF_IS_2Q_ENABLED)
     {
@@ -3789,6 +3803,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   else
     {
       check_count_lru = (int) (cfg_check_cnt * lru_dynamic_flush_adj);
+      /* limit the checked BCBs to equivalent of 200 M */
+      check_count_lru = MIN (check_count_lru, (200 * 1024 * 1024) / db_page_size () );
       ain_min_check_cnt = 0;
     }
 
@@ -3964,6 +3980,10 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
   collected_bcbs = 0;
 
+#if defined (SERVER_MODE)
+  pgbuf_Pool.is_checkpoint = true;
+#endif
+
   for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
       if (collected_bcbs >= seq_flusher->flush_max_size)
@@ -3977,6 +3997,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 	  error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher, prev_chkpt_redo_lsa, smallest_lsa);
 	  if (error != NO_ERROR)
 	    {
+#if defined (SERVER_MODE)
+	      pgbuf_Pool.is_checkpoint = false;
+#endif
 	      return error;
 	    }
 
@@ -4021,6 +4044,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 #if defined(SERVER_MODE)
       if (thread_p && thread_p->shutdown == true)
 	{
+#if defined (SERVER_MODE)
+	  pgbuf_Pool.is_checkpoint = false;
+#endif
 	  return ER_FAILED;
 	}
 #endif
@@ -4037,6 +4063,10 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
       error = pgbuf_flush_chkpt_seq_list (thread_p, seq_flusher, prev_chkpt_redo_lsa, smallest_lsa);
       flushed_page_cnt_local += seq_flusher->flushed_pages;
     }
+
+#if defined (SERVER_MODE)
+  pgbuf_Pool.is_checkpoint = false;
+#endif
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint END flushed:%d\n", flushed_page_cnt_local);
 
@@ -14077,11 +14107,12 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
   msg[pos] = '\0';
   er_log_debug (ARG_FILE_LINE, "pgbuf_compute_lru_vict_target : "
-		"total_lru_vict_req:%d, total_lru_vict_req_fails:%d, "
-		"total_lru_vict_search_depth:%d, total_lru_dirties_found:%d, "
+		"total_fix_cnt:%d, total_lru_vict_req:%d, total_lru_vict_req_fails:%d,\n"
+		"total_lru_vict_search_depth:%d, total_lru_dirties_found:%d,\n"
 		"lru_sum_flush_priority:%.f, lru_with_victim_req_cnt:%d\n"
 		"ain_vict_req:%d, ain_vict_req_fails:%d\n"
 		"vict_req/vict_found/vict_search_depth/dirty_found/flush_priority\n%s\n",
+		pgbuf_Pool.monitor.fix_req_cnt,
 		total_lru_vict_req, monitor->pg_lru_vict_req_failed,
 		total_lru_vict_search_depth, total_lru_dirties_found,
 		*lru_sum_flush_priority, lru_with_victim_req_cnt,
@@ -14157,13 +14188,13 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
 
   /* quota adjust if :
    * - force mode (curr_time_p == NULL)
-   * - or more than 1 sec since last adjustement and activity is more than threshold
+   * - or more than 500 msec since last adjustement and activity is more than threshold
    * - or more than 5 min since last adjustement and activity is more 1% of threshold
    * Activity of page buffer is measured in number of page unfixes
    */
   if (curr_time_p != NULL
       && ((pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY
-	   && diff_usec < 1000000LL)
+	   && diff_usec < 500000LL)
 	  || (pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100 && diff_usec < 300 * 1000000LL)))
     {
       quota->is_adjusting = 0;

@@ -3417,8 +3417,8 @@ thread_page_buffer_maintenance_thread (void *arg_p)
 
       pgbuf_adjust_quotas (&cur_time);
 
-      /* 1 second */
-      wakeup_interval = 1000;
+      /* 500 mili-second */
+      wakeup_interval = 500;
 
       wakeup_time.tv_sec = cur_time.tv_sec + (wakeup_interval / 1000);
       tmp_usec = cur_time.tv_usec + (wakeup_interval % 1000) * 1000;
