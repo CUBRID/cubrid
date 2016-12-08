@@ -8896,7 +8896,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 
   /* decide if we try to victimize from shared list OR force victimization from private list:
    * choose private list only if the amount of shared pages is still under the computed overall threshold */
-  force_private_lru1 = (monitor->lru_shared_pgs < (1.0f - quota->private_pages_ratio) * pgbuf_Pool.num_buffers)
+  force_private_lru1 =
+    (PGBUF_PAGE_QUOTA_IS_ENABLED
+     && (monitor->lru_shared_pgs < (1.0f - quota->private_pages_ratio) * pgbuf_Pool.num_buffers))
     ? true : false;
 
   if (private_lru_idx != -1
@@ -8925,8 +8927,16 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
   /* try to victimize from regular shared LRUs */
   if (ATOMIC_INC_32 (&monitor->lru_shared_pgs, -1) > 0)
     {
+      bool force_victim_lru1_shared = false;
+
       shared_lru_idx = pgbuf_get_shared_lru_index_for_victim ();
       start_shared_lru_idx = shared_lru_idx;
+
+      /* force victim from shared LRU1 when few loops */
+      if (!PGBUF_PAGE_QUOTA_IS_ENABLED && loop_count >= PGBUF_LOOP_CNT_SHARED_IGNORE_STAT)
+	{
+	  force_victim_lru1_shared = true;
+	}
 
       /* cycle through all shared lists */
       do
@@ -8950,7 +8960,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		      >= monitor->lru_victim_req_per_lru[shared_lru_idx])))
 	    {
 	      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
-	      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, max_count, false);
+	      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, max_count, force_victim_lru1_shared);
 	      /* abort victim search through shared lists, even if victim is not found */
 	      if (victim == NULL)
 		{
