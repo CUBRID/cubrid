@@ -24,12 +24,15 @@
 #ident "$Id$"
 
 #include "config.h"
+
+#include <assert.h>
+
 #include "customheaps.h"
 #include "memory_alloc.h"
 #include "quick_fit.h"
 #include "memory_alloc.h"
 
-HL_HEAPID ws_heap_id = 0;
+static HL_HEAPID ws_Heap_id = 0;
 
 /*
  * db_create_workspace_heap () - create a lea heap
@@ -40,8 +43,11 @@ HL_HEAPID ws_heap_id = 0;
 HL_HEAPID
 db_create_workspace_heap (void)
 {
-  ws_heap_id = hl_register_lea_heap ();
-  return ws_heap_id;
+  if (ws_Heap_id == 0)
+    {
+      ws_Heap_id = hl_register_lea_heap ();
+    }
+  return ws_Heap_id;
 }
 
 /*
@@ -52,10 +58,10 @@ db_create_workspace_heap (void)
 void
 db_destroy_workspace_heap (void)
 {
-  if (ws_heap_id != 0)
+  if (ws_Heap_id != 0)
     {
-      hl_unregister_lea_heap (ws_heap_id);
-      ws_heap_id = 0;
+      hl_unregister_lea_heap (ws_Heap_id);
+      ws_Heap_id = 0;
     }
 }
 
@@ -70,13 +76,19 @@ db_ws_alloc (size_t size)
 #if defined(SA_MODE)
   void *ptr = NULL;
 
-  if (ws_heap_id && size > 0)
+  if (ws_Heap_id == 0)
+    {
+      /* not initialized yet */
+      db_create_workspace_heap ();
+    }
+
+  if (ws_Heap_id && size > 0)
     {
       PRIVATE_MALLOC_HEADER *h;
       size_t req_sz;
 
       req_sz = private_request_size (size);
-      h = hl_lea_alloc (ws_heap_id, req_sz);
+      h = hl_lea_alloc (ws_Heap_id, req_sz);
 
       if (h != NULL)
 	{
@@ -88,9 +100,16 @@ db_ws_alloc (size_t size)
   return ptr;
 #else
   void *ptr = NULL;
-  if (ws_heap_id && (size > 0))
+
+  if (ws_Heap_id == 0)
     {
-      ptr = hl_lea_alloc (ws_heap_id, size);
+      /* not initialized yet */
+      db_create_workspace_heap ();
+    }
+
+  if (ws_Heap_id && (size > 0))
+    {
+      ptr = hl_lea_alloc (ws_Heap_id, size);
     }
   return ptr;
 #endif
@@ -110,7 +129,13 @@ db_ws_realloc (void *ptr, size_t size)
       return db_ws_alloc (size);
     }
 
-  if (ws_heap_id && size > 0)
+  if (ws_Heap_id == 0)
+    {
+      /* not initialized yet */
+      db_create_workspace_heap ();
+    }
+
+  if (ws_Heap_id && size > 0)
     {
       PRIVATE_MALLOC_HEADER *h;
 
@@ -126,7 +151,7 @@ db_ws_realloc (void *ptr, size_t size)
 	  size_t req_sz;
 
 	  req_sz = private_request_size (size);
-	  new_h = hl_lea_realloc (ws_heap_id, h, req_sz);
+	  new_h = hl_lea_realloc (ws_Heap_id, h, req_sz);
 	  if (new_h == NULL)
 	    {
 	      return NULL;
@@ -147,9 +172,15 @@ db_ws_realloc (void *ptr, size_t size)
       return NULL;
     }
 #else
-  if (ws_heap_id && (size > 0))
+  if (ws_Heap_id == 0)
     {
-      ptr = hl_lea_realloc (ws_heap_id, ptr, size);
+      /* not initialized yet */
+      db_create_workspace_heap ();
+    }
+
+  if (ws_Heap_id && (size > 0))
+    {
+      ptr = hl_lea_realloc (ws_Heap_id, ptr, size);
     }
   return ptr;
 #endif
@@ -164,7 +195,9 @@ void
 db_ws_free (void *ptr)
 {
 #if defined(SA_MODE)
-  if (ws_heap_id && ptr)
+  assert (ws_Heap_id != 0);
+
+  if (ws_Heap_id && ptr)
     {
       PRIVATE_MALLOC_HEADER *h;
 
@@ -177,7 +210,7 @@ db_ws_free (void *ptr)
 
       if (h->alloc_type == PRIVATE_ALLOC_TYPE_WS)
 	{
-	  hl_lea_free (ws_heap_id, h);
+	  hl_lea_free (ws_Heap_id, h);
 	}
       else if (h->alloc_type == PRIVATE_ALLOC_TYPE_LEA)
 	{
@@ -189,9 +222,11 @@ db_ws_free (void *ptr)
 	}
     }
 #else
-  if (ws_heap_id && ptr)
+  assert (ws_Heap_id != 0);
+
+  if (ws_Heap_id && ptr)
     {
-      hl_lea_free (ws_heap_id, ptr);
+      hl_lea_free (ws_Heap_id, ptr);
     }
 #endif
 }

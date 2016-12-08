@@ -691,6 +691,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
       rc = (*(pr_type_p->data_readval)) (&buf, &dbval2, domain_p, -1, is_copy, NULL, 0);
       if (rc != NO_ERROR)
 	{
+	  pr_clear_value (&dbval1);
 	  return ER_FAILED;
 	}
     }
@@ -712,11 +713,8 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
       *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL, domain_p->collation_id);
     }
 
-  if (is_copy)
-    {
-      pr_clear_value (&dbval1);
-      pr_clear_value (&dbval2);
-    }
+  pr_clear_value (&dbval1);
+  pr_clear_value (&dbval2);
 
   return NO_ERROR;
 }
@@ -1690,8 +1688,7 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 }
 
 /*
- * qfile_fast_intint_tuple_to_list () - generate a two integer value tuple into
- *                                      a listfile
+ * qfile_fast_intint_tuple_to_list () - generate a two integer value tuple into a listfile
  *   return: int (NO_ERROR or ER_FAILED)
  *   list_id(in/out): List File Identifier
  *   v1(in): first int value
@@ -1841,8 +1838,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 }
 
 /*
- * qfile_fast_val_tuple_to_list () - generate a one value tuple into
-*                                   a file
+ * qfile_fast_val_tuple_to_list () - generate a one value tuple into a file
  *   return: int (NO_ERROR, error code or positive overflow tuple size)
  *   list_id(in/out): List File Identifier
  *   val(in): integer value
@@ -2078,7 +2074,7 @@ qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 	  /* because qmgr_free_list_temp_file() destroy only FILE_TEMP file */
 	  if (!VFID_ISNULL (&list_id_p->temp_vfid))
 	    {
-	      file_destroy (thread_p, &list_id_p->temp_vfid);
+	      file_temp_retire (thread_p, &list_id_p->temp_vfid);
 	    }
 	}
 
@@ -5513,7 +5509,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 	}
 
       /* destroy the temp file of XASL_ID */
-      if (!VFID_ISNULL (&lent->list_id.temp_vfid) && file_destroy (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
+      if (!VFID_ISNULL (&lent->list_id.temp_vfid) && file_temp_retire (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for vfid { %d %d }\n",
 			lent->list_id.temp_vfid.fileid, lent->list_id.temp_vfid.volid);

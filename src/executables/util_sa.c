@@ -1420,12 +1420,38 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *db_name;
+  const char *output_file = NULL;
+  FILE *outfp = NULL;
+  bool is_emergency = false;
   DIAGDUMP_TYPE diag;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
     {
       goto print_diag_usage;
+    }
+
+  is_emergency = utility_get_option_bool_value (arg_map, DIAG_EMERGENCY_S);
+  if (is_emergency)
+    {
+      sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "yes");
+      sysprm_set_force (prm_get_name (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY), "yes");
+    }
+
+  output_file = utility_get_option_string_value (arg_map, DIAG_OUTPUT_FILE_S, 0);
+  if (output_file == NULL)
+    {
+      outfp = stdout;
+    }
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_BAD_OUTPUT),
+				 output_file);
+	  goto error_exit;
+	}
     }
 
   diag = utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
@@ -1463,50 +1489,50 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_TABLES)
     {
       /* this dumps the allocated file stats */
-      printf ("\n*** DUMP OF FILE STATISTICS ***\n");
-      file_tracker_dump (NULL, stdout);
+      fprintf (outfp, "\n*** DUMP OF FILE STATISTICS ***\n");
+      (void) file_tracker_dump (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_CAPACITIES)
     {
       /* this dumps the allocated file stats */
-      printf ("\n*** DUMP OF FILE DESCRIPTIONS ***\n");
-      file_dump_all_capacities (NULL, stdout);
+      fprintf (outfp, "\n*** DUMP OF FILE DESCRIPTIONS ***\n");
+      (void) file_tracker_dump_all_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all heaps */
-      printf ("\n*** DUMP CAPACITY OF ALL HEAPS ***\n");
-      heap_dump_all_capacities (NULL, stdout);
+      fprintf (outfp, "\n*** DUMP CAPACITY OF ALL HEAPS ***\n");
+      (void) file_tracker_dump_all_heap_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_INDEX_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all indices */
-      printf ("\n*** DUMP CAPACITY OF ALL INDICES ***\n");
-      btree_dump_capacity_all (NULL, stdout);
+      fprintf (outfp, "\n*** DUMP CAPACITY OF ALL INDICES ***\n");
+      (void) file_tracker_dump_all_btree_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CLASSNAMES)
     {
       /* this dumps the known classnames */
-      printf ("\n*** DUMP CLASSNAMES ***\n");
-      locator_dump_class_names (NULL, stdout);
+      fprintf (outfp, "\n*** DUMP CLASSNAMES ***\n");
+      locator_dump_class_names (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_DISK_BITMAPS)
     {
       /* this dumps lower level info about the disk */
-      printf ("\n*** DUMP OF DISK STATISTICS ***\n");
-      disk_dump_all (NULL, stdout);
+      fprintf (outfp, "\n*** DUMP OF DISK STATISTICS ***\n");
+      disk_dump_all (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CATALOG)
     {
       /* this dumps the content of catalog */
-      printf ("\n*** DUMP OF CATALOG ***\n");
-      catalog_dump (NULL, stdout, 1);
+      fprintf (outfp, "\n*** DUMP OF CATALOG ***\n");
+      catalog_dump (NULL, outfp, 1);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_LOG)
@@ -1570,8 +1596,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto print_diag_usage;
 	}
-      printf ("\n*** DUMP OF LOG ***\n");
-      xlog_dump (NULL, stdout, isforward, start_logpageid, dump_npages, desired_tranid);
+      fprintf (outfp, "\n*** DUMP OF LOG ***\n");
+      xlog_dump (NULL, outfp, isforward, start_logpageid, dump_npages, desired_tranid);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP)
@@ -1579,11 +1605,17 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       bool dump_records;
       /* this dumps the contents of all heaps */
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
-      printf ("\n*** DUMP OF ALL HEAPS ***\n");
-      heap_dump_all (NULL, stdout, dump_records);
+      fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
+      (void) file_tracker_dump_all_heap (NULL, outfp, dump_records);
     }
 
   db_shutdown ();
+
+  fflush (outfp);
+  if (output_file != NULL && outfp != NULL && outfp != stdout)
+    {
+      fclose (outfp);
+    }
 
   return EXIT_SUCCESS;
 
@@ -1593,6 +1625,11 @@ print_diag_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
+  if (output_file != NULL && outfp != NULL && outfp != stdout)
+    {
+      fclose (outfp);
+    }
+
   return EXIT_FAILURE;
 }
 
@@ -1664,34 +1701,7 @@ error_exit:
 int
 estimatedb_data (UTIL_FUNCTION_ARG * arg)
 {
-  UTIL_ARG_MAP *arg_map = arg->arg_map;
-  int num_instance;
-  int avg_inst_size;
-  int num_attr;
-  int num_var_attr;
-  int npages;
-
-  if (utility_get_option_string_table_size (arg_map) != 4)
-    {
-      goto print_estimate_data_usage;
-    }
-
-  num_instance = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0));
-  avg_inst_size = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1));
-  num_attr = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 2));
-  num_var_attr = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 3));
-
-  sysprm_load_and_init (NULL, NULL);
-  (void) db_set_page_size (IO_DEFAULT_PAGE_SIZE, IO_DEFAULT_PAGE_SIZE);
-  npages = heap_estimate_num_pages_needed (NULL, num_instance, avg_inst_size, num_attr, num_var_attr);
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_DATA, ESTIMATEDB_DATA_MSG_NPAGES),
-	   npages);
-  return EXIT_SUCCESS;
-
-print_estimate_data_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_DATA, ESTIMATEDB_DATA_MSG_USAGE),
-	   basename (arg->argv0));
-  return EXIT_FAILURE;
+  /* todo: remove me */
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -2986,7 +2996,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      vclass_names_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  vclass_names = db_private_realloc (NULL, vclass_names, 2 * vclass_names_alloced);
+			  vclass_names = (char *) db_private_realloc (NULL, vclass_names, 2 * vclass_names_alloced);
 
 			  if (vclass_names == NULL)
 			    {
@@ -3013,7 +3023,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      part_tables_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  part_tables = db_private_realloc (NULL, part_tables, 2 * part_tables_alloced);
+			  part_tables = (char *) db_private_realloc (NULL, part_tables, 2 * part_tables_alloced);
 
 			  if (part_tables == NULL)
 			    {

@@ -54,7 +54,6 @@ LF_TRAN_SYSTEM catalog_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM sessions_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM free_sort_list_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM global_unique_stats_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM partition_link_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM hfid_table_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM xcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM fpcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
@@ -484,11 +483,6 @@ lf_initialize_transaction_systems (int max_threads)
       goto error;
     }
 
-  if (lf_tran_system_init (&partition_link_Ts, max_threads) != NO_ERROR)
-    {
-      goto error;
-    }
-
   if (lf_tran_system_init (&hfid_table_Ts, max_threads) != NO_ERROR)
     {
       goto error;
@@ -527,7 +521,6 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&sessions_Ts);
   lf_tran_system_destroy (&free_sort_list_Ts);
   lf_tran_system_destroy (&global_unique_stats_Ts);
-  lf_tran_system_destroy (&partition_link_Ts);
   lf_tran_system_destroy (&hfid_table_Ts);
   lf_tran_system_destroy (&xcache_Ts);
   lf_tran_system_destroy (&fpcache_Ts);
@@ -753,6 +746,8 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   void *entry;
+  bool local_tran = false;
+
   assert (tran_entry != NULL);
   assert (freelist != NULL);
   assert (freelist->entry_desc != NULL);
@@ -773,11 +768,22 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
       return entry;
     }
 
+  /* We need a transaction. Careful: we cannot increment transaction ID! */
+  if (tran_entry->transaction_id == LF_NULL_TRANSACTION_ID)
+    {
+      local_tran = true;
+      lf_tran_start_with_mb (tran_entry, false);
+    }
+
   /* clean retired list, if possible */
   if (LF_TRAN_CLEANUP_NECESSARY (tran_entry))
     {
       if (lf_freelist_transport (tran_entry, freelist) != NO_ERROR)
 	{
+	  if (local_tran)
+	    {
+	      lf_tran_end_with_mb (tran_entry);
+	    }
 	  return NULL;
 	}
     }
@@ -796,6 +802,10 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	  if ((edesc->f_init != NULL) && (edesc->f_init (entry) != NO_ERROR))
 	    {
 	      /* can't initialize it */
+	      if (local_tran)
+		{
+		  lf_tran_end_with_mb (tran_entry);
+		}
 	      return NULL;
 	    }
 
@@ -803,6 +813,10 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	  OF_GET_PTR_DEREF (entry, edesc->of_next) = NULL;
 
 	  /* done! */
+	  if (local_tran)
+	    {
+	      lf_tran_end_with_mb (tran_entry);
+	    }
 	  return entry;
 	}
       else
@@ -812,6 +826,10 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	   * beats synchronizing the operations */
 	  if (lf_freelist_alloc_block (freelist) != NO_ERROR)
 	    {
+	      if (local_tran)
+		{
+		  lf_tran_end_with_mb (tran_entry);
+		}
 	      return NULL;
 	    }
 
@@ -822,6 +840,10 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 
   /* impossible! */
   assert (false);
+  if (local_tran)
+    {
+      lf_tran_end_with_mb (tran_entry);
+    }
   return NULL;
 }
 
@@ -2897,7 +2919,7 @@ lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue)
   queue->produce_cursor = 0;
   queue->consume_cursor = 0;
 
-  for (es_idx = 0; es_idx < queue->capacity; es_idx++)
+  for (es_idx = 0; es_idx < (int) queue->capacity; es_idx++)
     {
       queue->entry_state[es_idx] = es_idx | LFCQ_READY_FOR_PRODUCE;
     }

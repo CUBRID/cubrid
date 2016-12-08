@@ -811,7 +811,7 @@ qo_validate (QO_ENV * env)
 static PT_NODE *
 graph_size_select (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -934,7 +934,7 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
 static PT_NODE *
 build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -974,7 +974,7 @@ build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 static PT_NODE *
 build_query_graph_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -1011,7 +1011,7 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree, void 
   QO_NODE *node = NULL;
   QO_SEGMENT *seg_fi;
   const char *seg_name;
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -1623,7 +1623,7 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
 static PT_NODE *
 qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -2685,7 +2685,7 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
 static PT_NODE *
 set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3186,6 +3186,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_MID:
     case PT_STRCMP:
     case PT_REVERSE:
+    case PT_DISK_SIZE:
 
     case PT_BIT_COUNT:
     case PT_ADDDATE:
@@ -3667,6 +3668,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_HEX:
 	case PT_ASCII:
 	case PT_REVERSE:
+	case PT_DISK_SIZE:
 	case PT_SPACE:
 	case PT_MD5:
 	case PT_SHA_ONE:

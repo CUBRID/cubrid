@@ -798,8 +798,8 @@ cursor_fetch_oids (CURSOR_ID * cursor_id_p, int oid_index, DB_FETCH_MODE instant
 
   if (oid_index == 1)
     {
-      /* the snapshot was already checked on server side for the current oid, so we can fetch the current version. */
-      mobj = locator_fetch_object (cursor_id_p->mop_set[0], instant_fetch_mode, LC_FETCH_CURRENT_VERSION);
+      /* use mvcc fetch type to get the visible object again (accessible only using mvcc snapshot) */
+      mobj = locator_fetch_object (cursor_id_p->mop_set[0], instant_fetch_mode, LC_FETCH_MVCC_VERSION);
     }
   else
     {

@@ -115,6 +115,7 @@
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
 
 static const int BOOT_VOLUME_MINPAGES = 50;
+static const int BOOT_VOLUME_MINSECTS = 64;	/* find a common place to set this */
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
 
@@ -143,10 +144,6 @@ struct boot_dbparm
 typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
-
-#if defined(SERVER_MODE)
-AUTO_ADDVOL_JOB boot_Auto_addvol_job = BOOT_AUTO_ADDVOL_JOB_INITIALIZER;
-#endif
 
 extern bool catcls_Enable;
 extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
@@ -194,7 +191,7 @@ static BOOT_DB_PARM boot_Struct_db_parm;	/* The structure */
 static BOOT_DB_PARM *boot_Db_parm = &boot_Struct_db_parm;
 static OID *boot_Db_parm_oid = &boot_Header_oid;
 static int boot_Temp_volumes_tpgs = 0;
-static int boot_Temp_volumes_max_pages = -2;
+static int boot_Temp_volumes_max_sects = -2;
 static int boot_Temp_volumes_sys_pages = 0;
 static char boot_Lob_path[PATH_MAX + LOB_PATH_PREFIX_MAX] = "";
 static bool skip_to_check_ct_classes_for_rebuild = false;
@@ -208,7 +205,6 @@ static int boot_Server_process_id = 1;
 
 /* Functions */
 static int boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_oid);
-static VOLID boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info);
 static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_ACTION delete_action);
 
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action);
@@ -232,7 +228,6 @@ static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 					 bool check_before_access);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
-static VOLID boot_xadd_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info);
 static char *boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths);
 static int boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 				    const char *db_comments, DKNPAGES db_npages, const char *file_addmore_vols,
@@ -253,6 +248,7 @@ static void boot_shutdown_server_at_exit (void);
 #endif /* SERVER_MODE */
 
 static int boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path, const char *log_prefix);
+STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * bo_server) -set server's status, UP or DOWN
@@ -377,12 +373,10 @@ xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p)
 {
   int nvols;
 
-  if (csect_enter_as_reader (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return NULL_VOLID;
-    }
+  /* wait for disk extensions to finish. */
+  disk_lock_extend ();
   nvols = boot_Db_parm->nvols;
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+  disk_unlock_extend ();
 
   return nvols;
 }
@@ -397,12 +391,10 @@ xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p)
 {
   int nvols;
 
-  if (csect_enter_as_reader (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return NULL_VOLID;
-    }
+  /* wait for disk extensions to finish. */
+  disk_lock_extend ();
   nvols = boot_Db_parm->temp_nvols;
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+  disk_unlock_extend ();
 
   return nvols;
 }
@@ -417,12 +409,10 @@ xboot_find_last_permanent (THREAD_ENTRY * thread_p)
 {
   VOLID volid;
 
-  if (csect_enter_as_reader (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return NULL_VOLID;
-    }
+  /* wait for disk extensions to finish. */
+  disk_lock_extend ();
   volid = boot_Db_parm->last_volid;
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+  disk_unlock_extend ();
 
   return volid;
 }
@@ -431,7 +421,7 @@ xboot_find_last_permanent (THREAD_ENTRY * thread_p)
  * xboot_peek_last_permanent () - peek the volid of last permanent volume
  * 
  * return : volid of last permanent volume
- * NOTE: This function does NOT hold CSECT_BOOT_SR_DBPARM.
+ * NOTE: this function does not wait for extensions to finish
  */
 VOLID
 xboot_peek_last_permanent (THREAD_ENTRY * thread_p)
@@ -449,12 +439,10 @@ xboot_find_last_temp (THREAD_ENTRY * thread_p)
 {
   VOLID volid;
 
-  if (csect_enter_as_reader (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return NULL_VOLID;
-    }
+  /* wait for disk extensions to finish. */
+  disk_lock_extend ();
   volid = boot_Db_parm->temp_last_volid;
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+  disk_unlock_extend ();
 
   return volid;
 }
@@ -469,12 +457,10 @@ boot_find_next_permanent_volid (THREAD_ENTRY * thread_p)
 {
   VOLID volid;
 
-  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return NULL_VOLID;
-    }
+  /* wait for disk extensions to finish. */
+  disk_lock_extend ();
   volid = boot_Db_parm->last_volid + 1;
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+  disk_unlock_extend ();
 
   return volid;
 }
@@ -506,7 +492,6 @@ boot_db_name (void)
   return fileio_get_base_file_name (boot_Db_full_name);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * boot_db_full_name () - return current database full name.
  *
@@ -517,7 +502,6 @@ boot_db_full_name ()
 {
   return boot_Db_full_name;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * boot_get_lob_path - return the lob path which is read from databases.txt
@@ -554,176 +538,6 @@ boot_max_pages_new_volume (void)
 }
 
 /*
- * boot_add_volume () - add a volume to the database
- *
- * return : volid or NULL_VOLID (in case of failure)
- *
- *   ext_info(in): volume info
- *
- * Note: Add a new volume to the database. The volume may be a permanent or
- *       temporary volume. The addition of the volume is a system operation
- *       that will be either aborted in case of failure or committed in case of
- *       success, independently on the destiny of the current transaction.
- *       The volume becomes immediately available to other transactions.
- */
-static VOLID
-boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
-{
-  HEAP_OPERATION_CONTEXT update_context;
-  VOLID volid;
-  int vol_fd;
-  RECDES recdes;		/* Record descriptor which describe the volume. */
-  bool in_system_op = false;
-  VPID boot_db_parm_vpid = VPID_INITIALIZER;
-
-  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return NULL_VOLID;
-    }
-
-  /* 
-   * Assign a volume identifier according to its type
-   */
-
-  if (ext_info->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
-    {
-      volid = boot_Db_parm->last_volid + 1;
-      if (volid > LOG_MAX_DBVOLID || (boot_Db_parm->temp_nvols > 0 && volid >= boot_Db_parm->temp_last_volid))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXNUM_VOLS_HAS_BEEN_EXCEEDED, 1, LOG_MAX_DBVOLID);
-	  goto error;
-	}
-    }
-  else
-    {
-      if (boot_Db_parm->temp_nvols > 0)
-	{
-	  volid = boot_Db_parm->temp_last_volid - 1;
-	}
-      else
-	{
-	  volid = LOG_MAX_DBVOLID;
-	}
-      if (volid <= boot_Db_parm->last_volid)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXNUM_VOLS_HAS_BEEN_EXCEEDED, 1, LOG_MAX_DBVOLID);
-	  goto error;
-	}
-    }
-
-
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      goto error;
-    }
-  in_system_op = true;
-
-  if (ext_info->overwrite == false && fileio_is_volume_exist (ext_info->name))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, ext_info->name);
-      goto error;
-    }
-
-  pgbuf_refresh_max_permanent_volume_id (volid);
-
-  /* Format the volume */
-  if (disk_format (thread_p, boot_Db_full_name, volid, ext_info) == NULL_VOLID)
-    {
-      goto error;
-    }
-
-  if (logpb_add_volume (NULL, volid, ext_info->name, ext_info->purpose) != volid)
-    {
-      goto error;
-    }
-
-  /* 
-   * Modify the system parameter table to reflect the addition of the volume
-   */
-
-  if (ext_info->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
-    {
-      boot_Db_parm->nvols++;
-      boot_Db_parm->last_volid = volid;
-    }
-  else
-    {
-      boot_Db_parm->temp_nvols++;
-      boot_Db_parm->temp_last_volid = volid;
-    }
-
-  recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
-  recdes.data = (char *) boot_Db_parm;
-
-  /* Before updating and logging disk representation of boot_Dp_parm, we need to log a page flush on undo.
-   * Recovery must flush boot_Db_parm changes before removing volume from disk.
-   */
-  VPID_GET_FROM_OID (&boot_db_parm_vpid, boot_Db_parm_oid);
-  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (boot_db_parm_vpid), &boot_db_parm_vpid);
-
-  heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-			      &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
-    {
-      /* Return back our global area of system parameter */
-      if (ext_info->purpose != DISK_TEMPVOL_TEMP_PURPOSE)
-	{
-	  boot_Db_parm->nvols--;
-	  boot_Db_parm->last_volid = volid - 1;
-	}
-      else
-	{
-	  boot_Db_parm->temp_nvols--;
-	  if (boot_Db_parm->temp_nvols <= 0)
-	    {
-	      boot_Db_parm->temp_last_volid = NULL_VOLID;
-	    }
-	  else
-	    {
-	      boot_Db_parm->temp_last_volid = volid + 1;
-	    }
-	}
-      goto error;
-    }
-
-  /* 
-   * Flush both the Dbparm object. This is not needed but it is good to do it,
-   * so that during restart time we can mount every known volume. During media
-   * crash that may not be possible. Thus, this is optional, we do not check
-   * for error values.
-   */
-
-  heap_flush (thread_p, boot_Db_parm_oid);
-  vol_fd = fileio_get_volume_descriptor (boot_Db_parm->hfid.vfid.volid);
-  (void) fileio_synchronize (thread_p, vol_fd, ext_info->name);
-
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
-
-#if !defined(WINDOWS)
-  if (prm_get_bool_value (PRM_ID_DBFILES_PROTECT))
-    {
-      fileio_set_permission (ext_info->name);
-    }
-#endif /* !WINDOWS */
-
-  return volid;
-
-error:
-  if (in_system_op)
-    {
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-    }
-
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
-
-  return NULL_VOLID;
-}
-
-/*
  * boot_remove_temp_volume () - remove a volume from the database
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
@@ -743,16 +557,11 @@ error:
 static int
 boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_ACTION delete_action)
 {
-  HEAP_OPERATION_CONTEXT update_context;
-  RECDES recdes;		/* Record descriptor which describe the volume. */
   char *vlabel = NULL;
   int vol_fd;
   int error_code = NO_ERROR;
 
-  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+  disk_lock_extend ();
 
   /* 
    * Make sure that this is a temporary volume
@@ -788,11 +597,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
        * COMMITTED independently of the current transaction, so that the volume
        * is removed immediately.
        */
-      if (log_start_system_op (thread_p) == NULL)
-	{
-	  error_code = ER_FAILED;
-	  goto end;
-	}
+      log_sysop_start (thread_p);
     }
 
   /* 
@@ -811,13 +616,10 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
 
   if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
     {
-      recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
-      recdes.data = (char *) boot_Db_parm;
-
-      heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+      error_code = boot_db_parm_update_heap (thread_p);
+      if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  boot_Db_parm->temp_nvols++;
 	  if (boot_Db_parm->temp_nvols == 1)
 	    {
@@ -827,8 +629,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
 	    {
 	      boot_Db_parm->temp_last_volid = volid;
 	    }
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-	  error_code = ER_FAILED;
+	  log_sysop_abort (thread_p);
 	  goto end;
 	}
 
@@ -859,18 +660,18 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
 
   if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
     }
 
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  (void) disk_goodvol_refresh (thread_p);
 
 end:
+
   if (vlabel)
     {
       free (vlabel);
     }
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
+  disk_unlock_extend ();
 
   return error_code;
 }
@@ -891,69 +692,18 @@ end:
 VOLID
 xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
 {
-  DBDEF_VOL_EXT_INFO temp_ext_info = *ext_info;
-  char real_pathbuf[PATH_MAX];
+  VOLID volid;
 
-  if (temp_ext_info.path != NULL && realpath ((char *) temp_ext_info.path, real_pathbuf) != NULL)
+  if (disk_add_volume_extension (thread_p, ext_info->purpose, ext_info->max_npages, ext_info->path, ext_info->name,
+				 ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid)
+      != NO_ERROR)
     {
-      temp_ext_info.path = real_pathbuf;
+      ASSERT_ERROR ();
+      return NULL_VOLID;
     }
-
-  temp_ext_info.extend_npages = temp_ext_info.max_npages;
-
-  return boot_xadd_volume_extension (thread_p, &temp_ext_info);
+  assert (volid != NULL_VOLID);
+  return volid;
 }
-
-#if 0
-/*
- * xboot_del_volume_extension () - delete a volume extension of the database
- *
- * return : NO_ERROR if all OK, ER_ status otherwise
- *
- */
-int
-xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid, bool clear_cached)
-{
-  int r;
-
-  if (xdisk_is_volume_exist (thread_p, volid) == false)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, volid);
-      return ER_BO_UNKNOWN_VOLUME;
-    }
-
-#if 0
-  if (disk_cache_disable_new_files (thread_p, volid) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-#endif
-
-  if (clear_cached && xdisk_get_purpose (thread_p, volid) == DISK_TEMPVOL_TEMP_PURPOSE)
-    {
-      /* we don't recover cleared cached files even though transaction fail */
-
-      /* 
-       * if some transactions are using the xasl, we don't remove xasl cache
-       * and the volume will not be removed from database.
-       */
-      /* If this code is ever reactivated, xasl_cache.c must provide the necessary functions. This no longer exist. */
-      /* (void) qexec_remove_xasl_cache_ent_by_volume (thread_p, volid, true); */
-
-      /* (void) file_destroy_cached_tmp (thread_p, volid); */
-    }
-
-  r = disk_del_volume_extension (thread_p, volid);
-#if 0
-  if (r != NO_ERROR)
-    {
-      (void) disk_cache_enable_new_files (thread_p, volid);
-    }
-#endif
-
-  return r;
-}
-#endif
 
 /*
  * boot_remove_useless_path_separator () - Remove useless PATH_SEPARATOR in path string
@@ -963,7 +713,7 @@ xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid, bool clear_cac
  *   path(in): Original path.
  *   new_path(out): Transformed path.
  *
- * Note: This function removes uselses PATH_SEPARATOR in path string.
+ * Note: This function removes useless PATH_SEPARATOR in path string.
  *       For example,
  *       /home3/CUBRID/DB/               -->  /home3/CUBRID/DB
  *       C:\CUBRID\\\Databases\\         -->  C:\CUBRID\Databases
@@ -1050,306 +800,6 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
 }
 
 /*
- * boot_xadd_volume_extension () -
- *
- * return :
- *
- * ext_info(in):
- */
-static VOLID
-boot_xadd_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
-{
-  DBDEF_VOL_EXT_INFO temp_ext_info = *ext_info;
-  VOLID volid;
-  char vol_fullname[PATH_MAX];
-  char ext_path_buf[PATH_MAX];
-  DKNPAGES part_npages;
-#if !defined(WINDOWS)
-  char vol_realpath[PATH_MAX];
-  char link_path[PATH_MAX];
-  char link_fullname[PATH_MAX];
-  struct stat stat_buf;
-#endif
-
-  /* 
-   * Get the name of the extension: ext_path|dbname|"ext"|volid
-   */
-  if (temp_ext_info.path == NULL)
-    {
-      temp_ext_info.path = prm_get_string_value (PRM_ID_IO_VOLUME_EXT_PATH);
-      if (temp_ext_info.path == NULL)
-	{
-	  temp_ext_info.path = fileio_get_directory_path (ext_path_buf, boot_Db_full_name);
-	  if (temp_ext_info.path == NULL)
-	    {
-	      ext_path_buf[0] = '\0';
-	      temp_ext_info.path = ext_path_buf;
-	    }
-	}
-    }
-
-  /* 
-   * Make sure that the name is going to be unique. We do not lock the object
-   * DBparm to allow multiple transactions creating/deleting volumes
-   */
-
-  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return NULL_VOLID;
-    }
-
-  if (temp_ext_info.name == NULL)
-    {
-      temp_ext_info.name = fileio_get_base_file_name (boot_Db_full_name);
-
-      fileio_make_volume_ext_name (vol_fullname, temp_ext_info.path, temp_ext_info.name, boot_Db_parm->last_volid + 1);
-    }
-  else
-    {
-      fileio_make_volume_ext_given_name (vol_fullname, temp_ext_info.path, temp_ext_info.name);
-    }
-
-#if !defined(WINDOWS)
-  if (stat (vol_fullname, &stat_buf) == 0	/* file exist */
-      && S_ISCHR (stat_buf.st_mode))
-    {				/* is the raw device */
-
-      temp_ext_info.path = fileio_get_directory_path (link_path, boot_Db_full_name);
-      if (temp_ext_info.path == NULL)
-	{
-	  link_path[0] = '\0';
-	  temp_ext_info.path = link_path;
-	}
-
-      temp_ext_info.name = fileio_get_base_file_name (boot_Db_full_name);
-      fileio_make_volume_ext_name (link_fullname, temp_ext_info.path, temp_ext_info.name, boot_Db_parm->last_volid + 1);
-
-      if (realpath (vol_fullname, vol_realpath) != NULL)
-	{
-	  strcpy (vol_fullname, vol_realpath);
-	}
-
-      (void) unlink (link_fullname);
-      if (symlink (vol_fullname, link_fullname) != 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_LINK, 2, vol_fullname, link_fullname);
-
-	  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
-
-	  return NULL_VOLID;
-	}
-
-      strcpy (vol_fullname, link_fullname);
-
-      /* we don't know character special files size */
-      part_npages = VOL_MAX_NPAGES (IO_PAGESIZE);
-    }
-  else
-    {
-      part_npages = fileio_get_number_of_partition_free_pages (vol_fullname, IO_PAGESIZE);
-    }
-#else /* !WINDOWS */
-  part_npages = fileio_get_number_of_partition_free_pages (vol_fullname, IO_PAGESIZE);
-#endif /* !WINDOWS */
-
-  /* 
-   * For automatic volume extensions do not let the disk partition to go too
-   * full.
-   */
-
-  if (temp_ext_info.comments == NULL)
-    {
-      temp_ext_info.comments = " ";
-    }
-
-  if (temp_ext_info.max_npages > part_npages && part_npages >= 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_OUT_OF_SPACE, 5, vol_fullname, temp_ext_info.max_npages,
-	      ((IO_PAGESIZE / 1024) * ((off_t) temp_ext_info.max_npages)), part_npages,
-	      ((IO_PAGESIZE / 1024) * ((off_t) part_npages)));
-      volid = NULL_VOLID;
-    }
-  else
-    {
-      temp_ext_info.name = vol_fullname;
-      temp_ext_info.comments = "Volume Extension";
-
-      volid = boot_add_volume (thread_p, &temp_ext_info);
-      if (volid != NULL_VOLID)
-	{
-	  (void) disk_goodvol_refresh_with_new (thread_p, volid);
-	}
-    }
-
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
-
-  return volid;
-}
-
-/*
- * boot_add_auto_volume_extension () - add an automatic volume extension to the database
- *
- * return : volid or NULL_VOLID (in case of failure)
- *
- * Note: Add an automatic volume extension to the database when the system
- *       allow it. The addition of the volume is a system operation that will
- *       be either aborted in case of failure or committed in case of success,
- *       independently on the destiny of the current transaction. The volume
- *       becomes immediately available to other transactions.
- */
-VOLID
-boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages, DISK_SETPAGE_TYPE setpage_type,
-				DISK_VOLPURPOSE vol_purpose, bool wait)
-{
-#if defined (SERVER_MODE)
-  bool old_check_interrupt;
-  int new_vol_npages;
-#endif
-  VOLID volid;
-  DBDEF_VOL_EXT_INFO ext_info;
-  bool can_use_auto_expansion;
-
-#if !defined (SERVER_MODE)
-  can_use_auto_expansion = false;
-#else
-  can_use_auto_expansion = thread_is_auto_volume_expansion_thread_available ();
-#endif
-
-  ext_info.max_npages = (DKNPAGES) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / IO_PAGESIZE);
-
-  if (setpage_type != DISK_NONCONTIGUOUS_SPANVOLS_PAGES && ext_info.max_npages < min_npages)
-    {
-      ext_info.max_npages = min_npages;
-    }
-
-  if (ext_info.max_npages < BOOT_VOLUME_MINPAGES)
-    {
-      ext_info.max_npages = BOOT_VOLUME_MINPAGES;
-    }
-
-  ext_info.max_npages = MIN (ext_info.max_npages, VOL_MAX_NPAGES (IO_PAGESIZE));
-  ext_info.path = NULL;
-  ext_info.name = NULL;
-  ext_info.comments = "Automatic Volume Extension";
-  ext_info.purpose = DISK_PERMVOL_GENERIC_PURPOSE;
-  ext_info.overwrite = false;
-  ext_info.max_writesize_in_sec = 0;
-
-  if (can_use_auto_expansion)
-    {
-      /* SERVER_MODE and auto_volume_expansion thread is available */
-#if defined (SERVER_MODE)
-      ext_info.extend_npages = CEIL_PTVDIV (min_npages, AUTO_ADD_VOL_EXPAND_NPAGES) * AUTO_ADD_VOL_EXPAND_NPAGES;
-
-    retry:
-      volid = NULL_VOLID;
-
-      pthread_mutex_lock (&boot_Auto_addvol_job.lock);
-
-      if (boot_Auto_addvol_job.ext_info.extend_npages > 0)
-	{
-	  /* add_vol_job is already running */
-	  int allocating_npages;
-
-	  assert_release (boot_Auto_addvol_job.ext_info.purpose == DISK_PERMVOL_GENERIC_PURPOSE);
-
-	  if (wait)
-	    {
-	      allocating_npages = boot_Auto_addvol_job.ext_info.extend_npages;
-
-	      pthread_cond_wait (&boot_Auto_addvol_job.cond, &boot_Auto_addvol_job.lock);
-
-	      volid = boot_Auto_addvol_job.ret_volid;
-
-	      if (volid != NULL_VOLID && allocating_npages < min_npages)
-		{
-		  /* allocated size is not enough */
-		  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-		  goto retry;
-		}
-	    }
-
-	  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-
-	  /* if wait flag is false, NULL_VOLID will be returned */
-	  return volid;
-	}
-
-      if (thread_auto_volume_expansion_thread_is_running ())
-	{
-	  /* volume_expansion_thread is active, but auto_addvol_job is empty. Maybe, the last addvol_job was just
-	   * finished. Retry add job. */
-	  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-	  thread_sleep (10);
-	  goto retry;
-	}
-
-      /* Register current job to boot_Auto_addvol_job */
-      memcpy (&boot_Auto_addvol_job.ext_info, &ext_info, sizeof (DBDEF_VOL_EXT_INFO));
-
-      if (disk_cache_get_auto_extend_volid (thread_p) == NULL_VOLID)
-	{
-	  /* New volume must be added */
-	  pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-
-	  /* add new volume with minimum pages */
-	  new_vol_npages = 1 + disk_get_num_overhead_for_newvol (ext_info.max_npages);
-
-	  ext_info.extend_npages =
-	    CEIL_PTVDIV (new_vol_npages, AUTO_ADD_VOL_EXPAND_NPAGES) * AUTO_ADD_VOL_EXPAND_NPAGES;
-
-	  /* Do not check interrupt while volume extension */
-	  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
-	  volid = boot_xadd_volume_extension (thread_p, &ext_info);
-	  thread_set_check_interrupt (thread_p, old_check_interrupt);
-
-	  if (volid != NULL_VOLID)
-	    {
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_NOTIFY_AUTO_VOLEXT, 2,
-		      fileio_get_volume_label (volid, PEEK), ext_info.extend_npages);
-	    }
-	  else
-	    {
-	      /* just continue to expansion, although there was an error. In this case, auto expansion thread will
-	       * detect this situation and set ret_volid to NULL_VOLID. */
-	    }
-
-	  pthread_mutex_lock (&boot_Auto_addvol_job.lock);
-	}
-
-      /* expand volume */
-      (void) thread_wakeup_auto_volume_expansion_thread ();
-
-      if (wait)
-	{
-	  pthread_cond_wait (&boot_Auto_addvol_job.cond, &boot_Auto_addvol_job.lock);
-	  volid = boot_Auto_addvol_job.ret_volid;
-	}
-
-      pthread_mutex_unlock (&boot_Auto_addvol_job.lock);
-#else
-      /* cannot be here */
-      assert (false);
-#endif
-    }
-  else
-    {
-      /* SA_MODE or auto_volume_expansion thread is unavailable */
-      ext_info.extend_npages = ext_info.max_npages;
-
-      volid = boot_xadd_volume_extension (thread_p, &ext_info);
-
-      if (volid != NULL_VOLID)
-	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_NOTIFY_AUTO_VOLEXT, 2,
-		  fileio_get_volume_label (volid, PEEK), ext_info.extend_npages);
-	}
-    }
-
-  return volid;
-}
-
-/*
  * boot_parse_add_volume_extensions () - add a set of volume extensions
  *                                       to the database
  *
@@ -1374,7 +824,6 @@ static int
 boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_addmore_vols)
 {
   FILE *fp;
-  DBDEF_VOL_EXT_INFO ext_info;
   char input_buffer[BOOTSR_MAX_LINE + 1];
   char *line;
   char *token;
@@ -1386,6 +835,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
   DISK_VOLPURPOSE ext_purpose;
   int line_num = 0;
   int error_code = NO_ERROR;
+  VOLID volid = NULL_VOLID;
 
   fp = fopen (filename_addmore_vols, "r");
   if (fp == NULL)
@@ -1426,7 +876,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
       ext_path = NULL;
       ext_comments = NULL;
       ext_npages = 0;
-      ext_purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+      ext_purpose = DB_PERMANENT_DATA_PURPOSE;
 
       while (true)
 	{
@@ -1510,19 +960,19 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	    {
 	      if (intl_mbs_casecmp (token_value, "DATA") == 0)
 		{
-		  ext_purpose = DISK_PERMVOL_DATA_PURPOSE;
+		  ext_purpose = DB_PERMANENT_DATA_PURPOSE;
 		}
 	      else if (intl_mbs_casecmp (token_value, "INDEX") == 0)
 		{
-		  ext_purpose = DISK_PERMVOL_INDEX_PURPOSE;
+		  ext_purpose = DB_PERMANENT_DATA_PURPOSE;
 		}
 	      else if (intl_mbs_casecmp (token_value, "TEMP") == 0)
 		{
-		  ext_purpose = DISK_PERMVOL_TEMP_PURPOSE;
+		  ext_purpose = DB_TEMPORARY_DATA_PURPOSE;
 		}
 	      else if (intl_mbs_casecmp (token_value, "GENERIC") == 0)
 		{
-		  ext_purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+		  ext_purpose = DB_PERMANENT_DATA_PURPOSE;
 		}
 	      else
 		{
@@ -1567,225 +1017,19 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	  continue;
 	}
 
-      ext_info.path = ext_path;
-      ext_info.name = ext_name;
-      ext_info.comments = ext_comments;
-      ext_info.max_npages = ext_npages;
-      ext_info.max_writesize_in_sec = 0;
-      ext_info.purpose = ext_purpose;
-      ext_info.overwrite = false;
-
-      if (xboot_add_volume_extension (thread_p, &ext_info) == NULL_VOLID)
+      error_code =
+	disk_add_volume_extension (thread_p, ext_purpose, ext_npages, ext_path, ext_name, ext_comments, 0, false,
+				   &volid);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
+	  ASSERT_ERROR ();
+	  break;
 	}
+      assert (volid != NULL_VOLID);
     }
   fclose (fp);
 
   return error_code;
-}
-
-/*
- * boot_add_temp_volume () - add a temporarily volume to the database or
- *                     expand a current temporary volume
- *
- * return : volid or NULL_VOLID (in case of failure)
- *
- *   min_npages(in): Number of pages
- *
- * Note: Add a temporary volume to the database. The creation of the
- *       volume does not depend on the destiny of the current
- *       transaction. The addition of the volume is a system operation
- *       that will be either aborted in case of failure or committed in
- *       case of success, independently on the destiny of the current
- *       transaction. Note that the current transaction is not
- *       committed, only the current operation is committed.
- *       Any temporary volumes that remains at shutdown time or restart
- *       time are destroyed. However, temporary volumes should be
- *       in general destroyed by the caller.
- */
-VOLID
-boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
-{
-  VOLID temp_volid;
-  char temp_vol_fullname[PATH_MAX];
-  char *temp_path;
-  const char *temp_name;
-  char temp_path_buf[PATH_MAX];
-  DKNPAGES ext_npages, part_npages;
-  DBDEF_VOL_EXT_INFO ext_info;
-#if defined (SERVER_MODE)
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-#endif /* SERVER_MODE */
-
-  if (boot_Temp_volumes_max_pages == -2)
-    {
-      /* 
-       * Get the maximum number of temporary pages that can be allocated for
-       * all temporary volumes
-       */
-      boot_Temp_volumes_max_pages = prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
-      if (boot_Temp_volumes_max_pages < 0)
-	{
-	  boot_Temp_volumes_max_pages = -1;	/* Infinite, until out of disk space */
-	}
-      else
-	{
-	  if (boot_Temp_volumes_max_pages < BOOT_VOLUME_MINPAGES)
-	    {
-	      boot_Temp_volumes_max_pages = 0;	/* Don't allocate any temp space */
-	    }
-	}
-    }
-
-  if (min_npages < BOOT_VOLUME_MINPAGES)
-    {
-      min_npages = BOOT_VOLUME_MINPAGES;
-    }
-
-  if (boot_Temp_volumes_sys_pages == 0)
-    {
-      DKNPAGES sect_alloctb_npages, page_alloctb_npages;
-      PAGEID sect_alloctb_page1, page_alloctb_page1, sys_lastpage;
-      DKNPAGES max_npages;
-
-      max_npages = boot_get_temp_temp_vol_max_npages ();
-      if (disk_set_alloctables (DISK_TEMPVOL_TEMP_PURPOSE, 0, max_npages, &sect_alloctb_npages, &page_alloctb_npages,
-				&sect_alloctb_page1, &page_alloctb_page1, &sys_lastpage) != NO_ERROR)
-	{
-	  return NULL_VOLID;
-	}
-      boot_Temp_volumes_sys_pages = sys_lastpage + 1;
-    }
-
-  /* 
-   * Get the name of the extension: ext_path|dbname|"ext"|volid
-   */
-
-  /* Use the directory user specified if NULL, use the directory where the primary volume is located */
-  temp_path = (char *) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
-  if (temp_path == NULL || temp_path[0] == '\0')
-    {
-      temp_path = fileio_get_directory_path (temp_path_buf, boot_Db_full_name);
-    }
-
-  temp_name = fileio_get_base_file_name (boot_Db_full_name);
-
-  /* 
-   * Make sure that the name is going to be unique. We do not lock the object
-   * DBparm to allow multiple transactions creating/deleting volumes
-   */
-
-  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return NULL_VOLID;
-    }
-
-  /* Get the name of the extension */
-  if (boot_Db_parm->temp_nvols > 0)
-    {
-      temp_volid = boot_Db_parm->temp_last_volid - 1;
-    }
-  else
-    {
-      temp_volid = LOG_MAX_DBVOLID;
-    }
-
-  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-
-  part_npages = (fileio_get_number_of_partition_free_pages (temp_vol_fullname, IO_PAGESIZE)
-		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
-
-  if (min_npages > part_npages && part_npages >= 0)
-    {
-      ext_npages = part_npages;
-    }
-  else
-    {
-      ext_npages = min_npages;
-    }
-
-  /* Do not overpass any limit indicated by system parameters */
-
-  if (boot_Temp_volumes_max_pages >= 0 && (boot_Temp_volumes_tpgs + ext_npages) > boot_Temp_volumes_max_pages)
-    {
-      ext_npages = boot_Temp_volumes_max_pages - boot_Temp_volumes_tpgs;
-    }
-
-  /* Do not allocate fewer pages than the number needed by the caller */
-  if (ext_npages < min_npages)
-    {
-      ext_npages = min_npages;
-    }
-
-  /* 
-   * Do not allocate more than the limit indicated by the User through
-   * system parameters
-   */
-
-  if (boot_Temp_volumes_max_pages >= 0 && (boot_Temp_volumes_tpgs + ext_npages) > boot_Temp_volumes_max_pages)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1, boot_Temp_volumes_max_pages);
-      temp_volid = NULL_VOLID;
-    }
-  else
-    {
-      if (boot_Db_parm->temp_nvols > 0
-	  && (part_npages =
-	      disk_expand_tmp (thread_p, boot_Db_parm->temp_last_volid, min_npages, ext_npages)) >= min_npages)
-	{
-	  temp_volid = boot_Db_parm->temp_last_volid;
-	  boot_Temp_volumes_tpgs += part_npages;	/* Expansion of pages */
-	}
-      else
-	{
-	  /* 
-	   * Definitely create a new temporary volume
-	   */
-	  /* 
-	   * must add system pages of temp volumes.
-	   */
-	  DKNPAGES possible_max_npages;
-
-	  er_clear ();		/* clear error that was set by disk_expand_tmp() */
-
-	  possible_max_npages = ext_npages + boot_Temp_volumes_sys_pages;
-	  possible_max_npages = MIN (possible_max_npages, boot_get_temp_temp_vol_max_npages ());
-
-	  ext_info.path = NULL;
-	  ext_info.name = temp_vol_fullname;
-	  ext_info.comments = "Temporary Volume";
-	  ext_info.max_npages = possible_max_npages;
-	  ext_info.max_writesize_in_sec = 0;
-	  ext_info.purpose = DISK_TEMPVOL_TEMP_PURPOSE;
-	  ext_info.overwrite = true;
-	  ext_info.extend_npages = ext_info.max_npages;
-
-#if defined(SERVER_MODE)
-	  tsc_getticks (&start_tick);
-#endif /* SERVER_MODE */
-
-	  temp_volid = boot_add_volume (thread_p, &ext_info);
-	  if (temp_volid != NULL_VOLID)
-	    {
-	      boot_Temp_volumes_tpgs += ext_npages;
-	      (void) disk_goodvol_refresh_with_new (thread_p, temp_volid);
-	    }
-
-#if defined(SERVER_MODE)
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  TSC_ADD_TIMEVAL (thread_p->event_stats.temp_expand_time, tv_diff);
-
-	  thread_p->event_stats.temp_expand_pages += possible_max_npages;
-#endif /* SERVER_MODE */
-	}
-    }
-
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
-
-  return temp_volid;
 }
 
 /*
@@ -1814,7 +1058,6 @@ boot_get_temp_temp_vol_max_npages (void)
 static int
 boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action)
 {
-  RECDES recdes;
   int error_code = NO_ERROR;
   REMOVE_TEMP_VOL_ACTION delete_action_arg;
 
@@ -1846,18 +1089,19 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
 
   if (boot_Db_parm->temp_nvols != 0 || boot_Db_parm->temp_last_volid != NULL_VOLID)
     {
-      HEAP_OPERATION_CONTEXT update_context;
       boot_Db_parm->temp_nvols = 0;
       boot_Db_parm->temp_last_volid = NULL_VOLID;
-      recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
-      recdes.data = (char *) boot_Db_parm;
 
-      heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-      if (heap_update_logical (thread_p, &update_context) != NO_ERROR
-	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+      error_code = boot_db_parm_update_heap (thread_p);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
 	}
     }
   else
@@ -1870,99 +1114,6 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
 
   return error_code;
 }
-
-#if 0
-/*
- * boot_xremove_prem_volume () - remove the permanent volume from the database
- *
- * return :NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
-{
-  HEAP_OPERATION_CONTEXT update_context;
-  int error = NO_ERROR;
-  int vol_fd;
-  char *vlabel;
-  RECDES recdes;
-  VOLID prev_volid = NULL_VOLID;
-  VOLID next_volid = NULL_VOLID;
-  char next_vol_fullname[PATH_MAX];
-
-  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  vlabel = fileio_get_volume_label (volid, ALLOC_COPY);
-  if (vlabel == NULL)
-    {
-      csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
-      return ER_FAILED;
-    }
-
-  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
-  /* previous volid shouldn't be NULL_VOLID because we can't remove first volume */
-  assert (prev_volid != NULL_VOLID);
-
-  boot_Db_parm->nvols--;
-  if (boot_Db_parm->last_volid == volid)
-    {
-      boot_Db_parm->last_volid = prev_volid;
-    }
-
-  recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
-  recdes.data = (char *) boot_Db_parm;
-
-  heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-			      &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
-    {
-      boot_Db_parm->nvols++;
-      if (boot_Db_parm->last_volid == prev_volid)
-	{
-	  boot_Db_parm->last_volid = volid;
-	}
-      error = er_errid ();
-      goto end;
-    }
-  heap_flush (thread_p, boot_Db_parm_oid);
-
-  vol_fd = fileio_get_volume_descriptor (boot_Db_parm->hfid.vfid.volid);
-  (void) fileio_synchronize (thread_p, vol_fd, vlabel);
-
-  if (disk_get_link (thread_p, volid, &next_volid, next_vol_fullname) == NULL)
-    {
-      error = er_errid ();
-      goto end;
-    }
-
-  error = disk_unformat (thread_p, vlabel);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  error = disk_set_link (thread_p, prev_volid, next_volid, next_vol_fullname, false, DISK_FLUSH);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  (void) disk_goodvol_refresh (thread_p);
-
-  /* recreate volume info file for removed volume */
-  (void) logpb_recreate_volume_info (thread_p);
-
-end:
-  free_and_init (vlabel);
-
-  csect_exit (thread_p, CSECT_BOOT_SR_DBPARM);
-
-  return error;
-}
-#endif
 
 /*
  * boot_xremove_temp_volume () - remove a temporary volume from the database
@@ -2104,22 +1255,22 @@ boot_max_pages_for_new_temp_volume (void)
   char *alloc_tempath = NULL;
   DKNPAGES npages;
 
-  if (boot_Temp_volumes_max_pages == -2)
+  if (boot_Temp_volumes_max_sects == -2)
     {
       /* 
        * Get the maximum number of temporary pages that can be allocated for
        * all temporary volumes
        */
-      boot_Temp_volumes_max_pages = prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
-      if (boot_Temp_volumes_max_pages < 0)
+      boot_Temp_volumes_max_sects = prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
+      if (boot_Temp_volumes_max_sects < 0)
 	{
-	  boot_Temp_volumes_max_pages = -1;	/* Infinite, until out of disk space */
+	  boot_Temp_volumes_max_sects = -1;	/* Infinite, until out of disk space */
 	}
       else
 	{
-	  if (boot_Temp_volumes_max_pages < BOOT_VOLUME_MINPAGES)
+	  if (boot_Temp_volumes_max_sects < BOOT_VOLUME_MINPAGES)
 	    {
-	      boot_Temp_volumes_max_pages = 0;	/* Don't allocate any temp space */
+	      boot_Temp_volumes_max_sects = 0;	/* Don't allocate any temp space */
 	    }
 	}
     }
@@ -2146,9 +1297,9 @@ boot_max_pages_for_new_temp_volume (void)
 
   npages = fileio_get_number_of_partition_free_pages (temp_vol_fullname, IO_PAGESIZE);
 
-  if (boot_Temp_volumes_max_pages >= 0 && npages > (boot_Temp_volumes_max_pages - boot_Temp_volumes_tpgs))
+  if (boot_Temp_volumes_max_sects >= 0 && npages > (boot_Temp_volumes_max_sects - boot_Temp_volumes_tpgs))
     {
-      npages = boot_Temp_volumes_max_pages - boot_Temp_volumes_tpgs;
+      npages = boot_Temp_volumes_max_sects - boot_Temp_volumes_tpgs;
     }
 
   if (alloc_tempath)
@@ -3179,7 +2330,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   int tran_index = NULL_TRAN_INDEX;
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
-  RECDES recdes;
 #if defined(SERVER_MODE)
   int common_ha_mode;
 #endif
@@ -3338,6 +2488,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
+
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
@@ -3358,6 +2510,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
+      goto error;
+    }
+
+  error_code = perfmon_initialize (MAX_NTRANS);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -3409,8 +2568,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
-
-  mnt_server_init (MAX_NTRANS);
 
   /* 
    * Compose the full name of the database and find location of logs
@@ -3488,6 +2645,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+  /* we need to manually add root class HFID to cache */
+  error_code =
+    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   db_charset_db_header = boot_get_db_charset_from_header (thread_p, log_path, log_prefix);
   if (db_charset_db_header <= INTL_CODESET_NONE || INTL_CODESET_LAST < db_charset_db_header)
@@ -3513,15 +2678,24 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  /* initialize disk manager */
+  error_code = disk_manager_init (thread_p, true);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   error_code = logtb_initialize_global_unique_stats_table (thread_p);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  error_code = file_tracker_cache_vfid (&boot_Db_parm->trk_vfid);
+  error_code = file_tracker_load (thread_p, &boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
   catalog_initialize (&boot_Db_parm->ctid);
@@ -3603,19 +2777,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* 
-   * Since no logging is done on temporary volumes, we can not trust
-   * the bitmap of temporary volumes.  So we reset the temporary volumes
-   * before recovery.  At a later time, the temporary volumes will be
-   * removed.
-   */
-
-  error_code = disk_reinit_all_tmp (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  /* 
    * Initialize system locale using values from db_root system table
    */
   error_code =
@@ -3687,37 +2848,24 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
-  (void) disk_goodvol_refresh (thread_p);
-
-  /* Set any warnings about space by purpose dk_warnspace_by_purpose(DISK_UNKNOWN_PURPOSE); */
-
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-  /* Reinitialize all permanent volumes for temporary purposes */
-  error_code = disk_reinit_all_tmp (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  (void) disk_goodvol_refresh (thread_p);
 
   /* If there is an existing query area, delete it. */
   if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
     {
-      HEAP_OPERATION_CONTEXT update_context;
-
       (void) file_destroy (thread_p, &boot_Db_parm->query_vfid);
       boot_Db_parm->query_vfid.fileid = NULL_FILEID;
       boot_Db_parm->query_vfid.volid = NULL_VOLID;
 
-      recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
-      recdes.data = (char *) boot_Db_parm;
-
-      heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-      if (heap_update_logical (thread_p, &update_context) != NO_ERROR
-	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+      error_code = boot_db_parm_update_heap (thread_p);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+	{
+	  assert_release (false);
 	  goto error;
 	}
     }
@@ -4291,7 +3439,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  (void) xtran_server_abort (thread_p);
 	}
 
-      xmnt_server_stop_stats (thread_p);
+      perfmon_stop_watch (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
       CUBRID_CONN_END (client_id, tdes->client.db_user);
@@ -4544,7 +3692,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	  return DISK_ERROR;
 	}
       /* Check heap file is really exist. It can be removed. */
-      if (heap_get (thread_p, oid, &peek_recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, oid, &peek_recdes, &scan_cache, PEEK) != S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan_cache);
 	  lock_unlock_object (thread_p, oid, oid_Root_class_oid, IS_LOCK, true);
@@ -4617,26 +3765,23 @@ int
 xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids, int num_oids, BTID * index_btid)
 {
   DISK_ISVALID isvalid = DISK_VALID;
-  VOLID volid;
   int i;
   bool repair = check_flag & CHECKDB_REPAIR;
   int error_code = NO_ERROR;
 
+  disk_lock_extend ();
   error_code = boot_check_permanent_volumes (thread_p);
+  disk_unlock_extend ();
+
+  isvalid = disk_check (thread_p, repair);
+  if (isvalid != DISK_VALID)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+    }
 
   if (index_btid != NULL && BTID_IS_NULL (index_btid))
     {
       index_btid = NULL;
-    }
-
-  for (volid = LOG_DBFIRST_VOLID; isvalid != DISK_ERROR && volid != NULL_VOLID;
-       volid = fileio_find_next_perm_volume (thread_p, volid))
-    {
-      isvalid = disk_check (thread_p, volid, repair);
-      if (isvalid != DISK_VALID)
-	{
-	  error_code = ER_FAILED;
-	}
     }
 
   if (num_oids > 0)
@@ -4685,14 +3830,11 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids,
     {
       if (isvalid != DISK_ERROR)
 	{
-#if defined (SERVER_MODE)
 	  isvalid = file_tracker_check (thread_p);
-#else
-	  isvalid = file_tracker_cross_check_with_disk_idsmap (thread_p);
-#endif
 	  if (isvalid != DISK_VALID)
 	    {
-	      error_code = ER_FAILED;
+	      assert (isvalid != DISK_INVALID);
+	      ASSERT_ERROR_AND_SET (error_code);
 	    }
 	}
     }
@@ -4780,9 +3922,9 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catalog_finalize ();
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
-  mnt_server_final ();
+  perfmon_finalize ();
   fileio_dismount_all (thread_p);
-  disk_goodvol_decache (thread_p);
+  disk_manager_final ();
   boot_server_status (BOOT_SERVER_DOWN);
 
   catcls_finalize_class_oid_to_oid_hash_table (thread_p);
@@ -5588,6 +4730,12 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 
       er_clear ();
     }
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   /* Find the prefix for the database */
   log_prefix = fileio_get_base_file_name (db_name);
@@ -5789,7 +4937,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   RECDES recdes;
   int error_code;
   DBDEF_VOL_EXT_INFO ext_info;
-  HEAP_OPERATION_CONTEXT heapop_context, update_context;
+  HEAP_OPERATION_CONTEXT heapop_context;
 
   assert (client_credential != NULL);
 
@@ -5826,17 +4974,18 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   ext_info.comments = db_comments;
   ext_info.max_npages = db_npages;
   ext_info.max_writesize_in_sec = 0;
-  ext_info.purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+  ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
   ext_info.extend_npages = db_npages;
 
   /* Format the first database volume */
-  db_volid = disk_format (thread_p, boot_Db_full_name, LOG_DBFIRST_VOLID, &ext_info);
-  if (db_volid != LOG_DBFIRST_VOLID || boot_Init_server_is_canceled)
+  error_code = disk_format_first_volume (thread_p, boot_Db_full_name, db_comments, db_npages);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
-  if (logpb_add_volume (NULL, LOG_DBFIRST_VOLID, boot_Db_full_name, DISK_PERMVOL_GENERIC_PURPOSE) != LOG_DBFIRST_VOLID)
+  if (logpb_add_volume (NULL, LOG_DBFIRST_VOLID, boot_Db_full_name, DB_PERMANENT_DATA_PURPOSE) != LOG_DBFIRST_VOLID)
     {
       goto error;
     }
@@ -5876,16 +5025,40 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   VFID_SET_NULL (&boot_Db_parm->dropped_files_vfid);
 
   /* Create the needed files */
-  if (file_tracker_create (thread_p, &boot_Db_parm->trk_vfid) == NULL
-      || xheap_create (thread_p, &boot_Db_parm->hfid, NULL, false) < 0
-      || xheap_create (thread_p, &boot_Db_parm->rootclass_hfid, NULL, false) < 0
-      || heap_assign_address (thread_p, &boot_Db_parm->rootclass_hfid, NULL, &boot_Db_parm->rootclass_oid,
-			      0) != NO_ERROR)
+  error_code = file_tracker_create (thread_p, &boot_Db_parm->trk_vfid);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
+      goto error;
+    }
+  error_code = xheap_create (thread_p, &boot_Db_parm->hfid, NULL, false);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+  error_code = xheap_create (thread_p, &boot_Db_parm->rootclass_hfid, NULL, false);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+  error_code = heap_assign_address (thread_p, &boot_Db_parm->rootclass_hfid, NULL, &boot_Db_parm->rootclass_oid, 0);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto error;
     }
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
+  /* we need to manually add root class HFID to cache */
+  error_code =
+    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
 #if 1				/* TODO */
   if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING, -1, &boot_Db_parm->rootclass_oid, -1,
@@ -5902,7 +5075,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  if (catalog_create (thread_p, &boot_Db_parm->ctid, -1, -1) == NULL)
+  if (catalog_create (thread_p, &boot_Db_parm->ctid) == NULL)
     {
       goto error;
     }
@@ -5941,10 +5114,10 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
 
   /* Update boot_Db_parm */
-  heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-			      &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
-  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+  error_code = boot_db_parm_update_heap (thread_p);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -6119,6 +5292,11 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       /* Find the rest of the volumes and mount them */
       error_code = boot_find_rest_volumes (thread_p, NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
+      error_code = disk_manager_init (thread_p, true);
       if (error_code != NO_ERROR)
 	{
 	  goto error_rem_allvols;
@@ -6367,6 +5545,12 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     {
       goto error_exit;
     }
+  error_code = disk_manager_init (thread_p, true);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_exit;
+    }
 
   error_code = logtb_initialize_global_unique_stats_table (thread_p);
   if (error_code != NO_ERROR)
@@ -6374,9 +5558,10 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
       goto error_exit;
     }
 
-  error_code = file_tracker_cache_vfid (&boot_Db_parm->trk_vfid);
+  error_code = file_tracker_load (thread_p, &boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error_exit;
     }
   catalog_initialize (&boot_Db_parm->ctid);
@@ -6753,82 +5938,6 @@ boot_set_skip_check_ct_classes (bool val)
   return old_val;
 }
 
-#if 0
-/*
- * boot_rv_del_volume_extension () - Redo update of removal volume
- *
- *   return: NO_ERROR if all OK, ER_ status otherwise
- *   rcv(in): Recovery structure
- */
-int
-boot_rv_del_volume_extension (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  int error = ER_FAILED;
-  DB_VOLPURPOSE purpose;
-  VOLID volid;
-
-  volid = *((VOLID *) rcv->data);
-
-  /* Start postpone type system operation (overrides the normal system operation). */
-  log_start_system_op (thread_p);
-
-  if (xdisk_is_volume_exist (thread_p, volid) == false)
-    {
-      /* 
-       * Maybe the volume was removed by other transaction.
-       * just return and continue left.
-       */
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
-
-      return NO_ERROR;
-    }
-
-  purpose = xdisk_get_purpose (thread_p, volid);
-  if (purpose == DISK_UNKNOWN_PURPOSE)
-    {
-      assert (false);		/* should check volume's purpose before append log */
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, volid);
-      return ER_BO_UNKNOWN_VOLUME;
-    }
-
-  if (purpose == DISK_TEMPVOL_TEMP_PURPOSE || purpose == DISK_EITHER_TEMP_PURPOSE)
-    {
-      error = boot_xremove_temp_volume (thread_p, volid, NULL, NULL);
-    }
-  else
-    {
-      error = boot_xremove_perm_volume (thread_p, volid);
-    }
-
-  if (error != NO_ERROR)
-    {
-      /* we didn't unformat, so we recover the status to enable creating new files */
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-#if 0
-      (void) disk_cache_enable_new_files (thread_p, volid);
-#endif
-
-      return error;
-    }
-
-  return error;
-}
-#endif
-
-/*
- * boot_rv_dump_del_volume () - Dump removal volume information
- *   return: voild
- *   length_ignore(in): Length of Recovery Data
- *   data(in): The data being logged
- */
-void
-boot_rv_dump_del_volume (FILE * fp, int length_ignore, void *data)
-{
-  fprintf (fp, "Remove volume: Volid = %d\n", *((int *) data));
-}
-
 /*
  * boot_get_db_charset_from_header () - Get DB charset from volumes
  *				        (log or generic)
@@ -6909,4 +6018,172 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
     default:
       return "UNKNOWN";
     }
+}
+
+int
+boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, const char *given_path,
+				 const char *given_name, char *fullname_newvol_out, VOLID * volid_newvol_out)
+{
+  char buf_temp_path[PATH_MAX];
+  const char *temp_path = NULL;
+  const char *temp_name = NULL;
+
+  if (voltype == DB_PERMANENT_VOLTYPE)
+    {
+      *volid_newvol_out = boot_Db_parm->last_volid + 1;
+      if (*volid_newvol_out > LOG_MAX_DBVOLID
+	  || (boot_Db_parm->temp_nvols > 0 && *volid_newvol_out >= boot_Db_parm->temp_last_volid))
+	{
+	  /* should be caught early */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXNUM_VOLS_HAS_BEEN_EXCEEDED, 1, LOG_MAX_DBVOLID);
+	  return ER_BO_MAXNUM_VOLS_HAS_BEEN_EXCEEDED;
+	}
+
+      if (given_path != NULL)
+	{
+	  temp_path = given_path;
+	}
+      else
+	{
+	  temp_path = prm_get_string_value (PRM_ID_IO_VOLUME_EXT_PATH);
+	  if (temp_path == NULL)
+	    {
+	      temp_path = fileio_get_directory_path (buf_temp_path, boot_Db_full_name);
+	      if (temp_path == NULL)
+		{
+		  buf_temp_path[0] = '\0';
+		  temp_path = buf_temp_path;
+		}
+	    }
+
+	}
+      if (given_name != NULL)
+	{
+	  temp_name = given_name;
+
+	  fileio_make_volume_ext_given_name (fullname_newvol_out, temp_path, given_name);
+	}
+      else
+	{
+	  temp_name = fileio_get_base_file_name (boot_Db_full_name);
+	  fileio_make_volume_ext_name (fullname_newvol_out, temp_path, temp_name, *volid_newvol_out);
+	}
+    }
+  else
+    {
+      *volid_newvol_out = boot_Db_parm->temp_nvols > 0 ? boot_Db_parm->temp_last_volid - 1 : LOG_MAX_DBVOLID;
+      if (*volid_newvol_out <= boot_Db_parm->last_volid)
+	{
+	  /* should be caught early */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXNUM_VOLS_HAS_BEEN_EXCEEDED, 1, LOG_MAX_DBVOLID);
+	  return ER_BO_MAXNUM_VOLS_HAS_BEEN_EXCEEDED;
+	}
+      assert (given_path == NULL && given_name == NULL);
+
+      temp_path = (char *) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
+      if (temp_path == NULL || temp_path[0] == '\0')
+	{
+	  temp_path = fileio_get_directory_path (buf_temp_path, boot_Db_full_name);
+	}
+      temp_name = fileio_get_base_file_name (boot_Db_full_name);
+      fileio_make_volume_temp_name (fullname_newvol_out, temp_path, temp_name, *volid_newvol_out);
+    }
+
+  return NO_ERROR;
+}
+
+int
+boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID volid)
+{
+  VPID vpid_boot_bp_parm;
+  BOOT_DB_PARM save_boot_db_parm = *boot_Db_parm;
+
+  int error_code = NO_ERROR;
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  if (voltype == DB_PERMANENT_VOLTYPE)
+    {
+      assert (boot_Db_parm->nvols >= 0);
+      if (volid != boot_Db_parm->last_volid + 1)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+      boot_Db_parm->last_volid = volid;
+      boot_Db_parm->nvols++;
+    }
+  else
+    {
+      if (boot_Db_parm->temp_nvols < 0 || (boot_Db_parm->temp_nvols == 0 && volid != LOG_MAX_DBVOLID)
+	  || (boot_Db_parm->temp_nvols > 0 && boot_Db_parm->temp_last_volid - 1 != volid))
+	{
+	  /* invalid volid */
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+      boot_Db_parm->temp_nvols++;
+      boot_Db_parm->temp_last_volid = volid;
+    }
+
+  /* todo: is flush needed? */
+  VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
+  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm), &vpid_boot_bp_parm);
+
+  error_code = boot_db_parm_update_heap (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      *boot_Db_parm = save_boot_db_parm;
+      goto exit;
+    }
+
+  /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
+   * during restart. that may not be possible during media crash though. */
+  heap_flush (thread_p, boot_Db_parm_oid);
+  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);	/* label? */
+
+exit:
+  return error_code;
+}
+
+/*
+ * boot_db_parm_update_heap () - update heap record for boot_Db_parm
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ */
+STATIC_INLINE int
+boot_db_parm_update_heap (THREAD_ENTRY * thread_p)
+{
+  HEAP_SCANCACHE scan_cache;
+  HEAP_OPERATION_CONTEXT update_context;
+  RECDES recdes;
+
+  int error_code = NO_ERROR;
+
+  recdes.length = recdes.area_size = sizeof (*boot_Db_parm);
+  recdes.data = (char *) boot_Db_parm;
+
+  /* note that we start a scan cache with NULL class_oid. That's because boot_Db_parm_oid doesn't really have a class!
+   * we have to start the scan cache this way so it can cache also cache file type for heap_update_logical.
+   * otherwise it will try to read it from cache using root class OID. which actually has its own heap file and its own
+   * heap file type.
+   */
+  heap_scancache_start_modify (thread_p, &scan_cache, &boot_Db_parm->hfid, NULL, SINGLE_ROW_UPDATE, NULL);
+  /* hack the class to avoid heap_scancache_check_with_hfid. */
+  scan_cache.node.class_oid = *oid_Root_class_oid;
+  heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
+			      &recdes, &scan_cache, UPDATE_INPLACE_CURRENT_MVCCID);
+  error_code = heap_update_logical (thread_p, &update_context);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  heap_scancache_end (thread_p, &scan_cache);
+  return error_code;
 }

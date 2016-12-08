@@ -38,11 +38,9 @@
    routines follow the current structure definition.
    This must be the byte size of the structure
    as returned by sizeof().  Note that MEMORY_STAT_SIZE and PACKED_STAT_SIZE
-   are not necesarily the same although they will be in most cases.
+   are not necessarily the same although they will be in most cases.
 */
-#define STAT_SIZE_PACKED \
-        (OR_INT64_SIZE * MNT_SIZE_OF_SERVER_EXEC_STATS)
-#define STAT_SIZE_MEMORY (STAT_SIZE_PACKED+sizeof(bool))
+
 #define EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE  512
 
 /* These define the requests that the server will respond to */
@@ -57,7 +55,6 @@ enum net_server_request
   NET_SERVER_BO_UNREGISTER_CLIENT,
   NET_SERVER_BO_BACKUP,
   NET_SERVER_BO_ADD_VOLEXT,
-  NET_SERVER_BO_DEL_VOLEXT,
   NET_SERVER_BO_CHECK_DBCONSISTENCY,
   NET_SERVER_BO_FIND_NPERM_VOLS,
   NET_SERVER_BO_FIND_NTEMP_VOLS,
@@ -123,17 +120,6 @@ enum net_server_request
   NET_SERVER_HEAP_HAS_INSTANCE,
   NET_SERVER_HEAP_RECLAIM_ADDRESSES,
 
-  NET_SERVER_LARGEOBJMGR_CREATE,
-  NET_SERVER_LARGEOBJMGR_READ,
-  NET_SERVER_LARGEOBJMGR_WRITE,
-  NET_SERVER_LARGEOBJMGR_INSERT,
-  NET_SERVER_LARGEOBJMGR_DESTROY,
-  NET_SERVER_LARGEOBJMGR_DELETE,
-  NET_SERVER_LARGEOBJMGR_APPEND,
-  NET_SERVER_LARGEOBJMGR_TRUNCATE,
-  NET_SERVER_LARGEOBJMGR_COMPRESS,
-  NET_SERVER_LARGEOBJMGR_LENGTH,
-
   NET_SERVER_LOG_RESET_WAIT_MSECS,
   NET_SERVER_LOG_RESET_ISOLATION,
   NET_SERVER_LOG_SET_INTERRUPT,
@@ -161,7 +147,6 @@ enum net_server_request
   NET_SERVER_DISK_TOTALPGS,
   NET_SERVER_DISK_FREEPGS,
   NET_SERVER_DISK_REMARKS,
-  NET_SERVER_DISK_PURPOSE,
   NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO,
   NET_SERVER_DISK_VLABEL,
   NET_SERVER_DISK_IS_EXIST,
@@ -274,10 +259,6 @@ enum net_server_request
 #define NET_CAP_HA_REPL_DELAY           0x00000008
 #define NET_CAP_HA_REPLICA              0x00000004
 #define NET_CAP_HA_IGNORE_REPL_DELAY	0x00000002
-
-extern char *net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
-extern char *net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
-
 
 /* Server startup */
 extern int net_server_start (const char *name);

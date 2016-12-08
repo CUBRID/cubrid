@@ -378,10 +378,11 @@ int
 qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *tuple_val_size)
 {
   char *val_p;
-  int val_size, align;
+  int val_size, align, rc;
   OR_BUF buf;
   PR_TYPE *pr_type;
   DB_TYPE dbval_type;
+  bool temporary_clear;
 
   if (DB_IS_NULL (dbval_p))
     {
@@ -396,14 +397,32 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval_p);
       pr_type = PR_TYPE_FROM_ID (dbval_type);
-
-      val_size = pr_data_writeval_disk_size (dbval_p);
-
-      OR_BUF_INIT (buf, val_p, val_size);
-
-      if (pr_type == NULL || (*(pr_type->data_writeval)) (&buf, dbval_p) != NO_ERROR)
+      if (pr_type == NULL)
 	{
 	  return ER_FAILED;
+	}
+
+      val_size = pr_data_writeval_disk_size (dbval_p);
+      OR_BUF_INIT (buf, val_p, val_size);
+      rc = (*(pr_type->data_writeval)) (&buf, dbval_p);
+
+      if (rc != NO_ERROR)
+	{
+	  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
+	  assert (rc != ER_TF_BUFFER_OVERFLOW);
+	  return ER_FAILED;
+	}
+
+      /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
+      if (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR)
+	{
+	  rc = pr_clear_compressed_string (dbval_p);
+	  if (rc != NO_ERROR)
+	    {
+	      /* This should not happen for now */
+	      assert (false);
+	      return ER_FAILED;
+	    }
 	}
 
       /* I don't know if the following is still true. */
@@ -535,6 +554,8 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   int i;
   int value_size;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
+  DB_VALUE *val_buffer;
+  DB_TYPE dbval_type;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -554,8 +575,10 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	      goto exit_with_status;
 	    }
 
+	  dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
+
 	  /* SET data-type cannot use tuple descriptor */
-	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt])))
+	  if (pr_is_set_type (dbval_type))
 	    {
 	      status = QPROC_TPLDESCR_RETRY_SET_TYPE;
 	      goto exit_with_status;
@@ -568,6 +591,16 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	      status = QPROC_TPLDESCR_FAILURE;
 	      goto exit_with_status;
 	    }
+
+	  /* The value has been peeked so it does not require any clear, but we still might have the compressed_string
+	   * alloced so we need to clear it.
+	   */
+	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
+	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
+	    {
+	      pr_clear_compressed_string (val_buffer);
+	    }
+
 	  tuple_desc_p->tpl_size += value_size;
 	  tuple_desc_p->f_cnt += 1;	/* increase field number */
 	}
@@ -7157,8 +7190,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       if (agg_p->function == PT_CUME_DIST || agg_p->function == PT_PERCENT_RANK)
 	{
 	  /* CUME_DIST and PERCENT_RANK use a REGU_VAR_LIST reguvar as operator and are treated in a special manner */
-	  int error = qdata_calculate_aggregate_cume_dist_percent_rank (thread_p, agg_p,
-									val_desc_p);
+	  error = qdata_calculate_aggregate_cume_dist_percent_rank (thread_p, agg_p, val_desc_p);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -7218,11 +7250,15 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    }
 
 	  dbval_size = pr_data_writeval_disk_size (&dbval);
-	  if ((dbval_size != 0) && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
+	  if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
 	    {
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	      if ((*(pr_type_p->data_writeval)) (&buf, &dbval) != NO_ERROR)
+	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
+	      if (error != NO_ERROR)
 		{
+		  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
+		  assert (error != ER_TF_BUFFER_OVERFLOW);
+
 		  db_private_free_and_init (thread_p, disk_repr_p);
 		  pr_clear_value (&dbval);
 		  return ER_FAILED;
@@ -7259,9 +7295,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    {
 	      assert (percentile->percentile_reguvar != NULL);
 
-	      error =
-		fetch_peek_dbval (thread_p, percentile->percentile_reguvar, val_desc_p, NULL, NULL, NULL,
-				  &percentile_val);
+	      error = fetch_peek_dbval (thread_p, percentile->percentile_reguvar, val_desc_p, NULL, NULL, NULL,
+					&percentile_val);
 	      if (error != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -7378,8 +7413,6 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
       else if (agg_p->function == PT_GROUP_CONCAT)
 	{
-	  int error = NO_ERROR;
-
 	  assert (alt_acc_list == NULL);
 
 	  /* group concat function requires special care */
@@ -7406,12 +7439,9 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
       else
 	{
-	  int error = NO_ERROR;
-
 	  /* aggregate value */
-	  error =
-	    qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain, agg_p->function,
-						  agg_p->domain, &dbval);
+	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+							agg_p->function, agg_p->domain, &dbval);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
@@ -7673,9 +7703,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID scan_id;
   SCAN_CODE scan_code;
-  QFILE_TUPLE_RECORD tuple_record = {
-    NULL, 0
-  };
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   char *tuple_p;
   PR_TYPE *pr_type_p;
   OR_BUF buf;
@@ -8271,6 +8299,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  domain_p = list_id_p->type_list.domp[i];
 	  if (domain_p == NULL || domain_p->type == NULL)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
 	      return ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
 	    }
@@ -8278,6 +8307,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  if (db_value_domain_init (value_list->val, TP_DOMAIN_TYPE (domain_p), domain_p->precision, domain_p->scale) !=
 	      NO_ERROR)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
 	      return ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
 	    }
@@ -8285,6 +8315,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  pr_type_p = domain_p->type;
 	  if (pr_type_p == NULL)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      return ER_FAILED;
 	    }
 
@@ -8393,6 +8424,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
   DB_TYPE dom_type, val_type;
   TP_DOMAIN_STATUS dom_status;
   int result;
+  HL_HEAPID save_heapid = 0;
 
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
@@ -8429,7 +8461,16 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		}
 	      else
 		{
+		  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		    {
+		      save_heapid = db_change_private_heap (thread_p, 0);
+		    }
+
 		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
+		    }
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
 		      result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
@@ -8668,6 +8709,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
   OID *instance_oid_p;
   DB_VALUE *val_p, element;
   DB_TYPE type;
+  int err;
 
   if (fetch_peek_dbval (thread_p, &function_p->operand->value, val_desc_p, NULL, obj_oid_p, tuple, &val_p) != NO_ERROR)
     {
@@ -8699,9 +8741,11 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
     }
 
   instance_oid_p = DB_PULL_OID (val_p);
-  if (heap_get_class_oid (thread_p, &class_oid, instance_oid_p) != S_SUCCESS)
+  err = heap_get_class_oid (thread_p, instance_oid_p, &class_oid);
+  if (err != S_SUCCESS)
     {
-      return ER_FAILED;
+      ASSERT_ERROR_AND_SET (err);
+      return err;
     }
 
   DB_MAKE_OID (function_p->value, &class_oid);
@@ -10624,11 +10668,15 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	}
 
       dbval_size = pr_data_writeval_disk_size (&dbval);
-      if ((dbval_size != 0) && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)))
+      if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
 	{
 	  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	  if ((*(pr_type_p->data_writeval)) (&buf, &dbval) != NO_ERROR)
+	  error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
+	  if (error != NO_ERROR)
 	    {
+	      /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
+	      assert (error != ER_TF_BUFFER_OVERFLOW);
+
 	      db_private_free_and_init (thread_p, disk_repr_p);
 	      error = ER_FAILED;
 	      goto exit;
@@ -12148,6 +12196,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;
   DB_DOMAIN *dom;
+  HL_HEAPID save_heapid = 0;
 
   assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operand.type == TYPE_REGU_VAR_LIST);
 
@@ -12203,9 +12252,25 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	  /* Note: we must cast the const value to the same domain as the compared field in the order by clause */
 	  dom = regu_tmp_node->value.domain;
 
+	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_node->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      save_heapid = db_change_private_heap (thread_p, 0);
+	    }
+
 	  if (db_value_coerce (*val_node_p, *val_node_p, dom) != NO_ERROR)
 	    {
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		}
+
 	      goto exit_on_error;
+	    }
+
+	  if (save_heapid != 0)
+	    {
+	      (void) db_change_private_heap (thread_p, save_heapid);
+	      save_heapid = 0;
 	    }
 
 	  regu_var_node = regu_var_node->next;

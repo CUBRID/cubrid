@@ -639,11 +639,11 @@ col_expand_array (COL * col, long blockindex)
 
   if (col->array)
     {
-      col->array = db_private_realloc (NULL, col->array, EXPAND (blockindex) * sizeof (DB_VALUE *));
+      col->array = (DB_VALUE **) db_private_realloc (NULL, col->array, EXPAND (blockindex) * sizeof (DB_VALUE *));
     }
   else
     {
-      col->array = db_private_alloc (NULL, EXPAND (blockindex) * sizeof (DB_VALUE *));
+      col->array = (DB_VALUE **) db_private_alloc (NULL, EXPAND (blockindex) * sizeof (DB_VALUE *));
     }
   if (!col->array)
     {
@@ -4819,7 +4819,6 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
     {
       goto end;
     }
-  mop = ws_mvcc_latest_version (mop);
 
   if (!WS_IS_DELETED (mop))
     {

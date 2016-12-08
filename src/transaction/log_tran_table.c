@@ -83,6 +83,8 @@
 #include "transaction_cl.h"
 #endif
 
+#define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
+
 #define MVCC_OLDEST_ACTIVE_BUFFER_LENGTH 300
 
 /* bit area sizes expressed in bits */
@@ -537,7 +539,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
     {
       goto error;
     }
-  error_code = file_manager_initialize (thread_p);
+  error_code = file_manager_init ();
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -650,7 +652,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   logtb_finalize_mvcctable (thread_p);
   lock_finalize ();
   pgbuf_finalize ();
-  (void) file_manager_finalize (thread_p);
+  file_manager_final ();
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -669,9 +671,6 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	    {
 #if defined(SERVER_MODE)
 	      assert (tdes->tran_index == i);
-	      assert (tdes->cs_topop.cs_index ==
-		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
 #endif
 
 	      logtb_finalize_tdes (thread_p, tdes);
@@ -950,14 +949,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->topops.stack = NULL;
   tdes->topops.max = 0;
   tdes->topops.last = -1;
-  tdes->topops.type = LOG_TOPOPS_NORMAL;
-  tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   RB_INIT (&tdes->lob_locator_root);
 }
 
@@ -1866,9 +1860,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   tdes->topops.last = -1;
-  tdes->topops.type = LOG_TOPOPS_NORMAL;
-  tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   if (tdes->gtrinfo.info_data != NULL)
@@ -1932,8 +1923,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
@@ -1958,6 +1947,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->has_deadlock_priority = false;
 
   tdes->num_log_records_written = 0;
+
+  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 }
 
 /*
@@ -1971,7 +1963,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 {
-  int i;
+  int i, r;
 
   tdes->tran_index = tran_index;
   tdes->trid = NULL_TRANID;
@@ -1993,20 +1985,12 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
 
-  csect_initialize_critical_section (&tdes->cs_topop, csect_Name_tdes);
-
-#if defined(SERVER_MODE)
-  assert (tdes->cs_topop.cs_index == -1);
-
-  tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
-#endif
+  r = rmutex_initialize (&tdes->rmutex_topop, RMUTEX_NAME_TDES_TOPOP);
+  assert (r == NO_ERROR);
 
   tdes->topops.stack = NULL;
   tdes->topops.last = -1;
   tdes->topops.max = 0;
-  tdes->topops.type = LOG_TOPOPS_NORMAL;
-  tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->num_unique_btrees = 0;
   tdes->max_unique_btrees = 0;
   tdes->tran_unique_stats = NULL;
@@ -2019,8 +2003,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
@@ -2060,6 +2042,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
   tdes->block_global_oldest_active_until_commit = false;
   tdes->modified_class_list = NULL;
+
+  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 }
 
 /*
@@ -2073,10 +2058,15 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 void
 logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  int r;
+
   logtb_clear_tdes (thread_p, tdes);
   logtb_free_tran_mvcc_info (tdes);
   logtb_tran_free_update_stats (&tdes->log_upd_stats);
-  csect_finalize_critical_section (&tdes->cs_topop);
+
+  r = rmutex_finalize (&tdes->rmutex_topop);
+  assert (r == NO_ERROR);
+
   if (tdes->topops.max != 0)
     {
       free_and_init (tdes->topops.stack);
@@ -3019,17 +3009,15 @@ logtb_find_log_records_count (int tran_index)
  *                         TRAN_SERIALIZABLE
  *                         TRAN_REPEATABLE_READ
  *                         TRAN_READ_COMMITTED
- *   unlock_by_isolation(in): unlock by isolation during reset
  *
- * Note:Reset the default isolation level for the current transaction
- *              index (client).
+ * Note:Reset the default isolation level for the current transaction index (client).
  *
  * Note/Warning: This function must be called when the current transaction has
  *               not been done any work (i.e, just after restart, commit, or
  *               abort), otherwise, its isolation behaviour will be undefined.
  */
 int
-xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool unlock_by_isolation)
+xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation)
 {
   TRAN_ISOLATION old_isolation;
   int error_code = NO_ERROR;
@@ -3043,10 +3031,6 @@ xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool 
     {
       old_isolation = tdes->isolation;
       tdes->isolation = isolation;
-      if (unlock_by_isolation == true)
-	{
-	  lock_unlock_by_isolation_level (thread_p);
-	}
     }
   else
     {
@@ -3170,7 +3154,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
-	      mnt_tran_interrupts (thread_p);
+	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
 	    }
 
 	  return true;
@@ -3974,10 +3958,14 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys
       redo_rec.data = PTR_ALIGN (redo_rec_buf, MAX_ALIGNMENT);
 
       btree_rv_mvcc_save_increments (btid, -n_keys, -n_oids, -n_nulls, &undo_rec);
-      btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls, &redo_rec);
 
-      log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, -1, undo_rec.length, redo_rec.length,
-				 undo_rec.data, redo_rec.data);
+      /* todo: remove me. redo has no use */
+      /*btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls, &redo_rec);
+
+         log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, -1, undo_rec.length, redo_rec.length,
+         undo_rec.data, redo_rec.data); */
+      log_append_undo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, NULL_OFFSET, undo_rec.length,
+			     undo_rec.data);
     }
 
   return error;
@@ -4224,7 +4212,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   bool is_perf_tracking = false;
   UINT64 snapshot_retry_cnt = 0;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
 
   if (is_perf_tracking)
     {
@@ -4364,11 +4352,11 @@ start_get_mvcc_table:
       snapshot_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (snapshot_wait_time > 0)
 	{
-	  mnt_snapshot_acquire_time (thread_p, snapshot_wait_time);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, snapshot_wait_time);
 	}
       if (snapshot_retry_cnt > 1)
 	{
-	  mnt_snapshot_retry_counters (thread_p, snapshot_retry_cnt - 1);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, snapshot_retry_cnt - 1);
 	}
     }
 
@@ -4457,7 +4445,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   UINT64 oldest_time, retry_cnt = 0;
   bool is_perf_tracking = false;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -4579,17 +4567,17 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
       oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (oldest_time > 0)
 	{
-	  mnt_oldest_mvcc_acquire_time (thread_p, oldest_time);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, oldest_time);
 	}
       if (retry_cnt > 1)
 	{
-	  mnt_oldest_mvcc_retry_counters (thread_p, retry_cnt - 1);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, retry_cnt - 1);
 	}
     }
 #if !defined (NDEBUG)
   {
     /* Safe guard: vacuum_Global_oldest_active_mvccid can never become smaller. */
-    VACUUM_LOG_BLOCKID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
+    MVCCID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
     assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
   }
 #endif /* !NDEBUG */
@@ -4827,7 +4815,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   assert (tdes != NULL);
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -5231,7 +5219,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (tran_complete_time > 0)
 	{
-	  mnt_tran_complete_time (thread_p, tran_complete_time);
+	  perfmon_add_stat (thread_p, PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, tran_complete_time);
 	}
     }
 }
@@ -6944,7 +6932,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
   void *ptr_val;
   LOG_TDES *tdes;
   DB_VALUE *vals = NULL;
-  const int num_cols = 47;
+  const int num_cols = 46;
 
   *ptr = NULL;
 
@@ -7240,12 +7228,8 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
       idx++;
 
-      /* Num_new_files */
-      db_make_int (&vals[idx], tdes->num_new_files);
-      idx++;
-
-      /* Num_new_temp_temp_files */
-      db_make_int (&vals[idx], tdes->num_new_temp_files);
+      /* Num_temp_files */
+      db_make_int (&vals[idx], file_get_tran_num_temp_files (thread_p));
       idx++;
 
       /* Waiting_for_res */
@@ -7385,4 +7369,37 @@ tran_abort_reason_to_string (TRAN_ABORT_REASON val)
       return "ABORT_DUE_ROLLBACK_ON_ESCALATION";
     }
   return "UNKNOWN";
+}
+
+/*
+ * logtb_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
+ *
+ * return		   : true if the class is not root/trigger/user class, otherwise false
+ * class_oid (in)	   : Class object identifier.
+ *
+ * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency
+ *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
+ *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
+ *	 are accessed when triggers are modified.
+ *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction.
+ *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last
+ *	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
+ *	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot.
+ *	 Since instances from these classes are accessed before locking tables, the snapshot is generated before
+ *	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
+ *	 locks are acquired before snapshot.
+ */
+bool
+logtb_check_class_for_rr_isolation_err (const OID * class_oid)
+{
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  if (!oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  return false;
 }

@@ -49,6 +49,7 @@
 #include "xserver_interface.h"
 #include "tsc_timer.h"
 #include "mvcc.h"
+#include "locator_sr.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -551,7 +552,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	  return S_ERROR;
 	}
 
-      /* first_midxkey_val holds pointer to first value from last_key, which we actually want to place in last_key.
+      /* first_midxkey_val may hold pointer to first value from last_key, which we actually want to place in last_key.
        * steps: 1. clone first_midxkey_val to a temp variable so we have a DB_VALUE independent of last_key 2. clear
        * last_key (no longer holds important data) 3. clone temp variable to last_key (for later use) 4. clear tmp (we
        * no longer need it) */
@@ -559,6 +560,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
       pr_clear_value (last_key);
       pr_clone_value (&tmp, last_key);
       pr_clear_value (&tmp);
+      pr_clear_value (&first_midxkey_val);
     }
 
   /* use last_key in scan_range */
@@ -2280,6 +2282,15 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
   if (iscan_id->curr_keyno > key_cnt)
     {
       return NO_ERROR;
+    }
+  else
+    {
+      /* Clear output val list to avoid memory leak. */
+      REGU_VARIABLE_LIST p;
+      for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
+	{
+	  pr_clear_value (p->value.vfetch_to);
+	}
     }
 
   switch (indx_infop->range_type)
@@ -4491,6 +4502,9 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_METHOD_SCAN:
       break;
+
+    default:
+      break;
     }
 
   scan_id->status = S_ENDED;
@@ -4768,8 +4782,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
       tsc_getticks (&start_tick);
 
-      old_fetches = mnt_get_pb_fetches (thread_p);
-      old_ioreads = mnt_get_pb_ioreads (thread_p);
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
     }
 
   switch (scan_id->type)
@@ -4830,8 +4844,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (scan_id->stats.elapsed_scan, tv_diff);
 
-      scan_id->stats.num_fetches += mnt_get_pb_fetches (thread_p) - old_fetches;
-      scan_id->stats.num_ioreads += mnt_get_pb_ioreads (thread_p) - old_ioreads;
+      scan_id->stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      scan_id->stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
     }
 
   return status;
@@ -5022,13 +5036,13 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  /* get with lock and reevaluate if the visible version wasn't the latest version */
 	  sp_scan =
-	    heap_mvcc_get_for_delete (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache, is_peeking,
-				      NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+	    locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
+							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
 	  if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 	    {
 	      continue;
 	    }
-	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT || sp_scan == S_DOESNT_EXIST)
 	    {
 	      er_clear ();
 	      continue;
@@ -5039,7 +5053,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
-      if (heap_is_mvcc_disabled_for_class (&hsidp->cls_oid))
+      if (mvcc_is_mvcc_disabled_class (&hsidp->cls_oid))
 	{
 	  LOCK lock = NULL_LOCK;
 	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5413,7 +5427,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   /* Due to the length of time that we hold onto the oid list, it is possible at lower isolation levels (UNCOMMITTED
    * INSTANCES) that the index/heap may have changed since the oid list was read from the btree.  In particular, some
-   * of the instances that we are reading may have been deleted by the time we go to fetch them via heap_get ().
+   * of the instances that we are reading may have been deleted by the time we go to fetch them via heap_get_visible_version ().
    * According to the semantics of UNCOMMITTED, it is ok if they are deleted out from under us and we can ignore the
    * SCAN_DOESNT_EXIST error. */
 
@@ -5637,7 +5651,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* get pages for read */
       if (!SCAN_IS_INDEX_COVERED (isidp))
 	{
-	  mnt_bt_noncovered (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_NONCOVERED);
 
 	  assert (isidp->curr_oidno >= 0);
 	  assert (isidp->curr_oidp != NULL);
@@ -5701,7 +5715,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	    }
 
-	  mnt_bt_covered (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_COVERED);
 
 	  if (scan_id->val_list)
 	    {
@@ -5750,7 +5764,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
     }
 
   sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				      NULL_CHN, false);
+				      NULL_CHN);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
     {
       if (SCAN_IS_INDEX_COVERED (isidp))
@@ -5808,9 +5822,9 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       /* set reevaluation data */
       SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
 
-      sp_scan =
-	heap_mvcc_get_for_delete (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				  NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+      sp_scan = locator_lock_and_get_object_with_evaluation (thread_p, isidp->curr_oidp, NULL, &recdes,
+							     &isidp->scan_cache, scan_id->fixed, NULL_CHN,
+							     &mvcc_reev_data, LOG_WARNING_IF_DELETED);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)
@@ -5825,7 +5839,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 	}
     }
 
-  if (sp_scan == S_DOESNT_EXIST && er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+  if (sp_scan == S_DOESNT_EXIST || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
     {
       er_clear ();
       if (SCAN_IS_INDEX_COVERED (isidp))
@@ -5885,7 +5899,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       return S_ERROR;
     }
 
-  if (!scan_id->mvcc_select_lock_needed && heap_is_mvcc_disabled_for_class (&isidp->cls_oid))
+  if (!scan_id->mvcc_select_lock_needed && mvcc_is_mvcc_disabled_class (&isidp->cls_oid))
     {
       /* Data filter passed. If object should be locked and is not locked yet, lock it. */
       LOCK lock = NULL_LOCK;
@@ -7234,7 +7248,7 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * m
       multi_range_opt->tplrec.size = 0;
       multi_range_opt->tplrec.tpl = NULL;
 
-      mnt_bt_multi_range_opt (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MULTI_RANGE_OPT);
     }
 
   return err;

@@ -122,8 +122,6 @@ extern int db_set_suppress_repl_on_transaction (int set);
 extern int db_checkpoint (void);
 extern int db_freepgs (const char *vlabel);
 extern int db_totalpgs (const char *vlabel);
-extern int db_purpose_totalpgs_freepgs (int volid, DB_VOLPURPOSE * vol_purpose, int *vol_ntotal_pages,
-					int *vol_nfree_pages);
 extern char *db_vol_label (int volid, char *vol_fullname);
 extern void db_warnspace (const char *vlabel);
 extern int db_add_volume (const char *ext_path, const char *ext_name, const char *ext_comments, const int ext_npages,
@@ -701,7 +699,7 @@ extern int db_execute_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT
 extern int db_execute_and_keep_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
 extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION * session, int stmt_id);
 
-extern void db_invalidate_mvcc_snapshot_after_statement (void);
+extern void db_invalidate_mvcc_snapshot_before_statement (void);
 
 extern void db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version);
 

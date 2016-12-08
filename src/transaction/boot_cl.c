@@ -148,7 +148,7 @@ static char boot_Lob_path_buf[PATH_MAX];
 static char boot_Db_host_buf[MAXHOSTNAMELEN + 1];
 
 /* Volume assigned for new files/objects (e.g., heap files) */
-VOLID boot_User_volid = 0;
+VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 #if defined(CS_MODE)
 /* Server host connected */
 char boot_Host_connected[MAXHOSTNAMELEN] = "";
@@ -557,6 +557,14 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     {
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
     }
+
+  error_code = perfmon_initialize (MAX_NTRANS);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_exit;
+    }
+
   /* Initialize the disk and the server part */
   tran_index =
     boot_initialize_server (client_credential, db_path_info, db_overwrite, file_addmore_vols, npages,
@@ -700,6 +708,7 @@ error_exit:
 
       lang_final ();
       tz_unload ();
+      perfmon_finalize ();
 
 #if defined(WINDOWS)
       pc_final ();
@@ -826,6 +835,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* initialize the "areas" memory manager, requires prm_ */
   area_init ();
   locator_initialize_areas ();
+
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   ptr = (char *) strstr (client_credential->db_name, "@");
   if (ptr == NULL)
@@ -1305,6 +1321,15 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   json_set_alloc_funcs (malloc, free);
 
+#if defined(CS_MODE)
+  /* Initialize of the lzo library. */
+  error_code = lzo_init ();
+  if (error_code != LZO_E_OK)
+    {
+      goto error;
+    }
+#endif
+
   return error_code;
 
 error:
@@ -1561,6 +1586,7 @@ boot_client_all_finalize (bool is_er_final)
 
       locator_free_areas ();
       sysprm_final ();
+      perfmon_finalize ();
       area_final ();
 
       msgcat_final ();

@@ -653,6 +653,9 @@ int yybuffer_pos;
 [rR][eE][vV][eE][rR][sS][eE]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return REVERSE; }
+[dD][iI][sS][kK][_][sS][iI][zZ][Ee]				{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return DISK_SIZE; }
 [rR][eE][vV][oO][kK][eE]						{ begin_token(yytext);   return REVOKE; }
 [rR][iI][gG][hH][tT]							{ begin_token(yytext);   return RIGHT; }
 [rR][lL][iI][kK][eE]							{ begin_token(yytext);   return RLIKE; }
@@ -1729,7 +1732,7 @@ input_internal ()
 }
 
 static char *
-parser_c_hint ()
+parser_c_hint (void)
 {
   int c, c1;
   char buff[CSQL_MAXNAME];
@@ -1761,13 +1764,13 @@ parser_c_hint ()
 
           if (i >= (CSQL_MAXNAME - 1))
 	    {
-	      i ++;
+	      i++;
+	      yybuffer_pos += i;
 	      goto consume_comment;
 	    }
 
 	  buff[i++] = c;
 	}
-
 
       buff[i] = 0;
 
@@ -1786,15 +1789,18 @@ parser_c_hint ()
     }
 
 consume_comment:
-  yybuffer_pos += i;
   while ((c = input_internal ()) != '*' && c != 0 && c != -1)
-  {
-    yybuffer_pos ++;
-  }
+    {
+      yybuffer_pos++;
+    }
 
   if ((c1 = input_internal ()) != '/' && c != 0 && c != -1)
     {
       unput (c1);
+      if (c == '*')
+	{
+	  yybuffer_pos++;
+	}
       goto consume_comment;
     }
     

@@ -74,11 +74,9 @@ static const char *csect_Names[] = {
   "WFG",
   "LOG",
   "LOCATOR_CLASSNAME_TABLE",
-  "FILE_NEWFILE",
   "QPROC_QUERY_TABLE",
   "QPROC_LIST_CACHE",
-  "BOOT_SR_DBPARM",
-  "DISK_REFRESH_GOODVOL",
+  "DISK_CHECK",
   "CNV_FMT_LEXER",
   "HEAP_CHNGUESS",
   "TRAN_TABLE",
@@ -93,10 +91,7 @@ static const char *csect_Names[] = {
   "ACCESS_STATUS"
 };
 
-const char *rmutex_Name_conn = "CONN_ENTRY";
-const char *csect_Name_tdes = "TDES";
-
-#define CSECT_NAME(c) ((c)->name ? (c)->name : "TEMP CONN_ENTRY")
+#define CSECT_NAME(c) ((c)->name ? (c)->name : "UNKNOWN")
 
 /* 
  * Synchronization Primitives Statistics Monitor

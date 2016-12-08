@@ -1780,7 +1780,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
 {
   OR_BUF buf;
   PR_TYPE *pr_type;
-  int val_size;
+  int val_size, rc = NO_ERROR;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
@@ -1791,6 +1791,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
     }
 
   pr_type = tp_Type_id_map[(int) dbval_type];
+
   val_size = pr_data_writeval_disk_size (dbval);
 
   or_init (&buf, lbuf, val_size);

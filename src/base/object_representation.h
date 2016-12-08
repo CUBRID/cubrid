@@ -84,12 +84,6 @@
 #define OR_VPID_PAGEID		0
 #define OR_VPID_VOLID		4
 
-#define OR_LOID_SIZE		12
-#define OR_LOID_VPID_PAGEID	0
-#define OR_LOID_VPID_VOLID	4
-#define OR_LOID_VFID_VOLID	6
-#define OR_LOID_VFID_FILEID	8
-
 #define OR_HFID_SIZE            12
 #define OR_HFID_PAGEID          0
 #define OR_HFID_VFID_FILEID     4
@@ -138,7 +132,7 @@
 #define OR_MONETARY_TYPE        0
 #define OR_MONETARY_AMOUNT      4
 #define OR_ELO_LENGTH_SIZE	4
-#define OR_ELO_HEADER_SIZE	(OR_LOID_SIZE + OR_ELO_LENGTH_SIZE)
+#define OR_ELO_HEADER_SIZE	(OR_ELO_LENGTH_SIZE)
 
 #define OR_SHA1_SIZE		(5 * OR_INT_SIZE)
 
@@ -441,30 +435,6 @@
     OR_PUT_SHORT (((char *) (ptr)) + OR_OID_VOLID,  0); \
   } while (0)
 
-#define OR_GET_LOID(ptr, loid) \
-  do { \
-    (loid)->vpid.pageid = OR_GET_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID); \
-    (loid)->vpid.volid  = OR_GET_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID); \
-    (loid)->vfid.volid  = OR_GET_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID); \
-    (loid)->vfid.fileid = OR_GET_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID); \
-  } while (0)
-
-#define OR_PUT_LOID(ptr, loid) \
-  do { \
-    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID,  (loid)->vpid.pageid); \
-    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID, (loid)->vpid.volid); \
-    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID, (loid)->vfid.volid); \
-    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID,  (loid)->vfid.fileid); \
-  } while (0)
-
-#define OR_PUT_NULL_LOID(ptr) \
-  do { \
-    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VPID_PAGEID,  -1); \
-    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VPID_VOLID, -1); \
-    OR_PUT_SHORT (((char *) (ptr)) + OR_LOID_VFID_VOLID, -1); \
-    OR_PUT_INT (((char *) (ptr)) + OR_LOID_VFID_FILEID,  -1); \
-  } while (0)
-
 #define OR_GET_HFID(ptr, hfid) \
   do { \
     (hfid)->hpgid = OR_GET_INT (((char *) (ptr)) + OR_HFID_PAGEID); \
@@ -583,8 +553,8 @@
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
-/* representation id, MVCC insert id and CHN == 36 ?? */
-#define OR_MVCC_MAX_HEADER_SIZE  28
+/* representation id, CHN, MVCC insert id, MVCC delete id, prev_version_lsa = 32 */
+#define OR_MVCC_MAX_HEADER_SIZE  32
 
 /* representation id and CHN */
 #define OR_MVCC_MIN_HEADER_SIZE  8
@@ -594,31 +564,6 @@
 
 #define OR_NON_MVCC_HEADER_SIZE	      (8)	/* two integers */
 #define OR_HEADER_SIZE(ptr) (or_header_size ((char *) (ptr)))
-
-/* representation offset in MVCC and non-MVCC. In MVCC the representation
- * contains flags that allow to compute header size and CHN offset.
- */
-#define OR_REP_OFFSET    0
-#define OR_MVCC_REP_SIZE 4
-
-/* CHN fixed-offset in NON-MVCC only, in MVCC the CHN offset is variable */
-#define OR_NON_MVCC_CHN_OFFSET   4
-
-
-/* MVCC */
-#define OR_MVCCID_SIZE			OR_BIGINT_SIZE
-#define OR_PUT_MVCCID			OR_PUT_BIGINT
-#define OR_GET_MVCCID			OR_GET_BIGINT
-
-/* In case MVCC is enabled and chn is needed it will be saved instead of
- * delete MVCC id.
- */
-
-/* high bit of the repid word is reserved for the bound bit flag,
-   need to keep representations from going negative ! */
-#define OR_BOUND_BIT_FLAG   0x80000000
-
-#define BIG_VAR_OFFSET_SIZE OR_INT_SIZE	/* 4byte */
 
 /* 01 stand for 1byte, 10-> 2byte, 11-> 4byte  */
 #define OR_OFFSET_SIZE_FLAG 0x60000000
@@ -641,10 +586,46 @@
 /* The record have an LSA with the location of the previous version */
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
 
-/* The record contains 8 bytes CHN */
-#define OR_MVCC_FLAG_VALID_LONG_CHN	  0x08
-
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
+
+/* representation offset in MVCC and non-MVCC. In MVCC the representation
+ * contains flags that allow to compute header size and CHN offset.
+ */
+
+#define OR_REP_OFFSET    0
+#define OR_MVCC_REP_SIZE 4
+
+#define OR_MVCC_FLAG_OFFSET OR_REP_OFFSET
+#define OR_MVCC_FLAG_SIZE OR_MVCC_REP_SIZE
+
+#define OR_CHN_OFFSET (OR_REP_OFFSET + OR_MVCC_REP_SIZE)
+#define OR_CHN_SIZE 4
+
+#define OR_MVCC_INSERT_ID_OFFSET (OR_CHN_OFFSET + OR_CHN_SIZE)
+#define OR_MVCC_INSERT_ID_SIZE 8
+
+#define OR_MVCC_DELETE_ID_OFFSET(mvcc_flags) \
+  (OR_MVCC_INSERT_ID_OFFSET + (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCC_INSERT_ID_SIZE : 0))
+#define OR_MVCC_DELETE_ID_SIZE 8
+
+#define OR_MVCC_PREV_VERSION_LSA_OFFSET(mvcc_flags) \
+  (OR_MVCC_DELETE_ID_OFFSET(mvcc_flags) + (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCC_DELETE_ID_SIZE : 0))
+#define OR_MVCC_PREV_VERSION_LSA_SIZE 8
+
+/* MVCC */
+#define OR_MVCCID_SIZE			OR_BIGINT_SIZE
+#define OR_PUT_MVCCID			OR_PUT_BIGINT
+#define OR_GET_MVCCID			OR_GET_BIGINT
+
+/* In case MVCC is enabled and chn is needed it will be saved instead of
+ * delete MVCC id.
+ */
+
+/* high bit of the repid word is reserved for the bound bit flag,
+   need to keep representations from going negative ! */
+#define OR_BOUND_BIT_FLAG   0x80000000
+
+#define BIG_VAR_OFFSET_SIZE OR_INT_SIZE	/* 4byte */
 
 /* OBJECT HEADER ACCESS MACROS */
 
@@ -653,9 +634,6 @@
 
 #define OR_GET_BOUND_BIT_FLAG(ptr) \
   ((OR_GET_INT ((ptr) + OR_REP_OFFSET)) & OR_BOUND_BIT_FLAG)
-
-#define OR_GET_NON_MVCC_CHN(ptr) \
-  (OR_GET_INT ((ptr) + OR_NON_MVCC_CHN_OFFSET))
 
 #define OR_GET_OFFSET_SIZE(ptr) \
   ((((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE) \
@@ -672,42 +650,20 @@
 
 /* MVCC OBJECT HEADER ACCESS MACROS */
 #define OR_GET_MVCC_INSERT_ID(ptr, mvcc_flags, valp) \
-  do { \
-    if (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) == 0) \
-      {	\
-	*(valp) = MVCCID_ALL_VISIBLE; \
-      }	\
-    else \
-      {	\
-	OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE, (valp)); \
-      }	\
-  } while (0)
+  ((((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) == 0) \
+    ? MVCCID_ALL_VISIBLE \
+    : (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_INSERT_ID_OFFSET, (valp))))
 
 #define OR_GET_MVCC_DELETE_ID(ptr, mvcc_flags, valp)  \
   ((((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) == 0) \
     ? MVCCID_NULL \
-    : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
-       ? (OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE, (valp))) \
-       : ((OR_GET_BIGINT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE, (valp))))))
+    : (OR_GET_BIGINT (((char *) (ptr)) + OR_MVCC_DELETE_ID_OFFSET(mvcc_flags), (valp))))
 
 #define OR_GET_MVCC_REPID(ptr)	\
   ((OR_GET_INT(((char *) (ptr)) + OR_REP_OFFSET)) \
    & OR_MVCC_REPID_MASK)
 
-/* in MVCC, chn follow by rep_id and/or ins_id depending by flags */
-#define OR_GET_MVCC_CHN(ptr, mvcc_flags) \
-  (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) \
-   ? NULL_CHN \
-   : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
-      ? (OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE)) \
-      : ((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET + OR_MVCC_REP_SIZE)))))
-
-#define OR_GET_MVCC_CHN_OFFSET(mvcc_flags) \
-  (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) \
-   ? -1 \
-   : (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) \
-      ? (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_MVCCID_SIZE) \
-      : (OR_REP_OFFSET + OR_MVCC_REP_SIZE)))
+#define OR_GET_MVCC_CHN(ptr) (OR_GET_INT ((char *) (ptr) + OR_CHN_OFFSET))
 
 #define OR_GET_MVCC_FLAG(ptr) \
   (((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) \
@@ -1283,7 +1239,6 @@ extern int or_rep_id (RECDES * record);
 extern int or_set_rep_id (RECDES * record, int repid);
 extern int or_replace_rep_id (RECDES * record, int repid);
 extern int or_chn (RECDES * record);
-extern int or_mvcc_chn (OR_BUF * buf, int mvcc_flags, int *errror);
 extern int or_replace_chn (RECDES * record, int chn);
 extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
 extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit,
@@ -1324,7 +1279,6 @@ extern char *or_pack_string_with_length (char *ptr, const char *string, int leng
 extern char *or_pack_errcode (char *ptr, int error);
 extern char *or_pack_oid (char *ptr, const OID * oid);
 extern char *or_pack_oid_array (char *ptr, int n, const OID * oids);
-extern char *or_pack_loid (char *ptr, LOID * loid);
 extern char *or_pack_hfid (const char *ptr, const HFID * hfid);
 extern char *or_pack_btid (char *buf, BTID * btid);
 extern char *or_pack_ehid (char *buf, EHID * btid);
@@ -1374,7 +1328,6 @@ extern char *or_unpack_string_nocopy (char *ptr, char **string);
 extern char *or_unpack_errcode (char *ptr, int *error);
 extern char *or_unpack_oid (char *ptr, OID * oid);
 extern char *or_unpack_oid_array (char *ptr, int n, OID ** oids);
-extern char *or_unpack_loid (char *ptr, LOID * loid);
 extern char *or_unpack_hfid (char *ptr, HFID * hfid);
 extern char *or_unpack_hfid_array (char *ptr, int n, HFID ** hfids);
 extern char *or_unpack_btid (char *buf, BTID * btid);
@@ -1454,7 +1407,6 @@ extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
 #endif
 extern int or_put_data (OR_BUF * buf, char *data, int length);
 extern int or_put_oid (OR_BUF * buf, const OID * oid);
-extern int or_put_loid (OR_BUF * buf, LOID * loid);
 extern int or_put_varbit (OR_BUF * buf, char *string, int bitlen);
 extern int or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen);
 extern int or_put_varchar (OR_BUF * buf, char *string, int charlen);
@@ -1481,7 +1433,6 @@ extern int or_get_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz);
 extern int or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary);
 extern int or_get_data (OR_BUF * buf, char *data, int length);
 extern int or_get_oid (OR_BUF * buf, OID * oid);
-extern int or_get_loid (OR_BUF * buf, LOID * loid);
 extern int or_get_offset (OR_BUF * buf, int *error);
 extern int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size);
 extern int or_get_mvccid (OR_BUF * buf, MVCCID * mvccid);
@@ -1560,7 +1511,6 @@ extern int or_packed_enumeration_size (const DB_ENUMERATION * e);
 extern int or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * e);
 extern int or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * e);
 extern int or_header_size (char *ptr);
-extern int or_mvcc_header_size_from_flags (char mvcc_flags);
 
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
@@ -1568,5 +1518,8 @@ extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 
 extern char *or_pack_sha1 (char *ptr, SHA1Hash * sha1);
 extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
+
+/* Get the compressed and the decompressed lengths of a string stored in buffer */
+extern int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size);
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

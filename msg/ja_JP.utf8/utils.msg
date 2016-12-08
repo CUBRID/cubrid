@@ -748,11 +748,14 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
+15 出力ファイル「%1$s」が開けません。\n
 60 \
 diagdb: データベース情報をダンプ\n\
 使い方: %1$s diagdb [オプション] <データベース名>\n\
 \n\
 オプション:\n\
+  -o, --output-file=FILE       出力メッセージをセーブするファイル; デフォルト: なし\n\
+      --emergency              emergency restart; default: none\n\
   -d, --dump-type=TYPE         ダンプタイプ\n\
                                -1 全部ダンプ\n\
                                 1 ファイルテーブルをダンプ\n\

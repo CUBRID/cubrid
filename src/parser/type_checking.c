@@ -1015,7 +1015,23 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
+    case PT_DISK_SIZE:
+      num = 0;
 
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_ANY;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
     case PT_LIKE_LOWER_BOUND:
     case PT_LIKE_UPPER_BOUND:
       num = 0;
@@ -6804,6 +6820,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_LOCATE:
     case PT_MID:
     case PT_REVERSE:
+    case PT_DISK_SIZE:
     case PT_ADDDATE:
     case PT_DATE_ADD:
     case PT_SUBDATE:
@@ -9006,6 +9023,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_CRC32:
+    case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
       return true;
 
@@ -12356,6 +12374,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       break;
 
     case PT_CRC32:
+    case PT_DISK_SIZE:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_INTEGER);
       break;
@@ -12446,8 +12465,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
 	      if ((arg1 == NULL || arg1->type_enum != PT_TYPE_MAYBE)
 		  && (arg2 == NULL || arg2->type_enum != PT_TYPE_MAYBE)
-		  && (!((PT_NODE_IS_SESSION_VARIABLE (arg1))
-			&& (PT_NODE_IS_SESSION_VARIABLE (arg2)))))
+		  && (!((PT_NODE_IS_SESSION_VARIABLE (arg1)) && (PT_NODE_IS_SESSION_VARIABLE (arg2)))))
 		{
 		  /* operator without arguments or with arguments has result with system collation */
 		  collation_flag = TP_DOMAIN_COLL_NORMAL;
@@ -15118,6 +15136,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      PT_ERRORc (parser, o1, er_msg ());
 	      return 0;
 	    }
+	}
+      break;
+
+    case PT_DISK_SIZE:
+      if (DB_IS_NULL (arg1))
+	{
+	  db_make_int (result, 0);
+	}
+      else
+	{
+	  db_make_int (result, pr_data_writeval_disk_size (arg1));
+	  /* call pr_data_writeval_disk_size function to return the size on disk */
 	}
       break;
 

@@ -40,10 +40,6 @@
  * - simple key, value pair
  * - format: <key>=<value>[,<key>=<value>[...]]
  *           key, value should not contain '=', or ',' character
- *
- * FBO TODO:
- * handle error message (ER_ELO_CANT_CREATE_LARGE_OBJECT) is quick and
- * dirty fix.
  */
 
 #ident "$Id$"
@@ -73,9 +69,7 @@
 #include "xserver_interface.h"
 #endif
 
-static const DB_ELO elo_Initializer = { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL,
-ES_NONE
-};
+static const DB_ELO elo_Initializer = { -1LL, NULL, NULL, ELO_NULL, ES_NONE };
 
 #define ELO_NEEDS_TRANSACTION(e) \
         ((e)->es_type == ES_OWFS || (e)->es_type == ES_POSIX)
@@ -545,46 +539,44 @@ drop_lob_locator (const char *locator)
  * type(in): DB_ELO_TYPE
  */
 int
-elo_create (DB_ELO * elo, DB_ELO_TYPE type)
+elo_create (DB_ELO * elo)
 {
+  ES_URI out_uri;
+  char *uri = NULL;
+  int ret = NO_ERROR;
+
   assert (elo != NULL);
-  assert (type == ELO_FBO || type == ELO_LO);
 
-  if (type == ELO_FBO)
+
+  ret = es_create_file (out_uri);
+  if (ret < NO_ERROR)
     {
-      ES_URI out_uri;
-      char *uri;
-      int ret;
-
-      ret = es_create_file (out_uri);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
-
-      uri = db_private_strdup (NULL, out_uri);
-      if (uri == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      elo_init_structure (elo);
-      elo->size = 0;
-      elo->locator = uri;
-      elo->type = type;
-      elo->es_type = es_get_type (uri);
-
-      if (ELO_NEEDS_TRANSACTION (elo))
-	{
-	  ret = add_lob_locator (elo->locator, LOB_TRANSIENT_CREATED);
-	}
+      ASSERT_ERROR ();
       return ret;
     }
-  else				/* ELO_LO */
+
+  uri = db_private_strdup (NULL, out_uri);
+  if (uri == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (out_uri));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+  elo_init_structure (elo);
+  elo->size = 0;
+  elo->locator = uri;
+  elo->type = ELO_FBO;
+  elo->es_type = es_get_type (uri);
+
+  if (ELO_NEEDS_TRANSACTION (elo))
+    {
+      ret = add_lob_locator (elo->locator, LOB_TRANSIENT_CREATED);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+    }
+  return ret;
 }
 
 /*
@@ -677,155 +669,142 @@ elo_free_structure (DB_ELO * elo)
 int
 elo_copy (DB_ELO * elo, DB_ELO * dest)
 {
+  int ret;
+  ES_URI out_uri;
+  char *locator = NULL;
+  char *meta_data = NULL;
+
   assert (elo != NULL);
   assert (dest != NULL);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
 
-  if (elo->type == ELO_FBO)
+  /* create elo instance and copy file */
+  if (elo->meta_data != NULL)
     {
-      int ret;
-      ES_URI out_uri;
-      char *locator = NULL;
-      char *meta_data = NULL;
-
-      assert (elo->locator != NULL);
-
-      /* create elo instance and copy file */
-      if (elo->meta_data != NULL)
+      meta_data = db_private_strdup (NULL, elo->meta_data);
+      if (meta_data == NULL)
 	{
-	  meta_data = db_private_strdup (NULL, elo->meta_data);
-	  if (meta_data == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
 	}
-
-      /* if it uses external storage, do transaction work */
-      elo->es_type = es_get_type (elo->locator);
-      if (!ELO_NEEDS_TRANSACTION (elo))
-	{
-	  ret = es_copy_file (elo->locator, elo->meta_data, out_uri);
-	  if (ret != NO_ERROR)
-	    {
-	      goto error_return;
-	    }
-
-	  locator = db_private_strdup (NULL, out_uri);
-	  if (locator == NULL)
-	    {
-	      es_delete_file (out_uri);
-	      goto error_return;
-	    }
-	}
-      else
-	{
-	  LOB_LOCATOR_STATE state;
-	  ES_URI real_locator;
-
-	  state = find_lob_locator (elo->locator, real_locator);
-	  switch (state)
-	    {
-	    case LOB_TRANSIENT_CREATED:
-	    case LOB_PERMANENT_DELETED:
-	      {
-		ret = es_rename_file (real_locator, elo->meta_data, out_uri);
-		if (ret != NO_ERROR)
-		  {
-		    goto error_return;
-		  }
-		locator = db_private_strdup (NULL, out_uri);
-		if (locator == NULL)
-		  {
-		    assert (er_errid () != NO_ERROR);
-		    ret = er_errid ();
-		    goto error_return;
-		  }
-		ret = change_state_of_locator (elo->locator, locator, LOB_PERMANENT_CREATED);
-		if (ret != NO_ERROR)
-		  {
-		    goto error_return;
-		  }
-	      }
-	      break;
-
-	    case LOB_TRANSIENT_DELETED:
-	      {
-		locator = db_private_strdup (NULL, elo->locator);
-		if (locator == NULL)
-		  {
-		    assert (er_errid () != NO_ERROR);
-		    ret = er_errid ();
-		    goto error_return;
-		  }
-		ret = drop_lob_locator (elo->locator);
-		if (ret != NO_ERROR)
-		  {
-		    goto error_return;
-		  }
-	      }
-	      break;
-
-	    case LOB_PERMANENT_CREATED:
-	    case LOB_NOT_FOUND:
-	      {
-		ret = es_copy_file (real_locator, elo->meta_data, out_uri);
-		if (ret != NO_ERROR)
-		  {
-		    goto error_return;
-		  }
-		locator = db_private_strdup (NULL, out_uri);
-		if (locator == NULL)
-		  {
-		    es_delete_file (out_uri);
-		    goto error_return;
-		  }
-		ret = add_lob_locator (locator, LOB_PERMANENT_CREATED);
-		if (ret != NO_ERROR)
-		  {
-		    goto error_return;
-		  }
-	      }
-	      break;
-
-	    case LOB_UNKNOWN:
-	      assert (er_errid () != NO_ERROR);
-	      ret = er_errid ();
-	      goto error_return;
-
-	    default:
-	      assert (0);
-	      return ER_FAILED;
-	    }
-	}
-
-      *dest = *elo;
-      dest->locator = locator;
-      dest->meta_data = meta_data;
-
-      return NO_ERROR;
-
-    error_return:
-      if (locator != NULL)
-	{
-	  db_private_free_and_init (NULL, locator);
-	}
-
-      if (meta_data != NULL)
-	{
-	  db_private_free_and_init (NULL, meta_data);
-	}
-      return ret;
-    }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  /* if it uses external storage, do transaction work */
+  elo->es_type = es_get_type (elo->locator);
+  if (!ELO_NEEDS_TRANSACTION (elo))
+    {
+      ret = es_copy_file (elo->locator, elo->meta_data, out_uri);
+      if (ret != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      locator = db_private_strdup (NULL, out_uri);
+      if (locator == NULL)
+	{
+	  es_delete_file (out_uri);
+	  goto error_return;
+	}
+    }
+  else
+    {
+      LOB_LOCATOR_STATE state;
+      ES_URI real_locator;
+
+      state = find_lob_locator (elo->locator, real_locator);
+      switch (state)
+	{
+	case LOB_TRANSIENT_CREATED:
+	case LOB_PERMANENT_DELETED:
+	  {
+	    ret = es_rename_file (real_locator, elo->meta_data, out_uri);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+	    locator = db_private_strdup (NULL, out_uri);
+	    if (locator == NULL)
+	      {
+		assert (er_errid () != NO_ERROR);
+		ret = er_errid ();
+		goto error_return;
+	      }
+	    ret = change_state_of_locator (elo->locator, locator, LOB_PERMANENT_CREATED);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+	  }
+	  break;
+
+	case LOB_TRANSIENT_DELETED:
+	  {
+	    locator = db_private_strdup (NULL, elo->locator);
+	    if (locator == NULL)
+	      {
+		assert (er_errid () != NO_ERROR);
+		ret = er_errid ();
+		goto error_return;
+	      }
+	    ret = drop_lob_locator (elo->locator);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+	  }
+	  break;
+
+	case LOB_PERMANENT_CREATED:
+	case LOB_NOT_FOUND:
+	  {
+	    ret = es_copy_file (real_locator, elo->meta_data, out_uri);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+	    locator = db_private_strdup (NULL, out_uri);
+	    if (locator == NULL)
+	      {
+		es_delete_file (out_uri);
+		goto error_return;
+	      }
+	    ret = add_lob_locator (locator, LOB_PERMANENT_CREATED);
+	    if (ret != NO_ERROR)
+	      {
+		goto error_return;
+	      }
+	  }
+	  break;
+
+	case LOB_UNKNOWN:
+	  assert (er_errid () != NO_ERROR);
+	  ret = er_errid ();
+	  goto error_return;
+
+	default:
+	  assert (0);
+	  return ER_FAILED;
+	}
+    }
+
+  *dest = *elo;
+  dest->locator = locator;
+  dest->meta_data = meta_data;
+
+  return NO_ERROR;
+
+error_return:
+  if (locator != NULL)
+    {
+      db_private_free_and_init (NULL, locator);
+    }
+
+  if (meta_data != NULL)
+    {
+      db_private_free_and_init (NULL, meta_data);
+    }
+  return ret;
 }
 
 /*
@@ -836,73 +815,60 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 int
 elo_delete (DB_ELO * elo, bool force_delete)
 {
+  int ret = NO_ERROR;
+
   assert (elo != NULL);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
 
-  if (elo->type == ELO_FBO)
+  /* if it uses external storage, do transaction work */
+  elo->es_type = es_get_type (elo->locator);
+  if (!ELO_NEEDS_TRANSACTION (elo) || force_delete)
     {
-      int ret = NO_ERROR;
+      ret = es_delete_file (elo->locator);
+    }
+  else
+    {
+      LOB_LOCATOR_STATE state;
+      ES_URI real_locator;
 
-      assert (elo->locator != NULL);
-
-      /* if it uses external storage, do transaction work */
-      elo->es_type = es_get_type (elo->locator);
-      if (!ELO_NEEDS_TRANSACTION (elo) || force_delete)
+      state = find_lob_locator (elo->locator, real_locator);
+      switch (state)
 	{
-	  ret = es_delete_file (elo->locator);
-	}
-      else
-	{
-	  LOB_LOCATOR_STATE state;
-	  ES_URI real_locator;
-
-	  state = find_lob_locator (elo->locator, real_locator);
-	  switch (state)
+	case LOB_TRANSIENT_CREATED:
+	  ret = es_delete_file (real_locator);
+	  if (ret != NO_ERROR)
 	    {
-	    case LOB_TRANSIENT_CREATED:
-	      ret = es_delete_file (real_locator);
-	      if (ret != NO_ERROR)
-		{
-		  return ret;
-		}
-
-	      ret = drop_lob_locator (elo->locator);
-	      break;
-
-	    case LOB_PERMANENT_CREATED:
-	    case LOB_PERMANENT_DELETED:
-	      ret = change_state_of_locator (elo->locator, NULL, LOB_PERMANENT_DELETED);
-	      break;
-
-	    case LOB_TRANSIENT_DELETED:
-	      break;
-
-	    case LOB_NOT_FOUND:
-	      ret = add_lob_locator (elo->locator, LOB_TRANSIENT_DELETED);
-	      break;
-
-	    case LOB_UNKNOWN:
-	      assert (er_errid () != NO_ERROR);
-	      ret = er_errid ();
-	      break;
-
-	    default:
-	      assert (0);
-	      return ER_FAILED;
+	      return ret;
 	    }
+
+	  ret = drop_lob_locator (elo->locator);
+	  break;
+
+	case LOB_PERMANENT_CREATED:
+	case LOB_PERMANENT_DELETED:
+	  ret = change_state_of_locator (elo->locator, NULL, LOB_PERMANENT_DELETED);
+	  break;
+
+	case LOB_TRANSIENT_DELETED:
+	  break;
+
+	case LOB_NOT_FOUND:
+	  ret = add_lob_locator (elo->locator, LOB_TRANSIENT_DELETED);
+	  break;
+
+	case LOB_UNKNOWN:
+	  assert (er_errid () != NO_ERROR);
+	  ret = er_errid ();
+	  break;
+
+	default:
+	  assert (0);
+	  return ER_FAILED;
 	}
-
-      return ret;
-    }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  return ret;
 }
 
 /*
@@ -916,35 +882,22 @@ elo_size (DB_ELO * elo)
   off_t ret;
 
   assert (elo != NULL);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
 
   if (elo->size >= 0)
     {
       return elo->size;
     }
 
-  if (elo->type == ELO_FBO)
+  ret = es_get_file_size (elo->locator);
+  if (ret < 0)
     {
-      assert (elo->locator != NULL);
-
-      ret = es_get_file_size (elo->locator);
-      if (ret < 0)
-	{
-	  return ret;
-	}
-
-      elo->size = ret;
       return ret;
     }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-    }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  elo->size = ret;
+  return ret;
 }
 
 /*
@@ -963,23 +916,15 @@ elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count)
   assert (elo != NULL);
   assert (pos >= 0);
   assert (buf != NULL);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
 
-  if (elo->type == ELO_FBO)
+  ret = es_read_file (elo->locator, buf, count, pos);
+  if (ret < NO_ERROR)
     {
-      assert (elo->locator != NULL);
-      ret = es_read_file (elo->locator, buf, count, pos);
-      return ret;
+      ASSERT_ERROR ();
     }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-    }
-
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  return ret;
 }
 
 /*
@@ -998,135 +943,20 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
   assert (pos >= 0);
   assert (buf != NULL);
   assert (count > 0);
-  assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
 
-  if (elo->type == ELO_FBO)
+  ret = es_write_file (elo->locator, buf, count, pos);
+  if (ret < 0)
     {
-      assert (elo->locator != NULL);
-
-      ret = es_write_file (elo->locator, buf, count, pos);
-      if (ret < 0)
-	{
-	  return ret;
-	}
-      /* adjust size field */
-      if ((INT64) (pos + count) > elo->size)
-	{
-	  elo->size = pos + count;
-	}
+      ASSERT_ERROR ();
       return ret;
     }
-  else if (elo->type == ELO_LO)
-    {
-      /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-      return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-    }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-  return ER_OBJ_INVALID_ARGUMENTS;
+  /* adjust size field */
+  if ((INT64) (pos + count) > elo->size)
+    {
+      elo->size = pos + count;
+    }
+  return ret;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * elo_meta_get () - get meta data from DB_ELO
- * return: NO_ERROR if successful, error code otherwise
- * elo(in): DB_ELO instance
- * key(in): meta key
- * buf(out): buffer for value
- * bufsz(in): size of 'buf'
- */
-int
-elo_get_meta (const DB_ELO * elo, const char *key, char *buf, int bufsz)
-{
-  ELO_META *meta;
-  const char *value;
-  int ret = NO_ERROR;
-
-  assert (elo != NULL);
-  assert (key != NULL);
-  assert (buf != NULL);
-  assert (bufsz > 0);
-
-  meta = meta_create (elo->meta_data);
-  if (meta == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
-      return ER_ELO_CANT_CREATE_LARGE_OBJECT;
-    }
-
-  value = meta_get (meta, key);
-  if (value != NULL)
-    {
-      int len = strlen (value);
-
-      if (len + 1 > bufsz)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_BUFFER_TOO_SMALL, 0);
-	  return ER_OBJ_BUFFER_TOO_SMALL;
-	}
-
-      strncpy (buf, value, bufsz);
-    }
-  else
-    {
-      buf[0] = '\0';
-    }
-
-  (void) meta_destroy (meta);
-  return NO_ERROR;
-}
-
-/*
- * elo_meta_set () - set meta data to DB_ELO
- * return: NO_ERROR if successful, error code otherwise
- * elo(in): DB_ELO instance
- * key(in): meta key
- * val(in): meta data
- */
-int
-elo_set_meta (DB_ELO * elo, const char *key, const char *val)
-{
-  ELO_META *meta;
-  int r;
-  char *new_meta;
-
-  assert (elo != NULL);
-  assert (key != NULL);
-
-  meta = meta_create (elo->meta_data);
-  if (meta == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
-      return ER_ELO_CANT_CREATE_LARGE_OBJECT;
-    }
-
-  r = meta_set (meta, key, val);
-  if (r != NO_ERROR)
-    {
-      (void) meta_destroy (meta);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
-      return ER_ELO_CANT_CREATE_LARGE_OBJECT;
-    }
-
-  new_meta = meta_to_string (meta);
-  if (new_meta == NULL)
-    {
-      (void) meta_destroy (meta);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
-      return ER_ELO_CANT_CREATE_LARGE_OBJECT;
-    }
-
-  (void) meta_destroy (meta);
-  if (elo->meta_data != NULL)
-    {
-      db_private_free_and_init (NULL, elo->meta_data);
-    }
-  elo->meta_data = new_meta;
-
-  return NO_ERROR;
-}
-
-#endif /* ENABLE_UNUSED_FUNCTION */

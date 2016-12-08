@@ -1260,7 +1260,8 @@ $ LOADDB
 1191 Exécution de nettoyage autonome est terminé.
 1192 La précision de la valeur de %1$zu dépasse le maximum autorisé %2$d.
 1193 La dimension de l'expression de partition traité dépasse le maximum autorisé(%1$d).
-1194 Dernière erreur
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

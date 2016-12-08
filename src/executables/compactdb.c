@@ -246,10 +246,12 @@ phase3:
   catalog_reclaim_space (NULL);
   db_commit_transaction ();
 
-  file_reclaim_all_deleted (NULL);
-  db_commit_transaction ();
-
-  file_tracker_compress (NULL);
+  if (file_tracker_reclaim_marked_deleted (NULL) != NO_ERROR)
+    {
+      /* how to handle error? */
+      ASSERT_ERROR ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
   db_commit_transaction ();
 
   /* 
@@ -464,7 +466,7 @@ process_value (DB_VALUE * value)
 
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
-	scan_code = heap_get_visible_version (NULL, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN, false);
+	scan_code = heap_get_visible_version (NULL, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN);
 	heap_scancache_end (NULL, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
@@ -494,7 +496,6 @@ process_value (DB_VALUE * value)
       }
 
     case DB_TYPE_NULL:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     default:
@@ -676,8 +677,13 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
   RECDES oldrec = { 0, 0, 0, NULL };
   bool old_object;
   int success;
+  HEAP_GET_CONTEXT context;
+  HEAP_SCANCACHE scan_cache;
 
-  old_object = (heap_get_alloc (NULL, obj_oid, &oldrec) == NO_ERROR);
+  (void) heap_scancache_quick_start (&scan_cache);
+  heap_init_get_context (NULL, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN);
+
+  old_object = (heap_get_last_version (NULL, &context) == S_SUCCESS);
 
   if (old_object)
     {
@@ -695,10 +701,8 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
       success = ER_FAILED;
     }
 
-  if (oldrec.data != NULL)
-    {
-      free_and_init (oldrec.data);
-    }
+  heap_clean_get_context (NULL, &context);
+  (void) heap_scancache_end (NULL, &scan_cache);
 
   return success;
 }

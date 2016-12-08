@@ -844,8 +844,8 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
 
       repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
       or_put_int (buf, repid_bits);
-      or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
       or_put_int (buf, chn);	/* CHN, short size */
+      or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
 
       /* variable info block */
       put_varinfo (buf, obj, class_, offset_size);
@@ -1340,6 +1340,8 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 
       mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
+      chn = or_get_int (buf, &rc);
+
       if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
 	{
 	  /* skip insert id */
@@ -1349,23 +1351,13 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
 	  /* skip delete id */
-	  chn = NULL_CHN;
 	  or_advance (buf, OR_MVCCID_SIZE);
-	}
-      else
-	{
-	  chn = or_get_int (buf, &rc);
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_LONG_CHN)
-	    {
-	      /* skip 4 bytes - fixed MVCC header size */
-	      or_advance (buf, OR_INT_SIZE);
-	    }
 	}
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	{
 	  /* skip prev version lsa */
-	  or_advance (buf, sizeof (LOG_LSA));
+	  or_advance (buf, OR_MVCC_PREV_VERSION_LSA_SIZE);
 	}
 
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
@@ -1472,6 +1464,8 @@ string_disk_size (const char *string)
 {
   DB_VALUE value;
   int str_length = 0;
+  int length = 0;
+  int compressed = 0;
 
   if (string)
     {
@@ -1483,7 +1477,12 @@ string_disk_size (const char *string)
     }
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  return (*(tp_VarNChar.data_lengthval)) (&value, 1);
+  length = (*(tp_VarNChar.data_lengthval)) (&value, 1);
+
+  /* Clear the compressed_string of DB_VALUE */
+  pr_clear_compressed_string (&value);
+
+  return length;
 }
 
 
@@ -1562,7 +1561,6 @@ put_string (OR_BUF * buf, const char *string)
     {
       str_length = 0;
     }
-
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   (*(tp_VarNChar.data_writeval)) (buf, &value);
 }
@@ -1669,7 +1667,7 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
 	{
 	  continue;
 	}
-      pr_write_mop (buf, ws_mvcc_latest_version (l->op));
+      pr_write_mop (buf, l->op);
     }
 
   return NO_ERROR;

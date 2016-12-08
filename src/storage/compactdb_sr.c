@@ -105,7 +105,7 @@ process_value (DB_VALUE * value)
 
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
-	scan_code = heap_get_visible_version (NULL, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN, false);
+	scan_code = heap_get_visible_version (NULL, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
 	heap_scancache_end (NULL, &scan_cache);
 
 	if (scan_code == S_ERROR)
@@ -208,17 +208,21 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
       return -1;
     }
 
-
   copy_recdes.data = NULL;
 
-  scan_code =
-    heap_mvcc_get_for_delete (thread_p, oid, &upd_scancache->node.class_oid, &copy_recdes, upd_scancache, COPY,
-			      NULL_CHN, NULL, LOG_WARNING_IF_DELETED);
+  /* get object with X_LOCK */
+  scan_code = locator_lock_and_get_object (thread_p, oid, &upd_scancache->node.class_oid, &copy_recdes, upd_scancache,
+					   X_LOCK, COPY, NULL_CHN, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	{
+	  assert (scan_code == S_DOESNT_EXIST || scan_code == S_SNAPSHOT_NOT_SATISFIED);
 	  er_clear ();
+	}
+
+      if (scan_code == S_DOESNT_EXIST || scan_code == S_SNAPSHOT_NOT_SATISFIED)
+	{
 	  return 0;
 	}
 
@@ -251,7 +255,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
       || (attr_info->read_classrepr != NULL && attr_info->last_classrepr != NULL
 	  && attr_info->read_classrepr->id != attr_info->last_classrepr->id))
     {
-      /* oid already locked at heap_mvcc_get_for_delete */
+      /* oid already locked at locator_lock_and_get_object */
       error_code =
 	locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,

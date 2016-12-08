@@ -574,12 +574,13 @@ struct pgbuf_bcb
   int ain_tick;			/* age of AIN when this BCB was inserted into AIN list */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
-  unsigned dirty:1;		/* Is page dirty ? */
-  unsigned avoid_victim:1;
-  unsigned async_flush_request:1;
-  unsigned victim_candidate:1;
-  unsigned sticky_private_list:1;
-  LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
+  volatile bool dirty;		/* Is page dirty ? */
+  bool avoid_victim;
+  bool async_flush_request;
+  bool victim_candidate;
+  bool sticky_private_list;
+
+  volatile LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
   PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
 };
 
@@ -997,6 +998,10 @@ static PGBUF_PS_INFO ps_info;
     } \
   while (false)
 
+#if defined (SA_MODE)
+static bool pgbuf_SA_check_page_validation = true;
+#endif /* SA_MODE */
+
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
 static INLINE bool pgbuf_is_temporary_volume (VOLID volid) __attribute__ ((ALWAYS_INLINE));
@@ -1106,7 +1111,7 @@ static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREA
 #endif /* NDEBUG */
 #endif /* SERVER_MODE */
 
-static INLINE bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p, int page_validation_level)
+static INLINE bool pgbuf_get_check_page_validation_level (THREAD_ENTRY * thread_p, int page_validation_level)
   __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
 static INLINE void pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
@@ -1179,6 +1184,10 @@ static const char *pgbuf_latch_mode_str (PGBUF_LATCH_MODE latch_mode);
 static const char *pgbuf_zone_str (PGBUF_ZONE zone);
 static const char *pgbuf_consistent_str (int consistent);
 
+STATIC_INLINE bool pgbuf_set_check_page_validation (THREAD_ENTRY * thread_p, bool check)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
 static void pgbuf_print_lru_distribution (void);
 static void pgbuf_print_lru_destroyed_pg_distribution (void);
@@ -1250,7 +1259,14 @@ pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2)
   const VPID *vpid1 = (VPID *) key_vpid1;
   const VPID *vpid2 = (VPID *) key_vpid2;
 
-  return VPID_EQ (vpid1, vpid2);
+  if (vpid1->volid == vpid2->volid)
+    {
+      return vpid1->pageid - vpid2->pageid;
+    }
+  else
+    {
+      return vpid1->volid - vpid2->volid;
+    }
 }
 
 /*
@@ -1688,11 +1704,11 @@ pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p, const VPID * vpid, 
   PAGE_PTR pgptr;
   bool old_check_page_validation, rv;
 
-  old_check_page_validation = thread_set_check_page_validation (thread_p, false);
+  old_check_page_validation = pgbuf_set_check_page_validation (thread_p, false);
 
   pgptr = pgbuf_fix_debug (thread_p, vpid, fetch_mode, request_mode, condition, caller_file, caller_line);
 
-  rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
+  rv = pgbuf_set_check_page_validation (thread_p, old_check_page_validation);
 
   return pgptr;
 }
@@ -1704,11 +1720,11 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid
   PAGE_PTR pgptr;
   bool old_check_page_validation, rv;
 
-  old_check_page_validation = thread_set_check_page_validation (thread_p, false);
+  old_check_page_validation = pgbuf_set_check_page_validation (thread_p, false);
 
   pgptr = pgbuf_fix_release (thread_p, vpid, fetch_mode, request_mode, condition);
 
-  rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
+  rv = pgbuf_set_check_page_validation (thread_p, old_check_page_validation);
 
   return pgptr;
 }
@@ -1749,6 +1765,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   PERF_HOLDER_LATCH perf_latch_mode;
   PERF_CONDITIONAL_FIX_TYPE perf_cond_type;
   TSC_TICKS start_tick, end_tick, start_holder_tick;
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time, holder_wait_time, fix_wait_time;
   bool is_perf_tracking;
@@ -1768,7 +1786,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.fix_req_cnt, 1);
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_EXISTS. */
@@ -1800,7 +1818,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   lock_wait_time = 0;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
 
   if (is_perf_tracking)
     {
@@ -1922,7 +1940,7 @@ try_again:
       if (fetch_mode != NEW_PAGE)
 	{
 	  /* Record number of reads in statistics */
-	  mnt_pb_ioreads (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
 #if defined(ENABLE_SYSTEMTAP)
 	  query_id = qmgr_get_current_query_id (thread_p);
@@ -1989,7 +2007,10 @@ try_again:
 	    }
 #endif /* NDEBUG */
 
-	  mnt_sort_io_pages (thread_p);
+	  if (thread_get_sort_stats_active (thread_p))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+	    }
 	}
       else
 	{
@@ -2017,7 +2038,10 @@ try_again:
 	      bufptr->iopage_buffer->iopage.prv.volid = -1;
 	    }
 
-	  mnt_sort_data_pages (thread_p);
+	  if (thread_get_sort_stats_active (thread_p))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	    }
 	}
       buf_lock_acquired = true;
     }
@@ -2046,6 +2070,27 @@ try_again:
 	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	}
 
+      return NULL;
+    }
+
+  if ((fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_DEALLOCATED)
+      && bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
+    {
+      /* this page is not allocated. we allow it if the caller wants to initialize new page or if it specifies it wants
+       * to fix the deallocated page */
+      int severity = pgbuf_get_check_page_validation (thread_p) ? ER_ERROR_SEVERITY : ER_WARNING_SEVERITY;
+      assert (!pgbuf_get_check_page_validation (thread_p));
+      er_set (severity, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
+
+      if (buf_lock_acquired)
+	{
+	  pgbuf_put_bcb_into_invalid_list (bufptr);
+	  (void) pgbuf_unlock_page (hash_anchor, vpid, true);
+	}
+      else
+	{
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	}
       return NULL;
     }
 
@@ -2120,6 +2165,20 @@ try_again:
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
+#if !defined (NDEBUG)
+  assert (pgptr != NULL);
+
+  holder = pgbuf_get_holder (thread_p, pgptr);
+  assert (holder != NULL);
+
+  watcher = holder->last_watcher;
+  while (watcher != NULL)
+    {
+      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+      watcher = watcher->prev;
+    }
+#endif
+
   if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
     {
       /* latch is obtained, no need for avoidance of dealloc */
@@ -2139,9 +2198,9 @@ try_again:
     {
       PERF_PAGE_TYPE perf_page_type;
 
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (pgptr);
 
-      mnt_pb_fetches (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
 	{
 	  perf_latch_mode = PERF_HOLDER_LATCH_READ;
@@ -2159,8 +2218,8 @@ try_again:
 	      perf_cond_type = PERF_UNCONDITIONAL_FIX_WITH_WAIT;
 	      if (holder_wait_time > 0)
 		{
-		  mnt_pbx_hold_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode,
-					     holder_wait_time);
+		  perfmon_pbx_hold_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode,
+						 holder_wait_time);
 		}
 	    }
 	  else
@@ -2173,11 +2232,11 @@ try_again:
 	  perf_cond_type = PERF_CONDITIONAL_FIX;
 	}
 
-      mnt_pbx_fix (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type);
+      perfmon_pbx_fix (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type);
       if (lock_wait_time > 0)
 	{
-	  mnt_pbx_lock_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
-				     lock_wait_time);
+	  perfmon_pbx_lock_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
+					 lock_wait_time);
 	}
 
       tsc_getticks (&end_tick);
@@ -2186,8 +2245,8 @@ try_again:
 
       if (fix_wait_time > 0)
 	{
-	  mnt_pbx_fix_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
-				    fix_wait_time);
+	  perfmon_pbx_fix_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
+					fix_wait_time);
 	}
     }
 
@@ -2234,7 +2293,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
   assert (pgptr_p != NULL);
   assert (*pgptr_p != NULL);
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
     {
       if (pgbuf_is_valid_page_ptr (*pgptr_p) == false)
 	{
@@ -2273,7 +2332,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
 #if defined(SERVER_MODE)	/* SERVER_MODE */
   /* performance tracking - get start counter */
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -2285,7 +2344,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
   vpid = bufptr->vpid;
   if (is_perf_tracking)
     {
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (*pgptr_p, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (*pgptr_p);
 
       /* promote condition */
       if (condition == PGBUF_PROMOTE_ONLY_READER)
@@ -2453,8 +2512,8 @@ end:
 	}
 
       /* aggregate success/fail */
-      mnt_pbx_promote (thread_p, perf_page_type, perf_promote_cond_type, perf_holder_latch, stat_success,
-		       promote_wait_time);
+      perfmon_pbx_promote (thread_p, perf_page_type, perf_promote_cond_type, perf_holder_latch, stat_success,
+			   promote_wait_time);
     }
 
   /* all successful */
@@ -2488,6 +2547,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
   PERF_HOLDER_LATCH perf_holder_latch;
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
   PGBUF_HOLDER_STAT holder_perf_stat;
   PERF_PAGE_TYPE perf_page_type;
   bool is_perf_tracking;
@@ -2499,12 +2560,23 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #if !defined (NDEBUG)
   assert (pgptr != NULL);
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
 	  return;
 	}
+    }
+
+  holder = pgbuf_get_holder (thread_p, pgptr);
+
+  assert (holder != NULL);
+
+  watcher = holder->last_watcher;
+  while (watcher != NULL)
+    {
+      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+      watcher = watcher->prev;
     }
 #else /* !NDEBUG */
   if (pgptr == NULL)
@@ -2556,10 +2628,10 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 #endif /* CUBRID_DEBUG */
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
-      PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
+      perf_page_type = pgbuf_get_page_type_for_stat (pgptr);
     }
   INIT_HOLDER_STAT (&holder_perf_stat);
   holder_status = pgbuf_unlatch_thrd_holder (thread_p, bufptr, &holder_perf_stat);
@@ -2581,8 +2653,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	  assert (holder_perf_stat.hold_has_write_latch);
 	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
 	}
-      mnt_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold, holder_perf_stat.dirtied_by_holder,
-		     perf_holder_latch);
+      perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold,
+			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
     }
 
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
@@ -2601,7 +2673,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
    * since its operations and their implications are very expensive.
    * Too much I/O
    */
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       /* 
        * Check if the content of the page is consistent and then scramble
@@ -2785,7 +2857,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -3122,7 +3194,7 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -3188,7 +3260,7 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -3605,7 +3677,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
 
-  mnt_pb_victims (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_VICTIMS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
   er_log_debug (ARG_FILE_LINE, "start flush victim candidates\n");
@@ -3788,7 +3860,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      flushed_pages = (error == NO_ERROR) ? 1 : 0;
 	    }
 
-	  mnt_pb_replacements (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_REPLACEMENTS);
 
 	  if (error != NO_ERROR)
 	    {
@@ -4501,7 +4573,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	   * Do not cache the page in the page buffer pool.
 	   * Read the needed portion of the page directly from disk
 	   */
-	  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+	  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
 	      if (pgbuf_is_valid_page (thread_p, vpid, false NULL, NULL) != DISK_VALID)
 		{
@@ -4510,7 +4582,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	    }
 
 	  /* Record number of reads in statistics */
-	  mnt_pb_ioreads (thread_p);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
 	  if (fileio_read_user_area (thread_p, fileio_get_volume_descriptor (vpid->volid), vpid->pageid, start_offset,
 				     length, area) == NULL)
@@ -4529,7 +4601,10 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 
       memcpy (area, (char *) pgptr + start_offset, length);
 
-      mnt_sort_data_pages (thread_p);
+      if (thread_get_sort_stats_active (thread_p))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	}
 
       /* release BCB_mutex */
       pthread_mutex_unlock (&bufptr->BCB_mutex);
@@ -4594,7 +4669,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
       if (do_fetch == false)
 	{
 	  /* Do not cache the page in the page buffer pool. Write the desired portion of the page directly to disk */
-	  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+	  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
 	      if (pgbuf_is_valid_page (thread_p, vpid, false NULL, NULL) != DISK_VALID)
 		{
@@ -4603,7 +4678,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 	    }
 
 	  /* Record number of reads in statistics */
-	  mnt_pb_iowrites (thread_p, 1);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
 	  vol_fd = fileio_get_volume_descriptor (vpid->volid);
 	  if (fileio_write_user_area (thread_p, vol_fd, vpid->pageid, start_offset, length, area) == NULL)
@@ -4656,7 +4731,7 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 
   /* TODO: Wouldn't be an useful check here that page is write latched? */
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4671,15 +4746,7 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 #if defined(SERVER_MODE) && !defined(NDEBUG)
   if (bufptr->vpid.pageid == 0)
     {
-      DISK_VAR_HEADER *vhdr;
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_VOLHEADER);
-
-      vhdr = (DISK_VAR_HEADER *) pgptr;
-      if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) != 0)
-	{
-	  assert (0);
-	}
+      disk_volheader_check_magic (thread_p, pgptr);
     }
 #endif
 
@@ -4702,7 +4769,7 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 {
   FILEIO_PAGE *io_pgptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4749,7 +4816,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4858,7 +4925,7 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4890,7 +4957,7 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4915,7 +4982,7 @@ pgbuf_get_latch_mode (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4940,7 +5007,7 @@ pgbuf_get_page_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4972,7 +5039,7 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4987,8 +5054,8 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   ptype = (PAGE_TYPE) (bufptr->iopage_buffer->iopage.prv.ptype);
 
-  assert (PAGE_UNKNOWN <= ptype);
-  assert (ptype < PAGE_LAST);
+  assert (PAGE_UNKNOWN <= (int) ptype);
+  assert (ptype <= PAGE_LAST);
 
   return ptype;
 }
@@ -5003,7 +5070,7 @@ pgbuf_get_volume_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -5281,7 +5348,7 @@ pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -7445,17 +7512,14 @@ pgbuf_search_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
   int rv;
   int loop_cnt;
 #endif
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-#endif
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
 
   mbw_cnt = 0;
 
@@ -7521,21 +7585,21 @@ two_phase:
 
 try_again:
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&start_tick);
     }
-#endif
+
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   bufptr = hash_anchor->hash_next;
   while (bufptr != NULL)
     {
@@ -7607,33 +7671,31 @@ pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, PGBUF_BCB * bufpt
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-  if (is_perf_tracking)
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
     {
-      tsc_getticks (&start_tick);
+      thread_p = thread_get_thread_entry_info ();
+
+      if (perfmon_is_perf_tracking ())
+	{
+	  tsc_getticks (&start_tick);
+	}
     }
-#endif
 
   /* Note that the caller is not holding bufptr->BCB_mutex */
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   bufptr->hash_next = hash_anchor->hash_next;
   hash_anchor->hash_next = bufptr;
 
@@ -7661,21 +7723,18 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-  if (is_perf_tracking)
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
     {
-      tsc_getticks (&start_tick);
+      thread_p = thread_get_thread_entry_info ();
+      if (perfmon_is_perf_tracking ())
+	{
+	  tsc_getticks (&start_tick);
+	}
     }
-#endif
 
   /* the caller is holding bufptr->BCB_mutex */
 
@@ -7684,14 +7743,15 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
    * invoked by a victim selector */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&(bufptr->vpid))]);
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  if (is_perf_tracking)
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+      perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
     }
-#endif
+
   if (bufptr->avoid_victim == true)
     {
       assert (false);
@@ -7766,11 +7826,8 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 #if defined(SERVER_MODE)
   PGBUF_BUFFER_LOCK *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
-#endif
 
   /* the caller is holding hash_anchor->hash_mutex */
   /* check whether the page is in the Buffer Lock Chain */
@@ -7779,10 +7836,6 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
-#endif
 
   cur_thrd_entry = thread_p;
   cur_buffer_lock = hash_anchor->lock_next;
@@ -7803,21 +7856,20 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 	      THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
 	      int r;
 
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-	      if (is_perf_tracking)
+	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 		{
 		  tsc_getticks (&start_tick);
 		}
-#endif
+
 	      r = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-	      if (is_perf_tracking)
+
+	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 		{
 		  tsc_getticks (&end_tick);
 		  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-		  mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+		  perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
 		}
-#endif
 
 	      thrd_entry = cur_buffer_lock->next_wait_thrd;
 
@@ -7837,7 +7889,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		      thrd_entry->next_wait_thrd = NULL;
 		      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 
-		      mnt_lk_waited_on_pages (thread_p);	/* monitoring */
+		      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
 		      return PGBUF_LOCK_WAITER;
 		    }
 		  prev_thrd_entry = thrd_entry;
@@ -7845,7 +7897,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		}
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	    }
-	  mnt_lk_waited_on_pages (thread_p);	/* monitoring */
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
 	  return PGBUF_LOCK_WAITER;
 	}
       cur_buffer_lock = cur_buffer_lock->lock_next;
@@ -7863,7 +7915,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
   pthread_mutex_unlock (&hash_anchor->hash_mutex);
 #endif /* SERVER_MODE */
 
-  mnt_lk_acquired_on_pages (thread_p);	/* monitoring */
+  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
   return PGBUF_LOCK_HOLDER;
 }
 
@@ -7885,35 +7937,33 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
 {
 #if defined(SERVER_MODE)
   int rv;
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
+
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-  bool is_perf_tracking = false;
   THREAD_ENTRY *thread_p = NULL;
-#endif
 
   PGBUF_BUFFER_LOCK *prev_buffer_lock, *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
 
   if (need_hash_mutex)
     {
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-      thread_p = thread_get_thread_entry_info ();
-      is_perf_tracking = mnt_is_perf_tracking (thread_p);
-      if (is_perf_tracking)
+      if (perfmon_get_activation_flag () & PERFMON_ACTIVE_PB_HASH_ANCHOR)
 	{
-	  tsc_getticks (&start_tick);
+	  thread_p = thread_get_thread_entry_info ();
+	  if (perfmon_is_perf_tracking ())
+	    {
+	      tsc_getticks (&start_tick);
+	    }
 	}
-#endif
       rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
-#if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-      if (is_perf_tracking)
+
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_HASH_ANCHOR))
 	{
 	  tsc_getticks (&end_tick);
 	  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-	  mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_HASH_ANCHOR_WAITS);
+	  perfmon_add_stat (thread_p, PSTAT_PB_TIME_HASH_ANCHOR_WAIT, lock_wait_time);
 	}
-#endif
     }
 
   /* check whether the page is in the Buffer Lock Chain */
@@ -10250,7 +10300,6 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
   PGBUF_RESET_DIRTY (bufptr);
-  bufptr->dirty = false;
   LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -10261,7 +10310,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   logpb_flush_log_for_wal (thread_p, &iopage->prv.lsa);
 
   /* Record number of writes in statistics */
-  mnt_pb_iowrites (thread_p, 1);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
 #if defined(ENABLE_SYSTEMTAP)
   query_id = qmgr_get_current_query_id (thread_p);
@@ -10426,17 +10475,17 @@ pgbuf_kickoff_blocked_victim_request (PGBUF_BCB * bufptr)
 #endif /* SERVER_MODE */
 
 /*
- * pgbuf_get_check_page_validation -
+ * pgbuf_get_check_page_validation_level -
  *   return:
  *
  */
 STATIC_INLINE bool
-pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p, int page_validation_level)
+pgbuf_get_check_page_validation_level (THREAD_ENTRY * thread_p, int page_validation_level)
 {
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >= page_validation_level)
     {
-      if (thread_get_check_page_validation (thread_p) == true)
+      if (pgbuf_get_check_page_validation (thread_p) == true)
 	{
 	  return true;
 	}
@@ -10466,6 +10515,8 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
 {
   DISK_ISVALID valid;
 
+  /* todo: fix me */
+
   if (fileio_get_volume_label (vpid->volid, PEEK) == NULL || VPID_ISNULL (vpid))
     {
       assert (no_error);
@@ -10473,7 +10524,8 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
       return DISK_INVALID;
     }
 
-  valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid);
+  /*valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid); */
+  valid = disk_is_page_sector_reserved_with_debug_crash (thread_p, vpid->volid, vpid->pageid, !no_error);
   if (valid != DISK_VALID || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
     {
       if (valid != DISK_ERROR && !no_error)
@@ -10610,7 +10662,7 @@ pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_T
       thread_p = thread_get_thread_entry_info ();
     }
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -10922,7 +10974,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
     }
   else
     {
-      if (bufptr->fcnt <= 0 && pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+      if (bufptr->fcnt <= 0 && pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	{
 	  int i;
 	  /* The page should be scrambled, otherwise some one step on it */
@@ -11417,7 +11469,7 @@ pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
 
   /* Record number of dirties in statistics */
-  mnt_pb_dirties (thread_p);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_DIRTIES);
 }
 
 /*
@@ -11930,7 +11982,7 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 			IO_PAGESIZE) != NULL)
 	{
 	  *flushed = true;
-	  mnt_pb_iowrites (thread_p, 1);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 	  /* ignore error, just store it for Systemtap marker */
 	  error = ER_FAILED;
 	}
@@ -12057,6 +12109,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   int er_status_get_hfid = NO_ERROR;
   VPID req_page_groupid;
   bool has_dealloc_prevent_flag = false;
+  PGBUF_LATCH_CONDITION latch_condition;
 #if defined(PGBUF_ORDERED_DEBUG)
   static unsigned int global_ordered_fix_id = 0;
   unsigned int ordered_fix_id;
@@ -12104,14 +12157,23 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   req_page_holder_info.watch_count = 1;
   req_page_holder_info.watcher[0] = req_watcher;
 
-#if !defined(NDEBUG)
-  ret_pgptr =
-    pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, PGBUF_CONDITIONAL_LATCH, caller_file, caller_line);
-#else
-  ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, PGBUF_CONDITIONAL_LATCH);
-#endif
-
   thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
+  if ((holder == NULL) || ((holder->thrd_link == NULL) && (VPID_EQ (req_vpid, &(holder->bufptr->vpid)))))
+    {
+      /* There are no other fixed pages or only the requested page was already fixed */
+      latch_condition = PGBUF_UNCONDITIONAL_LATCH;
+    }
+  else
+    {
+      latch_condition = PGBUF_CONDITIONAL_LATCH;
+    }
+
+#if !defined(NDEBUG)
+  ret_pgptr = pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, latch_condition, caller_file, caller_line);
+#else
+  ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
+#endif
 
   if (ret_pgptr != NULL)
     {
@@ -12181,6 +12243,17 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	       * is set : this allows scan of pages to continue */
 	      assert (wait_msecs == LK_FORCE_ZERO_WAIT);
 	      er_status = ER_LK_PAGE_TIMEOUT;
+	    }
+	  goto exit;
+	}
+
+      if (latch_condition == PGBUF_UNCONDITIONAL_LATCH)
+	{
+	  /* continue */
+	  er_status = er_errid ();
+	  if (er_status == NO_ERROR)
+	    {
+	      er_status = ER_FAILED;
 	    }
 	  goto exit;
 	}
@@ -14786,6 +14859,7 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   PAGE_PTR page_to_flush = NULL;
   VPID vpid_to_flush = VPID_INITIALIZER;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
   assert (rcv->pgptr == NULL);
   assert (rcv->length == sizeof (VPID));
@@ -14796,9 +14870,13 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (page_to_flush == NULL)
     {
       /* Page no longer exist. */
+      er_clear ();
       return NO_ERROR;
     }
   /* Flush page and unfix. */
+  /* add a log or else the end of logical system operation will complain */
+  log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, &addr);
+  pgbuf_set_dirty (thread_p, page_to_flush, DONT_FREE);
   pgbuf_flush (thread_p, page_to_flush, DONT_FREE);
   pgbuf_unfix (thread_p, page_to_flush);
 
@@ -14939,4 +15017,295 @@ pgbuf_get_fix_count (PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
   return bufptr->fcnt;
+}
+
+/*
+ * pgbuf_get_hold_count () - Get hold count for current thread.
+ *
+ * return        : Hold count
+ * thread_p (in) : Thread entry
+ */
+int
+pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
+{
+  int me =
+#if defined (SERVER_MODE)
+    thread_p ? thread_p->index :
+#endif /* SERVER_MODE */
+    thread_get_current_entry_index ();
+  return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
+}
+
+/*
+ * pgbuf_get_page_type_for_stat () - Return the page type for current page
+ *
+ * return        : page type
+ * pgptr (in)    : pointer to a page
+ */
+PERF_PAGE_TYPE
+pgbuf_get_page_type_for_stat (PAGE_PTR pgptr)
+{
+  PERF_PAGE_TYPE perf_page_type;
+  FILEIO_PAGE *io_pgptr;
+
+  CAST_PGPTR_TO_IOPGPTR (io_pgptr, pgptr);
+  if ((io_pgptr->prv.ptype == PAGE_BTREE) && (perfmon_get_activation_flag () & PERFMON_ACTIVE_DETAILED_BTREE_PAGE))
+    {
+      perf_page_type = btree_get_perf_btree_page_type (pgptr);
+    }
+  else
+    {
+      perf_page_type = io_pgptr->prv.ptype;
+    }
+
+  return perf_page_type;
+}
+
+/*
+ * pgbuf_log_new_page () - log new page being created
+ *
+ * return         : error code
+ * thread_p (in)  : thread entry
+ * page_new (in)  : new page
+ * data_size (in) : size of page data
+ * ptype_new (in) : new page type
+ */
+void
+pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new)
+{
+  assert (ptype_new != PAGE_UNKNOWN);
+  assert (page_new != NULL);
+  assert (data_size > 0);
+
+  log_append_undoredo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_new, (PGLENGTH) ptype_new, 0, data_size, NULL,
+			     page_new);
+  pgbuf_set_dirty (thread_p, page_new, DONT_FREE);
+}
+
+/*
+ * log_redo_page () - Apply redo for changing entire page (or at least its first part).
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_TYPE set_page_type;
+  assert (rcv->pgptr != NULL);
+  assert (rcv->length >= 0);
+  assert (rcv->length <= DB_PAGESIZE);
+
+  if (rcv->length > 0)
+    {
+      memcpy (rcv->pgptr, rcv->data, rcv->length);
+    }
+
+  set_page_type = (PAGE_TYPE) rcv->offset;
+  if (set_page_type != PAGE_UNKNOWN)
+    {
+      pgbuf_set_page_ptype (thread_p, rcv->pgptr, set_page_type);
+    }
+  else
+    {
+      assert (false);
+    }
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_new_page_undo () - undo new page (by resetting its page type to PAGE_UNKNOWN)
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_dealloc_page () - deallocate a page
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * page (in)     : page to deallocate
+ */
+int
+pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR * page_dealloc)
+{
+  PGBUF_BUFFER_HASH *hash_anchor = NULL;
+  PGBUF_BCB *bufptr = NULL;
+  PAGE_TYPE ptype;
+
+  int error_code = NO_ERROR;
+
+  /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also invalidate the entry in page
+   *               buffer. */
+
+  ptype = pgbuf_get_page_ptype (thread_p, *page_dealloc);
+  assert (ptype != PAGE_UNKNOWN);
+  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, *page_dealloc, (PGLENGTH) ptype, sizeof (VPID), 0,
+			     pgbuf_get_vpid_ptr (*page_dealloc), NULL);
+  pgbuf_set_page_ptype (thread_p, *page_dealloc, PAGE_UNKNOWN);
+  pgbuf_set_dirty (thread_p, *page_dealloc, DONT_FREE);
+  error_code = pgbuf_invalidate (thread_p, *page_dealloc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  *page_dealloc = NULL;
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_dealloc_redo () - redo page deallocate (by resetting page type to unknown).
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_dealloc_undo () - undo page deallocation. the page is validated by setting its page type back.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ *
+ * note: we had to make this function logical, because if a page is deallocated, it cannot be fixed, unless we use
+ *       fetch type OLD_PAGE_DEALLOCATED.
+ */
+int
+pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  VPID *vpid = (VPID *) rcv->data;
+  PAGE_PTR page_deallocated = NULL;
+  PAGE_TYPE ptype = (PAGE_TYPE) rcv->offset;
+
+  assert (rcv->length == sizeof (VPID));
+  assert (!VPID_ISNULL (vpid));
+  assert (ptype > PAGE_UNKNOWN && ptype <= PAGE_LAST);
+
+  /* fix deallocated page */
+  page_deallocated = pgbuf_fix (thread_p, vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_deallocated == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  assert (pgbuf_get_page_ptype (thread_p, page_deallocated) == PAGE_UNKNOWN);
+  pgbuf_set_page_ptype (thread_p, page_deallocated, ptype);
+  log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, vpid, rcv->offset, page_deallocated, 0,
+					 NULL, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
+  pgbuf_set_dirty_and_free (thread_p, page_deallocated);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_set_check_page_validation () - set check page validation
+ *
+ * return        : old check validation value
+ * thread_p (in) : thread entry
+ * check (in)    : new check validation value
+ */
+STATIC_INLINE bool
+pgbuf_set_check_page_validation (THREAD_ENTRY * thread_p, bool check)
+{
+#if defined (SERVER_MODE)
+  return thread_set_check_page_validation (thread_p, check);
+#else	/* !SERVER_MODE */		   /* SA_MODE */
+  bool save_check = pgbuf_SA_check_page_validation;
+  pgbuf_SA_check_page_validation = check;
+  return save_check;
+#endif /* SA_MODE */
+}
+
+/*
+ * pgbuf_get_check_page_validation () - return check page validation
+ *
+ * return        : true/false
+ * thread_p (in) : thread entry
+ */
+STATIC_INLINE bool
+pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return thread_get_check_page_validation (thread_p);
+#else	/* !SERVER_MODE */		   /* SA_MODE */
+  return pgbuf_SA_check_page_validation;
+#endif /* SA_MODE */
+}
+
+/*
+ * pgbuf_fix_if_not_deallocated () - fix a page if it is not deallocated. the difference compared to regulat page fix
+ *                                   finding deallocated pages is expected. if the page is indeed deallocated, it will
+ *                                   not fix it
+ *
+ * return               : error code
+ * thead_p (in)         : thread entry
+ * vpid (in)            : page identifier
+ * latch_mode (in)      : latch mode
+ * latch_condition (in) : latch condition
+ * page (out)           : output fixed page if not deallocated. output NULL if deallocated.
+ * caller_file (in)     : caller file name
+ * caller_line (in)     : caller line
+ */
+int
+pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid, PGBUF_LATCH_MODE latch_mode,
+					  PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
+					  const char *caller_file, int caller_line)
+{
+  DISK_ISVALID isvalid;
+  int error_code = NO_ERROR;
+
+  assert (vpid != NULL && !VPID_ISNULL (vpid));
+  assert (page != NULL);
+  *page = NULL;
+
+  isvalid = disk_is_page_sector_reserved (thead_p, vpid->volid, vpid->pageid);
+  if (isvalid == DISK_INVALID)
+    {
+      /* deallocated */
+      return NO_ERROR;
+    }
+  else if (isvalid == DISK_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  assert (isvalid == DISK_VALID);
+
+#if !defined (NDEBUG)
+  *page =
+    pgbuf_fix_without_validation_debug (thead_p, vpid, OLD_PAGE, latch_mode, latch_condition, caller_file, caller_line);
+#else /* NDEBUG */
+  *page = pgbuf_fix_without_validation (thead_p, vpid, OLD_PAGE, latch_mode, latch_condition);
+#endif /* NDEBUG */
+  if (*page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      if (error_code == ER_PB_BAD_PAGEID)
+	{
+	  /* deallocated */
+	  er_clear ();
+	  error_code = NO_ERROR;
+	}
+    }
+  return error_code;
 }

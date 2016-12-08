@@ -322,12 +322,16 @@ static UTIL_ARG_MAP ua_Diag_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {DIAG_DUMP_TYPE_S, {ARG_INTEGER}, {-1}},
   {DIAG_DUMP_RECORDS_S, {ARG_BOOLEAN}, {0}},
+  {DIAG_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {DIAG_EMERGENCY_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Diag_Option[] = {
   {DIAG_DUMP_TYPE_L, 1, 0, DIAG_DUMP_TYPE_S},
   {DIAG_DUMP_RECORDS_L, 0, 0, DIAG_DUMP_RECORDS_S},
+  {DIAG_OUTPUT_FILE_L, 1, 0, DIAG_OUTPUT_FILE_S},
+  {DIAG_EMERGENCY_L, 0, 0, DIAG_EMERGENCY_S},
   {0, 0, 0, 0}
 };
 
@@ -864,10 +868,6 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_Restore_Option, ua_Restore_Option_Map},
   {ADDVOLDB, SA_CS, 2, UTIL_OPTION_ADDVOLDB, "addvoldb",
    ua_Addvol_Option, ua_Addvol_Option_Map},
-#if 0
-  {DELVOLDB, SA_CS, 2, UTIL_OPTION_DELVOLDB, "delvoldb",
-   ua_Delvol_Option, ua_Delvol_Option_Map},
-#endif
   {SPACEDB, SA_CS, 1, UTIL_OPTION_SPACEDB, "spacedb",
    ua_Space_Option, ua_Space_Option_Map},
   {LOCKDB, CS_ONLY, 1, UTIL_OPTION_LOCKDB, "lockdb",

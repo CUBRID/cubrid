@@ -479,7 +479,6 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_BO_UNREGISTER_CLIENT].name = "NET_SERVER_BO_UNREGISTER_CLIENT";
   net_Req_buffer[NET_SERVER_BO_BACKUP].name = "NET_SERVER_BO_BACKUP";
   net_Req_buffer[NET_SERVER_BO_ADD_VOLEXT].name = "NET_SERVER_BO_ADD_VOLEXT";
-  net_Req_buffer[NET_SERVER_BO_DEL_VOLEXT].name = "NET_SERVER_BO_DEL_VOLEXT";
   net_Req_buffer[NET_SERVER_BO_CHECK_DBCONSISTENCY].name = "NET_SERVER_BO_CHECK_DBCONSISTENCY";
   net_Req_buffer[NET_SERVER_BO_FIND_NPERM_VOLS].name = "NET_SERVER_BO_FIND_NPERM_VOLS";
   net_Req_buffer[NET_SERVER_BO_FIND_NTEMP_VOLS].name = "NET_SERVER_BO_FIND_NTEMP_VOLS";
@@ -540,17 +539,6 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_HEAP_HAS_INSTANCE].name = "NET_SERVER_HEAP_HAS_INSTANCE";
   net_Req_buffer[NET_SERVER_HEAP_RECLAIM_ADDRESSES].name = "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
 
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_CREATE].name = "NET_SERVER_LARGEOBJMGR_CREATE";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_READ].name = "NET_SERVER_LARGEOBJMGR_READ";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_WRITE].name = "NET_SERVER_LARGEOBJMGR_WRITE";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_INSERT].name = "NET_SERVER_LARGEOBJMGR_INSERT";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_DESTROY].name = "NET_SERVER_LARGEOBJMGR_DESTROY";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_DELETE].name = "NET_SERVER_LARGEOBJMGR_DELETE";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_APPEND].name = "NET_SERVER_LARGEOBJMGR_APPEND";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_TRUNCATE].name = "NET_SERVER_LARGEOBJMGR_TRUNCATE";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_COMPRESS].name = "NET_SERVER_LARGEOBJMGR_COMPRESS";
-  net_Req_buffer[NET_SERVER_LARGEOBJMGR_LENGTH].name = "NET_SERVER_LARGEOBJMGR_LENGTH";
-
   net_Req_buffer[NET_SERVER_LOG_RESET_WAIT_MSECS].name = "NET_SERVER_LOG_RESET_WAIT_MSECS";
   net_Req_buffer[NET_SERVER_LOG_RESET_ISOLATION].name = "NET_SERVER_LOG_RESET_ISOLATION";
   net_Req_buffer[NET_SERVER_LOG_SET_INTERRUPT].name = "NET_SERVER_LOG_SET_INTERRUPT";
@@ -578,7 +566,6 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_DISK_TOTALPGS].name = "NET_SERVER_DISK_TOTALPGS";
   net_Req_buffer[NET_SERVER_DISK_FREEPGS].name = "NET_SERVER_DISK_FREEPGS";
   net_Req_buffer[NET_SERVER_DISK_REMARKS].name = "NET_SERVER_DISK_REMARKS";
-  net_Req_buffer[NET_SERVER_DISK_PURPOSE].name = "NET_SERVER_DISK_PURPOSE";
   net_Req_buffer[NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO].name = "NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO";
   net_Req_buffer[NET_SERVER_DISK_VLABEL].name = "NET_SERVER_DISK_VLABEL";
   net_Req_buffer[NET_SERVER_DISK_IS_EXIST].name = "NET_SERVER_DISK_IS_EXIST";
@@ -671,7 +658,7 @@ net_histo_clear (void)
 
   if (net_Histo_setup_mnt)
     {
-      mnt_reset_stats ();
+      perfmon_reset_stats ();
     }
 
   net_Histo_call_count = 0;
@@ -693,7 +680,7 @@ net_histo_clear (void)
  *
  * Note:
  */
-void
+int
 net_histo_print (FILE * stream)
 {
   unsigned int i;
@@ -701,6 +688,7 @@ net_histo_print (FILE * stream)
   int total_size_received = 0;
   float server_time, total_server_time = 0;
   float avg_response_time, avg_client_time;
+  int err = NO_ERROR;
 
   if (stream == NULL)
     {
@@ -741,8 +729,9 @@ net_histo_print (FILE * stream)
     }
   if (net_Histo_setup_mnt)
     {
-      mnt_print_stats (stream);
+      err = perfmon_print_stats (stream);
     }
+  return err;
 }
 
 /*
@@ -752,13 +741,16 @@ net_histo_print (FILE * stream)
  *
  * Note:
  */
-void
+int
 net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 {
+  int err = NO_ERROR;
+
   if (net_Histo_setup_mnt)
     {
-      mnt_print_global_stats (stream, cumulative, substr);
+      err = perfmon_print_global_stats (stream, cumulative, substr);
     }
+  return err;
 }
 
 /*
@@ -780,7 +772,7 @@ net_histo_start (bool for_all_trans)
 
   if (net_Histo_setup_mnt == 0)
     {
-      if (mnt_start_stats (for_all_trans) != NO_ERROR)
+      if (perfmon_start_stats (for_all_trans) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -804,7 +796,7 @@ net_histo_stop (void)
 
   if (net_Histo_setup_mnt == 1)
     {
-      err = mnt_stop_stats ();
+      err = perfmon_stop_stats ();
       net_Histo_setup_mnt = 0;
     }
 
