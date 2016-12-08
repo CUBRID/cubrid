@@ -5871,6 +5871,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 
   /* domain */
   ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
+  analytic->original_domain = analytic->domain;
 
   /* value */
   ptr = or_unpack_int (ptr, &offset);
@@ -5952,6 +5953,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
   /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->opr_dbtype = (DB_TYPE) tmp_i;
+  analytic->original_opr_dbtype = analytic->opr_dbtype;
 
   /* operand */
   ptr = stx_build_regu_variable (thread_p, ptr, &analytic->operand);
