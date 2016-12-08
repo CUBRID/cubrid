@@ -1066,8 +1066,6 @@ extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
 extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
-extern int db_get_string_codeset (const DB_VALUE * value);
-extern int db_get_string_collation (const DB_VALUE * value);
 extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 extern int db_get_compressed_size (DB_VALUE * value);
