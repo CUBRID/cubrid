@@ -32,7 +32,7 @@
 #include "csql_grammar.h"
 #include "parser.h"
 #include "intl_support.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 #include "string_opfunc.h"
 
 /* It is not required for the keywords to be alphabetically sorted, as they

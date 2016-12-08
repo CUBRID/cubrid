@@ -33,7 +33,7 @@
 #include "area_alloc.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 #include "dbdef.h"
 #include "object_representation.h"
 #include "object_domain.h"

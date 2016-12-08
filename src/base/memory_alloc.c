@@ -30,7 +30,7 @@
 #include <assert.h>
 
 #include "misc_string.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 #include "memory_alloc.h"
 #include "util_func.h"
 #include "error_manager.h"

@@ -55,7 +55,6 @@
 #include "set_object.h"
 #include "language_support.h"
 #include "intl_support.h"
-#include "dbtype_common.h"
 /* this must be the last header file included! */
 #include "dbval.h"
 

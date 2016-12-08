@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "error_code.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 #include "dbdef.h"
 #include "db_date.h"
 #include "db_elo.h"

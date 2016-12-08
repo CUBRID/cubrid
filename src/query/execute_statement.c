@@ -46,6 +46,7 @@
 #include "db.h"
 #include "dbi.h"
 #include "dbdef.h"
+#include "dbtype.h"
 #include "parser.h"
 #include "porting.h"
 #include "schema_manager.h"

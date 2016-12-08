@@ -24,7 +24,7 @@
 #ident "$Id$"
 
 #include "mvcc.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 #include "heap_file.h"
 #include "page_buffer.h"
 #include "overflow_file.h"

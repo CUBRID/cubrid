@@ -39,7 +39,7 @@
 #include "utility.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 #include "object_representation.h"
 #include "work_space.h"
 #include "class_object.h"

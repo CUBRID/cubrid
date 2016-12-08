@@ -37,7 +37,7 @@
 #endif /* WINDOWS */
 
 #include "porting.h"
-#include "dbtype_common.h"
+#include "dbtype.h"
 #include "error_manager.h"
 #include "critical_section.h"
 #include "environment_variable.h"
