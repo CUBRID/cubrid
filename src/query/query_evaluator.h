@@ -536,6 +536,7 @@ struct aggregate_list_node
 {
   AGGREGATE_TYPE *next;		/* next aggregate node */
   TP_DOMAIN *domain;		/* domain of the result */
+  TP_DOMAIN *original_domain;	/* original domain of the result */
   FUNC_TYPE function;		/* aggregate function name */
   QUERY_OPTIONS option;		/* DISTINCT/ALL option */
   DB_TYPE opr_dbtype;		/* Operand values data type */

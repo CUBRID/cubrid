@@ -5669,6 +5669,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
+  aggregate->original_domain = aggregate->domain;
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
