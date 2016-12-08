@@ -3835,6 +3835,9 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = true;
 #endif
+
+  er_log_debug (ARG_FILE_LINE, "start flushing collected victim candidates\n");
+
   while (total_flushed_count <= 0 && num_tries <= 2)
     {
       /* for each victim candidate, do flush task */
@@ -13885,11 +13888,13 @@ pgbuf_print_lru_distribution (void)
   er_log_debug (ARG_FILE_LINE, "pgbuf_print_lru_distribution : "
 		"sum_shared_bcbs:%d(%d), sum_garbage_bcbs :%d(%d), "
 		"sum_private_bcbs: %d, diff:%d\n"
+		"dirty_cnt:%d\n"
 		"bcbs_in_lru/zone1_bcb/zone1_threshold\n"
 		"%s\n",
 		sum_shared_bcbs, pgbuf_Pool.monitor.lru_shared_pgs,
 		sum_garbage_bcbs, pgbuf_Pool.monitor.lru_garbage_pgs,
-		sum_private_bcbs, sum_private_bcbs + sum_shared_bcbs + sum_garbage_bcbs - pgbuf_Pool.num_buffers, msg);
+		sum_private_bcbs, sum_private_bcbs + sum_shared_bcbs + sum_garbage_bcbs - pgbuf_Pool.num_buffers,
+		pgbuf_Pool.monitor.dirties_cnt, msg);
 }
 
 
