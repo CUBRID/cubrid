@@ -1969,6 +1969,7 @@ qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, int final)
 
       pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
       p->domain = p->original_domain;
+      p->opr_dbtype = p->original_opr_dbtype;
     }
 
   return pg_cnt;

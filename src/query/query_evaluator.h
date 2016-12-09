@@ -540,6 +540,7 @@ struct aggregate_list_node
   FUNC_TYPE function;		/* aggregate function name */
   QUERY_OPTIONS option;		/* DISTINCT/ALL option */
   DB_TYPE opr_dbtype;		/* Operand values data type */
+  DB_TYPE original_opr_dbtype;
   struct regu_variable_node operand;	/* operand */
   QFILE_LIST_ID *list_id;	/* used for distinct handling */
   int flag_agg_optimize;
