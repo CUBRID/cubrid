@@ -3790,7 +3790,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 		  || tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
 
 	  /* this is relevant for proper recovery */
-	  log_record->run_postpone.is_sysop_postpone = (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
+	  log_record->run_postpone.is_sysop_postpone =
+	    (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && !is_rv_finish_postpone);
 	}
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 	{
