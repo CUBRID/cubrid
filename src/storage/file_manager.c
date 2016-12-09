@@ -3334,7 +3334,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error_code);
       goto exit;
     }
 
@@ -9700,7 +9700,7 @@ exit:
     {
       pgbuf_unfix (thread_p, page_extdata_next);
     }
-  if (page_extdata != NULL)
+  if (page_extdata != NULL && page_extdata != page_track_head)
     {
       pgbuf_unfix (thread_p, page_extdata);
     }

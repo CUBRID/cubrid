@@ -5527,6 +5527,7 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 {
   ptr = or_unpack_int (ptr, &position_descr->pos_no);
   ptr = or_unpack_domain (ptr, &position_descr->dom, NULL);
+  position_descr->original_domain = position_descr->dom;
 
   return ptr;
 }
@@ -6140,7 +6141,6 @@ stx_build_sort_list (THREAD_ENTRY * thread_p, char *ptr, SORT_LIST * sort_list)
     {
       return NULL;
     }
-  sort_list->original_value_domain = sort_list->pos_descr.dom;
 
   ptr = or_unpack_int (ptr, &tmp);
   sort_list->s_order = (SORT_ORDER) tmp;
