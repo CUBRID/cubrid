@@ -3978,9 +3978,9 @@ end:
       utime = tsc_elapsed_utime (time_tracker_collect_flush.end_tick, time_tracker_collect_flush.start_tick);
       perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH, utime);
       if (total_flushed_count > 0)
-        {
-          perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH_PER_PAGE, utime / total_flushed_count);
-        }
+	{
+	  perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH_PER_PAGE, utime / total_flushed_count);
+	}
     }
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_run_sleep, PSTAT_PB_FLUSH_RUN);
 
