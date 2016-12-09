@@ -1263,10 +1263,25 @@ log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
       /* no undo */
       LSA_SET_NULL (&tdes->undo_nxlsa);
     }
+  else if (sysop_start_posp->sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+    {
+      if (sysop_start_posp->sysop_end.run_postpone.is_sysop_postpone)
+	{
+	  /* system op postpone inside system op postpone. not a valid situation */
+	  assert (false);
+	}
+      else
+	{
+	  /* no undo. it is possible that the transaction state is TRAN_UNACTIVE_UNILATERALLY_ABORTED because this might
+	   * be the first log record discovered for current transaction. it will be set correctly when the system op end
+	   * is found or executed.
+	   */
+	  LSA_SET_NULL (&tdes->undo_nxlsa);
+	}
+    }
   else
     {
-      assert (sysop_start_posp->sysop_end.type == LOG_SYSOP_END_COMMIT
-	      || sysop_start_posp->sysop_end.type == LOG_SYSOP_END_LOGICAL_COMPENSATE);
+      assert (sysop_start_posp->sysop_end.type != LOG_SYSOP_END_ABORT);
     }
 
   /* update state */
@@ -3735,6 +3750,10 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  assert_release (false);
 	  return;
 	}
+      /* check this is not a system op postpone during system op postpone */
+      assert (sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+	      || !sysop_start_postpone.sysop_end.run_postpone.is_sysop_postpone);
+
       log_sysop_end_recovery_postpone (thread_p, &sysop_start_postpone.sysop_end, undo_data_size, undo_data);
       if (undo_buffer != NULL)
 	{
@@ -3744,15 +3763,26 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       if (sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
 	{
-	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-	  LSA_SET_NULL (&tdes->undo_nxlsa);
+	  if (sysop_start_postpone.sysop_end.run_postpone.is_sysop_postpone)
+	    {
+	      /* this is a system op postpone during system op postpone? should not happen! */
+	      assert (false);
+	      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+	      tdes->undo_nxlsa = tdes->tail_lsa;
+	    }
+	  else
+	    {
+	      /* logical run postpone during transaction postpone. */
+	      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+	      LSA_SET_NULL (&tdes->undo_nxlsa);
+
+	      /* we just finished the run postpone. update tdes->posp_nxlsa */
+	      tdes->posp_nxlsa = sysop_start_postpone.sysop_end.run_postpone.postpone_lsa;
+	    }
 	}
       else
 	{
-	  assert (sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_COMMIT
-		  || sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_COMPENSATE
-		  || sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_UNDO
-		  || sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO);
+	  assert (sysop_start_postpone.sysop_end.type != LOG_SYSOP_END_ABORT);
 	  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
 	  tdes->undo_nxlsa = tdes->tail_lsa;
 	}

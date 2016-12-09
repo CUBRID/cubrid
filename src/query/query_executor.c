@@ -393,6 +393,7 @@ static int qexec_clear_regu_list (XASL_NODE * xasl_p, REGU_VARIABLE_LIST list, i
 static int qexec_clear_regu_value_list (XASL_NODE * xasl_p, REGU_VALUE_LIST * list, int final);
 static void qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list);
 static void qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, int final);
+static void qexec_clear_pos_desc (XASL_NODE * xasl_p, QFILE_TUPLE_VALUE_POSITION * position_descr, int final);
 static int qexec_clear_pred (XASL_NODE * xasl_p, PRED_EXPR * pr, int final);
 static int qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * list,
 					 int final);
@@ -1491,8 +1492,10 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
       break;
 #if 0				/* TODO - */
     case TYPE_LIST_ID:
-    case TYPE_POSITION:
 #endif
+    case TYPE_POSITION:
+      qexec_clear_pos_desc (xasl_p, &regu_var->value.pos_descr, final);
+      break;
     default:
       break;
     }
@@ -1568,6 +1571,19 @@ qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list)
 }
 
 /*
+ * qexec_clear_sort_list () - clear position desc
+ *   return: void
+ *   xasl_p(in) : xasl
+ *   position_descr(in)   : position desc
+ *   final(in)  : true, if finalize needed
+ */
+static void
+qexec_clear_pos_desc (XASL_NODE * xasl_p, QFILE_TUPLE_VALUE_POSITION * position_descr, int final)
+{
+  position_descr->dom = position_descr->original_domain;
+}
+
+/*
  * qexec_clear_sort_list () - clear the sort list
  *   return: void
  *   xasl_p(in) : xasl
@@ -1582,7 +1598,7 @@ qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, int final)
   for (p = list; p; p = p->next)
     {
       /* restores the original domain */
-      p->pos_descr.dom = p->original_value_domain;
+      qexec_clear_pos_desc (xasl_p, &p->pos_descr, final);
     }
 }
 

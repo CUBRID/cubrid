@@ -2553,6 +2553,10 @@ file_extdata_find_and_remove_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA
 	{
 	  break;
 	}
+      if (page_prev != NULL && page_prev != page_first)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_prev);
+	}
       page_prev = page_crt;
       extdata_prev = extdata_crt;
       page_crt = pgbuf_fix (thread_p, &extdata_prev->vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -3330,7 +3334,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error_code);
       goto exit;
     }
 
@@ -9619,6 +9623,7 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
 	{
 	  pgbuf_unfix_and_init (thread_p, page_extdata);
 	}
+      page_extdata = NULL;
       if (VPID_ISNULL (&vpid_next))
 	{
 	  /* no next page */
@@ -9695,7 +9700,7 @@ exit:
     {
       pgbuf_unfix (thread_p, page_extdata_next);
     }
-  if (page_extdata != NULL)
+  if (page_extdata != NULL && page_extdata != page_track_head)
     {
       pgbuf_unfix (thread_p, page_extdata);
     }
