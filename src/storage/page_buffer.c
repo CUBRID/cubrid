@@ -1049,16 +1049,17 @@ static int pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid
 #if !defined(NDEBUG)
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid, const char *caller_file,
 				      int caller_line);
-static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, const char *caller_file, int caller_line);
+static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRACKER * time_tracker,
+                                const char *caller_file, int caller_line);
 static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous, const char *caller_file,
 			    int caller_line);
 #else /* NDEBUG */
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
-static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRACKER * time_tracker);
 static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous);
 #endif /* NDEBUG */
 static int pgbuf_invalidate_bcb (PGBUF_BCB * bufptr);
-static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (void);
+static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * time_tracker);
 static int pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int pgbuf_get_lru_index (const VPID * vpid);
@@ -1067,10 +1068,11 @@ static int pgbuf_get_lru_index (const VPID * vpid);
 static int pgbuf_get_shared_lru_index_for_add (void);
 static int pgbuf_get_shared_lru_index_for_destroyed_pages (void);
 static int pgbuf_get_garbage_lru_index_for_chain_add (void);
-static int pgbuf_get_victim_candidates_from_ain (int check_count);
-static int pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float lru_sum_flush_priority);
+static int pgbuf_get_victim_candidates_from_ain (THREAD_ENTRY * thread_p, int check_count);
+static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, int victim_count,
+                                                 float lru_sum_flush_priority);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count,
-				    bool * sleep_before_next_try);
+				    bool * sleep_before_next_try, PERF_UTIME_TRACKER * time_tracker);
 static PGBUF_BCB *pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count);
 static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int max_count,
 						  bool use_lru1_zone);
@@ -3462,14 +3464,14 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
 }
 
 /*
- * pgbuf_get_victim_candidates_from_ain () - get victim candidates from the
- *					     Ain list
+ * pgbuf_get_victim_candidates_from_ain () - get victim candidates from the Ain list
  * return : error code or NO_ERROR
+ * thread_p (in)    : thread entry
  * check_count (in) : maximum number of elements to visit in the queue
  *
  */
 static int
-pgbuf_get_victim_candidates_from_ain (int check_count)
+pgbuf_get_victim_candidates_from_ain (THREAD_ENTRY * thread_p, int check_count)
 {
 #if defined (SERVER_MODE)
   int rv;
@@ -3477,6 +3479,9 @@ pgbuf_get_victim_candidates_from_ain (int check_count)
   PGBUF_BCB *bufptr;
   int victim_count;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_list;
+  PERF_UTIME_TRACKER time_tracker = PERF_UTIME_TRACKER_INITIALIZER;
+  
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker);
 
   victim_list = pgbuf_Pool.victim_cand_list;
   victim_count = 0;
@@ -3501,19 +3506,24 @@ pgbuf_get_victim_candidates_from_ain (int check_count)
     }
   pthread_mutex_unlock (&pgbuf_Pool.buf_AIN_list.Ain_mutex);
 
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: pgbuf_get_victim_candidates_from_ain %d \n",
+                victim_count);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker, PSTAT_PB_FLUSH_COLLECT_AIN);
+
   return victim_count;
 }
 
 /*
- * pgbuf_get_victim_candidates_from_lru () - get victim candidates from LRU
- *					     list
+ * pgbuf_get_victim_candidates_from_lru () - get victim candidates from LRU list
  * return : number of victims found
+ * thread_p (in)     : thread entry
  * check_count (in)  : number of items to verify before abandoning search
  * victim_count (in) : number of victims already selected
  * flush_ratio (in)  : flush ratio
  */
 static int
-pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float lru_sum_flush_priority)
+pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, int victim_count,
+                                      float lru_sum_flush_priority)
 {
 #if defined(SERVER_MODE)
   int rv;
@@ -3527,6 +3537,9 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float l
   int check_count_this_lru;
   float victim_flush_priority_this_lru;
 
+  PERF_UTIME_TRACKER time_tracker_all_lru = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER time_tracker_one_lru;
+
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
   static char msg[16384];
   int pos = 0;
@@ -3535,6 +3548,9 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float l
   pos = 0;
   msg[0] = '\0';
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_all_lru);
+  time_tracker_one_lru = time_tracker_all_lru;
 
   /* init */
   lru_idx = ((pgbuf_Pool.last_flushed_LRU_list_idx + 1) % PGBUF_TOTAL_LRU);
@@ -3631,6 +3647,7 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float l
       pgbuf_Pool.last_flushed_LRU_list_idx = lru_idx;
 
       lru_idx = (lru_idx + 1) % PGBUF_TOTAL_LRU;
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_one_lru, PSTAT_PB_FLUSH_COLLECT_ONE_LRU);
     }
   while (lru_idx != start_lru_idx);	/* check if we've visited all of the lists */
 
@@ -3639,6 +3656,10 @@ pgbuf_get_victim_candidates_from_lru (int check_count, int victim_count, float l
   er_log_debug (ARG_FILE_LINE, "pgbuf_get_victim_candidates_from_lru:\n"
 		"check_count_this_lru/actually_checked_this_lru/" "cand_found_this_lru\n" "%s", msg);
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: pgbuf_get_victim_candidates_from_lru %d \n",
+                victim_cand_count - victim_count);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_all_lru, PSTAT_PB_FLUSH_COLLECT_ALL_LRU);
 
   return victim_cand_count - victim_count;
 }
@@ -3667,7 +3688,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   int total_flushed_count;
   int cnt_in_ain;
   int lru_idx, start_lru_idx;
-  int error;
+  int error = NO_ERROR;
   int num_tries;
   float lru_miss_rate, ain_miss_rate;
   float lru_dynamic_flush_adj = 1.0f, ain_dynamic_flush_adj = 1.0f;
@@ -3678,11 +3699,26 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   int rv;
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
+  static PERF_UTIME_TRACKER time_tracker_run_sleep = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER time_tracker_collect_flush = PERF_UTIME_TRACKER_INITIALIZER;
+  
+  if (time_tracker_run_sleep.is_perf_tracking)
+    {
+      /* register sleep time. */
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_run_sleep, PSTAT_PB_FLUSH_SLEEP);
 
-  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_VICTIMS);
+      /* update is_perf_tracking */
+      time_tracker_run_sleep.is_perf_tracking = perfmon_is_perf_tracking ();
+    }
+  else
+    {
+      /* register timer */
+      PERF_UTIME_TRACKER_START (thread_p, &time_tracker_run_sleep);
+    }
+  time_tracker_collect_flush = time_tracker_run_sleep;
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
-  er_log_debug (ARG_FILE_LINE, "start flush victim candidates\n");
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: start flush victim candidates\n");
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
   if (thread_is_page_flush_thread_available ())
@@ -3810,19 +3846,20 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
   if (check_count_ain > 0)
     {
-      victim_count_ain = pgbuf_get_victim_candidates_from_ain (check_count_ain);
+      victim_count_ain = pgbuf_get_victim_candidates_from_ain (thread_p, check_count_ain);
     }
 
   if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
       victim_count_lru =
-	pgbuf_get_victim_candidates_from_lru (check_count_lru, victim_count_ain, lru_sum_flush_priority);
+	pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, victim_count_ain, lru_sum_flush_priority);
     }
 
   victim_count = victim_count_lru + victim_count_ain;
   if (victim_count == 0)
     {
       /* We didn't find any victims */
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_collect_flush, PSTAT_PB_FLUSH_COLLECT);
       goto end;
     }
 
@@ -3836,7 +3873,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   pgbuf_Pool.is_flushing_victims = true;
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "start flushing collected victim candidates\n");
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: start flushing collected victim candidates\n");
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_collect_flush, PSTAT_PB_FLUSH_COLLECT);
 
   while (total_flushed_count <= 0 && num_tries <= 2)
     {
@@ -3883,11 +3921,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
 	  if (error != NO_ERROR)
 	    {
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
-#if defined (SERVER_MODE)
-	      pgbuf_Pool.is_flushing_victims = false;
-#endif
-	      return ER_FAILED;
+              er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: error during flush");
+	      goto end;
 	    }
 
 	  total_flushed_count += flushed_pages;
@@ -3900,6 +3935,15 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	    {
 	      /* the victimization pattern has changed and we flushed enough pages; after we abort this, the flush
 	       * thread will retry this function with new parameters */
+              er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: \n"
+                            "\t total_flushed_count = %d \n"
+                            "\t cfg_check_cnt = %d \n"
+                            "\t pgbuf_Pool.monitor.lru_victim_req_cnt = %d \n"
+                            "\t pgbuf_Pool.monitor.ain_victim_req_cnt = %d"
+                            "\t check_count_lru = %d \n"
+                            "\t check_count_ain =%d \n",
+                            total_flushed_count, cfg_check_cnt, pgbuf_Pool.monitor.lru_victim_req_cnt,
+                            pgbuf_Pool.monitor.ain_victim_req_cnt, check_count_lru, check_count_ain);
 	      goto end;
 	    }
 	}
@@ -3919,7 +3963,10 @@ end:
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
-  return NO_ERROR;
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_collect_flush, PSTAT_PB_FLUSH_FLUSH);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_run_sleep, PSTAT_PB_FLUSH_RUN);
+
+  return error;
 }
 
 /*
@@ -8065,9 +8112,16 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   PGBUF_BCB *bufptr;
   int sleep_count, loop_count, check_count;
+  int count_did_sleep = 0;
   bool sleep_before_next_try = false;
   bool has_waiters_on_fixed = false;
   bool has_fixed_pages = true;
+
+  PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER time_tracker_alloc_bcb_detailed;
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
+  time_tracker_alloc_bcb_detailed = time_tracker_alloc_bcb;
 
   loop_count = 0;
 
@@ -8079,10 +8133,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       for (sleep_count = 0; sleep_count < PGBUF_SLEEP_MAX; sleep_count++)
 	{
 	  /* allocate a BCB from invalid BCB list */
-	  bufptr = pgbuf_get_bcb_from_invalid_list ();
+	  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_detailed);
 	  if (bufptr != NULL)
 	    {
-	      return bufptr;
+	      goto end;
 	    }
 
 	  /* If the caller allocates a BCB successfully,
@@ -8095,15 +8149,16 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	   */
 	  bufptr = pgbuf_get_victim (thread_p, check_count,
 				     has_waiters_on_fixed ? PGBUF_LOOP_CNT_FORCE_VICTIM : loop_count,
-				     &sleep_before_next_try);
+				     &sleep_before_next_try, &time_tracker_alloc_bcb_detailed);
 	  if (bufptr != NULL)
 	    {
 	      /* the caller is holding bufptr->BCB_mutex. */
 
 #if !defined(NDEBUG)
-	      if (pgbuf_victimize_bcb (thread_p, bufptr, caller_file, caller_line) != NO_ERROR)
+	      if (pgbuf_victimize_bcb (thread_p, bufptr, &time_tracker_alloc_bcb_detailed, caller_file, caller_line)
+                  != NO_ERROR)
 #else /* NDEBUG */
-	      if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
+	      if (pgbuf_victimize_bcb (thread_p, bufptr, &time_tracker_alloc_bcb_detailed) != NO_ERROR)
 #endif /* NDEBUG */
 		{
 		  assert (false);
@@ -8115,7 +8170,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	       * the caller does not hold bufptr->BCB_mutex.
 	       * Otherwise, the caller is still holding bufptr->BCB_mutex.
 	       */
-	      return bufptr;
+	      goto end;
 	    }
 
 #if defined(SERVER_MODE)
@@ -8126,7 +8181,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 	  if (loop_count >= 2 || sleep_before_next_try == true)
 	    {
+              count_did_sleep++;
 	      thread_sleep (0.001);	/* 1 microsecond */
+              PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_bcb_detailed,
+                                                   PSTAT_PB_ALLOC_BCB_SLEEP);
 	    }
 #endif /* SERVER_MODE */
 	}
@@ -8137,7 +8195,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	  if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	      return NULL;
+              bufptr = NULL;
+              goto end;
 	    }
 	}
 
@@ -8149,7 +8208,17 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_ALL_BUFFERS_FIXED, 1, -1);
   assert (false);
 
-  return NULL;
+end:
+
+  if (loop_count > 1)
+    {
+      perfmon_add_stat (thread_p, PSTAT_PB_ALLOC_BCB_EXTRA_LOOPS, loop_count - 1);
+      perfmon_add_stat (thread_p, PSTAT_PB_ALLOC_BCB_SPINS, loop_count - 1 - count_did_sleep);
+    }
+  
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_bcb, PSTAT_PB_ALLOC_BCB);
+
+  return bufptr;
 
 #undef PGBUF_LOOP_CNT_FORCE_VICTIM
 }
@@ -8171,10 +8240,11 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
  */
 #if !defined(NDEBUG)
 static int
-pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, const char *caller_file, int caller_line)
+pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRACKER * time_tracker,
+                     const char *caller_file, int caller_line)
 #else /* NDEBUG */
 static int
-pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRACKER * time_tracker)
 #endif				/* NDEBUG */
 {
 #if defined(SERVER_MODE)
@@ -8198,7 +8268,8 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       || bufptr->latch_mode != PGBUF_NO_LATCH || pgbuf_is_exist_blocked_reader_writer_victim (bufptr) == true)
     {
       assert (false);
-
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_BCB_FAIL);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIMIZE_BCB);
       return ER_FAILED;
     }
 
@@ -8208,6 +8279,8 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   /* a safe victim */
   if (pgbuf_delete_from_hash_chain (bufptr) != NO_ERROR)
     {
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_BCB_FAIL);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIMIZE_BCB);
       return ER_FAILED;
     }
 
@@ -8224,6 +8297,8 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
   SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* DIAG_DEVEL && SERVER_MODE */
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIMIZE_BCB);
 
   return NO_ERROR;
 }
@@ -8481,14 +8556,17 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 
 /*
  * pgbuf_get_bcb_from_invalid_list () - Get BCB from buffer invalid list
- *   return: If success, a newly allocated BCB, otherwise NULL
+ *
+ * return: If success, a newly allocated BCB, otherwise NULL
+ * thread_p (in)     : thread entry
+ * time_tracker (in) : performance time tracker
  *
  * Note: This function disconnects a BCB on the top of the buffer invalid list
  *       and returns it. Before disconnection, the thread must hold the
  *       invalid list mutex and after disconnection, release the mutex.
  */
 static PGBUF_BCB *
-pgbuf_get_bcb_from_invalid_list (void)
+pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * time_tracker)
 {
   PGBUF_BCB *bufptr;
 #if defined(SERVER_MODE)
@@ -8521,6 +8599,8 @@ pgbuf_get_bcb_from_invalid_list (void)
       rv = pthread_mutex_lock (&bufptr->BCB_mutex);
       bufptr->next_BCB = NULL;
       bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
+
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_USE_INVALID_BCB);
       return bufptr;
     }
 }
@@ -8732,12 +8812,14 @@ pgbuf_get_garbage_lru_index_for_victim (void)
  * max_count (in) : maximum number to check in each list
  * loop_count (in) : how may loops this thread has requested a victim
  * sleep_before_next_try (out) : set true if should wait before next try
+ * time_tracker (in/out) : performance time tracker
  *
  * Note: If a victim BCB is found, this function will already lock it. This
  *       means that the caller will have exclusive access to the returned BCB.
  */
 static PGBUF_BCB *
-pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool * sleep_before_next_try)
+pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool * sleep_before_next_try,
+                  PERF_UTIME_TRACKER * time_tracker)
 {
 #define PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW 4
 #define PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE 2
@@ -8808,8 +8890,15 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		      if (victim != NULL)
 			{
 			  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
+                          PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
+                                                               PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS);
 			  return victim;
 			}
+                      else
+                        {
+                          PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
+                                                               PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+                        }
 		    }
 		  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
 		  shared_lru_idx = PGBUF_SHARED_LRU + (shared_lru_idx - PGBUF_SHARED_LRU + 1) % PGBUF_GARBAGE_LRU;
@@ -8851,8 +8940,13 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
 	  if (victim != NULL)
 	    {
+              PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_PRIVATE_LRU_SUCCESS);
 	      return victim;
 	    }
+          else
+            {
+              PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_PRIVATE_LRU_FAIL);
+            }
 	}
 
       /* try to victimize from the private list having most pages */
@@ -8879,8 +8973,15 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		  if (victim != NULL)
 		    {
 		      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[overflow_private_lru_idx], -1);
+                      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
+                                                           PSTAT_PB_VICTIM_OVF_PRIVATE_LRU_SUCCESS);
 		      return victim;
 		    }
+                  else
+                    {
+                      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
+                                                           PSTAT_PB_VICTIM_OVF_PRIVATE_LRU_FAIL);
+                    }
 		}
 	      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[overflow_private_lru_idx], -1);
 	    }
@@ -8893,8 +8994,13 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       victim = pgbuf_get_victim_from_ain_list (thread_p, max_count);
       if (victim != NULL)
 	{
+          PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_AIN_SUCCESS);
 	  return victim;
 	}
+      else
+        {
+          PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_AIN_FAIL);
+        }
     }
 
   /* decide if we try to victimize from shared list OR force victimization from private list:
@@ -8918,12 +9024,18 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
       if (victim != NULL)
 	{
+          PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_PRIVATE_LRU_SUCCESS);
 	  return victim;
 	}
+      else
+        {
+          PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_PRIVATE_LRU_FAIL);
+        }
     }
 
   if (force_private_lru1 == true && loop_count < PGBUF_LOOP_CNT_SHARED_IGNORE_STAT)
     {
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_FORCE_PRIVATE_LRU_FAIL);
       return victim;
     }
 
@@ -8970,6 +9082,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		  ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
 		}
 	      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
+              PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
+                                                   victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+
 	      return victim;
 	    }
 	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
@@ -8984,6 +9099,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
     {
       ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
     }
+
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
 
   return victim;
 
