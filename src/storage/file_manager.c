@@ -9700,7 +9700,7 @@ exit:
     {
       pgbuf_unfix (thread_p, page_extdata_next);
     }
-  if (page_extdata != NULL)
+  if (page_extdata != NULL && page_extdata != page_track_head)
     {
       pgbuf_unfix (thread_p, page_extdata);
     }
