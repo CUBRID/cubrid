@@ -3874,7 +3874,15 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 #endif
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: start flushing collected victim candidates\n");
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_collect_flush, PSTAT_PB_FLUSH_COLLECT);
+  if (time_tracker_collect_flush.is_perf_tracking)
+    {
+      UINT64 utime;
+      tsc_getticks (&time_tracker_collect_flush.end_tick);
+      utime = tsc_elapsed_utime (time_tracker_collect_flush.end_tick, time_tracker_collect_flush.start_tick);
+      perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_COLLECT, utime);
+      perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_PER_PAGE, utime / victim_count);
+      time_tracker_collect_flush.start_tick = time_tracker_collect_flush.end_tick;
+    }
 
   while (total_flushed_count <= 0 && num_tries <= 2)
     {
@@ -3963,7 +3971,14 @@ end:
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_collect_flush, PSTAT_PB_FLUSH_FLUSH);
+  if (time_tracker_collect_flush.is_perf_tracking)
+    {
+      UINT64 utime;
+      tsc_getticks (&time_tracker_collect_flush.end_tick);
+      utime = tsc_elapsed_utime (time_tracker_collect_flush.end_tick, time_tracker_collect_flush.start_tick);
+      perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH, utime);
+      perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH_PER_PAGE, utime / total_flushed_count);
+    }
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_run_sleep, PSTAT_PB_FLUSH_RUN);
 
   return error;
