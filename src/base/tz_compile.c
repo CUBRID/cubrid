@@ -5303,6 +5303,8 @@ init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd, const int ind
   dst_ruleset->count = tzd->ds_rulesets[index].count;
   DUPLICATE_STR (dst_ruleset->ruleset_name, tzd->ds_rulesets[index].ruleset_name);
   dst_ruleset->index_start = start;
+  dst_ruleset->to_year_max = tzd->ds_rulesets[index].to_year_max;
+  DUPLICATE_STR (dst_ruleset->default_abrev, tzd->ds_rulesets[index].default_abrev);
 
 exit:
   return err_status;
