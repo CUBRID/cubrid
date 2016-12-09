@@ -598,7 +598,15 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
 	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
 	    {
+	      if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		{
+		  save_heapid = db_change_private_heap (thread_p, 0);
+		}
 	      pr_clear_compressed_string (val_buffer);
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		}
 	    }
 
 	  tuple_desc_p->tpl_size += value_size;
