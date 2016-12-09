@@ -556,6 +556,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
   DB_VALUE *val_buffer;
   DB_TYPE dbval_type;
+  HL_HEAPID save_heapid = 0;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
