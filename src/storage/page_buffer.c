@@ -94,7 +94,7 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 /* activate to enable debug for transaction quota */
-#if 1
+#if 0
 #define PGBUF_TRAN_QUOTA_DEBUG
 #endif
 
@@ -8839,10 +8839,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 #define PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW 4
 #define PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE 2
 
-#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 2
-#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 2
-#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 3
-#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 3
+/* TODO : set these to very large values to "always" take into account statistics : hope to prevent futile search 
+ * of victims when statistics do not recommend it */
+#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 20000000
+#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 20000000
+#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 30000000
+#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 30000000
 
   PGBUF_BCB *victim = NULL;
   int shared_lru_idx = -1, private_lru_idx = -1;
@@ -15486,4 +15488,24 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
 	}
     }
   return error_code;
+}
+
+bool
+pgbuf_keep_victim_flush_thread_active (void)
+{
+  PGBUF_PAGE_MONITOR *monitor;
+  int i;
+
+  monitor = &pgbuf_Pool.monitor;
+
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      /* TODO : this for test only ; consider refining this function */
+      if (monitor->lru_victim_req_per_lru[i] > 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
