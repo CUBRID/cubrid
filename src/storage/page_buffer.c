@@ -94,7 +94,7 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 /* activate to enable debug for transaction quota */
-#if 1
+#if 0
 #define PGBUF_TRAN_QUOTA_DEBUG
 #endif
 
