@@ -611,7 +611,7 @@ struct analytic_list_node
   TP_DOMAIN *original_domain;	/* domain of the result */
 
   DB_TYPE opr_dbtype;		/* operand data type */
-  DB_TYPE original_opr_dbtype;
+  DB_TYPE original_opr_dbtype;	/* original operand data type */
   REGU_VARIABLE operand;	/* operand */
 
   int flag;			/* flags */
