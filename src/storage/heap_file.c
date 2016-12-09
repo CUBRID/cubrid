@@ -9257,9 +9257,12 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
     }
   else
     {
-      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS)
+      int error = er_errid ();
+      if (error == ER_HEAP_NODATA_NEWADDRESS || error == ER_HEAP_UNKNOWN_OBJECT)
 	{
-	  er_clear ();		/* clear ER_HEAP_NODATA_NEWADDRESS */
+	  /* clear ER_HEAP_NODATA_NEWADDRESS and ER_HEAP_UNKNOWN_OBJECT
+	   * for deleted objects, NULL classname is returned - should be handled by caller */
+	  er_clear ();
 	}
     }
 
