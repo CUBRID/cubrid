@@ -192,6 +192,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_OVF_PRIVATE_LRU_SUCCESS, "victim_overflow_private_lru_success"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_OVF_PRIVATE_LRU_FAIL, "victim_overflow_private_lru_fail"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_FORCE_PRIVATE_LRU_FAIL, "victim_force_private_lru_fail"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_ALL_LRU_FAIL, "victim_force_private_lru_fail"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_AIN_SUCCESS, "victim_ain_success"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_AIN_FAIL, "victim_ain_fail"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIMIZE_BCB, "victimize_bcb_success"),
@@ -3782,6 +3783,7 @@ perfmon_initialize (int num_trans)
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
+      assert (pstat_Metadata[idx].psid == (PERF_STAT_ID) idx);
       pstat_Metadata[idx].start_offset = pstat_Global.n_stat_values;
       switch (pstat_Metadata[idx].valtype)
 	{
