@@ -497,5 +497,6 @@ extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, con
 extern int pgbuf_release_private_lru (const int private_idx);
 extern int pgbuf_assign_private_lru (bool is_vacuum, const int id);
 extern void pgbuf_adjust_quotas (struct timeval *curr_time_p);
+extern bool pgbuf_keep_victim_flush_thread_active (void);
 
 #endif /* _PAGE_BUFFER_H_ */

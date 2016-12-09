@@ -15472,3 +15472,23 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
     }
   return error_code;
 }
+
+bool
+pgbuf_keep_victim_flush_thread_active (void)
+{
+  PGBUF_PAGE_MONITOR *monitor;
+  int i;
+
+  monitor = &pgbuf_Pool.monitor;
+
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      /* TODO : this for test only ; consider refining this function */
+      if (monitor->lru_victim_req_per_lru[i] > 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
