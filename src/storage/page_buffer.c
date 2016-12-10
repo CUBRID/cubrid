@@ -1413,6 +1413,7 @@ pgbuf_initialize (void)
       goto error;
     }
   memset (pgbuf_Pool.victim_candidates_count_lru, 0, PGBUF_TOTAL_LRU * sizeof (int));
+  memset (pgbuf_Pool.victim_candidates_bcbs_per_lru, 0, PGBUF_TOTAL_LRU * MAX_FLUSH_BCBS_LRU * sizeof (PGBUF_BCB *));
 #endif
 
 
