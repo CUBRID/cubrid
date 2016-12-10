@@ -15641,19 +15641,32 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
 bool
 pgbuf_keep_victim_flush_thread_active (void)
 {
+#define MIN_DIRTY_PAGES_TO_KEEP_FLUSH_ALIVE 100
+
   PGBUF_PAGE_MONITOR *monitor;
   int i;
+  int dirty_pages = 0;
 
   monitor = &pgbuf_Pool.monitor;
 
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
+#if defined (PGBUF_ENABLE_FLUSH_LIST)
+      dirty_pages += pgbuf_Pool.victim_candidates_count_lru[i];
+      if (dirty_pages > MIN_DIRTY_PAGES_TO_KEEP_FLUSH_ALIVE)
+	{
+	  return true;
+	}
+#else
       /* TODO : this for test only ; consider refining this function */
       if (monitor->lru_victim_req_per_lru[i] > 0)
 	{
 	  return true;
 	}
+#endif
     }
 
   return false;
+
+#undef MIN_DIRTY_PAGES_TO_KEEP_FLUSH_ALIVE
 }
