@@ -3356,10 +3356,7 @@ thread_page_flush_thread (void *arg_p)
 	  break;
 	}
 
-      while (pgbuf_keep_victim_flush_thread_active ())
-	{
-	  pgbuf_flush_victim_candidate (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
-	}
+      pgbuf_flush_victim_candidate (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
     }
 
   rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
