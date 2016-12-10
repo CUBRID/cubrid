@@ -101,7 +101,7 @@ static int rv;
 #define PGBUF_ENABLE_FLUSH_LIST
 
 #if defined (PGBUF_ENABLE_FLUSH_LIST)
-#define MAX_FLUSH_BCBS_LRU	3000
+#define MAX_FLUSH_BCBS_LRU	200
 #define FLUSH_ARRAY_POSITION(lru_index,pos_in_lru) ((lru_index) * MAX_FLUSH_BCBS_LRU + pos_in_lru)
 #endif
 
@@ -209,7 +209,7 @@ static int rv;
   MAX(((pgbuf_Pool.num_buffers / NUM_NON_SYSTEM_TRANS) / 50), 50)
 
 /* Limits for private chains */
-#define PGBUF_MAX_PRIVATE_CHAINS 1000
+#define PGBUF_MAX_PRIVATE_CHAINS 1500
 #define PGBUF_MIN_PRIVATE_CHAINS 4
 
 /* Lower limits for number of pages in private LRUs and shared LRUs: used when 
@@ -8962,12 +8962,10 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 #define PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW 4
 #define PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE 2
 
-/* TODO : set these to very large values to "always" take into account statistics : hope to prevent futile search 
- * of victims when statistics do not recommend it */
-#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 20000000
-#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 20000000
-#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 30000000
-#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 30000000
+#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 4
+#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 5
+#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 10
+#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 5
 
   PGBUF_BCB *victim = NULL;
   int shared_lru_idx = -1, private_lru_idx = -1;
