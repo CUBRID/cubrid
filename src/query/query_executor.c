@@ -17819,6 +17819,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
   TP_DOMAIN_STATUS status;
   DB_VALUE *dbval;
   int error;
+  HL_HEAPID save_heapid = 0;
 
   /* fetch values */
   if (regu_list != NULL)
@@ -17989,6 +17990,11 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
+		  if (REGU_VARIABLE_IS_FLAGED (&agg_p->operand, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		    {
+		      save_heapid = db_change_private_heap (thread_p, 0);
+		    }
+
 		  status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
@@ -17996,6 +18002,12 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
 
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
+		    }
+
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
 		    }
 
 		  /* try time */
@@ -22126,6 +22138,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   if (save_heapid != 0)
     {
       (void) db_change_private_heap (thread_p, save_heapid);
+      save_heapid = 0;
     }
 
   return NO_ERROR;
@@ -22167,6 +22180,7 @@ exit_on_error:
   if (save_heapid != 0)
     {
       (void) db_change_private_heap (thread_p, save_heapid);
+      save_heapid = 0;
     }
 
   xasl->status = XASL_FAILURE;
