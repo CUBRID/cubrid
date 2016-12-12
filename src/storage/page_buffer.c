@@ -98,7 +98,9 @@ static int rv;
 #define PGBUF_TRAN_QUOTA_DEBUG
 #endif
 
+#if 0
 #define PGBUF_ENABLE_FLUSH_LIST
+#endif
 
 #if defined (PGBUF_ENABLE_FLUSH_LIST)
 #define MAX_FLUSH_BCBS_LRU	200
@@ -190,7 +192,7 @@ static int rv;
 #define PGBUF_IS_AUXILIARY_VOLUME(volid)                                 \
   ((volid) < LOG_DBFIRST_VOLID ? true : false)
 
-/* Zone attibute of buffer contains both PGBUF_LRU_ZONE type and list id.
+/* Zone attribute of buffer contains both PGBUF_LRU_ZONE type and list id.
  * The zone type is encoded on LSB 3 bits, the LRU id on the rest of MSB bits.
  * The LRU index of a buffer is decided either based on thread (private LRU) or
  * a round-robin rule for shared and garbage LRUs */
@@ -3994,8 +3996,11 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       time_tracker_collect_flush.start_tick = time_tracker_collect_flush.end_tick;
     }
 
+  /* temporary disable second iteration */
+#if 0
   while (total_flushed_count <= 0 && num_tries <= 2)
     {
+#endif
       /* for each victim candidate, do flush task */
       for (i = 0; i < victim_count; i++)
 	{
@@ -4004,24 +4009,50 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	  bufptr = victim_cand_list[i].bufptr;
 
 	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
-	  /* flush condition check */
-	  if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid)
-	      || bufptr->dirty == false
-	      || (PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_LRU_2_ZONE
-		  && PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_AIN_ZONE)
-	      || bufptr->latch_mode != PGBUF_NO_LATCH
-	      || !(LSA_EQ (&bufptr->oldest_unflush_lsa, &victim_cand_list[i].recLSA)) || bufptr->avoid_victim == true)
+
+          /* check flush conditions */
+
+          if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid) || bufptr->dirty == false
+              || !LSA_EQ (&bufptr->oldest_unflush_lsa, &victim_cand_list[i].recLSA))
+            {
+              /* must be already flushed */
+              pthread_mutex_unlock (&bufptr->BCB_mutex);
+              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
+              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED);
+	      continue;
+            }
+
+	  
+	  if ((PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_LRU_2_ZONE
+               && PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_AIN_ZONE)
+	      || bufptr->latch_mode != PGBUF_NO_LATCH || bufptr->avoid_victim == true)
 	    {
+              /* page was fixed or became hot after selected as victim. do not flush it. */
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
+              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT);
 	      continue;
 	    }
 
-	  /* In the first try, we will flush pages which do not need WAL. */
-	  if (num_tries == 1 && logpb_need_wal (&(bufptr->iopage_buffer->iopage.prv.lsa)))
-	    {
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
-	      continue;
-	    }
+          if (logpb_need_wal (&(bufptr->iopage_buffer->iopage.prv.lsa)))
+            {
+              /* we cannot flush a page unless log has been flushed up until page LSA. otherwise we might have recovery
+               * issues. */
+              if (num_tries == 1)
+                {
+                  /* maybe next time */
+                  pthread_mutex_unlock (&bufptr->BCB_mutex);
+                  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
+                  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT);
+	          continue;
+                }
+              else
+                {
+                  /* we have to do this. we cannot flush a page without flushing log first */
+                  logpb_flush_log_for_wal (thread_p, &(bufptr->iopage_buffer->iopage.prv.lsa));
+                  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FLUSH_FORCE_LOG_FLUSH);
+                }
+            }
 
 	  if (PGBUF_NEIGHBOR_PAGES > 1)
 	    {
@@ -4035,11 +4066,13 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      flushed_pages = (error == NO_ERROR) ? 1 : 0;
 	    }
 
-	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_REPLACEMENTS);
+	  perfmon_add_stat (thread_p, PSTAT_PB_NUM_FLUSHED, flushed_pages);
 
 	  if (error != NO_ERROR)
 	    {
+              /* if this shows up in statistics or log, consider it a red flag */
 	      er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: error during flush");
+              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FLUSH_ERROR);
 	      goto end;
 	    }
 
@@ -4066,8 +4099,11 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	    }
 	}
 
+  /* temporary disable second iteration */
+#if 0
       num_tries++;
     }
+#endif
 
 end:
 #if defined (SERVER_MODE)
