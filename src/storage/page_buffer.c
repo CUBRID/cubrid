@@ -4049,8 +4049,10 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
               else
                 {
                   /* we have to do this. we cannot flush a page without flushing log first */
+                  PERF_UTIME_TRACKER time_tracker_force_flush = PERF_UTIME_TRACKER_INITIALIZER;
+                  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_force_flush);
                   logpb_flush_log_for_wal (thread_p, &(bufptr->iopage_buffer->iopage.prv.lsa));
-                  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FLUSH_FORCE_LOG_FLUSH);
+                  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_force_flush, PSTAT_PB_FLUSH_FORCE_LOG_FLUSH);
                 }
             }
 
