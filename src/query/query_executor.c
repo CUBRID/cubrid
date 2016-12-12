@@ -1714,6 +1714,13 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+#if defined(SERVER_MODE)
+      if (thread_is_on_trace (thread_p))
+	{
+	  memset (&p->s_id.stats, 0, sizeof (SCAN_STATS));
+	}
+#endif
+
       if (p->parts != NULL)
 	{
 	  db_private_free (thread_p, p->parts);
