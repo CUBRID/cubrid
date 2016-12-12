@@ -452,9 +452,9 @@ extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int
 extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
 extern int heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid);
 
-extern char *heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid);
-extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname);
-extern char *heap_get_class_name_of_instance (THREAD_ENTRY * thread_p, const OID * inst_oid);
+extern int heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name);
+extern int heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname,
+					      char **class_name_out);
 extern int heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PARTITION ** parts,
 				      int *parts_count);
 extern void heap_clear_partition_info (THREAD_ENTRY * thread_p, OR_PARTITION * parts, int parts_count);

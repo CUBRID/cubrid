@@ -763,13 +763,12 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val_p)
   if (oid_p == NULL)
     {
       oid_p = &oid_buf;
-      name_p = heap_get_class_name (thread_p, class_oid_p);
-      if (name_p == NULL)
+      if (heap_get_class_name (thread_p, class_oid_p, &name_p) != NO_ERROR)
 	{
-	  /* expected case, class_oid object may be deleted */
+	  /* class_oid object may be deleted */
+	  ASSERT_ERROR ();
 	  db_make_null (oid_val_p);
 
-	  /* no error should be set for non existent objects, but other errors may occur */
 	  return er_errid ();
 	}
 

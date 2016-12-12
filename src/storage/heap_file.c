@@ -2575,7 +2575,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
       goto exit_on_error;
     }
 
-  classname = heap_get_class_name (thread_p, class_oid);
+  classname = or_class_name (&recdes);
   if (classname == NULL)
     {
       goto exit_on_error;
@@ -2623,9 +2623,9 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 
       if (!OID_ISNULL (&attrepr->classoid) && !OID_EQ (&attrepr->classoid, class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, &attrepr->classoid);
-	  if (classname == NULL)
+	  if (heap_get_class_name (thread_p, &attrepr->classoid, &classname) != NO_ERROR)
 	    {
+	      ASSERT_ERROR_AND_SET (ret);
 	      goto exit_on_error;
 	    }
 	  fprintf (fp, " Inherited from Class: oid = %d|%d|%d, Name = %s\n", (int) attrepr->classoid.volid,
@@ -9184,116 +9184,87 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
 
 /*
  * heap_get_class_name () - Find classname when oid is a class
- *   return: Classname or NULL. The classname space must be
- *           released by the caller.
- *   class_oid(in): The Class Object identifier
+ *   return: error_code
  *
- * Note: Find the name of the given class identifier. If the passed OID
- * is not a class, it return NULL.
+ *   class_oid(in): The Class Object identifier
+ *   class_name(out): The Class name;The classname space must be released by the caller.
+ *
+ * Note: Find the name of the given class identifier. It asserts that the given OID is class OID.
  *
  * Note: Classname pointer must be released by the caller using free_and_init
  */
-char *
-heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid)
+int
+heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name)
 {
-  return heap_get_class_name_alloc_if_diff (thread_p, class_oid, NULL);
+  return heap_get_class_name_alloc_if_diff (thread_p, class_oid, NULL, class_name);
 }
 
 /*
  * heap_get_class_name_alloc_if_diff () - Get the name of given class
  *                               name is malloc when different than given name
- *   return: guess_classname when it is the real name. Don't need to free.
+ *   return: error_code
+ *
+ *   class_oid(in): The Class Object identifier
+ *   guess_classname(in): Guess name of class
+ *   classname_out(out):  guess_classname when it is the real name. Don't need to free.
  *           malloc classname when different from guess_classname.
  *           Must be free by caller (free_and_init)
  *           NULL some kind of error
- *   class_oid(in): The Class Object identifier
- *   guess_classname(in): Guess name of class
  *
  * Note: Find the name of the given class identifier. If the name is
  * the same as the guessed name, the guessed name is returned.
  * Otherwise, an allocated area with the name of the class is
- * returned. If an error is found or the passed OID is not a
- * class, NULL is returned.
+ * returned. 
  */
-char *
-heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname)
+int
+heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname,
+				   char **classname_out)
 {
   char *classname = NULL;
-  char *copy_classname = NULL;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
-  OID root_oid = OID_INITIALIZER;
-  HEAP_GET_CONTEXT context;
+
+  assert (er_errid () == NO_ERROR);
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
-  heap_init_get_context (thread_p, &context, class_oid, &root_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
 
-  if (heap_get_last_version (thread_p, &context) == S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
     {
-      /* Make sure that this is a class */
-      if (oid_is_root (&root_oid))
+      classname = or_class_name (&recdes);
+      if (guess_classname == NULL || strcmp (guess_classname, classname) != 0)
 	{
-	  classname = or_class_name (&recdes);
-	  if (guess_classname == NULL || strcmp (guess_classname, classname) != 0)
+	  /* 
+	   * The names are different.. return a copy that must be freed.
+	   */
+	  *classname_out = strdup (classname);
+	  if (*classname_out == NULL)
 	    {
-	      /* 
-	       * The names are different.. return a copy that must be freed.
-	       */
-	      copy_classname = strdup (classname);
-	      if (copy_classname == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  (strlen (classname) + 1) * sizeof (char));
-		}
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (strlen (classname) + 1) * sizeof (char));
 	    }
-	  else
-	    {
-	      /* 
-	       * The classnames are identical
-	       */
-	      copy_classname = guess_classname;
-	    }
+	}
+      else
+	{
+	  /* 
+	   * The classnames are identical
+	   */
+	  *classname_out = guess_classname;
 	}
     }
   else
     {
-      int error = er_errid ();
-      if (error == ER_HEAP_NODATA_NEWADDRESS || error == ER_HEAP_UNKNOWN_OBJECT)
+      ASSERT_ERROR ();
+      *classname_out = NULL;
+      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS)
 	{
-	  /* clear ER_HEAP_NODATA_NEWADDRESS and ER_HEAP_UNKNOWN_OBJECT
-	   * for deleted objects, NULL classname is returned - should be handled by caller */
+	  /* clear ER_HEAP_NODATA_NEWADDRESS */
 	  er_clear ();
 	}
     }
 
-  heap_clean_get_context (thread_p, &context);
   heap_scancache_end (thread_p, &scan_cache);
 
-  return copy_classname;
-}
-
-/*
- * heap_get_class_name_of_instance () - Find classname of given instance
- *   return: Classname or NULL. The classname space must be
- *           released by the caller.
- *   inst_oid(in): The instance object identifier
- *
- * Note: Find the class name of the class of given instance identifier.
- *
- * Note: Classname pointer must be released by the caller using free_and_init
- */
-char *
-heap_get_class_name_of_instance (THREAD_ENTRY * thread_p, const OID * inst_oid)
-{
-  char *classname = NULL;
-  OID class_oid;
-
-  if (heap_get_class_oid (thread_p, inst_oid, &class_oid) == S_SUCCESS)
-    {
-      classname = heap_get_class_name_alloc_if_diff (thread_p, &class_oid, NULL);
-    }
-
-  return classname;
+  return er_errid ();
 }
 
 /*
@@ -11677,9 +11648,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			  continue;
 			}
 
-		      new_meta_data = heap_get_class_name (thread_p, &(attr_info->class_oid));
-
-		      if (new_meta_data == NULL)
+		      if (heap_get_class_name (thread_p, &(attr_info->class_oid), &new_meta_data) != NO_ERROR)
 			{
 			  status = S_ERROR;
 			  break;
@@ -16435,10 +16404,9 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		  goto exit_on_error;
 		}
 
-	      classname = heap_get_class_name (thread_p, &(att->classoid));
-	      if (classname == NULL)
+	      if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR)
 		{
-		  ret = ER_FAILED;
+		  ASSERT_ERROR_AND_SET (ret);
 		  goto exit_on_error;
 		}
 
@@ -16774,10 +16742,10 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
   char *classname;
   bool need_free_classname = false;
 
-  classname = heap_get_class_name (thread_p, class_oid);
-  if (classname == NULL)
+  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
     {
       classname = (char *) "unknown";
+      er_clear ();
     }
   else
     {
@@ -17710,11 +17678,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
 
-  class_name = heap_get_class_name (thread_p, &(heap_hdr->class_oid));
-  if (class_name == NULL)
+  if (heap_get_class_name (thread_p, &(heap_hdr->class_oid), &class_name) != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       goto cleanup;
     }
 
@@ -17964,11 +17930,9 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
       goto cleanup;
     }
 
-  classname = heap_get_class_name (thread_p, &fdes.heap.class_oid);
-  if (classname == NULL)
+  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       goto cleanup;
     }
 
@@ -19473,9 +19437,9 @@ heap_mark_class_as_modified (THREAD_ENTRY * thread_p, OID * oid_p, int chn, bool
       return NO_ERROR;
     }
 
-  classname = heap_get_class_name (thread_p, oid_p);
-  if (classname == NULL)
+  if (heap_get_class_name (thread_p, oid_p, &classname) != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return ER_FAILED;
     }
   if (log_add_to_modified_class_list (thread_p, classname, oid_p) != NO_ERROR)

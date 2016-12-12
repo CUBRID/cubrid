@@ -1884,8 +1884,7 @@ locator_check_class_on_heap (const void *name, void *ent, void *args)
   classname = (char *) name;
   class_oid = &entry->e_current.oid;
 
-  heap_classname = heap_get_class_name_alloc_if_diff (thread_p, class_oid, (char *) classname);
-  if (heap_classname == NULL)
+  if (heap_get_class_name_alloc_if_diff (thread_p, class_oid, (char *) classname, &heap_classname) != NO_ERROR)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	{
@@ -2328,7 +2327,6 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
   SCAN_CODE scan;		/* Scan return value for next operation */
   int guess_chn = chn;
   int tran_index = NULL_TRAN_INDEX;
-  int lock_ret;
 
   /* 
    * The next object is placed in the assigned recdes area if the cached
@@ -5471,7 +5469,12 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       assert (classname != NULL);
       assert (strlen (classname) < 255);
 
-      old_classname = heap_get_class_name_alloc_if_diff (thread_p, oid, classname);
+      if (heap_get_class_name_alloc_if_diff (thread_p, oid, classname, &old_classname) != NO_ERROR)
+	{
+	  /* it is unexpected to fail to get the classname of an existing class */
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
 
       /* 
        * Compare the classname pointers. If the same pointers classes are the
@@ -9521,7 +9524,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 
 		      if (!OID_ISNULL (class_oid))
 			{
-			  classname = heap_get_class_name (thread_p, class_oid);
+			  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+			    {
+			      /* ignore */
+			      er_clear ();
+			    }
 			}
 
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE1, 12,
@@ -9657,7 +9664,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 		{
 		  if (!OID_ISNULL (class_oid))
 		    {
-		      classname = heap_get_class_name (thread_p, class_oid);
+		      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+			{
+			  /* ignore */
+			  er_clear ();
+			}
 		    }
 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
@@ -9687,7 +9698,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE3, 10,
@@ -9958,7 +9973,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 			  key_dmp = pr_valstring (key);
 			  if (!OID_ISNULL (class_oid))
 			    {
-			      classname = heap_get_class_name (thread_p, class_oid);
+			      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+				{
+				  /* ignore */
+				  er_clear ();
+				}
 			    }
 
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE1, 12,
@@ -10090,7 +10109,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 		{
 		  if (!OID_ISNULL (class_oid))
 		    {
-		      classname = heap_get_class_name (thread_p, class_oid);
+		      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+			{
+			  /* ignore */
+			  er_clear ();
+			}
 		    }
 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
@@ -10133,7 +10156,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 		{
 		  if (!OID_ISNULL (class_oid))
 		    {
-		      classname = heap_get_class_name (thread_p, class_oid);
+		      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+			{
+			  /* ignore */
+			  er_clear ();
+			}
 		    }
 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE8, 11,
@@ -10177,7 +10204,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE4, 11,
@@ -10198,7 +10229,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE5, 10,
@@ -10218,7 +10253,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE7, 10,
@@ -10238,7 +10277,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE6, 11,

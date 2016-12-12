@@ -2951,7 +2951,11 @@ file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_
 
   if (!OID_ISNULL (class_oid_p))
     {
-      class_name_p = heap_get_class_name (thread_p, class_oid_p);
+      if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+	{
+	  /* ignore */
+	  er_clear ();
+	}
       fprintf (fp, "CLASS_OID: %5d|%10d|%5d (%s)", OID_AS_ARGS (class_oid_p),
 	       class_name_p != NULL ? class_name_p : "*UNKNOWN-CLASS*");
       if (class_name_p != NULL)
