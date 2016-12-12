@@ -18007,6 +18007,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		  if (save_heapid != 0)
 		    {
 		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
 		    }
 
 		  /* try time */
@@ -22137,6 +22138,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   if (save_heapid != 0)
     {
       (void) db_change_private_heap (thread_p, save_heapid);
+      save_heapid = 0;
     }
 
   return NO_ERROR;
@@ -22178,6 +22180,7 @@ exit_on_error:
   if (save_heapid != 0)
     {
       (void) db_change_private_heap (thread_p, save_heapid);
+      save_heapid = 0;
     }
 
   xasl->status = XASL_FAILURE;
