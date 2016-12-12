@@ -599,7 +599,6 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
 	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
 	    {
-	      save_heapid = 0;
 	      if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 		{
 		  save_heapid = db_change_private_heap (thread_p, 0);
@@ -608,6 +607,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	      if (save_heapid != 0)
 		{
 		  (void) db_change_private_heap (thread_p, save_heapid);
+		  save_heapid = 0;
 		}
 	    }
 
@@ -8471,7 +8471,6 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		}
 	      else
 		{
-		  save_heapid = 0;
 		  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 		    {
 		      save_heapid = db_change_private_heap (thread_p, 0);
@@ -8481,6 +8480,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		  if (save_heapid != 0)
 		    {
 		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
 		    }
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
@@ -12263,7 +12263,6 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	  /* Note: we must cast the const value to the same domain as the compared field in the order by clause */
 	  dom = regu_tmp_node->value.domain;
 
-	  save_heapid = 0;
 	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_node->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 	    {
 	      save_heapid = db_change_private_heap (thread_p, 0);
@@ -12274,6 +12273,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	      if (save_heapid != 0)
 		{
 		  (void) db_change_private_heap (thread_p, save_heapid);
+		  save_heapid = 0;
 		}
 
 	      goto exit_on_error;
