@@ -4043,7 +4043,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
                   /* maybe next time */
                   pthread_mutex_unlock (&bufptr->BCB_mutex);
                   perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
-                  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT);
+                  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL);
 	          continue;
                 }
               else
