@@ -24148,7 +24148,9 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   HEAP_GET_CONTEXT context;
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+
   scan = heap_get_visible_version_internal (thread_p, &context, false);
+
   heap_clean_get_context (thread_p, &context);
 
   return scan;
@@ -24183,7 +24185,9 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
   HEAP_GET_CONTEXT context;
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+
   scan = heap_get_visible_version_internal (thread_p, &context, true);
+
   heap_clean_get_context (thread_p, &context);
 
   return scan;
@@ -24214,16 +24218,11 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       context->class_oid_p = &class_oid_local;
     }
 
-  if (context->scan_cache && context->scan_cache->area == NULL && context->ispeeking == COPY
-      && context->recdes_p != NULL)
+  if (context->scan_cache && context->ispeeking == COPY && context->recdes_p != NULL)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      context->scan_cache->area_size = DB_PAGESIZE * 2;
-      context->scan_cache->area = (char *) db_private_alloc (thread_p, context->scan_cache->area_size);
-      if (context->scan_cache->area == NULL)
+      if (heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
 	{
-	  context->scan_cache->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_PAGESIZE * 2);
 	  return S_ERROR;
 	}
     }
@@ -24424,15 +24423,11 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   assert (context->scan_cache != NULL);
   assert (context->recdes_p != NULL);
 
-  if (context->scan_cache && context->scan_cache->area == NULL && context->ispeeking == COPY)
+  if (context->scan_cache && context->ispeeking == COPY)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      context->scan_cache->area_size = DB_PAGESIZE * 2;
-      context->scan_cache->area = (char *) db_private_alloc (thread_p, context->scan_cache->area_size);
-      if (context->scan_cache->area == NULL)
+      if (heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
 	{
-	  context->scan_cache->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_PAGESIZE * 2);
 	  return S_ERROR;
 	}
     }
@@ -24601,11 +24596,49 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
     }
 }
 
+/*
+ * heap_scan_cache_allocate_area () - Allocate scan_cache area
+ *
+ * return: error code
+ * thread_p (in) : Thread entry.
+ * scan_cache_p (in) : Scan cache.
+ * size (in) : Required size of recdes data.
+ */
+int
+heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size)
+{
+  assert (scan_cache_p != NULL && size > 0);
+  if (scan_cache_p->area == NULL)
+    {
+      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
+      scan_cache_p->area = (char *) db_private_alloc (thread_p, size);
+      if (scan_cache_p->area == NULL)
+	{
+	  scan_cache_p->area_size = -1;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      scan_cache_p->area_size = size;
+    }
+  else if (scan_cache_p->area_size < size)
+    {
+      scan_cache_p->area = (char *) db_private_realloc (thread_p, scan_cache_p->area, size);
+      if (scan_cache_p->area == NULL)
+	{
+	  scan_cache_p->area_size = -1;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      scan_cache_p->area_size = size;
+    }
+
+  return NO_ERROR;
+}
 
 /*
  * heap_scan_cache_allocate_recdes_data () - Allocate recdes data and set it to recdes
  * 
- * return NO_ERROR or ER_FAILED
+ * return: error code 
  * thread_p (in) : Thread entry.
  * scan_cache_p (in) : Scan cache.
  * recdes_p (in) : Record descriptor.
@@ -24615,30 +24648,13 @@ static int
 heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, RECDES * recdes_p,
 				      int size)
 {
+  int error_code;
   assert (scan_cache_p != NULL && recdes_p != NULL);
 
-  if (scan_cache_p->area == NULL)
+  error_code = heap_scan_cache_allocate_area (thread_p, scan_cache_p, size);
+  if (error_code != NO_ERROR)
     {
-      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      scan_cache_p->area_size = size;
-      scan_cache_p->area = (char *) db_private_alloc (thread_p, scan_cache_p->area_size);
-      if (scan_cache_p->area == NULL)
-	{
-	  scan_cache_p->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_FAILED;
-	}
-    }
-  else if (scan_cache_p->area_size < size)
-    {
-      scan_cache_p->area_size = size;
-      scan_cache_p->area = (char *) db_private_realloc (thread_p, scan_cache_p->area, size);
-      if (scan_cache_p->area == NULL)
-	{
-	  scan_cache_p->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_FAILED;
-	}
+      return error_code;
     }
 
   recdes_p->data = scan_cache_p->area;

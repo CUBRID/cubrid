@@ -13228,15 +13228,11 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       class_oid = &class_oid_local;
     }
 
-  if (scan_cache && scan_cache->area == NULL && ispeeking == COPY && recdes != NULL)
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      scan_cache->area_size = DB_PAGESIZE * 2;
-      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-      if (scan_cache->area == NULL)
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
 	{
-	  scan_cache->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_PAGESIZE * 2);
 	  return S_ERROR;
 	}
     }
@@ -13364,15 +13360,11 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
       class_oid = &class_oid_local;
     }
 
-  if (scan_cache && scan_cache->area == NULL && ispeeking == COPY && recdes != NULL)
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      scan_cache->area_size = DB_PAGESIZE * 2;
-      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-      if (scan_cache->area == NULL)
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
 	{
-	  scan_cache->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_PAGESIZE * 2);
 	  return S_ERROR;
 	}
     }
@@ -13468,15 +13460,11 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
 
-  if (scan_cache && scan_cache->area == NULL && ispeeking == COPY && recdes != NULL)
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      scan_cache->area_size = DB_PAGESIZE * 2;
-      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-      if (scan_cache->area == NULL)
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
 	{
-	  scan_cache->area_size = -1;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_PAGESIZE * 2);
 	  return S_ERROR;
 	}
     }
