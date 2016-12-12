@@ -536,9 +536,11 @@ struct aggregate_list_node
 {
   AGGREGATE_TYPE *next;		/* next aggregate node */
   TP_DOMAIN *domain;		/* domain of the result */
+  TP_DOMAIN *original_domain;	/* original domain of the result */
   FUNC_TYPE function;		/* aggregate function name */
   QUERY_OPTIONS option;		/* DISTINCT/ALL option */
   DB_TYPE opr_dbtype;		/* Operand values data type */
+  DB_TYPE original_opr_dbtype;	/* Original operand values data type */
   struct regu_variable_node operand;	/* operand */
   QFILE_LIST_ID *list_id;	/* used for distinct handling */
   int flag_agg_optimize;

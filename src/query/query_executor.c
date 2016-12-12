@@ -423,7 +423,7 @@ static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, S
 						      QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 						      QFILE_TUPLE_RECORD * tplrec);
 static void qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate);
-static void qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static int qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final);
 static int qexec_gby_init_group_dim (GROUPBY_STATE * gbstate);
 static void qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate);
 static void qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUPLE tpl, int peek);
@@ -1984,6 +1984,8 @@ qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, int final)
 	}
 
       pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
+      p->domain = p->original_domain;
+      p->opr_dbtype = p->original_opr_dbtype;
     }
 
   return pg_cnt;
@@ -2061,7 +2063,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
   /* clean up the order-by const list used for CUME_DIST and PERCENT_RANK */
   if (xasl->type == BUILDVALUE_PROC)
     {
-      qexec_clear_agg_orderby_const_list (thread_p, xasl);
+      pg_cnt += qexec_clear_agg_orderby_const_list (thread_p, xasl, final);
     }
 
 
@@ -23747,10 +23749,11 @@ cleanup:
  *   return:
  *   xasl(in)        :
  */
-static void
-qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+static int
+qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 {
   AGGREGATE_TYPE *agg_list, *agg_p;
+  int pg_cnt = 0;
   assert (xasl != NULL);
 
   agg_list = xasl->proc.buildvalue.agg_list;
@@ -23762,7 +23765,17 @@ qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  db_private_free_and_init (thread_p, agg_p->info.dist_percent.const_array);
 	  agg_p->info.dist_percent.list_len = 0;
 	}
+
+      if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
+	{
+	  if (agg_p->info.percentile.percentile_reguvar != NULL)
+	    {
+	      pg_cnt += qexec_clear_regu_var (xasl, agg_p->info.percentile.percentile_reguvar, final);
+	    }
+	}
     }
+
+  return pg_cnt;
 }
 
 /*
