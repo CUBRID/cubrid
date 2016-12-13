@@ -2328,7 +2328,6 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
   SCAN_CODE scan;		/* Scan return value for next operation */
   int guess_chn = chn;
   int tran_index = NULL_TRAN_INDEX;
-  int lock_ret;
 
   /* 
    * The next object is placed in the assigned recdes area if the cached
@@ -13229,6 +13228,14 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       class_oid = &class_oid_local;
     }
 
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
+    {
+      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
   /* get class_oid if it is unknown */
@@ -13353,6 +13360,15 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
       class_oid = &class_oid_local;
     }
 
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
+    {
+      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn);
 
   /* get class_oid if it is unknown */
@@ -13444,10 +13460,17 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
 
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
+    {
+      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
-
   scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
-
   heap_clean_get_context (thread_p, &context);
   return scan_code;
 }
