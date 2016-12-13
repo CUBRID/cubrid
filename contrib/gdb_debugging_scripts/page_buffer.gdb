@@ -194,3 +194,75 @@ define pgbuf_cast_btop
 define pgbuf_cast_ptob
   set $arg1 = ((PGBUF_IOPAGE_BUFFER *) (((PAGE_PTR) $arg0) - sizeof (FILEIO_PAGE_RESERVED) - sizeof (PGBUF_BCB *)))->bcb
   end
+
+# pgbuf_lru_print_vict
+# arg0  - lru index
+#
+# Prints all BCB which may be victimized from LRU, count of elements in LRU, count in LRU2 and LRU1 sections, count of dirty BCBs,  count of BCBs with fixed, count of BCBs with latch
+# Last is count of BCBs which may be victimized
+#  
+define pgbuf_lru_print_vict
+  set $lru_idx = $arg0
+  set $bcb = pgbuf_Pool.buf_LRU_list[$lru_idx]->LRU_bottom
+  set $cnt_dirty = 0
+  set $cnt_fcnt = 0
+  set $cnt_avoid_victim = 0
+  set $cnt_latch_mode = 0
+  set $cnt_victim_candidate = 0
+  set $cnt_can_victim = 0
+  set $cnt_zone_lru2 = 0
+  set $cnt_zone_lru1 = 0
+  set $elem = 0
+  set $zone_lru2 = ($lru_idx << 3) | 1
+  set $zone_lru1 = ($lru_idx << 3)
+
+  p $zone_lru2
+  p $zone_lru1
+  
+  while $bcb != 0
+	if $bcb->dirty == 0 && $bcb->fcnt == 0 && $bcb->avoid_victim == 0 && $bcb->latch_mode == 0 && $bcb->victim_candidate == 0 && $bcb->zone_lru == $zone_lru2
+	  p $bcb
+	  set $cnt_can_victim = $cnt_can_victim + 1
+	end
+
+	if $bcb->zone_lru == $zone_lru2
+      set $cnt_zone_lru2 = $cnt_zone_lru2 + 1
+	end
+
+	if $bcb->zone_lru == $zone_lru1
+      set $cnt_zone_lru1= $cnt_zone_lru1 + 1
+	end
+
+	if  $bcb->dirty != 0 
+	  set $cnt_dirty = $cnt_dirty + 1
+	end
+
+	if  $bcb->fcnt != 0 
+	  set $cnt_fcnt = $cnt_fcnt + 1
+	end
+
+	if  $bcb->avoid_victim != 0 
+	  set $cnt_avoid_victim = $cnt_avoid_victim + 1
+	end
+
+	if  $bcb->latch_mode != 0 
+	  set $cnt_latch_mode = $cnt_latch_mode + 1
+	end
+	if $bcb->victim_candidate != 0 
+	  set $cnt_victim_candidate = $cnt_victim_candidate + 1
+	end
+	
+    set $bcb = $bcb->prev_BCB
+	set $elem = $elem + 1
+  end
+  
+  p $elem
+  p $cnt_zone_lru2
+  p $cnt_zone_lru1  
+  p $cnt_dirty
+  p $cnt_fcnt
+  p $cnt_avoid_victim
+  p $cnt_latch_mode
+  p $cnt_victim_candidate
+  p $cnt_can_victim
+end
