@@ -395,17 +395,15 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
   VPID *addr_vpid_ptr;
   LOG_DATA_ADDR addr;
   bool isnewpage = false;
-  bool is_sysop_started = false;
   PAGE_TYPE ptype = PAGE_OVERFLOW;
-
   int error_code = NO_ERROR;
 
   assert (ovf_vfid != NULL && !VFID_ISNULL (ovf_vfid));
-  assert (file_type == FILE_MULTIPAGE_OBJECT_HEAP);	/* used only for heap for now... I left this here just in case
-							 * other file types start using this. If you hit this assert,
-							 * check the code is alright for your usage (e.g. this doesn't
-							 * consider temporary files).
-							 */
+
+  /* used only for heap for now... I left this here just in case other file types start using this.
+   * If you hit this assert, check the code is alright for your usage (e.g. this doesn't consider temporary files).
+   */
+  assert (file_type == FILE_MULTIPAGE_OBJECT_HEAP);
 
   addr.vfid = ovf_vfid;
   addr.offset = 0;
@@ -415,7 +413,6 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
   length = recdes->length;
 
   log_sysop_start (thread_p);
-  is_sysop_started = true;
 
   while (length > 0)
     {
@@ -600,6 +597,8 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
   return NO_ERROR;
 
 exit_on_error:
+
+  log_sysop_abort (thread_p);
 
   return error_code;
 }

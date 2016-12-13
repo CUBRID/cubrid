@@ -556,6 +556,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
   DB_VALUE *val_buffer;
   DB_TYPE dbval_type;
+  HL_HEAPID save_heapid = 0;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -598,7 +599,16 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
 	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
 	    {
+	      if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		{
+		  save_heapid = db_change_private_heap (thread_p, 0);
+		}
 	      pr_clear_compressed_string (val_buffer);
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		  save_heapid = 0;
+		}
 	    }
 
 	  tuple_desc_p->tpl_size += value_size;
@@ -8470,6 +8480,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		  if (save_heapid != 0)
 		    {
 		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
 		    }
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
@@ -12262,6 +12273,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	      if (save_heapid != 0)
 		{
 		  (void) db_change_private_heap (thread_p, save_heapid);
+		  save_heapid = 0;
 		}
 
 	      goto exit_on_error;

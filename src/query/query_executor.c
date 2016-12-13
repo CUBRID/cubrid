@@ -423,7 +423,7 @@ static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, S
 						      QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 						      QFILE_TUPLE_RECORD * tplrec);
 static void qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate);
-static void qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static int qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final);
 static int qexec_gby_init_group_dim (GROUPBY_STATE * gbstate);
 static void qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate);
 static void qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUPLE tpl, int peek);
@@ -1714,6 +1714,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+      memset (&p->s_id.stats, 0, sizeof (SCAN_STATS));
       if (p->parts != NULL)
 	{
 	  db_private_free (thread_p, p->parts);
@@ -1934,6 +1935,9 @@ qexec_clear_analytic_function_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	{
 	  (void) pr_clear_value (p->value);
 	  (void) pr_clear_value (p->value2);
+	  p->domain = p->original_domain;
+	  p->opr_dbtype = p->original_opr_dbtype;
+	  pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
 	}
     }
 
@@ -1984,6 +1988,8 @@ qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, int final)
 	}
 
       pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
+      p->domain = p->original_domain;
+      p->opr_dbtype = p->original_opr_dbtype;
     }
 
   return pg_cnt;
@@ -2061,7 +2067,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
   /* clean up the order-by const list used for CUME_DIST and PERCENT_RANK */
   if (xasl->type == BUILDVALUE_PROC)
     {
-      qexec_clear_agg_orderby_const_list (thread_p, xasl);
+      pg_cnt += qexec_clear_agg_orderby_const_list (thread_p, xasl, final);
     }
 
 
@@ -8517,11 +8523,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
 		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
     {
-      if (savepoint_used)
-	{
-	  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
-	}
-
       GOTO_EXIT_ON_ERROR;
     }
 
@@ -17819,6 +17820,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
   TP_DOMAIN_STATUS status;
   DB_VALUE *dbval;
   int error;
+  HL_HEAPID save_heapid = 0;
 
   /* fetch values */
   if (regu_list != NULL)
@@ -17989,6 +17991,11 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
+		  if (REGU_VARIABLE_IS_FLAGED (&agg_p->operand, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		    {
+		      save_heapid = db_change_private_heap (thread_p, 0);
+		    }
+
 		  status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
@@ -17996,6 +18003,12 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
 
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
+		    }
+
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
 		    }
 
 		  /* try time */
@@ -22126,6 +22139,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   if (save_heapid != 0)
     {
       (void) db_change_private_heap (thread_p, save_heapid);
+      save_heapid = 0;
     }
 
   return NO_ERROR;
@@ -22167,6 +22181,7 @@ exit_on_error:
   if (save_heapid != 0)
     {
       (void) db_change_private_heap (thread_p, save_heapid);
+      save_heapid = 0;
     }
 
   xasl->status = XASL_FAILURE;
@@ -23733,10 +23748,11 @@ cleanup:
  *   return:
  *   xasl(in)        :
  */
-static void
-qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+static int
+qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 {
   AGGREGATE_TYPE *agg_list, *agg_p;
+  int pg_cnt = 0;
   assert (xasl != NULL);
 
   agg_list = xasl->proc.buildvalue.agg_list;
@@ -23748,7 +23764,17 @@ qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  db_private_free_and_init (thread_p, agg_p->info.dist_percent.const_array);
 	  agg_p->info.dist_percent.list_len = 0;
 	}
+
+      if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
+	{
+	  if (agg_p->info.percentile.percentile_reguvar != NULL)
+	    {
+	      pg_cnt += qexec_clear_regu_var (xasl, agg_p->info.percentile.percentile_reguvar, final);
+	    }
+	}
     }
+
+  return pg_cnt;
 }
 
 /*
