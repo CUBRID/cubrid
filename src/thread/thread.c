@@ -3357,7 +3357,7 @@ thread_page_flush_thread (void *arg_p)
 	}
 
       do
-      	{
+	{
 	  pgbuf_flush_victim_candidate (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
 	}
       while (pgbuf_keep_victim_flush_thread_active ());

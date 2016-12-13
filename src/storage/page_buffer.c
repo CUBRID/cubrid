@@ -585,7 +585,7 @@ struct pgbuf_bcb
 				 * obtained */
   volatile bool dirty;		/* Is page dirty ? */
 #if defined (PGBUF_ENABLE_FLUSH_LIST)
-  volatile bool is_flush_candidate;		/* true if BCB was already added in LRU flush list */
+  volatile bool is_flush_candidate;	/* true if BCB was already added in LRU flush list */
 #endif
   bool avoid_victim;
   bool async_flush_request;
@@ -749,7 +749,7 @@ struct pgbuf_page_monitor
   int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
   int *lru_victim_found_per_lru;	/* count of BCB victims found (by flush thread) */
   int *lru_victim_pressure_per_lru;	/* current pressure on LRU to increase due to victimization */
-  int *lru_victim_not_found_per_lru;    /* 1 when not found, 0 when found or maybe we can find */
+  int *lru_victim_not_found_per_lru;	/* 1 when not found, 0 when found or maybe we can find */
 
   /* for debug */
   int *lru_count_set_not_found_1_0;
@@ -864,8 +864,8 @@ struct pgbuf_buffer_pool
    * A victimizer thread can add BCBs while flushing thread is running (except for the duration a sinle flush array is
    * scanned - this is done without mutex on LRU), and cannot add BCBs which were in flush array and now in victim
    * candidates list until this BCB is flushed*/
-  PGBUF_BCB **victim_candidates_bcbs_per_lru;		/* array of lists (array) of pointers to flush candidates BCBs */
-  int *victim_candidates_count_lru;			/* current count of BCBs in LRU x */
+  PGBUF_BCB **victim_candidates_bcbs_per_lru;	/* array of lists (array) of pointers to flush candidates BCBs */
+  int *victim_candidates_count_lru;	/* current count of BCBs in LRU x */
 #endif
 
   PGBUF_SEQ_FLUSHER seq_chkpt_flusher;
@@ -1417,8 +1417,7 @@ pgbuf_initialize (void)
   pgbuf_Pool.victim_candidates_count_lru = ((int *) malloc (PGBUF_TOTAL_LRU * sizeof (int)));
   if (pgbuf_Pool.victim_candidates_count_lru == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (PGBUF_TOTAL_LRU * sizeof (int)));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (PGBUF_TOTAL_LRU * sizeof (int)));
       goto error;
     }
   memset (pgbuf_Pool.victim_candidates_count_lru, 0, PGBUF_TOTAL_LRU * sizeof (int));
@@ -4017,51 +4016,51 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
 	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
-          /* check flush conditions */
+	  /* check flush conditions */
 
-          if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid) || bufptr->dirty == false
-              || !LSA_EQ (&bufptr->oldest_unflush_lsa, &victim_cand_list[i].recLSA))
-            {
-              /* must be already flushed */
-              pthread_mutex_unlock (&bufptr->BCB_mutex);
-              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
-              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED);
-	      continue;
-            }
-
-	  
-	  if ((PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_LRU_2_ZONE
-               && PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_AIN_ZONE)
-	      || bufptr->latch_mode != PGBUF_NO_LATCH || bufptr->avoid_victim == true)
+	  if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid) || bufptr->dirty == false
+	      || !LSA_EQ (&bufptr->oldest_unflush_lsa, &victim_cand_list[i].recLSA))
 	    {
-              /* page was fixed or became hot after selected as victim. do not flush it. */
+	      /* must be already flushed */
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
-              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
-              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT);
+	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
+	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED);
 	      continue;
 	    }
 
-          if (logpb_need_wal (&(bufptr->iopage_buffer->iopage.prv.lsa)))
-            {
-              /* we cannot flush a page unless log has been flushed up until page LSA. otherwise we might have recovery
-               * issues. */
-              if (num_tries == 1)
-                {
-                  /* maybe next time */
-                  pthread_mutex_unlock (&bufptr->BCB_mutex);
-                  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
-                  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL);
-	          continue;
-                }
-              else
-                {
-                  /* we have to do this. we cannot flush a page without flushing log first */
-                  PERF_UTIME_TRACKER time_tracker_force_flush = PERF_UTIME_TRACKER_INITIALIZER;
-                  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_force_flush);
-                  logpb_flush_log_for_wal (thread_p, &(bufptr->iopage_buffer->iopage.prv.lsa));
-                  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_force_flush, PSTAT_PB_FLUSH_FORCE_LOG_FLUSH);
-                }
-            }
+
+	  if ((PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_LRU_2_ZONE
+	       && PGBUF_GET_ZONE (bufptr->zone_lru) != PGBUF_AIN_ZONE)
+	      || bufptr->latch_mode != PGBUF_NO_LATCH || bufptr->avoid_victim == true)
+	    {
+	      /* page was fixed or became hot after selected as victim. do not flush it. */
+	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
+	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT);
+	      continue;
+	    }
+
+	  if (logpb_need_wal (&(bufptr->iopage_buffer->iopage.prv.lsa)))
+	    {
+	      /* we cannot flush a page unless log has been flushed up until page LSA. otherwise we might have recovery
+	       * issues. */
+	      if (num_tries == 1)
+		{
+		  /* maybe next time */
+		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL);
+		  continue;
+		}
+	      else
+		{
+		  /* we have to do this. we cannot flush a page without flushing log first */
+		  PERF_UTIME_TRACKER time_tracker_force_flush = PERF_UTIME_TRACKER_INITIALIZER;
+		  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_force_flush);
+		  logpb_flush_log_for_wal (thread_p, &(bufptr->iopage_buffer->iopage.prv.lsa));
+		  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_force_flush, PSTAT_PB_FLUSH_FORCE_LOG_FLUSH);
+		}
+	    }
 
 	  if (PGBUF_NEIGHBOR_PAGES > 1)
 	    {
@@ -4079,9 +4078,9 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
 	  if (error != NO_ERROR)
 	    {
-              /* if this shows up in statistics or log, consider it a red flag */
+	      /* if this shows up in statistics or log, consider it a red flag */
 	      er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: error during flush");
-              perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FLUSH_ERROR);
+	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FLUSH_ERROR);
 	      goto end;
 	    }
 
@@ -4108,7 +4107,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	    }
 	}
 
-  /* temporary disable second iteration */
+      /* temporary disable second iteration */
 #if 0
       num_tries++;
     }
@@ -9011,7 +9010,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 #define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 500
 #define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 50000
 #define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 500
-#define PGBUF_LOOP_CNT_FORCE_PRIVATE 1    /* basically disabled */
+#define PGBUF_LOOP_CNT_FORCE_PRIVATE 1	/* basically disabled */
 
   PGBUF_BCB *victim = NULL;
   int shared_lru_idx = -1, private_lru_idx = -1;
@@ -9496,7 +9495,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 
 	      if (pos_in_lru < MAX_FLUSH_BCBS_LRU)
 		{
-		  pgbuf_Pool.victim_candidates_bcbs_per_lru[FLUSH_ARRAY_POSITION(lru_idx, pos_in_lru)] = bufptr;
+		  pgbuf_Pool.victim_candidates_bcbs_per_lru[FLUSH_ARRAY_POSITION (lru_idx, pos_in_lru)] = bufptr;
 		  /* the flush thread may reset the actual position to zero, we hold the mutex and we are the only ones
 		   * which increments the position; if actual position is zero, the current BCB pointer is simply lost
 		   * by flush list */
@@ -9544,13 +9543,13 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
 
       if (ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[lru_idx], 1) == 0)
-        {
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_1[lru_idx], 1);
-        }
+	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_1[lru_idx], 1);
+	}
       else
-        {
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_1[lru_idx], 1);
-        }
+	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_1[lru_idx], 1);
+	}
       return NULL;
     }
 
