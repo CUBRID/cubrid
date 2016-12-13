@@ -4102,7 +4102,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	}
 
   /* temporary disable second iteration */
-#if 1
+#if 0
       num_tries++;
     }
 #endif
