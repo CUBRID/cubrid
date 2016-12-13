@@ -3997,7 +3997,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
     }
 
   /* temporary disable second iteration */
-#if 1
+#if 0
   while (total_flushed_count <= 0 && num_tries <= 2)
     {
 #endif
