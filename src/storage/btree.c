@@ -27942,7 +27942,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
-	  return ER_FAILED;
+	  goto exit;
 	}
     }
 
@@ -30792,7 +30792,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
       log_sysop_start (thread_p);
       delete_helper->is_system_op_started = true;
-
 
       error_code =
 	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,

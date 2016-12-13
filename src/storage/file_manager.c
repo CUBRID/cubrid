@@ -5964,7 +5964,7 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      return error_code;
+	      goto exit;
 	    }
 	}
 
