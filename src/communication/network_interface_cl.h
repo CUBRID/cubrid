@@ -121,10 +121,13 @@ extern void log_set_interrupt (int set);
 extern int log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
 extern int log_set_suppress_repl_on_transaction (int set);
+
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern LOB_LOCATOR_STATE log_find_lob_locator (const char *locator, char *real_locator);
 extern int log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);
 extern int log_change_state_of_locator (const char *locator, const char *real_locator, LOB_LOCATOR_STATE state);
 extern int log_drop_lob_locator (const char *locator);
+#endif
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
@@ -387,4 +390,8 @@ extern int tran_lock_rep_read (LOCK lock_rr_tran);
 extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID * class_oidp);
 
 extern int log_does_active_user_exist (const char *user_name, bool * existed);
+#if defined (CS_MODE)
+extern int es_mark_delete_file (const char *path);
+#endif
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

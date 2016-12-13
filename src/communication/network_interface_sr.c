@@ -1853,6 +1853,7 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   db_private_free_and_init (NULL, buffer);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * slog_find_lob_locator -
  *
@@ -1988,7 +1989,7 @@ slog_drop_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   or_pack_int (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * sacl_reload -
  *
@@ -9572,5 +9573,43 @@ slocator_redistribute_partition_data (THREAD_ENTRY * thread_p, unsigned int rid,
 
 end:
   ptr = or_pack_int (reply, success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * ses_es_mark_delete_file -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+ses_es_mark_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *path;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  LOB_LOCATOR_STATE state;
+
+  ptr = or_unpack_string_nocopy (request, &path);
+
+  state = elo_get_lob_state_from_locator (path);
+  if (state == LOB_TRANSIENT_CREATED)
+    {
+      es_delete_file (path);
+      perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+    }
+  else
+    {
+      MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
+      es_notify_vacuum_for_delete (thread_p, mvcc_id, path);
+    }
+
+  ptr = or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

@@ -799,8 +799,34 @@ struct rvfun RV_fun[] = {
    "RVFL_EXTDATA_UPDATE_ITEM",
    pgbuf_rv_new_page_redo,
    NULL,
+   NULL},
+
+  {RVELO_CREATE_FILE,
+   "RVELO_CREATE_FILE",
+   elo_rv_undo_create_elo,
+   NULL,
    NULL,
    NULL},
+  {RVELO_DELETE_FILE,
+   "RVELO_DELETE_FILE",
+   NULL,
+   elo_rv_delete_elo,
+   NULL,
+   NULL},
+
+  {RVREPL_OOR_INSERT,
+   "RVREPL_OOR_INSERT",
+   NULL,
+   es_rv_nop,
+   NULL,
+   NULL},
+
+  {RVREPL_OOR_UPDATE,
+   "RVREPL_OOR_UPDATE",
+   NULL,
+   es_rv_nop,
+   NULL,
+   NULL}
 };
 
 /*

@@ -31,6 +31,9 @@
 #include "object_primitive.h"
 #include "db.h"
 #include "db_elo.h"
+#if defined (SERVER_MODE)
+#include "perf_monitor.h"
+#endif
 
 /*
  * db_elo.c - DB_API for ELO layer
@@ -160,6 +163,7 @@ db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT *
     {
       *read_bytes = ret;
     }
+
   return NO_ERROR;
 }
 
@@ -192,5 +196,6 @@ db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * writ
     {
       *written_bytes = ret;
     }
+
   return NO_ERROR;
 }

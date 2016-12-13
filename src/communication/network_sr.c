@@ -443,6 +443,7 @@ net_server_init (void)
   req_p->processing_function = slogtb_dump_trantable;
   req_p->name = "NET_SERVER_LOG_DUMP_TRANTB";
 
+#if 0
   req_p = &net_Requests[NET_SERVER_LOG_FIND_LOB_LOCATOR];
   req_p->processing_function = slog_find_lob_locator;
   req_p->name = "NET_SERVER_LOG_FIND_LOB_LOCATOR";
@@ -458,6 +459,7 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LOG_DROP_LOB_LOCATOR];
   req_p->processing_function = slog_drop_lob_locator;
   req_p->name = "NET_SERVER_LOG_DROP_LOB_LOCATOR";
+#endif
 
   req_p = &net_Requests[NET_SERVER_LOG_CHECKPOINT];
   req_p->processing_function = slog_checkpoint;
@@ -866,6 +868,11 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
+
+  req_p = &net_Requests[NET_SERVER_ES_MARK_DELETE_FILE];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = ses_es_mark_delete_file;
+  req_p->name = "NET_SERVER_ES_MARK_DELETE_FILE";
 }
 
 #if defined(CUBRID_DEBUG)

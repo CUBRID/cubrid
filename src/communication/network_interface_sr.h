@@ -61,10 +61,12 @@ extern void slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, un
 extern void slogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void slog_find_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slog_add_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slog_change_state_of_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slog_drop_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+#endif
 extern void sacl_reload (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -220,4 +222,5 @@ extern void schksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread
 							   int reqlen);
 extern void slogtb_does_active_user_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_redistribute_partition_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void ses_es_mark_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

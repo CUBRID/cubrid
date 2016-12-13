@@ -126,10 +126,12 @@ enum net_server_request
   NET_SERVER_LOG_DUMP_STAT,
   NET_SERVER_LOG_GETPACK_TRANTB,
   NET_SERVER_LOG_DUMP_TRANTB,
+#if defined (ENABLE_UNUSED_FUNCTION)
   NET_SERVER_LOG_FIND_LOB_LOCATOR,
   NET_SERVER_LOG_ADD_LOB_LOCATOR,
   NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR,
   NET_SERVER_LOG_DROP_LOB_LOCATOR,
+#endif /* ENABLE_UNUSED_FUNCTION */
   NET_SERVER_LOG_CHECKPOINT,
 
   NET_SERVER_LK_DUMP,
@@ -235,6 +237,8 @@ enum net_server_request
   NET_SERVER_LOCK_RR,
 
   NET_SERVER_TZ_GET_CHECKSUM,
+
+  NET_SERVER_ES_MARK_DELETE_FILE,
 
   /* Followings are not grouped because they are appended after the above. It is necessary to rearrange with changing
    * network compatibility. */

@@ -402,6 +402,8 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
 
   /* set result */
   pwc->unpack_info = unpack_info_p;
+  fflush (stdout);
+
   *pred = pwc;
 
 end:
@@ -507,7 +509,9 @@ stx_free_additional_buff (THREAD_ENTRY * thread_p, void *xasl_unpack_info)
       while (add_buff != NULL)
 	{
 	  temp = add_buff->next;
+	  //_er_log_debug (ARG_FILE_LINE, "free:add_buff->buff:%p", add_buff->buff);
 	  db_private_free_and_init (thread_p, add_buff->buff);
+	  //_er_log_debug (ARG_FILE_LINE, "free:add_buff:%p", add_buff);
 	  db_private_free_and_init (thread_p, add_buff);
 	  add_buff = temp;
 	}

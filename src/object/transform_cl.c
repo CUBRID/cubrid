@@ -127,7 +127,7 @@ static void tf_free_fixup (OR_FIXUP * fix);
 static void fixup_callback (LC_OIDMAP * oidmap);
 static int tf_do_fixup (OR_FIXUP * fix);
 static int put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size);
-static int object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr);
+static int object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr, bool * oor_flag);
 static int put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_);
 static char *get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag, int offset_size);
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
@@ -622,11 +622,11 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 	      len = att->domain->type->disksize;
 	    }
 
-	  or_put_offset_internal (buf, offset, offset_size);
+	  or_put_offset_internal (buf, offset, offset_size, OOR_COLUMN_DISABLED);
 	  offset += len;
 	}
 
-      or_put_offset_internal (buf, offset, offset_size);
+      or_put_offset_internal (buf, offset, offset_size, OOR_COLUMN_DISABLED);
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
   return rc;
@@ -640,7 +640,7 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
  *    obj(in): instance to examine
  */
 static int
-object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr)
+object_size (SM_CLASS * class_, MOBJ obj, int *offset_size_ptr, bool * oor_flag)
 {
   SM_ATTRIBUTE *att;
   char *mem;
@@ -657,16 +657,25 @@ re_check:
       size += OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr);
       for (a = class_->fixed_count; a < class_->att_count; a++)
 	{
+	  int att_size;
+
 	  att = &class_->attributes[a];
 	  mem = obj + att->offset;
 
 	  if (att->domain->type->data_lengthmem != NULL)
 	    {
-	      size += (*(att->domain->type->data_lengthmem)) (mem, att->domain, 1);
+	      att_size = (*(att->domain->type->data_lengthmem)) (mem, att->domain, 1);
 	    }
 	  else
 	    {
-	      size += att->domain->type->disksize;
+	      att_size = att->domain->type->disksize;
+	    }
+
+	  size += att_size;
+
+	  if (att_size > OBJECT_OOR_THRESHOLD_SIZE && TP_IS_OOR_TYPE (att->domain->type->id))
+	    {
+	      *oor_flag = true;
 	    }
 	}
     }
@@ -759,7 +768,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
  *    setjmp/longjmp.
  */
 TF_STATUS
-tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record, bool * index_flag)
+tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record, bool * index_flag, bool * oor_flag)
 {
   OR_BUF orep, *buf;
   SM_CLASS *volatile class_;	/* prevent register optimization */
@@ -794,7 +803,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
       return TF_ERROR;
     }
 
-  expected_size = object_size (class_, obj, &offset_size);
+  expected_size = object_size (class_, obj, &offset_size, oor_flag);
   if ((expected_size + OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE) > record->area_size)
     {
       record->length = -expected_size;
@@ -986,8 +995,14 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	{
 	  for (i = class_->fixed_count, j = 0; i < class_->att_count && j < class_->variable_count; i++, j++)
 	    {
+	      int oor_flag;
+
 	      att = &(class_->attributes[i]);
 	      mem = obj + att->offset;
+	      oor_flag =
+		OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL (OR_GET_OBJECT_VAR_TABLE (buf->buffer), j, offset_size);
+
+	      assert (oor_flag == 0);
 	      PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
 	    }
 	}
@@ -4211,7 +4226,10 @@ tf_disk_to_class (OID * oid, RECDES * record)
     {
     case 0:
       /* offset size */
-      assert (OR_GET_OFFSET_SIZE (buf->ptr) == BIG_VAR_OFFSET_SIZE);
+      if (OR_GET_OFFSET_SIZE (buf->ptr) != BIG_VAR_OFFSET_SIZE)
+	{
+	  assert (false);
+	}
 
       repid = or_get_int (buf, &rc);
       repid = repid & ~OR_OFFSET_SIZE_FLAG;
@@ -4410,7 +4428,9 @@ tf_object_size (MOBJ classobj, MOBJ obj)
   if (classobj != (MOBJ) (&sm_Root_class))
     {
       int dummy;
-      size = object_size ((SM_CLASS *) classobj, obj, &dummy);
+      bool dummy_oor;
+
+      size = object_size ((SM_CLASS *) classobj, obj, &dummy, &dummy_oor);
     }
   else if (obj == (MOBJ) (&sm_Root_class))
     {

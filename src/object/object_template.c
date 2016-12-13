@@ -2515,7 +2515,9 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		    }
 		}
 	      else
-		trstate = NULL;
+		{
+		  trstate = NULL;
+		}
 	    }
 	  else
 	    {
@@ -2562,7 +2564,9 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
     {
       a = template_ptr->assignments[i];
       if (a == NULL)
-	continue;
+	{
+	  continue;
+	}
 
       /* find memory pointer if this is an instance attribute */
       mem = NULL;
@@ -2642,6 +2646,11 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		    }
 		}
 	    }			/* if (a->att->type->id == DB_TYPE_BLOB) || */
+
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	    }
 	}			/* if (db_get_client_type () != */
 
       if (error == NO_ERROR)
@@ -2662,6 +2671,12 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	      /* non-template assignment */
 	      error = obt_apply_assignment (object, a->att, mem, a->variable, check_uniques);
 	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	    }
+
 	}
     }
 
@@ -2694,12 +2709,21 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	  if (event == TR_EVENT_INSERT)
 	    {
 	      error = tr_after_object (trstate, object, NULL);
+
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		}
 	    }
 	  else
 	    {
 	      /* mark the template as an "old" object */
 	      template_ptr->is_old_template = 1;
 	      error = tr_after_object (trstate, object, temp);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		}
 	    }
 	}
     }
@@ -2759,6 +2783,10 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	  /* update template object if this was a partitioned class */
 	  object = OBT_BASE_OBJECT (template_ptr);
 	}
+    }
+  else
+    {
+      ASSERT_ERROR ();
     }
 
   return error;

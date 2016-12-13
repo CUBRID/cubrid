@@ -952,7 +952,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
+#if 0
   RB_INIT (&tdes->lob_locator_root);
+#endif
 }
 
 /*
@@ -2004,7 +2006,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
+#if 0
   RB_INIT (&tdes->lob_locator_root);
+#endif
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;

@@ -694,11 +694,13 @@ static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, int i
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
-					    HEAP_CACHE_ATTRINFO * attr_info);
+					    OUT_OF_ROW_CONTEXT * oor_context, HEAP_CACHE_ATTRINFO * attr_info,
+					    HEAP_LOB_DELETE_FLAG lob_delete_flag);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr);
-
-static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr,
+				       int *size_gain_overflow_columns);
+static int heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * value,
+				HEAP_CACHE_ATTRINFO * attr_info, OUT_OF_ROW_CONTEXT * oor_context);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
@@ -743,9 +745,6 @@ static int heap_stats_bestspace_finalize (void);
 static int heap_get_spage_type (void);
 static bool heap_is_reusable_oid (const FILE_TYPE file_type);
 
-static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							   RECDES * old_recdes, RECDES * new_recdes,
-							   int lob_create_flag);
 static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
 static HEAP_BESTSPACE heap_stats_get_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
@@ -5781,7 +5780,7 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
   recdes.type = REC_ASSIGN_ADDRESS;
 
   /* create context */
-  heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid, &recdes, NULL);
+  heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid, &recdes, NULL, NULL);
 
   /* insert */
   rc = heap_insert_logical (thread_p, &insert_context);
@@ -7605,8 +7604,23 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  ASSERT_ERROR ();
 	  return S_ERROR;
 	}
-      return spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
+      scan = spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
 			       context->ispeeking);
+      if (scan != S_SUCCESS)
+	{
+	  return scan;
+	}
+
+      if (context->is_fetch_context)
+	{
+	  if (heap_expand_oor_attributes (thread_p, context) != NO_ERROR)
+	    {
+              ASSERT_ERROR ();
+	      return S_ERROR;
+	    }
+	}
+
+      return S_SUCCESS;
     default:
       break;
     }
@@ -9968,11 +9982,13 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
  *   recdes(in): Instance record descriptor
  *   value(in): Disk value attribute information
  *   attr_info(in/out): The attribute information structure
+ *   oor_context(in/out):
  *
  * Note: Read the dbvalue of the given value attribute information.
  */
 static int
-heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+		     OUT_OF_ROW_CONTEXT * oor_context)
 {
   OR_BUF buf;
   PR_TYPE *pr_type;		/* Primitive type array function structure */
@@ -9981,6 +9997,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   int disk_bound = false;
   volatile int disk_length = -1;
   int ret = NO_ERROR;
+  int is_out_of_row = false;
 
   /* Initialize disk value information */
   disk_data = NULL;
@@ -10044,6 +10061,11 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	       */
 	      disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, value->read_attrepr->location));
 
+	      is_out_of_row =
+		OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							      value->read_attrepr->location,
+							      OR_GET_OFFSET_SIZE (recdes->data));
+
 	      disk_bound = true;
 	      switch (TP_DOMAIN_TYPE (attrepr->domain))
 		{
@@ -10075,7 +10097,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       (void) pr_clear_value (&value->dbvalue);
     }
 
-
   /* 
    * Now make the dbvalue according to the disk data value
    */
@@ -10105,12 +10126,105 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	   * semantics for length. A negative length value for strings means "don't copy the string, just use the
 	   * pointer". For sets, don't translate the set into memory representation at this time.  It will only be
 	   * translated when needed. */
-	  pr_type = PR_TYPE_FROM_ID (attrepr->type);
-	  if (pr_type)
+	  if (is_out_of_row)
 	    {
-	      (*(pr_type->data_readval)) (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
+	      PR_TYPE *pr_type_clob;	/* Primitive type array function structure */
+	      DB_VALUE tmp_clob_value;
+	      RECDES *out_of_row_recdes_p = NULL;
+	      OR_BUF out_of_row_buf;
+
+	      pr_type_clob = PR_TYPE_FROM_ID (DB_TYPE_CLOB);
+
+	      if (oor_context == NULL || oor_context->oor_mode == HEAPATTR_READ_OOR_LOCATION_ONLY)
+		{
+		  (*(pr_type_clob->data_readval)) (&buf, &value->dbvalue, NULL, disk_length, false, NULL, 0);
+		}
+	      else if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_LOB)
+		{
+		  DB_BIGINT clob_size;
+		  char *clob_buf = NULL;
+
+		  (*(pr_type_clob->data_readval)) (&buf, &tmp_clob_value, NULL, disk_length, false, NULL, 0);
+
+		  clob_size = db_elo_size (DB_GET_ELO (&tmp_clob_value));
+		  clob_buf = db_private_alloc (thread_p, clob_size);
+		  if (clob_buf == NULL)
+		    {
+		      ret = ER_OUT_OF_VIRTUAL_MEMORY;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, clob_size);
+		      break;
+		    }
+
+		  ret = (int) elo_read (DB_GET_ELO (&tmp_clob_value), 0, clob_buf, clob_size);
+		  if (ret < NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      break;
+		    }
+		  else
+		    {
+		      ret = NO_ERROR;
+		    }
+
+		  OR_BUF_INIT2 (out_of_row_buf, clob_buf, clob_size);
+
+		  pr_type = PR_TYPE_FROM_ID (attrepr->type);
+		  if (pr_type)
+		    {
+		      (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
+						  true, NULL, 0);
+		    }
+		  if (clob_buf != NULL)
+		    {
+		      db_private_free (thread_p, clob_buf);
+		    }
+		}
+	      else		/* if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_LOB) */
+		{
+		  int i, oor_pos = -1;
+
+		  assert (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_OOR_RECDES);
+		  assert (oor_context->oor_atts != NULL);
+
+		  for (i = 0; i < oor_context->oor_atts->att_capacity; i++)
+		    {
+		      if (oor_context->oor_atts->att_ids[i] == value->attrid)
+			{
+			  oor_pos = i;
+			  break;
+			}
+		    }
+
+		  assert (oor_pos != -1);
+		  out_of_row_recdes_p = &(oor_context->oor_atts->oor_recdes[oor_pos]);
+
+		  OR_BUF_INIT2 (out_of_row_buf, out_of_row_recdes_p->data, out_of_row_recdes_p->length);
+		  pr_type = PR_TYPE_FROM_ID (attrepr->type);
+		  if (pr_type)
+		    {
+		      (*(pr_type->data_readval)) (&out_of_row_buf, &value->dbvalue, attrepr->domain, disk_length,
+						  true, NULL, 0);
+		    }
+		}
 	    }
-	  value->state = HEAP_READ_ATTRVALUE;
+	  else			/* if (is_out_of_row) */
+	    {
+	      pr_type = PR_TYPE_FROM_ID (attrepr->type);
+	      if (pr_type)
+		{
+		  (*(pr_type->data_readval)) (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
+		}
+	    }
+
+	  if (is_out_of_row && oor_context->oor_mode == HEAPATTR_READ_OOR_LOCATION_ONLY)
+	    {
+	      value->state = HEAP_READ_ATTRVALUE_OOR_LOB;
+	    }
+	  else
+	    {
+	      value->state = HEAP_READ_ATTRVALUE;
+	    }
+
 	  break;
 	default:
 	  /* 
@@ -10130,6 +10244,73 @@ exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
+
+
+/*
+ * heap_attrvalue_read_oor_location () - Read oor attribute information of given attribute cache
+ *					 and instance
+ *   return: NO_ERROR
+ *   recdes(in): Instance record descriptor
+ *   value(in): Disk value attribute information
+ *   attr_info(in/out): The attribute information structure
+ *
+ * Note: Read the dbvalue of the given value attribute information.
+ */
+static int
+heap_attrvalue_read_oor_location (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * value,
+				  HEAP_CACHE_ATTRINFO * attr_info, DB_VALUE * oor_value)
+{
+  OR_BUF buf;
+  OR_ATTRIBUTE *volatile attrepr;
+  char *disk_data = NULL;
+  int disk_bound = false;
+  int ret = NO_ERROR;
+  int is_out_of_row = false;
+  PR_TYPE *pr_type_clob;	/* Primitive type array function structure */
+
+  /* Initialize disk value information */
+  disk_data = NULL;
+  disk_bound = false;
+
+  assert (oor_value != NULL);
+
+  if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
+      || value->attr_type == HEAP_CLASS_ATTR || value->read_attrepr->is_fixed != 0)
+    {
+      return NO_ERROR;
+    }
+  else
+    {
+      attrepr = value->read_attrepr;
+      if (!TP_IS_OOR_TYPE (TP_DOMAIN_TYPE (attrepr->domain))
+	  || OR_VAR_IS_NULL (recdes->data, value->read_attrepr->location))
+	{
+	  return NO_ERROR;
+	}
+
+      disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, value->read_attrepr->location));
+
+      is_out_of_row =
+	OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+						      value->read_attrepr->location, OR_GET_OFFSET_SIZE (recdes->data));
+      if (is_out_of_row == 0)
+	{
+	  return NO_ERROR;
+	}
+
+      disk_bound = true;
+    }
+
+  OR_BUF_INIT2 (buf, disk_data, -1);
+  buf.error_abort = 1;
+
+  pr_type_clob = PR_TYPE_FROM_ID (DB_TYPE_CLOB);
+  assert (pr_type_clob != NULL);
+  (*(pr_type_clob->data_readval)) (&buf, oor_value, NULL, -1, false, NULL, 0);
+
+  return NO_ERROR;
+}
+
 
 /*
  * heap_midxkey_get_value () -
@@ -10227,6 +10408,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  *   recdes(in): The instance Record descriptor
  *   attr_info(in/out): The attribute information structure which describe the
  *                      desired attributes
+ *   oor_context(in): out of row context
  *
  * Note: Find DB_VALUES of desired attributes of given instance.
  * The attr_info structure must have already been initialized
@@ -10238,7 +10420,8 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  */
 int
 heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-			     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info)
+			     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
+			     OUT_OF_ROW_CONTEXT * oor_context)
 {
   int i;
   REPR_ID reprid;		/* The disk representation of the object */
@@ -10277,7 +10460,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
-      ret = heap_attrvalue_read (recdes, value, attr_info);
+      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, oor_context);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -10307,6 +10490,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
   REPR_ID reprid;		/* The disk representation of the object */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   /* check to make sure the attr_info has been used */
   if (attr_info->num_values == -1)
@@ -10340,7 +10524,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
-      ret = heap_attrvalue_read (recdes, value, attr_info);
+      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, &oor_context);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -10362,13 +10546,16 @@ exit_on_error:
  *   recdes(in): The instance Record descriptor
  *   attr_info(in): The attribute information structure which describe the
  *                  desired attributes
+ *   delete_only_oor_lob(in): DELETE_ALL_LOBS or DELETE_ONLY_OOR_LOB
  *
  */
 int
-heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+			  HEAP_ATTR_LOB_DELETE_TYPE delete_only_oor_lob)
 {
   int i;
   HEAP_ATTRVALUE *value;
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
   int ret = NO_ERROR;
 
   assert (attr_info != NULL);
@@ -10400,11 +10587,13 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
-      if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
+
+      if (delete_only_oor_lob == DELETE_ALL_LOBS
+	  && (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB))
 	{
 	  if (value->state == HEAP_UNINIT_ATTRVALUE && recdes != NULL)
 	    {
-	      ret = heap_attrvalue_read (recdes, value, attr_info);
+	      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, &oor_context);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -10421,6 +10610,26 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 		  ret = db_elo_delete (elo);
 		}
 	      value->state = HEAP_WRITTEN_ATTRVALUE;
+	    }
+	}
+      else if (TP_IS_OOR_TYPE (value->last_attrepr->type))
+	{
+	  DB_VALUE tmp_value;
+
+	  DB_MAKE_NULL (&tmp_value);
+
+	  ret = heap_attrvalue_read_oor_location (thread_p, recdes, value, attr_info, &tmp_value);
+	  if (!db_value_is_null (&tmp_value))
+	    {
+	      DB_ELO *elo;
+	      assert (db_value_type (&tmp_value) == DB_TYPE_CLOB);
+	      elo = db_get_elo (&tmp_value);
+	      if (elo)
+		{
+		  ret = db_elo_delete (elo);
+		}
+	      value->state = HEAP_WRITTEN_ATTRVALUE;
+	      pr_clear_value (&tmp_value);
 	    }
 	}
     }
@@ -11193,8 +11402,10 @@ exit_on_error:
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
  *   recdes(in): The instance record descriptor
+ *   oor_context(in/out): out of row context
  *   attr_info(in/out): The attribute information structure which describe the
  *                      desired attributes
+ *   lob_delete_flag(in): LOB deletion flag
  *
  * Note: Read the db values of the unitialized attributes from the
  * given recdes. This function is used when we are ready to
@@ -11208,7 +11419,8 @@ exit_on_error:
  */
 static int
 heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
-				 HEAP_CACHE_ATTRINFO * attr_info)
+				 OUT_OF_ROW_CONTEXT * oor_context, HEAP_CACHE_ATTRINFO * attr_info,
+                                 HEAP_LOB_DELETE_FLAG lob_delete_flag)
 {
   int i;
   REPR_ID reprid;		/* Representation of object */
@@ -11253,47 +11465,82 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
-	  ret = heap_attrvalue_read (recdes, value, attr_info);
+	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, oor_context);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 	}
-      else if (value->state == HEAP_WRITTEN_ATTRVALUE
-	       && (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB))
+      else if (value->state == HEAP_WRITTEN_ATTRVALUE && lob_delete_flag == LOB_DELETE_ON_ATTR_INIT)
 	{
-	  DB_VALUE *save;
-	  save = db_value_copy (&value->dbvalue);
-	  db_value_clear (&value->dbvalue);
-
-	  /* read and delete old value */
-	  ret = heap_attrvalue_read (recdes, value, attr_info);
-	  if (ret != NO_ERROR)
+	  if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
 	    {
-	      goto exit_on_error;
-	    }
-	  if (!db_value_is_null (&value->dbvalue))
-	    {
-	      DB_ELO *elo;
-
-	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BLOB
-		      || db_value_type (&value->dbvalue) == DB_TYPE_CLOB);
-	      elo = db_get_elo (&value->dbvalue);
-	      if (elo)
-		{
-		  ret = db_elo_delete (elo);
-		}
+	      DB_VALUE *save;
+	      save = db_value_copy (&value->dbvalue);
 	      db_value_clear (&value->dbvalue);
-	      ret = (ret >= 0 ? NO_ERROR : ret);
+
+	      /* read and delete old value */
+	      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, oor_context);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
+	      if (!db_value_is_null (&value->dbvalue))
+		{
+		  DB_ELO *elo;
+
+		  assert (db_value_type (&value->dbvalue) == DB_TYPE_BLOB
+			  || db_value_type (&value->dbvalue) == DB_TYPE_CLOB);
+		  elo = db_get_elo (&value->dbvalue);
+		  if (elo)
+		    {
+		      ret = db_elo_delete (elo);
+		    }
+		  db_value_clear (&value->dbvalue);
+		  ret = (ret >= 0 ? NO_ERROR : ret);
+		  if (ret != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+		}
+	      value->state = HEAP_WRITTEN_ATTRVALUE;
+	      db_value_clone (save, &value->dbvalue);
+	      db_value_free (save);
 	    }
-	  value->state = HEAP_WRITTEN_ATTRVALUE;
-	  db_value_clone (save, &value->dbvalue);
-	  db_value_free (save);
+	  else if (TP_IS_OOR_TYPE (value->last_attrepr->type))
+	    {
+	      DB_VALUE oor_location;
+
+	      DB_MAKE_NULL (&oor_location);
+	      /* read and delete old value */
+	      ret = heap_attrvalue_read_oor_location (thread_p, recdes, value, attr_info, &oor_location);
+	      if (ret != NO_ERROR)
+		{
+                  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+
+	      if (!db_value_is_null (&oor_location))
+		{
+		  DB_ELO *elo;
+
+		  assert (db_value_type (&oor_location) == DB_TYPE_CLOB);
+		  elo = db_get_elo (&oor_location);
+		  if (elo)
+		    {
+		      ret = db_elo_delete (elo);
+		    }
+		  db_value_clear (&oor_location);
+		  ret = (ret >= 0 ? NO_ERROR : ret);
+		  if (ret != NO_ERROR)
+		    {
+                      ASSERT_ERROR ();
+		      goto exit_on_error;
+		    }
+		}
+	    }
 	}
+
     }
 
   if (recdes != NULL)
@@ -11319,19 +11566,22 @@ exit_on_error:
  *   attr_info(in/out): The attribute information structure
  *   is_mvcc_class(in): true, if MVCC class
  *   offset_size_ptr(out): offset size
+ *   size_without_overflow_columns(out): total size of record if overflow columns are used (including OID of overflow)
  *
  * Note: Find the disk size needed to transform the object represented
  * by the attribute information structure.
  */
 static int
-heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr)
+heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr,
+			    int *size_without_overflow_columns)
 {
-  int i, size;
+  int i, size, column_size, size_gain_overflow_columns;
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
 
   *offset_size_ptr = OR_BYTE_SIZE;
 
 re_check:
+  size_gain_overflow_columns = 0;
   size = 0;
   for (i = 0; i < attr_info->num_values; i++)
     {
@@ -11339,11 +11589,17 @@ re_check:
 
       if (value->last_attrepr->is_fixed != 0)
 	{
-	  size += tp_domain_disk_size (value->last_attrepr->domain);
+	  column_size = tp_domain_disk_size (value->last_attrepr->domain);
+	  size += column_size;
 	}
       else
 	{
-	  size += pr_data_writeval_disk_size (&value->dbvalue);
+	  column_size = pr_data_writeval_disk_size (&value->dbvalue);
+	  size += column_size;
+	  if (pr_is_oor_value (&value->dbvalue))
+	    {
+	      size_gain_overflow_columns += column_size - OBJECT_OOR_THRESHOLD_SIZE;
+	    }
 	}
     }
 
@@ -11358,6 +11614,8 @@ re_check:
 
   size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
   size += OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable);
+
+  *size_without_overflow_columns = size - size_gain_overflow_columns;
 
   if (*offset_size_ptr == OR_BYTE_SIZE && size > OR_MAX_BYTE)
     {
@@ -11374,61 +11632,22 @@ re_check:
 }
 
 /*
- * heap_attrinfo_transform_to_disk () - Transform to disk an attribute information
- *                               kind of instance
+ * heap_attrinfo_transform_to_disk () - Transform to disk an attribute information kind of instance
  *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT,
- *                      S_ERROR)
+ *           (Either of S_SUCCESS, S_DOESNT_FIT, S_ERROR)
  *   attr_info(in/out): The attribute information structure
  *   old_recdes(in): where the object's disk format is deposited
  *   new_recdes(in):
+ *   oor_context(in): out of row context
+ *   lob_create_flag(in): LOB create flag
+ *   lob_delete_flag(in): LOB delete flag
  *
  * Note: Transform the object represented by attr_info to disk format
  */
 SCAN_CODE
 heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-				 RECDES * new_recdes)
-{
-  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_INCLUDE_LOB);
-}
-
-/*
- * heap_attrinfo_transform_to_disk_except_lob () -
- *                           Transform to disk an attribute information
- *                           kind of instance. Do not create lob.
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT,
- *                      S_ERROR)
- *   attr_info(in/out): The attribute information structure
- *   old_recdes(in): where the object's disk format is deposited
- *   new_recdes(in):
- *
- * Note: Transform the object represented by attr_info to disk format
- */
-SCAN_CODE
-heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					    RECDES * old_recdes, RECDES * new_recdes)
-{
-  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_EXCLUDE_LOB);
-}
-
-/*
- * heap_attrinfo_transform_to_disk_internal () -
- *                         Transform to disk an attribute information
- *                         kind of instance.
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT,
- *                      S_ERROR)
- *   attr_info(in/out): The attribute information structure
- *   old_recdes(in): where the object's disk format is deposited
- *   new_recdes(in):
- *   lob_create_flag(in):
- *
- * Note: Transform the object represented by attr_info to disk format
- */
-static SCAN_CODE
-heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-					  RECDES * new_recdes, int lob_create_flag)
+				 RECDES * new_recdes, OUT_OF_ROW_CONTEXT * oor_context,
+                                 HEAP_LOB_CREATE_FLAG lob_create_flag, HEAP_LOB_DELETE_FLAG lob_delete_flag)
 {
   OR_BUF orep, *buf;
   char *ptr_bound, *ptr_varvals;
@@ -11443,6 +11662,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   volatile int offset_size;
   int mvcc_wasted_space = 0, header_size;
   bool is_mvcc_class;
+  int size_without_overflow_columns;
+  int overflow_columns_cnt = 0;
+  bool check_oor_column = true;
 
   /* check to make sure the attr_info has been used, it should not be empty. */
   if (attr_info->num_values == -1)
@@ -11450,10 +11672,11 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
-  /* 
+  /*
    * Get any of the values that have not been set/read
    */
-  if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
+  if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, oor_context, attr_info,
+				       lob_delete_flag) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -11463,8 +11686,20 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   buf = &orep;
 
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
-  expected_size = heap_attrinfo_get_disksize (attr_info, is_mvcc_class, &tmp);
+  expected_size = heap_attrinfo_get_disksize (attr_info, is_mvcc_class, &tmp, &size_without_overflow_columns);
   offset_size = tmp;
+
+  if (attr_info->num_values > 1
+      && (oor_context != NULL && oor_context->oor_atts != NULL)
+      && size_without_overflow_columns < expected_size
+      && !heap_is_big_length (size_without_overflow_columns))
+    {
+      check_oor_column = true;
+    }
+  else
+    {
+      check_oor_column = false;
+    }
 
   if (is_mvcc_class)
     {
@@ -11497,6 +11732,11 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       if ((attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable) != 0)
 	{
 	  repid_bits |= OR_BOUND_BIT_FLAG;
+	}
+
+      if (check_oor_column)
+	{
+	  repid_bits |= OR_OOR_BIT_FLAG;
 	}
 
       /* offset size */
@@ -11561,6 +11801,54 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	{
 	  new_recdes->length = -expected_size;	/* set to negative */
 	  return S_DOESNT_FIT;
+	}
+
+      if (check_oor_column)
+	{
+	  /* count overflow recdes */
+	  for (i = 0; i < attr_info->num_values; i++)
+	    {
+	      value = &attr_info->values[i];
+	      dbvalue = &value->dbvalue;
+	      pr_type = value->last_attrepr->domain->type;
+	      if (pr_type == NULL)
+		{
+		  return S_ERROR;
+		}
+
+	      if (value->last_attrepr->is_fixed == 0 && pr_is_oor_value (dbvalue))
+		{
+		  overflow_columns_cnt++;
+		}
+	    }
+	}
+
+      if (overflow_columns_cnt > 0)
+	{
+	  OUT_OF_ROW_ATTS *out_of_row_atts = oor_context->oor_atts;
+
+	  out_of_row_atts->att_capacity = overflow_columns_cnt;
+	  out_of_row_atts->att_cnt = 0;
+	  out_of_row_atts->oor_recdes = (RECDES *)
+	    db_private_alloc (thread_p, out_of_row_atts->att_capacity * sizeof (out_of_row_atts->oor_recdes[0]));
+	  if (out_of_row_atts->oor_recdes == NULL)
+	    {
+	      return S_ERROR;
+	    }
+	  memset (out_of_row_atts->oor_recdes, 0, out_of_row_atts->att_capacity
+		  * sizeof (out_of_row_atts->oor_recdes[0]));
+
+	  out_of_row_atts->att_ids = (int *) db_private_alloc (thread_p, out_of_row_atts->att_capacity
+							       * sizeof (out_of_row_atts->att_ids[0]));
+	  if (out_of_row_atts->att_ids == NULL)
+	    {
+	      return S_ERROR;
+	    }
+	  memset (out_of_row_atts->att_ids, 0, out_of_row_atts->att_capacity * sizeof (out_of_row_atts->att_ids[0]));
+	}
+      else
+	{
+	  check_oor_column = false;
 	}
 
       for (i = 0; i < attr_info->num_values; i++)
@@ -11628,6 +11916,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    }
 	  else
 	    {
+	      bool is_oor = OOR_COLUMN_DISABLED;
+	      bool copy_oor_location = false;
+
 	      /* 
 	       * Variable attribute
 	       *  1) Set the offset to this value in the variable offset table
@@ -11646,20 +11937,114 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		  break;
 		}
 
+	      is_oor = (check_oor_column && pr_is_oor_value (dbvalue)) ? OOR_COLUMN_ENABLED : OOR_COLUMN_DISABLED;
+
+	      if (value->state == HEAP_READ_ATTRVALUE_OOR_LOB)
+		{
+		  assert (DB_VALUE_TYPE (dbvalue) == DB_TYPE_CLOB);
+		  assert (TP_DOMAIN_TYPE (value->last_attrepr->domain) != DB_TYPE_CLOB);
+
+		  copy_oor_location = true;
+		  is_oor = OOR_COLUMN_ENABLED;
+		}
+
 	      buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
 	      /* compute the variable offsets relative to the end of the header (beginning of variable table) */
-	      or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+	      or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size, is_oor);
 
 	      if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
 		{
+		  DB_VALUE temp_clob_value, perm_clob_value;
+		  PR_TYPE *pr_type_clob;
+		  DB_ELO perm_clob_elo;
+
+		  pr_type_clob = pr_type_from_id (DB_TYPE_CLOB);
+
 		  /* 
 		   * Now write the value and remember the current pointer
 		   * to variable value array for the next element.
 		   */
 		  buf->ptr = ptr_varvals;
+		  DB_MAKE_NULL (&temp_clob_value);
+		  DB_MAKE_NULL (&perm_clob_value);
 
-		  if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-		      && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
+		  if (is_oor)
+		    {
+		      int overflow_col_size;
+		      OR_BUF overflow_col_buf;
+		      char *overflow_col_data;
+		      int lob_offset_in_home;
+
+		      if (copy_oor_location)
+			{
+			  assert (DB_VALUE_TYPE (dbvalue) == DB_TYPE_CLOB);
+			  pr_type = pr_type_clob;
+			}
+		      else
+			{
+			  INT64 written_bytes;
+			  int err = NO_ERROR;
+			  char *new_meta_data;
+			  DB_ELO *elo_p;
+
+			  err = db_create_fbo (&temp_clob_value, DB_TYPE_CLOB);
+			  if (err != NO_ERROR)
+			    {
+			      return S_ERROR;
+			    }
+
+			  new_meta_data = heap_get_class_name (thread_p, &(attr_info->class_oid));
+
+			  if (new_meta_data == NULL)
+			    {
+			      status = S_ERROR;
+			      break;
+			    }
+			  elo_p = db_get_elo (&temp_clob_value);
+			  elo_p->meta_data = new_meta_data;
+
+			  lob_offset_in_home = CAST_BUFLEN (buf->ptr - buf->buffer);
+
+			  overflow_col_size = pr_data_writeval_disk_size (dbvalue);
+			  overflow_col_data = (char *) db_private_alloc (thread_p, overflow_col_size);
+			  if (overflow_col_data == NULL)
+			    {
+			      return S_ERROR;
+			    }
+
+			  OR_BUF_INIT2 (overflow_col_buf, overflow_col_data, overflow_col_size);
+
+			  pr_type->data_writeval (&overflow_col_buf, dbvalue);
+
+			  err = db_elo_write (DB_GET_ELO (&temp_clob_value), 0, overflow_col_buf.buffer,
+					      overflow_col_size, &written_bytes);
+			  if (err != NO_ERROR)
+			    {
+			      return S_ERROR;
+			    }
+
+			  oor_context->oor_atts->oor_recdes[oor_context->oor_atts->att_cnt].data = overflow_col_data;
+			  oor_context->oor_atts->oor_recdes[oor_context->oor_atts->att_cnt].area_size =
+			    overflow_col_size;
+			  oor_context->oor_atts->oor_recdes[oor_context->oor_atts->att_cnt].length = overflow_col_size;
+			  oor_context->oor_atts->att_ids[oor_context->oor_atts->att_cnt] = value->attrid;
+			  oor_context->oor_atts->att_cnt++;
+
+			  db_elo_copy (db_get_elo (&temp_clob_value), &perm_clob_elo);
+
+			  free_and_init (elo_p->meta_data);
+
+			  db_make_elo (&perm_clob_value, pr_type_clob->id, &perm_clob_elo);
+			  perm_clob_value.need_clear = true;
+
+			  pr_clear_value (&temp_clob_value);
+
+			  dbvalue = &perm_clob_value;
+			  pr_type = pr_type_clob;
+			}
+		    }
+		  else if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
+			   && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
 		    {
 		      DB_ELO dest_elo, *elo_p;
 		      char *save_meta_data, *new_meta_data;
@@ -11708,6 +12093,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		    }
 
 		  (*(pr_type->data_writeval)) (buf, dbvalue);
+
+		  pr_clear_value (&perm_clob_value);
+
 		  ptr_varvals = buf->ptr;
 		}
 	    }
@@ -11723,7 +12111,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 	  /* Write the offset to the end of the variable attributes table */
 	  buf->ptr = ((char *) (OR_VAR_ELEMENT_PTR (buf->buffer, attr_info->last_classrepr->n_variable)));
-	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
+	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size,
+				  OOR_COLUMN_DISABLED);
 	  buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 	}
 
@@ -13191,6 +13580,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
   int cnt;			/* set element count */
   int new_max_oid;
   int i, j;			/* loop counters */
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   /* 
    * We don't support class references in this function
@@ -13201,7 +13591,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
     }
 
   if ((heap_attrinfo_start_refoids (thread_p, class_oid, &attr_info) != NO_ERROR)
-      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, NULL, &attr_info) != NO_ERROR)
+      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, NULL, &attr_info, &oor_context) != NO_ERROR)
     {
       goto error;
     }
@@ -13940,8 +14330,8 @@ heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr)
 
   fprintf (fp, "CLASS_OID = %2d|%4d|%2d, ", heap_hdr->class_oid.volid, heap_hdr->class_oid.pageid,
 	   heap_hdr->class_oid.slotid);
-  fprintf (fp, "OVF_VFID = %4d|%4d, NEXT_VPID = %4d|%4d\n", heap_hdr->ovf_vfid.volid, heap_hdr->ovf_vfid.fileid,
-	   heap_hdr->next_vpid.volid, heap_hdr->next_vpid.pageid);
+  fprintf (fp, "OVF_VFID = %4d|%4d, NEXT_VPID = %4d|%4d\n",
+	   heap_hdr->ovf_vfid.volid, heap_hdr->ovf_vfid.fileid, heap_hdr->next_vpid.volid, heap_hdr->next_vpid.pageid);
   fprintf (fp, "unfill_space = %4d\n", heap_hdr->unfill_space);
   fprintf (fp, "Estimated: num_pages = %d, num_recs = %d,  avg reclength = %d\n", heap_hdr->estimates.num_pages,
 	   heap_hdr->estimates.num_recs, avg_length);
@@ -14006,6 +14396,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   int ret = NO_ERROR;
   PGBUF_WATCHER pg_watcher;
   PGBUF_WATCHER old_pg_watcher;
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
@@ -14132,7 +14523,8 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
 		       peek_recdes.length);
 
-	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info) != NO_ERROR)
+	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info, &oor_context)
+		  != NO_ERROR)
 		{
 		  fprintf (fp, "  Error ... continue\n");
 		  continue;
@@ -15626,7 +16018,8 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       HEAP_SET_RECORD (&recdes, IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0, record_type,
 		       PTR_ALIGN (data_buffer, MAX_ALIGNMENT));
-      or_mvcc_add_header (&recdes, &mvcc_rec_header, repid_and_flags & OR_BOUND_BIT_FLAG, offset_size);
+      or_mvcc_add_header (&recdes, &mvcc_rec_header, repid_and_flags & OR_BOUND_BIT_FLAG,
+			  repid_and_flags & OR_OOR_BIT_FLAG, offset_size);
 
       memcpy (recdes.data + recdes.length, rcv->data + offset, rcv->length - offset);
       recdes.length += (rcv->length - offset);
@@ -16570,6 +16963,7 @@ exit_on_error:
   return ret;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * heap_attrinfo_set_uninitialized_global () -
  *   return: NO_ERROR
@@ -16586,8 +16980,9 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
       return ER_FAILED;
     }
 
-  return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info);
+  return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, NULL, attr_info);
 }
+#endif
 
 /*
  * heap_get_hfid_from_class_oid () - get HFID from class oid
@@ -17028,6 +17423,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	      goto exit;
 	    }
 
+	  er_clear ();
+
 	  if (error == ER_IT_DATA_OVERFLOW)
 	    {
 	      int is_positive = -1;	/* -1:UNKNOWN, 0:negative, 1:positive */
@@ -17248,6 +17645,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
   ATTR_ID *atts = NULL;
   bool atts_free = false, attrinfo_clear = false, attrinfo_end = false;
   HEAP_CACHE_ATTRINFO *cache_attr_info = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   if (func_index_info == NULL && btid_index > -1 && n_atts == -1)
     {
@@ -17310,7 +17708,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 	  attrinfo_end = true;
 	}
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, NULL, cache_attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, NULL, cache_attr_info, &oor_context)
+	  != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto end;
@@ -19427,6 +19826,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   OID_SET_NULL (&context->class_oid);
   context->recdes_p = NULL;
   context->scan_cache_p = NULL;
+  context->oor_context_p = NULL;
 
   context->map_recdes.data = NULL;
   context->map_recdes.length = 0;
@@ -19943,7 +20343,6 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 #endif /* SERVER_MODE */
 	{
 	  int curr_header_size, new_header_size;
-
 	  /* strip MVCC information */
 	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
@@ -20261,7 +20660,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
   assert (parent_context->type == HEAP_OPERATION_DELETE || parent_context->type == HEAP_OPERATION_UPDATE);
 
   /* build insert context */
-  heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL);
+  heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL, NULL);
 
   /* physical insertion */
   error_code = heap_find_location_and_insert_rec_newhome (thread_p, &ins_context);
@@ -20422,6 +20821,28 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	  log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL, recdes_p);
 	}
     }
+}
+
+/*
+ * heap_log_replication_oor () - add logging information for physical OOR operation (insert or update)
+ *   thread_p(in): thread entry
+ *   page_p(in): page where insert was performed
+ *   vfid_p(in): virtual file id
+ *   oid_p(in): newly inserted object id
+ *   recdes_p(in): record descriptor of inserted record
+ */
+static void
+heap_log_replication_oor (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, LOG_RCVINDEX rcvindex,
+			  RECDES * recdes_p)
+{
+  LOG_DATA_ADDR log_addr;
+
+  /* populate address field */
+  log_addr.vfid = vfid_p;
+  log_addr.offset = oid_p->slotid;
+  log_addr.pgptr = page_p;
+
+  log_append_redo_recdes (thread_p, rcvindex, &log_addr, recdes_p);
 }
 
 /*
@@ -20869,7 +21290,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  assert (forward_rec_header.mvcc_flag == mvcc_flags);
 	  heap_delete_adjust_header (&forward_rec_header, mvcc_id, is_adjusted_size_big);
 	  or_mvcc_add_header (&new_forward_recdes, &forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
-			      OR_GET_OFFSET_SIZE (forward_recdes.data));
+			      OR_GET_OOR_BIT_FLAG (forward_recdes.data), OR_GET_OFFSET_SIZE (forward_recdes.data));
 
 	  forward_rec_header_size = mvcc_header_size_lookup[mvcc_flags];
 	  memcpy (new_forward_recdes.data + new_forward_recdes.length, forward_recdes.data + forward_rec_header_size,
@@ -21289,10 +21710,11 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  assert (record_header.mvcc_flag == mvcc_flags);
 
+	  assert (record_header.mvcc_flag == mvcc_flags);
 	  heap_delete_adjust_header (&record_header, mvcc_id, is_adjusted_size_big);
 	  or_mvcc_add_header (&built_recdes, &record_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
+			      OR_GET_OOR_BIT_FLAG (context->home_recdes.data),
 			      OR_GET_OFFSET_SIZE (context->home_recdes.data));
 	  header_size = mvcc_header_size_lookup[mvcc_flags];
 	  memcpy (built_recdes.data + built_recdes.length, context->home_recdes.data + header_size,
@@ -21818,6 +22240,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
       context->recdes_p->type = REC_NEWHOME;
       rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid, newhome_pg_watcher_p);
       if (rc != NO_ERROR)
@@ -22149,6 +22572,14 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* log home update */
   heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 			    &context->home_recdes, home_page_updated_recdes_p, undo_rcvindex);
+
+  if (context->oor_context_p != NULL && context->oor_context_p->repl_record.data != NULL)
+    {
+      /* log a replication update  */
+      heap_log_replication_oor (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
+				&context->res_oid, RVREPL_OOR_UPDATE, &context->oor_context_p->repl_record);
+    }
+
   LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
@@ -22299,7 +22730,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
  */
 void
 heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p, RECDES * recdes_p,
-			    HEAP_SCANCACHE * scancache_p)
+			    OUT_OF_ROW_CONTEXT * oor_context_p, HEAP_SCANCACHE * scancache_p)
 {
   assert (context != NULL);
   assert (hfid_p != NULL);
@@ -22312,6 +22743,7 @@ heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
     }
   context->recdes_p = recdes_p;
   context->scan_cache_p = scancache_p;
+  context->oor_context_p = oor_context_p;
   context->type = HEAP_OPERATION_INSERT;
 }
 
@@ -22337,6 +22769,7 @@ heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   COPY_OID (&context->class_oid, class_oid_p);
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_DELETE;
+  context->oor_context_p = NULL;
 }
 
 /*
@@ -22351,7 +22784,8 @@ heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
  */
 void
 heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
-			    RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place)
+			    RECDES * recdes_p, OUT_OF_ROW_CONTEXT * oor_context_p, HEAP_SCANCACHE * scancache_p,
+			    UPDATE_INPLACE_STYLE in_place)
 {
   assert (context != NULL);
   assert (hfid_p != NULL);
@@ -22364,6 +22798,7 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   COPY_OID (&context->class_oid, class_oid_p);
   context->recdes_p = recdes_p;
   context->scan_cache_p = scancache_p;
+  context->oor_context_p = oor_context_p;
   context->type = HEAP_OPERATION_UPDATE;
   context->update_in_place = in_place;
 }
@@ -22493,8 +22928,15 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* 
    * Operation logging
    */
+
   heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
 			    context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
+
+  if (context->oor_context_p != NULL && context->oor_context_p->repl_record.data != NULL)
+    {
+      heap_log_replication_oor (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
+				RVREPL_OOR_INSERT, &context->oor_context_p->repl_record);
+    }
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23960,7 +24402,8 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       HEAP_SET_RECORD (&recdes, IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0, record_type,
 		       PTR_ALIGN (data_buffer, MAX_ALIGNMENT));
-      or_mvcc_add_header (&recdes, &mvcc_rec_header, repid_and_flags & OR_BOUND_BIT_FLAG, offset_size);
+      or_mvcc_add_header (&recdes, &mvcc_rec_header, repid_and_flags & OR_BOUND_BIT_FLAG,
+			  repid_and_flags & OR_OOR_BIT_FLAG, offset_size);
 
       memcpy (recdes.data + recdes.length, rcv->data + offset, rcv->length - offset);
       recdes.length += (rcv->length - offset);
@@ -24288,6 +24731,40 @@ exit:
   return scan;
 }
 
+
+/*
+ * heap_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
+ *
+ * return		   : true if the class is not root/trigger/user class, otherwise false
+ * class_oid (in)	   : Class object identifier.
+ *
+ * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency 
+ *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
+ *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
+ *	 are accessed when triggers are modified.
+ *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction. 
+ *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last 
+ *	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
+ *	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot. 
+ *	 Since instances from these classes are accessed before locking tables, the snapshot is generated before 
+ *	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
+ *	 locks are acquired before snapshot.
+ */
+static bool
+heap_check_class_for_rr_isolation_err (const OID * class_oid)
+{
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  if (!oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  return false;
+}
+
 /*
  * heap_update_set_prev_version () - Set prev version lsa to record according to its type. 
  *
@@ -24554,7 +25031,7 @@ void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid, OID * class_oid,
 		       RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
-  context->oid_p = oid;
+  context->oid_p = (OID *) oid;
   context->class_oid_p = class_oid;
   OID_SET_NULL (&context->forward_oid);
   context->recdes_p = recdes;
@@ -24579,6 +25056,8 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
     {
       context->latch_mode = PGBUF_LATCH_READ;
     }
+  context->attr_info_inited = false;
+  context->is_fetch_context = false;
 }
 
 
@@ -24651,6 +25130,238 @@ heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * 
 
   return scan;
 }
+
+/*
+ * heap_free_oor_context () -
+ *
+ * thread_p (in)       : Thread entry.
+ * oor_context (in/out)	: out of row context
+ */
+void
+heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_CONTEXT * oor_context)
+{
+  if (oor_context == NULL || oor_context->oor_atts == NULL)
+    {
+      return;
+    }
+
+  if (oor_context->oor_atts->att_cnt > 0)
+    {
+      int i;
+
+      for (i = 0; i < oor_context->oor_atts->att_cnt; i++)
+	{
+	  if (oor_context->oor_atts->oor_recdes[i].data != NULL)
+	    {
+	      db_private_free (thread_p, oor_context->oor_atts->oor_recdes[i].data);
+	      oor_context->oor_atts->oor_recdes[i].data = NULL;
+	    }
+
+	}
+    }
+
+  if (oor_context->oor_atts->oor_recdes != NULL)
+    {
+      db_private_free (thread_p, oor_context->oor_atts->oor_recdes);
+      oor_context->oor_atts->oor_recdes = NULL;
+    }
+
+  if (oor_context->oor_atts->att_ids != NULL)
+    {
+      db_private_free (thread_p, oor_context->oor_atts->att_ids);
+      oor_context->oor_atts->att_ids = NULL;
+    }
+
+
+  oor_context->oor_atts->att_cnt = 0;
+  oor_context->oor_atts->att_capacity = 0;
+}
+
+/*
+ * heap_expand_oor_attributes () - Find db_values of desired attributes of given
+ *                                instance
+ *   return: NO_ERROR
+ *   inst_oid(in): The instance oid
+ *   recdes(in): The instance Record descriptor
+ */
+int
+heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  OUT_OF_ROW_CONTEXT expanded_oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  int error = NO_ERROR;
+  SCAN_CODE scan;
+
+  assert (context->class_oid_p != NULL);
+  assert (!OID_ISNULL (context->class_oid_p));
+  assert (context->oid_p != NULL);
+  assert (!OID_ISNULL (context->oid_p));
+
+  if (context->recdes_p == NULL || OR_GET_OOR_BIT_FLAG (context->recdes_p->data) == 0)
+    {
+      goto exit;
+    }
+
+  if (context->attr_info_inited == false)
+    {
+      error = heap_attrinfo_start (thread_p, context->class_oid_p, -1, NULL, &context->attr_info);
+      if (error != NO_ERROR)
+	{
+          ASSERT_ERROR ();
+	  goto exit;
+	}
+      context->attr_info_inited = true;
+    }
+
+  error = heap_attrinfo_read_dbvalues (thread_p, context->oid_p, context->recdes_p, NULL, &context->attr_info,
+				       &oor_context);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+retry:
+  if (context->ispeeking == PEEK)
+    {
+      error = heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, context->recdes_p, DB_PAGESIZE);
+      if (error != NO_ERROR)
+	{
+          ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+  scan = heap_attrinfo_transform_to_disk (thread_p, &context->attr_info, NULL, context->recdes_p, &expanded_oor_context,
+                                          LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
+  if (scan != S_SUCCESS)
+    {
+      if (scan == S_DOESNT_FIT)
+	{
+	  context->recdes_p->area_size = -context->recdes_p->length;
+	  context->recdes_p->data = (char *) db_private_realloc (thread_p, context->scan_cache->area,
+								 context->recdes_p->area_size);
+	  if (context->recdes_p->data == NULL)
+	    {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, context->recdes_p->area_size);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto exit;
+	    }
+	  context->scan_cache->area_size = context->recdes_p->area_size;
+	  context->scan_cache->area = context->recdes_p->data;
+	  goto retry;
+	}
+      ASSERT_ERROR_AND_SET (error);   /* todo: do we accept errors? */
+      goto exit;
+    }
+
+exit:
+  if (context->attr_info_inited == true)
+    {
+      heap_attrinfo_end (thread_p, &context->attr_info);
+      context->attr_info_inited = false;
+    }
+
+  return error;
+}
+
+/*
+ * heap_shrink_oor_attributes () - Remove OOR attributes from a recdes into LOB files and return shrinked record
+ *   return: NO_ERROR
+ *   inst_oid(in): The instance oid
+ *   recdes(in): The instance Record descriptor
+ */
+int
+heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID * class_oid_p, RECDES * old_recdes, RECDES * new_recdes,
+			    char **new_recdes_buffer)
+{
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  OUT_OF_ROW_CONTEXT shrink_oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+  OUT_OF_ROW_ATTS oor_attrs = OUT_OF_ROW_ATTS_INITILIAZER;
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = NO_ERROR;
+  SCAN_CODE scan;
+  bool attr_info_inited = false;
+  OID dummy_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+
+  shrink_oor_context.oor_atts = &oor_attrs;
+
+  assert (class_oid_p != NULL);
+  assert (!OID_ISNULL (class_oid_p));
+  assert (old_recdes != NULL);
+  assert (new_recdes != NULL);
+  assert (new_recdes_buffer != NULL);
+
+  assert (OR_GET_OOR_BIT_FLAG (old_recdes->data) == 0);
+
+  if (OID_IS_ROOTOID (class_oid_p))
+    {
+      return error;
+    }
+
+  error = heap_attrinfo_start (thread_p, class_oid_p, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  attr_info_inited = true;
+
+  error = heap_attrinfo_read_dbvalues (thread_p, &dummy_oid, old_recdes, NULL, &attr_info, &oor_context);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  *new_recdes_buffer = db_private_alloc (thread_p, DB_PAGESIZE);
+  if (*new_recdes_buffer == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      heap_attrinfo_end (thread_p, &attr_info);
+      goto exit;
+    }
+
+  new_recdes->data = *new_recdes_buffer;
+  new_recdes->area_size = DB_PAGESIZE;
+
+retry:
+  scan = heap_attrinfo_transform_to_disk (thread_p, &attr_info, old_recdes, new_recdes, &shrink_oor_context,
+                                          LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
+  if (scan != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      if (scan == S_DOESNT_FIT)
+	{
+	  new_recdes->area_size = -new_recdes->length;
+	  new_recdes->data = (char *) db_private_realloc (thread_p, new_recdes->data, new_recdes->area_size);
+	  if (new_recdes->data == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto exit;
+	    }
+	  *new_recdes_buffer = new_recdes->data;
+	  goto retry;
+	}
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  *old_recdes = *new_recdes;
+
+exit:
+
+  heap_free_oor_context (thread_p, &shrink_oor_context);
+  heap_free_oor_context (thread_p, &oor_context);
+
+  if (attr_info_inited == true)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      attr_info_inited = false;
+    }
+
+  return error;
+}
+
 
 /*
  * heap_rv_undo_ovf_update - Assure undo record corresponds with vacuum status

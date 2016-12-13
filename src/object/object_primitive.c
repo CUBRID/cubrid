@@ -6481,6 +6481,9 @@ peekmem_elo (OR_BUF * buf, DB_ELO * elo)
       assert (false);
       goto error;
     }
+
+  elo->es_type = es_get_type (elo->locator);
+
   rc = or_advance (buf, locator_len);
   if (rc != NO_ERROR)
     {
@@ -13855,7 +13858,7 @@ mr_data_writemem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 static void
 mr_data_readmem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  return mr_data_readmem_string (buf, memptr, domain, size);
+  mr_data_readmem_string (buf, memptr, domain, size);
 }
 
 static void
@@ -17056,3 +17059,20 @@ error:
 
   return rc;
 }
+
+/*
+ * pr_is_oor_value (): 
+ *
+ * val(in):
+ */
+bool
+pr_is_oor_value (DB_VALUE * val)
+{
+  if (TP_IS_OOR_TYPE (DB_VALUE_TYPE (val)) && pr_data_writeval_disk_size (val) > (int) OBJECT_OOR_THRESHOLD_SIZE)
+    {
+      return true;
+    }
+
+  return false;
+}
+

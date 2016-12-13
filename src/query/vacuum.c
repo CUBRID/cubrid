@@ -3039,6 +3039,16 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	    }
 	}
 
+#if !defined (NDEBUG)
+      mvccid = MVCCID_NULL;
+      log_record_data.rcvindex = RV_NOT_DEFINED;
+      undo_data = NULL;
+      undo_data_size = 0;
+      LSA_SET_NULL (&log_vacuum.prev_mvcc_op_log_lsa);
+      VFID_SET_NULL (&log_vacuum.vfid);
+      is_file_dropped = false;
+#endif
+
       /* Process log entry and obtain relevant information for vacuum. */
       error_code =
 	vacuum_process_log_record (thread_p, worker, &log_lsa, log_page_p, &log_record_data, &mvccid, &undo_data,
@@ -3064,7 +3074,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	}
 
 #if !defined (NDEBUG)
-      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid) || MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid)
+      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid)
+	  || (MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid) && log_record_data.rcvindex == RVES_NOTIFY_VACUUM)
 	  || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
 	{
 	  /* threshold_mvccid or mvccid or block data may be invalid */
@@ -3676,6 +3687,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   LOG_REC_UNDOREDO *undoredo = NULL;
   LOG_REC_UNDO *undo = NULL;
   LOG_REC_SYSOP_END *sysop_end = NULL;
+  LOG_REC_OOT_DATA *oot_data = NULL;
   int ulength;
   char *new_undo_data_buffer = NULL;
   bool is_zipped = false;
@@ -3773,6 +3785,20 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
+    }
+  else if (log_rec_type == LOG_OUT_OF_TRAN_DATA)
+    {
+      /* Get log record undoredo information */
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*oot_data), log_lsa_p, log_page_p);
+      oot_data = (LOG_REC_OOT_DATA *) (log_page_p->area + log_lsa_p->offset);
+
+      /* Get undo data length */
+      ulength = oot_data->length;
+      *mvccid = oot_data->mvccid;
+      *vacuum_info = oot_data->vacuum_info;
+      log_record_data->rcvindex = RVES_NOTIFY_VACUUM;
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*oot_data), log_lsa_p, log_page_p);
     }
   else
     {

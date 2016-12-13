@@ -462,7 +462,6 @@ meta_to_string (ELO_META * meta)
 
   return buf;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * find_lob_locator () - wrapper function
@@ -528,6 +527,8 @@ drop_lob_locator (const char *locator)
 #endif /* CS_MODE */
 }
 
+#endif /* ENABLE_UNUSED_FUNCTION */
+
 /* ========================================================================== */
 /* EXPORTED FUNCTIONS */
 /* ========================================================================== */
@@ -544,9 +545,12 @@ elo_create (DB_ELO * elo)
   ES_URI out_uri;
   char *uri = NULL;
   int ret = NO_ERROR;
+#if !defined (CS_MODE)
+  LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
+  LOB_LOCATOR_STATE state;
+#endif
 
   assert (elo != NULL);
-
 
   ret = es_create_file (out_uri);
   if (ret < NO_ERROR)
@@ -554,6 +558,10 @@ elo_create (DB_ELO * elo)
       ASSERT_ERROR ();
       return ret;
     }
+
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (NULL, PSTAT_ELO_CREATE_FILE);
+#endif
 
   uri = db_private_strdup (NULL, out_uri);
   if (uri == NULL)
@@ -568,14 +576,34 @@ elo_create (DB_ELO * elo)
   elo->type = ELO_FBO;
   elo->es_type = es_get_type (uri);
 
+#if !defined (CS_MODE)
   if (ELO_NEEDS_TRANSACTION (elo))
     {
-      ret = add_lob_locator (elo->locator, LOB_TRANSIENT_CREATED);
-      if (ret != NO_ERROR)
+      log_append_undo_data (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, strlen (uri) + 1, (char *) uri);
+
+      /* delete temporary LOB file after commit */
+      state = elo_get_lob_state_from_locator (elo->locator);
+      if (state == LOB_TRANSIENT_CREATED)
 	{
-	  ASSERT_ERROR ();
+	  char log_data_buffer[sizeof (MVCCID) + PATH_MAX + 1];
+	  char *log_data = log_data_buffer;
+	  char *ptr = log_data;
+	  int path_len = strlen (uri);
+#if defined (SERVER_MODE)
+	  MVCCID mvccid;
+
+	  mvccid = logtb_get_current_mvccid (thread_get_thread_entry_info ());
+	  memcpy (ptr, &mvccid, sizeof (mvccid));
+	  ptr += sizeof (mvccid);
+#endif
+	  memcpy (ptr, uri, path_len + 1);
+	  ptr += path_len + 1;
+
+	  log_append_postpone (thread_get_thread_entry_info (), RVELO_DELETE_FILE, &addr, ptr - log_data, log_data);
 	}
     }
+#endif /* CS_MODE */
+
   return ret;
 }
 
@@ -673,6 +701,9 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
   ES_URI out_uri;
   char *locator = NULL;
   char *meta_data = NULL;
+#if !defined (CS_MODE)
+  LOG_DATA_ADDR addr;
+#endif
 
   assert (elo != NULL);
   assert (dest != NULL);
@@ -712,51 +743,13 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
       LOB_LOCATOR_STATE state;
       ES_URI real_locator;
 
-      state = find_lob_locator (elo->locator, real_locator);
+      state = (LOB_LOCATOR_STATE) elo_get_lob_state_from_locator (elo->locator);
+      strlcpy (real_locator, elo->locator, sizeof (ES_URI));
+
       switch (state)
 	{
-	case LOB_TRANSIENT_CREATED:
-	case LOB_PERMANENT_DELETED:
-	  {
-	    ret = es_rename_file (real_locator, elo->meta_data, out_uri);
-	    if (ret != NO_ERROR)
-	      {
-		goto error_return;
-	      }
-	    locator = db_private_strdup (NULL, out_uri);
-	    if (locator == NULL)
-	      {
-		assert (er_errid () != NO_ERROR);
-		ret = er_errid ();
-		goto error_return;
-	      }
-	    ret = change_state_of_locator (elo->locator, locator, LOB_PERMANENT_CREATED);
-	    if (ret != NO_ERROR)
-	      {
-		goto error_return;
-	      }
-	  }
-	  break;
-
-	case LOB_TRANSIENT_DELETED:
-	  {
-	    locator = db_private_strdup (NULL, elo->locator);
-	    if (locator == NULL)
-	      {
-		assert (er_errid () != NO_ERROR);
-		ret = er_errid ();
-		goto error_return;
-	      }
-	    ret = drop_lob_locator (elo->locator);
-	    if (ret != NO_ERROR)
-	      {
-		goto error_return;
-	      }
-	  }
-	  break;
-
 	case LOB_PERMANENT_CREATED:
-	case LOB_NOT_FOUND:
+	case LOB_TRANSIENT_CREATED:
 	  {
 	    ret = es_copy_file (real_locator, elo->meta_data, out_uri);
 	    if (ret != NO_ERROR)
@@ -769,18 +762,17 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		es_delete_file (out_uri);
 		goto error_return;
 	      }
-	    ret = add_lob_locator (locator, LOB_PERMANENT_CREATED);
-	    if (ret != NO_ERROR)
-	      {
-		goto error_return;
-	      }
+#if !defined (CS_MODE)
+	    addr.offset = NULL_SLOTID;
+	    addr.pgptr = NULL;
+	    addr.vfid = NULL;
+
+	    log_append_undo_data (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, strlen (out_uri) + 1,
+                                  (char *) out_uri);
+#endif
+
 	  }
 	  break;
-
-	case LOB_UNKNOWN:
-	  assert (er_errid () != NO_ERROR);
-	  ret = er_errid ();
-	  goto error_return;
 
 	default:
 	  assert (0);
@@ -791,6 +783,10 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
   *dest = *elo;
   dest->locator = locator;
   dest->meta_data = meta_data;
+
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (NULL, PSTAT_ELO_COPY_FILE);
+#endif
 
   return NO_ERROR;
 
@@ -825,47 +821,55 @@ elo_delete (DB_ELO * elo, bool force_delete)
   elo->es_type = es_get_type (elo->locator);
   if (!ELO_NEEDS_TRANSACTION (elo) || force_delete)
     {
-      ret = es_delete_file (elo->locator);
+      es_delete_file (elo->locator);
+#if defined (SERVER_MODE)
+      perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+#endif
     }
   else
     {
+      int ret = NO_ERROR;
       LOB_LOCATOR_STATE state;
-      ES_URI real_locator;
 
-      state = find_lob_locator (elo->locator, real_locator);
-      switch (state)
+      assert (elo->locator != NULL);
+
+      state = elo_get_lob_state_from_locator (elo->locator);
+      if (state == LOB_TRANSIENT_CREATED)
 	{
-	case LOB_TRANSIENT_CREATED:
-	  ret = es_delete_file (real_locator);
-	  if (ret != NO_ERROR)
-	    {
-	      return ret;
-	    }
-
-	  ret = drop_lob_locator (elo->locator);
-	  break;
-
-	case LOB_PERMANENT_CREATED:
-	case LOB_PERMANENT_DELETED:
-	  ret = change_state_of_locator (elo->locator, NULL, LOB_PERMANENT_DELETED);
-	  break;
-
-	case LOB_TRANSIENT_DELETED:
-	  break;
-
-	case LOB_NOT_FOUND:
-	  ret = add_lob_locator (elo->locator, LOB_TRANSIENT_DELETED);
-	  break;
-
-	case LOB_UNKNOWN:
-	  assert (er_errid () != NO_ERROR);
-	  ret = er_errid ();
-	  break;
-
-	default:
-	  assert (0);
-	  return ER_FAILED;
+	  es_delete_file (elo->locator);
+#if defined (SERVER_MODE)
+	  perfmon_inc_stat (NULL, PSTAT_ELO_DELETE_FILE);
+#endif
 	}
+      else
+	{
+#if defined (CS_MODE)
+	  es_mark_delete_file (elo->locator);
+#else
+	  {
+	    /* SA and server mode : postpone operation which means either a immediate delete at commit (SA) or
+	     * a notify vacuum for delete */
+	    char log_data_buffer[sizeof (MVCCID) + PATH_MAX + 1];
+	    char *log_data = log_data_buffer;
+	    char *ptr = log_data;
+	    LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
+	    int path_len = strlen (elo->locator);
+#if defined (SERVER_MODE)
+	    MVCCID mvccid;
+
+	    mvccid = logtb_get_current_mvccid (thread_get_thread_entry_info ());
+
+	    memcpy (ptr, &mvccid, sizeof (mvccid));
+	    ptr += sizeof (mvccid);
+#endif
+	    memcpy (ptr, elo->locator, path_len + 1);
+	    ptr += path_len + 1;
+
+	    log_append_postpone (thread_get_thread_entry_info (), RVELO_DELETE_FILE, &addr, ptr - log_data, log_data);
+	  }
+#endif /* CS_MODE */
+	}
+      return ret;
     }
 
   return ret;
@@ -924,6 +928,14 @@ elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count)
     {
       ASSERT_ERROR ();
     }
+#if defined (SERVER_MODE)
+  else
+    {
+      perfmon_inc_stat (NULL, PSTAT_ELO_READS);
+      perfmon_add_stat (NULL, PSTAT_ELO_BYTES_READ, ret);
+    }
+#endif
+
   return ret;
 }
 
@@ -953,10 +965,99 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
       return ret;
     }
 
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (NULL, PSTAT_ELO_WRITES);
+  perfmon_add_stat (NULL, PSTAT_ELO_BYTES_WRITE, ret);
+#endif
   /* adjust size field */
   if ((INT64) (pos + count) > elo->size)
     {
       elo->size = pos + count;
     }
   return ret;
+}
+
+/*
+ * elo_get_lob_state_from_locator () - 
+ * return: LOB_LOCATOR_STATE
+ * locator(in):
+ *
+ *  Note : use 'int' return type instead of LOB_LOCATOR_STATE due to additional required dependencies
+ */
+int
+elo_get_lob_state_from_locator (const char *locator)
+{
+#define SIZE_PREFIX_TEMP 9
+  const char *base_file_name;
+
+  base_file_name = fileio_get_base_file_name (locator);
+  if (base_file_name != NULL)
+    {
+      if (strncmp (base_file_name, "ces_temp.", SIZE_PREFIX_TEMP) == 0)
+	{
+	  return LOB_TRANSIENT_CREATED;
+	}
+    }
+  return LOB_PERMANENT_CREATED;
+
+#undef SIZE_PREFIX_TEMP
+}
+
+int
+elo_rv_undo_create_elo (THREAD_ENTRY * thread_p, void *rcv)
+{
+  const char *elo_path;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+
+  elo_path = ((LOG_RCV *) rcv)->data;
+  assert (elo_path != NULL);
+
+  es_delete_file (elo_path);
+#if !defined (CS_MODE)
+  log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, &addr);
+#endif
+
+#if defined (SERVER_MODE)
+  perfmon_inc_stat (thread_p, PSTAT_ELO_DELETE_FILE);
+#endif
+  return NO_ERROR;
+}
+
+int
+elo_rv_delete_elo (THREAD_ENTRY * thread_p, void *rcv)
+{
+  const char *elo_path;
+  MVCCID mvccid;
+  const char *ptr;
+
+  assert (((LOG_RCV *) rcv)->data != NULL);
+
+  ptr = ((LOG_RCV *) rcv)->data;
+#if defined (SERVER_MODE)
+  mvccid = *((MVCCID *) ptr);
+  ptr += sizeof (mvccid);
+#endif
+
+  elo_path = ptr;
+
+#if defined (SERVER_MODE)
+  {
+    LOB_LOCATOR_STATE state;
+
+    state = elo_get_lob_state_from_locator (elo_path);
+    if (state == LOB_TRANSIENT_CREATED)
+      {
+	es_delete_file (elo_path);
+	perfmon_inc_stat (thread_p, PSTAT_ELO_DELETE_FILE);
+      }
+    else
+      {
+	es_notify_vacuum_for_delete (thread_p, mvccid, elo_path);
+      }
+  }
+#else
+  es_delete_file (elo_path);
+#endif
+
+  return NO_ERROR;
 }

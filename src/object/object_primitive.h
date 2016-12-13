@@ -254,6 +254,9 @@ extern int pr_ordered_mem_size_total;
     ((db_value_ptr)->domain.general_info.is_null = 1, \
      (db_value_ptr)->need_clear = false)
 
+/* values with this size or above are stored in out of record data (heap or overflow) */
+#define OBJECT_OOR_THRESHOLD_SIZE es_get_oor_threshold()
+
 /*
  * EXTERNAL FUNCTIONS
  */
@@ -308,6 +311,18 @@ extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
     } \
   while (0)
 
+/* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
+#define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
+
+#define PRIM_TEMPORARY_DISK_SIZE 256
+#define PRIM_COMPRESSION_LENGTH_OFFSET 4
+
+/* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
+#define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + (length) + MAX_ALIGNMENT)
+
+/* Worst case scenario for compression from their FAQ */
+#define LZO_COMPRESSED_STRING_SIZE(str_length) ((str_length) + ((str_length) / 16) + 64 + 3)
+
 extern int pr_clear_value (DB_VALUE * var);
 extern int pr_free_value (DB_VALUE * var);
 extern DB_VALUE *pr_make_ext_value (void);
@@ -356,7 +371,6 @@ extern int pr_get_compression_length (const char *string, int charlen);
 extern int pr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size);
 extern int pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value,
 						   int *val_size, int align);
-
 extern int pr_data_compress_string (char *string, int str_length, char *compressed_string, int *compressed_length);
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
@@ -374,5 +388,7 @@ extern int pr_Enable_string_compression;
 
 /* Worst case scenario for compression from their FAQ */
 #define LZO_COMPRESSED_STRING_SIZE(str_length) ((str_length) + ((str_length) / 16) + 64 + 3)
+
+extern bool pr_is_oor_value (DB_VALUE * val);
 
 #endif /* _OBJECT_PRIMITIVE_H_ */

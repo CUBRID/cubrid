@@ -964,6 +964,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   if (filter_pred != NULL && filter_pred->unpack_info != NULL)
     {
+      printf ("xbtree_load_index:pred_expr:%p", filter_pred);
+      fflush (stdout);
       stx_free_additional_buff (thread_p, filter_pred->unpack_info);
       stx_free_xasl_unpack_info (filter_pred->unpack_info);
       db_private_free_and_init (thread_p, filter_pred->unpack_info);
@@ -1068,6 +1070,9 @@ error:
     }
   if (filter_pred != NULL && filter_pred->unpack_info != NULL)
     {
+      printf ("xbtree_load_index:pred_expr:%p", filter_pred);
+      fflush (stdout);
+
       stx_free_additional_buff (thread_p, filter_pred->unpack_info);
       stx_free_xasl_unpack_info (filter_pred->unpack_info);
       db_private_free_and_init (thread_p, filter_pred->unpack_info);
@@ -3132,8 +3137,10 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->filter)
 	{
+	  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
-					   sort_args->filter->cache_pred) != NO_ERROR)
+					   sort_args->filter->cache_pred, &oor_context) != NO_ERROR)
 	    {
 	      return SORT_ERROR_OCCURRED;
 	    }
@@ -3151,9 +3158,11 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->func_index_info && sort_args->func_index_info->expr)
 	{
+	  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
+
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
-					   ((FUNC_PRED *) sort_args->func_index_info->expr)->cache_attrinfo) !=
-	      NO_ERROR)
+					   ((FUNC_PRED *) sort_args->func_index_info->expr)->cache_attrinfo,
+					   &oor_context) != NO_ERROR)
 	    {
 	      return SORT_ERROR_OCCURRED;
 	    }
@@ -3161,8 +3170,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->n_attrs == 1)
 	{			/* single-column index */
+	  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
-					   &sort_args->attr_info) != NO_ERROR)
+					   &sort_args->attr_info, &oor_context) != NO_ERROR)
 	    {
 	      return SORT_ERROR_OCCURRED;
 	    }

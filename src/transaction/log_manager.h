@@ -150,6 +150,8 @@ extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_DATA_ADDR * addr);
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
+extern void log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const MVCCID mvccid,
+					 int length, const void *data);
 extern LOG_LSA *log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name);
 extern bool log_check_system_op_is_started (THREAD_ENTRY * thread_p);
 extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p, LOG_LSA * parent_lsa);

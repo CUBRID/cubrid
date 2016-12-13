@@ -48,6 +48,7 @@
 #if defined (SA_MODE) || defined (SERVER_MODE)
 /* es_posix_base_dir - */
 static char es_base_dir[PATH_MAX];
+static size_t oor_threshold_path_size = PATH_MAX;
 
 static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static int es_make_dirs (const char *dirname1, const char *dirname2);
@@ -204,6 +205,11 @@ es_posix_init (const char *base_path)
 
   /* set base dir */
   strlcpy (es_base_dir, base_path, PATH_MAX);
+
+  oor_threshold_path_size = strlen (es_base_dir) + 7 + 1 + DB_MAX_IDENTIFIER_LENGTH + 25;
+#if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
+  oor_threshold_path_size += 7 + 1;
+#endif
   return NO_ERROR;
 #else /* SA_MODE || SERVER_MODE */
   return NO_ERROR;
@@ -588,6 +594,25 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
   return (ret < 0) ? ER_ES_GENERAL : NO_ERROR;
 }
 
+/*
+ * es_posix_rename_file - convert a locator & file path according to the metaname
+ *
+ * return: error code, ER_ES_GENERAL or NO_ERRROR
+ * src_path(in): file path to rename
+ * metapath(in) : meta name combined with src_path
+ * new_path(out): new file path
+ */
+int
+xes_posix_rename_file_with_new (const char *src_path, const char *new_path)
+{
+  int ret;
+
+  er_log_debug (ARG_FILE_LINE, "xes_posix_rename_file_with_new(%s): %s\n", src_path, new_path);
+
+  ret = os_rename_file (src_path, new_path);
+
+  return (ret < 0) ? ER_ES_GENERAL : NO_ERROR;
+}
 
 /*
  * xes_posix_get_file_size - get the size of the external file
@@ -702,4 +727,14 @@ es_local_get_file_size (const char *path)
     }
 
   return pstat.st_size;
+}
+
+size_t
+es_posix_get_oor_threshold (void)
+{
+#if defined(SA_MODE) || defined(SERVER_MODE)
+  return oor_threshold_path_size;
+#else
+  return PATH_MAX;
+#endif
 }

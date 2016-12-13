@@ -315,10 +315,23 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	{
 	  (void) locator_drop_transient_class_name_entries (thread_p, topop_lsa);
 	}
+#if 0
       if (result == LOG_RESULT_TOPOP_ABORT)
 	{
+	  int tran_index;
+	  LOG_TDES *tdes;
+
+	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  tdes = LOG_FIND_TDES (tran_index);
+	  if (tdes == NULL)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+	      return TRAN_UNACTIVE_UNKNOWN;
+	    }
+
 	  log_clear_lob_locator_list (thread_p, tdes, false, topop_lsa);
 	}
+#endif
       break;
 
     case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:

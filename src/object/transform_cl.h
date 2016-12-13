@@ -41,7 +41,8 @@ typedef int TF_STATUS;
 #define TF_ERROR 	(2)
 
 
-extern TF_STATUS tf_mem_to_disk (MOP classmop, MOBJ classobj, volatile MOBJ obj, RECDES * record, bool * index_flag);
+extern TF_STATUS tf_mem_to_disk (MOP classmop, MOBJ classobj, volatile MOBJ obj, RECDES * record, bool * index_flag,
+				 bool * has_oor);
 
 extern MOBJ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp);
 

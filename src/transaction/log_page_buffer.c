@@ -3225,6 +3225,41 @@ prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
   return error_code;
 }
 
+
+/*
+ * prior_lsa_gen_out_of_tran_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_gen_out_of_tran_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex, int length,
+				  const char *data)
+{
+  LOG_REC_OOT_DATA *oot_data;
+  int error_code = NO_ERROR;
+
+  node->data_header_length = sizeof (LOG_REC_OOT_DATA);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  oot_data = (LOG_REC_OOT_DATA *) node->data_header;
+
+  oot_data->rcvindex = rcvindex;
+  oot_data->length = length;
+
+  error_code = prior_lsa_copy_redo_data_to_node (node, oot_data->length, data);
+
+  return error_code;
+}
+
 /*
  * prior_lsa_gen_2pc_prepare_record -
  *
@@ -3456,6 +3491,10 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
       error_code = prior_lsa_gen_dbout_redo_record (thread_p, node, rcvindex, rlength, rdata);
       break;
 
+    case LOG_OUT_OF_TRAN_DATA:
+      error_code = prior_lsa_gen_out_of_tran_record (thread_p, node, rcvindex, rlength, rdata);
+      break;
+
     case LOG_POSTPONE:
       assert (ulength == 0 && udata == NULL);
 
@@ -3632,6 +3671,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   LOG_VACUUM_INFO *vacuum_info = NULL;
+  LOG_REC_OOT_DATA *oot_data;
   int rv;
   MVCCID mvccid = MVCCID_NULL;
 
@@ -3648,6 +3688,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
    * the index of MVCC operations. */
   if (node->log_header.type == LOG_MVCC_UNDO_DATA || node->log_header.type == LOG_MVCC_UNDOREDO_DATA
       || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA
+      || node->log_header.type == LOG_OUT_OF_TRAN_DATA
       || (node->log_header.type == LOG_SYSOP_END
 	  && ((LOG_REC_SYSOP_END *) node->data_header)->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO))
     {
@@ -3666,6 +3707,13 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  mvcc_undo = &((LOG_REC_SYSOP_END *) node->data_header)->mvcc_undo;
 	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
+	}
+      else if (node->log_header.type == LOG_OUT_OF_TRAN_DATA)
+	{
+	  /* Read from mvcc_undo structure */
+	  oot_data = (LOG_REC_OOT_DATA *) node->data_header;
+	  vacuum_info = &oot_data->vacuum_info;
+	  mvccid = oot_data->mvccid;
 	}
       else
 	{
@@ -3697,7 +3745,11 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  assert (log_Gl.hdr.last_block_oldest_mvccid <= vacuum_get_global_oldest_active_mvccid ());
 	  log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	  log_Gl.hdr.last_block_newest_mvccid = mvccid;
-	  assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
+
+	  /* last_block_oldest_mvccid is used for managing dropped files; we don't use this type of record
+	   * (LOG_OUT_OF_TRAN_DATA) for dropping files */
+	  assert (node->log_header.type == LOG_OUT_OF_TRAN_DATA
+		  || !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
 	}
       else
 	{
@@ -3712,7 +3764,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	    {
 	      log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	    }
-	  assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
+	  assert (node->log_header.type == LOG_OUT_OF_TRAN_DATA
+		  || !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
 	}
 
       /* Replace last MVCC deleted/updated log record */

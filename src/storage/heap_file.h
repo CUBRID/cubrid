@@ -176,7 +176,8 @@ typedef enum
   HEAP_READ_ATTRVALUE,
   HEAP_WRITTEN_ATTRVALUE,
   HEAP_UNINIT_ATTRVALUE,
-  HEAP_WRITTEN_LOB_ATTRVALUE
+  HEAP_WRITTEN_LOB_ATTRVALUE,
+  HEAP_READ_ATTRVALUE_OOR_LOB
 } HEAP_ATTRVALUE_STATE;
 
 typedef enum
@@ -287,6 +288,7 @@ struct heap_operation_context
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
+  OUT_OF_ROW_CONTEXT *oor_context_p;	/* OOR context */
 
   /* overflow transient data */
   RECDES map_recdes;		/* built record descriptor during multipage insert */
@@ -372,6 +374,10 @@ struct heap_get_context
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache;	/* scan cache */
 
+  HEAP_CACHE_ATTRINFO attr_info;	/* attribute info (required to expand OOR attributes) */
+  bool attr_info_inited;
+  bool is_fetch_context;
+
   /* physical page watchers  */
   PGBUF_WATCHER home_page_watcher;	/* home page */
   PGBUF_WATCHER fwd_page_watcher;	/* forward page */
@@ -387,6 +393,24 @@ struct heap_get_context
 /* Forward definition. */
 struct mvcc_reev_data;
 extern int mvcc_header_size_lookup[8];
+
+typedef enum
+{
+  DELETE_ALL_LOBS = 0,
+  DELETE_ONLY_OOR_LOB
+} HEAP_ATTR_LOB_DELETE_TYPE;
+
+typedef enum
+{
+  LOB_FLAG_EXCLUDE_LOB,
+  LOB_FLAG_INCLUDE_LOB
+} HEAP_LOB_CREATE_FLAG;
+
+typedef enum
+{
+  LOB_DELETE_ON_ATTR_INIT,
+  LOB_SKIP_DELETE_ON_ATTR_INIT
+} HEAP_LOB_DELETE_FLAG;
 
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid);
 #ifdef DEBUG_CLASSREPR_CACHE
@@ -467,17 +491,24 @@ extern int heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, 
 extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-					HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info);
+					HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
+					OUT_OF_ROW_CONTEXT * oor_context);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
-extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+				     HEAP_ATTR_LOB_DELETE_TYPE delete_only_oor_lob);
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-						  RECDES * old_recdes, RECDES * new_recdes);
+						  RECDES * old_recdes, RECDES * new_recdes,
+						  OUT_OF_ROW_CONTEXT * oor_context,
+                                                  HEAP_LOB_CREATE_FLAG lob_create_flag,
+                                                  HEAP_LOB_DELETE_FLAG lob_delete_flag);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							     RECDES * old_recdes, RECDES * new_recdes);
+							     RECDES * old_recdes, RECDES * new_recdes,
+							     OUT_OF_ROW_CONTEXT * oor_context,
+                                                             HEAP_LOB_DELETE_FLAG lob_delete_flag);
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
@@ -546,9 +577,12 @@ extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * cla
 					REPR_ID reprid, int *idx_incache);
 extern int heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache);
 extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid);
+
 extern int heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 						   HEAP_CACHE_ATTRINFO * attr_info);
+#endif
 
 /* Recovery functions */
 extern int heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -624,11 +658,13 @@ extern int heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p, 
 extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 							     OID * class_oid);
 extern void heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p,
-					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p);
+					RECDES * recdes_p, OUT_OF_ROW_CONTEXT * oor_context_p,
+					HEAP_SCANCACHE * scancache_p);
 extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
 					HEAP_SCANCACHE * scancache_p);
 extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
-					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place);
+					RECDES * recdes_p, OUT_OF_ROW_CONTEXT * oor_context_p,
+					HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place);
 extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
@@ -672,6 +708,9 @@ extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * cla
 					HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern int heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_get_best_space_num_stats_entries (void);
-
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
+extern void heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_CONTEXT * oor_context);
+extern int heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
+extern int heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID * class_oid_p, RECDES * old_recdes,
+				       RECDES * new_recdes, char **new_recdes_buffer);
 #endif /* _HEAP_FILE_H_ */

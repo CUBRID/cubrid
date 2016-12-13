@@ -4880,6 +4880,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LOG_LSA ref_lsa;
   int is_peeking;
   OBJECT_GET_STATUS object_get_status;
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
@@ -5164,8 +5165,9 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (hsidp->rest_regu_list)
 	{
 	  /* read the rest of the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, p_current_oid, &recdes, &hsidp->scan_cache,
-					   hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues
+	      (thread_p, p_current_oid, &recdes, &hsidp->scan_cache, hsidp->rest_attrs.attr_cache, &oor_context)
+	      != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -5305,6 +5307,7 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HEAP_SCAN_ID *hsidp;
   FILTER_INFO data_filter;
   DB_LOGICAL ev_res;
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   hsidp = &scan_id->s.hsid;
 
@@ -5365,7 +5368,8 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (hsidp->rest_regu_list)
 	{
 	  /* read the rest of the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, NULL, NULL, NULL, hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	  if (heap_attrinfo_read_dbvalues (thread_p, NULL, NULL, NULL, hsidp->rest_attrs.attr_cache, &oor_context)
+	      != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -5753,6 +5757,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   char *indx_name_p;
   char *class_name_p;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  OUT_OF_ROW_CONTEXT oor_context = OUT_OF_ROW_CONTEXT_DEFAULT_INITILIAZER;
 
   assert (scan_id != NULL);
   assert (isidp != NULL);
@@ -5966,8 +5971,9 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   if (isidp->rest_regu_list)
     {
       /* read the rest of the values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache,
-				       isidp->rest_attrs.attr_cache) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues
+	  (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, isidp->rest_attrs.attr_cache, &oor_context)
+	  != NO_ERROR)
 	{
 	  return S_ERROR;
 	}

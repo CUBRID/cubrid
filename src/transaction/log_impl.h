@@ -739,6 +739,7 @@ enum lob_locator_state
   LOB_NOT_FOUND
 };
 
+#if 0				/* LOB locator disabled code */
 /* lob entry */
 typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
 
@@ -750,6 +751,7 @@ typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
   };
  */
 RB_HEAD (lob_rb_root, lob_locator_entry);
+#endif
 
 typedef enum tran_abort_reason TRAN_ABORT_REASON;
 enum tran_abort_reason
@@ -1229,8 +1231,9 @@ enum log_rectype
   LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
 
-  LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
+  LOG_DUMMY_GENERIC = 50,	/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
+  LOG_OUT_OF_TRAN_DATA = 51,	/* used for logging outside transaction (for instance, during execute postpone) */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -1405,6 +1408,16 @@ typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
 struct log_rec_dbout_redo
 {
   LOG_RCVINDEX rcvindex;	/* Index to recovery function */
+  int length;			/* Length of redo data */
+};
+
+/* Information of out of transaction log records */
+typedef struct log_rec_oot_data LOG_REC_OOT_DATA;
+struct log_rec_oot_data
+{
+  LOG_RCVINDEX rcvindex;	/* Index to recovery function */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
+  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
   int length;			/* Length of redo data */
 };
 
@@ -1650,7 +1663,9 @@ struct log_tdes
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */
 
+#if 0
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
+#endif
 
   INT64 query_timeout;		/* a query should be executed before query_timeout time. */
 

@@ -142,8 +142,11 @@ static int rv;
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
     && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
+    && ((RCVI) != RVELO_CREATE_FILE) \
+    && ((RCVI) != RVELO_DELETE_FILE) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
 
+#if 0				/* LOB locator disabled code */
 /* Assume that locator end with <path>/<meta_name>.<key_name> */
 #define LOCATOR_KEY(locator_) (strrchr (locator_, '.') + 1)
 #define LOCATOR_META(locator_) (strrchr (locator_, PATH_SEPARATOR) + 1)
@@ -178,6 +181,7 @@ struct lob_locator_entry
   char *key;
   char key_data[1];
 };
+#endif /* LOB locator disabled code */
 
 /* struct for active log header scan */
 typedef struct actve_log_header_scan_context ACTIVE_LOG_HEADER_SCAN_CTX;
@@ -239,10 +243,12 @@ static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
 static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * upto_lsa);
+#if defined (ENABLE_UNUSED_FUNCTIONS)
 static void log_free_lob_locator (LOB_LOCATOR_ENTRY * entry);
 static int lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTRY * e2);
 /* RB_PROTOTYPE_STATIC declares red-black tree functions. see base/rb_tree.h */
 RB_PROTOTYPE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
+#endif /* ENABLE_UNUSED_FUNCTIONS */
 
 static void log_dump_record_header_to_string (LOG_RECORD_HEADER * log, char *buf, size_t len);
 static void log_ascii_dump (FILE * out_fp, int length, void *data);
@@ -450,6 +456,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_GENERIC:
       return "LOG_DUMMY_GENERIC";
+    case LOG_OUT_OF_TRAN_DATA:
+      return "LOG_OUT_OF_TRAN_DATA";
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
@@ -2344,11 +2352,12 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM
+	  || rcvindex == RVREPL_OOR_UPDATE)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	}
-      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
+      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT || rcvindex == RVREPL_OOR_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	}
@@ -2616,6 +2625,79 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
     {
       return;
     }
+
+  (void) prior_lsa_next_record (thread_p, node, tdes);
+}
+
+/*
+ * log_append_out_of_tran_data - Log data for operations outside the transaction context
+ *
+ * return: nothing
+ *
+ *   rcvindex(in): Index to recovery function
+ *   length(in): Length of redo(after) data
+ *   data(in): Redo (after) data
+ *
+ */
+void
+log_append_out_of_tran_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const MVCCID mvccid, int length,
+			     const void *data)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+  int error_code = NO_ERROR;
+  LOG_PRIOR_NODE *node;
+
+#if defined(CUBRID_DEBUG)
+  if (RV_fun[rcvindex].redofun == NULL)
+    {
+      assert (false);
+      return;
+    }
+#endif /* CUBRID_DEBUG */
+
+  if (log_No_logging)
+    {
+      /* We are not logging */
+      LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
+      return;
+    }
+
+  /* Vacuum workers are not allowed to use this type of log records. */
+  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      error_code = ER_LOG_UNKNOWN_TRANINDEX;
+      return;
+    }
+
+  /* 
+   * If we are not in a top system operation, the transaction is unactive, and
+   * the transaction is not in the process of been aborted, we do nothing.
+   */
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+    {
+      /* 
+       * We do not log anything when the transaction is unactive and it is not
+       * in the process of aborting.
+       */
+      return;
+    }
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_OUT_OF_TRAN_DATA, rcvindex, NULL, 0, NULL, length, (char *) data);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  ((LOG_REC_OOT_DATA *) node->data_header)->mvccid = mvccid;
+  LSA_SET_NULL (&((LOG_REC_OOT_DATA *) node->data_header)->vacuum_info.prev_mvcc_op_log_lsa);
+  VFID_SET_NULL (&((LOG_REC_OOT_DATA *) node->data_header)->vacuum_info.vfid);
 
   (void) prior_lsa_next_record (thread_p, node, tdes);
 }
@@ -3952,7 +4034,7 @@ void
 log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
 				 const char *data)
 {
-  return log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
+  log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
 }
 
 /*
@@ -4901,6 +4983,7 @@ log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_is_valid_locator -
  *
@@ -5338,6 +5421,8 @@ lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTRY * e2)
  */
 RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 
+#endif /* ENABLE_UNUSED_FUNCTION */
+
 /*
  * log_commit_local - Perform the local commit operations of a transaction
  *
@@ -5367,7 +5452,9 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * statistics, we will lost logging of unique statistics. 4. A recovery will occur. Because our transaction was saved 
    * at checkpoint with TRAN_UNACTIVE_WILL_COMMIT state, it will be committed. Because we didn't logged the changes
    * made by the transaction we will not reflect the changes. They will be definitely lost. */
+#if 0
   log_clear_lob_locator_list (thread_p, tdes, true, NULL);
+#endif
 
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must 
@@ -5524,7 +5611,9 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
       /* There is no need to create a new transaction identifier */
     }
 
+#if 0
   log_clear_lob_locator_list (thread_p, tdes, false, NULL);
+#endif
 
   return tdes->state;
 }
@@ -5843,7 +5932,9 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
 
   log_cleanup_modified_class_list (thread_p, tdes, savept_lsa, false, true);
 
+#if 0
   log_clear_lob_locator_list (thread_p, tdes, false, savept_lsa);
+#endif
 
   /* 
    * The following is done so that if we go over several savepoints, they
@@ -7240,6 +7331,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+    case LOG_OUT_OF_TRAN_DATA:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
@@ -8160,6 +8252,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
+	    case LOG_OUT_OF_TRAN_DATA:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -8367,6 +8460,7 @@ log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (tdes->topops.last < 0);
 
   log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+
   log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
 }
 
@@ -8576,6 +8670,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
+		    case LOG_OUT_OF_TRAN_DATA:
 		      break;
 
 		    case LOG_POSTPONE:
@@ -8744,6 +8839,8 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
   rcv.length = redo->length;
   rcv.data = redo_rcv_data;
 
+  /* TODO[arnia] : merge */
+  /* if (rcvindex == RVVAC_DROPPED_FILE_ADD || rcvindex == RVFL_POSTPONE_DESTROY_FILE || rcvindex == RVELO_DELETE_FILE) */
   if (VPID_ISNULL (&rcv_vpid))
     {
       /* logical */
