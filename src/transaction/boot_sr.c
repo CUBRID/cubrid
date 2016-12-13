@@ -560,6 +560,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
   char *vlabel = NULL;
   int vol_fd;
   int error_code = NO_ERROR;
+  bool log_sysop_started = false;
 
   disk_lock_extend ();
 
@@ -598,6 +599,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
        * is removed immediately.
        */
       log_sysop_start (thread_p);
+      log_sysop_started = true;
     }
 
   /* 
@@ -629,7 +631,6 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
 	    {
 	      boot_Db_parm->temp_last_volid = volid;
 	    }
-	  log_sysop_abort (thread_p);
 	  goto end;
 	}
 
@@ -661,11 +662,17 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
   if (delete_action == REMOVE_TEMP_VOL_DEFAULT_ACTION)
     {
       log_sysop_commit (thread_p);
+      log_sysop_started = false;
     }
 
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
 
 end:
+
+  if (log_sysop_started == true && error_code != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+    }
 
   if (vlabel)
     {

@@ -3178,6 +3178,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   INT64 total_size;
   int n_sectors;
   VSID *vsids_reserved = NULL;
+  bool was_temp_reserved = false;
   DB_VOLPURPOSE volpurpose = DISK_UNKNOWN_PURPOSE;
   VSID *vsid_iter = NULL;
   INT16 size = 0;
@@ -3278,6 +3279,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       goto exit;
     }
   /* found enough sectors to reserve */
+  was_temp_reserved = is_temp;
 
   /* sort sectors by VSID. but before sorting, remember last volume ID used for reservations. */
   volid_last_expand = vsids_reserved[n_sectors - 1].volid;
@@ -3708,6 +3710,29 @@ exit:
 	{
 	  ASSERT_NO_ERROR ();
 	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, NULL, sizeof (*vfid), (char *) vfid);
+	}
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      /* make sure we don't output a bad VFID. */
+      VFID_SET_NULL (vfid);
+
+      if (was_temp_reserved)
+	{
+	  /* recovery won't free reserved sectors. we have to manually handle the unreserve */
+	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+
+	  /* make sure sectors are sorted */
+	  qsort (vsids_reserved, n_sectors, sizeof (VSID), file_compare_vsids);
+	  if (disk_unreserve_ordered_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, n_sectors, vsids_reserved)
+	      != NO_ERROR)
+	    {
+	      /* sectors are leaked */
+	      assert_release (false);
+	      /* fall through */
+	    }
+	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 	}
     }
 
@@ -5968,7 +5993,7 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      return error_code;
+	      goto exit;
 	    }
 	}
 
