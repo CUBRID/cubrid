@@ -9545,11 +9545,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 
       if (ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[lru_idx], 1) == 0)
         {
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_1[lru_idx]);
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_1[lru_idx], 1);
         }
       else
         {
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_1[lru_idx]);
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_1[lru_idx], 1);
         }
       return NULL;
     }
@@ -10724,11 +10724,11 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   if (ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 0) == 0)
     {
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_0[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)]);
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_0[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 1);
     }
   else
     {
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_0[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)]);
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_0[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 1);
     }
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
