@@ -751,6 +751,12 @@ struct pgbuf_page_monitor
   int *lru_victim_pressure_per_lru;	/* current pressure on LRU to increase due to victimization */
   int *lru_victim_not_found_per_lru;    /* 1 when not found, 0 when found or maybe we can find */
 
+  /* for debug */
+  int *lru_count_set_not_found_1_0;
+  int *lru_count_set_not_found_1_1;
+  int *lru_count_set_not_found_0_0;
+  int *lru_count_set_not_found_0_1;
+
   /* LRU life cycle */
   int *lru2_tick;		/* Current age of LRU2 section per LRU */
   int *lru1_tick;		/* Current age of LRU1 section per LRU */
@@ -9537,7 +9543,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
 
-      ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[lru_idx], 1);
+      if (ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[lru_idx], 1) == 0)
+        {
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_1[lru_idx]);
+        }
+      else
+        {
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_1[lru_idx]);
+        }
       return NULL;
     }
 
@@ -9578,9 +9591,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 
       bufptr->victim_candidate = false;
       pthread_mutex_unlock (&lru_list->LRU_mutex);
-
-      /* todo: I am not sure about this code */
-      ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[lru_idx], 0);
 
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_found_per_lru[lru_idx], 1);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
@@ -10712,7 +10722,14 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 
-  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 0);
+  if (ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 0) == 0)
+    {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_0[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)]);
+    }
+  else
+    {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_0[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)]);
+    }
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
   bufptr->avoid_victim = false;
@@ -14041,6 +14058,43 @@ pgbuf_initialize_page_monitor (void)
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_not_found_per_lru[0])));
+      goto exit;
+    }
+
+  monitor->lru_count_set_not_found_1_0 =
+    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_1_0[0]));
+  if (monitor->lru_count_set_not_found_1_0 == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_1_0[0])));
+      goto exit;
+    }
+  monitor->lru_count_set_not_found_1_1 =
+    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_1_1[0]));
+  if (monitor->lru_count_set_not_found_1_1 == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_1_1[0])));
+      goto exit;
+    }
+  monitor->lru_count_set_not_found_0_0 =
+    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_0_0[0]));
+  if (monitor->lru_count_set_not_found_0_0 == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_0_0[0])));
+      goto exit;
+    }
+  monitor->lru_count_set_not_found_0_1 =
+    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_0_1[0]));
+  if (monitor->lru_count_set_not_found_0_1 == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_0_1[0])));
       goto exit;
     }
 
