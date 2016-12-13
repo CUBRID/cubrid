@@ -14204,6 +14204,11 @@ pgbuf_initialize_page_monitor (void)
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
       monitor->lru_relocated_destroyed_pages[i] = 0;
 #endif
+
+      monitor->lru_count_set_not_found_0_0[i] = 0;
+      monitor->lru_count_set_not_found_0_1[i] = 0;
+      monitor->lru_count_set_not_found_1_0[i] = 0;
+      monitor->lru_count_set_not_found_1_1[i] = 0;
     }
 
   monitor->lru_victim_req_cnt = 0;
