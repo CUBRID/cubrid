@@ -1455,6 +1455,7 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
     case TYPE_LIST_ID:
       if (regu_var->xasl != NULL && regu_var->xasl->status != XASL_CLEARED)
 	{
+	  XASL_SET_FLAG (regu_var->xasl, xasl_p->flag & XASL_DECACHE_CLONE);
 	  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
 	}
       break;
@@ -2011,12 +2012,15 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 {
   int pg_cnt;
   int query_save_state;
+  unsigned int decache_clone_flag = 0;
 
   pg_cnt = 0;
   if (xasl == NULL)
     {
       return pg_cnt;
     }
+
+  decache_clone_flag = xasl->flag & XASL_DECACHE_CLONE;
 
   /* 
    ** We set this because in some M paths (e.g. when a driver crashes)
@@ -2039,28 +2043,35 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
   /* clear the body node */
   if (xasl->aptr_list)
     {
+      XASL_SET_FLAG (xasl->aptr_list, decache_clone_flag);
       pg_cnt += qexec_clear_xasl (thread_p, xasl->aptr_list, final);
     }
   if (xasl->bptr_list)
     {
+      XASL_SET_FLAG (xasl->bptr_list, decache_clone_flag);
       pg_cnt += qexec_clear_xasl (thread_p, xasl->bptr_list, final);
     }
   if (xasl->dptr_list)
     {
+      XASL_SET_FLAG (xasl->dptr_list, decache_clone_flag);
       pg_cnt += qexec_clear_xasl (thread_p, xasl->dptr_list, final);
     }
   if (xasl->fptr_list)
     {
+      XASL_SET_FLAG (xasl->fptr_list, decache_clone_flag);
       pg_cnt += qexec_clear_xasl (thread_p, xasl->fptr_list, final);
     }
   if (xasl->scan_ptr)
     {
+      XASL_SET_FLAG (xasl->scan_ptr, decache_clone_flag);
       pg_cnt += qexec_clear_xasl (thread_p, xasl->scan_ptr, final);
     }
 
   /* clear the CONNECT BY node */
   if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
     {
+      assert (xasl->connect_by_ptr != NULL);
+      XASL_SET_FLAG (xasl->connect_by_ptr, decache_clone_flag);
       pg_cnt += qexec_clear_xasl (thread_p, xasl->connect_by_ptr, final);
     }
 
@@ -2193,6 +2204,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 
 	if (buildlist->eptr_list)
 	  {
+	    XASL_SET_FLAG (buildlist->eptr_list, decache_clone_flag);
 	    pg_cnt += qexec_clear_xasl (thread_p, buildlist->eptr_list, final);
 	  }
 
@@ -2334,10 +2346,12 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
     case MERGE_PROC:
       if (xasl->proc.merge.update_xasl)
 	{
+	  XASL_SET_FLAG (xasl->proc.merge.update_xasl, decache_clone_flag);
 	  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.merge.update_xasl, final);
 	}
       if (xasl->proc.merge.insert_xasl)
 	{
+	  XASL_SET_FLAG (xasl->proc.merge.insert_xasl, decache_clone_flag);
 	  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.merge.insert_xasl, final);
 	}
       break;
@@ -2400,6 +2414,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 
   if (xasl->next)
     {
+      XASL_SET_FLAG (xasl->next, decache_clone_flag);
       pg_cnt += qexec_clear_xasl (thread_p, xasl->next, final);
     }
 
