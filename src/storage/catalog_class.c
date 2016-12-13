@@ -1287,6 +1287,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -1597,7 +1598,17 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
       error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
       if (error != NO_ERROR)
 	{
-	  goto error;
+	  ASSERT_ERROR ();
+	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* class oid may be deleted; class_oid will be set to NULL OID */
+	      er_clear ();
+	      assert (DB_IS_NULL (attr_val_p));
+	    }
+	  else
+	    {
+	      goto error;
+	    }
 	}
 
       if (DB_IS_NULL (attr_val_p))
@@ -1695,6 +1706,7 @@ catcls_get_or_value_from_method (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -1923,6 +1935,7 @@ catcls_get_or_value_from_method_file (THREAD_ENTRY * thread_p, OR_BUF * buf_p, O
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -1992,6 +2005,7 @@ catcls_get_or_value_from_resolution (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -2592,6 +2606,7 @@ catcls_get_object_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_siz
       error = catcls_convert_class_oid_to_oid (thread_p, &oid_val);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto error;
 	}
 
