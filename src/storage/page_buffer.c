@@ -9551,10 +9551,9 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
     {
       bufptr->victim_candidate = false;
       pthread_mutex_unlock (&bufptr->BCB_mutex);
+
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
-
-      ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[lru_idx], 1);
 
       return NULL;
     }
@@ -9579,6 +9578,9 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 
       bufptr->victim_candidate = false;
       pthread_mutex_unlock (&lru_list->LRU_mutex);
+
+      /* todo: I am not sure about this code */
+      ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[lru_idx], 0);
 
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_found_per_lru[lru_idx], 1);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
@@ -10710,6 +10712,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 
+  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 0);
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
   bufptr->avoid_victim = false;
@@ -10723,8 +10726,6 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       pgbuf_wakeup_uncond (thrd_entry);
     }
 #endif /* SERVER_MODE */
-
-  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 0);
 
   return NO_ERROR;
 }
