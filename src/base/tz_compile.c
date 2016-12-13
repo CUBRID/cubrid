@@ -462,6 +462,7 @@ static int tzc_extend (TZ_DATA * tzd);
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
 static int tzc_update (TZ_DATA * tzd);
+static int execute_query (const char *str, bool abort_transaction, DB_QUERY_RESULT ** result);
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
@@ -6350,6 +6351,52 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
 }
 
 /*
+ * execute_query() - Execute the query given by str
+ *
+ * Return: error or no error
+ * str (in): query string
+ * abort_transaction (in): true if aborting the current transaction is necessary
+ * result (out): query result
+ *
+ */
+static int
+execute_query (const char *str, bool abort_transaction, DB_QUERY_RESULT ** result)
+{
+  DB_SESSION *session = NULL;
+  STATEMENT_ID stmt_id;
+  int error = NO_ERROR;
+
+  session = db_open_buffer (str);
+  if (session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  /* Here in error is returned the number of rows for show tables query */
+  error = db_execute_statement_local (session, stmt_id, result);
+  if ((error < 0) && (abort_transaction == true))
+    {
+      db_abort_transaction ();
+    }
+exit:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+  return error;
+}
+
+/*
  * tzc_update() - Do a data migration in case that tzc_extend fails 
  *
  * Returns: error or no error
@@ -6358,11 +6405,11 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
 static int
 tzc_update (TZ_DATA * tzd)
 {
-  char query_buf[1024];
-  DB_SESSION *session = NULL, *session2 = NULL, *session3 = NULL;
-  STATEMENT_ID stmt_id;
-  DB_QUERY_RESULT *result, *result2, *result3;
-  DB_VALUE value, value2, value3;
+#define TABLE_NAME_MAX_SIZE 100
+#define QUERY_BUF_MAX_SIZE 1024
+  char query_buf[QUERY_BUF_MAX_SIZE];
+  DB_QUERY_RESULT *result1, *result2, *result3;
+  DB_VALUE value1, value2, value3;
   int error = NO_ERROR;
   DB_INFO *dir = NULL;
   DB_INFO *db_info_p = NULL;
@@ -6395,26 +6442,8 @@ tzc_update (TZ_DATA * tzd)
 
       memset (query_buf, 0, sizeof (query_buf));
       strcat (query_buf, "show tables");
-      session = db_open_buffer (query_buf);
-      if (session == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  need_db_shutdown = true;
-	  goto exit;
-	}
 
-      stmt_id = db_compile_statement (session);
-      if (stmt_id < 0)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  need_db_shutdown = true;
-	  goto exit;
-	}
-
-      /* Here in error is returned the number of rows for show tables query */
-      error = db_execute_statement_local (session, stmt_id, &result);
+      error = execute_query (query_buf, false, &result1);
       if (error <= 0)
 	{
 	  need_db_shutdown = true;
@@ -6422,28 +6451,28 @@ tzc_update (TZ_DATA * tzd)
 	}
 
       /* First get the names for the tables in the database */
-      while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+      while (db_query_next_tuple (result1) == DB_CURSOR_SUCCESS)
 	{
-	  error = db_query_get_tuple_value (result, 0, &value);
+	  error = db_query_get_tuple_value (result1, 0, &value1);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (result);
+	      db_query_end (result1);
 	      need_db_shutdown = true;
 	      goto exit;
 	    }
 
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_IS_NULL (&value))
+	      if (DB_IS_NULL (&value1))
 		{
 		  need_db_shutdown = true;
 		  goto exit;
 		}
 	      else
 		{
-		  char table_name_buf[100];
+		  char table_name_buf[TABLE_NAME_MAX_SIZE];
 		  /* First get the name of the table */
-		  table_name = db_get_string (&value);
+		  table_name = db_get_string (&value1);
 		  memset (query_buf, 0, sizeof (query_buf));
 		  memset (table_name_buf, 0, sizeof (table_name_buf));
 		  strcat (table_name_buf, "'");
@@ -6454,25 +6483,7 @@ tzc_update (TZ_DATA * tzd)
 			    sizeof (query_buf) - 1,
 			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
 			    table_name_buf);
-		  session2 = db_open_buffer (query_buf);
-		  if (session2 == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		      need_db_shutdown = true;
-		      goto exit;
-		    }
-
-		  stmt_id = db_compile_statement (session2);
-		  if (stmt_id < 0)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		      need_db_shutdown = true;
-		      goto exit;
-		    }
-
-		  error = db_execute_statement_local (session2, stmt_id, &result2);
+		  error = execute_query (query_buf, false, &result2);
 		  if (error <= 0)
 		    {
 		      need_db_shutdown = true;
@@ -6516,43 +6527,18 @@ tzc_update (TZ_DATA * tzd)
 			  snprintf (query_buf, sizeof (query_buf) - 1,
 				    "update %s set %s = conv_tz(%s)", table_name, column_name, column_name);
 
-			  session3 = db_open_buffer (query_buf);
-			  if (session3 == NULL)
-			    {
-			      assert (er_errid () != NO_ERROR);
-			      error = er_errid ();
-			      need_db_shutdown = true;
-			      goto exit;
-			    }
-
-			  stmt_id = db_compile_statement (session3);
-			  if (stmt_id < 0)
-			    {
-			      assert (er_errid () != NO_ERROR);
-			      error = er_errid ();
-			      need_db_shutdown = true;
-			      goto exit;
-			    }
-
-			  error = db_execute_statement_local (session3, stmt_id, &result3);
+			  error = execute_query (query_buf, true, &result3);
 			  if (error < 0)
 			    {
-			      db_abort_transaction ();
 			      need_db_shutdown = true;
 			      goto exit;
 			    }
-			  db_close_session (session3);
-			  session3 = NULL;
 			}
 		    }
-		  db_close_session (session2);
-		  session2 = NULL;
 		}
 	    }
 	}
       db_commit_transaction ();
-      db_close_session (session);
-      session = NULL;
       db_shutdown ();
     }
 
@@ -6562,21 +6548,11 @@ exit:
     {
       cfg_free_directory (dir);
     }
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-  if (session2 != NULL)
-    {
-      db_close_session (session2);
-    }
-  if (session3 != NULL)
-    {
-      db_close_session (session3);
-    }
   if (need_db_shutdown == true)
     {
       db_shutdown ();
     }
   return error;
+#undef TABLE_NAME_MAX_SIZE
+#undef QUERY_BUF_MAX_SIZE
 }
