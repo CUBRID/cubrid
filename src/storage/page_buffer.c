@@ -9005,6 +9005,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 #define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 500
 #define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 50000
 #define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 500
+#define PGBUF_LOOP_CNT_FORCE_PRIVATE 1    /* basically disabled */
 
   PGBUF_BCB *victim = NULL;
   int shared_lru_idx = -1, private_lru_idx = -1;
@@ -9203,7 +9204,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	}
     }
 
-  if (force_private_lru1 == true && loop_count < PGBUF_LOOP_CNT_SHARED_IGNORE_STAT)
+  if (force_private_lru1 == true && loop_count < PGBUF_LOOP_CNT_FORCE_PRIVATE)
     {
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_FORCE_PRIVATE_LRU_FAIL);
       return victim;
@@ -9281,6 +9282,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 #undef PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT
 #undef PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT
 #undef PGBUF_LOOP_CNT_SHARED_IGNORE_STAT
+#undef PGBUF_LOOP_CNT_FORCE_PRIVATE
 }
 
 /*
@@ -14472,10 +14474,10 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
  *			    such list is skipped. Also, each LRU list has a threshold (a maximum number) of BCBs 
  *			    which may hold with LRU1 state (lru1_threshold_per_lru). The purpose of this function is to
  *			    dynamically adjust these two sets of values.
- *			    The adjustemnt is performed based on other sets of collected data such as activity
+ *			    The adjustment is performed based on other sets of collected data such as activity
  *			    (formula based on individual LRU speed, victimization pressure, LRU hit count).
  *
- * curr_time_p (in) : current time argument (can be NULL, in such case quota adjustement is forced)
+ * curr_time_p (in) : current time argument (can be NULL, in such case quota adjustment is forced)
  * return : void
  */
 void
@@ -14534,8 +14536,8 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
 
   /* quota adjust if :
    * - force mode (curr_time_p == NULL)
-   * - or more than 500 msec since last adjustement and activity is more than threshold
-   * - or more than 5 min since last adjustement and activity is more 1% of threshold
+   * - or more than 500 msec since last adjustment and activity is more than threshold
+   * - or more than 5 min since last adjustment and activity is more 1% of threshold
    * Activity of page buffer is measured in number of page unfixes
    */
   if (curr_time_p != NULL
