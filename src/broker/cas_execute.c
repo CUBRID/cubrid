@@ -4676,7 +4676,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMETZ:
       {
-	DB_TIME time_local, *time_utc;
+	DB_TIME time_local, time_utc, *time_utc_p;
 	TZ_ID tz_id;
 	DB_TIMETZ *time_tz;
 	int err;
@@ -4685,8 +4685,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	if (db_value_type (val) == DB_TYPE_TIMELTZ)
 	  {
-	    time_utc = db_get_time (val);
-	    err = tz_create_session_tzid_for_time (time_utc, true, &tz_id);
+	    time_utc_p = db_get_time (val);
+	    time_utc = *time_utc_p;
+	    err = tz_create_session_tzid_for_time (&time_utc, true, &tz_id);
 	    if (err != NO_ERROR)
 	      {
 		net_buf_cp_int (net_buf, -1, NULL);
@@ -4697,11 +4698,11 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	else
 	  {
 	    time_tz = db_get_timetz (val);
-	    *time_utc = time_tz->time;
+	    time_utc = time_tz->time;
 	    tz_id = time_tz->tz_id;
 	  }
 
-	err = tz_utc_timetz_to_local (time_utc, &tz_id, &time_local);
+	err = tz_utc_timetz_to_local (&time_utc, &tz_id, &time_local);
 	if (err != NO_ERROR)
 	  {
 	    net_buf_cp_int (net_buf, -1, NULL);
@@ -4746,7 +4747,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
       {
-	DB_TIMESTAMP *ts;
+	DB_TIMESTAMP ts, *ts_p;
 	DB_TIMESTAMPTZ *ts_tz;
 	DB_DATE date;
 	DB_TIME time;
@@ -4757,8 +4758,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	if (db_value_type (val) == DB_TYPE_TIMESTAMPLTZ)
 	  {
-	    ts = db_get_timestamp (val);
-	    err = tz_create_session_tzid_for_timestamp (ts, &tz_id);
+	    ts_p = db_get_timestamp (val);
+	    ts = *ts_p;
+	    err = tz_create_session_tzid_for_timestamp (&ts, &tz_id);
 	    if (err != NO_ERROR)
 	      {
 		net_buf_cp_int (net_buf, -1, NULL);
@@ -4769,11 +4771,11 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	else
 	  {
 	    ts_tz = db_get_timestamptz (val);
-	    *ts = ts_tz->timestamp;
+	    ts = ts_tz->timestamp;
 	    tz_id = ts_tz->tz_id;
 	  }
 
-	err = db_timestamp_decode_w_tz_id (ts, &tz_id, &date, &time);
+	err = db_timestamp_decode_w_tz_id (&ts, &tz_id, &date, &time);
 	if (err != NO_ERROR)
 	  {
 	    net_buf_cp_int (net_buf, -1, NULL);
@@ -4815,7 +4817,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIMETZ:
       {
-	DB_DATETIME dt_local, *dt_utc;
+	DB_DATETIME dt_local, dt_utc, *dt_utc_p;
 	TZ_ID tz_id;
 	DB_DATETIMETZ *dt_tz;
 	int err;
@@ -4824,8 +4826,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
 	if (db_value_type (val) == DB_TYPE_DATETIMELTZ)
 	  {
-	    dt_utc = db_get_datetime (val);
-	    err = tz_create_session_tzid_for_datetime (dt_utc, true, &tz_id);
+	    dt_utc_p = db_get_datetime (val);
+	    dt_utc = *dt_utc_p;
+	    err = tz_create_session_tzid_for_datetime (&dt_utc, true, &tz_id);
 	    if (err != NO_ERROR)
 	      {
 		net_buf_cp_int (net_buf, -1, NULL);
@@ -4836,11 +4839,11 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	else
 	  {
 	    dt_tz = db_get_datetimetz (val);
-	    *dt_utc = dt_tz->datetime;
+	    dt_utc = dt_tz->datetime;
 	    tz_id = dt_tz->tz_id;
 	  }
 
-	err = tz_utc_datetimetz_to_local (dt_utc, &tz_id, &dt_local);
+	err = tz_utc_datetimetz_to_local (&dt_utc, &tz_id, &dt_local);
 	if (err == ER_QPROC_TIME_UNDERFLOW)
 	  {
 	    db_datetime_encode (&dt_local, 0, 0, 0, 0, 0, 0, 0);
