@@ -736,6 +736,20 @@ struct pgbuf_seq_flusher
   bool burst_mode;		/* config : flush in burst or flush one page and wait */
 };
 
+#define PGBUF_LRU_NO_VICTIM_FLAG ((int) 0x80000000)
+#define PGBUF_LRU_FLUSH_COUNT_MASK (~PGBUF_LRU_NO_VICTIM_FLAG)
+#define PGBUF_LRU_IS_NO_VICTIM_SET(lru_idx) \
+  ((pgbuf_Pool.monitor.lru_flags[lru_idx] & PGBUF_LRU_NO_VICTIM_FLAG) != 0)
+#define PGBUF_LRU_GET_FLAG(lru_idx) pgbuf_Pool.monitor.lru_flags[lru_idx]
+#define PGBUF_LRU_SET_NO_VICTIM(lru_idx, prev_flag) \
+  ATOMIC_CAS_32 (&(pgbuf_Pool.monitor.lru_flags[lru_idx]), prev_flag, prev_flag | PGBUF_LRU_NO_VICTIM_FLAG)
+#define PGBUF_LRU_INC_FLUSH_COUNT(lru_flag) \
+  do \
+    { \
+      int crt = lru_flag; \
+      ATOMIC_TAS_32 (&lru_flag)
+    } while (false)
+
 typedef struct pgbuf_page_monitor PGBUF_PAGE_MONITOR;
 struct pgbuf_page_monitor
 {
@@ -749,13 +763,7 @@ struct pgbuf_page_monitor
   int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
   int *lru_victim_found_per_lru;	/* count of BCB victims found (by flush thread) */
   int *lru_victim_pressure_per_lru;	/* current pressure on LRU to increase due to victimization */
-  int *lru_victim_not_found_per_lru;	/* 1 when not found, 0 when found or maybe we can find */
-
-  /* for debug */
-  int *lru_count_set_not_found_1_0;
-  int *lru_count_set_not_found_1_1;
-  int *lru_count_set_not_found_0_0;
-  int *lru_count_set_not_found_0_1;
+  volatile int *lru_flags;	/* 1 when not found, 0 when found or maybe we can find */
 
   /* LRU life cycle */
   int *lru2_tick;		/* Current age of LRU2 section per LRU */
@@ -1235,6 +1243,11 @@ static void pgbuf_print_lru_destroyed_pg_distribution (void);
 static void pgbuf_print_lru_pending_vict_req (void);
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
 static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
+
+STATIC_INLINE int pgbuf_lru_get_flags (int index_lru) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_lru_has_no_victim (int index_lru) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_lru_mark_no_victim (int index_lru, int prev_flag) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_mark_flushed (int index_lru) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -9063,7 +9076,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		  pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
 		  if (bcbs_in_lru >= pending_vict_req
 		      && (loop_count >= PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT
-			  || !monitor->lru_victim_not_found_per_lru[shared_lru_idx]))
+			  || !pgbuf_lru_has_no_victim (shared_lru_idx)))
 		    {
 		      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
 		      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, bcbs_in_lru, true);
@@ -9108,8 +9121,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	}
 
       if (try_private == true
-	  && (loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT
-	      || !monitor->lru_victim_not_found_per_lru[private_lru_idx]))
+	  && (loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT || !pgbuf_lru_has_no_victim (private_lru_idx)))
 	{
 	  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
 
@@ -9143,7 +9155,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	      pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[overflow_private_lru_idx], 1);
 	      if (pending_vict_req <= PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW
 		  && (loop_count >= PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT
-		      || !monitor->lru_victim_not_found_per_lru[overflow_private_lru_idx]))
+		      || !pgbuf_lru_has_no_victim (overflow_private_lru_idx)))
 		{
 		  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
 		  /* victimize from overflow private LRU */
@@ -9190,7 +9202,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
   if (private_lru_idx != -1
       && force_private_lru1 == true
       && monitor->bcbs_cnt_per_lru[private_lru_idx] > 0
-      && (loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT || !monitor->lru_victim_not_found_per_lru[private_lru_idx]))
+      && (loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT || !pgbuf_lru_has_no_victim (private_lru_idx)))
     {
       bcbs_in_lru = monitor->bcbs_cnt_per_lru[private_lru_idx];
       /* force victimization from private LRU, including LRU1 zone */
@@ -9246,8 +9258,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	  /* try to search only if all previous searches were successful and this is the only thread attempting it */
 	  pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
 	  if (pending_vict_req <= 1
-	      && (loop_count >= PGBUF_LOOP_CNT_SHARED_IGNORE_STAT
-		  || !monitor->lru_victim_not_found_per_lru[shared_lru_idx]))
+	      && (loop_count >= PGBUF_LOOP_CNT_SHARED_IGNORE_STAT || !pgbuf_lru_has_no_victim (shared_lru_idx)))
 	    {
 	      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
 	      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, max_count, force_victim_lru1_shared);
@@ -9445,6 +9456,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   bool found;
   bool list_bottom_dirty = false;
 
+  int save_lru_flags = pgbuf_lru_get_flags (lru_idx);
+
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
 
   /* check if LRU list is empty */
@@ -9542,14 +9555,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
 
-      if (ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[lru_idx], 1) == 0)
-	{
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_1[lru_idx], 1);
-	}
-      else
-	{
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_1[lru_idx], 1);
-	}
+      (void) pgbuf_lru_mark_no_victim (lru_idx, save_lru_flags);
       return NULL;
     }
 
@@ -10130,7 +10136,7 @@ pgbuf_relocate_chain_private_lru_to_shared (const int private_lru_idx)
   ATOMIC_TAS_32 (&monitor->lru_victim_dirty_per_lru[private_lru_idx], 0);
   ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[private_lru_idx], 0);
   ATOMIC_TAS_32 (&monitor->lru_victim_found_per_lru[private_lru_idx], 0);
-  ATOMIC_TAS_32 (&monitor->lru_victim_not_found_per_lru[private_lru_idx], 0);
+  ATOMIC_TAS_32 (&monitor->lru_flags[private_lru_idx], 0);
 
   pthread_mutex_unlock (&private_lru_list->LRU_mutex);
 
@@ -10721,14 +10727,6 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 
-  if (ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_not_found_per_lru[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 0) == 0)
-    {
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_0_0[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 1);
-    }
-  else
-    {
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_count_set_not_found_1_0[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)], 1);
-    }
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
   bufptr->avoid_victim = false;
@@ -10742,6 +10740,8 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       pgbuf_wakeup_uncond (thrd_entry);
     }
 #endif /* SERVER_MODE */
+
+  pgbuf_lru_mark_flushed (PGBUF_GET_LRU_INDEX (bufptr->zone_lru));
 
   return NO_ERROR;
 }
@@ -14050,13 +14050,12 @@ pgbuf_initialize_page_monitor (void)
       goto exit;
     }
 
-  monitor->lru_victim_not_found_per_lru =
-    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_not_found_per_lru[0]));
-  if (monitor->lru_victim_not_found_per_lru == NULL)
+  monitor->lru_flags = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_flags[0]));
+  if (monitor->lru_flags == NULL)
     {
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_not_found_per_lru[0])));
+              1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_flags[0])));
       goto exit;
     }
 
@@ -14192,7 +14191,6 @@ pgbuf_initialize_page_monitor (void)
       monitor->lru_victim_dirty_per_lru[i] = 0;
       monitor->lru_victim_found_per_lru[i] = 0;
       monitor->lru_victim_pressure_per_lru[i] = 0;
-      monitor->lru_victim_not_found_per_lru[i] = 0;
       monitor->lru2_tick[i] = 0;
       monitor->lru1_tick[i] = 0;
       monitor->lru1_hit[i] = 0;
@@ -14204,11 +14202,6 @@ pgbuf_initialize_page_monitor (void)
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
       monitor->lru_relocated_destroyed_pages[i] = 0;
 #endif
-
-      monitor->lru_count_set_not_found_0_0[i] = 0;
-      monitor->lru_count_set_not_found_0_1[i] = 0;
-      monitor->lru_count_set_not_found_1_0[i] = 0;
-      monitor->lru_count_set_not_found_1_1[i] = 0;
     }
 
   monitor->lru_victim_req_cnt = 0;
@@ -15779,4 +15772,30 @@ pgbuf_keep_victim_flush_thread_active (void)
   return false;
 
 #undef MIN_DIRTY_PAGES_TO_KEEP_FLUSH_ALIVE
+}
+
+STATIC_INLINE int
+pgbuf_lru_get_flags (int index_lru)
+{
+  return pgbuf_Pool.monitor.lru_flags[index_lru];
+}
+
+STATIC_INLINE bool
+pgbuf_lru_has_no_victim (int index_lru)
+{
+  return (pgbuf_Pool.monitor.lru_flags[index_lru] | PGBUF_LRU_NO_VICTIM_FLAG) != 0;
+}
+
+STATIC_INLINE bool
+pgbuf_lru_mark_no_victim (int index_lru, int prev_flag)
+{
+  return ATOMIC_CAS_32 (&pgbuf_Pool.monitor.lru_flags[index_lru], prev_flag, prev_flag | PGBUF_LRU_NO_VICTIM_FLAG);
+}
+
+STATIC_INLINE void
+pgbuf_lru_mark_flushed (int index_lru)
+{
+  int prev_flag = pgbuf_Pool.monitor.lru_flags[index_lru];
+  /* increment counter and clear PGBUF_LRU_NO_VICTIM_FLAG */
+  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_flags[index_lru], (prev_flag + 1) & PGBUF_LRU_FLUSH_COUNT_MASK);
 }
