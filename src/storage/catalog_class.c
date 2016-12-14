@@ -772,6 +772,13 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val_p)
 	  return er_errid ();
 	}
 
+      if (name_p == NULL)
+	{
+	  /* this is only possible if ER_HEAP_NODATA_NEWADDRESS occur */
+	  db_make_null (oid_val_p);
+	  return NO_ERROR;
+	}
+
       if (catcls_find_oid_by_class_name (thread_p, name_p, oid_p) != NO_ERROR)
 	{
 	  free_and_init (name_p);

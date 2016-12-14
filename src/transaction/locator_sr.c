@@ -1884,7 +1884,8 @@ locator_check_class_on_heap (const void *name, void *ent, void *args)
   classname = (char *) name;
   class_oid = &entry->e_current.oid;
 
-  if (heap_get_class_name_alloc_if_diff (thread_p, class_oid, (char *) classname, &heap_classname) != NO_ERROR)
+  if (heap_get_class_name_alloc_if_diff (thread_p, class_oid, (char *) classname, &heap_classname) != NO_ERROR
+      || heap_classname == NULL)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	{

@@ -131,7 +131,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
 
   OID_SET_NULL (&dir_oid);
 
-  if (heap_get_class_name (thread_p, class_id_p, &class_name) != NO_ERROR)
+  if (heap_get_class_name (thread_p, class_id_p, &class_name) != NO_ERROR || class_name == NULL)
     {
       /* something wrong. give up. */
       ASSERT_ERROR_AND_SET (error_code);

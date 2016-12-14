@@ -5867,7 +5867,7 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
 	      /* ignore */
 	      er_clear ();
 	    }
-	  else
+	  else if (catalog_access_info->class_name != NULL)
 	    {
 	      catalog_access_info->need_free_class_name = true;
 	    }

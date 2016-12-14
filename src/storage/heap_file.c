@@ -2623,7 +2623,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 
       if (!OID_ISNULL (&attrepr->classoid) && !OID_EQ (&attrepr->classoid, class_oid))
 	{
-	  if (heap_get_class_name (thread_p, &attrepr->classoid, &classname) != NO_ERROR)
+	  if (heap_get_class_name (thread_p, &attrepr->classoid, &classname) != NO_ERROR || classname == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (ret);
 	      goto exit_on_error;
@@ -9187,7 +9187,8 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
  *   return: error_code
  *
  *   class_oid(in): The Class Object identifier
- *   class_name(out): The Class name;The classname space must be released by the caller.
+ *   class_name(out): Reference of the Class name pointer where name will reside; 
+ *		      The classname space must be released by the caller.
  *
  * Note: Find the name of the given class identifier. It asserts that the given OID is class OID.
  *
@@ -9202,14 +9203,14 @@ heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **clas
 /*
  * heap_get_class_name_alloc_if_diff () - Get the name of given class
  *                               name is malloc when different than given name
- *   return: error_code
+ *   return: error_code if error(other than ER_HEAP_NODATA_NEWADDRESS) occur
  *
  *   class_oid(in): The Class Object identifier
  *   guess_classname(in): Guess name of class
  *   classname_out(out):  guess_classname when it is the real name. Don't need to free.
- *           malloc classname when different from guess_classname.
- *           Must be free by caller (free_and_init)
- *           NULL some kind of error
+ *			  malloc classname when different from guess_classname.
+ *			  Must be free by caller (free_and_init)
+ *			  NULL in case of error
  *
  * Note: Find the name of the given class identifier. If the name is
  * the same as the guessed name, the guessed name is returned.
@@ -11648,7 +11649,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			  continue;
 			}
 
-		      if (heap_get_class_name (thread_p, &(attr_info->class_oid), &new_meta_data) != NO_ERROR)
+		      if (heap_get_class_name (thread_p, &(attr_info->class_oid), &new_meta_data) != NO_ERROR
+			  || new_meta_data == NULL)
 			{
 			  status = S_ERROR;
 			  break;
@@ -16404,7 +16406,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		  goto exit_on_error;
 		}
 
-	      if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR)
+	      if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR || classname == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (ret);
 		  goto exit_on_error;
@@ -16742,7 +16744,7 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
   char *classname;
   bool need_free_classname = false;
 
-  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
     {
       classname = (char *) "unknown";
       er_clear ();
@@ -17678,7 +17680,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
 
-  if (heap_get_class_name (thread_p, &(heap_hdr->class_oid), &class_name) != NO_ERROR)
+  if (heap_get_class_name (thread_p, &(heap_hdr->class_oid), &class_name) != NO_ERROR || class_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;
@@ -17930,7 +17932,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
       goto cleanup;
     }
 
-  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR)
+  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;
@@ -19437,7 +19439,7 @@ heap_mark_class_as_modified (THREAD_ENTRY * thread_p, OID * oid_p, int chn, bool
       return NO_ERROR;
     }
 
-  if (heap_get_class_name (thread_p, oid_p, &classname) != NO_ERROR)
+  if (heap_get_class_name (thread_p, oid_p, &classname) != NO_ERROR || classname == NULL)
     {
       ASSERT_ERROR ();
       return ER_FAILED;

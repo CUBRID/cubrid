@@ -18265,6 +18265,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 	}
       else
 	{
+	  /* ignore */
 	  er_clear ();
 	}
     }
