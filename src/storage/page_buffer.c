@@ -4140,6 +4140,12 @@ end:
     }
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_run_sleep, PSTAT_PB_FLUSH_RUN);
 
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      /* todo: this is a desperate attempt to reset flags and make lists available for victimization */
+      pgbuf_Pool.monitor.lru_flags[i] = 0;
+    }
+
   return error;
 }
 
@@ -9444,6 +9450,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   int check_count;
   bool found;
   bool list_bottom_dirty = false;
+  PGBUF_BCB *bufptr_avoid_victim = NULL;
 
   int save_lru_flags = pgbuf_lru_get_flags (lru_idx);
 
@@ -9478,6 +9485,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 	  found = true;
 	  break;
 	}
+
+      if (bufptr->avoid_victim && bufptr_avoid_victim == NULL)
+        {
+          /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
+          bufptr_avoid_victim = bufptr;
+        }
 
       if (zone1_list == -1 && PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
 	{
@@ -9518,6 +9531,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   if (!found)
     {
       bufptr = NULL;
+    }
+  if (bufptr == NULL && bufptr_avoid_victim != NULL && !bufptr_avoid_victim->avoid_victim)
+    {
+      /* use the skipped bufptr */
+      bufptr = bufptr_avoid_victim;
     }
 
   if (lru_list->LRU_bottom != NULL && lru_list->LRU_bottom->dirty == true)
@@ -15739,16 +15757,39 @@ pgbuf_lru_has_no_victim (int index_lru)
   return (pgbuf_Pool.monitor.lru_flags[index_lru] & PGBUF_LRU_NO_VICTIM_FLAG) != 0;
 }
 
+typedef struct pgbuf_temp_stats PGBUF_TEMP_STATS;
+struct pgbuf_temp_stats
+{
+  INT64 set_no_victim;
+  INT64 fail_set_no_victim;
+  INT64 clear_no_victim;
+  INT64 flush_count_increment;
+};
+static PGBUF_TEMP_STATS pgbuf_Temp_stats = {0, 0, 0, 0};
+
 STATIC_INLINE bool
 pgbuf_lru_mark_no_victim (int index_lru, int prev_flag)
 {
-  return ATOMIC_CAS_32 (&pgbuf_Pool.monitor.lru_flags[index_lru], prev_flag, prev_flag | PGBUF_LRU_NO_VICTIM_FLAG);
+  if (ATOMIC_CAS_32 (&pgbuf_Pool.monitor.lru_flags[index_lru], prev_flag, prev_flag | PGBUF_LRU_NO_VICTIM_FLAG))
+    {
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.set_no_victim, 1);
+    }
+  else
+    {
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.fail_set_no_victim, 1);
+    }
 }
 
 STATIC_INLINE void
 pgbuf_lru_mark_flushed (int index_lru)
 {
   int prev_flag = pgbuf_Pool.monitor.lru_flags[index_lru];
+  int tas_res;
   /* increment counter and clear PGBUF_LRU_NO_VICTIM_FLAG */
-  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_flags[index_lru], (prev_flag + 1) & PGBUF_LRU_FLUSH_COUNT_MASK);
+  tas_res = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_flags[index_lru], (prev_flag + 1) & PGBUF_LRU_FLUSH_COUNT_MASK);
+  if (tas_res & PGBUF_LRU_NO_VICTIM_FLAG)
+    {
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.clear_no_victim, 1);
+    }
+  ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_count_increment, 1);
 }

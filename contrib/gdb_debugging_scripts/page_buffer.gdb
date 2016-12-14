@@ -215,12 +215,18 @@ define pgbuf_lru_print_vict
   set $elem = 0
   set $zone_lru2 = ($lru_idx << 3) | 1
   set $zone_lru1 = ($lru_idx << 3)
+  set $found = 0
 
   p $zone_lru2
   p $zone_lru1
   
   while $bcb != 0
 	if $bcb->dirty == 0 && $bcb->fcnt == 0 && $bcb->avoid_victim == 0 && $bcb->latch_mode == 0 && $bcb->victim_candidate == 0 && $bcb->zone_lru == $zone_lru2
+    if $found == 0
+      p $elem
+      set $found = 1
+      end
+
 	  p $bcb
 	  set $cnt_can_victim = $cnt_can_victim + 1
 	end
