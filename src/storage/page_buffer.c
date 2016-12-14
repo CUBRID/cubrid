@@ -9532,7 +9532,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
     {
       bufptr = NULL;
     }
-  if (bufptr == NULL && bufptr_avoid_victim != NULL && !bufptr_avoid_victim->avoid_victim)
+  if (bufptr == NULL && bufptr_avoid_victim != NULL)
     {
       /* use the skipped bufptr */
       bufptr = bufptr_avoid_victim;
