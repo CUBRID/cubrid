@@ -738,17 +738,6 @@ struct pgbuf_seq_flusher
 
 #define PGBUF_LRU_NO_VICTIM_FLAG ((int) 0x80000000)
 #define PGBUF_LRU_FLUSH_COUNT_MASK (~PGBUF_LRU_NO_VICTIM_FLAG)
-#define PGBUF_LRU_IS_NO_VICTIM_SET(lru_idx) \
-  ((pgbuf_Pool.monitor.lru_flags[lru_idx] & PGBUF_LRU_NO_VICTIM_FLAG) != 0)
-#define PGBUF_LRU_GET_FLAG(lru_idx) pgbuf_Pool.monitor.lru_flags[lru_idx]
-#define PGBUF_LRU_SET_NO_VICTIM(lru_idx, prev_flag) \
-  ATOMIC_CAS_32 (&(pgbuf_Pool.monitor.lru_flags[lru_idx]), prev_flag, prev_flag | PGBUF_LRU_NO_VICTIM_FLAG)
-#define PGBUF_LRU_INC_FLUSH_COUNT(lru_flag) \
-  do \
-    { \
-      int crt = lru_flag; \
-      ATOMIC_TAS_32 (&lru_flag)
-    } while (false)
 
 typedef struct pgbuf_page_monitor PGBUF_PAGE_MONITOR;
 struct pgbuf_page_monitor
