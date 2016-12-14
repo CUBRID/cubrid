@@ -14143,6 +14143,7 @@ pgbuf_initialize_page_monitor (void)
       monitor->lru_victim_dirty_per_lru[i] = 0;
       monitor->lru_victim_found_per_lru[i] = 0;
       monitor->lru_victim_pressure_per_lru[i] = 0;
+      monitor->lru_flags[i] = 0;
       monitor->lru2_tick[i] = 0;
       monitor->lru1_tick[i] = 0;
       monitor->lru1_hit[i] = 0;
@@ -15735,7 +15736,7 @@ pgbuf_lru_get_flags (int index_lru)
 STATIC_INLINE bool
 pgbuf_lru_has_no_victim (int index_lru)
 {
-  return (pgbuf_Pool.monitor.lru_flags[index_lru] | PGBUF_LRU_NO_VICTIM_FLAG) != 0;
+  return (pgbuf_Pool.monitor.lru_flags[index_lru] & PGBUF_LRU_NO_VICTIM_FLAG) != 0;
 }
 
 STATIC_INLINE bool
