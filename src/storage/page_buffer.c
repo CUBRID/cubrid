@@ -14044,7 +14044,7 @@ pgbuf_initialize_page_monitor (void)
     {
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-              1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_flags[0])));
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_flags[0])));
       goto exit;
     }
 
