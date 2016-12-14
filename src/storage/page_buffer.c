@@ -752,7 +752,7 @@ struct pgbuf_page_monitor
   int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
   int *lru_victim_found_per_lru;	/* count of BCB victims found (by flush thread) */
   int *lru_victim_pressure_per_lru;	/* current pressure on LRU to increase due to victimization */
-  volatile int *lru_flags;	/* 1 when not found, 0 when found or maybe we can find */
+  volatile int *lru_flags;	/* lru flags used by victimzation and flush */
 
   /* LRU life cycle */
   int *lru2_tick;		/* Current age of LRU2 section per LRU */
@@ -14045,43 +14045,6 @@ pgbuf_initialize_page_monitor (void)
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
               1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_flags[0])));
-      goto exit;
-    }
-
-  monitor->lru_count_set_not_found_1_0 =
-    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_1_0[0]));
-  if (monitor->lru_count_set_not_found_1_0 == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_1_0[0])));
-      goto exit;
-    }
-  monitor->lru_count_set_not_found_1_1 =
-    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_1_1[0]));
-  if (monitor->lru_count_set_not_found_1_1 == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_1_1[0])));
-      goto exit;
-    }
-  monitor->lru_count_set_not_found_0_0 =
-    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_0_0[0]));
-  if (monitor->lru_count_set_not_found_0_0 == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_0_0[0])));
-      goto exit;
-    }
-  monitor->lru_count_set_not_found_0_1 =
-    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_0_1[0]));
-  if (monitor->lru_count_set_not_found_0_1 == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_count_set_not_found_0_1[0])));
       goto exit;
     }
 
