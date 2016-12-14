@@ -2469,8 +2469,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  error_code = ER_HEAP_UNKNOWN_OBJECT;
 	  if (er_errid () != error_code)
 	    {
-	      /* error has not been previously set */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
+	      /* error was not previously set; set error in order to have it returned to client */
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
 	    }
 	  return error_code;
 	}
@@ -2574,9 +2574,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  error_code = ER_HEAP_UNKNOWN_OBJECT;
 	  if (er_errid () != error_code)
 	    {
-	      /* error was not previously set */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
-		      oid->slotid);
+	      /* error was not previously set; set error in order to have it returned to client */
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
 	    }
 	  goto error;
 	}
