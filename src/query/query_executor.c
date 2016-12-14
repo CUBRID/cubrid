@@ -2420,6 +2420,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
     }
 
   xasl->query_in_progress = query_save_state;
+  xasl->status = XASL_INITIALIZED;
 
   return pg_cnt;
 }
