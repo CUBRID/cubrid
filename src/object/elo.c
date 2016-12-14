@@ -64,7 +64,6 @@
 #include "object_representation.h"
 #include "object_primitive.h"
 
-#include "es.h"
 #include "boot.h"
 
 #if defined(CS_MODE)
@@ -72,10 +71,6 @@
 #else
 #include "xserver_interface.h"
 #endif
-
-static const DB_ELO elo_Initializer = { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL,
-ES_NONE
-};
 
 #define ELO_NEEDS_TRANSACTION(e) \
         ((e)->es_type == ES_OWFS || (e)->es_type == ES_POSIX)
@@ -587,17 +582,6 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
     }
 }
 
-/*
- * elo_init_structure () - init. ELO structure
- */
-void
-elo_init_structure (DB_ELO * elo)
-{
-  if (elo != NULL)
-    {
-      *elo = elo_Initializer;
-    }
-}
 
 /*
  * elo_copy_structure () - Copy elo instance

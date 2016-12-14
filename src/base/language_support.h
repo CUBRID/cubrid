@@ -62,11 +62,6 @@
   (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
     LANG_COLL_BINARY)))
 
-/* collation and charset do be used by system : */
-#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
-
-#define LANG_SYS_CODESET  lang_charset()
-
 #define LANG_IS_COERCIBLE_COLL(c)	\
   ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
    || (c) == LANG_COLL_EUCKR_BINARY)
