@@ -10136,6 +10136,11 @@ pgbuf_relocate_bottom_lru (PGBUF_BCB * bufptr, const int lru_idx, const bool sti
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, 1);
     }
 
+  if (!bufptr->dirty)
+    {
+      pgbuf_lru_mark_has_victims (lru_idx);
+    }
+
   pthread_mutex_unlock (&lru_list->LRU_mutex);
 
   return NO_ERROR;
@@ -10157,6 +10162,7 @@ pgbuf_relocate_chain_private_lru_to_shared (const int private_lru_idx)
   int list_tick;
   int cnt_removed_aout;
   PGBUF_PAGE_MONITOR *monitor;
+  bool found_not_dirty = false;
 
   assert (PGBUF_IS_PRIVATE_LRU_INDEX (private_lru_idx));
 
@@ -10201,6 +10207,15 @@ pgbuf_relocate_chain_private_lru_to_shared (const int private_lru_idx)
       bufptr->sticky_private_list = true;
       bufptr->list_tick = list_tick;
       bufptr = bufptr->prev_BCB;
+
+      if (!bufptr->dirty)
+	{
+	  found_not_dirty = true;
+	}
+    }
+  if (found_not_dirty)
+    {
+      pgbuf_lru_mark_has_victims (shared_lru_idx);
     }
 
   if (shared_lru_list->LRU_bottom == NULL)
