@@ -739,6 +739,14 @@ struct pgbuf_seq_flusher
 #define PGBUF_LRU_NO_VICTIM_FLAG ((int) 0x80000000)
 #define PGBUF_LRU_FLUSH_COUNT_MASK (~PGBUF_LRU_NO_VICTIM_FLAG)
 
+typedef struct last_failed_lru LAST_FAILED_LRU;
+struct last_failed_lru
+{
+  INT64 total_count;
+  INT64 dirty_count;
+  INT64 flushed_after;
+};
+
 typedef struct pgbuf_page_monitor PGBUF_PAGE_MONITOR;
 struct pgbuf_page_monitor
 {
@@ -1059,15 +1067,9 @@ struct pgbuf_temp_stats
   INT64 skip_other_victims;
   INT64 skip_fixed;
 };
-static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-typedef struct last_failed_lru LAST_FAILED_LRU;
-struct last_failed_lru
-{
-  INT64 total_count;
-  INT64 dirty_count;
-  INT64 flushed_after;
-};
+
 
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
