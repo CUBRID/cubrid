@@ -1059,7 +1059,7 @@ struct pgbuf_temp_stats
   INT64 fail_set_no_victim;
   INT64 clear_no_victim;
   INT64 flush_count_increment;
-  INT64 failed_unexpected_maybe;    /* this is too small to explain it (25 in a run) */
+  INT64 failed_unexpected_maybe;	/* this is too small to explain it (25 in a run) */
   INT64 invalidated_after_mutex;
 
   INT64 skip_dirty;
@@ -1269,7 +1269,7 @@ static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 STATIC_INLINE int pgbuf_lru_get_flags (int index_lru) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_lru_has_no_victim (int index_lru) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_lru_mark_no_victim (int index_lru, int prev_flag) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_mark_flushed (int index_lru) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_mark_has_victims (int index_lru) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -9888,6 +9888,11 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone, const int lru_idx)
       ref_bufptr->next_BCB = bufptr;
 
       bufptr->zone_lru = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
+
+      if (!bufptr->dirty)
+	{
+	  pgbuf_lru_mark_has_victims (lru_idx);
+	}
     }
   else
     {
@@ -9917,6 +9922,7 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone, const int lru_idx)
       if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt > zone1_threshold)
 	{
 	  PGBUF_BCB *temp_bufptr;
+	  bool found_not_dirty = false;
 
 	  temp_bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle;
 	  while (temp_bufptr != NULL
@@ -9927,7 +9933,16 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone, const int lru_idx)
 	      temp_bufptr->zone_lru = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
 	      pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle = temp_bufptr->prev_BCB;
 	      pgbuf_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt -= 1;
+	      if (!temp_bufptr->dirty)
+		{
+		  found_not_dirty = true;
+		}
 	      temp_bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_middle;
+	    }
+
+	  if (found_not_dirty)
+	    {
+	      pgbuf_lru_mark_has_victims (lru_idx);
 	    }
 	}
     }
@@ -10836,7 +10851,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_2_ZONE)
     {
       /* if no victim was previously found, we need to mark the list as now having victims */
-      pgbuf_lru_mark_flushed (PGBUF_GET_LRU_INDEX (bufptr->zone_lru));
+      pgbuf_lru_mark_has_victims (PGBUF_GET_LRU_INDEX (bufptr->zone_lru));
       ATOMIC_INC_64 (&pgbuf_Pool.monitor.lru_last_failed[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)].flushed_after, 1);
     }
 
@@ -15882,7 +15897,7 @@ pgbuf_lru_mark_no_victim (int index_lru, int prev_flag)
 }
 
 STATIC_INLINE void
-pgbuf_lru_mark_flushed (int index_lru)
+pgbuf_lru_mark_has_victims (int index_lru)
 {
   int prev_flag = pgbuf_Pool.monitor.lru_flags[index_lru];
   int tas_res;
