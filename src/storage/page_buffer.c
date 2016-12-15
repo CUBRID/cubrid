@@ -10837,7 +10837,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       /* if no victim was previously found, we need to mark the list as now having victims */
       pgbuf_lru_mark_flushed (PGBUF_GET_LRU_INDEX (bufptr->zone_lru));
-      ATOMIC_INC_64 (&pgbuf_Pool.monitor.lru_last_failed->flushed_after, 1);
+      ATOMIC_INC_64 (&pgbuf_Pool.monitor.lru_last_failed[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)].flushed_after, 1);
     }
 
   return NO_ERROR;
