@@ -131,6 +131,7 @@ static int get_saving_time_from_offset_rule (const TZ_OFFSET_RULE * offset_rule,
 static bool is_in_overlap_interval (const TZ_TIME_TYPE time_type, const full_date_t offset_rule_diff,
 				    const full_date_t gmt_diff, const int save_time_diff);
 static int get_year_to_apply_rule (const int src_year, const TZ_DS_RULE * ds_rule);
+static int set_new_zone_id (TZ_DECODE_INFO * tz_info);
 #if defined (LINUX)
 static int find_timezone_from_clock (char *timezone_name, int buf_len);
 static int find_timezone_from_localtime (char *timezone_name, int buf_len);
@@ -5585,6 +5586,36 @@ tz_create_datetimetz_from_parts (const int m, const int d, const int y, const in
   return error_status;
 }
 
+
+/*
+* set_new_zone_id() - Sets the new timezone id in the new timezone library using the old timezone library
+*				      
+*  Returns error or no error
+*  tz_info (in/out): pointer to tz_info
+*
+*/
+static int
+set_new_zone_id (TZ_DECODE_INFO * tz_info)
+{
+  char *timezone_name = NULL;
+  unsigned int new_zone_id;
+  int err_status = NO_ERROR;
+
+  timezone_name = timezone_data.names[tz_info->zone.zone_id].name;
+  tz_set_data (tz_get_new_timezone_data ());
+  new_zone_id = tz_get_zone_id_by_name (timezone_name, strlen (timezone_name));
+  if (new_zone_id == -1)
+    {
+      err_status = ER_TZ_INVALID_TIMEZONE;
+    }
+  else
+    {
+      tz_info->zone.zone_id = new_zone_id;
+    }
+
+  return err_status;
+}
+
 /*
 * conv_tz() - Converts a tz type from one time library to another
 *				      
@@ -5628,7 +5659,13 @@ conv_tz (void *p, DB_TYPE type)
 	src_dt.date = date_local;
 	src_dt.time = time_local * 1000;
 
-	tz_set_data (tz_get_new_timezone_data ());
+	err_status = set_new_zone_id (&tz_info);
+	if (err_status != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	    goto exit;
+	  }
+
 	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
 	/* If we get an error it means that the abbreviation does no longer exist
 	 * Then we must try to convert without the abbreviation
@@ -5672,7 +5709,13 @@ conv_tz (void *p, DB_TYPE type)
 	  }
 
 	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
-	tz_set_data (tz_get_new_timezone_data ());
+	err_status = set_new_zone_id (&tz_info);
+	if (err_status != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	    goto exit;
+	  }
+
 	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, &dest_dt);
 	/* If we get an error it means that the abbreviation does no longer exist
 	 * then we must try to convert without the abbreviation
@@ -5718,9 +5761,14 @@ conv_tz (void *p, DB_TYPE type)
 	src_dt.date = date_local;
 	src_dt.time = time_local * 1000;
 
-	tz_set_data (tz_get_new_timezone_data ());
-	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
+	err_status = set_new_zone_id (&tz_info);
+	if (err_status != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	    goto exit;
+	  }
 
+	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
 	if (err_status != NO_ERROR)
 	  {
 	    goto exit;
@@ -5752,9 +5800,14 @@ conv_tz (void *p, DB_TYPE type)
 	  }
 
 	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
-	tz_set_data (tz_get_new_timezone_data ());
-	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, p1);
+	err_status = set_new_zone_id (&tz_info);
+	if (err_status != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	    goto exit;
+	  }
 
+	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, p1);
 	if (err_status != NO_ERROR)
 	  {
 	    goto exit;

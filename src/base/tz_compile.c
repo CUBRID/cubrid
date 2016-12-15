@@ -5615,6 +5615,10 @@ tzc_extend (TZ_DATA * tzd)
 	      start_timezones++;
 	    }
 	  start_names++;
+	  if (is_compat == true)
+	    {
+	      is_compat = false;
+	    }
 	}
     }
 
