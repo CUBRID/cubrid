@@ -776,8 +776,8 @@ struct pgbuf_page_monitor
   int *lru_activity;		/* Activity level per LRU */
 
   /* Overall counters */
-  int lru_shared_pgs;		/* count of BCBs in all shared LRUs */
-  int lru_garbage_pgs;		/* count of pages in garbage LRUs (only when quota is enabled) */
+  volatile int lru_shared_pgs;		/* count of BCBs in all shared LRUs */
+  volatile int lru_garbage_pgs;		/* count of pages in garbage LRUs (only when quota is enabled) */
 
   int pg_lru_vict_req_failed;	/* Count of failed victimization from all LRUs */
   int pg_ain_vict_req_failed;	/* Count of failed victimization from all AIN */
@@ -9056,7 +9056,6 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
   PGBUF_BCB *victim = NULL;
   int shared_lru_idx = -1, private_lru_idx = -1;
   int overflow_private_lru_idx = -1;
-  int start_shared_lru_idx;
   int bcbs_in_lru;
   int pending_vict_req;
   PGBUF_PAGE_MONITOR *monitor;
@@ -9084,22 +9083,10 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	  if (ATOMIC_INC_32 (&monitor->lru_garbage_pgs, -1) >= 0)
 	    {
 	      shared_lru_idx = pgbuf_get_garbage_lru_index_for_victim ();
-	      start_shared_lru_idx = shared_lru_idx;
 
-	      /* cycle through all shared lists */
-	      do
+	      bcbs_in_lru = monitor->bcbs_cnt_per_lru[shared_lru_idx];
+	      if (bcbs_in_lru > 0)
 		{
-		  bcbs_in_lru = monitor->bcbs_cnt_per_lru[shared_lru_idx];
-		  if (bcbs_in_lru <= 0)
-		    {
-		      shared_lru_idx = PGBUF_SHARED_LRU + (shared_lru_idx - PGBUF_SHARED_LRU + 1) % PGBUF_GARBAGE_LRU;
-		      if (shared_lru_idx == start_shared_lru_idx)
-			{
-			  break;
-			}
-		      continue;
-		    }
-
 		  /* search this list only if all previous searches were successful */
 		  pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
 		  if (bcbs_in_lru >= pending_vict_req
@@ -9121,9 +9108,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 			}
 		    }
 		  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
-		  shared_lru_idx = PGBUF_SHARED_LRU + (shared_lru_idx - PGBUF_SHARED_LRU + 1) % PGBUF_GARBAGE_LRU;
 		}
-	      while (shared_lru_idx != start_shared_lru_idx);
 
 	      /* no victim found, restore count */
 	      ATOMIC_INC_32 (&monitor->lru_garbage_pgs, 1);
@@ -9258,7 +9243,6 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       bool force_victim_lru1_shared = false;
 
       shared_lru_idx = pgbuf_get_shared_lru_index_for_victim ();
-      start_shared_lru_idx = shared_lru_idx;
 
       /* force victim from shared LRU1 when few loops */
       if (!PGBUF_PAGE_QUOTA_IS_ENABLED && loop_count >= PGBUF_LOOP_CNT_SHARED_IGNORE_STAT)
@@ -9266,20 +9250,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	  force_victim_lru1_shared = true;
 	}
 
-      /* cycle through all shared lists */
-      do
+      bcbs_in_lru = monitor->bcbs_cnt_per_lru[shared_lru_idx];
+      if (bcbs_in_lru > 0)
 	{
-	  bcbs_in_lru = monitor->bcbs_cnt_per_lru[shared_lru_idx];
-	  if (bcbs_in_lru <= 0)
-	    {
-	      shared_lru_idx = (shared_lru_idx + 1) % PGBUF_SHARED_LRU;
-	      if (shared_lru_idx == start_shared_lru_idx)
-		{
-		  break;
-		}
-	      continue;
-	    }
-
 	  /* try to search only if all previous searches were successful and this is the only thread attempting it */
 	  pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
 	  if (pending_vict_req <= 1
@@ -9298,9 +9271,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	      return victim;
 	    }
 	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
-	  shared_lru_idx = (shared_lru_idx + 1) % PGBUF_SHARED_LRU;
 	}
-      while (shared_lru_idx != start_shared_lru_idx);
 
       /* no victim found, restore count */
       ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
