@@ -1041,6 +1041,23 @@ static PGBUF_PS_INFO ps_info;
 static bool pgbuf_SA_check_page_validation = true;
 #endif /* SA_MODE */
 
+/* todo: remove me */
+typedef struct pgbuf_temp_stats PGBUF_TEMP_STATS;
+struct pgbuf_temp_stats
+{
+  INT64 set_no_victim;
+  INT64 fail_set_no_victim;
+  INT64 clear_no_victim;
+  INT64 flush_count_increment;
+  INT64 failed_unexpected_maybe;
+
+  INT64 skip_dirty;
+  INT64 skip_avoid_victims;
+  INT64 skip_other_victims;
+  INT64 skip_fixed;
+};
+static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
 static INLINE bool pgbuf_is_temporary_volume (VOLID volid) __attribute__ ((ALWAYS_INLINE));
@@ -8309,7 +8326,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   bool has_fixed_pages = true;
 
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
-  PERF_UTIME_TRACKER time_tracker_alloc_bcb_detailed;
+  PERF_UTIME_TRACKER time_tracker_alloc_bcb_detailed;	/* not used */
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
   time_tracker_alloc_bcb_detailed = time_tracker_alloc_bcb;
@@ -8460,7 +8477,6 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRA
     {
       assert (false);
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_BCB_FAIL);
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIMIZE_BCB);
       return ER_FAILED;
     }
 
@@ -8471,7 +8487,6 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRA
   if (pgbuf_delete_from_hash_chain (bufptr) != NO_ERROR)
     {
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_BCB_FAIL);
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIMIZE_BCB);
       return ER_FAILED;
     }
 
@@ -8489,7 +8504,7 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRA
   SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* DIAG_DEVEL && SERVER_MODE */
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIMIZE_BCB);
+  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_BCB);
 
   return NO_ERROR;
 }
@@ -8795,7 +8810,7 @@ pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * t
       bufptr->next_BCB = NULL;
       bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
 
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_USE_INVALID_BCB);
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_USE_INVALID_BCB);
       return bufptr;
     }
 }
@@ -9007,7 +9022,7 @@ pgbuf_get_garbage_lru_index_for_victim (void)
  * max_count (in) : maximum number to check in each list
  * loop_count (in) : how may loops this thread has requested a victim
  * sleep_before_next_try (out) : set true if should wait before next try
- * time_tracker (in/out) : performance time tracker
+ * time_tracker (in/out) : performance time tracker; todo: remove me if not used after all
  *
  * Note: If a victim BCB is found, this function will already lock it. This
  *       means that the caller will have exclusive access to the returned BCB.
@@ -9084,13 +9099,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		      if (victim != NULL)
 			{
 			  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
-			  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
-							       PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS);
+			  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_GARBAGE_LRU_SUCCESS);
 			  return victim;
 			}
 		      else
 			{
-			  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+			  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_GARBAGE_LRU_FAIL);
 			}
 		    }
 		  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
@@ -9131,12 +9145,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
 	  if (victim != NULL)
 	    {
-	      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_PRIVATE_LRU_SUCCESS);
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_PRIVATE_LRU_SUCCESS);
 	      return victim;
 	    }
 	  else
 	    {
-	      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_PRIVATE_LRU_FAIL);
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_PRIVATE_LRU_FAIL);
 	    }
 	}
 
@@ -9163,14 +9177,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		  if (victim != NULL)
 		    {
 		      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[overflow_private_lru_idx], -1);
-		      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
-							   PSTAT_PB_VICTIM_OVF_PRIVATE_LRU_SUCCESS);
+		      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OVF_PRIVATE_LRU_SUCCESS);
 		      return victim;
 		    }
 		  else
 		    {
-		      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
-							   PSTAT_PB_VICTIM_OVF_PRIVATE_LRU_FAIL);
+		      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OVF_PRIVATE_LRU_FAIL);
 		    }
 		}
 	      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[overflow_private_lru_idx], -1);
@@ -9184,12 +9196,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       victim = pgbuf_get_victim_from_ain_list (thread_p, max_count);
       if (victim != NULL)
 	{
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_AIN_SUCCESS);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_AIN_SUCCESS);
 	  return victim;
 	}
       else
 	{
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_AIN_FAIL);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_AIN_FAIL);
 	}
     }
 
@@ -9212,18 +9224,18 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
       if (victim != NULL)
 	{
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_PRIVATE_LRU_SUCCESS);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_PRIVATE_LRU_SUCCESS);
 	  return victim;
 	}
       else
 	{
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_PRIVATE_LRU_FAIL);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_PRIVATE_LRU_FAIL);
 	}
     }
 
   if (force_private_lru1 == true && loop_count < PGBUF_LOOP_CNT_FORCE_PRIVATE)
     {
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_FORCE_PRIVATE_LRU_FAIL);
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_FORCE_PRIVATE_LRU_FAIL);
       return victim;
     }
 
@@ -9268,11 +9280,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 		  ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
 		}
 	      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
-	      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker,
-						   victim !=
-						   NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS :
-						   PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
-
+	      perfmon_inc_stat (thread_p,
+				victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
 	      return victim;
 	    }
 	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
@@ -9288,7 +9297,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       ATOMIC_INC_32 (&monitor->lru_shared_pgs, 1);
     }
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, time_tracker, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
+  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
 
   return victim;
 
@@ -9451,13 +9460,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   int zone2_list;
   int dirty_cnt;
   PGBUF_LRU_LIST *lru_list;
-  int search_cnt;
-  int check_count;
+  int search_cnt = 0;
   bool found;
   bool list_bottom_dirty = false;
   PGBUF_BCB *bufptr_avoid_victim = NULL;
 
   int save_lru_flags;
+  int count_avoid_victims = 0;
+  int count_fixed = 0;
+  int count_other_victims = 0;
 
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
 
@@ -9471,7 +9482,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   zone2_list = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
 
   found = false;
-  check_count = max_count;
   dirty_cnt = 0;
 
   rv = pthread_mutex_lock (&lru_list->LRU_mutex);
@@ -9479,30 +9489,30 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   bufptr = lru_list->LRU_bottom;
 
   /* search for non dirty PGBUF */
-  /* todo: I am not sure the check_count helps in any way. with the marking of lists as having no victims, it is better
-   * to avoid it. */
-  while (bufptr != NULL /*&& check_count > 0 */  && (bufptr->zone_lru == zone2_list || bufptr->zone_lru == zone1_list))
+
+  /* todo: remove max_count */
+
+  while (true)
     {
-      if (!bufptr->dirty
-	  && !bufptr->avoid_victim
-	  && bufptr->fcnt == 0
-	  && bufptr->latch_mode == PGBUF_NO_LATCH
-	  && bufptr->victim_candidate == false && !pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
+      if (bufptr == NULL)
 	{
-	  bufptr->victim_candidate = true;
-	  found = true;
+	  /* end of list */
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_LIST);
 	  break;
 	}
 
-      if (bufptr->avoid_victim && bufptr_avoid_victim == NULL)
+      if (bufptr->zone_lru != zone2_list && bufptr->zone_lru != zone1_list)
 	{
-	  /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
-	  bufptr_avoid_victim = bufptr;
+	  assert_release (false);
+	  /* todo: remove me */
+	  abort ();
+	  break;
 	}
 
       if (zone1_list == -1 && PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
 	{
 	  /* LRU1 section was reached and we don't want to search in it */
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_ZONE_2);
 	  break;
 	}
 
@@ -9531,9 +9541,33 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 	    }
 #endif
 	}
+      else if (bufptr->avoid_victim)
+	{
+	  /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
+	  if (bufptr_avoid_victim == NULL)
+	    {
+	      bufptr_avoid_victim = bufptr;
+	    }
+	  count_avoid_victims++;
+	}
+      else if (bufptr->victim_candidate)
+	{
+	  count_other_victims++;
+	}
+      else if (bufptr->fcnt != 0 || bufptr->latch_mode != PGBUF_NO_LATCH
+	       || pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
+	{
+	  count_fixed++;
+	}
+      else
+	{
+	  bufptr->victim_candidate = true;
+	  found = true;
+	  break;
+	}
 
       bufptr = bufptr->prev_BCB;
-      check_count--;
+      search_cnt++;
     }
 
   if (!found)
@@ -9544,7 +9578,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 	  /* what happened? */
 	  /* this is theoretically possible if flushed buffer is moved to lru1 or from private lru to shared lru.
 	   * however, we hope it will first crash in our case. if not, we might have to handle those cases too */
-	  abort ();
+	  ATOMIC_INC_64 (&pgbuf_Temp_stats.failed_unexpected_maybe, 1);
 	}
     }
 
@@ -9567,7 +9601,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   pgbuf_Pool.monitor.lru_prev_counters[lru_idx] = pgbuf_lru_get_flags (lru_idx) & PGBUF_LRU_FLUSH_COUNT_MASK;
   pthread_mutex_unlock (&lru_list->LRU_mutex);
 
-  search_cnt = max_count - check_count;
   if ((list_bottom_dirty == true
        && (search_cnt > MIN_LRU_SEARCH_TO_FLUSH
 	   || dirty_cnt > MIN_LRU_DIRTY_TO_FLUSH)) || (bufptr == NULL && dirty_cnt > 0))
@@ -9583,6 +9616,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
     {
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
+
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.skip_dirty, dirty_cnt);
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.skip_avoid_victims, count_avoid_victims);
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.skip_other_victims, count_other_victims);
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.skip_fixed, count_fixed);
 
       (void) pgbuf_lru_mark_no_victim (lru_idx, save_lru_flags);
       return NULL;
@@ -15794,16 +15832,6 @@ pgbuf_lru_has_no_victim (int index_lru)
 {
   return (pgbuf_Pool.monitor.lru_flags[index_lru] & PGBUF_LRU_NO_VICTIM_FLAG) != 0;
 }
-
-typedef struct pgbuf_temp_stats PGBUF_TEMP_STATS;
-struct pgbuf_temp_stats
-{
-  INT64 set_no_victim;
-  INT64 fail_set_no_victim;
-  INT64 clear_no_victim;
-  INT64 flush_count_increment;
-};
-static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0 };
 
 STATIC_INLINE bool
 pgbuf_lru_mark_no_victim (int index_lru, int prev_flag)
