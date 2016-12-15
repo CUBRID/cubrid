@@ -10206,12 +10206,12 @@ pgbuf_relocate_chain_private_lru_to_shared (const int private_lru_idx)
       bufptr->zone_lru = PGBUF_MAKE_ZONE (shared_lru_idx, PGBUF_LRU_2_ZONE);
       bufptr->sticky_private_list = true;
       bufptr->list_tick = list_tick;
-      bufptr = bufptr->prev_BCB;
-
       if (!bufptr->dirty)
 	{
 	  found_not_dirty = true;
 	}
+
+      bufptr = bufptr->prev_BCB;
     }
   if (found_not_dirty)
     {
