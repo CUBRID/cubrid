@@ -5877,7 +5877,11 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 	  (void) heap_get_indexinfo_of_btid (thread_p, &isidp->cls_oid, btid, NULL, NULL, NULL, NULL, &indx_name_p,
 					     NULL);
 
-	  class_name_p = heap_get_class_name (thread_p, &isidp->cls_oid);
+	  if (heap_get_class_name (thread_p, &isidp->cls_oid, &class_name_p) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
 		  (indx_name_p) ? indx_name_p : "*UNKNOWN-INDEX*", (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*",
