@@ -997,24 +997,27 @@ struct func_pred
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
-#define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v)                            \
-do {                                                                          \
-    XASL_NODE *_x = REGU_VARIABLE_XASL(r);                                    \
-                                                                              \
-    /* check for xasl node                                               */   \
-    if (_x) {                                                                 \
-        if (XASL_IS_FLAGED(_x, XASL_LINK_TO_REGU_VARIABLE)) {                 \
-            /* clear correlated subquery list files                      */   \
-            if ((_x)->status == XASL_CLEARED				      \
-		|| (_x)->status == XASL_INITIALIZED) {                        \
-                /* execute xasl query                                    */   \
-                qexec_execute_mainblock((thread_p), _x, (v)->xasl_state, NULL);     \
-            } /* else: already evaluated. success or failure */               \
-        } else {                                                              \
-            /* currently, not-supported unknown case                     */   \
-            (_x)->status = XASL_FAILURE; /* return error              */      \
-        }                                                                     \
-    }                                                                         \
+#define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v)						    \
+do {												    \
+    XASL_NODE *_x = REGU_VARIABLE_XASL(r);							    \
+												    \
+    /* check for xasl node                                               */			    \
+    if (_x) {											    \
+        if (XASL_IS_FLAGED(_x, XASL_LINK_TO_REGU_VARIABLE)) {					    \
+            /* clear correlated subquery list files                      */			    \
+            if ((_x)->status == XASL_CLEARED							    \
+		|| (_x)->status == XASL_INITIALIZED) {						    \
+                /* execute xasl query                                    */			    \
+                if (qexec_execute_mainblock((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR)     \
+		  {										    \
+		    (_x)->status = XASL_FAILURE;						    \
+		  }										    \
+            } /* else: already evaluated. success or failure */					    \
+        } else {										    \
+            /* currently, not-supported unknown case                     */			    \
+            (_x)->status = XASL_FAILURE; /* return error              */			    \
+        }											    \
+    }												    \
 } while (0)
 
 #define CHECK_REGU_VARIABLE_XASL_STATUS(r)                                    \
