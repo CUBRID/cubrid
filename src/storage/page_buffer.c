@@ -752,7 +752,10 @@ struct pgbuf_page_monitor
   int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
   int *lru_victim_found_per_lru;	/* count of BCB victims found (by flush thread) */
   int *lru_victim_pressure_per_lru;	/* current pressure on LRU to increase due to victimization */
-  volatile int *lru_flags;	/* lru flags used by victimzation and flush */
+  volatile int *lru_flags;	/* lru flags used by victimization and flush */
+
+  /* todo: remove me */
+  volatile int *lru_prev_counters;	/* debug only */
 
   /* LRU life cycle */
   int *lru2_tick;		/* Current age of LRU2 section per LRU */
@@ -9452,7 +9455,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   bool list_bottom_dirty = false;
   PGBUF_BCB *bufptr_avoid_victim = NULL;
 
-  int save_lru_flags = pgbuf_lru_get_flags (lru_idx);
+  int save_lru_flags;
 
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
 
@@ -9470,10 +9473,13 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
   dirty_cnt = 0;
 
   rv = pthread_mutex_lock (&lru_list->LRU_mutex);
+  save_lru_flags = pgbuf_lru_get_flags (lru_idx);
   bufptr = lru_list->LRU_bottom;
 
   /* search for non dirty PGBUF */
-  while (bufptr != NULL && check_count > 0 && (bufptr->zone_lru == zone2_list || bufptr->zone_lru == zone1_list))
+  /* todo: I am not sure the check_count helps in any way. with the marking of lists as having no victims, it is better
+   * to avoid it. */
+  while (bufptr != NULL /*&& check_count > 0 */  && (bufptr->zone_lru == zone2_list || bufptr->zone_lru == zone1_list))
     {
       if (!bufptr->dirty
 	  && !bufptr->avoid_victim
@@ -9487,10 +9493,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 	}
 
       if (bufptr->avoid_victim && bufptr_avoid_victim == NULL)
-        {
-          /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
-          bufptr_avoid_victim = bufptr;
-        }
+	{
+	  /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
+	  bufptr_avoid_victim = bufptr;
+	}
 
       if (zone1_list == -1 && PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
 	{
@@ -9530,12 +9536,25 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 
   if (!found)
     {
+      if (pgbuf_Pool.monitor.lru_prev_counters[lru_idx] != -1
+	  && pgbuf_Pool.monitor.lru_prev_counters[lru_idx] < (save_lru_flags & PGBUF_LRU_FLUSH_COUNT_MASK))
+	{
+	  /* what happened? */
+	  /* this is theoretically possible if flushed buffer is moved to lru1 or from private lru to shared lru.
+	   * however, we hope it will first crash in our case. if not, we might have to handle those cases too */
+	  abort ();
+	}
+    }
+
+  if (!found)
+    {
       bufptr = NULL;
     }
   if (bufptr == NULL && bufptr_avoid_victim != NULL && !bufptr_avoid_victim->avoid_victim)
     {
       /* use the skipped bufptr */
       bufptr = bufptr_avoid_victim;
+      bufptr->victim_candidate = true;
     }
 
   if (lru_list->LRU_bottom != NULL && lru_list->LRU_bottom->dirty == true)
@@ -9543,6 +9562,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
       list_bottom_dirty = true;
     }
 
+  pgbuf_Pool.monitor.lru_prev_counters[lru_idx] = pgbuf_lru_get_flags (lru_idx) & PGBUF_LRU_FLUSH_COUNT_MASK;
   pthread_mutex_unlock (&lru_list->LRU_mutex);
 
   search_cnt = max_count - check_count;
@@ -10748,7 +10768,11 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
 #endif /* SERVER_MODE */
 
-  pgbuf_lru_mark_flushed (PGBUF_GET_LRU_INDEX (bufptr->zone_lru));
+  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_2_ZONE)
+    {
+      /* if no victim was previously found, we need to mark the list as now having victims */
+      pgbuf_lru_mark_flushed (PGBUF_GET_LRU_INDEX (bufptr->zone_lru));
+    }
 
   return NO_ERROR;
 }
@@ -14066,6 +14090,15 @@ pgbuf_initialize_page_monitor (void)
       goto exit;
     }
 
+  monitor->lru_prev_counters = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_prev_counters[0]));
+  if (monitor->lru_prev_counters == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_prev_counters[0])));
+      goto exit;
+    }
+
   monitor->lru2_tick = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru2_tick[0]));
   if (monitor->lru2_tick == NULL)
     {
@@ -14162,6 +14195,7 @@ pgbuf_initialize_page_monitor (void)
       monitor->lru_victim_found_per_lru[i] = 0;
       monitor->lru_victim_pressure_per_lru[i] = 0;
       monitor->lru_flags[i] = 0;
+      monitor->lru_prev_counters[i] = -1;
       monitor->lru2_tick[i] = 0;
       monitor->lru1_tick[i] = 0;
       monitor->lru1_hit[i] = 0;
@@ -15765,7 +15799,7 @@ struct pgbuf_temp_stats
   INT64 clear_no_victim;
   INT64 flush_count_increment;
 };
-static PGBUF_TEMP_STATS pgbuf_Temp_stats = {0, 0, 0, 0};
+static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0 };
 
 STATIC_INLINE bool
 pgbuf_lru_mark_no_victim (int index_lru, int prev_flag)
