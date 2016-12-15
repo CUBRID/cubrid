@@ -9220,10 +9220,11 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
   char *classname = NULL;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
+  int error_code = NO_ERROR;
 
   assert (er_errid () == NO_ERROR);
 
-  heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
     {
@@ -9238,6 +9239,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		      (strlen (classname) + 1) * sizeof (char));
+	      error_code = ER_FAILED;
 	    }
 	}
       else
@@ -9250,18 +9252,19 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
     }
   else
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error_code);
       *classname_out = NULL;
-      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS)
+      if (error_code == ER_HEAP_NODATA_NEWADDRESS)
 	{
 	  /* clear ER_HEAP_NODATA_NEWADDRESS */
 	  er_clear ();
+	  error_code = NO_ERROR;
 	}
     }
 
   heap_scancache_end (thread_p, &scan_cache);
 
-  return er_errid ();
+  return error_code;
 }
 
 /*
