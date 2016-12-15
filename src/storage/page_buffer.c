@@ -9501,18 +9501,18 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 	  break;
 	}
 
+      if (zone1_list == -1 && PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
+	{
+	  /* LRU1 section was reached and we don't want to search in it */
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_ZONE_2);
+	  break;
+	}
+
       if (bufptr->zone_lru != zone2_list && bufptr->zone_lru != zone1_list)
 	{
 	  assert_release (false);
 	  /* todo: remove me */
 	  abort ();
-	  break;
-	}
-
-      if (zone1_list == -1 && PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
-	{
-	  /* LRU1 section was reached and we don't want to search in it */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_ZONE_2);
 	  break;
 	}
 
