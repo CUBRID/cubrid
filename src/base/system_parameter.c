@@ -1280,7 +1280,7 @@ static int prm_xasl_cache_max_entries_default = 1000;
 static unsigned int prm_xasl_cache_max_entries_flag = 0;
 
 int PRM_XASL_CACHE_MAX_CLONES = 1000;
-static int prm_xasl_cache_max_clones_default = 0;
+static int prm_xasl_cache_max_clones_default = 1000;
 static int prm_xasl_cache_max_clones_lower = 0;
 static int prm_xasl_cache_max_clones_upper = 2000;
 static unsigned int prm_xasl_cache_max_clones_flag = 0;
