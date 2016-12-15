@@ -216,6 +216,8 @@ define pgbuf_lru_print_vict
   set $zone_lru2 = ($lru_idx << 3) | 1
   set $zone_lru1 = ($lru_idx << 3)
   set $found = 0
+  set $first_lru1 = -1
+  set $last_lru2 = -1
 
   p $zone_lru2
   p $zone_lru1
@@ -233,9 +235,13 @@ define pgbuf_lru_print_vict
 
 	if $bcb->zone_lru == $zone_lru2
       set $cnt_zone_lru2 = $cnt_zone_lru2 + 1
+      set $last_lru2 = $elem
 	end
 
 	if $bcb->zone_lru == $zone_lru1
+      if $first_lru1 == -1
+        set $first_lru1 = $elem
+        end
       set $cnt_zone_lru1= $cnt_zone_lru1 + 1
 	end
 
@@ -271,4 +277,6 @@ define pgbuf_lru_print_vict
   p $cnt_latch_mode
   p $cnt_victim_candidate
   p $cnt_can_victim
+  p $first_lru1
+  p $last_lru2
 end

@@ -4143,11 +4143,13 @@ end:
     }
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_run_sleep, PSTAT_PB_FLUSH_RUN);
 
+#if 0
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
       /* todo: this is a desperate attempt to reset flags and make lists available for victimization */
       pgbuf_Pool.monitor.lru_flags[i] = 0;
     }
+#endif
 
   return error;
 }
@@ -9767,6 +9769,7 @@ pgbuf_relocate_top_lru (PGBUF_BCB * bufptr, int dest_zone, const int lru_idx)
 
   /* the caller is holding bufptr->BCB_mutex */
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
+  pgbuf_Pool.monitor.lru_prev_counters[lru_idx] = -1;
 
   if (dest_zone == PGBUF_LRU_2_ZONE
       && (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom == NULL
@@ -9937,6 +9940,7 @@ pgbuf_move_from_lru_to_top_lru (PGBUF_BCB * bufptr, int dest_lru_idx, int dest_z
   /* disconnect bufptr from the owner LRU list */
   lru_list = &pgbuf_Pool.buf_LRU_list[curr_lru_idx];
   pthread_mutex_lock (&lru_list->LRU_mutex);
+  pgbuf_Pool.monitor.lru_prev_counters[curr_lru_idx] = -1;
   if (PGBUF_GET_LRU_INDEX (bufptr->zone_lru) != curr_lru_idx)
     {
       assert_release (false);
