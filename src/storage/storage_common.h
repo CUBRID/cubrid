@@ -157,7 +157,6 @@ struct log_lsa
 /*
  * Sector
  */
-#define BOOT_VOLUME_MINSECTS 64
 /* Number of pages in a sector. Careful about changing this size. The whole file manager depends on this size. */
 #define DISK_SECTOR_NPAGES 64
 #define IO_SECTORSIZE           (DISK_SECTOR_NPAGES * IO_PAGESIZE)

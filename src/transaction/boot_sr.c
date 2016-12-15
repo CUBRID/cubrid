@@ -114,7 +114,6 @@
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
 
-static const int BOOT_VOLUME_MINPAGES = 50;
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
 
@@ -1238,79 +1237,6 @@ boot_max_pages_for_new_auto_volume_extension (void)
   if (alloc_extpath)
     {
       free_and_init (alloc_extpath);
-    }
-
-  return npages;
-}
-
-/*
- * boot_max_pages_for_new_temp_volume () - find max pages that can be allocated for a
- *                                  temporary volume
- *
- * return : max pages
- *
- * NOTGE: Find the maximum number of pages that are accepted to safetly
- *              automatically create a temporary volume.
- */
-DKNPAGES
-boot_max_pages_for_new_temp_volume (void)
-{
-  char temp_vol_fullname[PATH_MAX];
-  const char *temp_path;
-  const char *temp_name;
-  char *alloc_tempath = NULL;
-  DKNPAGES npages;
-
-  if (boot_Temp_volumes_max_sects == -2)
-    {
-      /* 
-       * Get the maximum number of temporary pages that can be allocated for
-       * all temporary volumes
-       */
-      boot_Temp_volumes_max_sects = prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
-      if (boot_Temp_volumes_max_sects < 0)
-	{
-	  boot_Temp_volumes_max_sects = -1;	/* Infinite, until out of disk space */
-	}
-      else
-	{
-	  if (boot_Temp_volumes_max_sects < BOOT_VOLUME_MINPAGES)
-	    {
-	      boot_Temp_volumes_max_sects = 0;	/* Don't allocate any temp space */
-	    }
-	}
-    }
-
-  /* 
-   * Get the name of the extension: ext_path|dbname|"ext"|volid
-   */
-
-  /* Use the directory where the primary volume is located */
-  alloc_tempath = (char *) malloc (strlen (boot_Db_full_name) + 1);
-  if (alloc_tempath == NULL)
-    {
-      return NULL_VOLID;
-    }
-  temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
-  if (temp_path == NULL)
-    {
-      alloc_tempath[0] = '\0';
-      temp_path = alloc_tempath;
-    }
-
-  temp_name = fileio_get_base_file_name (boot_Db_full_name);
-  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, LOG_MAX_DBVOLID);
-
-  npages = fileio_get_number_of_partition_free_pages (temp_vol_fullname, IO_PAGESIZE);
-
-  if (boot_Temp_volumes_max_sects >= 0 && npages > (boot_Temp_volumes_max_sects - boot_Temp_volumes_tpgs))
-    {
-      npages = boot_Temp_volumes_max_sects - boot_Temp_volumes_tpgs;
-    }
-
-  if (alloc_tempath)
-    {
-      free_and_init (alloc_tempath);
     }
 
   return npages;
