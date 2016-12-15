@@ -115,7 +115,6 @@
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
 
 static const int BOOT_VOLUME_MINPAGES = 50;
-static const int BOOT_VOLUME_MINSECTS = 64;	/* find a common place to set this */
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
 
