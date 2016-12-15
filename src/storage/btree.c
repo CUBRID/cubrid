@@ -8609,7 +8609,11 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
       goto exit;
     }
 
-  class_name = heap_get_class_name (thread_p, &fdes.btree.class_oid);
+  if (heap_get_class_name (thread_p, &fdes.btree.class_oid, &class_name) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      goto exit;
+    }
 
   /* get index name */
   ret = heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &index_name, NULL);
@@ -8727,7 +8731,11 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, BT
   if (class_oid_p && !OID_ISNULL (class_oid_p))
     {
       char *class_name_p = NULL;
-      class_name_p = heap_get_class_name (thread_p, class_oid_p);
+      if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return;
+	}
 
       btree_print_space (fp, depth * 4);
       fprintf (fp, "INDEX %s ON CLASS %s (CLASS_OID:%2d|%4d|%2d) \n\n", (btname) ? btname : "*UNKNOWN-INDEX*",
@@ -18223,7 +18231,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
   char class_oid_msg_buf[OID_MSG_BUF_SIZE];
   char oid_msg_buf[OID_MSG_BUF_SIZE];
   char *index_name;
-  char *class_name;
+  char *class_name = NULL;
   char *keyval;
 
   assert (btid != NULL);
@@ -18250,11 +18258,15 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 
   if (class_oid != NULL && !OID_ISNULL (class_oid))
     {
-      class_name = heap_get_class_name (thread_p, class_oid);
-      if (class_name)
+      if (heap_get_class_name (thread_p, class_oid, &class_name) == NO_ERROR)
 	{
 	  snprintf (class_oid_msg_buf, OID_MSG_BUF_SIZE, "(CLASS_OID: %d|%d|%d)", class_oid->volid, class_oid->pageid,
 		    class_oid->slotid);
+	}
+      else
+	{
+	  /* ignore */
+	  er_clear ();
 	}
     }
 
@@ -20446,8 +20458,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   class_oid_p = &ctx->class_oids[oid_idx];
 
-  class_name = heap_get_class_name (thread_p, class_oid_p);
-  if (class_name == NULL)
+  if (heap_get_class_name (thread_p, class_oid_p, &class_name) != NO_ERROR || class_name == NULL)
     {
       ret = S_ERROR;
       goto cleanup;
