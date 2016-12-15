@@ -785,6 +785,8 @@ struct pgbuf_page_monitor
   int *lru_relocated_destroyed_pages;	/* Count of BCBs relocated after file destroy of each LRU */
   int pg_destroyed_pages;	/* count of all destroyed pages since last update */
 #endif				/* PGBUF_TRAN_QUOTA_DEBUG */
+
+  volatile LAST_FAILED_LRU *lru_last_failed;
 };
 
 typedef struct pgbuf_page_quota PGBUF_PAGE_QUOTA;
@@ -1049,7 +1051,8 @@ struct pgbuf_temp_stats
   INT64 fail_set_no_victim;
   INT64 clear_no_victim;
   INT64 flush_count_increment;
-  INT64 failed_unexpected_maybe;
+  INT64 failed_unexpected_maybe;    /* this is too small to explain it (25 in a run) */
+  INT64 invalidated_after_mutex;
 
   INT64 skip_dirty;
   INT64 skip_avoid_victims;
@@ -1057,6 +1060,14 @@ struct pgbuf_temp_stats
   INT64 skip_fixed;
 };
 static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+typedef struct last_failed_lru LAST_FAILED_LRU;
+struct last_failed_lru
+{
+  INT64 total_count;
+  INT64 dirty_count;
+  INT64 flushed_after;
+};
 
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
@@ -9580,18 +9591,26 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
 	   * however, we hope it will first crash in our case. if not, we might have to handle those cases too */
 	  ATOMIC_INC_64 (&pgbuf_Temp_stats.failed_unexpected_maybe, 1);
 	}
+
+      pgbuf_Pool.monitor.lru_last_failed[lru_idx].dirty_count = dirty_cnt;
+      pgbuf_Pool.monitor.lru_last_failed[lru_idx].total_count = search_cnt;
+      pgbuf_Pool.monitor.lru_last_failed[lru_idx].flushed_after = 0;
     }
 
   if (!found)
     {
       bufptr = NULL;
     }
+
+  /* temporary disable */
+#if 0
   if (bufptr == NULL && bufptr_avoid_victim != NULL)
     {
       /* use the skipped bufptr */
       bufptr = bufptr_avoid_victim;
       bufptr->victim_candidate = true;
     }
+#endif
 
   if (lru_list->LRU_bottom != NULL && lru_list->LRU_bottom->dirty == true)
     {
@@ -9636,6 +9655,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, int 
     {
       bufptr->victim_candidate = false;
       pthread_mutex_unlock (&bufptr->BCB_mutex);
+
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.invalidated_after_mutex, 1);
 
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
@@ -10814,6 +10835,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       /* if no victim was previously found, we need to mark the list as now having victims */
       pgbuf_lru_mark_flushed (PGBUF_GET_LRU_INDEX (bufptr->zone_lru));
+      ATOMIC_INC_64 (&pgbuf_Pool.monitor.lru_last_failed->flushed_after, 1);
     }
 
   return NO_ERROR;
@@ -14225,6 +14247,13 @@ pgbuf_initialize_page_monitor (void)
     }
 #endif
 
+  /* todo: remove me */
+  monitor->lru_last_failed = (LAST_FAILED_LRU *) malloc (PGBUF_TOTAL_LRU * sizeof (LAST_FAILED_LRU));
+  if (monitor->lru_last_failed == NULL)
+    {
+      abort ();
+    }
+
   /* initialize the monitor data for each LRU */
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
@@ -14249,6 +14278,10 @@ pgbuf_initialize_page_monitor (void)
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
       monitor->lru_relocated_destroyed_pages[i] = 0;
 #endif
+
+      monitor->lru_last_failed[i].dirty_count = 0;
+      monitor->lru_last_failed[i].flushed_after = 0;
+      monitor->lru_last_failed[i].total_count = 0;
     }
 
   monitor->lru_victim_req_cnt = 0;
