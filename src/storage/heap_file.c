@@ -2576,10 +2576,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
     }
 
   classname = or_class_name (&recdes);
-  if (classname == NULL)
-    {
-      goto exit_on_error;
-    }
+  assert (classname != NULL);
 
   fprintf (fp, "\n");
   fprintf (fp,
@@ -2588,7 +2585,6 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 	   (int) class_oid->volid, class_oid->pageid, (int) class_oid->slotid, classname, repr->id, repr->n_attributes,
 	   (repr->n_attributes - repr->n_variable - repr->n_shared_attrs - repr->n_class_attrs), repr->n_variable,
 	   repr->n_shared_attrs, repr->n_class_attrs, repr->fixed_length);
-  free_and_init (classname);
 
   if (repr->n_attributes > 0)
     {

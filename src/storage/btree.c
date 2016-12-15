@@ -20458,7 +20458,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   class_oid_p = &ctx->class_oids[oid_idx];
 
-  if (heap_get_class_name (thread_p, class_oid_p, &class_name) != NO_ERROR)
+  if (heap_get_class_name (thread_p, class_oid_p, &class_name) != NO_ERROR || class_name == NULL)
     {
       ret = S_ERROR;
       goto cleanup;
