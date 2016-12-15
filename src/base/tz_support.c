@@ -5586,9 +5586,8 @@ tz_create_datetimetz_from_parts (const int m, const int d, const int y, const in
   return error_status;
 }
 
-
 /*
-* set_new_zone_id() - Sets the new timezone id in the new timezone library using the old timezone library
+* set_new_zone_id() - Sets the new timezone id for the new timezone library using the old timezone library
 *				      
 *  Returns error or no error
 *  tz_info (in/out): pointer to tz_info
