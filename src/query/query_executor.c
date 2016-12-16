@@ -1722,6 +1722,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  db_private_free (thread_p, p->parts);
 	  p->parts = NULL;
 	  p->curent = NULL;
+	  p->pruned = false;
 	}
 
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
