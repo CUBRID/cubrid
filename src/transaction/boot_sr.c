@@ -114,8 +114,6 @@
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
 
-static const int BOOT_VOLUME_MINPAGES = 50;
-static const int BOOT_VOLUME_MINSECTS = 64;	/* find a common place to set this */
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
 
@@ -510,31 +508,6 @@ const char *
 boot_get_lob_path (void)
 {
   return boot_Lob_path;
-}
-
-/*
- * bo_maxpages_for_newvol () - find max pages that can be used to define a new
- *                             volume at given location
- *
- * return : max pages
- *
- * Note: Find the maximum number of pages that are accepted to safetly
- *       automatically create a volume extension or a temporary volume
- *       at the given location.
- */
-DKNPAGES
-boot_max_pages_new_volume (void)
-{
-  int nfree_pages;
-
-  nfree_pages = (fileio_get_number_of_partition_free_pages (boot_Db_full_name, IO_PAGESIZE)
-		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
-  if (nfree_pages < 0)
-    {
-      nfree_pages = 0;
-    }
-
-  return (DKNPAGES) nfree_pages;
 }
 
 /*
@@ -1040,24 +1013,6 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 }
 
 /*
- * boot_get_temp_temp_vol_max_npages
- *   a default temp temp volume grows up to 20G
- *   when prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES) is not specified.
- */
-DKNPAGES
-boot_get_temp_temp_vol_max_npages (void)
-{
-  if (prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES) < 0)
-    {
-      return (DKNPAGES) (((20LL * 1024LL * 1024LL * 1024LL) / IO_PAGESIZE));
-    }
-  else
-    {
-      return prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
-    }
-}
-
-/*
  * boot_remove_all_temp_volumes () - remove all temporary volumes from the database
  *
  * return :NO_ERROR if all OK, ER_ status otherwise
@@ -1193,128 +1148,6 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
     {
       free_and_init (alloc_tempath);
     }
-}
-
-/*
- * boot_max_pages_for_new_auto_volume_extension () - find max pages that can
- *                                                   be allocated for an
- *                                                   automatic volume extension
- *
- * return : max pages
- *
- * Note: Find the maximum number of pages that are accepted to safetly
- *       automatically create a volume extension.
- */
-DKNPAGES
-boot_max_pages_for_new_auto_volume_extension (void)
-{
-  char vol_fullname[PATH_MAX];
-  const char *ext_path;
-  const char *ext_name;
-  char *alloc_extpath = NULL;
-  DKNPAGES npages;
-
-  /* 
-   * Get the name of the extension: ext_path|dbname|"ext"|volid
-   */
-
-  /* Use the directory where the primary volume is located */
-  alloc_extpath = (char *) malloc (strlen (boot_Db_full_name) + 1);
-  if (alloc_extpath == NULL)
-    {
-      return 0;
-    }
-  ext_path = fileio_get_directory_path (alloc_extpath, boot_Db_full_name);
-  if (ext_path == NULL)
-    {
-      alloc_extpath[0] = '\0';
-      ext_path = alloc_extpath;
-    }
-
-  ext_name = fileio_get_base_file_name (boot_Db_full_name);
-  fileio_make_volume_ext_name (vol_fullname, ext_path, ext_name, 1);
-
-  npages = fileio_get_number_of_partition_free_pages (vol_fullname, IO_PAGESIZE);
-
-  if (alloc_extpath)
-    {
-      free_and_init (alloc_extpath);
-    }
-
-  return npages;
-}
-
-/*
- * boot_max_pages_for_new_temp_volume () - find max pages that can be allocated for a
- *                                  temporary volume
- *
- * return : max pages
- *
- * NOTGE: Find the maximum number of pages that are accepted to safetly
- *              automatically create a temporary volume.
- */
-DKNPAGES
-boot_max_pages_for_new_temp_volume (void)
-{
-  char temp_vol_fullname[PATH_MAX];
-  const char *temp_path;
-  const char *temp_name;
-  char *alloc_tempath = NULL;
-  DKNPAGES npages;
-
-  if (boot_Temp_volumes_max_sects == -2)
-    {
-      /* 
-       * Get the maximum number of temporary pages that can be allocated for
-       * all temporary volumes
-       */
-      boot_Temp_volumes_max_sects = prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
-      if (boot_Temp_volumes_max_sects < 0)
-	{
-	  boot_Temp_volumes_max_sects = -1;	/* Infinite, until out of disk space */
-	}
-      else
-	{
-	  if (boot_Temp_volumes_max_sects < BOOT_VOLUME_MINPAGES)
-	    {
-	      boot_Temp_volumes_max_sects = 0;	/* Don't allocate any temp space */
-	    }
-	}
-    }
-
-  /* 
-   * Get the name of the extension: ext_path|dbname|"ext"|volid
-   */
-
-  /* Use the directory where the primary volume is located */
-  alloc_tempath = (char *) malloc (strlen (boot_Db_full_name) + 1);
-  if (alloc_tempath == NULL)
-    {
-      return NULL_VOLID;
-    }
-  temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
-  if (temp_path == NULL)
-    {
-      alloc_tempath[0] = '\0';
-      temp_path = alloc_tempath;
-    }
-
-  temp_name = fileio_get_base_file_name (boot_Db_full_name);
-  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, LOG_MAX_DBVOLID);
-
-  npages = fileio_get_number_of_partition_free_pages (temp_vol_fullname, IO_PAGESIZE);
-
-  if (boot_Temp_volumes_max_sects >= 0 && npages > (boot_Temp_volumes_max_sects - boot_Temp_volumes_tpgs))
-    {
-      npages = boot_Temp_volumes_max_sects - boot_Temp_volumes_tpgs;
-    }
-
-  if (alloc_tempath)
-    {
-      free_and_init (alloc_tempath);
-    }
-
-  return npages;
 }
 
 /*

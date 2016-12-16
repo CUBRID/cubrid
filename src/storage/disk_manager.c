@@ -2009,8 +2009,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
   ext_info.overwrite = overwrite;
 
   /* compute total/max sectors. we always keep a rounded number of sectors. */
-  ext_info.nsect_total = CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES);
-  ext_info.nsect_total = DISK_SECTS_ROUND_UP (ext_info.nsect_total);
+  ext_info.nsect_total = disk_sectors_to_extend_npages ((const) npages);
   ext_info.nsect_max = ext_info.nsect_total;
   ext_info.max_npages = npages;	/* this is obsolete. I set it just to see it if a crash occurs. */
 
@@ -4502,8 +4501,7 @@ disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_dbname, cons
 
   ext_info.name = full_dbname;
   ext_info.comments = dbcomments;
-  ext_info.nsect_total = CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES);
-  ext_info.nsect_total = DISK_SECTS_ROUND_UP (ext_info.nsect_total);
+  ext_info.nsect_total = disk_sectors_to_extend_npages (npages);
   ext_info.nsect_max = ext_info.nsect_total;
   ext_info.max_writesize_in_sec = 0;
   ext_info.overwrite = false;
@@ -5925,6 +5923,18 @@ disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR page_volhead
   assert (strncmp (volheader->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0);
 }
 #endif /* !NDEBUG */
+
+/*
+ * disk_sectors_to_extend_npages () - compute the rounded number of sectors necessary to extend a number of pages 
+ *
+ * return	  : The number of sectors 
+ * num_pages (in) : required number of pages
+ **/
+int
+disk_sectors_to_extend_npages (const int num_pages)
+{
+  return DISK_SECTS_ROUND_UP (DISK_PAGES_TO_SECTS (num_pages));
+}
 
 /************************************************************************/
 /* End of file                                                          */
