@@ -8403,7 +8403,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	  if (loop_count >= 2 || sleep_before_next_try == true)
 	    {
 	      count_did_sleep++;
-	      thread_sleep (0.001);	/* 1 microsecond */
+	      thread_sleep (MIN (0.001f * MAX (1, (4 * loop_count - 10)), 1.0f));	/* 1 microsecond */
 	      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_bcb_detailed,
 						   PSTAT_PB_ALLOC_BCB_SLEEP);
 	    }
@@ -9047,10 +9047,10 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 #define PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW 2
 #define PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE 2
 
-#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 40000
-#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 500
-#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 50000
-#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 500
+#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 400000
+#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 50000
+#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 500000
+#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 50000
 #define PGBUF_LOOP_CNT_FORCE_PRIVATE 1	/* basically disabled */
 
   PGBUF_BCB *victim = NULL;
