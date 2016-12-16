@@ -778,6 +778,7 @@ struct pgbuf_page_monitor
   /* Overall counters */
   volatile int lru_shared_pgs;		/* count of BCBs in all shared LRUs */
   volatile int lru_garbage_pgs;		/* count of pages in garbage LRUs (only when quota is enabled) */
+  volatile int lru_vict_waiting_threads;	/* count of threads currently waiting for victims */
 
   int pg_lru_vict_req_failed;	/* Count of failed victimization from all LRUs */
   int pg_ain_vict_req_failed;	/* Count of failed victimization from all AIN */
@@ -8344,21 +8345,31 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
   time_tracker_alloc_bcb_detailed = time_tracker_alloc_bcb;
 
+  /* allocate a BCB from invalid BCB list */
+  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_detailed);
+  if (bufptr != NULL)
+    {
+      goto end;
+    }
+
   loop_count = 0;
 
   check_count =
     MAX (PGBUF_MIN_NUM_VICTIMS, (int) (PGBUF_LRU_SIZE * prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO)));
 
+#if defined (SERVER_MODE)
+  if (pgbuf_Pool.monitor.lru_vict_waiting_threads > 0.1f * PGBUF_TOTAL_LRU)
+    {
+      /* many threads are already waiting for victim, give them first a change to acquire one */
+      thread_sleep (0.001f);
+    }
+#endif
+
   while (loop_count++ < INT_MAX)
     {
       for (sleep_count = 0; sleep_count < PGBUF_SLEEP_MAX; sleep_count++)
 	{
-	  /* allocate a BCB from invalid BCB list */
-	  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_detailed);
-	  if (bufptr != NULL)
-	    {
-	      goto end;
-	    }
+	  float sleep_time = 0.001f;
 
 	  /* If the caller allocates a BCB successfully,
 	   * the caller is holding bufptr->BCB_mutex.
@@ -8400,13 +8411,24 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	      has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
 	    }
 
-	  if (loop_count >= 2 || sleep_before_next_try == true)
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_vict_waiting_threads, 1);
+
+	  count_did_sleep++;
+	  if ((loop_count % 4) == 2)
 	    {
-	      count_did_sleep++;
-	      thread_sleep (MIN (0.001f * MAX (1, (4 * loop_count - 10)), 1.0f));	/* 1 microsecond */
-	      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_bcb_detailed,
-						   PSTAT_PB_ALLOC_BCB_SLEEP);
+	      sleep_time = 0.01f;
 	    }
+	  else if (has_waiters_on_fixed == false && (loop_count % 4) == 3)
+	    {
+	      sleep_time = 0.1f;
+	    }
+	  else if (has_waiters_on_fixed == false && (loop_count % 4) == 0)
+	    {
+	      sleep_time = 1.0f;
+	    }
+	  thread_sleep (sleep_time);
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_vict_waiting_threads, -1);
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_bcb_detailed, PSTAT_PB_ALLOC_BCB_SLEEP);
 #endif /* SERVER_MODE */
 	}
 
@@ -14302,6 +14324,7 @@ pgbuf_initialize_page_monitor (void)
 
   monitor->lru_shared_pgs = 0;
   monitor->lru_garbage_pgs = 0;
+  monitor->lru_vict_waiting_threads = 0;
 
 exit:
   return error_status;
