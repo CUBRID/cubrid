@@ -9221,9 +9221,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
   int error_code = NO_ERROR;
-
-  assert (er_errid () == NO_ERROR);
-
+  
   (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
