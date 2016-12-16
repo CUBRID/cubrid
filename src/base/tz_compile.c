@@ -6119,7 +6119,7 @@ exit:
     {
       if (is_compat == false)
 	{
-	  printf ("Could not make all the data backward compatible!\n");
+	  printf ("Updating data in the tables containing timezone data types...\n");
 	  err_status = ER_TZ_COMPILE_ERROR;
 	}
     }
