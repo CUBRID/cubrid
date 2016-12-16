@@ -1038,24 +1038,6 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 }
 
 /*
- * boot_get_temp_temp_vol_max_npages
- *   a default temp temp volume grows up to 20G
- *   when prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES) is not specified.
- */
-DKNPAGES
-boot_get_temp_temp_vol_max_npages (void)
-{
-  if (prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES) < 0)
-    {
-      return (DKNPAGES) (((20LL * 1024LL * 1024LL * 1024LL) / IO_PAGESIZE));
-    }
-  else
-    {
-      return prm_get_integer_value (PRM_ID_BOSR_MAXTMP_PAGES);
-    }
-}
-
-/*
  * boot_remove_all_temp_volumes () - remove all temporary volumes from the database
  *
  * return :NO_ERROR if all OK, ER_ status otherwise
