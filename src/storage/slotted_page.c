@@ -1877,10 +1877,12 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
     }
 
   tmp_slot_p = (SPAGE_SLOT *) slot_p;
+  pgbuf_start_modification (page_p);
   if (record_descriptor_p->type != REC_ASSIGN_ADDRESS)
     {
       if ((unsigned int) tmp_slot_p->offset_to_record + record_descriptor_p->length > (unsigned int) SPAGE_DB_PAGESIZE)
 	{
+	  pgbuf_end_modification (page_p);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
 	  return SP_ERROR;
@@ -1892,6 +1894,7 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
     {
       if (tmp_slot_p->offset_to_record + SSIZEOF (TRANID) > (unsigned int) SPAGE_DB_PAGESIZE)
 	{
+	  pgbuf_end_modification (page_p);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
 	  return SP_ERROR;
@@ -1899,6 +1902,7 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
 
       *((TRANID *) (page_p + tmp_slot_p->offset_to_record)) = logtb_find_current_tranid (thread_p);
     }
+  pgbuf_end_modification (page_p);
 
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 
@@ -2127,6 +2131,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
       return NULL_SLOTID;
     }
 
+  pgbuf_start_modification (page_p);
   page_header_p->num_records--;
   waste = DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment);
   free_space = slot_p->record_length + waste;
@@ -2163,8 +2168,10 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
     default:
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      pgbuf_end_modification (page_p);
       return NULL_SLOTID;
     }
+  pgbuf_end_modification (page_p);
 
   /* Indicate that we are savings */
   if (page_header_p->is_saving && spage_save_space (thread_p, page_header_p, page_p, free_space) != NO_ERROR)
@@ -2445,6 +2452,7 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPA
   /* Update the record in place. Same area */
   is_located_end = spage_is_record_located_at_end (page_header_p, slot_p);
 
+  pgbuf_start_modification (page_p);
   slot_p->record_length = record_descriptor_p->length;
   if (SPAGE_OVERFLOW (slot_p->offset_to_record + record_descriptor_p->length))
     {
@@ -2465,6 +2473,7 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPA
 
       SPAGE_VERIFY_HEADER (page_header_p);
     }
+  pgbuf_end_modification (page_p);
 
   spage_verify_header (page_p);
 
@@ -2505,6 +2514,7 @@ spage_update_record_after_compact (PAGE_PTR page_p, SPAGE_HEADER * page_header_p
    * If the record is at the end and there is free space. Do a simple
    * compaction
    */
+  pgbuf_start_modification (page_p);
   if (spage_is_record_located_at_end (page_header_p, slot_p) && space <= page_header_p->cont_free)
     {
       old_waste += slot_p->record_length;
@@ -2530,7 +2540,7 @@ spage_update_record_after_compact (PAGE_PTR page_p, SPAGE_HEADER * page_header_p
 	  ASSERT_ALIGN ((char *) page_p + slot_p->offset_to_record, page_header_p->alignment);
 	  page_header_p->total_free -= (old_waste + slot_p->record_length);
 	  page_header_p->num_records++;
-
+	  pgbuf_end_modification (page_p);
 	  spage_verify_header (page_p);
 	  return SP_ERROR;
 	}
@@ -2545,6 +2555,7 @@ spage_update_record_after_compact (PAGE_PTR page_p, SPAGE_HEADER * page_header_p
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       assert_release (false);
+      pgbuf_end_modification (page_p);
       return SP_ERROR;
     }
   memcpy (((char *) page_p + page_header_p->offset_to_free_area), record_descriptor_p->data,
@@ -2554,6 +2565,7 @@ spage_update_record_after_compact (PAGE_PTR page_p, SPAGE_HEADER * page_header_p
   page_header_p->total_free -= space;
   page_header_p->cont_free -= (record_descriptor_p->length + new_waste);
   page_header_p->offset_to_free_area += (record_descriptor_p->length + new_waste);
+  pgbuf_end_modification (page_p);
 
   ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area, page_header_p->alignment);
 

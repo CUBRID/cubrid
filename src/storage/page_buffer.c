@@ -370,6 +370,7 @@ struct pgbuf_bcb
   int ain_tick;			/* age of AIN when this BCB was inserted into AIN list */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
+  UINT64 count_modifications;	/* Count modifications. The value is increased before and after page modification. */
   volatile bool dirty;		/* Is page dirty ? */
   bool avoid_victim;
   bool async_flush_request;
@@ -1303,8 +1304,10 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
 #endif
 {
   PGBUF_BUFFER_HASH *hash_anchor;
-  PGBUF_BCB *bufptr;
+  PGBUF_BCB *bufptr = NULL;
   PAGE_PTR src_pgptr = NULL;
+  UINT64 count_modifications = 0;
+  int err = NO_ERROR;
 
   assert (page_ptr != NULL);
 
@@ -1314,28 +1317,25 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
       if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
     }
 
   hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)];
 
   bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
-
   if (bufptr == NULL)
     {
       /* not in memory, I can't get the page */
-      return ER_FAILED;
+      goto exit_on_error;
     }
 
   (void) pgbuf_set_bcb_page_vpid (thread_p, bufptr);
 
   if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
-      return ER_FAILED;
+      goto exit_on_error;
     }
-
 
   if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
     {
@@ -1344,16 +1344,31 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
       int severity = pgbuf_get_check_page_validation (thread_p) ? ER_ERROR_SEVERITY : ER_WARNING_SEVERITY;
       assert (!pgbuf_get_check_page_validation (thread_p));
       er_set (severity, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
-
-      return ER_FAILED;
+      goto exit_on_error;
     }
 
   CAST_BFPTR_TO_PGPTR (src_pgptr, bufptr);
+  count_modifications = ATOMIC_INC_64 (&bufptr->count_modifications, 0LL);
+  if (count_modifications & 1)
+    {
+      goto exit_on_error;
+    }
   memcpy (page_ptr, src_pgptr, IO_PAGESIZE);
+  if (count_modifications != ATOMIC_INC_64 (&bufptr->count_modifications, 0LL))
+    {
+      goto exit_on_error;
+    }
 
   pthread_mutex_unlock (&bufptr->BCB_mutex);
   return NO_ERROR;
+
+exit_on_error:
+  if (bufptr)
+    {
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+    }
+
+  return (err == NO_ERROR && (err = er_errid ()) == NO_ERROR) ? ER_FAILED : err;
 }
 
 /*
@@ -4981,6 +4996,7 @@ pgbuf_initialize_bcb_table (void)
 
       bufptr->dirty = false;
       bufptr->avoid_dealloc_cnt = 0;
+      bufptr->count_modifications = 0;
       bufptr->avoid_victim = false;
       bufptr->async_flush_request = false;
       bufptr->victim_candidate = false;
@@ -12551,4 +12567,41 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
 	}
     }
   return error_code;
+}
+
+/*
+ * pgbuf_start_modification () - Starting page modifications.
+ *
+ * return     : nothing.
+ * pgptr (in) : Page pointer.
+ */
+void
+pgbuf_start_modification (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (bufptr != NULL);
+  ATOMIC_INC_64 (&bufptr->count_modifications, 1LL);
+  assert ((bufptr->count_modifications & 1) != 0);
+}
+
+
+/*
+ * pgbuf_end_modification () - Ending page modifications.
+ *
+ * return     : nothing.
+ * pgptr (in) : Page pointer.
+ */
+void
+pgbuf_end_modification (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (bufptr != NULL);
+  ATOMIC_INC_64 (&bufptr->count_modifications, 1LL);
+  assert ((bufptr->count_modifications & 1) == 0);
 }
