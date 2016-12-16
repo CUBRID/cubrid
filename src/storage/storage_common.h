@@ -165,7 +165,7 @@ struct log_lsa
 #define VOL_MAX_NSECTS(page_size)  (VOL_MAX_NPAGES(page_size) / DISK_SECTOR_NPAGES)
 
 #define SECTOR_FIRST_PAGEID(sid) ((sid) * DISK_SECTOR_NPAGES)
-#define SECTOR_LAST_PAGEID(sid) ((sid) * (DISK_SECTOR_NPAGES + 1) - 1)
+#define SECTOR_LAST_PAGEID(sid) ((((sid) + 1) * DISK_SECTOR_NPAGES) - 1)
 #define SECTOR_FROM_PAGEID(pageid) ((pageid) / DISK_SECTOR_NPAGES)
 
 #define VSID_FROM_VPID(vsid, vpid) (vsid)->volid = (vpid)->volid; (vsid)->sectid = SECTOR_FROM_PAGEID ((vpid)->pageid)

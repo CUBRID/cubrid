@@ -131,11 +131,26 @@ struct file_header
    * page of user page table. Newly allocated page is appended here. */
   VPID vpid_last_user_page_ftab;
 
+  /* cache last file_numerable_find_nth page and index of its entry. used as an optimization for external sort files.
+   * the extensible hash case is not interesting for this optimization (because they are usually small files and because
+   * the access pattern is less predictable.
+   * the usual pattern external sort files is find nth, find nth+1, find nth+2 and so on. so we can cache the page and
+   * index of its first entry from last search to predict where the next file_numerable_find_nth will land.
+   *
+   * how it works:
+   * cache last search location for file_numerable_find_nth by saving user page table page VPID and index of first entry
+   * in page. next search will probably land in the same page (and it will just need to get to the right offset).
+   * if a page is deallocated, the cached location is reset (this is just a safe-guard since external sort does not
+   * deallocate pages currently.
+   * if a page is allocated, since it is appended at the end, will not affect the cached search location. current thread
+   * is actually the only one accessing the file so it can change it safely without promoting to write latch. to avoid
+   * safe-guards, we won't set the page dirty (it is hot anyway and likely to remain in memory).
+   */
+  VPID vpid_find_nth_last;
+  int first_index_find_nth_last;
+
   /* reserved area for future extension */
   INT32 reserved0;
-  INT32 reserved1;
-  INT32 reserved2;
-  INT32 reserved3;
 };
 
 /* Disk size of file header. */
@@ -147,6 +162,9 @@ struct file_header
 
 #define FILE_IS_NUMERABLE(fh) (((fh)->file_flags & FILE_FLAG_NUMERABLE) != 0)
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
+
+#define FILE_CACHE_LAST_FIND_NTH(fh) \
+  (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP)
 
 /* Numerable file types. Currently, we used this property for extensible hashes and sort files. */
 #define FILE_TYPE_CAN_BE_NUMERABLE(ftype) ((ftype) == FILE_EXTENDIBLE_HASH \
@@ -320,7 +338,8 @@ static bool file_Logging = false;
   "\t\ttable offsets: partial = %d, full = %d, user page = %d \n" \
   "\t\tvpid_sticky_first = %d|%d \n" \
   "\t\tvpid_last_temp_alloc = %d|%d, offset_to_last_temp_alloc=%d \n" \
-  "\t\tvpid_last_user_page_ftab = %d|%d \n"
+  "\t\tvpid_last_user_page_ftab = %d|%d \n" \
+  "\t\tvpid_find_nth_last = %d|%d, first_index_find_nth_last = %d \n"
 #define FILE_HEAD_FULL_AS_ARGS(fhead) \
   FILE_HEAD_ALLOC_AS_ARGS (fhead), \
   VFID_AS_ARGS (&(fhead)->self), (long long int) fhead->time_creation, file_type_to_string ((fhead)->type), \
@@ -328,7 +347,8 @@ static bool file_Logging = false;
   (fhead)->offset_to_partial_ftab, (fhead)->offset_to_full_ftab, (fhead)->offset_to_user_page_ftab, \
   VPID_AS_ARGS (&(fhead)->vpid_sticky_first), \
   VPID_AS_ARGS (&(fhead)->vpid_last_temp_alloc), (fhead)->offset_to_last_temp_alloc, \
-  VPID_AS_ARGS (&(fhead)->vpid_last_user_page_ftab)
+  VPID_AS_ARGS (&(fhead)->vpid_last_user_page_ftab), \
+  VPID_AS_ARGS (&(fhead)->vpid_find_nth_last), (fhead)->first_index_find_nth_last
 
 #define FILE_EXTDATA_MSG(name) \
   "\t" name ": { vpid_next = %d|%d, max_size = %d, item_size = %d, n_items = %d } \n"
@@ -413,6 +433,7 @@ struct file_find_nth_context
 {
   VPID *vpid_nth;
   int nth;
+  int first_index;
 };
 
 /************************************************************************/
@@ -561,11 +582,14 @@ STATIC_INLINE void file_extdata_append_array (FILE_EXTENSIBLE_DATA * extdata,
 STATIC_INLINE void *file_extdata_at (const FILE_EXTENSIBLE_DATA * extdata, int index) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool file_extdata_can_merge (const FILE_EXTENSIBLE_DATA * extdata_src,
 					   const FILE_EXTENSIBLE_DATA * extdata_dest) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest,
-					  FILE_EXTENSIBLE_DATA * extdata_dest,
-					  int (*compare_func) (const void *, const void *),
-					  LOG_RCVINDEX rcvindex, VPID * merged_vpid_out)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool file_extdata_merge_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_src,
+					     const PAGE_PTR page_src, FILE_EXTENSIBLE_DATA * extdata_dest,
+					     PAGE_PTR page_dest, int (*compare_func) (const void *, const void *),
+					     bool ordered) __attribute__ ((ALWAYS_INLINE));
+static int file_extdata_find_and_remove_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata_first,
+					      PAGE_PTR page_first, const void *item,
+					      int (*compare_func) (const void *, const void *), bool ordered,
+					      void *item_pop, VPID * vpid_merged);
 STATIC_INLINE void file_extdata_merge_unordered (const FILE_EXTENSIBLE_DATA * extdata_src,
 						 FILE_EXTENSIBLE_DATA * extdata_dest) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src,
@@ -602,11 +626,6 @@ STATIC_INLINE void file_log_extdata_remove (THREAD_ENTRY * thread_p,
 STATIC_INLINE void file_log_extdata_set_next (THREAD_ENTRY * thread_p,
 					      const FILE_EXTENSIBLE_DATA * extdata, PAGE_PTR page,
 					      VPID * vpid_next) __attribute__ ((ALWAYS_INLINE));
-static int file_rv_extdata_merge_redo_internal (THREAD_ENTRY * thread_p,
-						LOG_RCV * rcv, int (*compare_func) (const void *, const void *));
-STATIC_INLINE void file_log_extdata_merge (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_dest,
-					   PAGE_PTR page_dest, const FILE_EXTENSIBLE_DATA * extdata_src,
-					   LOG_RCVINDEX rcvindex) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_extdata_update_item (THREAD_ENTRY * thread_p, PAGE_PTR page_extdata, const void *item_newval,
 					     int index_item, FILE_EXTENSIBLE_DATA * extdata)
   __attribute__ ((ALWAYS_INLINE));
@@ -829,6 +848,8 @@ file_header_init (FILE_HEADER * fhead)
   VPID_SET_NULL (&fhead->vpid_last_temp_alloc);
   fhead->offset_to_last_temp_alloc = NULL_OFFSET;
   VPID_SET_NULL (&fhead->vpid_last_user_page_ftab);
+  VPID_SET_NULL (&fhead->vpid_find_nth_last);
+  fhead->first_index_find_nth_last = 0;
   VPID_SET_NULL (&fhead->vpid_sticky_first);
 
   fhead->n_page_total = 0;
@@ -845,7 +866,7 @@ file_header_init (FILE_HEADER * fhead)
   fhead->offset_to_full_ftab = NULL_OFFSET;
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
 
-  fhead->reserved0 = fhead->reserved1 = fhead->reserved2 = fhead->reserved3 = 0;
+  fhead->reserved0 = 0;
 }
 
 /*
@@ -2297,14 +2318,14 @@ file_log_extdata_set_next (THREAD_ENTRY * thread_p,
 }
 
 /*
- * file_rv_extdata_merge_undo () - Undo recovery of merging extensible data components
+ * file_rv_extdata_merge () - recovery of merging extensible data components
  *
  * return	 : NO_ERROR
  * thread_p (in) : Thread entry
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_extdata_merge_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_extdata_merge (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   FILE_EXTENSIBLE_DATA *extdata_in_page;
   FILE_EXTENSIBLE_DATA *extdata_in_rcv;
@@ -2313,8 +2334,7 @@ file_rv_extdata_merge_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (rcv->offset >= 0 && rcv->offset < DB_PAGESIZE);
 
   /* how it works:
-   * before merge, the entire old extensible data is logged for undo. we just need to replace current extensible data
-   * with the one in recovery data
+   * the entire extensible data is logged before and after merge. so this is used for both undo and redo.
    */
 
   extdata_in_page = (FILE_EXTENSIBLE_DATA *) (rcv->pgptr + rcv->offset);
@@ -2326,110 +2346,10 @@ file_rv_extdata_merge_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   memcpy (extdata_in_page, extdata_in_rcv, rcv->length);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
-  file_log ("file_rv_extdata_merge_undo",
-	    "page %d|%d lsa %lld|%d" FILE_EXTDATA_MSG ("extdata after"),
-	    PGBUF_PAGE_VPID_AS_ARGS (rcv->pgptr),
-	    PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr), FILE_EXTDATA_AS_ARGS (extdata_in_page));
+  file_log ("file_rv_extdata_merge", PGBUF_PAGE_STATE_MSG ("extensible data page") FILE_EXTDATA_MSG ("extdata after"),
+	    PGBUF_PAGE_STATE_ARGS (rcv->pgptr), FILE_EXTDATA_AS_ARGS (extdata_in_page));
 
   return NO_ERROR;
-}
-
-/*
- * file_rv_extdata_merge_redo_internal () - Redo recovery of merging extensible data components
- *
- * return	     : NO_ERROR
- * thread_p (in)     : Thread entry
- * rcv (in)	     : Recovery data
- * compare_func (in) : NULL for unordered merge, or a compare function for ordered merge
- */
-static int
-file_rv_extdata_merge_redo_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
-				     int (*compare_func) (const void *, const void *))
-{
-  FILE_EXTENSIBLE_DATA *extdata_in_page;
-  FILE_EXTENSIBLE_DATA *extdata_in_rcv;
-
-  assert (rcv->pgptr != NULL);
-  assert (rcv->offset >= 0 && rcv->offset < DB_PAGESIZE);
-
-  /* how it works:
-   * the source extensible data is logged for redo purpose. on recovery, we need to merge the extensible data components
-   * again. the recovery function used for redo will provide the type of merge through compare_func argument.
-   */
-
-  extdata_in_page = (FILE_EXTENSIBLE_DATA *) (rcv->pgptr + rcv->offset);
-  extdata_in_rcv = (FILE_EXTENSIBLE_DATA *) rcv->data;
-
-  assert (file_extdata_size (extdata_in_rcv) == rcv->length);
-
-  if (compare_func)
-    {
-      file_extdata_merge_ordered (extdata_in_rcv, extdata_in_page, compare_func);
-    }
-  else
-    {
-      file_extdata_merge_unordered (extdata_in_rcv, extdata_in_page);
-    }
-
-  file_log ("file_rv_extdata_merge_redo_internal",
-	    "page %d|%d, lsa %lld|%d, %s merge \n"
-	    FILE_EXTDATA_MSG ("extdata after"),
-	    PGBUF_PAGE_VPID_AS_ARGS (rcv->pgptr),
-	    PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr),
-	    compare_func ? "ordered" : "unordered", FILE_EXTDATA_AS_ARGS (extdata_in_page));
-
-  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
-
-  return NO_ERROR;
-}
-
-/*
- * file_rv_extdata_merge_redo () - Redo extensible data components merge (unordered)
- *
- * return	     : NO_ERROR
- * thread_p (in)     : Thread entry
- * rcv (in)	     : Recovery data
- */
-int
-file_rv_extdata_merge_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  return file_rv_extdata_merge_redo_internal (thread_p, rcv, NULL);
-}
-
-/*
- * file_rv_extdata_merge_compare_vsid_redo () - Redo extensible data components merge (ordered by file_compare_vsids)
- *
- * return	     : NO_ERROR
- * thread_p (in)     : Thread entry
- * rcv (in)	     : Recovery data
- */
-int
-file_rv_extdata_merge_compare_vsid_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  return file_rv_extdata_merge_redo_internal (thread_p, rcv, file_compare_vsids);
-}
-
-/*
- * file_log_extdata_merge () - Log merging two extensible data components
- *
- * return	     : Void
- * thread_p (in)     : Thread entry
- * extdata_dest (in) : Destination extensible data (for undo recovery)
- * page_dest (in)    : Page of destination extensible data
- * extdata_src (in)  : Source extensible data (for redo recovery)
- * rcvindex (in)     : Recovery index (to know the type of merge, ordered or unordered).
- */
-STATIC_INLINE void
-file_log_extdata_merge (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_dest,
-			PAGE_PTR page_dest, const FILE_EXTENSIBLE_DATA * extdata_src, LOG_RCVINDEX rcvindex)
-{
-  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-
-  addr.pgptr = page_dest;
-  addr.offset = (PGLENGTH) (((char *) extdata_dest) - page_dest);
-
-  log_append_undoredo_data (thread_p, rcvindex, &addr, file_extdata_size (extdata_dest),
-			    file_extdata_size (extdata_src), extdata_dest, extdata_src);
 }
 
 /*
@@ -2454,6 +2374,231 @@ file_extdata_update_item (THREAD_ENTRY * thread_p, PAGE_PTR page_extdata, const 
 
   memcpy (item_in_page, item_newval, extdata->size_of_item);
   pgbuf_set_dirty (thread_p, page_extdata, DONT_FREE);
+}
+
+/*
+ * file_extdata_merge_pages () - try to merge source extensible data page into destination extensible data page
+ *
+ * return            : return true if pages have been merged, false otherwise
+ * thread_p (in)     : thread entry
+ * extdata_src (in)  : source extensible data
+ * page_src (in)     : source extensible data page
+ * extdata_dest (in) : destination extensible data
+ * page_dest (in)    : destination extensible data page
+ * compare_func (in) : compare function (required if items are ordered)
+ * ordered (in)      : true if items are ordered in pages (order must be preserved)
+ */
+STATIC_INLINE bool
+file_extdata_merge_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata_src, const PAGE_PTR page_src,
+			  FILE_EXTENSIBLE_DATA * extdata_dest, PAGE_PTR page_dest,
+			  int (*compare_func) (const void *, const void *), bool ordered)
+{
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  LOG_LSA save_lsa = LSA_INITIALIZER;
+
+  assert (extdata_dest != NULL && page_dest != NULL);
+  assert ((char *) extdata_dest >= page_dest && (char *) extdata_dest < page_dest + DB_PAGESIZE);
+  assert (extdata_src != NULL && page_src != NULL);
+  assert ((char *) extdata_src >= page_src && (char *) extdata_src < page_src + DB_PAGESIZE);
+  assert (!ordered || compare_func != NULL);
+  assert (log_check_system_op_is_started (thread_p));
+
+  if (!file_extdata_can_merge (extdata_src, extdata_dest))
+    {
+      /* not enough space */
+      return false;
+    }
+
+  save_lsa = *pgbuf_get_lsa (page_dest);
+  /* log previous extensible data */
+  addr.pgptr = page_dest;
+  addr.offset = (PGLENGTH) (((char *) extdata_dest) - page_dest);
+  log_append_undo_data (thread_p, RVFL_EXTDATA_MERGE, &addr, file_extdata_size (extdata_dest), extdata_dest);
+
+  if (ordered)
+    {
+      /* ordered merge */
+      file_extdata_merge_ordered (extdata_src, extdata_dest, compare_func);
+    }
+  else
+    {
+      /* unordered merge */
+      file_extdata_merge_unordered (extdata_src, extdata_dest);
+    }
+  /* update vpid_next */
+  extdata_dest->vpid_next = extdata_src->vpid_next;
+
+  /* log new extensible data */
+  log_append_redo_data (thread_p, RVFL_EXTDATA_MERGE, &addr, file_extdata_size (extdata_dest), extdata_dest);
+  pgbuf_set_dirty (thread_p, page_dest, DONT_FREE);
+
+  file_log ("file_extdata_merge_pages", "merged extensible data: \n" FILE_EXTDATA_MSG ("extdata dest")
+	    "\t" PGBUF_PAGE_MODIFY_MSG ("page dest") "\n" FILE_EXTDATA_MSG ("extdata src")
+	    "\t" PGBUF_PAGE_STATE_MSG ("page src") "\n", FILE_EXTDATA_AS_ARGS (extdata_dest),
+	    PGBUF_PAGE_MODIFY_ARGS (page_dest, &save_lsa), FILE_EXTDATA_AS_ARGS (extdata_src),
+	    PGBUF_PAGE_STATE_ARGS (page_src));
+
+  /* successful merge */
+  return true;
+}
+
+/*
+ * file_extdata_find_and_remove_item () - find an item in extensible data and remove it. if possible, also merge
+ *                                        extensible data pages
+ *
+ * return             : error code
+ * thread_p (in)      : thread entry
+ * extdata_first (in) : first extensible data
+ * page_first (in)    : first extensible data page
+ * item (in)          : item to find
+ * compare_func (in)  : compare function
+ * ordered (in)       : true if each extensible data page is ordered
+ * item_pop (out)     : if not NULL it will output the item removed from extensible data.
+ * vpid_merged (out)  : output the vpid if merged extensible data page or NULL vpid.
+ */
+static int
+file_extdata_find_and_remove_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata_first, PAGE_PTR page_first,
+				   const void *item, int (*compare_func) (const void *, const void *), bool ordered,
+				   void *item_pop, VPID * vpid_merged)
+{
+  PAGE_PTR page_prev = NULL;
+  PAGE_PTR page_crt = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_prev;
+  FILE_EXTENSIBLE_DATA *extdata_crt;
+  bool found = false;
+  int pos = 0;
+  LOG_LSA save_lsa;
+  int error_code = NO_ERROR;
+
+  assert (extdata_first != NULL);
+  assert (page_first != NULL);
+  assert (item != NULL);
+  assert (compare_func != NULL);
+  assert (vpid_merged != NULL);
+  assert (log_check_system_op_is_started (thread_p));
+
+  /* how it works:
+   * 
+   * first we must find the item in one of the extensible pages. we iterate through each page and try to find the item.
+   * during page iteration we save the previous page (it is NULL when current page is first).
+   *
+   * if the items are ordered in each page, a binary search is executed. if not, items are compared one by one.
+   *
+   * when the item is found, it is removed from page. we also try to merge it with previous page or to merge next page
+   * into current page. if merge is executed, the merged page vpid is output.
+   *
+   * if item_pop is not NULL, the removed item will be copied (note that the item is not always identical to search
+   * item).
+   */
+
+  VPID_SET_NULL (vpid_merged);
+
+  /* iterate through extensible data pages */
+  extdata_crt = extdata_first;
+  page_crt = page_first;
+  while (true)
+    {
+      /* search item: do binary search if page is ordered, otherwise iterate through all until matched */
+      if (ordered)
+	{
+	  file_extdata_find_ordered (extdata_crt, item, compare_func, &found, &pos);
+	}
+      else
+	{
+	  for (pos = 0; pos < file_extdata_item_count (extdata_crt); pos++)
+	    {
+	      if (compare_func (item, file_extdata_at (extdata_crt, pos)) == 0)
+		{
+		  found = true;
+		  break;
+		}
+	    }
+	}
+
+      if (found)
+	{
+	  /* found item. remove it */
+	  assert (pos >= 0 && pos < file_extdata_item_count (extdata_crt));
+
+	  if (item_pop != NULL)
+	    {
+	      /* output item before removing */
+	      memcpy (item_pop, file_extdata_at (extdata_crt, pos), extdata_crt->size_of_item);
+	    }
+
+	  save_lsa = *pgbuf_get_lsa (page_crt);
+	  file_log_extdata_remove (thread_p, extdata_crt, page_crt, pos, 1);
+	  file_extdata_remove_at (extdata_crt, pos, 1);
+
+	  file_log ("file_extdata_find_and_remove_item", "removed extensible data item: \n"
+		    FILE_EXTDATA_MSG ("extensible data") "\t" PGBUF_PAGE_MODIFY_MSG ("extensible data page") "\n"
+		    "\tposition = %d \n", FILE_EXTDATA_AS_ARGS (extdata_crt),
+		    PGBUF_PAGE_MODIFY_ARGS (page_crt, &save_lsa), pos);
+
+	  if (page_prev != NULL)
+	    {
+	      /* try to merge to previous page */
+	      assert (extdata_prev != NULL);
+
+	      if (file_extdata_merge_pages (thread_p, extdata_crt, page_crt, extdata_prev, page_prev, compare_func,
+					    ordered))
+		{
+		  pgbuf_get_vpid (page_crt, vpid_merged);
+		  /* we are done here */
+		  goto exit;
+		}
+	    }
+	}
+      if (VPID_ISNULL (&extdata_crt->vpid_next))
+	{
+	  break;
+	}
+      if (page_prev != NULL && page_prev != page_first)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_prev);
+	}
+      page_prev = page_crt;
+      extdata_prev = extdata_crt;
+      page_crt = pgbuf_fix (thread_p, &extdata_prev->vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_crt == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      extdata_crt = (FILE_EXTENSIBLE_DATA *) page_crt;
+      if (found)
+	{
+	  /* try to merge to previous page */
+	  if (file_extdata_merge_pages (thread_p, extdata_crt, page_crt, extdata_prev, page_prev, compare_func,
+					ordered))
+	    {
+	      pgbuf_get_vpid (page_crt, vpid_merged);
+	    }
+	  break;
+	}
+    }
+  if (!found)
+    {
+      /* item is missing which is unexpected */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+
+  assert (error_code == NO_ERROR);
+
+exit:
+  assert (page_prev != page_crt);
+
+  if (page_prev != NULL && page_prev != page_first)
+    {
+      pgbuf_unfix (thread_p, page_prev);
+    }
+  if (page_crt != NULL && page_crt != page_first)
+    {
+      pgbuf_unfix (thread_p, page_crt);
+    }
+  return error_code;
 }
 
 /************************************************************************/
@@ -2806,7 +2951,11 @@ file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_
 
   if (!OID_ISNULL (class_oid_p))
     {
-      class_name_p = heap_get_class_name (thread_p, class_oid_p);
+      if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+	{
+	  /* ignore */
+	  er_clear ();
+	}
       fprintf (fp, "CLASS_OID: %5d|%10d|%5d (%s)", OID_AS_ARGS (class_oid_p),
 	       class_name_p != NULL ? class_name_p : "*UNKNOWN-CLASS*");
       if (class_name_p != NULL)
@@ -3029,6 +3178,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   INT64 total_size;
   int n_sectors;
   VSID *vsids_reserved = NULL;
+  bool was_temp_reserved = false;
   DB_VOLPURPOSE volpurpose = DISK_UNKNOWN_PURPOSE;
   VSID *vsid_iter = NULL;
   INT16 size = 0;
@@ -3040,7 +3190,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   FILE_HEADER *fhead = NULL;
 
   /* File table vars */
-  int max_size_ftab;
+  INT64 max_size_ftab;
   FILE_PARTIAL_SECTOR *partsect_ftab = NULL;
   VPID vpid_ftab = VPID_INITIALIZER;
   PAGE_PTR page_ftab = NULL;
@@ -3095,7 +3245,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
     }
 
   /* convert the disk size to number of sectors. */
-  n_sectors = CEIL_PTVDIV (total_size, DB_SECTORSIZE);
+  n_sectors = (int) CEIL_PTVDIV (total_size, DB_SECTORSIZE);
   assert (n_sectors > 0);
   /* allocate a buffer to store all reserved sectors */
   vsids_reserved = (VSID *) db_private_alloc (thread_p, n_sectors * sizeof (VSID));
@@ -3129,6 +3279,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       goto exit;
     }
   /* found enough sectors to reserve */
+  was_temp_reserved = is_temp;
 
   /* sort sectors by VSID. but before sorting, remember last volume ID used for reservations. */
   volid_last_expand = vsids_reserved[n_sectors - 1].volid;
@@ -3189,7 +3340,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error_code);
       goto exit;
     }
 
@@ -3220,6 +3371,8 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   VPID_SET_NULL (&fhead->vpid_last_temp_alloc);
   fhead->offset_to_last_temp_alloc = NULL_OFFSET;
   VPID_SET_NULL (&fhead->vpid_last_user_page_ftab);
+  VPID_SET_NULL (&fhead->vpid_find_nth_last);
+  fhead->first_index_find_nth_last = 0;
   VPID_SET_NULL (&fhead->vpid_sticky_first);
 
   fhead->n_page_total = 0;
@@ -3237,7 +3390,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   fhead->offset_to_full_ftab = NULL_OFFSET;
   fhead->offset_to_user_page_ftab = NULL_OFFSET;
 
-  fhead->reserved0 = fhead->reserved1 = fhead->reserved2 = fhead->reserved3 = 0;
+  fhead->reserved0 = 0;
 
   /* start with a negative empty sector (because we have allocated header). */
   fhead->n_sector_empty--;
@@ -3495,6 +3648,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
     {
       /* set last user page table VPID to header */
       fhead->vpid_last_user_page_ftab = vpid_fhead;
+      fhead->vpid_find_nth_last = vpid_fhead;
     }
 
   /* set all stats */
@@ -3556,6 +3710,29 @@ exit:
 	{
 	  ASSERT_NO_ERROR ();
 	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, NULL, sizeof (*vfid), (char *) vfid);
+	}
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      /* make sure we don't output a bad VFID. */
+      VFID_SET_NULL (vfid);
+
+      if (was_temp_reserved)
+	{
+	  /* recovery won't free reserved sectors. we have to manually handle the unreserve */
+	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+
+	  /* make sure sectors are sorted */
+	  qsort (vsids_reserved, n_sectors, sizeof (VSID), file_compare_vsids);
+	  if (disk_unreserve_ordered_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, n_sectors, vsids_reserved)
+	      != NO_ERROR)
+	    {
+	      /* sectors are leaked */
+	      assert_release (false);
+	      /* fall through */
+	    }
+	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 	}
     }
 
@@ -5416,6 +5593,13 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 
   file_log ("file_dealloc", "file %d|%d marked vpid %|%d as deleted", VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
 
+  if (FILE_CACHE_LAST_FIND_NTH (fhead))
+    {
+      /* reset cached search location */
+      VPID_SET_NULL (&fhead->vpid_find_nth_last);
+      fhead->first_index_find_nth_last = 0;
+    }
+
   /* done */
   assert (error_code != NO_ERROR);
 
@@ -5432,104 +5616,6 @@ exit:
   return error_code;
 
 #undef LOG_DATA_SIZE
-}
-
-/*
- * file_extdata_try_merge () - Try to merge extensible data components.
- *
- * return	         : Error code
- * thread_p (in)         : Thread entry
- * page_dest (in)        : Merge destination page
- * extdata_dest (in)     : Merge destination extensible
- * compare_func (in)     : NULL to merge unordered, not NULL to merge ordered
- * rcvindex (in)         : Recovery index used in case merge is executed
- * merged_vpid_out (out) : VPID to be deallocated
- */
-STATIC_INLINE int
-file_extdata_try_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_dest, FILE_EXTENSIBLE_DATA * extdata_dest,
-			int (*compare_func) (const void *, const void *), LOG_RCVINDEX rcvindex, VPID * merged_vpid_out)
-{
-  FILE_EXTENSIBLE_DATA *extdata_next = NULL;
-  VPID vpid_next = extdata_dest->vpid_next;
-  PAGE_PTR page_next = NULL;
-  int error_code = NO_ERROR;
-
-  assert (extdata_dest != NULL);
-  assert (merged_vpid_out != NULL);
-
-  /* how it works:
-   *
-   * we try to merge next extensible component in the extensible component given as argument.
-   * to do the merge, next extensible component should fit current extensible component.
-   *
-   * note: there can be two types of merges: ordered or unordered. for ordered merge, a compare_func must be provided
-   * note: make sure the right recovery index is used. the same merge type and compare functions should be used at
-   *       recovery
-   */
-
-  VPID_SET_NULL (merged_vpid_out);
-
-  if (VPID_ISNULL (&vpid_next))
-    {
-      /* no next, nothing to merge */
-      return NO_ERROR;
-    }
-
-  /* fix next page and get next extensible data component */
-  page_next = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_next == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-  extdata_next = (FILE_EXTENSIBLE_DATA *) page_next;
-
-  file_log ("file_extdata_try_merge",
-	    "\n" FILE_EXTDATA_MSG ("dest") FILE_EXTDATA_MSG ("src"),
-	    FILE_EXTDATA_AS_ARGS (extdata_dest), FILE_EXTDATA_AS_ARGS (extdata_next));
-
-  /* can extensible data components be merged? */
-  if (file_extdata_can_merge (extdata_next, extdata_dest))
-    {
-      /* do the merge */
-      file_log ("file_extdata_try_merge",
-		"page %d|%d prev_lsa %lld|%d \n"
-		FILE_EXTDATA_MSG ("dest before merge"),
-		PGBUF_PAGE_VPID_AS_ARGS (page_dest),
-		PGBUF_PAGE_LSA_AS_ARGS (page_dest), FILE_EXTDATA_AS_ARGS (extdata_dest));
-
-      file_log_extdata_merge (thread_p, extdata_dest, page_dest, extdata_next, rcvindex);
-      if (compare_func)
-	{
-	  file_extdata_merge_ordered (extdata_next, extdata_dest, compare_func);
-	}
-      else
-	{
-	  file_extdata_merge_unordered (extdata_next, extdata_dest);
-	}
-
-      file_log ("file_extdata_try_merge",
-		"page %d|%d crt_lsa %lld|%d \n"
-		FILE_EXTDATA_MSG ("dest after merge"),
-		PGBUF_PAGE_VPID_AS_ARGS (page_dest),
-		PGBUF_PAGE_LSA_AS_ARGS (page_dest), FILE_EXTDATA_AS_ARGS (extdata_dest));
-
-      file_log_extdata_set_next (thread_p, extdata_dest, page_dest, &extdata_next->vpid_next);
-      VPID_COPY (&extdata_dest->vpid_next, &extdata_next->vpid_next);
-
-      pgbuf_unfix_and_init (thread_p, page_next);
-
-      /* to deallocate merged page */
-      *merged_vpid_out = vpid_next;
-
-      file_log ("file_extdata_try_merge", "merged \n" FILE_EXTDATA_MSG ("dest"), FILE_EXTDATA_AS_ARGS (extdata_dest));
-    }
-  else
-    {
-      pgbuf_unfix_and_init (thread_p, page_next);
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -5636,69 +5722,29 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
     {
       /* not in partial table. */
       FILE_PARTIAL_SECTOR partsect_new;
+      VPID vpid_merged = VPID_INITIALIZER;
 
       assert (page_ftab == NULL);
 
-      /* search full table */
+      /* remove from full table */
+
       was_full = true;
       FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
-      error_code = file_extdata_search_item (thread_p, &extdata_full_ftab, &vsid_dealloc, file_compare_vsids, true,
-					     true, &found, &position, &page_ftab);
+      error_code = file_extdata_find_and_remove_item (thread_p, extdata_full_ftab, page_fhead, &vsid_dealloc,
+						      file_compare_vsids, true, NULL, &vpid_merged);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
-      if (!found)
+      if (!VPID_ISNULL (&vpid_merged))
 	{
-	  /* corrupted file tables. */
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto exit;
-	}
-
-      /* move from full table to partial table. */
-
-      /* remove from full table. */
-      addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
-      save_page_lsa = *pgbuf_get_lsa (addr.pgptr);
-      file_log_extdata_remove (thread_p, extdata_full_ftab, addr.pgptr, position, 1);
-      file_extdata_remove_at (extdata_full_ftab, position, 1);
-
-      file_log ("file_perm_dealloc",
-		"removed vsid %d|%d from position %d in file %d|%d, page %d|%d, prev_lsa %lld|%d, "
-		"crt_lsa %lld|%d, \n"
-		FILE_EXTDATA_MSG ("full table component"),
-		VSID_AS_ARGS (&vsid_dealloc), VFID_AS_ARGS (&fhead->self),
-		PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr),
-		LSA_AS_ARGS (&save_page_lsa),
-		PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
-
-      /* check if full table pages can be merged. */
-      if (file_extdata_size (extdata_full_ftab) * 2 < file_extdata_max_size (extdata_full_ftab))
-	{
-	  VPID vpid_merged;
-	  error_code = file_extdata_try_merge (thread_p, addr.pgptr, extdata_full_ftab, file_compare_vsids,
-					       RVFL_EXTDATA_MERGE_COMPARE_VSID, &vpid_merged);
+	  error_code = file_perm_dealloc (thread_p, page_fhead, &vpid_merged, FILE_ALLOC_TABLE_PAGE);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      goto exit;
+	      return error_code;
 	    }
-	  if (!VPID_ISNULL (&vpid_merged))
-	    {
-	      error_code = file_perm_dealloc (thread_p, page_fhead, &vpid_merged, FILE_ALLOC_TABLE_PAGE);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
-	    }
-	}
-
-      if (page_ftab != NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, page_ftab);
 	}
 
       /* add to partial table. */
@@ -5868,7 +5914,6 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
   FILE_HEADER *fhead = NULL;
   bool is_sysop_started = false;
   PAGE_PTR page_dealloc = NULL;
-  LOG_LSA save_lsa;
   int error_code = NO_ERROR;
 
   /* how it works:
@@ -5928,84 +5973,35 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
     {
       /* remove VPID from user page table. */
       FILE_EXTENSIBLE_DATA *extdata_user_page_ftab;
-      bool found = false;
-      int position = -1;
-      PAGE_PTR page_ftab = NULL;
-      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+      VPID vpid_removed = VPID_INITIALIZER;
+      VPID vpid_merged = VPID_INITIALIZER;
 
-      /* get user page table */
+      /* remove from user table */
       FILE_HEADER_GET_USER_PAGE_FTAB (fhead, extdata_user_page_ftab);
-      /* search for VPID */
-      error_code = file_extdata_search_item (thread_p, &extdata_user_page_ftab, vpid_dealloc, file_compare_vpids,
-					     false, true, &found, &position, &page_ftab);
+      error_code = file_extdata_find_and_remove_item (thread_p, extdata_user_page_ftab, page_fhead, vpid_dealloc,
+						      file_compare_vpids, false, &vpid_removed, &vpid_merged);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
-      if (!found)
+
+      if (!VPID_ISNULL (&vpid_merged))
 	{
-	  /* unexpected. */
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  if (page_ftab != NULL)
-	    {
-	      pgbuf_unfix (thread_p, page_ftab);
-	    }
-	  goto exit;
-	}
-
-      /* is mark deleted? */
-      if (FILE_USER_PAGE_IS_MARKED_DELETED (file_extdata_at (extdata_user_page_ftab, position)))
-	{
-	  /* update file header */
-	  file_header_update_mark_deleted (thread_p, page_fhead, -1);
-	}
-
-      /* remove VPID */
-      addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
-      save_lsa = *pgbuf_get_lsa (addr.pgptr);
-      file_log_extdata_remove (thread_p, extdata_user_page_ftab, addr.pgptr, position, 1);
-      file_extdata_remove_at (extdata_user_page_ftab, position, 1);
-
-      file_log ("file_rv_dealloc_internal",
-		"remove deallocated page %d|%d in file %d|%d, page %d|%d, "
-		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n"
-		FILE_EXTDATA_MSG ("user page table component"),
-		VPID_AS_ARGS (vpid_dealloc), VFID_AS_ARGS (&fhead->self),
-		PGBUF_PAGE_VPID_AS_ARGS (addr.pgptr), LSA_AS_ARGS (&save_lsa),
-		PGBUF_PAGE_LSA_AS_ARGS (addr.pgptr), FILE_EXTDATA_AS_ARGS (extdata_user_page_ftab));
-
-      /* should we merge pages? */
-      if (file_extdata_size (extdata_user_page_ftab) * 2 < file_extdata_max_size (extdata_user_page_ftab))
-	{
-	  VPID vpid_merged;
-
-	  error_code = file_extdata_try_merge (thread_p, addr.pgptr, extdata_user_page_ftab, NULL, RVFL_EXTDATA_MERGE,
-					       &vpid_merged);
+	  /* user page table shrank */
+	  error_code = file_perm_dealloc (thread_p, page_fhead, &vpid_merged, FILE_ALLOC_TABLE_PAGE);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      if (page_ftab != NULL)
-		{
-		  pgbuf_unfix (thread_p, page_ftab);
-		}
 	      goto exit;
-	    }
-	  if (!VPID_ISNULL (&vpid_merged))
-	    {
-	      error_code = file_perm_dealloc (thread_p, page_fhead, &vpid_merged, FILE_ALLOC_TABLE_PAGE);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
 	    }
 	}
 
-      if (page_ftab != NULL)
+      /* is mark deleted? */
+      if (FILE_USER_PAGE_IS_MARKED_DELETED (&vpid_removed))
 	{
-	  pgbuf_unfix (thread_p, page_ftab);
+	  /* update file header */
+	  file_header_update_mark_deleted (thread_p, page_fhead, -1);
 	}
     }
 
@@ -7286,6 +7282,7 @@ file_extdata_find_nth_vpid (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA 
     {
       /* not in this extensible data. continue searching. */
       find_nth_context->nth -= count_vpid;
+      find_nth_context->first_index += count_vpid;
     }
   else
     {
@@ -7357,6 +7354,8 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab = NULL;
+  PAGE_PTR page_ftab_start = NULL;
+  PAGE_PTR page_ftab_nth_location = NULL;
   FILE_FIND_NTH_CONTEXT find_nth_context;
   int error_code = NO_ERROR;
 
@@ -7382,6 +7381,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (fhead);
+  assert (FILE_IS_NUMERABLE (fhead));
   assert (nth < fhead->n_page_user || (auto_alloc && nth == fhead->n_page_user));
 
   if (auto_alloc && nth == (fhead->n_page_user - fhead->n_page_mark_delete))
@@ -7451,13 +7451,51 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   else
     {
+      if (FILE_CACHE_LAST_FIND_NTH (fhead) && !VPID_ISNULL (&fhead->vpid_find_nth_last)
+	  && !VPID_EQ (&vpid_fhead, &fhead->vpid_find_nth_last) && nth >= fhead->first_index_find_nth_last)
+	{
+	  /* start searching from last search location */
+	  page_ftab_start =
+	    pgbuf_fix (thread_p, &fhead->vpid_find_nth_last, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_ftab_start == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	  extdata_user_page_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab_start;
+	  find_nth_context.first_index = fhead->first_index_find_nth_last;
+	  find_nth_context.nth -= fhead->first_index_find_nth_last;
+	}
+      else
+	{
+	  /* no last search location or it could not be used. start searching from the beginning. */
+	  find_nth_context.first_index = 0;
+	}
       /* we can go directly to the right VPID. */
       error_code = file_extdata_apply_funcs (thread_p, extdata_user_page_ftab, file_extdata_find_nth_vpid,
-					     &find_nth_context, NULL, NULL, false, NULL, NULL);
+					     &find_nth_context, NULL, NULL, false, NULL, &page_ftab_nth_location);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+
+      if (FILE_CACHE_LAST_FIND_NTH (fhead))
+	{
+	  /* note that we consider this file cannot be accessed concurrently. therefore we do not promote to write latch
+	   * and we do not set page dirty to update the cached search location. */
+	  if (page_ftab_nth_location == NULL)
+	    {
+	      /* it was found in the starting page */
+	      page_ftab_nth_location = page_ftab_start != NULL ? page_ftab_start : page_fhead;
+	    }
+	  pgbuf_get_vpid (page_ftab_nth_location, &fhead->vpid_find_nth_last);
+	  fhead->first_index_find_nth_last = find_nth_context.first_index;
+
+	  file_log ("file_numerable_find_nth", "update fhead.fist_index_find_nth_last to %d "
+		    "and fhead->vpid_find_nth_last to %d|%d while searching nth=%d in file %d|%d",
+		    fhead->first_index_find_nth_last, VPID_AS_ARGS (&fhead->vpid_find_nth_last), nth,
+		    VFID_AS_ARGS (vfid));
 	}
     }
 
@@ -7472,6 +7510,15 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
   assert (error_code == NO_ERROR);
 
 exit:
+  if (page_ftab_nth_location != NULL && page_ftab_nth_location != page_ftab_start
+      && page_ftab_nth_location != page_fhead)
+    {
+      pgbuf_unfix (thread_p, page_ftab_nth_location);
+    }
+  if (page_ftab_start != NULL)
+    {
+      pgbuf_unfix (thread_p, page_ftab_start);
+    }
   if (page_fhead != NULL)
     {
       pgbuf_unfix (thread_p, page_fhead);
@@ -8070,6 +8117,8 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
       VPID_SET_NULL (&extdata_user_page_ftab->vpid_next);
       extdata_user_page_ftab->n_items = 0;
       fhead->vpid_last_user_page_ftab = vpid_fhead;
+      fhead->vpid_find_nth_last = vpid_fhead;
+      fhead->first_index_find_nth_last = 0;
     }
 
   /* collect table pages */
@@ -9106,12 +9155,7 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
   PAGE_PTR page_track_head = NULL;
   FILE_EXTENSIBLE_DATA *extdata = NULL;
   FILE_TRACK_ITEM item_search;
-  bool found;
-  int pos;
-  PAGE_PTR page_track_other;
-  PAGE_PTR page_extdata;
-  VPID vpid_merged;
-  LOG_LSA save_lsa;
+  VPID vpid_merged = VPID_INITIALIZER;
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
@@ -9127,33 +9171,9 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   item_search.volid = vfid->volid;
   item_search.fileid = vfid->fileid;
-  error_code = file_extdata_search_item (thread_p, &extdata, &item_search, file_compare_track_items, true, true,
-					 &found, &pos, &page_track_other);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit;
-    }
-  if (!found)
-    {
-      assert_release (false);
-      error_code = ER_FAILED;
-      goto exit;
-    }
 
-  /* remove from pos */
-  page_extdata = page_track_other != NULL ? page_track_other : page_track_head;
-  save_lsa = *pgbuf_get_lsa (page_extdata);
-  file_log_extdata_remove (thread_p, extdata, page_extdata, pos, 1);
-  file_extdata_remove_at (extdata, pos, 1);
-
-  file_log ("file_tracker_unregister", "removed VFID %d|%d from page_extdata %d|%d, prev_lsa = %lld|%d, "
-	    "crt_lsa = %lld|%d, at pos %d ", VFID_AS_ARGS (vfid), PGBUF_PAGE_VPID_AS_ARGS (page_extdata),
-	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_extdata), pos);
-
-  /* try to merge pages */
-  error_code = file_extdata_try_merge (thread_p, page_extdata, extdata, file_compare_track_items,
-				       RVFL_EXTDATA_MERGE_COMPARE_TRACK_ITEM, &vpid_merged);
+  error_code = file_extdata_find_and_remove_item (thread_p, extdata, page_track_head, &item_search,
+						  file_compare_track_items, true, NULL, &vpid_merged);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -9177,29 +9197,11 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
   assert (error_code == NO_ERROR);
 
 exit:
-  if (page_track_other != NULL)
-    {
-      pgbuf_unfix (thread_p, page_track_other);
-    }
   if (page_track_head != NULL)
     {
       pgbuf_unfix (thread_p, page_track_head);
     }
   return error_code;
-}
-
-/*
- * file_rv_extdata_merge_compare_track_item_redo () - Redo extensible data components merge (ordered by
- *                                                    file_compare_track_items)
- *
- * return	     : NO_ERROR
- * thread_p (in)     : Thread entry
- * rcv (in)	     : Recovery data
- */
-int
-file_rv_extdata_merge_compare_track_item_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  return file_rv_extdata_merge_redo_internal (thread_p, rcv, file_compare_track_items);
 }
 
 /*
@@ -9582,10 +9584,11 @@ int
 file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
 {
   PAGE_PTR page_track_head = NULL;
-  PAGE_PTR page_track_other = NULL;
 
   PAGE_PTR page_extdata = NULL;
   FILE_EXTENSIBLE_DATA *extdata = NULL;
+  PAGE_PTR page_extdata_next = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_next = NULL;
   FILE_TRACK_ITEM *item = NULL;
   VPID vpid_next;
   VFID vfid;
@@ -9645,17 +9648,18 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
 
       /* go to next extensible data page */
       vpid_next = extdata->vpid_next;
-      if (page_track_other != NULL)
+      if (page_extdata != NULL && page_extdata != page_track_head)
 	{
-	  pgbuf_unfix_and_init (thread_p, page_track_other);
+	  pgbuf_unfix_and_init (thread_p, page_extdata);
 	}
+      page_extdata = NULL;
       if (VPID_ISNULL (&vpid_next))
 	{
 	  /* no next page */
 	  break;
 	}
-      page_track_other = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_track_other == NULL)
+      page_extdata = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_extdata == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
@@ -9664,44 +9668,26 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
     }
 
   /* try merges */
-  assert (page_track_other == NULL);
+  assert (page_extdata == NULL);
   page_extdata = page_track_head;
-  while (true)
+  extdata = (FILE_EXTENSIBLE_DATA *) page_extdata;
+  while (!VPID_ISNULL (&extdata->vpid_next))
     {
-      extdata = (FILE_EXTENSIBLE_DATA *) page_extdata;
-      error_code =
-	file_extdata_try_merge (thread_p, page_extdata, extdata, file_compare_track_items,
-				RVFL_EXTDATA_MERGE_COMPARE_TRACK_ITEM, &vpid_merged);
-      if (error_code != NO_ERROR)
+      page_extdata_next = pgbuf_fix (thread_p, &extdata->vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE,
+				     PGBUF_UNCONDITIONAL_LATCH);
+      if (page_extdata_next == NULL)
 	{
-	  ASSERT_ERROR ();
+	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
-      if (VPID_ISNULL (&vpid_merged))
+      extdata_next = (FILE_EXTENSIBLE_DATA *) page_extdata_next;
+      if (file_extdata_merge_pages (thread_p, extdata_next, page_extdata_next, extdata, page_extdata,
+				    file_compare_track_items, true))
 	{
-	  /* not merged. go to next page */
-	  vpid_next = extdata->vpid_next;
-	  if (page_track_other != NULL)
-	    {
-	      pgbuf_unfix_and_init (thread_p, page_track_other);
-	    }
-	  if (VPID_ISNULL (&vpid_next))
-	    {
-	      /* no next page */
-	      break;
-	    }
-	  page_track_other = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	  if (page_track_other == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto exit;
-	    }
-	}
-      else
-	{
-	  /* pages merged. */
+	  /* merged next into current. deallocate next. */
+	  pgbuf_get_vpid (page_extdata_next, &vpid_next);
+	  pgbuf_unfix_and_init (thread_p, page_extdata_next);
 
-	  /* deallocate merged page */
 	  error_code = file_dealloc (thread_p, &file_Tracker_vfid, &vpid_next, FILE_TRACKER);
 	  if (error_code != NO_ERROR)
 	    {
@@ -9710,6 +9696,17 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
 	    }
 
 	  /* we can try to merge into this page again. fall through without advancing */
+	}
+      else
+	{
+	  /* advance to next page */
+	  if (page_extdata != page_track_head)
+	    {
+	      pgbuf_unfix (thread_p, page_extdata);
+	    }
+	  page_extdata = page_extdata_next;
+	  extdata = extdata_next;
+	  page_extdata_next = NULL;
 	}
     }
 
@@ -9727,9 +9724,14 @@ exit:
     {
       log_sysop_commit (thread_p);
     }
-  if (page_track_other != NULL)
+  assert (page_extdata_next == NULL || page_extdata_next != page_track_head);
+  if (page_extdata_next != NULL)
     {
-      pgbuf_unfix (thread_p, page_track_other);
+      pgbuf_unfix (thread_p, page_extdata_next);
+    }
+  if (page_extdata != NULL && page_extdata != page_track_head)
+    {
+      pgbuf_unfix (thread_p, page_extdata);
     }
   if (page_track_head != NULL)
     {
@@ -10410,21 +10412,23 @@ file_tracker_check (THREAD_ENTRY * thread_p)
       disk_map_clone_free (&disk_map_clone);
       return allvalid == DISK_VALID ? DISK_ERROR : allvalid;
     }
-
-  /* check all sectors have been cleared */
-  valid = disk_map_clone_check_leaks (disk_map_clone);
-  if (valid == DISK_INVALID)
+  else
     {
-      assert_release (false);
-      allvalid = DISK_INVALID;
-    }
-  else if (valid == DISK_ERROR)
-    {
-      ASSERT_ERROR ();
-      allvalid = allvalid == DISK_VALID ? DISK_ERROR : allvalid;
+      /* check all sectors have been cleared */
+      valid = disk_map_clone_check_leaks (disk_map_clone);
+      if (valid == DISK_INVALID)
+	{
+	  assert_release (false);
+	  allvalid = DISK_INVALID;
+	}
+      else if (valid == DISK_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  allvalid = allvalid == DISK_VALID ? DISK_ERROR : allvalid;
+	}
+      disk_map_clone_free (&disk_map_clone);
     }
 
-  disk_map_clone_free (&disk_map_clone);
 #endif /* SA_MODE */
 
   return allvalid;

@@ -348,11 +348,9 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
   /* make the common info for the data replication */
   if (log_type == LOG_REPLICATION_DATA)
     {
-      class_name = heap_get_class_name (thread_p, class_oid);
-      if (class_name == NULL)
+      if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR || class_name == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
 	  if (error == NO_ERROR)
 	    {
 	      error = ER_REPL_ERROR;

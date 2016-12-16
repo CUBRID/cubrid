@@ -1869,6 +1869,12 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 		      result = V_UNKNOWN;
 		      goto exit;
 		    }
+		  else if (!TP_IS_SET_TYPE (DB_VALUE_DOMAIN_TYPE (peek_val1)))
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+		      result = V_ERROR;
+		      goto exit;
+		    }
 
 		  result = ((db_set_size (DB_GET_SET (peek_val1)) > 0) ? V_TRUE : V_FALSE);
 		}
@@ -2233,6 +2239,11 @@ eval_pred_comp2 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
 	{
 	  return V_UNKNOWN;
 	}
+      else if (!TP_IS_SET_TYPE (DB_VALUE_DOMAIN_TYPE (peek_val1)))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	  return V_ERROR;
+	}
 
       return (set_size (DB_GET_SET (peek_val1)) > 0) ? V_TRUE : V_FALSE;
     }
@@ -2328,6 +2339,11 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
   else if (db_value_is_null (peek_val2))
     {
       return V_UNKNOWN;
+    }
+  else if (!TP_IS_SET_TYPE (DB_VALUE_DOMAIN_TYPE (peek_val2)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return V_ERROR;
     }
 
   if (set_size (DB_GET_SET (peek_val2)) == 0)
@@ -2588,8 +2604,8 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 	   */
 	  *single_node_type = et_alsm->item_type;
 
-	  return ((et_alsm->elemset->type !=
-		   TYPE_LIST_ID) ? (PR_EVAL_FNC) eval_pred_alsm4 : (PR_EVAL_FNC) eval_pred_alsm5);
+	  return ((et_alsm->elemset->type != TYPE_LIST_ID)
+		  ? (PR_EVAL_FNC) eval_pred_alsm4 : (PR_EVAL_FNC) eval_pred_alsm5);
 
 	case T_LIKE_EVAL_TERM:
 	  return (PR_EVAL_FNC) eval_pred_like6;

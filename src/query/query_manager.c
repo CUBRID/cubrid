@@ -1092,7 +1092,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
     }
   else
     {
-      if (stx_map_stream_to_xasl (thread_p, &xasl_p, xasl_stream, xasl_stream_size, &xasl_buf_info) != NO_ERROR)
+      if (stx_map_stream_to_xasl (thread_p, &xasl_p, false, xasl_stream, xasl_stream_size, &xasl_buf_info) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}

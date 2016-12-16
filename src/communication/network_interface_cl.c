@@ -2200,11 +2200,11 @@ log_reset_wait_msecs (int wait_msecs)
  * NOTE:
  */
 int
-log_reset_isolation (TRAN_ISOLATION isolation, bool unlock_by_isolation)
+log_reset_isolation (TRAN_ISOLATION isolation)
 {
 #if defined(CS_MODE)
   int req_error, error_code = ER_NET_CLIENT_DATA_RECEIVE;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -2213,7 +2213,6 @@ log_reset_isolation (TRAN_ISOLATION isolation, bool unlock_by_isolation)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_int (request, (int) isolation);
-  ptr = or_pack_int (ptr, (int) unlock_by_isolation);
 
   req_error =
     net_client_request (NET_SERVER_LOG_RESET_ISOLATION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
@@ -2229,7 +2228,7 @@ log_reset_isolation (TRAN_ISOLATION isolation, bool unlock_by_isolation)
 
   ENTER_SERVER ();
 
-  error_code = xlogtb_reset_isolation (NULL, isolation, unlock_by_isolation);
+  error_code = xlogtb_reset_isolation (NULL, isolation);
 
   EXIT_SERVER ();
 

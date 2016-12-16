@@ -349,7 +349,7 @@ xcache_finalize (THREAD_ENTRY * thread_p)
       bh_destroy (thread_p, xcache_Cleanup_bh);
       xcache_Cleanup_bh = NULL;
     }
-  (void) db_change_private_heap (thread_p, 0);
+  (void) db_change_private_heap (thread_p, save_heapid);
 
   xcache_Enabled = false;
 }
@@ -800,6 +800,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
   HL_HEAPID save_heapid = 0;
   int oid_index;
   int lock_result;
+  bool use_xasl_clone = false;
 
   assert (xid != NULL);
   assert (xcache_entry != NULL && *xcache_entry == NULL);
@@ -883,8 +884,8 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 	}
     }
 
-  /* Check the entry is still valid. */
-  if ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
+  /* Check the entry is still valid.  Uses atomic to prevent any code reordering */
+  if (ATOMIC_INC_32 (&((*xcache_entry)->xasl_id.cache_flag), 0) & XCACHE_ENTRY_MARK_DELETED)
     {
       /* Someone has marked entry as deleted. */
       xcache_log ("could not get cache entry because it was deleted until locked: \n"
@@ -898,8 +899,9 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 
   assert ((*xcache_entry) != NULL);
 
-  if (xcache_Max_clones > 0)
+  if (xcache_uses_clones ())
     {
+      use_xasl_clone = true;
       /* Try to fetch a cached clone. */
       if ((*xcache_entry)->cache_clones == NULL)
 	{
@@ -936,7 +938,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
       save_heapid = db_change_private_heap (thread_p, 0);
     }
   error_code =
-    stx_map_stream_to_xasl (thread_p, &xclone->xasl, (*xcache_entry)->stream.xasl_stream,
+    stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.xasl_stream,
 			    (*xcache_entry)->stream.xasl_stream_size, &xclone->xasl_buf);
   if (save_heapid != 0)
     {
@@ -1078,6 +1080,12 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
       xcache_log ("delete entry from hash after unfix: \n"
 		  XCACHE_LOG_ENTRY_TEXT ("entry")
 		  XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
+      /* No need to acquire the clone mutex, since I'm the unique user. */
+      while (xcache_entry->n_cache_clones > 0)
+	{
+	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+	}
+
       error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
       if (error_code != NO_ERROR)
 	{
@@ -1583,7 +1591,14 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	      /* Mark entry as deleted. */
 	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
 		{
-		  /* Successfully marked for delete. Save it to delete after the iteration. */
+		  /* 
+		   * Successfully marked for delete. Save it to delete after the iteration.
+		   * No need to acquire the clone mutex, since I'm the unique user.
+		   */
+		  while (xcache_entry->n_cache_clones > 0)
+		    {
+		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+		    }
 		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
@@ -1738,7 +1753,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "  cache flags = %08x \n", xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FLAGS_MASK);
       fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
       fprintf (fp, "  time second last used = %lld \n", (long long) xcache_entry->time_last_used.tv_sec);
-      if (xcache_Max_clones > 0)
+      if (xcache_uses_clones ())
 	{
 	  fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
 	}
@@ -1800,6 +1815,8 @@ static void
 xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone)
 {
   HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
+  XASL_SET_FLAG (xclone->xasl, XASL_DECACHE_CLONE);
+  qexec_clear_xasl (thread_p, xclone->xasl, true);
   stx_free_additional_buff (thread_p, xclone->xasl_buf);
   stx_free_xasl_unpack_info (xclone->xasl_buf);
   db_private_free (thread_p, xclone->xasl_buf);
@@ -1819,7 +1836,10 @@ xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone)
 void
 xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, XASL_CLONE * xclone)
 {
-  if (xcache_Max_clones > 0)
+  /* Free XASL. Be sure that was already cleared to avoid memory leaks. */
+  assert (xclone->xasl->status == XASL_CLEARED);
+
+  if (xcache_uses_clones ())
     {
       pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
       if (xcache_entry->n_cache_clones < xcache_Max_clones)
@@ -2034,7 +2054,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       /* Set intention to cleanup the entry. */
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
 
-      /* Try delete. */
+      /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
+       * clone decache is postponed - is decached when retired list will be cleared.
+       */
       if (lf_hash_delete (t_entry, &xcache_Ht, &candidate.xid, &success) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2215,4 +2237,15 @@ int
 xcache_get_entry_count (void)
 {
   return xcache_Global.entry_count;
+}
+
+/*
+ * xcache_uses_clones () - Check whether XASL clones are used
+ *
+ * return : True, if XASL clones are used, false otherwise
+ */
+bool
+xcache_uses_clones (void)
+{
+  return xcache_Max_clones > 0;
 }

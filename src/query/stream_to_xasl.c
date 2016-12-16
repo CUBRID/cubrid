@@ -109,6 +109,8 @@ struct xasl_unpack_info
   UNPACK_EXTRA_BUF *additional_buffers;
   /* 1 if additional buffers should be tracked */
   int track_allocated_bufers;
+
+  bool use_xasl_clone;		/* true, if uses xasl clone */
 };
 
 #if !defined(SERVER_MODE)
@@ -145,7 +147,9 @@ static SORT_LIST *stx_restore_sort_list (THREAD_ENTRY * thread_p, char *ptr);
 static char *stx_restore_string (THREAD_ENTRY * thread_p, char *ptr);
 static VAL_LIST *stx_restore_val_list (THREAD_ENTRY * thread_p, char *ptr);
 static DB_VALUE *stx_restore_db_value (THREAD_ENTRY * thread_p, char *ptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static QPROC_DB_VALUE_LIST stx_restore_db_value_list (THREAD_ENTRY * thread_p, char *ptr);
+#endif
 static XASL_NODE *stx_restore_xasl_node (THREAD_ENTRY * thread_p, char *ptr);
 static PRED_EXPR_WITH_CONTEXT *stx_restore_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr);
 static FUNC_PRED *stx_restore_func_pred (THREAD_ENTRY * thread_p, char *ptr);
@@ -198,7 +202,9 @@ static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr, REGU
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp, SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, METHOD_SPEC_TYPE * ptr);
 static char *stx_build_val_list (THREAD_ENTRY * thread_p, char *tmp, VAL_LIST * ptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_DB_VALUE_LIST ptr);
+#endif
 static char *stx_build_regu_variable (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_build_attr_descr (THREAD_ENTRY * thread_p, char *tmp, ATTR_DESCR * ptr);
@@ -269,6 +275,7 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * 
  *   return: if successful, return 0, otherwise non-zero error code
  *   xasl_tree(in)      : pointer to where to return the
  *                        root of the unpacked XASL tree
+ *   use_xasl_clone(in) : true, if XASL clone is used
  *   xasl_stream(in)    : pointer to xasl stream
  *   xasl_stream_size(in)       : # of bytes in xasl_stream
  *   xasl_unpack_info_ptr(in)   : pointer to where to return the pack info
@@ -279,8 +286,8 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * 
  * xasl_unpack_info_ptr. The free function is stx_free_xasl_unpack_info().
  */
 int
-stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, char *xasl_stream, int xasl_stream_size,
-			void **xasl_unpack_info_ptr)
+stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
+			int xasl_stream_size, void **xasl_unpack_info_ptr)
 {
   XASL_NODE *xasl;
   char *p;
@@ -296,6 +303,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, char *x
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
   unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p->use_xasl_clone = use_xasl_clone;
   unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to XASL tree in the stream buffer */
@@ -331,7 +339,6 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, char *x
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
   xasl->query_in_progress = false;
-
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
@@ -372,6 +379,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, pred_stream, pred_stream_size);
   unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p->use_xasl_clone = true;
   unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to filter predicate in the stream buffer */
@@ -408,7 +416,7 @@ end:
 /*
  * stx_map_stream_to_func_pred () -
  *   return: if successful, return 0, otherwise non-zero error code
- *   xasl(in)      : pointer to where to return the unpacked FUNC_PRED
+ *   xasl(in)      : pointer to where to return the unpacked FUNC_PRED 
  *   xasl_stream(in)    : pointer to xasl stream
  *   xasl_stream_size(in)       : # of bytes in xasl_stream
  *   xasl_unpack_info_ptr(in)   : pointer to where to return the pack info
@@ -431,6 +439,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *x
   stx_set_xasl_errcode (thread_p, NO_ERROR);
   stx_init_xasl_unpack_info (thread_p, xasl_stream, xasl_stream_size);
   unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
+  unpack_info_p->use_xasl_clone = false;
   unpack_info_p->track_allocated_bufers = 1;
 
   /* calculate offset to expr XASL in the stream buffer */
@@ -966,6 +975,7 @@ stx_restore_db_value (THREAD_ENTRY * thread_p, char *ptr)
   return value;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static QPROC_DB_VALUE_LIST
 stx_restore_db_value_list (THREAD_ENTRY * thread_p, char *ptr)
 {
@@ -997,6 +1007,7 @@ stx_restore_db_value_list (THREAD_ENTRY * thread_p, char *ptr)
 
   return value_list;
 }
+#endif
 
 static XASL_NODE *
 stx_restore_xasl_node (THREAD_ENTRY * thread_p, char *ptr)
@@ -1464,6 +1475,7 @@ stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int neleme
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      assert (value_array[i]->need_clear == false);
     }
 
   for (; i < total_nelements; ++i)
@@ -1887,6 +1899,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (xasl->ordbynum_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2101,6 +2114,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (xasl->instnum_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2115,6 +2129,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (xasl->save_instnum_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, (int *) &xasl->instnum_flag);
@@ -2173,6 +2188,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (xasl->level_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2201,6 +2217,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (xasl->isleaf_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2229,6 +2246,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+      assert (xasl->iscycle_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2682,6 +2700,7 @@ stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *ptr, FETCH_PROC_NODE * obj_
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      assert (obj_set_fetch_proc->arg->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &i);
@@ -2857,6 +2876,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	{
 	  goto error;
 	}
+      assert (stx_build_list_proc->g_grbynum_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hash_eligible);
@@ -3056,6 +3076,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	{
 	  goto error;
 	}
+      assert (stx_build_list_proc->a_instnum_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->a_instnum_flag);
@@ -3101,6 +3122,7 @@ stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_N
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      assert (stx_build_value_proc->grbynum_val->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3500,7 +3522,7 @@ static char *
 stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNMENT * assign)
 {
   int offset = 0;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
 
   /* cls_idx */
   ptr = or_unpack_int (ptr, &assign->cls_idx);
@@ -3509,6 +3531,7 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
   ptr = or_unpack_int (ptr, &assign->att_idx);
 
   /* constant */
+  assign->clear_value_at_clone_decache = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -3516,7 +3539,15 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
     }
   else
     {
-      assign->constant = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      assign->constant = stx_restore_db_value (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
+      if (assign->constant == NULL)
+	{
+	  return NULL;
+	}
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (assign->constant))
+	{
+	  assign->clear_value_at_clone_decache = true;
+	}
     }
 
   /* regu_var */
@@ -3527,7 +3558,7 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
     }
   else
     {
-      assign->regu_var = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      assign->regu_var = stx_restore_regu_variable (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (assign->regu_var == NULL)
 	{
 	  return NULL;
@@ -3909,6 +3940,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	{
 	  return NULL;
 	}
+      assert (insert_info->obj_oid->need_clear == false);
     }
 
   return ptr;
@@ -4521,6 +4553,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   access_spec->curent = NULL;
   access_spec->pruned = false;
 
+  access_spec->clear_value_at_clone_decache = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -4532,6 +4565,10 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       if (access_spec->s_dbval == NULL)
 	{
 	  goto error;
+	}
+      if (xasl_unpack_info->use_xasl_clone && !db_value_is_null (access_spec->s_dbval))
+	{
+	  access_spec->clear_value_at_clone_decache = true;
 	}
     }
 
@@ -5193,6 +5230,7 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
 	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	      return NULL;
 	    }
+	  assert (value_list[i].val->need_clear == false);
 	}
 
       if (i < val_list->val_cnt - 1)
@@ -5210,6 +5248,7 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
   return ptr;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static char *
 stx_build_db_value_list (THREAD_ENTRY * thread_p, char *ptr, QPROC_DB_VALUE_LIST value_list)
 {
@@ -5248,6 +5287,7 @@ stx_build_db_value_list (THREAD_ENTRY * thread_p, char *ptr, QPROC_DB_VALUE_LIST
 
   return ptr;
 }
+#endif
 
 static char *
 stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * regu_var)
@@ -5257,6 +5297,8 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
+  /* save the original domain */
+  regu_var->original_domain = regu_var->domain;
 
   ptr = or_unpack_int (ptr, &tmp);
   regu_var->type = (REGU_DATATYPE) tmp;
@@ -5308,7 +5350,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
   REGU_VALUE_LIST *regu_list;
   REGU_VARIABLE_LIST regu_var_list = NULL;
   int offset;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && regu_var != NULL);
 
@@ -5342,6 +5384,10 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (&regu_var->value.dbval))
+	{
+	  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
+	}
       break;
 
     case TYPE_CONSTANT:
@@ -5353,10 +5399,14 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	}
       else
 	{
-	  regu_var->value.dbvalptr = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  regu_var->value.dbvalptr = stx_restore_db_value (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.dbvalptr == NULL)
 	    {
 	      goto error;
+	    }
+	  if (xasl_unpack_info_p->use_xasl_clone && regu_var->value.dbvalptr->need_clear)
+	    {
+	      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	    }
 	}
       break;
@@ -5370,7 +5420,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	}
       else
 	{
-	  regu_var->value.arithptr = stx_restore_arith_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  regu_var->value.arithptr = stx_restore_arith_type (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.arithptr == NULL)
 	    {
 	      goto error;
@@ -5386,7 +5436,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	}
       else
 	{
-	  regu_var->value.funcp = stx_restore_function_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  regu_var->value.funcp = stx_restore_function_type (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.funcp == NULL)
 	    {
 	      goto error;
@@ -5408,7 +5458,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	}
       else
 	{
-	  regu_var->value.srlist_id = stx_restore_srlist_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  regu_var->value.srlist_id = stx_restore_srlist_id (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (regu_var->value.srlist_id == NULL)
 	    {
 	      goto error;
@@ -5477,6 +5527,7 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 {
   ptr = or_unpack_int (ptr, &position_descr->pos_no);
   ptr = or_unpack_domain (ptr, &position_descr->dom, NULL);
+  position_descr->original_domain = position_descr->dom;
 
   return ptr;
 }
@@ -5496,6 +5547,8 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
+  /* save the original domain */
+  arith_type->original_domain = arith_type->domain;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5509,6 +5562,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	{
 	  goto error;
 	}
+      assert (arith_type->value->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &tmp);
@@ -5610,14 +5664,16 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 {
   int offset;
   int tmp;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info_p = stx_get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && aggregate != NULL);
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
+  aggregate->original_domain = aggregate->domain;
 
   /* accumulator */
+  aggregate->accumulator.clear_value_at_clone_decache = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -5625,13 +5681,18 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->accumulator.value = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->accumulator.value = stx_restore_db_value (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->accumulator.value == NULL)
 	{
 	  goto error;
 	}
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value))
+	{
+	  aggregate->accumulator.clear_value_at_clone_decache = true;
+	}
     }
 
+  aggregate->accumulator.clear_value2_at_clone_decache = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -5639,10 +5700,14 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->accumulator.value2 = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->accumulator.value2 = stx_restore_db_value (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->accumulator.value2 == NULL)
 	{
 	  goto error;
+	}
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (aggregate->accumulator.value2))
+	{
+	  aggregate->accumulator.clear_value2_at_clone_decache = true;
 	}
     }
 
@@ -5656,7 +5721,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->next = stx_restore_aggregate_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->next = stx_restore_aggregate_type (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->next == NULL)
 	{
 	  goto error;
@@ -5674,6 +5739,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp);
   aggregate->opr_dbtype = (DB_TYPE) tmp;
+  aggregate->original_opr_dbtype = aggregate->opr_dbtype;
 
   /* operand */
   ptr = stx_build_regu_variable (thread_p, ptr, &aggregate->operand);
@@ -5690,7 +5756,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->list_id = stx_restore_list_id (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->list_id == NULL)
 	{
 	  goto error;
@@ -5711,7 +5777,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
     }
   else
     {
-      aggregate->sort_list = stx_restore_sort_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      aggregate->sort_list = stx_restore_sort_list (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
       if (aggregate->sort_list == NULL)
 	{
 	  goto error;
@@ -5725,7 +5791,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
       if (offset > 0)
 	{
 	  aggregate->info.percentile.percentile_reguvar =
-	    stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	    stx_restore_regu_variable (thread_p, &xasl_unpack_info_p->packed_xasl[offset]);
 	  if (aggregate->info.percentile.percentile_reguvar == NULL)
 	    {
 	      goto error;
@@ -5772,6 +5838,7 @@ stx_build_function_type (THREAD_ENTRY * thread_p, char *ptr, FUNCTION_TYPE * fun
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+      assert (function->value->need_clear == false);
     }
 
   ptr = or_unpack_int (ptr, &tmp);
@@ -5806,6 +5873,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 
   /* domain */
   ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
+  analytic->original_domain = analytic->domain;
 
   /* value */
   ptr = or_unpack_int (ptr, &offset);
@@ -5820,6 +5888,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 	{
 	  goto error;
 	}
+      assert (analytic->value->need_clear == false);
     }
 
   /* value2 */
@@ -5835,6 +5904,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 	{
 	  goto error;
 	}
+      assert (analytic->value2->need_clear == false);
     }
 
   /* out_value */
@@ -5850,6 +5920,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 	{
 	  goto error;
 	}
+      assert (analytic->out_value->need_clear == false);
     }
 
   /* offset_idx */
@@ -5884,6 +5955,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
   /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->opr_dbtype = (DB_TYPE) tmp_i;
+  analytic->original_opr_dbtype = analytic->opr_dbtype;
 
   /* operand */
   ptr = stx_build_regu_variable (thread_p, ptr, &analytic->operand);
@@ -6073,6 +6145,7 @@ stx_build_sort_list (THREAD_ENTRY * thread_p, char *ptr, SORT_LIST * sort_list)
     {
       return NULL;
     }
+
   ptr = or_unpack_int (ptr, &tmp);
   sort_list->s_order = (SORT_ORDER) tmp;
 
@@ -6391,6 +6464,8 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
       ptr = or_unpack_int (ptr, &tmp);
       regu->type = (REGU_DATATYPE) tmp;
       regu->domain = domain;
+      /* save te original domain */
+      regu->original_domain = domain;
 
       if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH && regu->type != TYPE_POS_VALUE)
 	{

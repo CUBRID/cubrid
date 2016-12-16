@@ -1757,15 +1757,14 @@ slogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
 void
 slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int isolation, unlock_by_isolation, error_code;
+  int isolation, error_code;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
   ptr = or_unpack_int (request, &isolation);
-  ptr = or_unpack_int (ptr, &unlock_by_isolation);
 
-  error_code = (int) xlogtb_reset_isolation (thread_p, (TRAN_ISOLATION) isolation, (bool) unlock_by_isolation);
+  error_code = (int) xlogtb_reset_isolation (thread_p, (TRAN_ISOLATION) isolation);
 
   if (error_code != NO_ERROR)
     {

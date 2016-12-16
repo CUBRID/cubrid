@@ -3790,7 +3790,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 		  || tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
 
 	  /* this is relevant for proper recovery */
-	  log_record->run_postpone.is_sysop_postpone = (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE);
+	  log_record->run_postpone.is_sysop_postpone =
+	    (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && !is_rv_finish_postpone);
 	}
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 	{
@@ -10060,6 +10061,8 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
   /* skip log record header */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page);
 
+  /* read sysop_start_postpone */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), log_lsa, log_page);
   *sysop_start_postpone = *(LOG_REC_SYSOP_START_POSTPONE *) (log_page->area + log_lsa->offset);
   if (!with_undo_data
       || (sysop_start_postpone->sysop_end.type != LOG_SYSOP_END_LOGICAL_UNDO

@@ -505,6 +505,7 @@ typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
 struct qfile_tuple_value_position
 {
   TP_DOMAIN *dom;		/* value domain */
+  TP_DOMAIN *original_domain;	/* original domain */
   int pos_no;			/* value position number */
 };
 
