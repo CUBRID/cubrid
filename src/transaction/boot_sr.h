@@ -101,10 +101,6 @@ int boot_find_root_heap (HFID * root_hfid_p);
 
 extern VOLID boot_find_next_permanent_volid (THREAD_ENTRY * thread_p);
 extern int boot_reset_db_parm (THREAD_ENTRY * thread_p);
-extern DKNPAGES boot_max_pages_new_volume (void);
-extern DKNPAGES boot_max_pages_for_new_auto_volume_extension (void);
-extern DKNPAGES boot_max_pages_for_new_temp_volume (void);
-extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);	/* todo: remove me */
 
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
 				CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args);
