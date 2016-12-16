@@ -511,31 +511,6 @@ boot_get_lob_path (void)
 }
 
 /*
- * bo_maxpages_for_newvol () - find max pages that can be used to define a new
- *                             volume at given location
- *
- * return : max pages
- *
- * Note: Find the maximum number of pages that are accepted to safetly
- *       automatically create a volume extension or a temporary volume
- *       at the given location.
- */
-DKNPAGES
-boot_max_pages_new_volume (void)
-{
-  int nfree_pages;
-
-  nfree_pages = (fileio_get_number_of_partition_free_pages (boot_Db_full_name, IO_PAGESIZE)
-		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
-  if (nfree_pages < 0)
-    {
-      nfree_pages = 0;
-    }
-
-  return (DKNPAGES) nfree_pages;
-}
-
-/*
  * boot_remove_temp_volume () - remove a volume from the database
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
@@ -1173,55 +1148,6 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
     {
       free_and_init (alloc_tempath);
     }
-}
-
-/*
- * boot_max_pages_for_new_auto_volume_extension () - find max pages that can
- *                                                   be allocated for an
- *                                                   automatic volume extension
- *
- * return : max pages
- *
- * Note: Find the maximum number of pages that are accepted to safetly
- *       automatically create a volume extension.
- */
-DKNPAGES
-boot_max_pages_for_new_auto_volume_extension (void)
-{
-  char vol_fullname[PATH_MAX];
-  const char *ext_path;
-  const char *ext_name;
-  char *alloc_extpath = NULL;
-  DKNPAGES npages;
-
-  /* 
-   * Get the name of the extension: ext_path|dbname|"ext"|volid
-   */
-
-  /* Use the directory where the primary volume is located */
-  alloc_extpath = (char *) malloc (strlen (boot_Db_full_name) + 1);
-  if (alloc_extpath == NULL)
-    {
-      return 0;
-    }
-  ext_path = fileio_get_directory_path (alloc_extpath, boot_Db_full_name);
-  if (ext_path == NULL)
-    {
-      alloc_extpath[0] = '\0';
-      ext_path = alloc_extpath;
-    }
-
-  ext_name = fileio_get_base_file_name (boot_Db_full_name);
-  fileio_make_volume_ext_name (vol_fullname, ext_path, ext_name, 1);
-
-  npages = fileio_get_number_of_partition_free_pages (vol_fullname, IO_PAGESIZE);
-
-  if (alloc_extpath)
-    {
-      free_and_init (alloc_extpath);
-    }
-
-  return npages;
 }
 
 /*

@@ -417,7 +417,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       db_volume_pages = (int) (db_volume_size / db_page_size);
     }
   /* determine volume number of sectors */
-  db_volume_sect = disk_sectors_to_hold_npages (db_volume_pages);
+  db_volume_sect = disk_sectors_to_extend_npages (db_volume_pages);
   /* adjust the number of pages according to the number of sectors */
   db_volume_pages = DISK_SECTOR_NPAGES * db_volume_sect;
 

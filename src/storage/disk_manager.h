@@ -233,6 +233,6 @@ extern int disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR page_volheader);
 #endif /* !NDEBUG */
 
-extern int disk_sectors_to_hold_npages (const int num_pages);
+extern int disk_sectors_to_extend_npages (const int num_pages);
 
 #endif /* _DISK_MANAGER_H_ */
