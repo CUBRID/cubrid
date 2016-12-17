@@ -681,7 +681,8 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
   HEAP_SCANCACHE scan_cache;
 
   (void) heap_scancache_quick_start (&scan_cache);
-  heap_init_get_context (NULL, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN);
+  heap_init_get_context (NULL, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN,
+			 HEAP_DO_NOT_EXPAND_OOR);
 
   old_object = (heap_get_last_version (NULL, &context) == S_SUCCESS);
 

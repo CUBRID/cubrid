@@ -775,7 +775,8 @@ static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, R
 				       DB_VALUE ** record_info);
 static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				     bool reversed_direction, DB_VALUE ** cache_recordinfo);
+				     bool reversed_direction, DB_VALUE ** cache_recordinfo,
+				     HEAP_EXPAND_OOR_FLAG expand_oor);
 
 static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * hfid, const VPID * vpid,
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
@@ -7629,7 +7630,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  return scan;
 	}
 
-      if (context->is_fetch_context)
+      if (context->expand_oor)
 	{
 	  if (heap_expand_oor_attributes (thread_p, context) != NO_ERROR)
 	    {
@@ -7664,10 +7665,12 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
  *			       be NULL COPY when the object is copied.
  * cache_recordinfo (in/out) : DB_VALUE pointer array that caches record
  *			       information values.
+ * expand_oor(in)	     : flag for expansion of OOR attribute values in recdes
  */
 static SCAN_CODE
 heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, int ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo)
+		    HEAP_SCANCACHE * scan_cache, int ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo,
+		    HEAP_EXPAND_OOR_FLAG expand_oor)
 {
   VPID vpid;
   VPID *vpidptr_incache;
@@ -7907,7 +7910,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  scan_cache->cache_last_fix_page = true;
 	  pgbuf_replace_watcher (thread_p, &curr_page_watcher, &scan_cache->page_watcher);
 
-	  scan = heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN);
+	  scan = heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN,
+						expand_oor);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
 
 	  if (!cache_last_fix_page_save && scan_cache->page_watcher.pgptr)
@@ -9258,7 +9262,8 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
   HEAP_GET_CONTEXT context;
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
-  heap_init_get_context (thread_p, &context, class_oid, &root_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
+  heap_init_get_context (thread_p, &context, class_oid, &root_oid, &recdes, &scan_cache, PEEK, NULL_CHN,
+			 HEAP_DO_NOT_EXPAND_OOR);
 
   if (heap_get_last_version (thread_p, &context) == S_SUCCESS)
     {
@@ -18963,7 +18968,33 @@ SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL,
+			     HEAP_DO_NOT_EXPAND_OOR);
+}
+
+/*
+ * heap_next_oor_expansion () - Retrieve or peek next object; similar with heap_next, except it returns a recdes having
+ *				OOR attribute value expanded
+ *
+ *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
+ *   hfid(in):
+ *   class_oid(in):
+ *   next_oid(in/out): Object identifier of current record.
+ *                     Will be set to next available record or NULL_OID when
+ *                     there is not one.
+ *   recdes(in/out): Pointer to a record descriptor. Will be modified to
+ *                   describe the new record.
+ *   scan_cache(in/out): Scan cache or NULL
+ *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be NULL
+ *                  COPY when the object is copied
+ *
+ */
+SCAN_CODE
+heap_next_oor_expansion (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
+			 HEAP_SCANCACHE * scan_cache, int ispeeking)
+{
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL,
+			     HEAP_EXPAND_OOR);
 }
 
 /*
@@ -18990,7 +19021,7 @@ heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false,
-			     cache_recordinfo);
+			     cache_recordinfo, HEAP_DO_NOT_EXPAND_OOR);
 }
 
 /*
@@ -19012,7 +19043,8 @@ SCAN_CODE
 heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, NULL,
+			     HEAP_DO_NOT_EXPAND_OOR);
 }
 
 /*
@@ -19039,7 +19071,7 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true,
-			     cache_recordinfo);
+			     cache_recordinfo, HEAP_DO_NOT_EXPAND_OOR);
 }
 
 /*
@@ -24611,7 +24643,8 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 HEAP_DO_NOT_EXPAND_OOR);
 
   scan = heap_get_visible_version_internal (thread_p, &context, false);
 
@@ -24643,12 +24676,12 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 */
 SCAN_CODE
 heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, HEAP_EXPAND_OOR_FLAG expand_oor)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn, expand_oor);
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
@@ -25031,6 +25064,12 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
     }
 
   assert (context->home_page_watcher.pgptr == NULL && context->fwd_page_watcher.pgptr == NULL);
+
+  if (context->attr_info_inited == true)
+    {
+      heap_attrinfo_end (thread_p, &context->attr_info);
+      context->attr_info_inited = false;
+    }
 }
 
 /* 
@@ -25044,10 +25083,12 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
  * scan_cache (in) : Scan cache. 
  * is_peeking (in) : PEEK or COPY.
  * old_chn (in)	   : Cache coherency number. 
+ * expand_oor_attributes(in): Flag to expand OOR (attributes stored out of row)
 */
 void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid, OID * class_oid,
-		       RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+		       RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+		       HEAP_EXPAND_OOR_FLAG expand_oor)
 {
   context->oid_p = (OID *) oid;
   context->class_oid_p = class_oid;
@@ -25075,7 +25116,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
       context->latch_mode = PGBUF_LATCH_READ;
     }
   context->attr_info_inited = false;
-  context->is_fetch_context = false;
+  context->expand_oor = expand_oor;
 }
 
 
@@ -25136,7 +25177,8 @@ heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * 
   OID_SET_NULL (&root_oid);
 #endif /* !NDEBUG */
 
-  heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, scan_cache, ispeeking, NULL_CHN);
+  heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, scan_cache, ispeeking, NULL_CHN,
+			 HEAP_DO_NOT_EXPAND_OOR);
 
   scan = heap_get_last_version (thread_p, &context);
 
@@ -25196,11 +25238,12 @@ heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_CONTEXT * oor_context
 }
 
 /*
- * heap_expand_oor_attributes () - Find db_values of desired attributes of given
- *                                instance
+ * heap_expand_oor_attributes () - Expands the OOR attributes stored in the recdes of heap get context to their full
+ *				   string content. The recdes will be transmitted to client side through a fetch object
+ *				   and client is not aware of the OOR storage.
+ *
  *   return: NO_ERROR
- *   inst_oid(in): The instance oid
- *   recdes(in): The instance Record descriptor
+ *   context(in): heap get context
  */
 int
 heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
@@ -25274,17 +25317,15 @@ retry:
     }
 
 exit:
-  if (context->attr_info_inited == true)
-    {
-      heap_attrinfo_end (thread_p, &context->attr_info);
-      context->attr_info_inited = false;
-    }
+  /* keep attr_info, release it at context cleanup */
 
   return error;
 }
 
 /*
- * heap_shrink_oor_attributes () - Remove OOR attributes from a recdes into LOB files and return shrinked record
+ * heap_shrink_oor_attributes () - Remove OOR eligible attributes from a recdes into LOB files and return shrinked
+ *				   record
+ *
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
  *   recdes(in): The instance Record descriptor

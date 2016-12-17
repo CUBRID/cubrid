@@ -362,6 +362,13 @@ typedef enum
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
 
+typedef enum
+{
+  HEAP_DO_NOT_EXPAND_OOR,
+  HEAP_EXPAND_OOR
+} HEAP_EXPAND_OOR_FLAG;
+
+
 typedef struct heap_get_context HEAP_GET_CONTEXT;
 struct heap_get_context
 {
@@ -376,7 +383,7 @@ struct heap_get_context
 
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute info (required to expand OOR attributes) */
   bool attr_info_inited;
-  bool is_fetch_context;
+  HEAP_EXPAND_OOR_FLAG expand_oor;
 
   /* physical page watchers  */
   PGBUF_WATCHER home_page_watcher;	/* home page */
@@ -438,6 +445,8 @@ extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE *
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+extern SCAN_CODE heap_next_oor_expansion (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
+					  RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern SCAN_CODE heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					DB_VALUE ** cache_recordinfo);
@@ -690,12 +699,12 @@ extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * 
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-						int old_chn);
+						int old_chn, HEAP_EXPAND_OOR_FLAG expand_oor);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
 				   OID * class_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				   int old_chn);
+				   int old_chn, HEAP_EXPAND_OOR_FLAG expand_oor);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
 extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,

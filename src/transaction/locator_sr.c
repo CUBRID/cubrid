@@ -2919,7 +2919,8 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       mobjs->num_objs = 0;
       offset = 0;
 
-      while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
+      while ((scan = heap_next_oor_expansion (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY))
+	     == S_SUCCESS)
 	{
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
@@ -7736,7 +7737,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  HEAP_GET_CONTEXT context;
 
 	  /* don't consider visiblity, just get the last version of the object */
-	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
+				 HEAP_DO_NOT_EXPAND_OOR);
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
@@ -13486,7 +13488,8 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       class_oid = &class_oid_local;
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 HEAP_DO_NOT_EXPAND_OOR);
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
@@ -13610,8 +13613,7 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
       class_oid = &class_oid_local;
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn);
-  context.is_fetch_context = true;
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn, HEAP_EXPAND_OOR);
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
@@ -13702,7 +13704,8 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 HEAP_DO_NOT_EXPAND_OOR);
 
   scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
 

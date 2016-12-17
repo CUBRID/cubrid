@@ -768,7 +768,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 	    addr.vfid = NULL;
 
 	    log_append_undo_data (thread_get_thread_entry_info (), RVELO_CREATE_FILE, &addr, strlen (out_uri) + 1,
-                                  (char *) out_uri);
+				  (char *) out_uri);
 #endif
 
 	  }
