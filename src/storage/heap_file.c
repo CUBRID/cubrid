@@ -7634,7 +7634,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	{
 	  if (heap_expand_oor_attributes (thread_p, context) != NO_ERROR)
 	    {
-              ASSERT_ERROR ();
+	      ASSERT_ERROR ();
 	      return S_ERROR;
 	    }
 	}
@@ -11443,7 +11443,7 @@ exit_on_error:
 static int
 heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 				 OUT_OF_ROW_CONTEXT * oor_context, HEAP_CACHE_ATTRINFO * attr_info,
-                                 HEAP_LOB_DELETE_FLAG lob_delete_flag)
+				 HEAP_LOB_DELETE_FLAG lob_delete_flag)
 {
   int i;
   REPR_ID reprid;		/* Representation of object */
@@ -11539,7 +11539,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	      ret = heap_attrvalue_read_oor_location (thread_p, recdes, value, attr_info, &oor_location);
 	      if (ret != NO_ERROR)
 		{
-                  ASSERT_ERROR ();
+		  ASSERT_ERROR ();
 		  goto exit_on_error;
 		}
 
@@ -11557,7 +11557,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 		  ret = (ret >= 0 ? NO_ERROR : ret);
 		  if (ret != NO_ERROR)
 		    {
-                      ASSERT_ERROR ();
+		      ASSERT_ERROR ();
 		      goto exit_on_error;
 		    }
 		}
@@ -11670,7 +11670,7 @@ re_check:
 SCAN_CODE
 heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 				 RECDES * new_recdes, OUT_OF_ROW_CONTEXT * oor_context,
-                                 HEAP_LOB_CREATE_FLAG lob_create_flag, HEAP_LOB_DELETE_FLAG lob_delete_flag)
+				 HEAP_LOB_CREATE_FLAG lob_create_flag, HEAP_LOB_DELETE_FLAG lob_delete_flag)
 {
   OR_BUF orep, *buf;
   char *ptr_bound, *ptr_varvals;
@@ -11714,8 +11714,7 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 
   if (attr_info->num_values > 1
       && (oor_context != NULL && oor_context->oor_atts != NULL)
-      && size_without_overflow_columns < expected_size
-      && !heap_is_big_length (size_without_overflow_columns))
+      && size_without_overflow_columns < expected_size && !heap_is_big_length (size_without_overflow_columns))
     {
       check_oor_column = true;
     }
@@ -25268,7 +25267,7 @@ heap_expand_oor_attributes (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
       error = heap_attrinfo_start (thread_p, context->class_oid_p, -1, NULL, &context->attr_info);
       if (error != NO_ERROR)
 	{
-          ASSERT_ERROR ();
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
       context->attr_info_inited = true;
@@ -25288,13 +25287,13 @@ retry:
       error = heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, context->recdes_p, DB_PAGESIZE);
       if (error != NO_ERROR)
 	{
-          ASSERT_ERROR ();
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
     }
 
   scan = heap_attrinfo_transform_to_disk (thread_p, &context->attr_info, NULL, context->recdes_p, &expanded_oor_context,
-                                          LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
+					  LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
   if (scan != S_SUCCESS)
     {
       if (scan == S_DOESNT_FIT)
@@ -25304,7 +25303,7 @@ retry:
 								 context->recdes_p->area_size);
 	  if (context->recdes_p->data == NULL)
 	    {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, context->recdes_p->area_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, context->recdes_p->area_size);
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto exit;
 	    }
@@ -25312,7 +25311,7 @@ retry:
 	  context->scan_cache->area = context->recdes_p->data;
 	  goto retry;
 	}
-      ASSERT_ERROR_AND_SET (error);   /* todo: do we accept errors? */
+      ASSERT_ERROR_AND_SET (error);	/* todo: do we accept errors? */
       goto exit;
     }
 
@@ -25385,7 +25384,7 @@ heap_shrink_oor_attributes (THREAD_ENTRY * thread_p, OID * class_oid_p, RECDES *
 
 retry:
   scan = heap_attrinfo_transform_to_disk (thread_p, &attr_info, old_recdes, new_recdes, &shrink_oor_context,
-                                          LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
+					  LOB_FLAG_EXCLUDE_LOB, LOB_DELETE_ON_ATTR_INIT);
   if (scan != S_SUCCESS)
     {
       error = ER_FAILED;

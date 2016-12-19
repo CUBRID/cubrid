@@ -7599,7 +7599,7 @@ LC_COPYAREA *
 locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 					 RECDES * new_recdes, const int copyarea_length_hint,
 					 OUT_OF_ROW_CONTEXT * oor_context, HEAP_LOB_CREATE_FLAG lob_create_flag,
-                                         HEAP_LOB_DELETE_FLAG lob_delete_flag)
+					 HEAP_LOB_DELETE_FLAG lob_delete_flag)
 {
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
@@ -7617,7 +7617,7 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
       new_recdes->area_size = copyarea->length;
 
       scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes, oor_context, lob_create_flag,
-                                              lob_delete_flag);
+					      lob_delete_flag);
 
       if (scan != S_SUCCESS)
 	{
