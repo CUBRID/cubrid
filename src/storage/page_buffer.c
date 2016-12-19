@@ -167,6 +167,21 @@ static int rv;
 			+ offsetof(PGBUF_IOPAGE_BUFFER, iopage.page))); \
   } while (0)
 
+/* Macros for page modifications*/
+#define PGBUF_BCB_START_MODIFICATION(bufptr)                        \
+  do {                                                              \
+    assert (bufptr != NULL);					    \
+    ATOMIC_INC_64 (&bufptr->count_modifications, 1LL);		    \
+    assert ((bufptr->count_modifications & 1) != 0);		    \
+  } while (0)
+
+#define PGBUF_BCB_END_MODIFICATION(bufptr)                          \
+  do {                                                              \
+    assert (bufptr != NULL);					    \
+    ATOMIC_INC_64 (&bufptr->count_modifications, 1LL);		    \
+    assert ((bufptr->count_modifications & 1) == 0);		    \
+  } while (0)
+
 /* check whether the given volume is auxiliary volume */
 #define PGBUF_IS_AUXILIARY_VOLUME(volid)                                 \
   ((volid) < LOG_DBFIRST_VOLID ? true : false)
@@ -1558,6 +1573,7 @@ try_again:
 	}
 
       /* Currently, caller has one allocated BCB and is holding BCB_mutex */
+      PGBUF_BCB_START_MODIFICATION (bufptr);
 
       /* initialize the BCB */
       bufptr->vpid = *vpid;
@@ -1614,6 +1630,7 @@ try_again:
 		}
 #endif /* ENABLE_SYSTEMTAP */
 
+	      PGBUF_BCB_END_MODIFICATION (bufptr);
 	      return NULL;
 	    }
 
@@ -1684,6 +1701,7 @@ try_again:
 	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	    }
 	}
+      PGBUF_BCB_END_MODIFICATION (bufptr);
       buf_lock_acquired = true;
     }
 
@@ -12582,9 +12600,7 @@ pgbuf_start_modification (PAGE_PTR pgptr)
   assert (pgptr != NULL);
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert (bufptr != NULL);
-  ATOMIC_INC_64 (&bufptr->count_modifications, 1LL);
-  assert ((bufptr->count_modifications & 1) != 0);
+  PGBUF_BCB_START_MODIFICATION (bufptr);
 }
 
 
@@ -12601,7 +12617,5 @@ pgbuf_end_modification (PAGE_PTR pgptr)
   assert (pgptr != NULL);
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert (bufptr != NULL);
-  ATOMIC_INC_64 (&bufptr->count_modifications, 1LL);
-  assert ((bufptr->count_modifications & 1) == 0);
+  PGBUF_BCB_END_MODIFICATION (bufptr);
 }
