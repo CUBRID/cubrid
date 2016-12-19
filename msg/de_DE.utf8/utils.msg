@@ -304,7 +304,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Erstellen der Datenbank mit %1$s Größe mit Standard-Locale %2$s. Der Gesamtbetrag der benötigten Speicherplatz ist %3$s.\n
 46 Datenbank konnte nicht erstellt werden.\n
 47 Problem mit Benutzerdatei '%1$s'\n
-48 Der angegebene '%1$s', %2$s ist außerhalb des Bereichs. Eine Größe zwischen %3$s und %4$s wählen.\n
+48 Der angegebene '%1$s', %2$s ist außerhalb des Bereichs. Eine Größe under %3$s wählen.\n
 49 Der Wert von %1$s '%2$s' ist ungültig.\n
 60 \
 createdb: Datenbank erstellen.\n\

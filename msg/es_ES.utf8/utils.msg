@@ -304,7 +304,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Creando base de datos de tamano %1$s utilizando la localizacion estandar %2$s. La cantidad total de espacio en disco necesaria es %3$s. \n
 46 No se pudo crear base de datos.\n
 47 Problema con el archivo de utilizador '%1$s'\n
-48 Para el '%1$s' dado, %2$s es fuera de rango. Escoger un tamano entre %3$s y %4$s.\n
+48 Para el '%1$s' dado, %2$s es fuera de rango. Escoger un tamano bajo %3$s.\n
 49 El valor de %1$s '%2$s' no es valido.\n
 60 \
 createdb: Crear una base de datos.\n\

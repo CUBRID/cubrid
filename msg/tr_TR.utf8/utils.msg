@@ -304,7 +304,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Varsayılan yerel %2$s kullanarak %1$s boyutu ile veritabanı oluşturmak. Gerekli disk alanın toplam miktarı ise %3$s.\n
 46 Veritabanı oluşturulamadı.\n
 47 '%1$s' Kullanıcı dosya ile ilgili sorun\n
-48 Verilen '%1$s', %2$s kapsam dışı. %3$s ve %4$s arasında bir boyut seçin.\n
+48 The given '%1$s', %2$s is out of range. Maximum supported size is %3$s.\n
 49 %1$s sayısal değeri '%2$s' geçersiz. \n
 60 \
 createdb: Bir veritabanı oluştur.\n\

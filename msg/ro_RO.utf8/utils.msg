@@ -308,7 +308,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Se creează o bază de date de dimensiune %1$s si localizare %2$s. Spaţiul total necesar este %3$s.\n
 46 Baza de date nu a putut fi creată.\n
 47 S-a întâmpinat o problemă cu fişierul '%1$s' dat de utilizator\n
-48 S-a furnizat '%1$s', %2$s este în afara domeniului. Alegeţi o dimensiune cuprinsă între %3$s şi %4$s.\n
+48 S-a furnizat '%1$s', %2$s este în afara domeniului. Dimensiunea maxima este %3$s.\n
 49 Valoarea lui %1$s '%2$s' nu este validă.\n
 60 \
 createdb: Creează o baza de date.\n\

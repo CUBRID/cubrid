@@ -304,7 +304,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 %1$s 크기의 데이터베이스를 로케일 "%2$s"으로 생성합니다. 필요한 디스크의 용량은 %3$s 입니다.\n
 46 데이터베이스를 생성할 수 없습니다.\n
 47 user file '%1$s'에 오류가 있습니다.\n
-48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
+48 The given '%1$s', %2$s is out of range. Maximum supported size is %3$s.\n
 49 %1$s의 값 '%2$s'은 유효하지 않습니다.\n
 60 \
 createdb: 데이터베이스 생성.\n\

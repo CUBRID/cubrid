@@ -304,7 +304,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Creazione di database con dimensioni %1$s utilizzando locale predefinito %2$s. La quantità totale di spazio su disco necessario è %3$s.\n
 46 Impossibile creare database.\n
 47 Problema con file utente '%1$s'\n
-48 La data '%1$s', %2$s è fuori portata. Scegliere una dimensione tra %3$s e %4$s.\n
+48 La data '%1$s', %2$s è fuori portata. Scegliere una dimensione meno di %3$s.\n
 49 Il valore di %1$s '%2$s' non è valido.\n
 60 \
 createdb: Creare un database.\n\

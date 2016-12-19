@@ -522,7 +522,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_FAILURE));
 
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_BAD_RANGE),
-			     prm_get_name (PRM_ID_DB_VOLUME_SIZE), vol_buf, min_buf, max_buf);
+			     prm_get_name (PRM_ID_DB_VOLUME_SIZE), vol_buf, max_buf);
       goto error_exit;
     }
   if (sysprm_check_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &log_volume_size) != NO_ERROR)
@@ -555,7 +555,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_FAILURE));
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_BAD_RANGE),
-			     prm_get_name (PRM_ID_LOG_VOLUME_SIZE), vol_buf, min_buf, max_buf);
+			     prm_get_name (PRM_ID_LOG_VOLUME_SIZE), vol_buf, max_buf);
 
       goto error_exit;
     }
