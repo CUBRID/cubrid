@@ -2800,6 +2800,7 @@ heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr)
  *       In this case, unfortunately, if some record is not deleted
  *       from this page in the future, we may not use this page until
  *       heap_stats_sync_bestspace function searches all pages.
+ *	 No need to increment count modifications here, since readers does not uses best space statistics.
  */
 void
 heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid, int prev_freespace)
@@ -16738,7 +16739,7 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
 	  goto exit_on_error;
 	}
 
-      if (spage_compact (pg_watcher.pgptr) != NO_ERROR)
+      if (spage_compact (pg_watcher.pgptr, true) != NO_ERROR)
 	{
 	  pgbuf_ordered_unfix (thread_p, &pg_watcher);
 	  ret = ER_FAILED;

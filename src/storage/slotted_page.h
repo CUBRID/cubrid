@@ -157,8 +157,10 @@ extern PGSLOTID spage_delete_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR pgp
 extern int spage_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, const RECDES * recdes);
 extern void spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, INT16 type);
 extern bool spage_is_updatable (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int recdes_length);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern bool spage_is_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 				     int delete_record_length, int insert_record_length);
+#endif
 extern bool spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int spage_split (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int offset, PGSLOTID * new_slotid);
@@ -192,7 +194,7 @@ extern int spage_max_space_for_new_record (THREAD_ENTRY * thread_p, PAGE_PTR pgp
 extern void spage_collect_statistics (PAGE_PTR pgptr, int *npages, int *nrecords, int *rec_length);
 extern int spage_max_record_size (void);
 extern int spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
-extern int spage_compact (PAGE_PTR pgptr);
+extern int spage_compact (PAGE_PTR pgptr, bool need_start_modification);
 extern bool spage_is_valid_anchor_type (const INT16 anchor_type);
 extern const char *spage_anchor_flag_string (const INT16 anchor_type);
 extern const char *spage_alignment_string (unsigned short alignment);

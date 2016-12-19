@@ -2050,7 +2050,7 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
   if (spage_need_compact (thread_p, helper->home_page) == true)
     {
       /* Compact page data */
-      spage_compact (helper->home_page);
+      spage_compact (helper->home_page, true);
     }
 
   /* Update statistics only for home pages; We assume that fwd pages (from relocated records) are home pages for other
@@ -2286,7 +2286,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   if (spage_need_compact (thread_p, rcv->pgptr) == true)
     {
-      (void) spage_compact (rcv->pgptr);
+      (void) spage_compact (rcv->pgptr, true);
     }
 
   if (all_vacuumed)
@@ -7193,7 +7193,7 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   if (spage_need_compact (thread_p, rcv->pgptr) == true)
     {
-      (void) spage_compact (rcv->pgptr);
+      (void) spage_compact (rcv->pgptr, true);
     }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);

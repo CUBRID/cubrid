@@ -12609,6 +12609,21 @@ pgbuf_start_modification (PAGE_PTR pgptr)
   PGBUF_BCB_START_MODIFICATION (bufptr);
 }
 
+/*
+ * pgbuf_is_modification_started () - Is modification started?
+ *
+ * return     : true, if modification is started.
+ * pgptr (in) : Page pointer.
+ */
+bool
+pgbuf_is_modification_started (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  return ((bufptr->count_modifications & 1) != 0);
+}
 
 /*
  * pgbuf_end_modification () - Ending page modifications.
