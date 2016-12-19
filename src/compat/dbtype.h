@@ -3171,21 +3171,18 @@ db_make_oid (DB_VALUE * value, const OID * oid)
   CHECK_2ARGS_ERROR (value, oid);
 #endif
 
-  if ((db_value_domain_init (value, DB_TYPE_OID, 0, 0)) == NO_ERROR)
+  if (OID_ISNULL (oid))
     {
-      if (OID_ISNULL (oid) == 1)
-	{
-	  value->domain.general_info.is_null = 1;
-	  return NO_ERROR;
-	}
-
-      value->domain.general_info.type = DB_TYPE_OID;
-      value->data.oid.pageid = oid->pageid;
-      value->data.oid.slotid = oid->slotid;
-      value->data.oid.volid = oid->volid;
-      value->domain.general_info.is_null = OID_ISNULL (oid);
-      value->need_clear = false;
+      value->domain.general_info.is_null = 1;
+      return NO_ERROR;
     }
+
+  value->domain.general_info.type = DB_TYPE_OID;
+  value->data.oid.pageid = oid->pageid;
+  value->data.oid.slotid = oid->slotid;
+  value->data.oid.volid = oid->volid;
+  value->domain.general_info.is_null = OID_ISNULL (oid);
+  value->need_clear = false;
 
   return NO_ERROR;
 }
