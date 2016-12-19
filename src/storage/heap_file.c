@@ -16739,7 +16739,7 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
 	  goto exit_on_error;
 	}
 
-      if (spage_compact (pg_watcher.pgptr, true) != NO_ERROR)
+      if (spage_compact (pg_watcher.pgptr) != NO_ERROR)
 	{
 	  pgbuf_ordered_unfix (thread_p, &pg_watcher);
 	  ret = ER_FAILED;

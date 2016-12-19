@@ -2570,7 +2570,7 @@ spage_update_record_after_compact (PAGE_PTR page_p, SPAGE_HEADER * page_header_p
       page_header_p->total_free += (old_waste + slot_p->record_length);
       page_header_p->num_records--;
 
-      if (spage_compact (page_p, false) != NO_ERROR)
+      if (spage_compact (page_p) != NO_ERROR)
 	{
 	  slot_p->offset_to_record = old_offset;
 	  ASSERT_ALIGN ((char *) page_p + slot_p->offset_to_record, page_header_p->alignment);
@@ -3382,7 +3382,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, in
       page_header_p->total_free += (slot_p->record_length + old_waste);
       page_header_p->num_records--;
 
-      if (spage_compact (page_p, false) != NO_ERROR)
+      if (spage_compact (page_p) != NO_ERROR)
 	{
 	  slot_p->offset_to_record = old_offset;
 	  ASSERT_ALIGN ((char *) page_p + slot_p->offset_to_record, page_header_p->alignment);
@@ -4740,7 +4740,7 @@ spage_has_enough_contiguous_space (PAGE_PTR page_p, SPAGE_HEADER * page_header_p
   SPAGE_VERIFY_HEADER (page_header_p);
   assert (pgbuf_is_modification_started (page_p));
 
-  return (space <= page_header_p->cont_free || spage_compact (page_p, true) == NO_ERROR);
+  return (space <= page_header_p->cont_free || spage_compact (page_p) == NO_ERROR);
 }
 
 /*
