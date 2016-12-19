@@ -2790,7 +2790,7 @@ qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qu
       tfile_vfid_p = query_p->temp_vfid;
       tfile_vfid_p->prev->next = NULL;
 
-      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error, false);
+      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error, query_p->is_holdable);
 
       query_p->temp_vfid = NULL;
     }
