@@ -367,8 +367,8 @@ static bool file_Logging = false;
   "\t\tfile cache: max = %d, numerable = %d, regular = %d, total = %d \n" \
   "\t\tfree entries: max = %d, count = %d \n"
 #define FILE_TEMPCACHE_AS_ARGS \
-  file_Tempcache->ncached_max, file_Tempcache->ncached_numerable, file_Tempcache->cached_not_numerable, \
-  file_Tempcache->ncached_numerable + file_Tempcache->cached_not_numerable, \
+  file_Tempcache->ncached_max, file_Tempcache->ncached_numerable, file_Tempcache->ncached_not_numerable, \
+  file_Tempcache->ncached_numerable + file_Tempcache->ncached_not_numerable, \
   file_Tempcache->nfree_entries_max, file_Tempcache->nfree_entries
 
 #define FILE_TEMPCACHE_ENTRY_MSG "%p, VFID %d|%d, %s"
