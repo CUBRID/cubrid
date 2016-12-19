@@ -39,15 +39,51 @@
 #include "system_parameter.h"
 #include "es_common.h"
 
+/* From string_opfunc.h */
+#define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
+                                 ((s)==DB_TYPE_VARCHAR))
+#define QSTR_IS_NATIONAL_CHAR(s) (((s)==DB_TYPE_NCHAR) || \
+                                 ((s)==DB_TYPE_VARNCHAR))
+#define QSTR_IS_BIT(s)           (((s)==DB_TYPE_BIT) || \
+                                 ((s)==DB_TYPE_VARBIT))
+#define QSTR_IS_ANY_CHAR(s)	(QSTR_IS_CHAR(s) || QSTR_IS_NATIONAL_CHAR(s))
+#define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
+                                                 || QSTR_IS_BIT(s))
 
 /* From object_accessor.h */
 extern char *obj_Method_error_msg;
 
 /* From language_support.h */
 /* collation and charset do be used by system : */
+enum
+{
+  LANG_COLL_ISO_BINARY = 0,
+  LANG_COLL_UTF8_BINARY = 1,
+  LANG_COLL_ISO_EN_CS = 2,
+  LANG_COLL_ISO_EN_CI = 3,
+  LANG_COLL_UTF8_EN_CS = 4,
+  LANG_COLL_UTF8_EN_CI = 5,
+  LANG_COLL_UTF8_TR_CS = 6,
+  LANG_COLL_UTF8_KO_CS = 7,
+  LANG_COLL_EUCKR_BINARY = 8,
+  LANG_COLL_BINARY = 9
+};
+#define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
+  ? LANG_COLL_UTF8_BINARY :					 \
+  (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
+  (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
+  LANG_COLL_BINARY)))
+
+extern INTL_CODESET lang_charset (void);
+
 #define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
 
 #define LANG_SYS_CODESET  lang_charset()
+
+#define LANG_VARIABLE_CHARSET(x) ((x) != INTL_CODESET_ASCII     && \
+  (x) != INTL_CODESET_RAW_BITS  && \
+  (x) != INTL_CODESET_RAW_BYTES && \
+  (x) != INTL_CODESET_ISO88591)
 
 /* From object_domain.h */
 /*
@@ -950,6 +986,84 @@ typedef DB_MONETARY DB_C_MONETARY;
 typedef unsigned char *DB_C_NUMERIC;
 typedef void *DB_C_POINTER;
 typedef DB_IDENTIFIER DB_C_IDENTIFIER;
+
+
+/* From object_primitive.h */
+extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
+
+/* From dbi.h */
+extern DB_TYPE db_col_type (DB_COLLECTION * col);
+
+/* From db_date.h */
+extern int db_date_encode (DB_DATE * date, int month, int day, int year);
+extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
+extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
+
+/* From oid.h */
+#define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)
+
+/* From set_object.h */
+/*
+ * struct setobj
+ * The internal structure of a setobj data struct is private to this module.
+ * all access to this structure should be encapsulated via function calls.
+ */
+
+struct setobj
+{
+
+  DB_TYPE coltype;
+  int size;			/* valid indexes from 0 to size -1 aka the number of represented values in the
+				 * collection */
+  int lastinsert;		/* the last value insertion point 0 to size. */
+  int topblock;			/* maximum index of an allocated block. This is the maximum non-NULL db_value pointer
+				 * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL 
+				 * pointer for future expansion. */
+  int arraytop;			/* maximum indexable pointer in array the valid indexes for array are 0 to arraytop
+				 * inclusive Generally this may be greater than topblock */
+  int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized 
+				 * block for space efficicency. */
+  DB_VALUE **array;
+
+  /* not stored on disk, attached at run time by the schema */
+  struct tp_domain *domain;
+
+  /* external reference list */
+  DB_COLLECTION *references;
+
+  /* clear if we can't guarentee sort order, always on for sequences */
+  unsigned sorted:1;
+
+  /* set if we can't guarentee that there are no temporary OID's in here */
+  unsigned may_have_temporary_oids:1;
+};
+
+/*
+ * SETOBJ
+ *    This is the primitive set object header.
+ */
+typedef struct setobj SETOBJ;
+
+typedef SETOBJ COL;
+
+STATIC_INLINE DB_TYPE setobj_type (COL * set) __attribute__ ((ALWAYS_INLINE));
+
+/*
+ * setobj_type() - Returns the type of setobj is passed in
+ *      return: DB_TYPE
+ *  set(in) : set object
+ *
+ */
+
+STATIC_INLINE DB_TYPE
+setobj_type (COL * set)
+{
+  if (set)
+    {
+      return set->coltype;
+    }
+  return DB_TYPE_NULL;
+}
 
 extern DB_VALUE *db_value_create (void);
 extern DB_VALUE *db_value_copy (DB_VALUE * value);
@@ -1868,7 +1982,6 @@ elo_init_structure (DB_ELO * elo)
       *elo = elo_Initializer;
     }
 }
-
 
 /*
  * db_make_null() -

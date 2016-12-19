@@ -35,16 +35,6 @@
 #include "regex38a.h"
 #include "language_support.h"
 
-#define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
-                                 ((s)==DB_TYPE_VARCHAR))
-#define QSTR_IS_NATIONAL_CHAR(s) (((s)==DB_TYPE_NCHAR) || \
-                                 ((s)==DB_TYPE_VARNCHAR))
-#define QSTR_IS_BIT(s)           (((s)==DB_TYPE_BIT) || \
-                                 ((s)==DB_TYPE_VARBIT))
-#define QSTR_IS_ANY_CHAR(s)	(QSTR_IS_CHAR(s) || QSTR_IS_NATIONAL_CHAR(s))
-#define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
-                                                 || QSTR_IS_BIT(s))
-
 #define QSTR_IS_FIXED_LENGTH(s)         (((s)==DB_TYPE_CHAR)  || \
                                      ((s)==DB_TYPE_NCHAR) || \
                                      ((s)==DB_TYPE_BIT))

@@ -539,6 +539,7 @@ drop_lob_locator (const char *locator)
  * DB_ELO(in): DB_ELO
  * type(in): DB_ELO_TYPE
  */
+
 int
 elo_create (DB_ELO * elo, DB_ELO_TYPE type)
 {
