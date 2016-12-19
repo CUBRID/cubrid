@@ -3171,7 +3171,7 @@ db_make_oid (DB_VALUE * value, const OID * oid)
   CHECK_2ARGS_ERROR (value, oid);
 #endif
 
-  if (OID_ISNULL (oid))
+  if (oid == NULL || OID_ISNULL (oid))
     {
       value->domain.general_info.is_null = 1;
       return NO_ERROR;
