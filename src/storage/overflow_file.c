@@ -93,8 +93,8 @@ static int overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 int
 overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes, FILE_TYPE file_type)
 {
-  OVERFLOW_FIRST_PART *first_part;
-  OVERFLOW_REST_PART *rest_parts;
+  OVERFLOW_FIRST_PART *first_part = NULL;
+  OVERFLOW_REST_PART *rest_parts = NULL;
   char *copyto;
   int length, copy_length;
   INT32 npages = 0;
@@ -211,6 +211,8 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 	    {
 	      log_append_empty_record (thread_p, LOG_DUMMY_OVF_RECORD, &addr);
 	    }
+
+	  pgbuf_start_modification (first_part);
 	}
       else
 	{
@@ -236,6 +238,11 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 
       data += copy_length;
       length -= copy_length;
+
+      if (i == 0)
+	{
+	  pgbuf_end_modification (first_part);
+	}
 
       pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
     }
@@ -431,6 +438,8 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
       /* Is this the first page ? */
       if (VPID_EQ (addr_vpid_ptr, ovf_vpid))
 	{
+	  pgbuf_start_modification (addr.pgptr);
+
 	  /* This is the first part */
 	  first_part = (OVERFLOW_FIRST_PART *) addr.pgptr;
 	  old_length = first_part->length;
@@ -541,6 +550,11 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 		  rest_parts->next_vpid = next_vpid;
 		}
 	    }
+
+	  if (VPID_EQ (addr_vpid_ptr, ovf_vpid))
+	    {
+	      pgbuf_end_modification (addr.pgptr);
+	    }
 	  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 	}
       else
@@ -560,6 +574,11 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	    {
 	      /* This is part of rest part */
 	      VPID_SET_NULL (&rest_parts->next_vpid);
+	    }
+
+	  if (VPID_EQ (addr_vpid_ptr, ovf_vpid))
+	    {
+	      pgbuf_end_modification (addr.pgptr);
 	    }
 	  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 

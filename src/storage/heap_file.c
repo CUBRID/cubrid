@@ -6328,6 +6328,7 @@ heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid
  *		     it must be obtained from heap file header.
  *
  * Note: Delete the content of a multipage object.
+ *       No need to increment count modifications here, since no other concurrent transaction can access the object.
  */
 const OID *
 heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, VFID * ovf_vfid_p)
@@ -18733,6 +18734,7 @@ int
 heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header)
 {
   RECDES ovf_recdes;
+  int error_code = NO_ERROR;
 
   assert (ovf_page != NULL);
   assert (mvcc_header != NULL);
@@ -18759,7 +18761,10 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 
   /* Safe guard */
   assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header)] == OR_MVCC_MAX_HEADER_SIZE);
-  return or_mvcc_set_header (&ovf_recdes, mvcc_header);
+  pgbuf_start_modification (ovf_page);
+  error_code = or_mvcc_set_header (&ovf_recdes, mvcc_header);
+  pgbuf_end_modification (ovf_page);
+  return error_code;
 }
 
 /*

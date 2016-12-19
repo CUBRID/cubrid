@@ -160,6 +160,7 @@ extern bool spage_is_updatable (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTI
 extern bool spage_is_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 				     int delete_record_length, int insert_record_length);
 extern bool spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int spage_split (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int offset, PGSLOTID * new_slotid);
 extern int spage_append (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, const RECDES * recdes);
 extern int spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int takeout_offset,
@@ -168,6 +169,7 @@ extern int spage_put (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, 
 extern int spage_overwrite (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int overwrite_offset,
 			    const RECDES * recdes);
 extern int spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid1, PGSLOTID slotid2);
+#endif
 extern SCAN_CODE spage_next_record (PAGE_PTR pgptr, PGSLOTID * slotid, RECDES * recdes, int ispeeking);
 extern SCAN_CODE spage_next_record_dont_skip_empty (PAGE_PTR pgptr, PGSLOTID * slotid, RECDES * recdes, int ispeeking);
 extern SCAN_CODE spage_previous_record (PAGE_PTR pgptr, PGSLOTID * slotid, RECDES * recdes, int ispeeking);

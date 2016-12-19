@@ -502,4 +502,6 @@ extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, con
 
 extern void pgbuf_start_modification (PAGE_PTR pgptr);
 extern void pgbuf_end_modification (PAGE_PTR pgptr);
+extern void pgbuf_reset_modification (PAGE_PTR pgptr);
+
 #endif /* _PAGE_BUFFER_H_ */

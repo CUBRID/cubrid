@@ -182,6 +182,12 @@ static int rv;
     assert ((bufptr->count_modifications & 1) == 0);		    \
   } while (0)
 
+#define PGBUF_BCB_RESET_MODIFICATION(bufptr)                         \
+  do {                                                              \
+  assert (bufptr != NULL);					    \
+  ATOMIC_TAS_64 (&bufptr->count_modifications, 0LL);		    \
+  } while (0)
+
 /* check whether the given volume is auxiliary volume */
 #define PGBUF_IS_AUXILIARY_VOLUME(volid)                                 \
   ((volid) < LOG_DBFIRST_VOLID ? true : false)
@@ -5014,7 +5020,7 @@ pgbuf_initialize_bcb_table (void)
 
       bufptr->dirty = false;
       bufptr->avoid_dealloc_cnt = 0;
-      bufptr->count_modifications = 0;
+      PGBUF_BCB_RESET_MODIFICATION (bufptr);
       bufptr->avoid_victim = false;
       bufptr->async_flush_request = false;
       bufptr->victim_candidate = false;
@@ -12618,4 +12624,21 @@ pgbuf_end_modification (PAGE_PTR pgptr)
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   PGBUF_BCB_END_MODIFICATION (bufptr);
+}
+
+
+/*
+ * pgbuf_reset_modification () - Reset page modifications.
+ *
+ * return     : nothing.
+ * pgptr (in) : Page pointer.
+ */
+void
+pgbuf_reset_modification (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  PGBUF_BCB_RESET_MODIFICATION (bufptr);
 }
