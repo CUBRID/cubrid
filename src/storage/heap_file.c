@@ -7270,6 +7270,7 @@ try_again:
 	}
     }
 
+prepare_object_page:
   if (need_latch)
     {
       ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
@@ -7311,6 +7312,13 @@ try_again:
       context->record_type = REC_UNKNOWN;
 
       return S_DOESNT_EXIST;
+    }
+
+  if (slot_p->record_type == REC_BIGONE && need_latch == false)
+    {
+      /* quick fix to avoid NULL group id issue */
+      need_latch = true;
+      goto prepare_object_page;
     }
 
   /* Output record type. */
