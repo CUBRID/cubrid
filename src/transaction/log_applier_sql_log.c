@@ -380,6 +380,8 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   PARSER_VARCHAR *serial_name, *serial_value;
   bool is_db_serial = false;
   int result;
+  INT64 cur_val;
+  char *end_p, cur_val_buf[64];
 
   parser = parser_create_parser ();
 
@@ -415,7 +417,10 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       buffer = pt_append_nulstring (parser, buffer, "ALTER SERIAL ");
       buffer = pt_append_varchar (parser, buffer, serial_name);
       buffer = pt_append_nulstring (parser, buffer, " START WITH ");
-      buffer = pt_append_varchar (parser, buffer, serial_value);
+      cur_val = strtoll ((char *) serial_value->bytes, &end_p, 10);
+      sprintf (cur_val_buf, "%ld", cur_val + 1);
+      buffer = pt_append_varchar (parser, buffer, cur_val_buf);
+      buffer = pt_append_nulstring (parser, buffer, ";");
 
       result = sl_write_sql (buffer, NULL);
     }
