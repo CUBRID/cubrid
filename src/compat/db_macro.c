@@ -119,8 +119,12 @@ db_value_put_null (DB_VALUE * value)
   return NO_ERROR;
 }
 
+/* For strings that have a size of 0, this check will fail, and therefore
+ * the new interface for db_make_* functions will set the value to null, which is wrong.
+ * We need to investigate if this set to 0 will work or not.
+ */
 #define IS_INVALID_PRECISION(p,m) \
-  (((p) != DB_DEFAULT_PRECISION) && (((p) <= 0) || ((p) > (m))))
+  (((p) != DB_DEFAULT_PRECISION) && (((p) < 0) || ((p) > (m))))
 /*
  *  db_value_domain_init() - initialize value container with given type
  *                           and precision/scale.
