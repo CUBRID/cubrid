@@ -375,33 +375,62 @@ typedef enum
 #define DB_MAKE_NUMERIC(value, num, precision, scale) \
 	   db_make_numeric(value, num, precision, scale)
 
-#define DB_MAKE_BIT(value, bit_length, bit_str, bit_str_bit_size) \
-	   db_make_bit(value, bit_length, bit_str, bit_str_bit_size)
+#define DB_MAKE_BIT(v, l, p, s) \
+    ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
+      TP_FLOATING_PRECISION_VALUE : (l), \
+     (v)->domain.general_info.type = DB_TYPE_BIT, \
+     (v)->need_clear = false, \
+     db_make_db_char((v), INTL_CODESET_RAW_BITS, 0, (p), (s)), \
+     NO_ERROR)
 
-#define DB_MAKE_VARBIT(value, max_bit_length, bit_str, bit_str_bit_size)\
-	   db_make_varbit(value, max_bit_length, bit_str, bit_str_bit_size)
+#define DB_MAKE_VARBIT(v, l, p, s) \
+    ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
+      DB_MAX_VARBIT_PRECISION : (l), \
+     (v)->domain.general_info.type = DB_TYPE_VARBIT, \
+     (v)->need_clear = false, \
+     db_make_db_char((v), INTL_CODESET_RAW_BITS, 0, (p), (s)), \
+     NO_ERROR)
 
-#define DB_MAKE_CHAR(value, char_length, str, char_str_byte_size, \
-		     codeset, collation) \
-        db_make_char(value, char_length, str, char_str_byte_size, \
-		     codeset, collation)
+#define DB_MAKE_STRING(v, p) \
+    ((v)->domain.char_info.length = DB_MAX_VARCHAR_PRECISION, \
+     (v)->domain.general_info.type = DB_TYPE_VARCHAR, \
+     (v)->need_clear = false, \
+     db_make_db_char((v), LANG_SYS_CODESET, LANG_SYS_COLLATION, \
+		     (p), (((void *) (p) != NULL) ? strlen(p) : 0)), \
+     NO_ERROR)
 
-#define DB_MAKE_VARCHAR(value, max_char_length, str, char_str_byte_size, \
-			codeset, collation) \
-	db_make_varchar(value, max_char_length, str, char_str_byte_size, \
-			codeset, collation)
+#define DB_MAKE_CHAR(v, l, p, s, cs, col) \
+    ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
+      TP_FLOATING_PRECISION_VALUE : (l), \
+     (v)->domain.general_info.type = DB_TYPE_CHAR, \
+     (v)->need_clear = false, \
+     db_make_db_char((v), (cs), (col), (p), (s)), \
+     NO_ERROR)
 
-#define DB_MAKE_STRING(value, str) db_make_string(value, str)
+#define DB_MAKE_VARCHAR(v, l, p, s, cs, col) \
+    ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
+      DB_MAX_VARCHAR_PRECISION : (l), \
+     (v)->domain.general_info.type = DB_TYPE_VARCHAR, \
+     (v)->need_clear = false, \
+     db_make_db_char((v), (cs), (col), (p), (s)), \
+     NO_ERROR)
 
-#define DB_MAKE_NCHAR(value, nchar_length, str, nchar_str_byte_size, \
-		      codeset, collation) \
-	db_make_nchar(value, nchar_length, str, nchar_str_byte_size, \
-		      codeset, collation)
+#define DB_MAKE_NCHAR(v, l, p, s, cs, col) \
+    ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
+      TP_FLOATING_PRECISION_VALUE : (l), \
+     (v)->domain.general_info.type = DB_TYPE_NCHAR, \
+     (v)->need_clear = false, \
+     db_make_db_char((v), (cs), (col), (p), (s)), \
+     NO_ERROR)
 
-#define DB_MAKE_VARNCHAR(value, max_nchar_length, str, nchar_str_byte_size, \
-			 codeset, collation)\
-	db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size, \
-			 codeset, collation)
+#define DB_MAKE_VARNCHAR(v, l, p, s, cs, col) \
+    ((v)->domain.char_info.length = ((l) == DB_DEFAULT_PRECISION) ? \
+      DB_MAX_VARNCHAR_PRECISION : (l), \
+     (v)->domain.general_info.type = DB_TYPE_VARNCHAR, \
+     (v)->need_clear = false, \
+     db_make_db_char((v), (cs), (col), (p), (s)), \
+     NO_ERROR)
+
 
 #define DB_MAKE_ENUMERATION(value, index, str, size, codeset, collation) \
 	db_make_enumeration(value, index, str, size, codeset, collation)
