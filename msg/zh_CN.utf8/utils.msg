@@ -304,7 +304,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 创建数据库大小为 %1$s，使用的缺省语言区域是 %2$s。总共需要的磁盘空间大小为 %3$s.\n
 46 无法创建数据库.\n
 47 用户文件 '%1$s' 存在问题\n
-48 The given '%1$s', %2$s is out of range. Maximum supported size is %3$s.\n
+48 给定值 '%1$s', %2$s 超过了范围. 选择大小在 %3$s 和 %4$s之间的数.\n
 49 %1$s '%2$s'的值是非法的.\n
 60 \
 createdb: 创建一个数据库.\n\

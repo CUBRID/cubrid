@@ -304,7 +304,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Creating database with %1$s size using locale %2$s. The total amount of disk space needed is %3$s.\n
 46 Couldn't create database.\n
 47 Problem with user file '%1$s'\n
-48 The given '%1$s', %2$s is out of range. Maximum supported size is %3$s.\n
+48 The given '%1$s', %2$s is out of range. Choose a size between %3$s and %4$s.\n
 49 The value of %1$s '%2$s' is invalid.\n
 60 \
 createdb: Create a database.\n\

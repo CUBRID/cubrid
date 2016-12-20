@@ -304,7 +304,7 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 45 Création de base de données avec la taille %1$s  en utilisant la valeur par défaut du locale %2$s. Le montant total de l'espace disque nécessaire est %3$s.\n
 46 Impossible de créer la base de données.\n
 47 Problème avec le fichier '%1$s' d'utilisateur\n
-48 Le donné '%1$s', %2$s est hors plage. Choisissez une taille sous %3$s.\n
+48 Le donné '%1$s', %2$s est hors plage. Choisissez une taille comprise entre %3$s et %4$s.\n
 49 La valeur de %1$s '%2$s' n'est pas valide.\n
 60 \
 createdb: crée une base de données.\n\
