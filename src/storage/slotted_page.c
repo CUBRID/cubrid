@@ -1301,7 +1301,11 @@ spage_compact (PAGE_PTR page_p)
     }
   else
     {
-      pgbuf_start_modification (page_p);
+      if (need_start_modification)
+	{
+	  pgbuf_start_modification (page_p);
+	}
+
       to_offset = sizeof (SPAGE_HEADER);
     }
 
