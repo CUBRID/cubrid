@@ -791,7 +791,8 @@ static int file_tracker_item_check (THREAD_ENTRY * thread_p, PAGE_PTR page_of_it
 #endif /* SA_MODE */
 
 static int file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count);
-static int file_extdata_add_item_count (FILE_EXTENSIBLE_DATA * extdata, void *args);
+static int file_extdata_add_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+					void *args);
 
 /************************************************************************/
 /* End of static functions                                              */
@@ -10601,7 +10602,7 @@ file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * ext
 
 
 static int
-file_extdata_add_item_count (FILE_EXTENSIBLE_DATA * extdata, void *args)
+file_extdata_add_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
 {
 
   (*((int *) args)) += file_extdata_item_count (extdata);
