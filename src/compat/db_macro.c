@@ -120,7 +120,7 @@ db_value_put_null (DB_VALUE * value)
 }
 
 #define IS_INVALID_PRECISION(p,m) \
-  (((p) != DB_DEFAULT_PRECISION) && (((p) <= 0) || ((p) > (m))))
+  (((p) != DB_DEFAULT_PRECISION) && (((p) < 0) || ((p) > (m))))
 /*
  *  db_value_domain_init() - initialize value container with given type
  *                           and precision/scale.
