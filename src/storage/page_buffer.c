@@ -12602,11 +12602,13 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
 void
 pgbuf_start_modification (PAGE_PTR pgptr)
 {
+#if defined (SERVER_MODE)
   PGBUF_BCB *bufptr = NULL;
   assert (pgptr != NULL);
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   PGBUF_BCB_START_MODIFICATION (bufptr);
+#endif  
 }
 
 /*
@@ -12618,11 +12620,15 @@ pgbuf_start_modification (PAGE_PTR pgptr)
 bool
 pgbuf_is_modification_started (PAGE_PTR pgptr)
 {
+#if defined (SERVER_MODE)
   PGBUF_BCB *bufptr = NULL;
   assert (pgptr != NULL);
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   return ((bufptr->count_modifications & 1) != 0);
+#else
+  return false;
+#endif
 }
 
 /*
@@ -12634,11 +12640,13 @@ pgbuf_is_modification_started (PAGE_PTR pgptr)
 void
 pgbuf_end_modification (PAGE_PTR pgptr)
 {
+#if defined (SERVER_MODE)
   PGBUF_BCB *bufptr = NULL;
   assert (pgptr != NULL);
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   PGBUF_BCB_END_MODIFICATION (bufptr);
+#endif
 }
 
 
@@ -12651,9 +12659,11 @@ pgbuf_end_modification (PAGE_PTR pgptr)
 void
 pgbuf_reset_modification (PAGE_PTR pgptr)
 {
+#if defined (SERVER_MODE)
   PGBUF_BCB *bufptr = NULL;
   assert (pgptr != NULL);
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   PGBUF_BCB_RESET_MODIFICATION (bufptr);
+#endif
 }

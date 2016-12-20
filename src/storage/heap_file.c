@@ -7253,6 +7253,7 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 
   need_latch = true;
 try_again:
+#if defined(SERVER_MODE)
   if (latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY && context->home_page_watcher.pgptr == NULL)
     {
       page_ptr = PTR_ALIGN (context->home_page_copy_buffer, MAX_ALIGNMENT);
@@ -7269,6 +7270,7 @@ try_again:
 	    }
 	}
     }
+#endif
 
 prepare_object_page:
   if (need_latch)
