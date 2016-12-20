@@ -7253,7 +7253,7 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 
   need_latch = true;
 try_again:
-  if (latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY)
+  if (latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY && context->home_page_watcher.pgptr == NULL)
     {
       page_ptr = PTR_ALIGN (context->home_page_copy_buffer, MAX_ALIGNMENT);
       if (pgbuf_copy (thread_p, &object_vpid, page_ptr, IO_PAGESIZE) == NO_ERROR)
