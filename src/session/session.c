@@ -2386,22 +2386,7 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p, QMGR_QUERY_ENTRY * qentr
   qentry_p->xasl_ent = NULL;
   qentry_p->er_msg = NULL;
   qentry_p->is_holdable = true;
-
-  if (qentry_p->temp_vfid)
-    {
-      /* when files were preserved, they were removed from transaction list of temporary files. we need to add them
-       * back to make sure they are never leaked. */
-      QMGR_TEMP_FILE *iter_temp_file;
-      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-
-      for (iter_temp_file = qentry_p->temp_vfid; iter_temp_file != NULL; iter_temp_file = iter_temp_file->next)
-	{
-	  if (!VFID_ISNULL (&iter_temp_file->temp_vfid))
-	    {
-	      (void) file_temp_save_tran_file (thread_p, &iter_temp_file->temp_vfid, iter_temp_file->temp_file_type);
-	    }
-	}
-    }
+  qentry_p->is_preserved = true;
 }
 
 /*

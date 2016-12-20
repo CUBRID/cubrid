@@ -126,6 +126,7 @@ struct qmgr_query_entry
   QMGR_QUERY_STATUS query_status;
   QUERY_FLAG query_flag;
   bool is_holdable;		/* true if this query should be available */
+  bool is_preserved;		/* true if query was preserved in session, false otherwise. */
 };
 
 extern QMGR_QUERY_ENTRY *qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);

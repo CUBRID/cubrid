@@ -183,7 +183,6 @@ extern int file_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern void file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
 
 extern void file_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_type);
 extern int file_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
 
 extern int file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);
