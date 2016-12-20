@@ -542,19 +542,20 @@ typedef int (*FILE_TRACK_ITEM_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
 /************************************************************************/
 
 STATIC_INLINE void file_header_init (FILE_HEADER * fhead) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_header_sanity_check (FILE_HEADER * fhead) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_header_alloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type,
-				      bool was_empty, bool is_full) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_header_dealloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type,
-					bool is_empty, bool was_full) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_header_alloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool was_empty, bool is_full)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_header_dealloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool is_empty, bool was_full)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_log_fhead_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 					 bool was_empty, bool is_full) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_log_fhead_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE alloc_type,
 					   bool is_empty, bool was_full) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_header_update_mark_deleted (THREAD_ENTRY * thread_p,
-						    PAGE_PTR page_fhead, int delta) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int file_header_copy (THREAD_ENTRY * thread_p,
-				    const VFID * vfid, FILE_HEADER * fhead_copy) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_header_update_mark_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, int delta)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_header_copy (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_HEADER * fhead_copy)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_header_dump (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, FILE * fp)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, FILE * fp)
@@ -789,6 +790,9 @@ static int file_tracker_item_check (THREAD_ENTRY * thread_p, PAGE_PTR page_of_it
 				    int index_item, bool * stop, void *args);
 #endif /* SA_MODE */
 
+static int file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count);
+static int file_extdata_add_item_count (FILE_EXTENSIBLE_DATA * extdata, void *args);
+
 /************************************************************************/
 /* End of static functions                                              */
 /************************************************************************/
@@ -877,7 +881,7 @@ file_header_init (FILE_HEADER * fhead)
  * fhead (in) : File header.
  */
 STATIC_INLINE void
-file_header_sanity_check (FILE_HEADER * fhead)
+file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 {
 #if !defined (NDEBUG)
   FILE_EXTENSIBLE_DATA *part_table;
@@ -919,7 +923,10 @@ file_header_sanity_check (FILE_HEADER * fhead)
     }
   else
     {
+      int part_cnt = 0;
       assert (!file_extdata_is_empty (part_table) || !VPID_ISNULL (&part_table->vpid_next));
+      (void) file_extdata_all_item_count (thread_p, part_table, &part_cnt);
+      assert (fhead->n_sector_partial == part_cnt);
     }
 
   if (!FILE_IS_TEMPORARY (fhead))
@@ -931,7 +938,10 @@ file_header_sanity_check (FILE_HEADER * fhead)
 	}
       else
 	{
+	  int full_cnt = 0;
 	  assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->vpid_next));
+	  (void) file_extdata_all_item_count (thread_p, full_table, &full_cnt);
+	  assert (fhead->n_sector_full == full_cnt);
 	}
     }
 #endif /* !NDEBUG */
@@ -955,12 +965,12 @@ file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (rcv->length == sizeof (VPID));
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   /* the correct VPID is logged. */
 
   VPID_COPY (&fhead->vpid_last_user_page_ftab, vpid);
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   file_log ("file_rv_fhead_set_last_user_page_ftab",
 	    "update vpid_last_user_page_ftab to %d|%d in file %d|%d, "
@@ -1281,7 +1291,7 @@ file_header_copy (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_HEADER * fhea
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   *fhead_copy = *fhead;
 
@@ -3661,7 +3671,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   fhead->n_page_free = fhead->n_page_total - fhead->n_page_ftab;
 
   /* File header ready. */
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   file_log ("file_create", "finished creating file. \n" FILE_HEAD_FULL_MSG, FILE_HEAD_FULL_AS_ARGS (fhead));
 
@@ -3929,7 +3939,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   assert (FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
 
@@ -4247,7 +4257,7 @@ file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   DKNSECTS save_nsects;
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
 
   /* how is this done:
@@ -4270,7 +4280,7 @@ file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   fhead->n_sector_partial = 0;
   fhead->n_sector_empty = 0;
 
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   file_log ("file_rv_perm_expand_undo",
 	    "removed expanded sectors from partial table and file header in file %d|%d, "
@@ -4311,7 +4321,7 @@ file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (count_vsids * (int) sizeof (VSID) == rcv->length);
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
 
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_table);
@@ -4334,7 +4344,7 @@ file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   fhead->n_page_free = count_vsids * DISK_SECTOR_NPAGES;
   fhead->n_page_total += fhead->n_page_free;
 
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   file_log ("file_rv_perm_expand_redo",
 	    "recovery expand in file %d|%d, file header %d|%d, lsa %lld|%d \n"
@@ -4373,7 +4383,7 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
   assert (log_check_system_op_is_started (thread_p));
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
 
   /* compute desired expansion size. we should consider ratio, minimum size and maximum size. also, maximum size cannot
@@ -4504,7 +4514,7 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
    */
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
 
   /* Caller should have checked */
@@ -5064,7 +5074,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   file_log ("file_alloc", "allocate new %s page. \n" FILE_HEAD_ALLOC_MSG,
 	    FILE_PERM_TEMP_STRING (FILE_IS_TEMPORARY (fhead)), FILE_HEAD_ALLOC_AS_ARGS (fhead));
@@ -5099,7 +5109,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
 
   assert (!VPID_ISNULL (vpid_out));
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   if (FILE_IS_NUMERABLE (fhead))
     {
@@ -5221,7 +5231,7 @@ file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid,
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
   /* keep header while allocating all pages. we have a great chance to allocate all pages in the same sectors */
 
   is_temp = FILE_IS_TEMPORARY (fhead);
@@ -5314,7 +5324,7 @@ file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_I
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   assert (fhead->n_page_user == 0);
   assert (VPID_ISNULL (&fhead->vpid_sticky_first));
@@ -5334,7 +5344,7 @@ file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_I
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
   /* done */
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
   assert (error_code == NO_ERROR);
 
   file_log ("file_alloc_sticky_first_page",
@@ -5406,7 +5416,7 @@ file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
   if (LOG_ISRESTARTED ())
     {
       /* sometimes called before recovery... we cannot guarantee the header is sane at this point. */
-      file_header_sanity_check (fhead);
+      file_header_sanity_check (thread_p, fhead);
     }
 
   *vpid_out = fhead->vpid_sticky_first;
@@ -5945,7 +5955,7 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   if (FILE_IS_TEMPORARY (fhead))
     {
@@ -6091,7 +6101,7 @@ file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   *n_user_pages_out = fhead->n_page_user;
   pgbuf_unfix (thread_p, page_fhead);
@@ -6132,7 +6142,7 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   /* first search the VPID in sector tables: partial, then full. */
   VSID_FROM_VPID (&vsid_lookup, vpid_lookup);
@@ -6268,7 +6278,7 @@ file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   *ftype_out = fhead->type;
   assert (*ftype_out != FILE_UNKNOWN_TYPE);
@@ -6306,7 +6316,7 @@ file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp)
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   *is_temp = FILE_IS_TEMPORARY (fhead);
 
@@ -6636,7 +6646,7 @@ file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE lat
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   /* init map context */
   context.func = func;
@@ -6735,7 +6745,7 @@ file_table_check (THREAD_ENTRY * thread_p, const VFID * vfid, DISK_VOLMAP_CLONE 
       return DISK_ERROR;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   error_code = file_table_collect_all_vsids (thread_p, page_fhead, &collector);
   if (error_code != NO_ERROR)
@@ -7380,7 +7390,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
       goto exit;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
   assert (FILE_IS_NUMERABLE (fhead));
   assert (nth < fhead->n_page_user || (auto_alloc && nth == fhead->n_page_user));
 
@@ -7400,7 +7410,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	      goto exit;
 	    }
 	  fhead = (FILE_HEADER *) page_fhead;
-	  file_header_sanity_check (fhead);
+	  file_header_sanity_check (thread_p, fhead);
 	  if (auto_alloc && nth == (fhead->n_page_user - fhead->n_page_mark_delete))
 	    {
 	      error_code = file_alloc (thread_p, vfid, f_init, f_init_args, vpid_nth, NULL);
@@ -7606,7 +7616,7 @@ file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   assert (FILE_IS_NUMERABLE (fhead));
   assert (!FILE_IS_TEMPORARY (fhead));
@@ -7820,7 +7830,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   bool is_full = false;
   int error_code = NO_ERROR;
 
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
   assert (FILE_IS_TEMPORARY (fhead));
   assert (page_fhead != NULL);
   assert (vpid_alloc_out != NULL);
@@ -7946,7 +7956,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 		FILE_EXTDATA_MSG ("last partial table component"),
 		FILE_PARTSECT_AS_ARGS (&partsect_new), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
-      file_header_sanity_check (fhead);
+      file_header_sanity_check (thread_p, fhead);
     }
   assert (fhead->n_page_free > 0);
 
@@ -8045,7 +8055,7 @@ file_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE ftype)
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   if (!FILE_IS_TEMPORARY (fhead))
     {
@@ -8101,7 +8111,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
       goto exit;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   if (!FILE_IS_TEMPORARY (fhead))
     {
@@ -9828,7 +9838,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   /* read class OID */
   if ((FILE_TYPE) item->type == FILE_BTREE)
@@ -10087,7 +10097,7 @@ file_tracker_item_dump_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item,
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   fprintf (fp, "%4d|%4d %5d  %-22s ", item->volid, item->fileid, fhead->n_page_user, file_type_to_string (fhead->type));
   if ((FILE_TYPE) item->type == FILE_HEAP && item->metadata.heap.is_marked_deleted)
@@ -10504,7 +10514,7 @@ file_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_DESCRIPTOR
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   *desc_out = fhead->descriptor;
 
@@ -10536,7 +10546,7 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_ne
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   log_append_undoredo_data2 (thread_p, RVFL_FILEDESC_UPD, NULL, page_fhead,
 			     (PGLENGTH) ((char *) &fhead->descriptor - page_fhead), sizeof (fhead->descriptor),
@@ -10572,13 +10582,34 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp)
       return error_code;
     }
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (fhead);
+  file_header_sanity_check (thread_p, fhead);
 
   file_header_dump_descriptor (thread_p, fhead, fp);
 
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
+
+static int
+file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count)
+{
+
+  return file_extdata_apply_funcs (thread_p, extdata, file_extdata_add_item_count, count, NULL, NULL, false, NULL,
+				   NULL);
+
+}
+
+
+static int
+file_extdata_add_item_count (FILE_EXTENSIBLE_DATA * extdata, void *args)
+{
+
+  (*((int *) args)) += file_extdata_item_count (extdata);
+
+  return NO_ERROR;
+
+}
+
 
 /************************************************************************/
 /* End of file                                                          */
