@@ -927,7 +927,7 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       int part_cnt = 0;
       assert (!file_extdata_is_empty (part_table) || !VPID_ISNULL (&part_table->vpid_next));
       (void) file_extdata_all_item_count (thread_p, part_table, &part_cnt);
-      assert (fhead->n_sector_partial == part_cnt);
+      assert (abs (fhead->n_sector_partial - part_cnt) <= 1);
     }
 
   if (!FILE_IS_TEMPORARY (fhead))
@@ -942,7 +942,7 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 	  int full_cnt = 0;
 	  assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->vpid_next));
 	  (void) file_extdata_all_item_count (thread_p, full_table, &full_cnt);
-	  assert (fhead->n_sector_full == full_cnt);
+	  assert (abs (fhead->n_sector_full - full_cnt) <= 1);
 	}
     }
 #endif /* !NDEBUG */
