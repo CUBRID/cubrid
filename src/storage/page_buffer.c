@@ -769,12 +769,11 @@ struct pgbuf_page_monitor
   int *lru_activity;		/* Activity level per LRU */
 
   /* Overall counters */
-  <<<<<<<HEAD volatile int lru_shared_pgs;	/* count of BCBs in all shared LRUs */
-  volatile int lru_garbage_pgs;	/* count of pages in garbage LRUs (only when quota is enabled) */
-  == == == = volatile int lru_shared_pgs;	/* count of BCBs in all shared LRUs */
+  volatile int lru_shared_pgs;	/* count of BCBs in all shared LRUs */
   volatile int lru_garbage_pgs;	/* count of pages in garbage LRUs (only when quota is enabled) */
   volatile int lru_vict_waiting_threads;	/* count of threads currently waiting for victims */
-  >>>>>>>b65e04644ee70c092a5cf24b550d9c8dd63583bd int pg_lru_vict_req_failed;	/* Count of failed victimization from all LRUs */
+
+  int pg_lru_vict_req_failed;	/* Count of failed victimization from all LRUs */
   int pg_ain_vict_req_failed;	/* Count of failed victimization from all AIN */
   int pg_unfix;			/* Count of page unfixes; used for refreshing quota adjustement */
   int pg_unfix_with_private_lru;	/* Count of page unfixes with valid private lru */
