@@ -2507,7 +2507,7 @@ static int
 spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPAGE_SLOT * slot_p,
 			      const RECDES * record_descriptor_p, int space)
 {
-  bool is_located_end;
+  bool is_located_end, update_modification_counter = false;
 
   SPAGE_VERIFY_HEADER (page_header_p);
 
@@ -2521,7 +2521,11 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPA
   /* Update the record in place. Same area */
   is_located_end = spage_is_record_located_at_end (page_header_p, slot_p);
 
-  pgbuf_start_modification (page_p);
+  update_modification_counter = !pgbuf_is_modification_started (page_p);
+  if (update_modification_counter)
+    {
+      pgbuf_start_modification (page_p);
+    }
   slot_p->record_length = record_descriptor_p->length;
   if (SPAGE_OVERFLOW (slot_p->offset_to_record + record_descriptor_p->length))
     {
@@ -2542,7 +2546,10 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPA
 
       SPAGE_VERIFY_HEADER (page_header_p);
     }
-  pgbuf_end_modification (page_p);
+  if (update_modification_counter)
+    {
+      pgbuf_end_modification (page_p);
+    }
 
   spage_verify_header (page_p);
 
