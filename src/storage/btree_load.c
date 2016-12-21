@@ -274,6 +274,10 @@ btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR pag
   assert (header->node_level > 0);
   assert (header->max_key_len >= 0);
 
+#if defined (SERVER_MODE)
+  //assert (pgbuf_is_modification_started (page_ptr));
+#endif
+
   /* create header record */
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);

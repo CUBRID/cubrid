@@ -1969,6 +1969,7 @@ spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, REC
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p;
   int status;
+  bool update_modification_counter = false;
 
   assert (page_p != NULL);
   assert (record_descriptor_p != NULL);
@@ -1995,7 +1996,11 @@ spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, REC
       return SP_ERROR;
     }
 
-  pgbuf_start_modification (page_p);
+  update_modification_counter = !pgbuf_is_modification_started (page_p);
+  if (update_modification_counter)
+    {
+      pgbuf_start_modification (page_p);
+    }
   status =
     spage_find_empty_slot_at (thread_p, page_p, slot_id, record_descriptor_p->length, record_descriptor_p->type,
 			      &slot_p);
@@ -2003,7 +2008,10 @@ spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, REC
     {
       status = spage_insert_data (thread_p, page_p, record_descriptor_p, slot_p);
     }
-  pgbuf_end_modification (page_p);
+  if (update_modification_counter)
+    {
+      pgbuf_end_modification (page_p);
+    }
 
 #ifdef SPAGE_DEBUG
   spage_check (thread_p, page_p);
@@ -2161,6 +2169,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
   SPAGE_SLOT *slot_p;
   int waste;
   int free_space;
+  bool update_modification_counter = false;
 
   assert (page_p != NULL);
 
@@ -2177,7 +2186,11 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
       return NULL_SLOTID;
     }
 
-  pgbuf_start_modification (page_p);
+  update_modification_counter = !pgbuf_is_modification_started (page_p);
+  if (update_modification_counter)
+    {
+      pgbuf_start_modification (page_p);
+    }
   page_header_p->num_records--;
   waste = DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment);
   free_space = slot_p->record_length + waste;
@@ -2214,10 +2227,16 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
     default:
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      pgbuf_end_modification (page_p);
+      if (update_modification_counter)
+	{
+	  pgbuf_end_modification (page_p);
+	}
       return NULL_SLOTID;
     }
-  pgbuf_end_modification (page_p);
+  if (update_modification_counter)
+    {
+      pgbuf_end_modification (page_p);
+    }
 
   /* Indicate that we are savings */
   if (page_header_p->is_saving && spage_save_space (thread_p, page_header_p, page_p, free_space) != NO_ERROR)
