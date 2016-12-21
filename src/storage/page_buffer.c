@@ -9592,7 +9592,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
 	  abort ();
 	}
 
-      return NULL;
+      if (count_nd <= 0)
+        {
+          return NULL;
+        }
     }
 
   /* start searching with victim hint (if there is any */
@@ -9601,10 +9604,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
 
   for (bufptr = bufptr_start, restart_from_bottom = false;	/* start iterating from bufptr_start. */
        bufptr != bufptr_start || !restart_from_bottom;	/* stop when reaching bufptr_start again. */
-       bufptr = bufptr->prev_BCB,	/* go to previous bcb */
-       bufptr = (PGBUF_BCB *) ((bufptr == NULL || (!use_lru1_zone && bufptr->zone_lru != zone2_list)) ? lru_list->LRU_bottom : bufptr),	/* go back to list bottom if we reached the end of list or if we reached zone 1 and we only look in zone 2 */
-       restart_from_bottom = restart_from_bottom
-       || bufptr == lru_list->LRU_bottom /* update from_beginning if we restarted from bottom */ )
+       /* iterate */
+       /* go to previous bcb */
+       bufptr = bufptr->prev_BCB,
+       /* go back to list bottom if we reached the end of list or if we reached zone 1 and we only look in zone 2 */
+       bufptr =
+        (PGBUF_BCB *) ((bufptr == NULL
+                       || (!use_lru1_zone && bufptr->zone_lru != zone2_list)) ? lru_list->LRU_bottom : bufptr),
+        /* update from_beginning if we restarted from bottom */
+       restart_from_bottom = restart_from_bottom || (bufptr == lru_list->LRU_bottom))
     {
       assert (bufptr != NULL);
       assert (use_lru1_zone || bufptr->zone_lru == zone2_list);
