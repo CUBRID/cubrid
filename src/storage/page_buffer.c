@@ -16039,7 +16039,7 @@ pgbuf_lru_update_victims_on_add (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list, boo
   assert (count_non_dirty_prev >= 0 && count_non_dirty_prev < bcbs_in_lru_list);
 
   /* todo: remove me */
-  if (count_non_dirty_prev < 0 || count_non_dirty_prev >= bcbs_in_lru_list)
+  if (count_non_dirty_prev < 0 || count_non_dirty_prev > bcbs_in_lru_list)
     {
       abort ();
     }
@@ -16077,7 +16077,7 @@ pgbuf_lru_update_victims_on_flush (PGBUF_BCB * bcb)
   assert (count_non_dirty_prev >= 0 && count_non_dirty_prev < bcbs_in_lru_list);
 
   /* todo: remove me */
-  if (count_non_dirty_prev < 0 || count_non_dirty_prev >= bcbs_in_lru_list)
+  if (count_non_dirty_prev < 0 || count_non_dirty_prev > bcbs_in_lru_list)
     {
       abort ();
     }
