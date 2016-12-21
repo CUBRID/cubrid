@@ -769,10 +769,12 @@ struct pgbuf_page_monitor
   int *lru_activity;		/* Activity level per LRU */
 
   /* Overall counters */
-  volatile int lru_shared_pgs;	/* count of BCBs in all shared LRUs */
+  <<<<<<<HEAD volatile int lru_shared_pgs;	/* count of BCBs in all shared LRUs */
   volatile int lru_garbage_pgs;	/* count of pages in garbage LRUs (only when quota is enabled) */
-
-  int pg_lru_vict_req_failed;	/* Count of failed victimization from all LRUs */
+  == == == = volatile int lru_shared_pgs;	/* count of BCBs in all shared LRUs */
+  volatile int lru_garbage_pgs;	/* count of pages in garbage LRUs (only when quota is enabled) */
+  volatile int lru_vict_waiting_threads;	/* count of threads currently waiting for victims */
+  >>>>>>>b65e04644ee70c092a5cf24b550d9c8dd63583bd int pg_lru_vict_req_failed;	/* Count of failed victimization from all LRUs */
   int pg_ain_vict_req_failed;	/* Count of failed victimization from all AIN */
   int pg_unfix;			/* Count of page unfixes; used for refreshing quota adjustement */
   int pg_unfix_with_private_lru;	/* Count of page unfixes with valid private lru */
@@ -8421,19 +8423,30 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   loop_count = 0;
 
+  /* allocate a BCB from invalid BCB list */
+  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_detailed);
+  if (bufptr != NULL)
+    {
+      goto end;
+    }
+
   check_count =
     MAX (PGBUF_MIN_NUM_VICTIMS, (int) (PGBUF_LRU_SIZE * prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO)));
+
+#if defined (SERVER_MODE)
+  if (pgbuf_Pool.monitor.lru_vict_waiting_threads > 0.1f * PGBUF_TOTAL_LRU)
+    {
+      /* many threads are already waiting for victim, give them first a change to acquire one */
+      thread_sleep (0.001f);
+    }
+#endif
 
   while (loop_count++ < INT_MAX)
     {
       for (sleep_count = 0; sleep_count < PGBUF_SLEEP_MAX; sleep_count++)
 	{
-	  /* allocate a BCB from invalid BCB list */
-	  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_detailed);
-	  if (bufptr != NULL)
-	    {
-	      goto end;
-	    }
+	  float sleep_time = 0.001f;
+	  int vict_waiting_threads;
 
 	  /* If the caller allocates a BCB successfully,
 	   * the caller is holding bufptr->BCB_mutex.
@@ -8475,13 +8488,28 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	      has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
 	    }
 
-	  if (loop_count >= 2 || sleep_before_next_try == true)
+	  vict_waiting_threads = ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_vict_waiting_threads, 1);
+
+	  count_did_sleep++;
+	  if (has_waiters_on_fixed == false)
 	    {
-	      count_did_sleep++;
-	      thread_sleep (0.001);	/* 1 microsecond */
-	      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_bcb_detailed,
-						   PSTAT_PB_ALLOC_BCB_SLEEP);
+	      if ((vict_waiting_threads > 0.2f * PGBUF_TOTAL_LRU) || ((loop_count % 4) == 0))
+		{
+		  sleep_time = 1.0f;
+		}
+	      else if ((vict_waiting_threads > 0.1f * PGBUF_TOTAL_LRU) && ((loop_count % 4) == 3))
+		{
+		  sleep_time = 0.1f;
+		}
+	      else if ((loop_count % 4) == 2)
+		{
+		  sleep_time = 0.01f;
+		}
 	    }
+
+	  thread_sleep (sleep_time);
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_vict_waiting_threads, -1);
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_bcb_detailed, PSTAT_PB_ALLOC_BCB_SLEEP);
 #endif /* SERVER_MODE */
 	}
 
@@ -9194,10 +9222,10 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 #define PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW 2
 #define PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE 2
 
-#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 40000
-#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 500
-#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 50000
-#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 500
+#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 4000000
+#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 500000
+#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 5000000
+#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 500000
 #define PGBUF_LOOP_CNT_FORCE_PRIVATE 1	/* basically disabled */
 
   PGBUF_BCB *victim = NULL;
@@ -14317,6 +14345,7 @@ pgbuf_initialize_page_monitor (void)
 
   monitor->lru_shared_pgs = 0;
   monitor->lru_garbage_pgs = 0;
+  monitor->lru_vict_waiting_threads = 0;
 
 exit:
   return error_status;
