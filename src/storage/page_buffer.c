@@ -9130,6 +9130,7 @@ pgbuf_get_shared_lru_index_with_victims (THREAD_ENTRY * thread_p)
       if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_2_non_dirty_cnt > 0)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_SUCCESS);
+          perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_LOOPS, loops);
 	  return lru_idx;
 	}
       prev_lru_idx = lru_idx;
@@ -9141,6 +9142,7 @@ pgbuf_get_shared_lru_index_with_victims (THREAD_ENTRY * thread_p)
     }
 
   /* looped for one generation and did not find anything. return current lru_idx */
+  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_LOOPS, loops);
   perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_FAIL);
   return lru_idx;
 }
@@ -9172,6 +9174,7 @@ pgbuf_get_private_lru_index_with_victims (THREAD_ENTRY * thread_p)
 	  && pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx] > pgbuf_Pool.quota.target_bcbs_per_lru[lru_idx])
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_SUCCESS);
+          perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_LOOPS, loops);
 	  return lru_idx;
 	}
       prev_lru_idx = lru_idx;
@@ -9184,6 +9187,7 @@ pgbuf_get_private_lru_index_with_victims (THREAD_ENTRY * thread_p)
 
   /* looped for one generation and did not find anything. return current lru_idx */
   perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_FAIL);
+  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_LOOPS, loops);
   return lru_idx;
 }
 
@@ -15963,7 +15967,8 @@ pgbuf_lru_update_victims_on_set_dirty (PGBUF_BCB * bcb)
   int count_non_dirty_prev;
   int bcbs_in_lru_list;
 
-  /* note: we don't have any latches here */
+  /* note: we don't have bcb/lru mutex here, but we should have write latch.
+   * note: there is one case of flush failure that calls this and has bcb mutex. */
   if (PGBUF_GET_ZONE (bcb->zone_lru) != PGBUF_LRU_2_ZONE)
     {
       /* we care only for zone 2 non-dirty */
