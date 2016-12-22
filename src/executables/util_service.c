@@ -262,6 +262,7 @@ static int process_heartbeat_replication (HA_CONF * ha_conf, int argc, const cha
 
 static int proc_execute (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err,
 			 int *pid);
+static void hide_cmd_line_args (char **args);
 static int process_master (int command_type);
 static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status, int command_type);
@@ -446,6 +447,7 @@ process_admin (int argc, char **argv)
   memcpy (copy_argv, argv, sizeof (char *) * argc);
   copy_argv[0] = argv[0];
   copy_argv[argc] = 0;
+
   status = proc_execute (UTIL_ADMIN_NAME, (const char **) copy_argv, true, false, false, NULL);
   free (copy_argv);
 
@@ -863,6 +865,12 @@ proc_execute (const char *file, const char *args[], bool wait_child, bool close_
     {
       int status = 0;
 
+      if (strcmp (file, "cub_admin") == 0)
+	{
+	  /* for hide password */
+	  hide_cmd_line_args ((char **) args);
+	}
+
       /* sleep (0); */
       if (wait_child)
 	{
@@ -895,6 +903,27 @@ proc_execute (const char *file, const char *args[], bool wait_child, bool close_
   return ER_GENERIC_ERROR;
 }
 #endif
+
+/*
+ * hide_cmd_line_args -
+ *
+ * return:
+ *
+ */
+static void
+hide_cmd_line_args (char **args)
+{
+#if defined (LINUX)
+  int i;
+
+  assert (args[0] != NULL && args[1] != NULL);
+
+  for (i = 2; args[i] != NULL; i++)
+    {
+      memset (args[i], '\0', strlen (args[i]));
+    }
+#endif /* LINUX */
+}
 
 /*
  * process_master -
