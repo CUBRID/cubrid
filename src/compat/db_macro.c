@@ -179,6 +179,12 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
+
+      if (precision == 0)
+	{
+	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+	}
       break;
 
     case DB_TYPE_BIT:
@@ -194,6 +200,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  error = ER_INVALID_PRECISION;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_BIT_PRECISION);
+	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+	}
+
+      if (precision == 0)
+	{
 	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
 	}
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
@@ -214,6 +225,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_VARBIT_PRECISION);
 	  value->domain.char_info.length = DB_MAX_VARBIT_PRECISION;
 	}
+
+      if (precision == 0)
+	{
+	  value->domain.char_info.length = DB_MAX_VARBIT_PRECISION;
+	}
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       break;
 
@@ -230,6 +246,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  error = ER_INVALID_PRECISION;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_CHAR_PRECISION);
+	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+	}
+
+      if (precision == 0)
+	{
 	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
 	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
@@ -249,6 +270,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  error = ER_INVALID_PRECISION;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NCHAR_PRECISION);
+	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
+	}
+
+      if (precision == 0)
+	{
 	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
 	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
@@ -291,6 +317,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  error = ER_INVALID_PRECISION;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_VARNCHAR_PRECISION);
+	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
+	}
+
+      if (precision == 0)
+	{
 	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
 	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
