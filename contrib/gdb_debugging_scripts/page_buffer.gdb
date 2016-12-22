@@ -280,3 +280,41 @@ define pgbuf_lru_print_vict
   p $first_lru1
   p $last_lru2
 end
+
+define pgbuf_lru_print_victim_status
+  set $pcnt = 0
+  set $scnt = 0
+  set $slists = 0
+  set $plists = 0
+  set $ploq = 0
+  set $ploq_full = 0
+  set $i = 0
+  while $i < pgbuf_Pool.num_LRU_list
+    if pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt > 0
+      set $scnt = $scnt + pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt
+      set $slists = $slists + 1
+      if monitor->bcbs_cnt_per_lru[$i] > quota->target_bcbs_per_lru[$i]
+        set $ploq = $ploq + 1
+        end
+    else
+      if monitor->bcbs_cnt_per_lru[$i] > quota->target_bcbs_per_lru[$i]
+        set $ploq_full = $ploq_full + 1
+        end
+      end
+    set $i = $i + 1
+    end
+  set $i = pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list
+  while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
+    if pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt > 0
+      set $pcnt = $pcnt + pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt
+      set $plists = $plists + 1
+      end
+    set $i = $i + 1
+    end
+  printf "Have non-dirty: \n"
+  printf "Private lru's: %d, total non-dirty count : %d, over quota = %d \n", $plists, $pcnt, $ploq
+  printf "Shared lru's: %d, total non-dirty count : %d \n", $slists, $scnt
+  pritnf "Don't have non-dirty: \n"
+  printf "Private lru's: %d, over quota = %d \n", pgbuf_Pool.quota.num_private_LRU_list - $plists, $ploq_full
+  printf "Shared lru's: %d \n", pgbuf_Pool.num_LRU_list - $slists
+  end
