@@ -1135,7 +1135,7 @@ static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int ch
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count,
 				    bool * sleep_before_next_try, PERF_UTIME_TRACKER * time_tracker);
 static PGBUF_BCB *pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count);
-static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool use_lru1_zone);
+static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
 static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx);
 static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
 static int pgbuf_remove_private_from_aout_list (const int lru_idx);
@@ -8445,7 +8445,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       for (sleep_count = 0; sleep_count < PGBUF_SLEEP_MAX; sleep_count++)
 	{
 	  float sleep_time = 0.001f;
+#if defined (SERVER_MODE)
 	  int vict_waiting_threads;
+#endif /* SERVER_MODE */
 
 	  /* If the caller allocates a BCB successfully,
 	   * the caller is holding bufptr->BCB_mutex.
@@ -8997,7 +8999,7 @@ pgbuf_get_shared_lru_index_for_add ()
   lru_idx = ATOMIC_INC_32 (&pgbuf_Pool.quota.add_shared_lru_idx, 1);
   refresh_stat_cnt = lru_idx % PAGE_ADD_REFRESH_STAT;
 
-  /* check if there is an in-balance BCBs distribution accros shared LRUs */
+  /* check if there is an in-balance BCBs distribution across shared LRUs */
   if (refresh_stat_cnt == 0)
     {
       int shared_lru_bcb_sum;
@@ -9130,8 +9132,14 @@ pgbuf_get_shared_lru_index_with_victims (THREAD_ENTRY * thread_p)
       if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_2_non_dirty_cnt > 0)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_SUCCESS);
-          perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_LOOPS, loops);
+	  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_LOOPS, loops);
 	  return lru_idx;
+	}
+      else
+	{
+	  /* this is considered failed victim request */
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
 	}
       prev_lru_idx = lru_idx;
       lru_idx = pgbuf_get_shared_lru_index_for_victim (thread_p);
@@ -9170,12 +9178,20 @@ pgbuf_get_private_lru_index_with_victims (THREAD_ENTRY * thread_p)
 
   for (loops = 0, lru_idx = start_lru_idx; lru_idx < start_lru_idx || !restarted; loops++)
     {
-      if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_2_non_dirty_cnt > 0
-	  && pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx] > pgbuf_Pool.quota.target_bcbs_per_lru[lru_idx])
+      if (pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx] > pgbuf_Pool.quota.target_bcbs_per_lru[lru_idx])
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_SUCCESS);
-          perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_LOOPS, loops);
-	  return lru_idx;
+	  if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_2_non_dirty_cnt > 0)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_SUCCESS);
+	      perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_LOOPS, loops);
+	      return lru_idx;
+	    }
+	  else
+	    {
+	      /* this is considered failed victim request */
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
+	    }
 	}
       prev_lru_idx = lru_idx;
       lru_idx = pgbuf_get_private_lru_index_for_victim (thread_p);
@@ -9222,15 +9238,6 @@ static PGBUF_BCB *
 pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool * sleep_before_next_try,
 		  PERF_UTIME_TRACKER * time_tracker)
 {
-#define PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW 2
-#define PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE 2
-
-#define PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT 4000000
-#define PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT 500000
-#define PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT 5000000
-#define PGBUF_LOOP_CNT_SHARED_IGNORE_STAT 500000
-#define PGBUF_LOOP_CNT_FORCE_PRIVATE 1	/* basically disabled */
-
   PGBUF_BCB *victim = NULL;
   int shared_lru_idx = -1, private_lru_idx = -1;
   int not_dirty_bcbs_in_lru;
@@ -9239,7 +9246,6 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
   PGBUF_PAGE_QUOTA *quota;
 
   PGBUF_LRU_LIST *lru_list = NULL;
-  bool force = false;
 
   monitor = &pgbuf_Pool.monitor;
   quota = &pgbuf_Pool.quota;
@@ -9249,28 +9255,30 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
   if (PGBUF_PAGE_QUOTA_IS_ENABLED && PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
     {
       /* try first my own private list */
-      force = loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT;
-
       private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
       lru_list = &pgbuf_Pool.buf_LRU_list[private_lru_idx];
 
       not_dirty_bcbs_in_lru = lru_list->LRU_2_non_dirty_cnt;
       pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], 1);
+
       /* todo: should we allow lru1 victimizations? */
-      if (force
-	  || ((not_dirty_bcbs_in_lru >= pending_vict_req)
-	      && (monitor->bcbs_cnt_per_lru[private_lru_idx] > quota->target_bcbs_per_lru[private_lru_idx])))
+      if (monitor->bcbs_cnt_per_lru[private_lru_idx] > quota->target_bcbs_per_lru[private_lru_idx])
 	{
 	  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
-	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, force);
-	  if (victim != NULL)
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[private_lru_idx], 1);
+
+	  if (not_dirty_bcbs_in_lru >= pending_vict_req)
 	    {
-	      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
-	      perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
-	      return victim;
+	      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
+	      if (victim != NULL)
+		{
+		  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
+		  return victim;
+		}
+	      /* failed */
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
 	    }
-	  /* failed */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
 	}
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
     }
@@ -9278,31 +9286,30 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
   if (PGBUF_PAGE_QUOTA_IS_ENABLED)
     {
       /* try another private list */
-      force = loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT;
-
-      private_lru_idx =
-	force ? pgbuf_get_private_lru_index_for_victim (thread_p) : pgbuf_get_private_lru_index_with_victims (thread_p);
+      private_lru_idx = pgbuf_get_private_lru_index_with_victims (thread_p);
       lru_list = &pgbuf_Pool.buf_LRU_list[shared_lru_idx];
 
       not_dirty_bcbs_in_lru = lru_list->LRU_2_non_dirty_cnt;
-      force = loop_count >= PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT;
 
       /* todo: should we allow lru1 victimizations? */
       pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], 1);
-      if (force
-	  || ((not_dirty_bcbs_in_lru >= pending_vict_req)
-	      && (monitor->bcbs_cnt_per_lru[private_lru_idx] > quota->target_bcbs_per_lru[private_lru_idx])))
+      if (monitor->bcbs_cnt_per_lru[private_lru_idx] > quota->target_bcbs_per_lru[private_lru_idx])
 	{
 	  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
-	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, force);
-	  if (victim != NULL)
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[private_lru_idx], 1);
+
+	  if (not_dirty_bcbs_in_lru >= pending_vict_req)
 	    {
-	      ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_SUCCESS);
-	      return victim;
+	      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
+	      if (victim != NULL)
+		{
+		  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_SUCCESS);
+		  return victim;
+		}
+	      /* failed */
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_FAIL);
 	    }
-	  /* failed */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_FAIL);
 	}
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
     }
@@ -9326,19 +9333,17 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
     }
 
   /* try a shared lru */
-  force = loop_count >= PGBUF_LOOP_CNT_SHARED_IGNORE_STAT;
-
-  shared_lru_idx =
-    force ? pgbuf_get_shared_lru_index_for_victim (thread_p) : pgbuf_get_shared_lru_index_with_victims (thread_p);
+  shared_lru_idx = pgbuf_get_shared_lru_index_with_victims (thread_p);
   lru_list = &pgbuf_Pool.buf_LRU_list[shared_lru_idx];
 
   not_dirty_bcbs_in_lru = lru_list->LRU_2_non_dirty_cnt;
 
   pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
-  if (force || (not_dirty_bcbs_in_lru >= pending_vict_req))
+  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[shared_lru_idx], 1);
+  if (not_dirty_bcbs_in_lru >= pending_vict_req)
     {
-      ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
-      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, force);
+      victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx);
       if (victim != NULL)
 	{
 	  ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], -1);
@@ -9353,14 +9358,6 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
 
   assert (victim == NULL);
   return victim;
-
-#undef PGBUF_MAX_THREADS_VICTIM_FROM_OVERFLOW
-#undef PGBUF_MAX_THREADS_VICTIM_FROM_GARBAGE
-#undef PGBUF_LOOP_CNT_GARBAGE_IGNORE_STAT
-#undef PGBUF_LOOP_CNT_PRIVATE_IGNORE_STAT
-#undef PGBUF_LOOP_CNT_OVERFLOW_IGNORE_STAT
-#undef PGBUF_LOOP_CNT_SHARED_IGNORE_STAT
-#undef PGBUF_LOOP_CNT_FORCE_PRIVATE
 }
 
 /*
@@ -9521,7 +9518,6 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb)
  *				       LRU list
  *   return: If success, BCB, otherwise NULL
  *   lru_idx (in)     : index of LRU list
- *   use_lru1_zone(in): true if allowed to victimize from LRU1 section (otherwise, only LRU2 is allowed)
  *
  * Note: This function disconnects BCB from the bottom of the LRU list and
  *       returns it if its fcnt == 0. If its fcnt != 0, makes bufptr->PrevBCB
@@ -9529,7 +9525,7 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb)
  *       holder of the LRU list.
  */
 static PGBUF_BCB *
-pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool use_lru1_zone)
+pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
 #define MIN_LRU_SEARCH_TO_FLUSH 16
 #define MIN_LRU_DIRTY_TO_FLUSH 4
@@ -9539,7 +9535,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
 #endif /* SERVER_MODE */
 
   PGBUF_BCB *bufptr;
-  int zone1_list;
   int zone2_list;
   int dirty_cnt;
   PGBUF_LRU_LIST *lru_list;
@@ -9551,6 +9546,9 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
 
   volatile PGBUF_BCB *victim_hint = NULL;
   bool restart_from_bottom = false;
+
+  int count_nd = 0;
+  int count_bcbs = 0;
 
   int count_avoid_victims = 0;
   int count_fixed = 0;
@@ -9564,7 +9562,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
       return NULL;
     }
 
-  zone1_list = use_lru1_zone ? (PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_1_ZONE)) : -1;
   zone2_list = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
 
   found = false;
@@ -9577,25 +9574,21 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
     }
 
   /* search for non dirty PGBUF */
-  /* todo: do we allow lru 1 zone victimization? */
 
-  if (!use_lru1_zone)
+  /* check non-dirty count. if it is 0, we can get out early */
+  count_nd = lru_list->LRU_2_non_dirty_cnt;
+  count_bcbs = pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx];
+  assert (count_nd >= 0 && count_nd <= count_bcbs);
+
+  /* todo: remove */
+  if (count_nd < 0 || count_nd > count_bcbs)
     {
-      /* check non-dirty count. if it is 0, we can get out early */
-      int count_nd = lru_list->LRU_2_non_dirty_cnt;
-      int count_bcbs = pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx];
-      assert (count_nd >= 0 && count_nd <= count_bcbs);
+      abort ();
+    }
 
-      /* todo: remove */
-      if (count_nd < 0 || count_nd > count_bcbs)
-	{
-	  abort ();
-	}
-
-      if (count_nd <= 0)
-        {
-          return NULL;
-        }
+  if (count_nd <= 0)
+    {
+      return NULL;
     }
 
   /* start searching with victim hint (if there is any */
@@ -9608,14 +9601,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
        /* go to previous bcb */
        bufptr = bufptr->prev_BCB,
        /* go back to list bottom if we reached the end of list or if we reached zone 1 and we only look in zone 2 */
-       bufptr =
-        (PGBUF_BCB *) ((bufptr == NULL
-                       || (!use_lru1_zone && bufptr->zone_lru != zone2_list)) ? lru_list->LRU_bottom : bufptr),
-        /* update from_beginning if we restarted from bottom */
+       bufptr = (PGBUF_BCB *) (bufptr == NULL || bufptr->zone_lru != zone2_list) ? lru_list->LRU_bottom : bufptr,
+       /* update from_beginning if we restarted from bottom */
        restart_from_bottom = restart_from_bottom || (bufptr == lru_list->LRU_bottom))
     {
       assert (bufptr != NULL);
-      assert (use_lru1_zone || bufptr->zone_lru == zone2_list);
+      assert (bufptr->zone_lru == zone2_list);
 
       if (bufptr->dirty)
 	{
@@ -9671,7 +9662,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
   if (!found)
     {
       bufptr = NULL;
-      perfmon_inc_stat (thread_p, use_lru1_zone ? PSTAT_PB_VICTIM_LRU_END_LIST : PSTAT_PB_VICTIM_LRU_END_ZONE_2);
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_ZONE_2);
     }
   if (victim_hint != NULL && restart_from_bottom)
     {
@@ -9709,9 +9700,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
 
   if (bufptr == NULL)
     {
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
-
       ATOMIC_INC_64 (&pgbuf_Temp_stats.skip_dirty, dirty_cnt);
       ATOMIC_INC_64 (&pgbuf_Temp_stats.skip_avoid_victims, count_avoid_victims);
       ATOMIC_INC_64 (&pgbuf_Temp_stats.skip_other_victims, count_other_victims);
@@ -9723,8 +9711,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
   if (bufptr->dirty == true || bufptr->avoid_victim == true
-      || (bufptr->zone_lru != zone2_list
-	  && bufptr->zone_lru != zone1_list)
+      || bufptr->zone_lru != zone2_list
       || bufptr->fcnt != 0
       || bufptr->latch_mode != PGBUF_NO_LATCH || pgbuf_is_exist_blocked_reader_writer_victim (bufptr) == true)
     {
@@ -9732,10 +9719,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
       pthread_mutex_unlock (&bufptr->BCB_mutex);
 
       ATOMIC_INC_64 (&pgbuf_Temp_stats.invalidated_after_mutex, 1);
-
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_lru_vict_req_failed, 1);
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
-
       return NULL;
     }
   else
@@ -9744,15 +9727,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
       /* disconnect bufptr from the LRU list */
       pgbuf_remove_from_lru_list (bufptr, lru_list);
 
-      /* todo: why aren't these in pgbuf_remove_from_lru_list */
-      if (bufptr->zone_lru == zone1_list)
-	{
-	  assert_release (use_lru1_zone == true);
-	  assert_release (lru_list->LRU_1_zone_cnt >= 1);
-	  assert_release (!PGBUF_IS_SHARED_LRU_INDEX (lru_idx));
-	  lru_list->LRU_1_zone_cnt -= 1;
-	}
-      if (bufptr->zone_lru == zone1_list || bufptr->zone_lru == zone2_list)
+      if (bufptr->zone_lru == zone2_list)
 	{
 	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx], -1);
 	}
@@ -9763,7 +9738,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
       pthread_mutex_unlock (&lru_list->LRU_mutex);
 
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_found_per_lru[lru_idx], 1);
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
 
       if (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx))
 	{
@@ -14575,7 +14549,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
       /* victim pressure sum of not served victimization requests and level of search for victim */
       vict_pressure_this_lru = (vict_req_this_lru - vict_found_this_lru) + vict_search_depth_this_lru;
 
-      /* assing non-zero flush priority for:
+      /* assign non-zero flush priority for:
        * - shared, private and garbage LRU having dirty pages 
        * - shared LRU if there is at least one shared LRU with dirty pages
        *   (this aims to avoid shared LRU-debalancing) */
