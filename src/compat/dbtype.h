@@ -987,6 +987,9 @@ typedef unsigned char *DB_C_NUMERIC;
 typedef void *DB_C_POINTER;
 typedef DB_IDENTIFIER DB_C_IDENTIFIER;
 
+/************************************************************************/
+/* TODO:Decide how do we handle the references copied from other headers*/
+/************************************************************************/
 
 /* From object_primitive.h */
 extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
@@ -1956,6 +1959,10 @@ db_get_enum_collation (const DB_VALUE * value)
 
   return value->domain.char_info.collation_id;
 }
+
+/************************************************************************/
+/* TODO:Decide how do we handle the references copied from other headers*/
+/************************************************************************/
 
 /* From storage_common.h */
 #define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
