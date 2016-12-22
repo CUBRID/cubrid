@@ -79,6 +79,8 @@ static PARSER_VARCHAR *sl_print_insert_att_names (PARSER_CONTEXT * parser, OBJ_T
 						  int num_assignments);
 static PARSER_VARCHAR *sl_print_update_att_set (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments,
 						int num_assignments);
+static DB_VALUE *sl_find_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments,
+				    int num_assignments);
 static PARSER_VARCHAR *sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments,
 					   int num_assignments);
 static PARSER_VARCHAR *sl_print_select (const PARSER_CONTEXT * parser, const char *class_name, PARSER_VARCHAR * key);
@@ -294,8 +296,8 @@ sl_print_midxkey (const PARSER_CONTEXT * parser, SM_ATTRIBUTE ** attributes, con
   return buffer;
 }
 
-static PARSER_VARCHAR *
-sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+static DB_VALUE *
+sl_find_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   int i;
 
@@ -303,12 +305,24 @@ sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIG
     {
       if (!strcmp (att_name, assignments[i]->att->header.name))
 	{
-	  return describe_value (parser, NULL, assignments[i]->variable);
+	  return assignments[i]->variable;
 	}
     }
   return NULL;
 }
 
+static PARSER_VARCHAR *
+sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+{
+  DB_VALUE *val;
+
+  val = sl_find_att_value (parser, att_name, assignments, num_assignments);
+  if (val != NULL)
+    {
+      return describe_value (parser, NULL, val);
+    }
+  return NULL;
+}
 
 static PARSER_VARCHAR *
 sl_print_update_att_set (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments, int num_assignments)
@@ -382,6 +396,9 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   PARSER_VARCHAR *buffer = NULL, *select = NULL;
   PARSER_VARCHAR *att_set, *pkey;
   PARSER_VARCHAR *serial_name, *serial_value;
+  DB_VALUE *cur_value, *incr_value;
+  DB_VALUE next_value;
+  char str_next_value[NUMERIC_MAX_STRING_SIZE];
   bool is_db_serial = false;
   int result;
 
@@ -394,8 +411,8 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       pkey = sl_print_pk (parser, inst_tp->class_, key);
       if (pkey == NULL)
 	{
-	  parser_free_parser (parser);
-	  return ER_FAILED;
+	  result = ER_FAILED;
+	  goto end;
 	}
 
       buffer = pt_append_nulstring (parser, buffer, "UPDATE [");
@@ -415,12 +432,32 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       /* db_serial */
       serial_name = sl_print_att_value (parser, "name", inst_tp->assignments, inst_tp->nassigns);
       trim_single_quote (serial_name);
-      buffer = pt_append_nulstring (parser, buffer, "SELECT [");
+
+      cur_value = sl_find_att_value (parser, "current_val", inst_tp->assignments, inst_tp->nassigns);
+      incr_value = sl_find_att_value (parser, "increment_val", inst_tp->assignments, inst_tp->nassigns);
+      if (cur_value == NULL || incr_value == NULL)
+	{
+	  result = ER_FAILED;
+	  goto end;
+	}
+
+      result = numeric_db_value_add (cur_value, incr_value, &next_value);
+      if (result != NO_ERROR)
+	{
+	  goto end;
+	}
+      numeric_db_value_print (&next_value, str_next_value);
+
+      buffer = pt_append_nulstring (parser, buffer, "ALTER SERIAL [");
       buffer = pt_append_varchar (parser, buffer, serial_name);
-      buffer = pt_append_nulstring (parser, buffer, "].next_value;");
+      buffer = pt_append_nulstring (parser, buffer, "] START WITH ");
+      buffer = pt_append_nulstring (parser, buffer, str_next_value);
+      buffer = pt_append_nulstring (parser, buffer, ";");
 
       result = sl_write_sql (buffer, NULL);
     }
+
+end:
   parser_free_parser (parser);
 
   if (result != NO_ERROR)
