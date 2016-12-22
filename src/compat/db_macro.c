@@ -172,16 +172,10 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  value->domain.numeric_info.scale = scale;
 	}
-      if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION))
+      if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION) || precision == 0)
 	{
 	  error = ER_INVALID_PRECISION;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
-	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
-	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
-	}
-
-      if (precision == 0)
-	{
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
