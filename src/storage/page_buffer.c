@@ -9258,7 +9258,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], 1);
       /* todo: should we allow lru1 victimizations? */
       if (force
-	  || ((not_dirty_bcbs_in_lru >= pending_vict_req + 1)
+	  || ((not_dirty_bcbs_in_lru >= pending_vict_req)
 	      && (monitor->bcbs_cnt_per_lru[private_lru_idx] > quota->target_bcbs_per_lru[private_lru_idx])))
 	{
 	  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
@@ -9290,7 +9290,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
       /* todo: should we allow lru1 victimizations? */
       pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], 1);
       if (force
-	  || ((not_dirty_bcbs_in_lru >= pending_vict_req + 1)
+	  || ((not_dirty_bcbs_in_lru >= pending_vict_req)
 	      && (monitor->bcbs_cnt_per_lru[private_lru_idx] > quota->target_bcbs_per_lru[private_lru_idx])))
 	{
 	  ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
@@ -9335,7 +9335,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
   not_dirty_bcbs_in_lru = lru_list->LRU_2_non_dirty_cnt;
 
   pending_vict_req = ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[shared_lru_idx], 1);
-  if (force || (not_dirty_bcbs_in_lru >= pending_vict_req + 1))
+  if (force || (not_dirty_bcbs_in_lru >= pending_vict_req))
     {
       ATOMIC_INC_32 (&monitor->lru_victim_req_cnt, 1);
       victim = pgbuf_get_victim_from_lru_list (thread_p, shared_lru_idx, force);
@@ -15962,7 +15962,7 @@ pgbuf_lru_update_victims_on_remove (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
   assert (count_non_dirty_prev > 0 && count_non_dirty_prev <= bcbs_in_lru_list);
 
   /* todo: remove me */
-  if (count_non_dirty_prev <= 0 || count_non_dirty_prev > bcbs_in_lru_list)
+  if (count_non_dirty_prev < 0 || count_non_dirty_prev > bcbs_in_lru_list)
     {
       abort ();
     }
@@ -15994,10 +15994,10 @@ pgbuf_lru_update_victims_on_set_dirty (PGBUF_BCB * bcb)
   lru_list = &pgbuf_Pool.buf_LRU_list[PGBUF_GET_LRU_INDEX (bcb->zone_lru)];
   count_non_dirty_prev = ATOMIC_INC_32 (&lru_list->LRU_2_non_dirty_cnt, -1);
   bcbs_in_lru_list = pgbuf_Pool.monitor.bcbs_cnt_per_lru[PGBUF_GET_LRU_INDEX (bcb->zone_lru)];
-  assert (count_non_dirty_prev > 0 && count_non_dirty_prev <= bcbs_in_lru_list);
+  assert (count_non_dirty_prev > 0);
 
   /* todo: remove me */
-  if (count_non_dirty_prev <= 0 || count_non_dirty_prev > bcbs_in_lru_list)
+  if (count_non_dirty_prev < 0)
     {
       abort ();
     }
@@ -16036,10 +16036,10 @@ pgbuf_lru_update_victims_on_add (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list, boo
   /* bufptr was considered non-dirty. we have to decrement the counter. */
   count_non_dirty_prev = ATOMIC_INC_32 (&lru_list->LRU_2_non_dirty_cnt, 1);
   bcbs_in_lru_list = pgbuf_Pool.monitor.bcbs_cnt_per_lru[PGBUF_GET_LRU_INDEX (bcb->zone_lru)];
-  assert (count_non_dirty_prev >= 0 && count_non_dirty_prev < bcbs_in_lru_list);
+  assert (count_non_dirty_prev > 0);
 
   /* todo: remove me */
-  if (count_non_dirty_prev < 0 || count_non_dirty_prev > bcbs_in_lru_list)
+  if (count_non_dirty_prev < 0)
     {
       abort ();
     }
