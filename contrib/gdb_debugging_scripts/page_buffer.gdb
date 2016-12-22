@@ -295,6 +295,14 @@ define pgbuf_lru_print_victim_status
     if pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt > 0
       set $scnt = $scnt + pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt
       set $slists = $slists + 1
+      end
+    set $i = $i + 1
+    end
+  set $i = pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list
+  while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
+    if pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt > 0
+      set $pcnt = $pcnt + pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt
+      set $plists = $plists + 1
       if pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i] > pgbuf_Pool.quota.target_bcbs_per_lru[$i]
         set $ploq = $ploq + 1
         set $ploq_cnt = $ploq_cnt + pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i] - pgbuf_Pool.quota.target_bcbs_per_lru[$i]
@@ -304,14 +312,6 @@ define pgbuf_lru_print_victim_status
         set $ploq_full = $ploq_full + 1
         set $ploq_cnt_full = $ploq_cnt_full + pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i] - pgbuf_Pool.quota.target_bcbs_per_lru[$i]
         end
-      end
-    set $i = $i + 1
-    end
-  set $i = pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list
-  while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
-    if pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt > 0
-      set $pcnt = $pcnt + pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt
-      set $plists = $plists + 1
       end
     set $i = $i + 1
     end
