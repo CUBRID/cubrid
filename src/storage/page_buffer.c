@@ -752,8 +752,10 @@ struct pgbuf_page_monitor
   /* LRU victimization */
   int *lru_victim_req_per_lru;	/* count of BCB victim requests */
   int *lru_pending_victim_req_per_lru;	/* count of pending victim requests */
+#if 0
   int *lru_victim_search_depth_per_lru;	/* depth of search (by workers) in this list */
   int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
+#endif
   int *lru_victim_found_per_lru;	/* count of BCB victims found (by flush thread) */
   int *lru_victim_pressure_per_lru;	/* current pressure on LRU to increase due to victimization */
 
@@ -1666,6 +1668,7 @@ pgbuf_finalize (void)
     {
       free_and_init (pgbuf_Pool.monitor.lru_pending_victim_req_per_lru);
     }
+#if 0
   if (pgbuf_Pool.monitor.lru_victim_search_depth_per_lru != NULL)
     {
       free_and_init (pgbuf_Pool.monitor.lru_victim_search_depth_per_lru);
@@ -1674,6 +1677,7 @@ pgbuf_finalize (void)
     {
       free_and_init (pgbuf_Pool.monitor.lru_victim_dirty_per_lru);
     }
+#endif
   if (pgbuf_Pool.monitor.lru_victim_found_per_lru != NULL)
     {
       free_and_init (pgbuf_Pool.monitor.lru_victim_found_per_lru);
@@ -9695,8 +9699,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       pgbuf_wakeup_flush_thread (thread_p);
     }
 
+#if 0
   ATOMIC_CGTAS_32 (&pgbuf_Pool.monitor.lru_victim_search_depth_per_lru[lru_idx], search_cnt, search_cnt);
   ATOMIC_CGTAS_32 (&pgbuf_Pool.monitor.lru_victim_dirty_per_lru[lru_idx], dirty_cnt, dirty_cnt);
+#endif
 
   if (bufptr == NULL)
     {
@@ -10284,8 +10290,10 @@ pgbuf_relocate_chain_private_lru_to_shared (const int private_lru_idx)
   private_lru_list->LRU_1_zone_cnt = 0;
 
   ATOMIC_TAS_32 (&monitor->bcbs_cnt_per_lru[private_lru_idx], 0);
+#if 0
   ATOMIC_TAS_32 (&monitor->lru_victim_search_depth_per_lru[private_lru_idx], 0);
   ATOMIC_TAS_32 (&monitor->lru_victim_dirty_per_lru[private_lru_idx], 0);
+#endif
   ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[private_lru_idx], 0);
   ATOMIC_TAS_32 (&monitor->lru_victim_found_per_lru[private_lru_idx], 0);
 
@@ -14169,6 +14177,7 @@ pgbuf_initialize_page_monitor (void)
       goto exit;
     }
 
+#if 0
   monitor->lru_victim_search_depth_per_lru =
     (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_search_depth_per_lru[0]));
   if (monitor->lru_victim_search_depth_per_lru == NULL)
@@ -14187,6 +14196,7 @@ pgbuf_initialize_page_monitor (void)
 	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_dirty_per_lru[0])));
       goto exit;
     }
+#endif
 
   monitor->lru_victim_found_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_found_per_lru[0]));
   if (monitor->lru_victim_found_per_lru == NULL)
@@ -14298,8 +14308,10 @@ pgbuf_initialize_page_monitor (void)
 
       monitor->lru_victim_req_per_lru[i] = 0;
       monitor->lru_pending_victim_req_per_lru[i] = 0;
+#if 0
       monitor->lru_victim_search_depth_per_lru[i] = 0;
       monitor->lru_victim_dirty_per_lru[i] = 0;
+#endif
       monitor->lru_victim_found_per_lru[i] = 0;
       monitor->lru_victim_pressure_per_lru[i] = 0;
       monitor->lru2_tick[i] = 0;
@@ -14486,19 +14498,11 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
   int cnt;
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
   int i;
-  int total_lru_vict_search_depth;
   int total_lru_vict_req;
-  int total_lru_dirties_found;
   int vict_req_this_lru;
-  int vict_search_depth_this_lru;
-  int vict_dirty_this_lru;
-  int cand_found_in_this_lru = 0;
   int vict_found_this_lru;
   int vict_pressure_this_lru;
-  int bcb_this_lru;
   float flush_priority_this_lru;
-  int max_vict_dirty_shared_lru;
-  int lru_with_victim_req_cnt;
 
   PGBUF_PAGE_MONITOR *monitor;
 
@@ -14506,93 +14510,33 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 
   assert (lru_sum_flush_priority != NULL);
 
-  total_lru_vict_search_depth = 0;
-  total_lru_dirties_found = 0;
   *lru_sum_flush_priority = 0;
-  lru_with_victim_req_cnt = 0;
-  max_vict_dirty_shared_lru = -1;
-
-  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
-    {
-      vict_dirty_this_lru = monitor->lru_victim_dirty_per_lru[i];
-      total_lru_dirties_found += vict_dirty_this_lru;
-      total_lru_vict_search_depth += monitor->lru_victim_search_depth_per_lru[i];
-      if (monitor->lru_victim_req_per_lru[i] > 0)
-	{
-	  lru_with_victim_req_cnt++;
-	}
-
-      if (PGBUF_IS_SHARED_LRU_INDEX (i) && vict_dirty_this_lru > max_vict_dirty_shared_lru)
-	{
-	  max_vict_dirty_shared_lru = vict_dirty_this_lru;
-	}
-    }
 
   total_lru_vict_req = monitor->lru_victim_req_cnt;
-  if (lru_with_victim_req_cnt <= 0 || total_lru_vict_req <= 0 || total_lru_dirties_found <= 0)
+  if (total_lru_vict_req <= 0)
     {
       return;
     }
 
-  assert (total_lru_vict_search_depth > 0);
-
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
-      bcb_this_lru = monitor->bcbs_cnt_per_lru[i];
 
       /* reset victim counters on this LRU */
       vict_req_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[i], 0);
       vict_found_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_found_per_lru[i], 0);
-      vict_search_depth_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_search_depth_per_lru[i], 0);
-      vict_dirty_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_dirty_per_lru[i], 0);
 
       /* victim pressure sum of not served victimization requests and level of search for victim */
-      vict_pressure_this_lru = (vict_req_this_lru - vict_found_this_lru) + vict_search_depth_this_lru;
+      vict_pressure_this_lru = (vict_req_this_lru - vict_found_this_lru);
 
-      /* assign non-zero flush priority for:
-       * - shared, private and garbage LRU having dirty pages 
-       * - shared LRU if there is at least one shared LRU with dirty pages
-       *   (this aims to avoid shared LRU-debalancing) */
-      if (vict_dirty_this_lru > 0 || (PGBUF_IS_SHARED_LRU_INDEX (i) && max_vict_dirty_shared_lru > 0))
-	{
-	  float vict_req_term;
-	  float lru_size_term;
-	  float lru_search_term;
-	  float lru_dirty_term;
-
-	  vict_req_term = (float) vict_req_this_lru / (float) total_lru_vict_req;
-
-	  lru_size_term = (float) bcb_this_lru / (float) pgbuf_Pool.num_buffers;
-
-	  lru_dirty_term = (float) vict_dirty_this_lru / (float) total_lru_dirties_found;
-
-	  lru_search_term = (float) vict_search_depth_this_lru / (float) total_lru_vict_search_depth;
-
-	  /* TODO : it seems more complex formula introduces spikes of flush priority for some LRUs due to varying
-	   * dirty page count;
-	   * For now, just use simpler 'request victimization' which is more flat */
+      /* TODO : it seems more complex formula introduces spikes of flush priority for some LRUs due to varying
+	* dirty page count;
+	* For now, just use simpler 'request victimization' which is more flat */
 
 #if 0
-	  flush_priority_this_lru = vict_req_term + (lru_search_term + lru_size_term) / 10 + lru_dirty_term / 2;
+      flush_priority_this_lru = vict_req_term + (lru_search_term + lru_size_term) / 10 + lru_dirty_term / 2;
 #else
-	  if (PGBUF_IS_SHARED_LRU_INDEX (i))
-	    {
-	      flush_priority_this_lru = (float) MAX (vict_req_this_lru, vict_search_depth_this_lru);
-	    }
-	  else if (PGBUF_IS_GARBAGE_LRU_INDEX (i))
-	    {
-	      flush_priority_this_lru = (float) bcb_this_lru;
-	    }
-	  else
-	    {
-	      flush_priority_this_lru = (float) vict_search_depth_this_lru;
-	    }
+      flush_priority_this_lru = (float) vict_req_this_lru;
 #endif
-	}
-      else
-	{
-	  flush_priority_this_lru = 0;
-	}
 
       pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] = flush_priority_this_lru;
 
