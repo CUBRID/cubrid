@@ -1740,11 +1740,13 @@ pgbuf_finalize (void)
       free_and_init (pgbuf_Pool.monitor.lru_relocated_destroyed_pages);
     }
 #endif
+#if 0
   if (pgbuf_Pool.flushed_bcb_cache != NULL)
     {
       lf_circular_queue_destroy (pgbuf_Pool.flushed_bcb_cache);
       pgbuf_Pool.flushed_bcb_cache = NULL;
     }
+#endif
 }
 
 /*
