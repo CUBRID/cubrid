@@ -9376,8 +9376,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
     }
 
-  while (!lf_circular_queue_consume (pgbuf_Pool.flushed_bcb_cache, &bcb_flushed))
+  while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcb_cache, &bcb_flushed))
     {
+      assert (bcb_flushed != NULL);
       if (pgbuf_victimize_bcb_directly (thread_p, bcb_flushed))
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_CACHE_SUCCESS);
