@@ -1088,7 +1088,7 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	    {
 	      PT_NODE *spec = statement->info.query.q.select.from;
 
-	      while (spec != NULL)
+	      while (spec != NULL && local != PT_NOT_UPDATABLE)	/* PT_NOT_UPDATABLE is added to avoid unncessary loop */
 		{
 		  if (spec->info.spec.derived_table != NULL)
 		    {
@@ -1100,9 +1100,10 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 			}
 		      else
 			{
-			  /* derived tables are not updatable */
-			  local = PT_NOT_UPDATABLE;
-			  break;
+			  /* added to allow inline view update */
+			  local &=
+			    mq_updatable_local (parser, spec->info.spec.derived_table, classes, num_classes, max);
+
 			}
 		    }
 		  spec = spec->next;
@@ -1152,8 +1153,14 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	    }
 	  break;
 
-	default:
-	  local &= PT_NOT_UPDATABLE;
+	  /* added to explicitly disallow set operators */
+	case PT_INTERSECTION:
+	case PT_DIFFERENCE:
+	  local = PT_NOT_UPDATABLE;
+	  break;
+
+	default:  /* most of sql statements are updatable */
+	  local &= PT_UPDATABLE;
 	  break;
 	}
 
@@ -6081,7 +6088,7 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
       return statement;
     }
 
-  while (*spec)
+  while (spec && *spec)		/* NULL checking of 'spec' is added to avoid segmentation fault */
     {
       /* view definitions for select and for update might look different, so make sure to fetch the correct one */
       PT_FETCH_AS fetch_as = PT_SELECT;
@@ -6160,7 +6167,15 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 	}
 
       /* next! */
-      spec = &((*spec)->next);
+      /* to avoid segmentation fault */
+      if (*spec)
+	{
+	  spec = &((*spec)->next);
+	}
+      else
+	{
+	  spec = NULL;
+	}
     }
 
   return statement;

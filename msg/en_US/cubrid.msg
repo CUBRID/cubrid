@@ -1713,6 +1713,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Invalid use of aggregate functions.
 293 Value must be strictly increasing for each partition.
 294 Cannot use function or filter indexes on local timezone typed columns.
+295 This inline view is not updatable.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
@@ -1795,7 +1796,6 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Invalid isolation level: %1$s schema, %2$s instances.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
-
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** invalid cache ***

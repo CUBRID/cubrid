@@ -9807,12 +9807,23 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
 	  if (entity->info.spec.derived_table != NULL)
 	    {
+/* commented to allow inline view update */
+#if 0				
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
 	      break;
+#endif
+	      /* check inline view updatability */
+	      if (mq_updatable (parser, entity->info.spec.derived_table) == PT_NOT_UPDATABLE)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INLINEVIEW_NOT_UPDATABLE, NULL);
+		  break;
+		}
+
 	    }
 
 	  /* Update of views hierarchies not allowed */
-	  if (db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
+	  if (entity->info.spec.flat_entity_list	/* added to avoid segmentation fault */
+	      && db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
 	      && entity->info.spec.only_all == PT_ALL)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_SUBVCLASS_NOT_ALLOWED,
