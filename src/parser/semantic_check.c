@@ -9808,7 +9808,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  if (entity->info.spec.derived_table != NULL)
 	    {
 /* commented to allow inline view update */
-#if 0				
+#if 0
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
 	      break;
 #endif
