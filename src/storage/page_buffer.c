@@ -1325,10 +1325,11 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
 #endif
 {
   PGBUF_BUFFER_HASH *hash_anchor;
-  PGBUF_BCB *bufptr = NULL;
+  PGBUF_BCB *src_bufptr = NULL, *dest_bufptr = NULL;
   PAGE_PTR src_pgptr = NULL;
   UINT64 count_modifications = 0;
   int err = NO_ERROR;
+  PAGE_TYPE page_type;
 
   assert (page_ptr != NULL);
 
@@ -1344,21 +1345,19 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
 
   hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)];
 
-  bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
-  if (bufptr == NULL)
+  src_bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
+  if (src_bufptr == NULL)
     {
       /* not in memory, I can't get the page */
       goto exit_on_error;
     }
 
-  (void) pgbuf_set_bcb_page_vpid (thread_p, bufptr);
-
-  if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
+  if (pgbuf_check_bcb_page_vpid (thread_p, src_bufptr) != true)
     {
       goto exit_on_error;
     }
 
-  if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
+  if (src_bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
     {
       /* this page is not allocated. we allow it if the caller wants to initialize new page or if it specifies it wants
        * to fix the deallocated page */
@@ -1368,25 +1367,37 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
       goto exit_on_error;
     }
 
-  CAST_BFPTR_TO_PGPTR (src_pgptr, bufptr);
-  count_modifications = ATOMIC_INC_64 (&bufptr->count_modifications, 0LL);
+  CAST_BFPTR_TO_PGPTR (src_pgptr, src_bufptr);
+  count_modifications = ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL);
   if (count_modifications & 1)
     {
       goto exit_on_error;
     }
+  page_type = src_bufptr->iopage_buffer->iopage.prv.ptype;
   memcpy (page_ptr, src_pgptr, IO_PAGESIZE);
-  if (count_modifications != ATOMIC_INC_64 (&bufptr->count_modifications, 0LL))
+  if (count_modifications != ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL))
     {
       goto exit_on_error;
     }
 
-  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  assert (VPID_EQ (vpid, &src_bufptr->vpid));
+
+  /* TO DO - move in LRU lists */
+
+  pthread_mutex_unlock (&src_bufptr->BCB_mutex);
+
+  CAST_PGPTR_TO_BFPTR (dest_bufptr, page_ptr);
+  VPID_COPY (&dest_bufptr->vpid, vpid);
+  dest_bufptr->iopage_buffer->iopage.prv.pageid = NULL_PAGEID;
+  dest_bufptr->iopage_buffer->iopage.prv.volid = NULL_VOLID;
+  pgbuf_set_page_ptype (thread_p, page_ptr, page_type);
+
   return NO_ERROR;
 
 exit_on_error:
-  if (bufptr)
+  if (src_bufptr)
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      pthread_mutex_unlock (&src_bufptr->BCB_mutex);
     }
 
   return (err == NO_ERROR && (err = er_errid ()) == NO_ERROR) ? ER_FAILED : err;
@@ -12608,7 +12619,7 @@ pgbuf_start_modification (PAGE_PTR pgptr)
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   PGBUF_BCB_START_MODIFICATION (bufptr);
-#endif  
+#endif
 }
 
 /*
@@ -12667,3 +12678,104 @@ pgbuf_reset_modification (PAGE_PTR pgptr)
   PGBUF_BCB_RESET_MODIFICATION (bufptr);
 #endif
 }
+
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_get_tran_bcb_area () - Get transaction BCB area
+ *   return: error code
+ *
+ *   thread_p(in): thread entry
+ *   tran_bcb (out): transaction BCB area
+ */
+int
+pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **area)
+{
+  PGBUF_BCB *bufptr = NULL;
+  PGBUF_IOPAGE_BUFFER *ioptr = NULL;
+
+  assert (area != NULL);
+  bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
+  if (bufptr == NULL)
+    {
+      bufptr = (PGBUF_BCB *) malloc ((size_t) PGBUF_BCB_SIZE);
+      if (bufptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PGBUF_BCB_SIZE);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      ioptr = (PGBUF_IOPAGE_BUFFER *) malloc ((size_t) PGBUF_IOPAGE_BUFFER_SIZE);
+      if (ioptr == NULL)
+	{
+	  free_and_init (bufptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PGBUF_IOPAGE_BUFFER_SIZE);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      pthread_mutex_init (&bufptr->BCB_mutex, NULL);
+      bufptr->ipool = -1;
+      VPID_SET_NULL (&bufptr->vpid);
+      bufptr->fcnt = 0;
+      bufptr->latch_mode = PGBUF_LATCH_INVALID;
+      bufptr->next_wait_thrd = NULL;
+      bufptr->hash_next = NULL;
+      bufptr->prev_BCB = NULL;
+      bufptr->next_BCB = NULL;
+      bufptr->dirty = false;
+      bufptr->avoid_dealloc_cnt = 0;
+      PGBUF_BCB_RESET_MODIFICATION (bufptr);
+      bufptr->avoid_victim = false;
+      bufptr->async_flush_request = false;
+      bufptr->victim_candidate = false;
+      bufptr->zone = PGBUF_INVALID_ZONE;
+      LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+      /* link BCB and iopage buffer */
+      LSA_SET_NULL (&ioptr->iopage.prv.lsa);
+      /* Init Page identifier */
+      ioptr->iopage.prv.pageid = -1;
+      ioptr->iopage.prv.volid = -1;
+#if 1				/* do not delete me */
+      ioptr->iopage.prv.ptype = '\0';
+      ioptr->iopage.prv.pflag_reserve_1 = '\0';
+      ioptr->iopage.prv.p_reserve_2 = 0;
+      ioptr->iopage.prv.p_reserve_3 = 0;
+#endif
+      bufptr->iopage_buffer = ioptr;
+      ioptr->bcb = bufptr;
+#if defined(CUBRID_DEBUG)
+      /* Reinitizalize the buffer */
+      pgbuf_scramble (&bufptr->iopage_buffer->iopage);
+      memcpy (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard));
+#endif /* CUBRID_DEBUG */
+      thread_p->tran_bcb = bufptr;
+    }
+
+  *area = bufptr->iopage_buffer->iopage.page;
+  assert (*area != NULL);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_finalize_tran_bcb () - Finalize transaction BCB
+ *   return: error code
+ *
+ *   thread_p(in): thread entry
+ *   tran_bcb (out): transaction BCB area
+ */
+void
+pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
+{
+  PGBUF_BCB *bufptr;
+  bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
+  if (bufptr)
+    {
+      if (bufptr->iopage_buffer)
+	{
+	  free_and_init (bufptr->iopage_buffer);
+	}
+      free_and_init (thread_p->tran_bcb);
+    }
+}
+#endif

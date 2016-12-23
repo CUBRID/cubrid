@@ -1173,6 +1173,8 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   fi_thread_init (entry_p);
 #endif
 
+  entry_p->tran_bcb = NULL;
+
   return NO_ERROR;
 }
 

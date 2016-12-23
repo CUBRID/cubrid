@@ -2974,7 +2974,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 		      HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		      HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
-		      HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id)
+		      HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id,
+		      bool copy_leaf_page_allowed)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp;
@@ -3039,6 +3040,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* index scan info */
   BTS = &isidp->bt_scan;
   BTREE_INIT_SCAN (BTS);
+
+  BTS->copy_leaf_page_allowed = copy_leaf_page_allowed;
 
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
@@ -5763,8 +5766,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       recdes.data = NULL;
     }
 
-  sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				      NULL_CHN);
+  sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, true, &isidp->scan_cache,
+				      scan_id->fixed, NULL_CHN);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
     {
       if (SCAN_IS_INDEX_COVERED (isidp))

@@ -357,6 +357,8 @@ struct thread_entry
 #if !defined(NDEBUG)
   struct fi_test_item *fi_test_array;
 #endif
+
+  void *tran_bcb;
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
@@ -526,6 +528,7 @@ extern void *thread_worker (void *);
 #endif /* !WINDOWS */
 
 extern int thread_first_vacuum_worker_thread_index (void);
+extern int thread_get_bcb (void **thread_bcb);
 
 extern bool thread_is_auto_volume_expansion_thread_available (void);
 

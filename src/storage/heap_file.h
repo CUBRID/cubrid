@@ -372,8 +372,8 @@ struct heap_get_context
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache;	/* scan cache */
 
+  char *page_copy_buffer_ptr;
   /* physical page watchers  */
-  char home_page_copy_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   PGBUF_WATCHER home_page_watcher;	/* home page */
   PGBUF_WATCHER fwd_page_watcher;	/* forward page */
 
@@ -383,6 +383,7 @@ struct heap_get_context
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
+  bool copy_leaf_page_allowed;
 };
 
 /* Forward definition. */
@@ -652,15 +653,16 @@ extern bool heap_should_try_update_stat (const int current_freespace, const int 
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+					   bool copy_leaf_page_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking,
+					   int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 						int old_chn);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
-				   OID * class_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				   int old_chn);
+				   OID * class_oid, RECDES * recdes, bool copy_leaf_page_allowed,
+				   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
 extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,

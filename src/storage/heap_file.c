@@ -7244,7 +7244,7 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   bool is_system_class = false;
   int retry_count = 1, retry_max = 5;
   VPID object_vpid;
-  PAGE_PTR page_ptr;
+  PAGE_PTR page_ptr = NULL;
   bool need_latch = false;
 
   assert (context->oid_p != NULL);
@@ -7254,12 +7254,19 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   need_latch = true;
 try_again:
 #if defined(SERVER_MODE)
-  if (latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY && context->home_page_watcher.pgptr == NULL)
+  if (context->copy_leaf_page_allowed
+      && latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY && context->home_page_watcher.pgptr == NULL)
     {
-      page_ptr = PTR_ALIGN (context->home_page_copy_buffer, MAX_ALIGNMENT);
-      if (pgbuf_copy (thread_p, &object_vpid, page_ptr, IO_PAGESIZE) == NO_ERROR)
+      ret = pgbuf_get_tran_bcb_area (thread_p, &context->page_copy_buffer_ptr);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      if (pgbuf_copy (thread_p, &object_vpid, context->page_copy_buffer_ptr, IO_PAGESIZE) == NO_ERROR)
 	{
 	  need_latch = false;
+	  page_ptr = context->page_copy_buffer_ptr;
 	}
       else
 	{
@@ -7529,7 +7536,7 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
   home_page = context->home_page_watcher.pgptr;
   if (home_page == NULL)
     {
-      home_page = PTR_ALIGN (context->home_page_copy_buffer, MAX_ALIGNMENT);
+      home_page = context->page_copy_buffer_ptr;
     }
   num_slots = spage_number_of_slots (home_page);
   forward_page = context->fwd_page_watcher.pgptr;
@@ -7626,7 +7633,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   home_page_ptr = context->home_page_watcher.pgptr;
   if (home_page_ptr == NULL)
     {
-      home_page_ptr = PTR_ALIGN (context->home_page_copy_buffer, MAX_ALIGNMENT);
+      home_page_ptr = context->page_copy_buffer_ptr;
     }
   num_slots = spage_number_of_slots (home_page_ptr);
 
@@ -8212,7 +8219,7 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
 	  /* Scanrange starts with the given object */
 	  scan_range->first_oid = *start_oid;
 	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid,
-					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN);
+					   &recdes, false, &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -8323,7 +8330,7 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 	  scan_range->last_oid = *last_oid;
 	  scan =
 	    heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid, &recdes,
-				      &scan_range->scan_cache, PEEK, NULL_CHN);
+				      false, &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -8419,7 +8426,7 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes, H
       /* Retrieve the first object in the scanrange */
       *next_oid = scan_range->first_oid;
       scan =
-	heap_get_visible_version (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes,
+	heap_get_visible_version (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes, false,
 				  &scan_range->scan_cache, ispeeking, NULL_CHN);
       if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
@@ -8818,7 +8825,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
   scan_cache.mvcc_snapshot = &copy_mvcc_snapshot;
 
   /* Check only if the last version of the object is not deleted, see mvcc_is_not_deleted_for_snapshot return values */
-  scan = heap_get_visible_version (thread_p, oid, class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
+  scan = heap_get_visible_version (thread_p, oid, class_oid, NULL, false, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       goto exit_on_end;
@@ -24171,12 +24178,13 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  */
 SCAN_CODE
 heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			  bool copy_leaf_page_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, copy_leaf_page_allowed, scan_cache, ispeeking,
+			 old_chn);
 
   scan = heap_get_visible_version_internal (thread_p, &context, false);
 
@@ -24213,7 +24221,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, false, scan_cache, ispeeking, old_chn);
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
@@ -24596,7 +24604,8 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 */
 void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid, OID * class_oid,
-		       RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+		       RECDES * recdes, bool copy_leaf_page_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking,
+		       int old_chn)
 {
   context->oid_p = oid;
   context->class_oid_p = class_oid;
@@ -24623,6 +24632,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
     {
       context->latch_mode = PGBUF_LATCH_READ;
     }
+  context->copy_leaf_page_allowed = copy_leaf_page_allowed;
 }
 
 /*
@@ -24714,7 +24724,7 @@ heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * 
   /* for debugging set root_oid NULL and check afterwards if it really is root oid */
   OID_SET_NULL (&root_oid);
 #endif /* !NDEBUG */
-  heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, scan_cache, ispeeking, NULL_CHN);
+  heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, false, scan_cache, ispeeking, NULL_CHN);
 
   scan = heap_get_last_version (thread_p, &context);
 

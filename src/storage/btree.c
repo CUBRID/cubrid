@@ -550,9 +550,9 @@ typedef int BTREE_ROOT_WITH_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID * btid, 
  * btree_split_node_and_advance.
  */
 typedef int BTREE_ADVANCE_WITH_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-					     PAGE_PTR * crt_page, PAGE_PTR * advance_to_page, bool * is_leaf,
-					     BTREE_SEARCH_KEY_HELPER * search_key, bool * stop, bool * restart,
-					     void *other_args);
+					     char *page_copy_buffer, PAGE_PTR * crt_page, PAGE_PTR * advance_to_page,
+					     bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key, bool * stop,
+					     bool * restart, void *other_args);
 
 /* BTREE_PROCESS_KEY_FUNCTION -
  * btree_search_key_and_apply_functions internal function called after
@@ -1314,8 +1314,8 @@ static int btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR 
 static int btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
 			     VPID * P_vpid, VPID * Q_vpid, VPID * R_vpid, BTREE_NODE_TYPE node_type, DB_VALUE * key,
 			     BTREE_INSERT_HELPER * helper, VPID * child_vpid);
-static PAGE_PTR btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
-				  INT16 * slot_id, bool * found_p);
+static PAGE_PTR btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, char *page_copy_buffer,
+				  VPID * pg_vpid, INT16 * slot_id, bool * found_p);
 static int btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS, BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_leftmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 					  BTREE_STATS * stat_info_p);
@@ -1490,7 +1490,8 @@ static char *btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE 
 				BTREE_OBJECT_INFO * object_info);
 
 static int btree_search_key_and_apply_functions (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int,
-						 DB_VALUE * key, BTREE_ROOT_WITH_KEY_FUNCTION * root_fnct,
+						 DB_VALUE * key, char *page_copy_buffer,
+						 BTREE_ROOT_WITH_KEY_FUNCTION * root_fnct,
 						 void *root_args, BTREE_ADVANCE_WITH_KEY_FUNCTION * advance_fnct,
 						 void *advance_args, BTREE_PROCESS_KEY_FUNCTION * leaf_fnct,
 						 void *process_key_args, BTREE_SEARCH_KEY_HELPER * search_key,
@@ -1499,9 +1500,9 @@ static int btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_I
 				    PAGE_PTR * root_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
 				    bool * stop, bool * restart, void *other_args);
 static int btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-				       PAGE_PTR * crt_page, PAGE_PTR * advance_to_page, bool * is_leaf,
-				       BTREE_SEARCH_KEY_HELPER * search_key, bool * stop, bool * restart,
-				       void *other_args);
+				       char *page_copy_buffer, PAGE_PTR * crt_page, PAGE_PTR * advance_to_page,
+				       bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key, bool * stop,
+				       bool * restart, void *other_args);
 static int btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 					      PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 					      bool * restart, void *other_args);
@@ -1558,9 +1559,9 @@ static int btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID
 				      PAGE_PTR * root_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
 				      bool * stop, bool * restart, void *other_args);
 static int btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-					 PAGE_PTR * crt_page, PAGE_PTR * advance_to_page, bool * is_leaf,
-					 BTREE_SEARCH_KEY_HELPER * search_key, bool * stop, bool * restart,
-					 void *other_args);
+					 char *page_copy_buffer, PAGE_PTR * crt_page, PAGE_PTR * advance_to_page,
+					 bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key, bool * stop,
+					 bool * restart, void *other_args);
 static int btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page,
 					BTREE_NODE_TYPE node_type, int key_len, BTREE_INSERT_HELPER * helper,
 					bool known_to_be_found);
@@ -1614,9 +1615,9 @@ static int btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID
 				      PAGE_PTR * root_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
 				      bool * stop, bool * restart, void *other_args);
 static int btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-					 PAGE_PTR * crt_page, PAGE_PTR * advance_to_page, bool * is_leaf,
-					 BTREE_SEARCH_KEY_HELPER * search_key, bool * stop, bool * restart,
-					 void *other_args);
+					 char *page_copy_buffer, PAGE_PTR * crt_page, PAGE_PTR * advance_to_page,
+					 bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key, bool * stop,
+					 bool * restart, void *other_args);
 static int btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 					   PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 					   void *other_args);
@@ -1710,6 +1711,7 @@ STATIC_INLINE void btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *btree_purpose_to_string (BTREE_OP_PURPOSE purpose) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *btree_op_type_to_string (int op_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void btree_unfix_and_init_current_page (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
@@ -6649,7 +6651,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 
       if (BTS->C_page != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, BTS->C_page);
+	  btree_unfix_and_init_current_page (thread_p, BTS);
 	}
 
       if (BTS->O_page != NULL)
@@ -6694,7 +6696,7 @@ end:
 
   if (BTS->C_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, BTS->C_page);
+      btree_unfix_and_init_current_page (thread_p, BTS);
     }
 
   if (BTS->O_page != NULL)
@@ -6781,7 +6783,7 @@ end:
 
   if (BTS->C_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, BTS->C_page);
+      btree_unfix_and_init_current_page (thread_p, BTS);
     }
 
   if (BTS->O_page != NULL)
@@ -14125,8 +14127,8 @@ exit_on_error:
  *	 the key, or would contain the key if the key was to be located.
  */
 static PAGE_PTR
-btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid, INT16 * slot_id,
-		  bool * found_p)
+btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, char *page_copy_buffer, VPID * pg_vpid,
+		  INT16 * slot_id, bool * found_p)
 {
   PAGE_PTR leaf_page = NULL;	/* Leaf node page pointer. */
   /* Search key result. */
@@ -14143,7 +14145,7 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
   *found_p = false;
 
   /* Advance in b-tree following key until leaf node is reached. */
-  if (btree_search_key_and_apply_functions (thread_p, btid_int->sys_btid, NULL, key, NULL, NULL,
+  if (btree_search_key_and_apply_functions (thread_p, btid_int->sys_btid, NULL, key, page_copy_buffer, NULL, NULL,
 					    btree_advance_and_find_key, slot_id, NULL, NULL, &search_key,
 					    &leaf_page) != NO_ERROR)
     {
@@ -16209,7 +16211,7 @@ end:
   if (bts->C_page != NULL)
     {
       LSA_COPY (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page));
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      btree_unfix_and_init_current_page (thread_p, bts);
     }
 
   if (bts->O_page != NULL)
@@ -16355,7 +16357,7 @@ end:
 
   if (BTS->C_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, BTS->C_page);
+      btree_unfix_and_init_current_page (thread_p, BTS);
     }
 
   if (BTS->O_page != NULL)
@@ -22204,10 +22206,11 @@ error:
  */
 static int
 btree_search_key_and_apply_functions (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int, DB_VALUE * key,
-				      BTREE_ROOT_WITH_KEY_FUNCTION * root_function, void *root_args,
-				      BTREE_ADVANCE_WITH_KEY_FUNCTION * advance_function, void *advance_args,
-				      BTREE_PROCESS_KEY_FUNCTION * key_function, void *process_key_args,
-				      BTREE_SEARCH_KEY_HELPER * search_key, PAGE_PTR * leaf_page_ptr)
+				      char *page_copy_buffer, BTREE_ROOT_WITH_KEY_FUNCTION * root_function,
+				      void *root_args, BTREE_ADVANCE_WITH_KEY_FUNCTION * advance_function,
+				      void *advance_args, BTREE_PROCESS_KEY_FUNCTION * key_function,
+				      void *process_key_args, BTREE_SEARCH_KEY_HELPER * search_key,
+				      PAGE_PTR * leaf_page_ptr)
 {
   PAGE_PTR crt_page = NULL;	/* Currently fixed page. */
   PAGE_PTR advance_page = NULL;	/* Next level page. */
@@ -22293,8 +22296,8 @@ start_btree_traversal:
     {
       /* Call advance function. */
       error_code =
-	advance_function (thread_p, btid_int, key, &crt_page, &advance_page, &is_leaf, search_key, &stop, &restart,
-			  advance_args);
+	advance_function (thread_p, btid_int, key, page_copy_buffer, &crt_page, &advance_page, &is_leaf, search_key,
+			  &stop, &restart, advance_args);
       if (error_code != NO_ERROR)
 	{
 	  /* Error! */
@@ -22468,14 +22471,15 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
  * other_args (in/out)	 : Not used.
  */
 static int
-btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * crt_page,
-			    PAGE_PTR * advance_to_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
-			    bool * stop, bool * restart, void *other_args)
+btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, char *page_copy_buffer,
+			    PAGE_PTR * crt_page, PAGE_PTR * advance_to_page, bool * is_leaf,
+			    BTREE_SEARCH_KEY_HELPER * search_key, bool * stop, bool * restart, void *other_args)
 {
   BTREE_NODE_HEADER *node_header;
   BTREE_NODE_TYPE node_type;
   VPID child_vpid;
   int error_code;
+  char *page_ptr;
 
   assert (btid_int != NULL);
   assert (key != NULL);
@@ -22520,12 +22524,30 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 	}
       /* Advance to child. */
       assert (!VPID_ISNULL (&child_vpid));
-      *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      *advance_to_page = NULL;
+      if (page_copy_buffer && node_header->node_level == 2)
+	{
+	  page_ptr = PTR_ALIGN (page_copy_buffer, MAX_ALIGNMENT);
+	  pgbuf_copy (thread_p, &child_vpid, page_ptr, IO_PAGESIZE);
+
+#if !defined(NDEBUG)
+	  *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  node_header = btree_get_node_header (page_ptr);
+	  assert (node_header->node_level == 1);
+	  pgbuf_unfix_and_init (thread_p, *advance_to_page);
+#endif
+	  *advance_to_page = page_ptr;
+	}
+
       if (*advance_to_page == NULL)
 	{
-	  /* Error fixing child. */
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (*advance_to_page == NULL)
+	    {
+	      /* Error fixing child. */
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
 	}
     }
 
@@ -23798,8 +23820,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
   /* Find unique key and object. */
   error_code =
-    btree_search_key_and_apply_functions (thread_p, btid, NULL, key, NULL, NULL, advance_function, NULL, key_function,
-					  &find_unique_helper, NULL, NULL);
+    btree_search_key_and_apply_functions (thread_p, btid, NULL, key, NULL, NULL, NULL, advance_function, NULL,
+					  key_function, &find_unique_helper, NULL, NULL);
   if (error_code != NO_ERROR)
     {
       /* Error! */
@@ -23945,9 +23967,23 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
   else
     {
+
+#if defined (SERVER_MODE)
+      if (bts->copy_leaf_page_allowed && bts->key_range.range == GE_LE)
+	{
+	  error_code = pgbuf_get_tran_bcb_area (thread_p, &bts->page_copy_buffer);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+#endif
+
       /* Has lower limit. Try to locate the key. */
       bts->C_page =
-	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key, &bts->C_vpid, &bts->slot_id, &found);
+	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key, bts->page_copy_buffer,
+			  &bts->C_vpid, &bts->slot_id, &found);
       if (bts->C_page == NULL)
 	{
 	  /* Error locating or fixing leaf. */
@@ -23981,7 +24017,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       assert (bts->use_desc_index);
       if (bts->C_page != NULL)
 	{
-	  pgbuf_unfix_and_init (thread_p, bts->C_page);
+	  btree_unfix_and_init_current_page (thread_p, bts);
 	}
       VPID_SET_NULL (&bts->C_vpid);
       btree_scan_clear_key (bts);
@@ -24048,7 +24084,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      if (error_code != NO_ERROR)
 		{
 		  /* Error! */
-		  pgbuf_unfix_and_init (thread_p, bts->C_page);
+		  btree_unfix_and_init_current_page (thread_p, bts);
 		  ASSERT_ERROR ();
 		  return error_code;
 		}
@@ -24060,7 +24096,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 		  if (error_code != NO_ERROR)
 		    {
 		      /* Error! */
-		      pgbuf_unfix_and_init (thread_p, bts->C_page);
+		      btree_unfix_and_init_current_page (thread_p, bts);
 		      ASSERT_ERROR ();
 		      return error_code;
 		    }
@@ -24098,7 +24134,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 		default:
 		  /* Unexpected. */
 		  assert (false);
-		  pgbuf_unfix_and_init (thread_p, bts->C_page);
+		  btree_unfix_and_init_current_page (thread_p, bts);
 		  return ER_FAILED;
 		}
 	    }
@@ -24123,7 +24159,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   bts->force_restart_from_root = false;
 
   /* Search key from top. */
-  bts->C_page = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, &bts->C_vpid, &bts->slot_id, &found);
+  bts->C_page = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, NULL, &bts->C_vpid, &bts->slot_id, &found);
   if (bts->C_page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -24415,7 +24451,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   if (prev_leaf != NULL)
     {
       /* Previous leaf was successfully latched. Advance. */
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      btree_unfix_and_init_current_page (thread_p, bts);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
       *key_count = btree_node_number_of_keys (bts->C_page);
@@ -24427,7 +24463,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Conditional latch failed. */
 
   /* Unfix current page and retry. */
-  pgbuf_unfix_and_init (thread_p, bts->C_page);
+  btree_unfix_and_init_current_page (thread_p, bts);
   error_code =
     pgbuf_fix_if_not_deallocated (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
   if (error_code != NO_ERROR)
@@ -24527,7 +24563,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       /* Safe guard: could not fall through from BTREE_KEY_BETWEEN. */
       assert (search_key.result == BTREE_KEY_FOUND);
       /* Move to previous page. */
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      btree_unfix_and_init_current_page (thread_p, bts);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
       *key_count = btree_node_number_of_keys (bts->C_page);
@@ -24557,7 +24593,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Search key in previous page. */
   assert (search_key.result == BTREE_KEY_SMALLER);
   /* Unfix current page. */
-  pgbuf_unfix_and_init (thread_p, bts->C_page);
+  btree_unfix_and_init_current_page (thread_p, bts);
   error_code = btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, prev_leaf, &bts->cur_key, &search_key);
   if (error_code != NO_ERROR)
     {
@@ -24682,7 +24718,7 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 			"Notification: descending range scan had to be interrupted and restarted from root.\n");
 	  if (bts->C_page != NULL)
 	    {
-	      pgbuf_unfix_and_init (thread_p, bts->C_page);
+	      btree_unfix_and_init_current_page (thread_p, bts);
 	    }
 	  if (BTS_IS_INDEX_ILS (bts))
 	    {
@@ -24740,7 +24776,7 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 			    "Notification: descending range scan had to be interrupted and restarted from root.\n");
 	      if (bts->C_page != NULL)
 		{
-		  pgbuf_unfix_and_init (thread_p, bts->C_page);
+		  btree_unfix_and_init_current_page (thread_p, bts);
 		}
 	      break;
 	    }
@@ -24770,7 +24806,7 @@ end:
       /* Unfix current page and save its LSA. */
       assert (bts->end_scan || VPID_EQ (pgbuf_get_vpid_ptr (bts->C_page), &bts->C_vpid));
       LSA_COPY (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page));
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      btree_unfix_and_init_current_page (thread_p, bts);
     }
   else
     {
@@ -25584,7 +25620,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Unconditional lock on object. */
   /* Must release fixed pages first. */
   bts->is_interrupted = true;
-  pgbuf_unfix_and_init (thread_p, bts->C_page);
+  btree_unfix_and_init_current_page (thread_p, bts);
   if (bts->O_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, bts->O_page);
@@ -25850,9 +25886,9 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
 
   /* Search for key leaf page and insert data. */
   error_code =
-    btree_search_key_and_apply_functions (thread_p, btid, &btid_int, key, btree_fix_root_for_insert, &insert_helper,
-					  btree_split_node_and_advance, &insert_helper, key_insert_func, &insert_helper,
-					  &search_key, NULL);
+    btree_search_key_and_apply_functions (thread_p, btid, &btid_int, key, NULL, btree_fix_root_for_insert,
+					  &insert_helper, btree_split_node_and_advance, &insert_helper, key_insert_func,
+					  &insert_helper, &search_key, NULL);
 
   /* Free allocated resources. */
   if (insert_helper.printed_key != NULL)
@@ -26285,9 +26321,9 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
  * other_args (in/out)	 : BTREE_INSERT_HELPER *.
  */
 static int
-btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * crt_page,
-			      PAGE_PTR * advance_to_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
-			      bool * stop, bool * restart, void *other_args)
+btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, char *page_copy_buffer,
+			      PAGE_PTR * crt_page, PAGE_PTR * advance_to_page, bool * is_leaf,
+			      BTREE_SEARCH_KEY_HELPER * search_key, bool * stop, bool * restart, void *other_args)
 {
   /* Insert helper: used to store insert specific data that can be used during the call off
    * btree_search_key_and_apply_functions. */
@@ -29416,9 +29452,9 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
   FI_SET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, 1);
 
   error_code =
-    btree_search_key_and_apply_functions (thread_p, btid, &btree_info, key, btree_fix_root_for_delete, &delete_helper,
-					  btree_merge_node_and_advance, &delete_helper, key_func, &delete_helper, NULL,
-					  NULL);
+    btree_search_key_and_apply_functions (thread_p, btid, &btree_info, key, NULL, btree_fix_root_for_delete,
+					  &delete_helper, btree_merge_node_and_advance, &delete_helper, key_func,
+					  &delete_helper, NULL, NULL);
 
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
   FI_RESET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
@@ -29691,9 +29727,9 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
  * other_args (in/out)	 : BTREE_DELETE_HELPER *
  */
 static int
-btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * crt_page,
-			      PAGE_PTR * advance_to_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
-			      bool * stop, bool * restart, void *other_args)
+btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, char *page_copy_buffer,
+			      PAGE_PTR * crt_page, PAGE_PTR * advance_to_page, bool * is_leaf,
+			      BTREE_SEARCH_KEY_HELPER * search_key, bool * stop, bool * restart, void *other_args)
 {
   /* Delete helper used by internal functions of btree_delete_internal. */
   BTREE_DELETE_HELPER *delete_helper = (BTREE_DELETE_HELPER *) other_args;
@@ -33107,5 +33143,24 @@ btree_op_type_to_string (int op_type)
     default:
       assert (false);
       return "** UNKNOWN OP TYPE **";
+    }
+}
+
+/*
+ * btree_unfix_and_init_current_page () - Unifx and init the current page
+ *
+ * return       : error code
+ * bts (in) : btree scan structure
+ */
+STATIC_INLINE void
+btree_unfix_and_init_current_page (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
+{
+  if (bts->C_page != bts->page_copy_buffer)
+    {
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
+    }
+  else
+    {
+      bts->C_page = NULL;
     }
 }
