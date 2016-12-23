@@ -7130,14 +7130,14 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		  if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
 		    {
 		      perfmon_inc_stat (thread_p,
-					VACUUM_IS_THREAD_VACUUM (thread_p) ? PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND :
-					PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND_VAC);
+					VACUUM_IS_THREAD_VACUUM (thread_p) ? PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND_VAC :
+					PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND);
 		    }
 		  else
 		    {
 		      perfmon_inc_stat (thread_p,
-					VACUUM_IS_THREAD_VACUUM (thread_p) ? PSTAT_PB_UNFIX_VOID_AOUT_FOUND :
-					PSTAT_PB_UNFIX_VOID_AOUT_FOUND_VAC);
+					VACUUM_IS_THREAD_VACUUM (thread_p) ? PSTAT_PB_UNFIX_VOID_AOUT_FOUND_VAC :
+					PSTAT_PB_UNFIX_VOID_AOUT_FOUND);
 		    }
 		}
 	      else
@@ -9291,7 +9291,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, int loop_count, bool *
     {
       /* try another private list */
       private_lru_idx = pgbuf_get_private_lru_index_with_victims (thread_p);
-      lru_list = &pgbuf_Pool.buf_LRU_list[shared_lru_idx];
+      lru_list = &pgbuf_Pool.buf_LRU_list[private_lru_idx];
 
       not_dirty_bcbs_in_lru = lru_list->LRU_2_non_dirty_cnt;
 
@@ -9574,6 +9574,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   rv = pthread_mutex_lock (&lru_list->LRU_mutex);
   if (lru_list->LRU_bottom == NULL)
     {
+      pthread_mutex_unlock (&lru_list->LRU_mutex);
       return NULL;
     }
 
@@ -9592,6 +9593,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   if (count_nd <= 0)
     {
+      pthread_mutex_unlock (&lru_list->LRU_mutex);
       return NULL;
     }
 
@@ -14529,8 +14531,8 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
       vict_pressure_this_lru = (vict_req_this_lru - vict_found_this_lru);
 
       /* TODO : it seems more complex formula introduces spikes of flush priority for some LRUs due to varying
-	* dirty page count;
-	* For now, just use simpler 'request victimization' which is more flat */
+       * dirty page count;
+       * For now, just use simpler 'request victimization' which is more flat */
 
 #if 0
       flush_priority_this_lru = vict_req_term + (lru_search_term + lru_size_term) / 10 + lru_dirty_term / 2;
