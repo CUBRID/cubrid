@@ -918,9 +918,7 @@ struct pgbuf_buffer_pool
   int size_permvols_tmparea_volids;	/* size of the array */
   VOLID *permvols_tmparea_volids;	/* the volids array */
 
-#if 0
   LOCK_FREE_CIRCULAR_QUEUE *flushed_bcb_cache;
-#endif
 };
 
 /* flush priority within a list : 
@@ -1495,9 +1493,7 @@ pgbuf_initialize (void)
   /* TODO[arnia] : not required, if done in monitor initialization */
   pgbuf_Pool.monitor.dirties_cnt = 0;
 
-#if 0
   pgbuf_Pool.flushed_bcb_cache = lf_circular_queue_create (PGBUF_FLUSHED_BCB_CACHE_CAPACITY, sizeof (PGBUF_BCB *));
-#endif
 
   return NO_ERROR;
 
@@ -1740,13 +1736,11 @@ pgbuf_finalize (void)
       free_and_init (pgbuf_Pool.monitor.lru_relocated_destroyed_pages);
     }
 #endif
-#if 0
   if (pgbuf_Pool.flushed_bcb_cache != NULL)
     {
       lf_circular_queue_destroy (pgbuf_Pool.flushed_bcb_cache);
       pgbuf_Pool.flushed_bcb_cache = NULL;
     }
-#endif
 }
 
 /*
@@ -8440,6 +8434,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   bool has_fixed_pages = true;
   bool penalize = false;
 
+  int alloc_bcb_waiting_threads;
+  int alloc_bcb_waiting_loops;
+  int alloc_bcb_avg_wait;
+
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_bcb_detailed;	/* not used */
 
@@ -8471,8 +8469,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 #if defined (SERVER_MODE)
       if (loop_count > 1)
 	{
-	  int alloc_bcb_waiting_threads;
-	  int alloc_bcb_waiting_loops;
 	  if (loop_count == 2)
 	    {
 	      /* add myself to waiting threads */
@@ -8490,8 +8486,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    }
 
 	  /* after how many threads should we start penalizing */
-	  penalize =
-	    (alloc_bcb_waiting_threads > 1) && (alloc_bcb_waiting_loops / alloc_bcb_waiting_threads >= loop_count);
+	  alloc_bcb_avg_wait = MAX (1, alloc_bcb_waiting_loops / alloc_bcb_waiting_threads);
+	  penalize = (alloc_bcb_waiting_threads > 1) && (alloc_bcb_avg_wait >= loop_count);
 	}
       else
 	{
@@ -8569,6 +8565,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 		{
 		  sleep_time = 0.01f;
 		}
+	      /* ok, the worse the system gets, the more we need to wait */
+	      sleep_time *= alloc_bcb_waiting_loops;
 	    }
 
 	  thread_sleep (sleep_time);
@@ -9382,7 +9380,6 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
     }
 
-#if 0
   while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcb_cache, &bcb_flushed))
     {
       assert (bcb_flushed != NULL);
@@ -9401,7 +9398,6 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
 	  break;
 	}
     }
-#endif
   if (penalize)
     {
       /* we are not allowed to search other privates or shared (ain remains to be discussed). */
@@ -9856,9 +9852,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       /* disconnect bufptr from the LRU list */
       pgbuf_remove_from_lru_list (bufptr, lru_list);
 
-      if (bufptr->zone_lru == zone2_list)
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx], -1);
+      if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx))
 	{
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx], -1);
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, -1);
 	}
 
       bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
@@ -14628,6 +14625,15 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
   int vict_pressure_this_lru;
   float flush_priority_this_lru;
 
+  float prv_quota;
+  float prv_real_ratio;
+  float diff;
+  float prv_flush_ratio;
+  float shared_flush_ratio;
+
+  int total_over_quota = 0;
+  int this_over_quota = 0;
+
   PGBUF_PAGE_MONITOR *monitor;
 
   monitor = &pgbuf_Pool.monitor;
@@ -14642,8 +14648,61 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
       return;
     }
 
+  prv_quota = pgbuf_Pool.quota.private_pages_ratio;
+  prv_real_ratio = 1.0f - ((float) pgbuf_Pool.monitor.lru_shared_pgs / pgbuf_Pool.num_buffers);
+  diff = prv_quota - prv_real_ratio;
+
+  prv_flush_ratio = prv_real_ratio * (1.0f - diff);
+  prv_flush_ratio = MIN (1.0f, prv_flush_ratio);
+
+  for (i = PGBUF_LRU_INDEX_FROM_PRIVATE (0); i < PGBUF_TOTAL_LRU; i++)
+    {
+      this_over_quota = pgbuf_Pool.monitor.bcbs_cnt_per_lru[i] - pgbuf_Pool.quota.target_bcbs_per_lru[i];
+      if (this_over_quota > 0)
+	{
+	  total_over_quota += this_over_quota;
+	}
+    }
+  if (total_over_quota == 0)
+    {
+      prv_flush_ratio = 0.0f;
+    }
+  shared_flush_ratio = 1.0f - prv_flush_ratio;
+
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
+      if (PGBUF_IS_SHARED_LRU_INDEX (i))
+	{
+	  pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] = shared_flush_ratio / (float) PGBUF_SHARED_LRU;
+	}
+      else if (PGBUF_IS_PRIVATE_LRU_INDEX (i))
+	{
+	  if (prv_flush_ratio == 0.0f)
+	    {
+	      pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] = 0.0f;
+	    }
+	  else
+	    {
+	      this_over_quota = pgbuf_Pool.monitor.bcbs_cnt_per_lru[i] - pgbuf_Pool.quota.target_bcbs_per_lru[i];
+	      if (this_over_quota > 0)
+		{
+		  pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] =
+		    prv_flush_ratio * ((float) this_over_quota / (float) total_over_quota);
+		}
+	      else
+		{
+		  pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] = 0.0f;
+		}
+	    }
+	}
+      else
+	{
+	  pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] = 0.0f;
+	}
+      *lru_sum_flush_priority += pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i];
+      /* TODO : it seems more complex formula introduces spikes of flush priority for some LRUs due to varying
+       * dirty page count;
+       * For now, just use simpler 'request victimization' which is more flat */
 
       /* reset victim counters on this LRU */
       vict_req_this_lru = ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[i], 0);
@@ -14651,20 +14710,6 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 
       /* victim pressure sum of not served victimization requests and level of search for victim */
       vict_pressure_this_lru = (vict_req_this_lru - vict_found_this_lru);
-
-      /* TODO : it seems more complex formula introduces spikes of flush priority for some LRUs due to varying
-       * dirty page count;
-       * For now, just use simpler 'request victimization' which is more flat */
-
-#if 0
-      flush_priority_this_lru = vict_req_term + (lru_search_term + lru_size_term) / 10 + lru_dirty_term / 2;
-#else
-      flush_priority_this_lru = (float) vict_req_this_lru;
-#endif
-
-      pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] = flush_priority_this_lru;
-
-      *lru_sum_flush_priority += flush_priority_this_lru;
 
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
       if (pos < sizeof (msg) - 100)
@@ -16124,7 +16169,6 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
       abort ();
     }
 
-#if 0
   if (pgbuf_Pool.monitor.alloc_bcb_waiting_threads > 0)
     {
       if (lf_circular_queue_produce (pgbuf_Pool.flushed_bcb_cache, &bcb))
@@ -16137,5 +16181,4 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	  abort ();
 	}
     }
-#endif
 }
