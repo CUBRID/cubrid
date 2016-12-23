@@ -918,7 +918,9 @@ struct pgbuf_buffer_pool
   int size_permvols_tmparea_volids;	/* size of the array */
   VOLID *permvols_tmparea_volids;	/* the volids array */
 
+#if 0
   LOCK_FREE_CIRCULAR_QUEUE *flushed_bcb_cache;
+#endif
 };
 
 /* flush priority within a list : 
@@ -1493,7 +1495,9 @@ pgbuf_initialize (void)
   /* TODO[arnia] : not required, if done in monitor initialization */
   pgbuf_Pool.monitor.dirties_cnt = 0;
 
+#if 0
   pgbuf_Pool.flushed_bcb_cache = lf_circular_queue_create (PGBUF_FLUSHED_BCB_CACHE_CAPACITY, sizeof (PGBUF_BCB *));
+#endif
 
   return NO_ERROR;
 
@@ -9376,6 +9380,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
     }
 
+#if 0
   while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcb_cache, &bcb_flushed))
     {
       assert (bcb_flushed != NULL);
@@ -9394,6 +9399,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
 	  break;
 	}
     }
+#endif
   if (penalize)
     {
       /* we are not allowed to search other privates or shared (ain remains to be discussed). */
@@ -16116,6 +16122,7 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
       abort ();
     }
 
+#if 0
   if (pgbuf_Pool.monitor.alloc_bcb_waiting_threads > 0)
     {
       if (lf_circular_queue_produce (pgbuf_Pool.flushed_bcb_cache, &bcb))
@@ -16128,4 +16135,5 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	  abort ();
 	}
     }
+#endif
 }

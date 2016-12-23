@@ -238,7 +238,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_CACHE, "Num_cache_flushed_bcb"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_CACHE_SUCCESS, "Num_victim_from_cache_success"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_CACHE_FAIL, "Num_victim_from_cache_fail"),
-  
+
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_HASH_ANCHOR_WAITS, "Num_data_page_hash_anchor_waits"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_TIME_HASH_ANCHOR_WAIT, "Time_data_page_hash_anchor_wait"),
   /* peeked stats */
