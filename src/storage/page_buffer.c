@@ -8566,7 +8566,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 		  sleep_time = 0.01f;
 		}
 	      /* ok, the worse the system gets, the more we need to wait */
-	      sleep_time *= alloc_bcb_waiting_loops;
+	      sleep_time = sleep_time /** alloc_bcb_waiting_loops*/;
 	    }
 
 	  thread_sleep (sleep_time);

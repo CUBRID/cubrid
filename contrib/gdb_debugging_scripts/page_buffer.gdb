@@ -290,6 +290,9 @@ define pgbuf_lru_print_victim_status
   set $ploq_cnt = 0
   set $ploq_full = 0
   set $ploq_cnt_full = 0
+  
+  set $npages_shared = 0
+  set $npages_private = 0
   set $i = 0
   while $i < pgbuf_Pool.num_LRU_list
     if pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt > 0
@@ -297,6 +300,7 @@ define pgbuf_lru_print_victim_status
       set $slists = $slists + 1
       end
     set $i = $i + 1
+    set $npages_shared = $npages_shared + pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i]
     end
   set $i = pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list
   while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
@@ -314,6 +318,7 @@ define pgbuf_lru_print_victim_status
         end
       end
     set $i = $i + 1
+    set $npages_private = $npages_private + pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i]
     end
   printf "Have non-dirty: \n"
   printf "Private lru's: %d, total non-dirty count : %d, over quota = %d, count over quota = %d \n", $plists, $pcnt, $ploq, $ploq_cnt
@@ -321,4 +326,7 @@ define pgbuf_lru_print_victim_status
   printf "Don't have non-dirty: \n"
   printf "Private lru's: %d, over quota = %d, count over quota = %d \n", pgbuf_Pool.quota.num_private_LRU_list - $plists, $ploq_full, $ploq_cnt_full
   printf "Shared lru's: %d \n", pgbuf_Pool.num_LRU_list - $slists
+  printf "Total pages:"
+  printf "Private %d \n", $npages_private
+  printf "Shared %d \n", $npages_shared
   end
