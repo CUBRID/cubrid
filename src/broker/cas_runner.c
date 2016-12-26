@@ -515,6 +515,9 @@ get_args (int argc, char *argv[])
 	  break;
 	case 'p':
 	  dbpasswd = optarg;
+#if defined (LIUNUX)
+	  memset (optarg, '*', strlen (optarg));
+#endif
 	  break;
 	case 't':
 	  num_thread = atoi (optarg);

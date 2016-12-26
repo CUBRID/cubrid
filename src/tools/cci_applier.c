@@ -1038,6 +1038,9 @@ main (int argc, char *argv[])
 	  break;
 	case 'p':
 	  con_info.password = optarg;
+#if defined (LIUNUX)
+	  memset (optarg, '*', strlen (optarg));
+#endif
 	  break;
 	case 'c':
 	  ca_Info.commit_interval = atoi (optarg);
