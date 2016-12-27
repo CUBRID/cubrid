@@ -924,7 +924,6 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (size);
       if (list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
 	{
-	  free_and_init (list_id->tpl_descr.f_valp);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto exit_on_error;
 	}
@@ -18881,7 +18880,6 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (sizeof (bool) * 2);
   if (func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
     {
-      free_and_init (func_state->group_list_id->tpl_descr.f_valp);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * 2);
       return ER_FAILED;
     }
@@ -18916,7 +18914,6 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (sizeof (bool) * 2);
   if (func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
     {
-      free_and_init (func_state->group_list_id->tpl_descr.f_valp);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * 2);
       return ER_FAILED;
     }
@@ -23512,7 +23509,6 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
       tpl_descr->clear_f_val_at_clone_decache = (bool *) malloc (sizeof (bool) * values_count);
       if (tpl_descr->clear_f_val_at_clone_decache == NULL)
 	{
-	  free_and_init (tpl_descr->f_valp);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * values_count);
 	  goto cleanup;
 	}
