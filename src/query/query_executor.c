@@ -18022,12 +18022,6 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
 		    }
 
-		  if (save_heapid != 0)
-		    {
-		      (void) db_change_private_heap (thread_p, save_heapid);
-		      save_heapid = 0;
-		    }
-
 		  /* try time */
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
@@ -18036,13 +18030,22 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
 		    }
 
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
+		    }
+		  else
+		    {
+		      pr_clear_value (dbval);
+		    }
+
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
 		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (agg_p->function),
 			      "DOUBLE, DATETIME or TIME");
 
-		      pr_clear_value (dbval);
 		      return error;
 		    }
 
