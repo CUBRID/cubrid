@@ -24098,7 +24098,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /* create tuple descriptor for partial list files */
   proc->agg_hash_context.part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
   proc->agg_hash_context.part_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
-  if (proc->agg_hash_context.part_list_id->tpl_descr.f_valp = NULL)
+  if (proc->agg_hash_context.part_list_id->tpl_descr.f_valp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
       goto exit_on_error;
