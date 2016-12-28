@@ -18034,13 +18034,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
 
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
-		    }
-
-		  if (save_heapid != 0)
-		    {
-		      (void) db_change_private_heap (thread_p, save_heapid);
-		      save_heapid = 0;
-		    }
+		    }		  
 
 		  /* try time */
 		  if (status != DOMAIN_COMPATIBLE)
@@ -18057,7 +18051,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		    }
 		  else
 		    {
-		      pr_clear_value (dbval);
+		      if (status != DOMAIN_COMPATIBLE)
+			{
+			  pr_clear_value (dbval);
+			}
 		    }
 
 		  if (status != DOMAIN_COMPATIBLE)
