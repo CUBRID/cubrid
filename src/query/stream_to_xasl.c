@@ -618,7 +618,7 @@ stx_restore_analytic_type (THREAD_ENTRY * thread_p, char *ptr)
       return NULL;
     }
 
-  init_analytic_type_unserialized_fields (analytic);
+  stx_init_analytic_type_unserialized_fields (analytic);
 
   return analytic;
 }
@@ -6892,3 +6892,23 @@ stx_unpack_long (char *tmp, long *ptr)
   return tmp;
 }
 #endif
+
+/*
+ * stx_init_analytic_type_unserialized_fields () - make other fields initialized
+ *   return:
+ *   analytic(in/out)    :
+ */
+void
+stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
+{
+  assert (analytic != NULL);
+
+  /* is_first_exec_time */
+  analytic->is_first_exec_time = true;
+
+  /* part_value */
+  DB_MAKE_NULL (&analytic->part_value);
+
+  /* curr_cnt */
+  analytic->curr_cnt = 0;
+}

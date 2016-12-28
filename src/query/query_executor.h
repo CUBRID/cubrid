@@ -1079,6 +1079,7 @@ extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NOD
 					       char *xasl_stream);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
 extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
+extern void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 
 extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DOMAIN * domain);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -1093,5 +1094,4 @@ extern void qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent);
 #endif /* SERVER_MODE */
 extern const char *qdump_function_type_string (FUNC_TYPE ftype);
-extern void init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 #endif /* _QUERY_EXECUTOR_H_ */
