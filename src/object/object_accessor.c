@@ -144,7 +144,6 @@ static MOP find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FE
 static int flush_temporary_OID (MOP classop, DB_VALUE * key);
 
 static DB_VALUE *obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size);
-static MOP obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode, bool is_replication);
 
 /* ATTRIBUTE LOCATION */
 
@@ -4076,23 +4075,8 @@ notfound:
  *                                      AU_FETCH_UPDATE
  *
  */
-
 MOP
 obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
-{
-  assert (DB_VALUE_TYPE (key) != DB_TYPE_MIDXKEY);
-
-  return obj_find_object_by_pkey_internal (classop, key, fetchmode, false);
-}
-
-MOP
-obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
-{
-  return obj_find_object_by_pkey_internal (classop, key, fetchmode, true);
-}
-
-static MOP
-obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode, bool is_replication)
 {
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
@@ -4101,6 +4085,8 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetc
   DB_TYPE value_type;
   MOP mop;
   BTREE_SEARCH btree_search;
+
+  assert (DB_VALUE_TYPE (key) != DB_TYPE_MIDXKEY);
 
   obj = NULL;
 
@@ -4157,14 +4143,7 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetc
 	}
     }
 
-  if (is_replication == true)
-    {
-      btree_search = repl_btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
-    }
-  else
-    {
-      btree_search = btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
-    }
+  btree_search = btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
   if (btree_search == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&unique_oid, NULL);

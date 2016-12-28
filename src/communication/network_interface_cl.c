@@ -107,8 +107,6 @@ static char *pack_string_with_null_padding (char *buffer, const char *stream, in
 static int length_const_string (const char *cstring, int *strlen);
 static int length_string_with_null_padding (int len);
 #endif /* CS_MODE */
-static BTREE_SEARCH btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-						bool is_replication);
 
 #if defined(CS_MODE)
 /*
@@ -5933,18 +5931,6 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
 BTREE_SEARCH
 btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
 {
-  return btree_find_unique_internal (btid, key, class_oid, oid, false);
-}
-
-BTREE_SEARCH
-repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
-{
-  return btree_find_unique_internal (btid, key, class_oid, oid, true);
-}
-
-static BTREE_SEARCH
-btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid, bool is_replication)
-{
   BTREE_SEARCH status = BTREE_ERROR_OCCURRED;
 
   if (btid == NULL || key == NULL || class_oid == NULL || oid == NULL)
@@ -5974,21 +5960,8 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * 
 	}
 
       ptr = request;
-      if (is_replication == true)
-	{
-	  ptr = or_pack_mem_value (ptr, key);
-	  if (ptr == NULL)
-	    {
-	      free_and_init (request);
-	      return status;
-	    }
-	  request_id = NET_SERVER_REPL_BTREE_FIND_UNIQUE;
-	}
-      else
-	{
-	  ptr = or_pack_value (ptr, key);
-	  request_id = NET_SERVER_BTREE_FIND_UNIQUE;
-	}
+      ptr = or_pack_value (ptr, key);
+      request_id = NET_SERVER_BTREE_FIND_UNIQUE;
 
       ptr = or_pack_oid (ptr, class_oid);
       ptr = or_pack_btid (ptr, btid);
