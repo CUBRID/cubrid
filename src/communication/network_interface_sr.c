@@ -1081,18 +1081,6 @@ end:
     }
 }
 
-void
-slocator_force_repl_update (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  /* this function no longer in use */
-  assert_release (false);
-
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ, 0);
-  return_error_to_client (thread_p, rid);
-
-  return;
-}
-
 /*
  * slocator_fetch_lockset -
  *
