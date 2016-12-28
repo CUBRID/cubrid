@@ -316,6 +316,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const char *user_define_file_name;
   const char *cubrid_charset;
 
+  int db_volume_sect;
   int db_volume_pages;
   int db_page_size;
   UINT64 db_volume_size;
@@ -413,8 +414,14 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      db_volume_pages = (int) (db_volume_size / db_page_size);
+      /* round up the number of pages */
+      db_volume_pages = (int) ceil ((double) db_volume_size / db_page_size);
     }
+  /* determine volume number of sectors */
+  db_volume_sect = disk_sectors_to_extend_npages (db_volume_pages);
+  /* adjust the number of pages according to the number of sectors */
+  db_volume_pages = DISK_SECTOR_NPAGES * db_volume_sect;
+
   db_volume_size = (UINT64) db_volume_pages *(UINT64) db_page_size;
 
   log_page_str = utility_get_option_string_value (arg_map, CREATE_LOG_PAGE_SIZE_S, 0);

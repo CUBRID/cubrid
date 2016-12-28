@@ -321,6 +321,7 @@ qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_LIST_ID
     }
 
   list_id_p->tpl_descr.f_valp = NULL;
+  list_id_p->tpl_descr.clear_f_val_at_clone_decache = NULL;
   return NO_ERROR;
 }
 
@@ -442,6 +443,11 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
   if (list_id_p->tpl_descr.f_valp)
     {
       free_and_init (list_id_p->tpl_descr.f_valp);
+    }
+
+  if (list_id_p->tpl_descr.clear_f_val_at_clone_decache)
+    {
+      free_and_init (list_id_p->tpl_descr.clear_f_val_at_clone_decache);
     }
 
   if (list_id_p->sort_list)
@@ -1506,7 +1512,9 @@ qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, 
 
   for (i = 0; i < tuple_descr_p->f_cnt; i++)
     {
-      if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i], tuple_p, &tuple_value_size) != NO_ERROR)
+      if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i],
+					      !(tuple_descr_p->clear_f_val_at_clone_decache[i]),
+					      tuple_p, &tuple_value_size) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -2767,7 +2775,8 @@ qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR
   /* build tuple */
   for (i = 0; i < tpl_descr->f_cnt; i++)
     {
-      if (qdata_copy_db_value_to_tuple_value (tpl_descr->f_valp[i], tuple_p, &size) != NO_ERROR)
+      if (qdata_copy_db_value_to_tuple_value (tpl_descr->f_valp[i], !(tpl_descr->clear_f_val_at_clone_decache[i]),
+					      tuple_p, &size) != NO_ERROR)
 	{
 	  /* error has already been set */
 	  db_private_free_and_init (thread_p, tplrec->tpl);
