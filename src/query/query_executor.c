@@ -1954,6 +1954,7 @@ qexec_clear_analytic_function_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	  p->domain = p->original_domain;
 	  p->opr_dbtype = p->original_opr_dbtype;
 	  pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
+	  init_analytic_type_unserialized_fields (p);
 	}
     }
 
@@ -24427,4 +24428,25 @@ qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT
   /* reached end of scan, no match */
   *found = false;
   return (context->part_scan_code == S_ERROR ? ER_FAILED : NO_ERROR);
+}
+
+
+/*
+ * init_analytic_type_unserialized_fields () - make other fields initialized
+ *   return:
+ *   analytic(in/out)    :
+ */
+void
+init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
+{
+  assert (analytic != NULL);
+
+  /* is_first_exec_time */
+  analytic->is_first_exec_time = true;
+
+  /* part_value */
+  DB_MAKE_NULL (&analytic->part_value);
+
+  /* curr_cnt */
+  analytic->curr_cnt = 0;
 }
