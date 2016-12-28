@@ -18034,7 +18034,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
 
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
-		    }		  
+		    }
 
 		  /* try time */
 		  if (status != DOMAIN_COMPATIBLE)
