@@ -8065,7 +8065,7 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
  * sha1 (in) : Value to pack.
  */
 char *
-or_pack_sha1 (char *ptr, SHA1Hash * sha1)
+or_pack_sha1 (char *ptr, const SHA1Hash * sha1)
 {
   assert (sha1 != NULL);
 

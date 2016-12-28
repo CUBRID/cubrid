@@ -532,8 +532,7 @@ locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea)
 }
 
 /*
- * locator_repl_force - flush copy area containing replication objects
- *                       and receive error occurred in server
+ * locator_repl_force - flush copy area containing replication objects and receive error occurred in server
  *
  * return:
  *
@@ -547,9 +546,9 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
+  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE) a_request;
   char *request;
   char *request_ptr;
-  int request_size;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
   char *desc_ptr = NULL;
@@ -559,15 +558,7 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   int num_objs = 0;
   int req_error;
 
-  request_size = NET_COPY_AREA_SENDRECV_SIZE;
-  request = (char *) malloc (request_size);
-
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
+  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
@@ -577,12 +568,13 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   request_ptr = or_pack_int (request_ptr, content_size);
 
   req_error =
-    net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request, request_size, desc_ptr, desc_size,
-					     content_ptr, content_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+    net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request, NET_COPY_AREA_SENDRECV_SIZE, desc_ptr,
+					     desc_size, content_ptr, content_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 					     reply_copy_area);
 
   if (req_error == NO_ERROR)
     {
+      /* skip first 3 */
       (void) or_unpack_int (reply + NET_COPY_AREA_SENDRECV_SIZE, &error_code);
     }
   else
@@ -595,14 +587,12 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
     {
       free_and_init (desc_ptr);
     }
-  if (request)
-    {
-      free_and_init (request);
-    }
 
   return error_code;
-#endif /* CS_MODE */
+#else /* CS_MODE */
+  /* Not allowed in SA_MODE */
   return ER_FAILED;
+#endif /* !CS_MODE */
 }
 
 /*

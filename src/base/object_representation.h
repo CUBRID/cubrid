@@ -1516,7 +1516,7 @@ extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
 extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 
-extern char *or_pack_sha1 (char *ptr, SHA1Hash * sha1);
+extern char *or_pack_sha1 (char *ptr, const SHA1Hash * sha1);
 extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
