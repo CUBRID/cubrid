@@ -18918,14 +18918,14 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   func_state->value_list_id->tpl_descr.f_valp[0] = &func_state->csktc_dbval;
   func_state->value_list_id->tpl_descr.f_valp[1] = func_p->value;
 
-  func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (sizeof (bool) * 2);
-  if (func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+  func_state->value_list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (sizeof (bool) * 2);
+  if (func_state->value_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * 2);
       return ER_FAILED;
     }
-  func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache[0] =
-    func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache[1] = false;
+  func_state->value_list_id->tpl_descr.clear_f_val_at_clone_decache[0] =
+    func_state->value_list_id->tpl_descr.clear_f_val_at_clone_decache[1] = false;
 
   return NO_ERROR;
 }
