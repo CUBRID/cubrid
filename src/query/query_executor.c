@@ -1489,7 +1489,7 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 	      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_CLEARED)
 		{
 		  /* regu_var->xasl not cleared yet. Set flag to clear the values allocated at unpacking. */
-		  XASL_SET_FLAG (regu_var->xasl, xasl_p->flag & XASL_DECACHE_CLONE);
+		  XASL_SET_FLAG (regu_var->xasl, XASL_DECACHE_CLONE);
 		  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
 		}
 	      else if (!XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_INITIALIZED)
