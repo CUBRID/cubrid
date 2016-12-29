@@ -232,7 +232,6 @@ static void stx_free_visited_ptrs (THREAD_ENTRY * thread_p);
 static char *stx_alloc_struct (THREAD_ENTRY * thread_p, int size);
 static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_stream_size);
 static char *stx_build_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE_LIST * regu_var_list);
-static void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -6895,11 +6894,11 @@ stx_unpack_long (char *tmp, long *ptr)
 #endif
 
 /*
- * stx_init_analytic_type () - make other fields initialized
+ * stx_init_analytic_type_unserialized_fields () - make other fields initialized
  *   return:
  *   analytic(in/out)    :
  */
-static void
+void
 stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
 {
   assert (analytic != NULL);
