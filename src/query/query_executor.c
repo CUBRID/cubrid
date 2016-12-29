@@ -18052,7 +18052,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		    }
 		  else
 		    {
-		      pr_clear_value (dbval);
+		      if (status != DOMAIN_COMPATIBLE)
+			{
+			  pr_clear_value (dbval);
+			}
 		    }
 
 		  if (status != DOMAIN_COMPATIBLE)
