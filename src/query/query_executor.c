@@ -1363,7 +1363,23 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       qexec_clear_xasl_head (thread_p, xasl->connect_by_ptr);
     }
 
-  xasl->status = XASL_CLEARED;
+  if (xcache_uses_clones ())
+    {
+      if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
+	{
+	  xasl->status = XASL_CLEARED;
+	}
+      else
+	{
+	  /* The values allocated during execution will be cleared and the xasl is reused. */
+	  xasl->status = XASL_INITIALIZED;
+	}
+
+    }
+  else
+    {
+      xasl->status = XASL_CLEARED;
+    }
 
   return pg_cnt;
 }
@@ -1466,10 +1482,26 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 	}
       /* Fall through */
     case TYPE_LIST_ID:
-      if (regu_var->xasl != NULL && regu_var->xasl->status != XASL_CLEARED)
+      if (regu_var->xasl != NULL)
 	{
-	  XASL_SET_FLAG (regu_var->xasl, xasl_p->flag & XASL_DECACHE_CLONE);
-	  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
+	  if (xcache_uses_clones ())
+	    {
+	      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_CLEARED)
+		{
+		  /* regu_var->xasl not cleared yet. Set flag to clear the values allocated at unpacking. */
+		  XASL_SET_FLAG (regu_var->xasl, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
+		}
+	      else if (!XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_INITIALIZED)
+		{
+		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
+		  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
+		}
+	    }
+	  else if (regu_var->xasl->status != XASL_CLEARED)
+	    {
+	      pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
+	    }
 	}
       break;
     case TYPE_INARITH:

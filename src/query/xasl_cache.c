@@ -1837,7 +1837,7 @@ void
 xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, XASL_CLONE * xclone)
 {
   /* Free XASL. Be sure that was already cleared to avoid memory leaks. */
-  assert (xclone->xasl->status == XASL_CLEARED);
+  assert (xclone->xasl->status == XASL_CLEARED || xclone->xasl->status == XASL_INITIALIZED);
 
   if (xcache_uses_clones ())
     {
