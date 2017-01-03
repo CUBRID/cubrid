@@ -8430,7 +8430,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 #define PGBUF_ALLOC_BCB_NTHREAD 24
 #define PGBUF_ALLOC_BCB_CPU_RATIO 10
-#define PGBUF_ALLOC_BCB_SLEEP_OVERHEAD 50
+#define PGBUF_ALLOC_BCB_SLEEP_OVERHEAD 0.05f
 
   PGBUF_BCB *bufptr;
   int sleep_count, loop_count, check_count;
@@ -8561,7 +8561,14 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	  if (has_waiters_on_fixed == false)
 	    {
               read_n_alloc_bcb_waiters = n_alloc_bcb_waiters;
-              sleep_time += read_n_alloc_bcb_waiters * sleep_rate;
+              sleep_time += (float) read_n_alloc_bcb_waiters * sleep_rate;
+
+              if (has_fixed_pages)
+                {
+                  /* waiters can eventually be added to my bcb... do not allow it sleep for too long. */
+                  sleep_time = MIN (0.1f, sleep_time);
+                }
+
               /* temporary use unused statistic */
               perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_CACHE, read_n_alloc_bcb_waiters);
 
@@ -8603,7 +8610,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    }
 	}
 
-      (void) ATOMIC_INC_32 (&n_alloc_bcb_waiters, 1);
+      if (loop_count == 0)
+        {
+          (void) ATOMIC_INC_32 (&n_alloc_bcb_waiters, 1);
+        }
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PB_ALL_BUFFERS_DIRTY, 1, check_count);
 
