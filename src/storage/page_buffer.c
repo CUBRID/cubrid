@@ -8428,18 +8428,29 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 {
 #define PGBUF_LOOP_CNT_FORCE_VICTIM 100
 
+#define PGBUF_ALLOC_BCB_NTHREAD 24
+#define PGBUF_ALLOC_BCB_CPU_RATIO 10
+#define PGBUF_ALLOC_BCB_SLEEP_OVERHEAD 50
+
   PGBUF_BCB *bufptr;
   int sleep_count, loop_count, check_count;
   bool has_waiters_on_fixed = false;
   bool has_fixed_pages = true;
   bool penalize = false;
 
+#if 0
   int alloc_bcb_waiting_threads;
   int alloc_bcb_waiting_loops;
   int alloc_bcb_avg_wait = 1;
+#endif
 
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_bcb_detailed;	/* not used */
+
+  static const float sleep_rate =
+    (float) PGBUF_ALLOC_BCB_CPU_RATIO * (float) PGBUF_ALLOC_BCB_SLEEP_OVERHEAD / (float) PGBUF_ALLOC_BCB_NTHREAD;
+  volatile static int n_alloc_bcb_waiters = 0;
+  int read_n_alloc_bcb_waiters = 0;
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
   time_tracker_alloc_bcb_detailed = time_tracker_alloc_bcb;
@@ -8456,7 +8467,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   check_count =
     MAX (PGBUF_MIN_NUM_VICTIMS, (int) (PGBUF_LRU_SIZE * prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO)));
 
-#if defined (SERVER_MODE)
+#if 0
   if (pgbuf_Pool.monitor.alloc_bcb_waiting_threads > 0.1f * PGBUF_TOTAL_LRU)
     {
       /* many threads are already waiting for victim, give them first a change to acquire one */
@@ -8466,7 +8477,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   while (loop_count++ < INT_MAX)
     {
-#if defined (SERVER_MODE)
+#if 0
       if (loop_count > 1)
 	{
 	  if (loop_count == 2)
@@ -8549,6 +8560,12 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 	  if (has_waiters_on_fixed == false)
 	    {
+              read_n_alloc_bcb_waiters = n_alloc_bcb_waiters;
+              sleep_time += read_n_alloc_bcb_waiters * sleep_rate;
+              /* temporary use unused statistic */
+              perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_CACHE, read_n_alloc_bcb_waiters);
+
+#if 0
 	      if (penalize)
 		{
 		  sleep_time = 1.0f;
@@ -8567,6 +8584,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 		}
 	      /* ok, the worse the system gets, the more we need to wait */
 	      sleep_time = sleep_time * alloc_bcb_waiting_loops;
+#endif
 	    }
 
 	  thread_sleep (sleep_time);
@@ -8585,6 +8603,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    }
 	}
 
+      (void) ATOMIC_INC_32 (&n_alloc_bcb_waiters, 1);
+
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PB_ALL_BUFFERS_DIRTY, 1, check_count);
 
       check_count = PGBUF_LRU_SIZE - pgbuf_Pool.num_LRU1_zone_threshold;
@@ -8599,8 +8619,11 @@ end:
     {
       perfmon_add_stat (thread_p, PSTAT_PB_ALLOC_BCB_EXTRA_LOOPS, loop_count - 1);
 
+#if 0
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.alloc_bcb_waiting_threads, -1);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.alloc_bcb_waiting_loops, 1 - loop_count);
+#endif
+      ATOMIC_INC_32 (&n_alloc_bcb_waiters, -1);
     }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_bcb, PSTAT_PB_ALLOC_BCB);
@@ -8608,6 +8631,9 @@ end:
   return bufptr;
 
 #undef PGBUF_LOOP_CNT_FORCE_VICTIM
+#undef PGBUF_ALLOC_BCB_NTHREAD
+#undef PGBUF_ALLOC_BCB_CPU_RATIO
+#undef PGBUF_ALLOC_BCB_SLEEP_OVERHEAD
 }
 
 /*
@@ -14464,8 +14490,8 @@ pgbuf_initialize_page_monitor (void)
   monitor->lru_garbage_pgs = 0;
 
   /* init counters for allocate bcb. give non-zero values to avoid sudden changes on small numbers of allocators */
-  monitor->alloc_bcb_waiting_threads = 10;
-  monitor->alloc_bcb_waiting_loops = 10;
+  monitor->alloc_bcb_waiting_threads = 0;
+  monitor->alloc_bcb_waiting_loops = 0;
 
 exit:
   return error_status;
@@ -16083,7 +16109,7 @@ pgbuf_lru_update_victims_on_set_dirty (PGBUF_BCB * bcb)
   lru_list = &pgbuf_Pool.buf_LRU_list[PGBUF_GET_LRU_INDEX (bcb->zone_lru)];
   count_non_dirty_prev = ATOMIC_INC_32 (&lru_list->LRU_2_non_dirty_cnt, -1);
   bcbs_in_lru_list = pgbuf_Pool.monitor.bcbs_cnt_per_lru[PGBUF_GET_LRU_INDEX (bcb->zone_lru)];
-  assert (count_non_dirty_prev > 0);
+  assert (count_non_dirty_prev >= 0);
 
   /* todo: remove me */
   if (count_non_dirty_prev < 0)
@@ -16171,6 +16197,7 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
       abort ();
     }
 
+#if 0
   if (pgbuf_Pool.monitor.alloc_bcb_waiting_threads > 0)
     {
       if (lf_circular_queue_produce (pgbuf_Pool.flushed_bcb_cache, &bcb))
@@ -16183,4 +16210,5 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	  abort ();
 	}
     }
+#endif
 }
