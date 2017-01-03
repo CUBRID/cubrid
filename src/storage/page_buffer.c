@@ -8436,7 +8436,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   int alloc_bcb_waiting_threads;
   int alloc_bcb_waiting_loops;
-  int alloc_bcb_avg_wait;
+  int alloc_bcb_avg_wait = 1;
 
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_bcb_detailed;	/* not used */
@@ -8566,7 +8566,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 		  sleep_time = 0.01f;
 		}
 	      /* ok, the worse the system gets, the more we need to wait */
-	      sleep_time = sleep_time /** alloc_bcb_waiting_loops*/;
+	      sleep_time = sleep_time * alloc_bcb_waiting_loops;
 	    }
 
 	  thread_sleep (sleep_time);
@@ -14462,8 +14462,10 @@ pgbuf_initialize_page_monitor (void)
 
   monitor->lru_shared_pgs = 0;
   monitor->lru_garbage_pgs = 0;
-  monitor->alloc_bcb_waiting_threads = 0;
-  monitor->alloc_bcb_waiting_loops = 0;
+
+  /* init counters for allocate bcb. give non-zero values to avoid sudden changes on small numbers of allocators */
+  monitor->alloc_bcb_waiting_threads = 10;
+  monitor->alloc_bcb_waiting_loops = 10;
 
 exit:
   return error_status;
