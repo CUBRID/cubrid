@@ -11297,7 +11297,6 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	{
 	  qfile_close_list (thread_p, func_p->list_id);
 	  qfile_destroy_list (thread_p, func_p->list_id);
-	  func_p->list_id = NULL;
 	}
 
       if (!list_id_p)
