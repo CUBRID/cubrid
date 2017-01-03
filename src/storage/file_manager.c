@@ -8857,40 +8857,6 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
 }
 
 /*
- * file_temp_save_tran_file () - cache temporary file in transaction list
- *
- * return         : error code
- * thread_p (in)  : thread entry
- * vfid (in)      : file identifier
- * file_type (in) : file type
- */
-int
-file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_type)
-{
-  FILE_TEMPCACHE_ENTRY *entry = NULL;
-  int error_code = NO_ERROR;
-
-  assert (vfid != NULL && !VFID_ISNULL (vfid));
-  file_tempcache_lock ();
-  error_code = file_tempcache_alloc_entry (&entry);
-  file_tempcache_unlock ();
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-  if (entry == NULL)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-  entry->vfid = *vfid;
-  entry->ftype = file_type;
-  file_tempcache_push_tran_file (thread_p, entry);
-  return NO_ERROR;
-}
-
-/*
  * file_get_tran_num_temp_files () - returns the number of temp file entries of the given transaction
  *
  * return        : the number of temp files of the given transaction

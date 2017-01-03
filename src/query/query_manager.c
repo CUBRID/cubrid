@@ -323,6 +323,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->er_msg = NULL;
   query_p->query_flag = 0;
   query_p->is_holdable = false;
+  query_p->is_preserved = false;
 
   return query_p;
 }
@@ -2790,7 +2791,7 @@ qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qu
       tfile_vfid_p = query_p->temp_vfid;
       tfile_vfid_p->prev->next = NULL;
 
-      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error, false);
+      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error, query_p->is_preserved);
 
       query_p->temp_vfid = NULL;
     }
