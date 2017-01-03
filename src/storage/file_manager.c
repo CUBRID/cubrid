@@ -4968,9 +4968,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	  goto exit;
 	}
     }
-
-  fhead->n_sector_empty -= was_empty;
-
+  
   /* done */
 
   assert (error_code == NO_ERROR);
