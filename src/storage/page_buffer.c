@@ -8610,7 +8610,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    }
 	}
 
-      if (loop_count == 0)
+      if (loop_count == 1)
         {
           (void) ATOMIC_INC_32 (&n_alloc_bcb_waiters, 1);
         }
