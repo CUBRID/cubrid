@@ -8518,7 +8518,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
       for (sleep_count = 0; sleep_count < PGBUF_SLEEP_MAX; sleep_count++)
 	{
-	  float sleep_time = 0.001f;
+	  float sleep_time = PGBUF_ALLOC_BCB_SLEEP_OVERHEAD;
 
 	  /* If the caller allocates a BCB successfully,
 	   * the caller is holding bufptr->BCB_mutex.
