@@ -927,7 +927,7 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       int part_cnt = 0;
       assert (!file_extdata_is_empty (part_table) || !VPID_ISNULL (&part_table->vpid_next));
       (void) file_extdata_all_item_count (thread_p, part_table, &part_cnt);
-      assert (abs (fhead->n_sector_partial - part_cnt) <= 1);
+      assert (FILE_IS_TEMPORARY (fhead) || abs (fhead->n_sector_partial - part_cnt) <= 1);
     }
 
   if (!FILE_IS_TEMPORARY (fhead))
@@ -942,7 +942,7 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 	  int full_cnt = 0;
 	  assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->vpid_next));
 	  (void) file_extdata_all_item_count (thread_p, full_table, &full_cnt);
-	  assert (abs (fhead->n_sector_full - full_cnt) <= 1);
+	  assert (FILE_IS_TEMPORARY (fhead) || abs (fhead->n_sector_full - full_cnt) <= 1);
 	}
     }
 #endif /* !NDEBUG */
@@ -1012,12 +1012,12 @@ file_header_alloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool was_emp
     {
       fhead->n_sector_empty--;
     }
-
+  /*
   if (is_full)
     {
       fhead->n_sector_partial--;
       fhead->n_sector_full++;
-    }
+    }*/
 }
 
 /*
@@ -4764,6 +4764,7 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
       pgbuf_log_new_page (thread_p, page_ftab, file_extdata_size (extdata_full_ftab), PAGE_FTAB);
       pgbuf_unfix_and_init (thread_p, page_ftab);
     }
+  fhead->n_sector_full++;
 
   /* done */
   assert (error_code == NO_ERROR);
@@ -4850,6 +4851,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   assert (page_fhead != NULL);
 
   file_log ("file_perm_alloc", "%s", FILE_ALLOC_TYPE_STRING (alloc_type));
+  file_header_sanity_check (thread_p, fhead);
 
   if (fhead->n_page_free == 0)
     {
@@ -4948,6 +4950,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       save_lsa = *pgbuf_get_lsa (page_fhead);
       file_log_extdata_remove (thread_p, extdata_part_ftab, page_fhead, 0, 1);
       file_extdata_remove_at (extdata_part_ftab, 0, 1);
+      fhead->n_sector_partial--;
 
       file_log ("file_perm_alloc",
 		"removed full partial sector from position 0 in file %d|%d, header page %d|%d, "
@@ -4965,6 +4968,8 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	  goto exit;
 	}
     }
+
+  fhead->n_sector_empty -= was_empty;
 
   /* done */
 
