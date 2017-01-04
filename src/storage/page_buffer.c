@@ -8472,11 +8472,13 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   check_count =
     MAX (PGBUF_MIN_NUM_VICTIMS, (int) (PGBUF_LRU_SIZE * prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO)));
 
+#if defined (SERVER_MODE)
   if (pgbuf_Pool.monitor.alloc_bcb_waiting_threads > 0.1f * PGBUF_TOTAL_LRU)
     {
       /* many threads are already waiting for victim, give them first a change to acquire one */
       thread_sleep (sleep_time_initial);
     }
+#endif
 
   while (loop_count++ < INT_MAX)
     {
