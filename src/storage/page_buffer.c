@@ -8430,7 +8430,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 #define PGBUF_ALLOC_BCB_NTHREAD 24
 #define PGBUF_ALLOC_BCB_CPU_RATIO 10
-#define PGBUF_ALLOC_BCB_SLEEP_OVERHEAD 0.05f
+#define PGBUF_ALLOC_BCB_SLEEP_OVERHEAD 0.1f
 
   PGBUF_BCB *bufptr;
   int sleep_count, loop_count, check_count;
