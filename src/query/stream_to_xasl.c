@@ -39,7 +39,6 @@
 #include "memory_alloc.h"
 #include "heap_file.h"
 #include "release_string.h"
-#include "dbval.h"
 #if defined(SERVER_MODE)
 #include "thread.h"
 #endif /* SERVER_MODE */
@@ -5384,7 +5383,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
-      if (xasl_unpack_info_p->use_xasl_clone && DB_NEED_CLEAR (&regu_var->value.dbval))
+      if (xasl_unpack_info_p->use_xasl_clone && !db_value_is_null (&regu_var->value.dbval))
 	{
 	  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	}
@@ -5404,7 +5403,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	    {
 	      goto error;
 	    }
-	  if (xasl_unpack_info_p->use_xasl_clone && DB_NEED_CLEAR (regu_var->value.dbvalptr))
+	  if (xasl_unpack_info_p->use_xasl_clone && regu_var->value.dbvalptr->need_clear)
 	    {
 	      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	    }
