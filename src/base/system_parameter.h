@@ -403,9 +403,10 @@ enum param_id
 
   PRM_ID_PB_TRAN_PAGES_QUOTA,
   PRM_ID_PB_NUM_PRIVATE_CHAINS,
+  PRM_ID_PB_BCB_ALLOC_SLEEP,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PB_NUM_PRIVATE_CHAINS
+  PRM_LAST_ID = PRM_ID_PB_BCB_ALLOC_SLEEP
 };
 
 /*

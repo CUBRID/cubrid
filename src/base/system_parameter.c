@@ -627,6 +627,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PB_TRAN_PAGES_QUOTA "tran_pages_quota"
 #define PRM_NAME_PB_NUM_PRIVATE_CHAINS "num_private_chains"
+#define PRM_NAME_PB_BCB_ALLOC_SLEEP "bcb_alloc_sleep"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
@@ -2069,6 +2070,13 @@ static int prm_pb_num_private_chains_default = -1;
 static int prm_pb_num_private_chains_upper = 1000;
 static int prm_pb_num_private_chains_lower = -1;
 static unsigned int prm_pb_num_private_chains_flag = 0;
+
+
+int PRM_PB_BCB_ALLOC_SLEEP = 150;
+static int prm_pb_bcb_alloc_sleep_default = 150;
+static int prm_pb_bcb_alloc_sleep_upper = 1000000;
+static int prm_pb_bcb_alloc_sleep_lower = 1;
+static unsigned int prm_pb_bcb_alloc_sleep_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5026,6 +5034,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_PB_NUM_PRIVATE_CHAINS,
    (void *) &prm_pb_num_private_chains_upper,
    (void *) &prm_pb_num_private_chains_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_PB_BCB_ALLOC_SLEEP,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_INTEGER,
+   (void *) &prm_pb_bcb_alloc_sleep_flag,
+   (void *) &prm_pb_bcb_alloc_sleep_default,
+   (void *) &PRM_PB_BCB_ALLOC_SLEEP,
+   (void *) &prm_pb_bcb_alloc_sleep_upper,
+   (void *) &prm_pb_bcb_alloc_sleep_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
