@@ -128,6 +128,7 @@ static int thread_First_vacuum_worker_thread_index = -1;
 
 static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
+static int thread_return_transaction_entries (THREAD_ENTRY * entry_p);
 
 static void thread_stop_oob_handler_thread ();
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
@@ -1258,13 +1259,50 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 #endif
 
   /* transaction entries */
+  error = thread_return_transaction_entries (entry_p);
+  return error;
+}
+
+/*
+ * thread_return_transaction_entries() - return a previously requested entries
+ *   return:
+ *   entry_p(in):
+ */
+static int
+thread_return_transaction_entries (THREAD_ENTRY * entry_p)
+{
+  int i, error = NO_ERROR;
   for (i = 0; i < THREAD_TS_COUNT; i++)
     {
-      if (lf_tran_return_entry (entry_p->tran_entries[i]) != NO_ERROR)
+      if (entry_p->tran_entries[i] != 0)
 	{
-	  return ER_FAILED;
+	  error = lf_tran_return_entry (entry_p->tran_entries[i]);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  entry_p->tran_entries[i] = 0;
 	}
-      entry_p->tran_entries[i] = 0;
+    }
+  return error;
+}
+
+/*
+ * thread_return_all_transactions_entries() - return a requested entries for all transactions
+ *   return:
+ *   entry_p(in):
+ */
+int
+thread_return_all_transactions_entries (void)
+{
+  int error = NO_ERROR, i;
+  for (i = 0; i < thread_Manager.num_total; i++)
+    {
+      error = thread_return_transaction_entries (&thread_Manager.thread_array[i]);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
     }
 
   return error;
