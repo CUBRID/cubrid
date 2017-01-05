@@ -388,6 +388,7 @@ typedef enum
 {
   FILE_ALLOC_USER_PAGE,
   FILE_ALLOC_TABLE_PAGE,
+  FILE_ALLOC_TABLE_PAGE_FULL_SECTOR	/* used to allocate a table page necessary for full sectors */
 } FILE_ALLOC_TYPE;
 
 #define FILE_RV_DEALLOC_COMPENSATE true
@@ -909,7 +910,7 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
   assert (fhead->n_sector_empty >= 0);
   assert (fhead->n_sector_full >= 0);
   assert (fhead->n_sector_empty <= fhead->n_sector_partial);
-  assert (fhead->n_sector_partial + fhead->n_sector_full == fhead->n_sector_total);
+  //assert (fhead->n_sector_partial + fhead->n_sector_full == fhead->n_sector_total);
 
   if (fhead->n_page_free == 0)
     {
@@ -1012,12 +1013,12 @@ file_header_alloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool was_emp
     {
       fhead->n_sector_empty--;
     }
-  /*
+
   if (is_full)
     {
       fhead->n_sector_partial--;
       fhead->n_sector_full++;
-    }*/
+    }
 }
 
 /*
@@ -4665,6 +4666,7 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
   PAGE_PTR page_extdata = NULL;
   LOG_LSA save_lsa;
   int error_code = NO_ERROR;
+  int pos = -1;
 
   /* how it works:
    * add VSID to full table. first we try to find free space in the existing extensible data components. if there is no
@@ -4691,36 +4693,8 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
       ASSERT_ERROR ();
       goto exit;
     }
-  page_extdata = page_ftab != NULL ? page_ftab : page_fhead;
-  if (found)
-    {
-      /* add the new VSID to full table. note that we keep sectors ordered. */
-      int pos = -1;
 
-      file_extdata_find_ordered (extdata_full_ftab, vsid, file_compare_vsids, &found, &pos);
-      if (found)
-	{
-	  /* ups, duplicate! */
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto exit;
-	}
-      file_extdata_insert_at (extdata_full_ftab, pos, 1, vsid);
-
-      /* log the change. */
-      save_lsa = *pgbuf_get_lsa (page_extdata);
-      file_log_extdata_add (thread_p, extdata_full_ftab, page_extdata, pos, 1, vsid);
-
-      file_log ("file_table_add_full_sector",
-		"add sector %d|%d at position %d in file %d|%d, full table page %d|%d, "
-		"prev_lsa %lld|%d, crt_lsa %lld|%d, \n"
-		FILE_EXTDATA_MSG ("full table component"),
-		VSID_AS_ARGS (vsid), pos, VFID_AS_ARGS (&fhead->self),
-		PGBUF_PAGE_VPID_AS_ARGS (page_extdata),
-		LSA_AS_ARGS (&save_lsa),
-		PGBUF_PAGE_LSA_AS_ARGS (page_extdata), FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
-    }
-  else
+  if (!found)
     {
       /* no free space. add a new page to full table. */
       VPID vpid_ftab_new;
@@ -4732,16 +4706,6 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
 	  goto exit;
 	}
 
-      /* Log and link the page in previous table. */
-      file_log_extdata_set_next (thread_p, extdata_full_ftab, page_extdata, &vpid_ftab_new);
-      VPID_COPY (&extdata_full_ftab->vpid_next, &vpid_ftab_new);
-
-      if (page_ftab != NULL)
-	{
-	  /* No longer needed */
-	  pgbuf_unfix_and_init (thread_p, page_ftab);
-	}
-
       /* fix new table page */
       page_ftab = pgbuf_fix (thread_p, &vpid_ftab_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
@@ -4749,22 +4713,32 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
-      pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
-
-      /* init new table extensible data and append the VSID */
-      extdata_full_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
-      file_extdata_init (sizeof (VSID), DB_PAGESIZE, extdata_full_ftab);
-      file_extdata_append (extdata_full_ftab, vsid);
-
-      file_log ("file_table_add_full_sector",
-		"added sector %d|%d in new full table page %d|%d \n"
-		FILE_EXTDATA_MSG ("new extensible data component"),
-		VSID_AS_ARGS (vsid), VPID_AS_ARGS (&vpid_ftab_new), FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
-
-      pgbuf_log_new_page (thread_p, page_ftab, file_extdata_size (extdata_full_ftab), PAGE_FTAB);
-      pgbuf_unfix_and_init (thread_p, page_ftab);
     }
-  fhead->n_sector_full++;
+
+  page_extdata = page_ftab != NULL ? page_ftab : page_fhead;
+
+  /* add the new VSID to full table. note that we keep sectors ordered. */
+  file_extdata_find_ordered (extdata_full_ftab, vsid, file_compare_vsids, &found, &pos);
+  if (found)
+    {
+      /* ups, duplicate! */
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+  file_extdata_insert_at (extdata_full_ftab, pos, 1, vsid);
+
+  /* log the change. */
+  save_lsa = *pgbuf_get_lsa (page_extdata);
+  file_log_extdata_add (thread_p, extdata_full_ftab, page_extdata, pos, 1, vsid);
+
+  file_log ("file_table_add_full_sector",
+	    "add sector %d|%d at position %d in file %d|%d, full table page %d|%d, "
+	    "prev_lsa %lld|%d, crt_lsa %lld|%d, \n"
+	    FILE_EXTDATA_MSG ("full table component"),
+	    VSID_AS_ARGS (vsid), pos, VFID_AS_ARGS (&fhead->self),
+	    PGBUF_PAGE_VPID_AS_ARGS (page_extdata),
+	    LSA_AS_ARGS (&save_lsa), PGBUF_PAGE_LSA_AS_ARGS (page_extdata), FILE_EXTDATA_AS_ARGS (extdata_full_ftab));
 
   /* done */
   assert (error_code == NO_ERROR);
@@ -4918,6 +4892,32 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	    PGBUF_PAGE_LSA_AS_ARGS (page_fhead), offset_to_alloc_bit,
 	    (PGLENGTH) ((char *) partsect - page_fhead), FILE_PARTSECT_AS_ARGS (partsect));
 
+  if (alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR)
+    {
+      /* add newly allocated page to full table extdata */
+      PAGE_PTR page_ftab = NULL;
+
+      /* Log and link the page in previous table. */
+      file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_alloc_out);
+      VPID_COPY (&extdata_full_ftab->vpid_next, vpid_alloc_out);
+
+      /* fix new table page */
+      page_ftab = pgbuf_fix (thread_p, vpid_alloc_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ftab == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
+
+      /* init new table extensible data */
+      extdata_full_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
+      file_extdata_init (sizeof (VSID), DB_PAGESIZE, extdata_full_ftab);
+
+      pgbuf_log_new_page (thread_p, page_ftab, file_extdata_size (extdata_full_ftab), PAGE_FTAB);
+      pgbuf_unfix_and_init (thread_p, page_ftab);
+    }
+
   is_full = file_partsect_is_full (partsect);
 
   /* update header statistics */
@@ -4950,7 +4950,6 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       save_lsa = *pgbuf_get_lsa (page_fhead);
       file_log_extdata_remove (thread_p, extdata_part_ftab, page_fhead, 0, 1);
       file_extdata_remove_at (extdata_part_ftab, 0, 1);
-      fhead->n_sector_partial--;
 
       file_log ("file_perm_alloc",
 		"removed full partial sector from position 0 in file %d|%d, header page %d|%d, "
@@ -4968,7 +4967,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	  goto exit;
 	}
     }
-  
+
   /* done */
 
   assert (error_code == NO_ERROR);
