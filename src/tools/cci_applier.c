@@ -1038,7 +1038,7 @@ main (int argc, char *argv[])
 	  break;
 	case 'p':
 	  con_info.password = optarg;
-#if defined (LIUNUX)
+#if defined (LINUX)
 	  memset (optarg, '*', strlen (optarg));
 #endif
 	  break;

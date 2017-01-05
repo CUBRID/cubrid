@@ -515,7 +515,7 @@ get_args (int argc, char *argv[])
 	  break;
 	case 'p':
 	  dbpasswd = optarg;
-#if defined (LIUNUX)
+#if defined (LINUX)
 	  memset (optarg, '*', strlen (optarg));
 #endif
 	  break;
