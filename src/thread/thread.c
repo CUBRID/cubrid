@@ -1293,7 +1293,6 @@ thread_return_transaction_entries (THREAD_ENTRY * entry_p)
 /*
  * thread_return_all_transactions_entries() - return previously requested entries for all transactions
  *   return:
- *   entry_p(in):
  */
 int
 thread_return_all_transactions_entries (void)
