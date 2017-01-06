@@ -1503,7 +1503,7 @@ extern int or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int 
 extern int or_get_value (OR_BUF * buf, DB_VALUE * value, struct tp_domain *domain, int expected, bool copy);
 
 extern char *or_pack_value (char *buf, DB_VALUE * value);
-extern char *or_pack_mem_value (char *buf, DB_VALUE * value);
+extern char *or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment);
 extern char *or_unpack_value (char *buf, DB_VALUE * value);
 extern char *or_unpack_mem_value (char *buf, DB_VALUE * value);
 

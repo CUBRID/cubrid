@@ -107,7 +107,6 @@ extern void sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 extern void sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void srepl_btree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

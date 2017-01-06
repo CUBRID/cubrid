@@ -803,10 +803,6 @@ net_server_init (void)
   req_p->processing_function = sacl_reload;
   req_p->name = "NET_SERVER_ACL_RELOAD";
 
-  req_p = &net_Requests[NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY];
-  req_p->processing_function = sbtree_delete_with_unique_key;
-  req_p->name = "NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY";
-
   req_p = &net_Requests[NET_SERVER_AU_LOGIN_USER];
   req_p->processing_function = slogin_user;
   req_p->name = "NET_SERVER_SET_USERNAME";

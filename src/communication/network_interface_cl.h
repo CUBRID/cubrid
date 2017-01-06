@@ -197,7 +197,6 @@ extern BTREE_SEARCH btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_
 extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid);
 extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids, DB_VALUE * keys,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
-extern int btree_delete_with_unique_key (BTID * btid, OID * class_oid, DB_VALUE * key_value);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
 extern int qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
