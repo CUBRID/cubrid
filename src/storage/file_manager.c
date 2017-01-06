@@ -4899,12 +4899,10 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
     {
       /* add newly allocated page to full table extdata */
       PAGE_PTR page_ftab = NULL;
+      VPID old_vpid_next;
 
       FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
-
-      /* Log and link the page in previous table. */
-      file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_alloc_out);
-      VPID_COPY (&extdata_full_ftab->vpid_next, vpid_alloc_out);
+      VPID_COPY (&old_vpid_next, &extdata_full_ftab->vpid_next);
 
       /* fix new table page */
       page_ftab = pgbuf_fix (thread_p, vpid_alloc_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -4918,9 +4916,16 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       /* init new table extensible data */
       extdata_full_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
       file_extdata_init (sizeof (VSID), DB_PAGESIZE, extdata_full_ftab);
+      file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, &old_vpid_next);
+      VPID_COPY (&extdata_full_ftab->vpid_next, &old_vpid_next);
 
       pgbuf_log_new_page (thread_p, page_ftab, file_extdata_size (extdata_full_ftab), PAGE_FTAB);
       pgbuf_unfix_and_init (thread_p, page_ftab);
+
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
+      /* Log and link the page in previous table. */
+      file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_alloc_out);
+      VPID_COPY (&extdata_full_ftab->vpid_next, vpid_alloc_out);
     }
 
   is_full = file_partsect_is_full (partsect);
