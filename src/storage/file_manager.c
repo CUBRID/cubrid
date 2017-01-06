@@ -996,7 +996,8 @@ STATIC_INLINE void
 file_header_alloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool was_empty, bool is_full)
 {
   assert (fhead != NULL);
-  assert (alloc_type == FILE_ALLOC_USER_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR);
+  assert (alloc_type == FILE_ALLOC_USER_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE
+	  || alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR);
   assert (!was_empty || !is_full);
 
   fhead->n_page_free--;
@@ -1157,7 +1158,8 @@ file_log_fhead_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_T
   bool log_bools[3];
 
   assert (page_fhead != NULL);
-  assert (alloc_type == FILE_ALLOC_TABLE_PAGE || alloc_type == FILE_ALLOC_USER_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR);
+  assert (alloc_type == FILE_ALLOC_TABLE_PAGE || alloc_type == FILE_ALLOC_USER_PAGE
+	  || alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR);
   assert (!was_empty || !is_full);
 
   log_bools[0] = is_ftab_page;
@@ -4713,8 +4715,8 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
 	  goto exit;
 	}
 
-	/* the new full table component is used */
-      extdata_full_ftab = (FILE_EXTENSIBLE_DATA *)page_ftab;
+      /* the new full table component is used */
+      extdata_full_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
     }
 
   page_extdata = page_ftab != NULL ? page_ftab : page_fhead;
