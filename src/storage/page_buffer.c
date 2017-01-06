@@ -9814,7 +9814,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
        /* go to previous bcb */
        bufptr = bufptr->prev_BCB,
        /* go back to list bottom if we reached the end of list or if we reached zone 1 and we only look in zone 2 */
-       bufptr = (PGBUF_BCB *) (bufptr == NULL || bufptr->zone_lru != zone2_list) ? lru_list->LRU_bottom : bufptr,
+       bufptr = (PGBUF_BCB *) ((bufptr == NULL || bufptr->zone_lru != zone2_list) ? lru_list->LRU_bottom : bufptr),
        /* update from_beginning if we restarted from bottom */
        restart_from_bottom = restart_from_bottom || (bufptr == lru_list->LRU_bottom))
     {
