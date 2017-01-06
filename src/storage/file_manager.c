@@ -910,7 +910,7 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
   assert (fhead->n_sector_empty >= 0);
   assert (fhead->n_sector_full >= 0);
   assert (fhead->n_sector_empty <= fhead->n_sector_partial);
-  //assert (fhead->n_sector_partial + fhead->n_sector_full == fhead->n_sector_total);
+  assert (fhead->n_sector_partial + fhead->n_sector_full == fhead->n_sector_total);
 
   if (fhead->n_page_free == 0)
     {
@@ -928,7 +928,7 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       int part_cnt = 0;
       assert (!file_extdata_is_empty (part_table) || !VPID_ISNULL (&part_table->vpid_next));
       (void) file_extdata_all_item_count (thread_p, part_table, &part_cnt);
-      assert (FILE_IS_TEMPORARY (fhead) || abs (fhead->n_sector_partial - part_cnt) <= 1);
+      assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_partial == part_cnt);
     }
 
   if (!FILE_IS_TEMPORARY (fhead))
@@ -943,7 +943,7 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 	  int full_cnt = 0;
 	  assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->vpid_next));
 	  (void) file_extdata_all_item_count (thread_p, full_table, &full_cnt);
-	  assert (FILE_IS_TEMPORARY (fhead) || abs (fhead->n_sector_full - full_cnt) <= 1);
+	  assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_full == full_cnt);
 	}
     }
 #endif /* !NDEBUG */
@@ -996,7 +996,7 @@ STATIC_INLINE void
 file_header_alloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool was_empty, bool is_full)
 {
   assert (fhead != NULL);
-  assert (alloc_type == FILE_ALLOC_USER_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE);
+  assert (alloc_type == FILE_ALLOC_USER_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR);
   assert (!was_empty || !is_full);
 
   fhead->n_page_free--;
@@ -1153,11 +1153,11 @@ file_log_fhead_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_T
 {
 #define LOG_BOOL_COUNT 3
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-  bool is_ftab_page = (alloc_type == FILE_ALLOC_TABLE_PAGE);
+  bool is_ftab_page = (alloc_type == FILE_ALLOC_TABLE_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR);
   bool log_bools[3];
 
   assert (page_fhead != NULL);
-  assert (alloc_type == FILE_ALLOC_TABLE_PAGE || alloc_type == FILE_ALLOC_USER_PAGE);
+  assert (alloc_type == FILE_ALLOC_TABLE_PAGE || alloc_type == FILE_ALLOC_USER_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR);
   assert (!was_empty || !is_full);
 
   log_bools[0] = is_ftab_page;
@@ -4385,7 +4385,6 @@ file_perm_expand (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead)
   assert (log_check_system_op_is_started (thread_p));
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (thread_p, fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
 
   /* compute desired expansion size. we should consider ratio, minimum size and maximum size. also, maximum size cannot
@@ -4699,7 +4698,7 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
       /* no free space. add a new page to full table. */
       VPID vpid_ftab_new;
 
-      error_code = file_perm_alloc (thread_p, page_fhead, FILE_ALLOC_TABLE_PAGE, &vpid_ftab_new);
+      error_code = file_perm_alloc (thread_p, page_fhead, FILE_ALLOC_TABLE_PAGE_FULL_SECTOR, &vpid_ftab_new);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4713,6 +4712,9 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+
+	/* the new full table component is used */
+      extdata_full_ftab = (FILE_EXTENSIBLE_DATA *)page_ftab;
     }
 
   page_extdata = page_ftab != NULL ? page_ftab : page_fhead;
@@ -4825,7 +4827,6 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   assert (page_fhead != NULL);
 
   file_log ("file_perm_alloc", "%s", FILE_ALLOC_TYPE_STRING (alloc_type));
-  file_header_sanity_check (thread_p, fhead);
 
   if (fhead->n_page_free == 0)
     {
@@ -4896,6 +4897,8 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
     {
       /* add newly allocated page to full table extdata */
       PAGE_PTR page_ftab = NULL;
+
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_full_ftab);
 
       /* Log and link the page in previous table. */
       file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_alloc_out);
