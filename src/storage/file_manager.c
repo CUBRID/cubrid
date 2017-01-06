@@ -4700,6 +4700,9 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
       /* no free space. add a new page to full table. */
       VPID vpid_ftab_new;
 
+      /* unfix the last page that remained fixed from file_extdata_find_not_null */
+      pgbuf_unfix_and_init (thread_p, page_ftab);
+
       error_code = file_perm_alloc (thread_p, page_fhead, FILE_ALLOC_TABLE_PAGE_FULL_SECTOR, &vpid_ftab_new);
       if (error_code != NO_ERROR)
 	{
