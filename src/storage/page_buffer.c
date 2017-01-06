@@ -8486,7 +8486,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   static const float sleep_rate =
     (float) PGBUF_ALLOC_BCB_CPU_RATIO * (float) PGBUF_ALLOC_BCB_SLEEP_OVERHEAD / (float) PGBUF_ALLOC_BCB_NTHREAD;
-  volatile static int n_alloc_bcb_waiters = 0;
+  static volatile int n_alloc_bcb_waiters = 0;
   int read_n_alloc_bcb_waiters = 0;
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
