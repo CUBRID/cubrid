@@ -10559,7 +10559,6 @@ pgbuf_lru_add_new_bcb_to_top (PGBUF_BCB * bcb, int lru_idx)
   /* this is not meant for changes in this list */
   assert (PGBUF_GET_ZONE (bcb->zone_lru) != PGBUF_LRU_2_ZONE || PGBUF_GET_ZONE (bcb->zone_lru) != PGBUF_LRU_1_ZONE
 	  || PGBUF_GET_LRU_INDEX (bcb->zone_lru) != lru_idx);
-  PGBUF_GET_LRU_FROM_BCB (bcb, lru_idx, lru_list);
 
   /* lock list */
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
@@ -10599,7 +10598,6 @@ pgbuf_lru_add_new_bcb_to_middle (PGBUF_BCB * bcb, int lru_idx)
   /* this is not meant for changes in this list */
   assert (PGBUF_GET_ZONE (bcb->zone_lru) != PGBUF_LRU_2_ZONE || PGBUF_GET_ZONE (bcb->zone_lru) != PGBUF_LRU_1_ZONE
 	  || PGBUF_GET_LRU_INDEX (bcb->zone_lru) != lru_idx);
-  PGBUF_GET_LRU_FROM_BCB (bcb, lru_idx, lru_list);
 
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
   pthread_mutex_lock (&lru_list->LRU_mutex);
@@ -10637,7 +10635,6 @@ pgbuf_lru_add_new_bcb_to_bottom (PGBUF_BCB * bcb, int lru_idx)
   /* this is not meant for changes in this list */
   assert (PGBUF_GET_ZONE (bcb->zone_lru) != PGBUF_LRU_2_ZONE || PGBUF_GET_ZONE (bcb->zone_lru) != PGBUF_LRU_1_ZONE
 	  || PGBUF_GET_LRU_INDEX (bcb->zone_lru) != lru_idx);
-  PGBUF_GET_LRU_FROM_BCB (bcb, lru_idx, lru_list);
 
   /* lock list */
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
