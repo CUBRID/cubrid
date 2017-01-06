@@ -1317,11 +1317,11 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid
 
 #if !defined(NDEBUG)
 int
-pgbuf_copy_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR page_ptr, int size, const char *caller_file,
-		  int caller_line)
+pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
+			      const char *caller_file, int caller_line)
 #else
 int
-pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_ptr, int size)
+pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * bcb_area, int size)
 #endif
 {
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -1331,7 +1331,7 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
   int err = NO_ERROR;
   PAGE_TYPE page_type;
 
-  assert (page_ptr != NULL);
+  assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL);
 
   /* interrupt check */
   if (thread_get_check_interrupt (thread_p) == true)
@@ -1374,7 +1374,7 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
       goto exit_on_error;
     }
   page_type = src_bufptr->iopage_buffer->iopage.prv.ptype;
-  memcpy (page_ptr, src_pgptr, IO_PAGESIZE);
+  memcpy (bcb_area, src_pgptr, IO_PAGESIZE);
   if (count_modifications != ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL))
     {
       goto exit_on_error;
@@ -1386,11 +1386,11 @@ pgbuf_copy_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * page_
 
   pthread_mutex_unlock (&src_bufptr->BCB_mutex);
 
-  CAST_PGPTR_TO_BFPTR (dest_bufptr, page_ptr);
+  CAST_PGPTR_TO_BFPTR (dest_bufptr, bcb_area);
   VPID_COPY (&dest_bufptr->vpid, vpid);
   dest_bufptr->iopage_buffer->iopage.prv.pageid = NULL_PAGEID;
   dest_bufptr->iopage_buffer->iopage.prv.volid = NULL_VOLID;
-  pgbuf_set_page_ptype (thread_p, page_ptr, page_type);
+  pgbuf_set_page_ptype (thread_p, bcb_area, page_type);
 
   return NO_ERROR;
 
@@ -1400,7 +1400,7 @@ exit_on_error:
       pthread_mutex_unlock (&src_bufptr->BCB_mutex);
     }
 
-  return (err == NO_ERROR && (err = er_errid ()) == NO_ERROR) ? ER_FAILED : err;
+  return ((err = er_errid ()) == NO_ERROR) ? ER_FAILED : err;
 }
 
 /*

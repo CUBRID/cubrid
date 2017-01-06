@@ -22528,7 +22528,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
       if (page_copy_buffer && node_header->node_level == 2)
 	{
 	  page_ptr = PTR_ALIGN (page_copy_buffer, MAX_ALIGNMENT);
-	  pgbuf_copy (thread_p, &child_vpid, page_ptr, IO_PAGESIZE);
+	  pgbuf_copy_to_bcb_area (thread_p, &child_vpid, page_ptr, IO_PAGESIZE);
 
 #if !defined(NDEBUG)
 	  *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);

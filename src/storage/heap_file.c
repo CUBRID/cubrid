@@ -7263,7 +7263,7 @@ try_again:
 	  ASSERT_ERROR ();
 	  goto error;
 	}
-      if (pgbuf_copy (thread_p, &object_vpid, context->page_copy_buffer_ptr, IO_PAGESIZE) == NO_ERROR)
+      if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->page_copy_buffer_ptr, IO_PAGESIZE) == NO_ERROR)
 	{
 	  need_latch = false;
 	  page_ptr = context->page_copy_buffer_ptr;
