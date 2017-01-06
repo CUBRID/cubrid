@@ -10361,6 +10361,7 @@ pgbuf_lru_add_bcb_to_middle (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
       lru_list->LRU_middle->next_BCB = bcb;
       bcb->prev_BCB = lru_list->LRU_middle;
 
+      /* and before bcb_next */
       bcb->next_BCB = bcb_next;
       /* is zone 2 empty? */
       if (bcb_next == NULL)
@@ -10372,6 +10373,10 @@ pgbuf_lru_add_bcb_to_middle (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
 	  /* update bottom */
 	  lru_list->LRU_bottom = bcb;
 	}
+      else
+        {
+          bcb_next->prev_BCB = bcb;
+        }
     }
 }
 
@@ -10466,6 +10471,14 @@ pgbuf_lru_move_zone_1_bcb_to_top (PGBUF_BCB * bcb)
 
   /* lock list */
   pthread_mutex_lock (&lru_list->LRU_mutex);
+
+  if (bcb == lru_list->LRU_top)
+    {
+      /* already in top */
+      /* unlock list */
+      pthread_mutex_unlock (&lru_list->LRU_mutex);
+      return;
+    }
 
   /* remove from current position */
   pgbuf_remove_from_lru_list (bcb, lru_list);
