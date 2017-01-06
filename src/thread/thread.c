@@ -128,7 +128,7 @@ static int thread_First_vacuum_worker_thread_index = -1;
 
 static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
-static int thread_return_transaction_entries (THREAD_ENTRY * entry_p);
+static int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 
 static void thread_stop_oob_handler_thread ();
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
@@ -1259,7 +1259,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 #endif
 
   /* transaction entries */
-  if (thread_return_transaction_entries (entry_p) != NO_ERROR)
+  if (thread_return_transaction_entry (entry_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1267,12 +1267,12 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 }
 
 /*
- * thread_return_transaction_entries() - return previously requested entries
+ * thread_return_transaction_entry() - return previously requested entries
  *   return: error code
  *   entry_p(in): thread entry
  */
 static int
-thread_return_transaction_entries (THREAD_ENTRY * entry_p)
+thread_return_transaction_entry (THREAD_ENTRY * entry_p)
 {
   int i, error = NO_ERROR;
   for (i = 0; i < THREAD_TS_COUNT; i++)
@@ -1300,7 +1300,7 @@ thread_return_all_transactions_entries (void)
   int error = NO_ERROR, i;
   for (i = 0; i < thread_Manager.num_total; i++)
     {
-      error = thread_return_transaction_entries (&thread_Manager.thread_array[i]);
+      error = thread_return_transaction_entry (&thread_Manager.thread_array[i]);
       if (error != NO_ERROR)
 	{
 	  break;
