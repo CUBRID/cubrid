@@ -8464,13 +8464,16 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 #define PGBUF_ALLOC_BCB_NTHREAD 24
 #define PGBUF_ALLOC_BCB_CPU_RATIO 10
-#define PGBUF_ALLOC_BCB_SLEEP_OVERHEAD 0.05f
+#define PGBUF_ALLOC_BCB_SLEEP_OVERHEAD 0.1f
+#define PGBUF_ALLOC_BCB_SLEEP_MAX 200.0f
+#define PGBUF_ALLOC_BCB_SLEEP_MAX_HOLDER 1.0f
 
   PGBUF_BCB *bufptr;
   int sleep_count, loop_count, check_count;
   bool has_waiters_on_fixed = false;
   bool has_fixed_pages = true;
   bool penalize = false;
+  float sleep_time_initial;
 
 #if 0
   int alloc_bcb_waiting_threads;
@@ -8491,6 +8494,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   loop_count = 0;
 
+  sleep_time_initial = ((float) prm_get_integer_value (PRM_ID_PB_BCB_ALLOC_SLEEP)) / 1000.0f;
+
   /* allocate a BCB from invalid BCB list */
   bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_detailed);
   if (bufptr != NULL)
@@ -8501,11 +8506,11 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   check_count =
     MAX (PGBUF_MIN_NUM_VICTIMS, (int) (PGBUF_LRU_SIZE * prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO)));
 
-#if 0
+#if defined (SERVER_MODE)
   if (pgbuf_Pool.monitor.alloc_bcb_waiting_threads > 0.1f * PGBUF_TOTAL_LRU)
     {
       /* many threads are already waiting for victim, give them first a change to acquire one */
-      thread_sleep (0.001f);
+      thread_sleep (sleep_time_initial);
     }
 #endif
 
@@ -8552,7 +8557,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
       for (sleep_count = 0; sleep_count < PGBUF_SLEEP_MAX; sleep_count++)
 	{
-	  float sleep_time = 0.001f;
+	  float sleep_time = sleep_time_initial;
 
 	  /* If the caller allocates a BCB successfully,
 	   * the caller is holding bufptr->BCB_mutex.
@@ -8600,7 +8605,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	      if (has_fixed_pages)
 		{
 		  /* waiters can eventually be added to my bcb... do not allow it sleep for too long. */
-		  sleep_time = MIN (0.1f, sleep_time);
+		  sleep_time = MIN (PGBUF_ALLOC_BCB_SLEEP_MAX_HOLDER, sleep_time);
 		}
 
 	      /* temporary use unused statistic */
@@ -8628,6 +8633,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 #endif
 	    }
 
+	  sleep_time = MIN (PGBUF_ALLOC_BCB_SLEEP_MAX, sleep_time);
+
 	  thread_sleep (sleep_time);
 	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_bcb_detailed, PSTAT_PB_ALLOC_BCB_SLEEP);
 #endif /* SERVER_MODE */
@@ -8644,7 +8651,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    }
 	}
 
-      if (loop_count == 0)
+      if (loop_count == 1)
 	{
 	  (void) ATOMIC_INC_32 (&n_alloc_bcb_waiters, 1);
 	}
