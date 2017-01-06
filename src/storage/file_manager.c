@@ -367,8 +367,8 @@ static bool file_Logging = false;
   "\t\tfile cache: max = %d, numerable = %d, regular = %d, total = %d \n" \
   "\t\tfree entries: max = %d, count = %d \n"
 #define FILE_TEMPCACHE_AS_ARGS \
-  file_Tempcache->ncached_max, file_Tempcache->ncached_numerable, file_Tempcache->cached_not_numerable, \
-  file_Tempcache->ncached_numerable + file_Tempcache->cached_not_numerable, \
+  file_Tempcache->ncached_max, file_Tempcache->ncached_numerable, file_Tempcache->ncached_not_numerable, \
+  file_Tempcache->ncached_numerable + file_Tempcache->ncached_not_numerable, \
   file_Tempcache->nfree_entries_max, file_Tempcache->nfree_entries
 
 #define FILE_TEMPCACHE_ENTRY_MSG "%p, VFID %d|%d, %s"
@@ -741,6 +741,7 @@ STATIC_INLINE int file_tempcache_alloc_entry (FILE_TEMPCACHE_ENTRY ** entry) __a
 STATIC_INLINE void file_tempcache_retire_entry (FILE_TEMPCACHE_ENTRY * entry) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int file_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable,
 				      FILE_TEMPCACHE_ENTRY ** entry) __attribute__ ((ALWAYS_INLINE));
+static bool file_tempcache_check_duplicate (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry, bool is_numerable);
 STATIC_INLINE bool file_tempcache_put (THREAD_ENTRY * thread_p,
 				       FILE_TEMPCACHE_ENTRY * entry) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int file_get_tempcache_entry_index (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
@@ -8591,6 +8592,50 @@ file_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FI
 }
 
 /*
+ * file_tempcache_check_duplicate () - check file cache whether it already has the entry to be added
+ *
+ * return        : true if file is already in file cache, otherwise false
+ * thread_p (in) : thread entry
+ * entry (in)    : entry of temporary file to be added to file cache
+ * is_numerable(in) : is numerable temporary file
+ *
+ * note it is a debugging function.
+ */
+static bool
+file_tempcache_check_duplicate (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry, bool is_numerable)
+{
+  FILE_TEMPCACHE_ENTRY *p;
+
+  assert (entry != NULL);
+  assert (!VFID_ISNULL (&entry->vfid));
+
+  if (is_numerable)
+    {
+      for (p = file_Tempcache->cached_numerable; p != NULL; p = p->next)
+	{
+	  if (VFID_EQ (&p->vfid, &entry->vfid))
+	    {
+	      assert (!VFID_EQ (&p->vfid, &entry->vfid));
+	      return true;
+	    }
+	}
+    }
+  else
+    {
+      for (p = file_Tempcache->cached_not_numerable; p != NULL; p = p->next)
+	{
+	  if (VFID_EQ (&p->vfid, &entry->vfid))
+	    {
+	      assert (!VFID_EQ (&p->vfid, &entry->vfid));
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * file_tempcache_put () - put entry to file cache (if cache is not full and if file passes vetting)
  *
  * return        : true if file was cached, false otherwise
@@ -8640,6 +8685,8 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 	  file_tempcache_unlock ();
 	  return false;
 	}
+
+      assert (file_tempcache_check_duplicate (thread_p, entry, FILE_IS_NUMERABLE (&fhead)) == false);
 
       /* add numerable temporary file to cached numerable file list, regular file to not numerable list */
       if (FILE_IS_NUMERABLE (&fhead))
@@ -8807,40 +8854,6 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
 
   file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-}
-
-/*
- * file_temp_save_tran_file () - cache temporary file in transaction list
- *
- * return         : error code
- * thread_p (in)  : thread entry
- * vfid (in)      : file identifier
- * file_type (in) : file type
- */
-int
-file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_type)
-{
-  FILE_TEMPCACHE_ENTRY *entry = NULL;
-  int error_code = NO_ERROR;
-
-  assert (vfid != NULL && !VFID_ISNULL (vfid));
-  file_tempcache_lock ();
-  error_code = file_tempcache_alloc_entry (&entry);
-  file_tempcache_unlock ();
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-  if (entry == NULL)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-  entry->vfid = *vfid;
-  entry->ftype = file_type;
-  file_tempcache_push_tran_file (thread_p, entry);
-  return NO_ERROR;
 }
 
 /*

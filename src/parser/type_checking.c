@@ -23641,24 +23641,28 @@ coerce_result:
 	  assert (args_w_coll_maybe > 0);
 	  if (op == PT_NVL2)
 	    {
-	      if (arg2_type == PT_TYPE_MAYBE)
+	      if (PT_HAS_COLLATION (arg1_type))
 		{
-		  expr_wrap_type = arg3_type;
+		  expr_wrap_type = arg1_type;
+		}
+	      else if (PT_HAS_COLLATION (arg2_type))
+		{
+		  expr_wrap_type = arg2_type;
 		}
 	      else
 		{
-		  expr_wrap_type = arg2_type;
+		  expr_wrap_type = arg3_type;
 		}
 	    }
 	  else
 	    {
-	      if (arg1_type == PT_TYPE_MAYBE)
+	      if (PT_HAS_COLLATION (arg1_type))
 		{
-		  expr_wrap_type = arg2_type;
+		  expr_wrap_type = arg1_type;
 		}
 	      else
 		{
-		  expr_wrap_type = arg1_type;
+		  expr_wrap_type = arg2_type;
 		}
 	    }
 

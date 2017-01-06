@@ -1489,7 +1489,10 @@ get_args (int argc, char *argv[])
 	  dbuser = optarg;
 	  break;
 	case 'p':
-	  dbpasswd = optarg;
+	  dbpasswd = strdup (optarg);
+#if defined (LINUX)
+	  memset (optarg, '*', strlen (optarg));
+#endif
 	  break;
 	case 'r':
 	  rewrite_query_flag = 1;
@@ -1665,6 +1668,11 @@ main (int argc, char *argv[])
   outfilename = argv[start_arg + 1];
 
   res = log_replay (infilename, outfilename);
+
+  if (dbpasswd != NULL)
+    {
+      free (dbpasswd);
+    }
 
   return res;
 }

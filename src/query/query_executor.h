@@ -1079,6 +1079,7 @@ extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NOD
 					       char *xasl_stream);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
 extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
+extern void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 
 extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DOMAIN * domain);
 #if defined (ENABLE_UNUSED_FUNCTION)

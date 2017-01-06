@@ -904,6 +904,7 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 {
   QPROC_TPLDESCR_STATUS status;
   size_t size;
+  int i;
 
   status = QPROC_TPLDESCR_FAILURE;	/* init */
 
@@ -917,6 +918,18 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto exit_on_error;
+	}
+
+      size = list_id->type_list.type_cnt * sizeof (bool);
+      list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (size);
+      if (list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  goto exit_on_error;
+	}
+      for (i = 0; i < list_id->type_list.type_cnt; i++)
+	{
+	  list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
 	}
     }
 
@@ -1350,7 +1363,23 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       qexec_clear_xasl_head (thread_p, xasl->connect_by_ptr);
     }
 
-  xasl->status = XASL_CLEARED;
+  if (xcache_uses_clones ())
+    {
+      if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
+	{
+	  xasl->status = XASL_CLEARED;
+	}
+      else
+	{
+	  /* The values allocated during execution will be cleared and the xasl is reused. */
+	  xasl->status = XASL_INITIALIZED;
+	}
+
+    }
+  else
+    {
+      xasl->status = XASL_CLEARED;
+    }
 
   return pg_cnt;
 }
@@ -1453,10 +1482,26 @@ qexec_clear_regu_var (XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, int final)
 	}
       /* Fall through */
     case TYPE_LIST_ID:
-      if (regu_var->xasl != NULL && regu_var->xasl->status != XASL_CLEARED)
+      if (regu_var->xasl != NULL)
 	{
-	  XASL_SET_FLAG (regu_var->xasl, xasl_p->flag & XASL_DECACHE_CLONE);
-	  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
+	  if (xcache_uses_clones ())
+	    {
+	      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_CLEARED)
+		{
+		  /* regu_var->xasl not cleared yet. Set flag to clear the values allocated at unpacking. */
+		  XASL_SET_FLAG (regu_var->xasl, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
+		}
+	      else if (!XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_INITIALIZED)
+		{
+		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
+		  pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
+		}
+	    }
+	  else if (regu_var->xasl->status != XASL_CLEARED)
+	    {
+	      pg_cnt += qexec_clear_xasl (NULL, regu_var->xasl, final);
+	    }
 	}
       break;
     case TYPE_INARITH:
@@ -1941,6 +1986,7 @@ qexec_clear_analytic_function_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	  p->domain = p->original_domain;
 	  p->opr_dbtype = p->original_opr_dbtype;
 	  pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
+	  stx_init_analytic_type_unserialized_fields (p);
 	}
     }
 
@@ -2784,7 +2830,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 		    {
 		      QFILE_GET_TUPLE_VALUE_HEADER_POSITION (data, ordby_info->ordbynum_pos[i], tvalhp);
-		      (void) qdata_copy_db_value_to_tuple_value (ordby_info->ordbynum_val, tvalhp, &tval_size);
+		      (void) qdata_copy_db_value_to_tuple_value (ordby_info->ordbynum_val, true, tvalhp, &tval_size);
 		    }
 
 		  error = qfile_add_tuple_to_list (thread_p, info->output_file, data);
@@ -2806,7 +2852,8 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		      for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 			{
 			  QFILE_GET_TUPLE_VALUE_HEADER_POSITION (data, ordby_info->ordbynum_pos[i], tvalhp);
-			  (void) qdata_copy_db_value_to_tuple_value (ordby_info->ordbynum_val, tvalhp, &tval_size);
+			  (void) qdata_copy_db_value_to_tuple_value (ordby_info->ordbynum_val, true, tvalhp,
+								     &tval_size);
 			}
 		      error = qfile_add_tuple_to_list (thread_p, info->output_file, data);
 		      db_private_free_and_init (thread_p, tplrec.tpl);
@@ -2837,7 +2884,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 		    {
 		      QFILE_GET_TUPLE_VALUE_HEADER_POSITION (data, ordby_info->ordbynum_pos[i], tvalhp);
-		      (void) qdata_copy_db_value_to_tuple_value (ordby_info->ordbynum_val, tvalhp, &tval_size);
+		      (void) qdata_copy_db_value_to_tuple_value (ordby_info->ordbynum_val, true, tvalhp, &tval_size);
 		    }
 		  error = qfile_add_tuple_to_list (thread_p, info->output_file, data);
 		}
@@ -18030,12 +18077,6 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
 		    }
 
-		  if (save_heapid != 0)
-		    {
-		      (void) db_change_private_heap (thread_p, save_heapid);
-		      save_heapid = 0;
-		    }
-
 		  /* try time */
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
@@ -18044,13 +18085,25 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
 		    }
 
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
+		    }
+		  else
+		    {
+		      if (status != DOMAIN_COMPATIBLE)
+			{
+			  pr_clear_value (dbval);
+			}
+		    }
+
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
 		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (agg_p->function),
 			      "DOUBLE, DATETIME or TIME");
 
-		      pr_clear_value (dbval);
 		      return error;
 		    }
 
@@ -18793,7 +18846,6 @@ exit_on_error:
 	    {
 	      qfile_close_list (thread_p, func_p->list_id);
 	      qfile_destroy_list (thread_p, func_p->list_id);
-	      func_p->list_id = NULL;
 	    }
 	}
     }
@@ -18871,6 +18923,15 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   func_state->group_list_id->tpl_descr.f_valp[0] = &func_state->cgtc_dbval;
   func_state->group_list_id->tpl_descr.f_valp[1] = &func_state->cgtc_nn_dbval;
 
+  func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (sizeof (bool) * 2);
+  if (func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * 2);
+      return ER_FAILED;
+    }
+  func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache[0] =
+    func_state->group_list_id->tpl_descr.clear_f_val_at_clone_decache[1] = false;
+
   /* initialize group value listfile */
   value_type_list.type_cnt = 2;
   value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
@@ -18895,6 +18956,15 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
     }
   func_state->value_list_id->tpl_descr.f_valp[0] = &func_state->csktc_dbval;
   func_state->value_list_id->tpl_descr.f_valp[1] = func_p->value;
+
+  func_state->value_list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (sizeof (bool) * 2);
+  if (func_state->value_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * 2);
+      return ER_FAILED;
+    }
+  func_state->value_list_id->tpl_descr.clear_f_val_at_clone_decache[0] =
+    func_state->value_list_id->tpl_descr.clear_f_val_at_clone_decache[1] = false;
 
   return NO_ERROR;
 }
@@ -23481,7 +23551,20 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	  error = ER_FAILED;
 	  goto cleanup;
 	}
+
+      tpl_descr->clear_f_val_at_clone_decache = (bool *) malloc (sizeof (bool) * values_count);
+      if (tpl_descr->clear_f_val_at_clone_decache == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * values_count);
+	  goto cleanup;
+	}
+
+      for (i = 0; i < values_count; i++)
+	{
+	  tpl_descr->clear_f_val_at_clone_decache[i] = false;
+	}
     }
+
   varp = xasl->outptr_list->valptrp;
   for (row = 0; row < heap->element_count; row++)
     {
@@ -23931,7 +24014,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   REGU_VARIABLE_LIST regu_list;
   AGGREGATE_TYPE *agg_list;
-  int value_count = 0, i = 0;
+  int value_count = 0, i = 0, error_code = NO_ERROR;
 
   if (!proc->g_hash_eligible)
     {
@@ -23964,7 +24047,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (DB_VALUE) * proc->g_func_count);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
     }
 
@@ -23976,7 +24059,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   if (proc->agg_hash_context.key_domains == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * proc->g_hkey_size);
-      return ER_FAILED;
+      goto exit_on_error;
     }
 
   regu_list = proc->g_hk_scan_regu_list;
@@ -23999,7 +24082,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (AGGREGATE_ACCUMULATOR_DOMAIN *) * proc->g_func_count);
-	  return ER_FAILED;
+	  goto exit_on_error;
 	}
 
       agg_list = proc->g_agg_list;
@@ -24020,7 +24103,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   if (type_list.domp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * type_list.type_cnt);
-      return ER_FAILED;
+      goto exit_on_error;
     }
 
   /* register key domains */
@@ -24057,10 +24140,42 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /* create tuple descriptor for partial list files */
   proc->agg_hash_context.part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
   proc->agg_hash_context.part_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
+  if (proc->agg_hash_context.part_list_id->tpl_descr.f_valp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
+      goto exit_on_error;
+    }
+  proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache =
+    (bool *) malloc (sizeof (bool) * type_list.type_cnt);
+  if (proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * type_list.type_cnt);
+      goto exit_on_error;
+    }
+  for (i = 0; i < type_list.type_cnt; i++)
+    {
+      proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
+    }
 
   proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
   proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_valp =
     (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
+  if (proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_valp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
+      goto exit_on_error;
+    }
+  proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache =
+    (bool *) malloc (sizeof (bool) * type_list.type_cnt);
+  if (proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * type_list.type_cnt);
+      goto exit_on_error;
+    }
+  for (i = 0; i < type_list.type_cnt; i++)
+    {
+      proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
+    }
 
   /* initialize scan; this way we can call qfile_close_scan on an unopened scan without repercussions */
   proc->agg_hash_context.part_scan_id.status = S_CLOSED;
@@ -24075,7 +24190,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
     mht_create ("Hash aggregate evaluation", HASH_AGGREGATE_DEFAULT_TABLE_SIZE, qdata_hash_agg_hkey, qdata_agg_hkey_eq);
   if (proc->agg_hash_context.hash_table == NULL)
     {
-      return ER_FAILED;
+      goto exit_on_error;
     }
   else
     {
@@ -24093,7 +24208,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   if (proc->agg_hash_context.temp_key == NULL || proc->agg_hash_context.temp_part_key == NULL
       || proc->agg_hash_context.curr_part_key == NULL)
     {
-      return ER_FAILED;
+      goto exit_on_error;
     }
 
   /* 
@@ -24104,7 +24219,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
 
   if (proc->agg_hash_context.temp_part_value == NULL || proc->agg_hash_context.curr_part_value == NULL)
     {
-      return ER_FAILED;
+      goto exit_on_error;
     }
 
   /* 
@@ -24132,6 +24247,11 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
 
   /* all ok */
   return NO_ERROR;
+
+exit_on_error:
+
+  qexec_free_agg_hash_context (thread_p, proc);
+  return (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;
 }
 
 /*

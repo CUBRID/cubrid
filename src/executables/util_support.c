@@ -40,6 +40,7 @@
 
 static int util_parse_string_table (UTIL_MAP * util_map, int index, int count, char **argv);
 static int util_put_option_value (UTIL_MAP * util_map, int arg_ch, const char *option_arg);
+static bool util_is_password_argument (int index, int value);
 
 /*
  * utility_make_getopt_optstring - makes optstring for getopt_long()
@@ -212,10 +213,35 @@ util_parse_argument (UTIL_MAP * util_map, int argc, char **argv)
 	  fprintf (stderr, "invalid '--%s' option value: %s\n", util_get_option_name (option, option_value), optarg);
 	  return ER_FAILED;
 	}
+
+      if (util_is_password_argument (util_map->utility_index, option_value))
+	{
+	  util_hide_password (optarg);
+	}
     }
 
   status = util_parse_string_table (util_map, optind, argc, argv);
   return status;
+}
+
+/*
+ * util_is_password_argument -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+static bool
+util_is_password_argument (int index, int value)
+{
+  if ((index == KILLTRAN && value == KILLTRAN_DBA_PASSWORD_S)
+      || (index == TRANLIST && value == TRANLIST_PASSWORD_S)
+      || (index == LOADDB && value == LOAD_PASSWORD_S) || (index == UNLOADDB && value == UNLOAD_PASSWORD_S))
+    {
+      return true;
+    }
+
+  return false;
 }
 
 /*
@@ -335,4 +361,23 @@ util_parse_string_table (UTIL_MAP * util_map, int index, int count, char **argv)
       return ER_FAILED;
     }
   return NO_ERROR;
+}
+
+/*
+ * util_hide_password -
+ *
+ * return:
+ *
+ */
+void
+util_hide_password (char *arg)
+{
+#if defined (LINUX)
+  if (arg == NULL)
+    {
+      return;
+    }
+
+  memset (arg, '*', strlen (arg));
+#endif /* LINUX */
 }
