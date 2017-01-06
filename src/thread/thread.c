@@ -1259,14 +1259,17 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 #endif
 
   /* transaction entries */
-  error = thread_return_transaction_entries (entry_p);
+  if (thread_return_transaction_entries (entry_p) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
   return error;
 }
 
 /*
- * thread_return_transaction_entries() - return a previously requested entries
- *   return:
- *   entry_p(in):
+ * thread_return_transaction_entries() - return previously requested entries
+ *   return: error code
+ *   entry_p(in): thread entry
  */
 static int
 thread_return_transaction_entries (THREAD_ENTRY * entry_p)
@@ -1288,7 +1291,7 @@ thread_return_transaction_entries (THREAD_ENTRY * entry_p)
 }
 
 /*
- * thread_return_all_transactions_entries() - return a requested entries for all transactions
+ * thread_return_all_transactions_entries() - return previously requested entries for all transactions
  *   return:
  *   entry_p(in):
  */
