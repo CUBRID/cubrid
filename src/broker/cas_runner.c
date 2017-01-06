@@ -514,7 +514,7 @@ get_args (int argc, char *argv[])
 	  dbuser = optarg;
 	  break;
 	case 'p':
-	  dbpasswd = optarg;
+	  STRDUP (dbpasswd, optarg);
 #if defined (LINUX)
 	  memset (optarg, '*', strlen (optarg));
 #endif
