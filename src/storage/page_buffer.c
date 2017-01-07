@@ -15750,7 +15750,7 @@ pgbuf_has_prevent_dealloc (PAGE_PTR pgptr)
 void
 pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UINT64 * lru2_cnt, UINT64 * aint_cnt,
 		  UINT64 * avoid_dealloc_cnt, UINT64 * avoid_victim_cnt, UINT64 * victim_cand_cnt,
-		  UINT64 * private_quota)
+		  UINT64 * private_quota, UINT64 * private_cnt)
 {
   PGBUF_BCB *bufptr;
   int i;
@@ -15763,6 +15763,7 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
   *avoid_dealloc_cnt = 0;
   *avoid_victim_cnt = 0;
   *victim_cand_cnt = 0;
+  *private_cnt = 0;
 
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
     {
@@ -15804,6 +15805,11 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
 	{
 	  *victim_cand_cnt = *victim_cand_cnt + 1;
 	}
+
+      if (PGBUF_IS_PRIVATE_LRU_INDEX (bufptr->zone_lru))
+        {
+          *private_cnt = *private_cnt + 1;
+        }
     }
 
   *private_quota = (UINT64) (pgbuf_Pool.quota.private_pages_ratio * pgbuf_Pool.num_buffers);

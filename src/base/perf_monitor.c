@@ -244,10 +244,12 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_CACHE_SUCCESS, "Num_victim_from_cache_success"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_CACHE_FAIL, "Num_victim_from_cache_fail"),
 
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_PRIVATE_QUOTA, "Num_data_page_private_quota"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_PRIVATE_COUNT, "Num_data_page_private_count"),
+
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_HASH_ANCHOR_WAITS, "Num_data_page_hash_anchor_waits"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_TIME_HASH_ANCHOR_WAIT, "Time_data_page_hash_anchor_wait"),
   /* peeked stats */
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_PRIVATE_QUOTA, "Num_data_page_private_quota"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_FIXED_CNT, "Num_data_page_fixed"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_DIRTY_CNT, "Num_data_page_dirty"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LRU1_CNT, "Num_data_page_lru1"),
@@ -2687,7 +2689,8 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_VICTIM_CAND_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]));
+		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]),
+                    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_COUNT].start_offset]));
 #endif
 
   for (i = 0; i < PSTAT_COUNT; i++)
