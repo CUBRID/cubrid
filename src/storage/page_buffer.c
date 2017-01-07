@@ -1138,7 +1138,7 @@ static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int syn
 static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous);
 #endif /* NDEBUG */
 static int pgbuf_invalidate_bcb (PGBUF_BCB * bufptr);
-static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * time_tracker);
+static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p);
 static int pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int pgbuf_get_lru_index (const VPID * vpid);
@@ -1167,10 +1167,13 @@ static void pgbuf_remove_from_lru_list (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru
 static void pgbuf_remove_from_ain_list (PGBUF_BCB * bufptr);
 static void pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr, const int lru_idx);
 
-STATIC_INLINE void pgbuf_lru_add_bcb_to_top (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list);
-STATIC_INLINE void pgbuf_lru_add_bcb_to_middle (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list);
-STATIC_INLINE void pgbuf_lru_add_bcb_to_bottom (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list);
-STATIC_INLINE void pgbuf_lru_adjust_zones (PGBUF_LRU_LIST * lru_list, int lru_idx);
+STATIC_INLINE void pgbuf_lru_add_bcb_to_top (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_add_bcb_to_middle (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_add_bcb_to_bottom (PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_adjust_zones (PGBUF_LRU_LIST * lru_list, int lru_idx) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_lru_move_zone_1_bcb_to_top (PGBUF_BCB * bcb);
 static void pgbuf_lru_move_zone_2_bcb_to_top (PGBUF_BCB * bcb);
 static void pgbuf_lru_move_zone_2_bcb_to_middle (PGBUF_BCB * bcb);
@@ -1289,8 +1292,7 @@ static void pgbuf_print_lru_pending_vict_req (void);
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
 static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 
-STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb);
-STATIC_INLINE bool pgbuf_get_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
+STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void pgbuf_lru_update_victims_on_remove (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
   __attribute__ ((ALWAYS_INLINE));
@@ -1299,6 +1301,12 @@ STATIC_INLINE void pgbuf_lru_update_victims_on_add (PGBUF_BCB * bufptr, PGBUF_LR
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+  __attribute__ ((ALWAYS_INLINE));
+#if defined (SERVER_MODE)
+STATIC_INLINE PGBUF_BCB *pgbuf_get_direct_victim (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_is_any_thread_waiting_for_direct_victim (void) __attribute__ ((ALWAYS_INLINE));
+#endif /* SERVER_MODE */
 
 
 /*
@@ -8496,20 +8504,22 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 {
   PGBUF_BCB *bufptr;
   int check_count;
-  bool has_waiters_on_fixed = false;
-  bool has_fixed_pages = true;
 
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
-  PERF_UTIME_TRACKER time_tracker_alloc_bcb_wait_time = PERF_UTIME_TRACKER_INITIALIZER;
 
+#if defined (SERVER_MODE)
+  bool has_waiters_on_fixed = false;
+  bool has_fixed_pages = true;
+  PERF_UTIME_TRACKER time_tracker_alloc_bcb_wait_time = PERF_UTIME_TRACKER_INITIALIZER;
   struct timespec to;
   int r = 0;
   PERF_STAT_ID pstat;
+#endif /* SERVER_MODE */
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
 
   /* allocate a BCB from invalid BCB list */
-  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_wait_time);
+  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p);
   if (bufptr != NULL)
     {
       goto end;
@@ -8537,6 +8547,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
           goto end;
         }
     }
+
+#if defined (SERVER_MODE)
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb_wait_time);
 
@@ -8633,6 +8645,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
               r == ETIMEDOUT ? ER_CSS_PTHREAD_COND_TIMEDOUT : ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
     }
+
+#endif /* SERVER_MODE */
 
 end:
 
@@ -8969,14 +8983,13 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
  *
  * return: If success, a newly allocated BCB, otherwise NULL
  * thread_p (in)     : thread entry
- * time_tracker (in) : performance time tracker
  *
  * Note: This function disconnects a BCB on the top of the buffer invalid list
  *       and returns it. Before disconnection, the thread must hold the
  *       invalid list mutex and after disconnection, release the mutex.
  */
 static PGBUF_BCB *
-pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p, PERF_UTIME_TRACKER * time_tracker)
+pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bufptr;
 #if defined(SERVER_MODE)
@@ -9585,6 +9598,7 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
       return false;
     }
 
+#if defined (SERVER_MODE)
   /* must not be marked to avoid victim (flush to disk is in progress) */
   if (bcb->avoid_victim)
     {
@@ -9602,6 +9616,7 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
     {
       return false;
     }
+#endif /* SERVER_MODE */
 
   /* valid */
   return true;
@@ -16372,19 +16387,29 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
     }
 }
 
+/*
+ * pgbuf_assign_direct_victim () - try to assign bcb directly to a thread waiting for victim. bcb must be a valid victim
+ *                                 candidate
+ *
+ * return        : true if bcb was assigned directly as victim, false otherwise
+ * thread_p (in) : thread entry
+ * bcb (in)      : bcb to assign as victim
+ */
 STATIC_INLINE bool
 pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
+#if defined (SERVER_MODE)
   THREAD_ENTRY *waiter_thread = NULL;
 
   assert (!bcb->direct_victim);
   if (bcb->direct_victim)
     {
+      /* should not happen */
       abort ();
     }
 
   /* must hold bcb mutex */
-  if (!pgbuf_is_bcb_victimizable (bcb))
+  if (!pgbuf_is_bcb_victimizable (bcb, true))
     {
       /* not a valid victim */
       return false;
@@ -16397,8 +16422,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
          || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, &waiter_thread))
     {
       assert (thread_p != NULL);
-
-      /* wakeup thread */
+      
       (void) thread_lock_entry (waiter_thread);
 
       if (waiter_thread->resume_status != THREAD_ALLOC_BCB_SUSPENDED)
@@ -16414,14 +16438,27 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
       pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index] = bcb;
 
       waiter_thread->resume_status = THREAD_ALLOC_BCB_RESUMED;
-      (void) pgbuf_wakeup (waiter_thread);
+
+      /* wakeup & unlock thread */
+      pthread_cond_signal (&thread_p->wakeup_cond);
+      thread_unlock_entry (thread_p);
+
+      /* bcb was assigned */
       return true;
     }
+#endif /* SERVER_MODE */
 
   /* no waiting threads */
   return false;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_get_direct_victim () - get victim assigned directly.
+ *
+ * return        : pointer to victim bcb
+ * thread_p (in) : thread entry
+ */
 STATIC_INLINE PGBUF_BCB *
 pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
 {
@@ -16431,14 +16468,17 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
 
   if (bcb == NULL)
     {
+      /* should not happen */
       assert (false);
       abort ();
       return NULL;
     }
 
   pthread_mutex_lock (&bcb->BCB_mutex);
-  if (!bcb->direct_victim || !pgbuf_is_bcb_victimizable (bcb))
+
+  if (!bcb->direct_victim || !pgbuf_is_bcb_victimizable (bcb, true))
     {
+      /* should not happen */
       assert (false);
       abort ();
       pthread_mutex_unlock (&bcb->BCB_mutex);
@@ -16455,16 +16495,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
         {
         case PGBUF_VOID_ZONE:
         case PGBUF_INVALID_ZONE:
-          if (PGBUF_PAGE_QUOTA_IS_ENABLED && PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
-            {
-              lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
-            }
-          else
-            {
-              /* shared lru idx. */
-              lru_idx = 0;
-            }
-          pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
+          pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, PGBUF_AOUT_WAS_IN_AIN);
           break;
         case PGBUF_AIN_ZONE:
           /* todo: */
@@ -16487,6 +16518,11 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
   return bcb;
 }
 
+/*
+ * pgbuf_is_any_thread_waiting_for_direct_victim () - is any thread waiting to allocate bcb?
+ *
+ * return : true/false
+ */
 STATIC_INLINE bool
 pgbuf_is_any_thread_waiting_for_direct_victim (void)
 {
@@ -16494,14 +16530,4 @@ pgbuf_is_any_thread_waiting_for_direct_victim (void)
          || !lf_circular_queue_is_empty (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters)
          || !lf_circular_queue_is_empty (pgbuf_Pool.direct_victims.waiter_threads_latch_none);
 }
-
-STATIC_INLINE bool
-pgbuf_is_private_over_quota (int lru_idx)
-{
-  if (!PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx))
-    {
-      /* not private */
-      return false;
-    }
-  return pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx] > pgbuf_Pool.quota.target_bcbs_per_lru[lru_idx];
-}
+#endif /* SERVER_MODE */
