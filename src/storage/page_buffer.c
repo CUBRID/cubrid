@@ -772,10 +772,6 @@ struct pgbuf_page_monitor
   /* LRU victimization */
   int *lru_victim_req_per_lru;	/* count of BCB victim requests */
   int *lru_pending_victim_req_per_lru;	/* count of pending victim requests */
-#if 0
-  int *lru_victim_search_depth_per_lru;	/* depth of search (by workers) in this list */
-  int *lru_victim_dirty_per_lru;	/* amount of dirty pages found (by workers) in this list */
-#endif
   int *lru_victim_found_per_lru;	/* count of BCB victims found (by flush thread) */
   int *lru_victim_pressure_per_lru;	/* current pressure on LRU to increase due to victimization */
 
@@ -788,8 +784,6 @@ struct pgbuf_page_monitor
   /* Overall counters */
   volatile int lru_shared_pgs;	/* count of BCBs in all shared LRUs */
   volatile int lru_garbage_pgs;	/* count of pages in garbage LRUs (only when quota is enabled) */
-  volatile int alloc_bcb_waiting_threads;	/* count of threads currently waiting for victims */
-  volatile int alloc_bcb_waiting_loops;	/* count of extra-loops for allocating bcb */
 
   int pg_lru_vict_req_failed;	/* Count of failed victimization from all LRUs */
   int pg_ain_vict_req_failed;	/* Count of failed victimization from all AIN */
@@ -941,7 +935,6 @@ struct pgbuf_buffer_pool
   int size_permvols_tmparea_volids;	/* size of the array */
   VOLID *permvols_tmparea_volids;	/* the volids array */
 
-  LOCK_FREE_CIRCULAR_QUEUE *flushed_bcb_cache;
   PGBUF_DIRECT_VICTIM direct_victims;
 };
 
@@ -1136,16 +1129,12 @@ static int pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, PGBUF_
 static int pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr);
 static int pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid);
 static int pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_hash_mutex);
+static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
+static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 #if !defined(NDEBUG)
-static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid, const char *caller_file,
-				      int caller_line);
-static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRACKER * time_tracker,
-				const char *caller_file, int caller_line);
 static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous, const char *caller_file,
 			    int caller_line);
 #else /* NDEBUG */
-static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
-static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRACKER * time_tracker);
 static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous);
 #endif /* NDEBUG */
 static int pgbuf_invalidate_bcb (PGBUF_BCB * bufptr);
@@ -1530,8 +1519,6 @@ pgbuf_initialize (void)
   /* TODO[arnia] : not required, if done in monitor initialization */
   pgbuf_Pool.monitor.dirties_cnt = 0;
 
-  pgbuf_Pool.flushed_bcb_cache = lf_circular_queue_create (PGBUF_FLUSHED_BCB_CACHE_CAPACITY, sizeof (PGBUF_BCB *));
-
   pgbuf_Pool.direct_victims.bcb_victims = (PGBUF_BCB **) malloc (thread_num_total_threads () * sizeof (PGBUF_BCB *));
   if (pgbuf_Pool.direct_victims.bcb_victims == NULL)
     {
@@ -1779,11 +1766,6 @@ pgbuf_finalize (void)
       free_and_init (pgbuf_Pool.monitor.lru_relocated_destroyed_pages);
     }
 #endif
-  if (pgbuf_Pool.flushed_bcb_cache != NULL)
-    {
-      lf_circular_queue_destroy (pgbuf_Pool.flushed_bcb_cache);
-      pgbuf_Pool.flushed_bcb_cache = NULL;
-    }
 
   if (pgbuf_Pool.direct_victims.bcb_victims != NULL)
     {
@@ -2081,11 +2063,7 @@ try_again:
 	}
 
       /* Now, the caller is not holding any mutex. */
-#if !defined(NDEBUG)
-      bufptr = pgbuf_allocate_bcb (thread_p, vpid, caller_file, caller_line);
-#else /* NDEBUG */
       bufptr = pgbuf_allocate_bcb (thread_p, vpid);
-#endif /* NDEBUG */
       if (bufptr == NULL)
 	{
 	  (void) pgbuf_unlock_page (hash_anchor, vpid, true);
@@ -7131,61 +7109,91 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	  switch (PGBUF_GET_ZONE (bufptr->zone_lru))
 	    {
 	    case PGBUF_LRU_1_ZONE:
+            case PGBUF_LRU_2_ZONE:
 	      bcb_lru_idx = PGBUF_GET_LRU_INDEX (bufptr->zone_lru);
 
 	      if (VACUUM_IS_THREAD_VACUUM (thread_p))
 		{
-		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_KEEP_VAC);
+                  /* do nothing */
+                  /* ... except collecting statistics */
+                  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
+                    {
+                      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_KEEP_VAC);
+                    }
+                  else
+                    {
+                      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_KEEP_VAC);
+                    }
 		  break;
 		}
 
-	      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
-		{
-		  if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
-		    {
-		      /* check if this buffer is owned by this transaction and
-		       * relocate to a shared LRU */
-		      if (bcb_lru_idx != th_lru_idx && th_lru_idx != -1)
-			{
-			  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
-			  pgbuf_lru_move_from_private_to_shared (bufptr, shared_lru_idx);
-			  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
-			  PGBUF_LRU_HIT (shared_lru_idx);
-			  break;
-			}
-		    }
-		  else if (bufptr->sticky_private_list == true && th_lru_idx != -1)
-		    {
-		      /* page is in shared or garbage list, but it was recently
-		       * relocated from a dead private list or from a destroyed
-		       * page, relocate to this thread's private list */
-		      pgbuf_move_from_lru_to_top_lru (bufptr, th_lru_idx, PGBUF_LRU_2_ZONE);
-		      bufptr->sticky_private_list = false;
+              if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx) && bcb_lru_idx != th_lru_idx)
+                {
+                  /* move to shared */
+                  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
+                  pgbuf_lru_move_from_private_to_shared (bufptr, shared_lru_idx);
+                  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
+                    {
+                      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
+                    }
+                  else
+                    {
+                      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_PRV_TO_SHR_MID);
+                    }
+                  PGBUF_LRU_HIT (shared_lru_idx);
+                  break;
+                }
 
-		      /* code to be removed */
-		      abort ();
-		      break;
-		    }
-		}
+              /* boost inside current list */
+              if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_1_ZONE)
+                {
+                  if (PGBUF_IS_SHARED_LRU_INDEX (bcb_lru_idx)
+                      && PGBUF_BCB_LRU_TOP_AGE (bufptr) > PGBUF_LRU1_AGE_THRESHOLD (bcb_lru_idx))
+                    {
+                      pgbuf_lru_move_zone_1_bcb_to_top (bufptr);
+                      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_SHR_TO_TOP);
+                    }
+                  else
+                    {
+                      if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_KEEP);
+                        }
+                      else
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_SHR_KEEP);
+                        }
+                    }
+                }
+              else
+                {
+                  if (PGBUF_BCB_LRU_LIST_AGE (bufptr) > PGBUF_LRU2_AGE_THRESHOLD (bcb_lru_idx))
+                    {
+                      pgbuf_lru_move_zone_2_bcb_to_top (bufptr);
+                      if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_PRV_TO_TOP);
+                        }
+                      else
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_SHR_TO_TOP);
+                        }
+                    }
+                  else
+                    {
+                      if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_PRV_KEEP);
+                        }
+                      else
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_SHR_KEEP);
+                        }
+                    }
+                }
+              PGBUF_LRU_HIT (bcb_lru_idx);
 
-	      age_in_list = PGBUF_BCB_LRU_TOP_AGE (bufptr);
-	      if (PGBUF_IS_SHARED_LRU_INDEX (bcb_lru_idx) && age_in_list > PGBUF_LRU1_AGE_THRESHOLD (bcb_lru_idx))
-		{
-		  pgbuf_lru_move_zone_1_bcb_to_top (bufptr);
-		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_SHR_TO_TOP);
-		}
-	      else
-		{
-		  /* bcb is in the upper part of zone 1. do not move it to avoid locking lru mutex. */
-		  perfmon_inc_stat (thread_p,
-				    PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx) ? PSTAT_PB_UNFIX_LRU_ONE_PRV_KEEP :
-				    PSTAT_PB_UNFIX_LRU_ONE_SHR_KEEP);
-		}
-	      /* note: private lists are protected by quota */
-
-	      PGBUF_LRU_HIT (bcb_lru_idx);
-
-	      break;
+              break;
 
 	    case PGBUF_AIN_ZONE:
 	      assert (!PGBUF_PAGE_QUOTA_IS_ENABLED);
@@ -7236,47 +7244,17 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		  aout_list_id = PGBUF_AOUT_NOT_FOUND;
 		}
 
-              /* what to do with the bcb now? we have multiple choices:
-               * 1. give it directly to one of the threads waiting for victim.
-               * 2. save to current thread private lru list.
-               * 3. save to AIN.
-               * 4. save to shared lru list.
-               *
-               * comments:
-               * 1. if there are threads waiting for victims, this should become a priority. however, we should also
-               *    consider giving a potentially hot page a chance to stay in buffer and we should also consider
-               *    private list quota's.
-               * 2-4. consider aout_list_id to decide where to move the bcb.
-               */
-
-              /* case 1: give it directly to one of the threads waiting for victim. */
-              if (aout_list_id != PGBUF_AOUT_NOT_FOUND)
+              if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && pgbuf_assign_direct_victim (thread_p, bufptr))
                 {
-                  /* give the page a chance to become hot */
-                  /* fall through */
-                }
-              else if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && th_lru_idx != -1
-                       && !pgbuf_is_private_over_quota (th_lru_idx))
-                {
-                  /* don't break private list quota. vacuum private lists can be broken. */
-                  /* todo: set vacuum lists quota to 0 */
-                  /* fall through */
-                }
-              else
-                {
-                  /* try assigning victim directly */
-                  if (pgbuf_assign_direct_victim (thread_p, bufptr))
-                    {
-                      /* success */
-                      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VOID);
-                      break;
-                    }
+                  /* assigned victim directly */
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VOID);
+                  break;
                 }
 
 	      if (th_lru_idx != -1)
 		{
                   /* save to private list */
-		  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+		  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 		    {
 		      /* store in vacuum private list */
 		      pgbuf_lru_add_new_bcb_to_middle (bufptr, th_lru_idx);
@@ -7326,73 +7304,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		      PGBUF_LRU_HIT (shared_lru_idx);
 		    }
 		}
-	      break;
-
-	    case PGBUF_LRU_2_ZONE:
-	      bcb_lru_idx = PGBUF_GET_LRU_INDEX (bufptr->zone_lru);
-
-	      if (VACUUM_IS_THREAD_VACUUM (thread_p))
-		{
-		  /* vacuum threads do not usually boost a bcb in lru lists */
-		  if (bcb_lru_idx == th_lru_idx)
-		    {
-		      /* if it is its own private list, then we'll move it to middle */
-		      pgbuf_lru_move_zone_2_bcb_to_middle (bufptr);
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_OWN_PRV_TO_MID_VAC);
-		    }
-		  else
-		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_KEEP_VAC);
-		    }
-		  break;
-		}
-
-	      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
-		{
-		  if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
-		    {
-		      /* check if this buffer is owned by other private list and
-		       * relocate it to a shared LRU */
-		      if (th_lru_idx != bcb_lru_idx && th_lru_idx != -1)
-			{
-			  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
-			  pgbuf_lru_move_from_private_to_shared (bufptr, shared_lru_idx);
-			  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_PRV_TO_SHR_MID);
-			  PGBUF_LRU_HIT (shared_lru_idx);
-			  break;
-			}
-		    }
-		  else if (th_lru_idx != -1 && bufptr->sticky_private_list == true)
-		    {
-		      /* page is in shared or garbage list, but it was recently
-		       * relocated from a dead private list or from a destroyed
-		       * page, relocate to this thread's private list */
-		      pgbuf_move_from_lru_to_top_lru (bufptr, th_lru_idx, PGBUF_LRU_2_ZONE);
-		      bufptr->sticky_private_list = false;
-
-		      /* code to be removed */
-		      abort ();
-		      break;
-		    }
-		}
-
-	      /* page is keeping LRU list, check if needs to be upgraded to LRU1 part */
-	      age_in_list = PGBUF_BCB_LRU_LIST_AGE (bufptr);
-	      if (age_in_list > PGBUF_LRU2_AGE_THRESHOLD (bcb_lru_idx))
-		{
-		  pgbuf_lru_move_zone_2_bcb_to_top (bufptr);
-		  perfmon_inc_stat (thread_p,
-				    PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx) ? PSTAT_PB_UNFIX_LRU_TWO_PRV_TO_TOP :
-				    PSTAT_PB_UNFIX_LRU_TWO_SHR_TO_TOP);
-		}
-	      else
-		{
-		  perfmon_inc_stat (thread_p,
-				    PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx) ? PSTAT_PB_UNFIX_LRU_TWO_PRV_KEEP :
-				    PSTAT_PB_UNFIX_LRU_TWO_SHR_KEEP);
-		}
-	      PGBUF_LRU_HIT (bcb_lru_idx);
-
 	      break;
 	    }
 	}
@@ -8580,81 +8491,38 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
  *       LRU list. It is invoked only when a page is not in buffer. If there
  *       is no non-dirty buffer, wait 1 microsecond and retry to allocate a BCB again.
  */
-#if !defined(NDEBUG)
-static PGBUF_BCB *
-pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid, const char *caller_file, int caller_line)
-#else /* NDEBUG */
 static PGBUF_BCB *
 pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
-#endif				/* NDEBUG */
 {
-#define PGBUF_LOOP_CNT_FORCE_VICTIM 100
-
-#define PGBUF_ALLOC_BCB_NTHREAD 24
-#define PGBUF_ALLOC_BCB_CPU_RATIO 10
-#define PGBUF_ALLOC_BCB_SLEEP_OVERHEAD 0.1f
-#define PGBUF_ALLOC_BCB_SLEEP_MAX 200.0f
-#define PGBUF_ALLOC_BCB_SLEEP_MAX_HOLDER 1.0f
-
   PGBUF_BCB *bufptr;
-  int sleep_count, loop_count, check_count;
+  int check_count;
   bool has_waiters_on_fixed = false;
   bool has_fixed_pages = true;
-  bool penalize = false;
-  float sleep_time_initial;
-
-#if 0
-  int alloc_bcb_waiting_threads;
-  int alloc_bcb_waiting_loops;
-  int alloc_bcb_avg_wait = 1;
-#endif
 
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
-  PERF_UTIME_TRACKER time_tracker_alloc_bcb_detailed;	/* not used */
-
-  static const float sleep_rate =
-    (float) PGBUF_ALLOC_BCB_CPU_RATIO * (float) PGBUF_ALLOC_BCB_SLEEP_OVERHEAD / (float) PGBUF_ALLOC_BCB_NTHREAD;
-  static volatile int n_alloc_bcb_waiters = 0;
-  int read_n_alloc_bcb_waiters = 0;
+  PERF_UTIME_TRACKER time_tracker_alloc_bcb_wait_time = PERF_UTIME_TRACKER_INITIALIZER;
 
   struct timespec to;
   int r = 0;
+  PERF_STAT_ID pstat;
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
-  time_tracker_alloc_bcb_detailed = time_tracker_alloc_bcb;
-
-  loop_count = 0;
-
-  sleep_time_initial = ((float) prm_get_integer_value (PRM_ID_PB_BCB_ALLOC_SLEEP)) / 1000.0f;
 
   /* allocate a BCB from invalid BCB list */
-  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_detailed);
+  bufptr = pgbuf_get_bcb_from_invalid_list (thread_p, &time_tracker_alloc_bcb_wait_time);
   if (bufptr != NULL)
     {
       goto end;
     }
 
+  /* todo: remove check_count */
   check_count =
     MAX (PGBUF_MIN_NUM_VICTIMS, (int) (PGBUF_LRU_SIZE * prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO)));
-
-  has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
-  penalize = !has_waiters_on_fixed && !pgbuf_is_any_thread_waiting_for_direct_victim ();
-  if (penalize)
-    {
-      perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PENALIZE);
-    }
-
-  bufptr = pgbuf_get_victim (thread_p, check_count, penalize, &time_tracker_alloc_bcb_detailed);
+  bufptr = pgbuf_get_victim (thread_p, check_count, false, NULL);
   if (bufptr != NULL)
     {
       /* the caller is holding bufptr->BCB_mutex. */
-
-#if !defined(NDEBUG)
-      if (pgbuf_victimize_bcb (thread_p, bufptr, &time_tracker_alloc_bcb_detailed, caller_file, caller_line)
-	  != NO_ERROR)
-#else /* NDEBUG */
-      if (pgbuf_victimize_bcb (thread_p, bufptr, &time_tracker_alloc_bcb_detailed) != NO_ERROR)
-#endif /* NDEBUG */
+      if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
 	{
 	  assert (false);
           bufptr = NULL;
@@ -8669,6 +8537,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
           goto end;
         }
     }
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb_wait_time);
+
+  has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
 
   /* add to waiters thread list to be assigned victim directly */
   to.tv_sec = (int) time (NULL) + 60 /* todo: use PGBUF_TIMEOUT */;
@@ -8686,7 +8558,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
           thread_unlock_entry (thread_p);
           return NULL;
         }
-      perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_WAITERS);
+      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_WAITERS;
     }
   else if (has_fixed_pages)
     {
@@ -8697,7 +8569,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
           thread_unlock_entry (thread_p);
           return NULL;
         }
-      perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_LATCH);
+      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_LATCH;
     }
   else
     {
@@ -8708,15 +8580,17 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
           thread_unlock_entry (thread_p);
           return NULL;
         }
-      perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_COND_WAIT_NO_LATCH);
+      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_NO_LATCH;
     }
 
-  thread_p->resume_status = THREAD_PGBUF_SUSPENDED;
+  thread_p->resume_status = THREAD_ALLOC_BCB_SUSPENDED;
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, &to);
+
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_bcb_wait_time, pstat);
 
   if (r == 0)
     {
-      if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
+      if (thread_p->resume_status == THREAD_ALLOC_BCB_RESUMED)
         {
           thread_unlock_entry (thread_p);
 
@@ -8727,13 +8601,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
               abort ();
               goto end;
             }
-
-#if !defined(NDEBUG)
-          if (pgbuf_victimize_bcb (thread_p, bufptr, &time_tracker_alloc_bcb_detailed, caller_file, caller_line)
-	      != NO_ERROR)
-#else /* NDEBUG */
-          if (pgbuf_victimize_bcb (thread_p, bufptr, &time_tracker_alloc_bcb_detailed) != NO_ERROR)
-#endif /* NDEBUG */
+          if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
 	    {
 	      assert (false);
               bufptr = NULL;
@@ -8751,7 +8619,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
         }
 
       /* interrupted */
-      thread_p->resume_status = THREAD_PGBUF_RESUMED;
+      thread_p->resume_status = THREAD_ALLOC_BCB_RESUMED;
       thread_unlock_entry (thread_p);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -8760,6 +8628,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     {
       assert (false);
       abort ();
+      thread_p->resume_status = THREAD_ALLOC_BCB_RESUMED;
       thread_unlock_entry (thread_p);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
               r == ETIMEDOUT ? ER_CSS_PTHREAD_COND_TIMEDOUT : ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
@@ -8767,25 +8636,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 end:
 
-  if (loop_count > 1)
-    {
-      perfmon_add_stat (thread_p, PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_WAITERS, loop_count - 1);
-
-#if 0
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.alloc_bcb_waiting_threads, -1);
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.alloc_bcb_waiting_loops, 1 - loop_count);
-#endif
-      ATOMIC_INC_32 (&n_alloc_bcb_waiters, -1);
-    }
-
   PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_bcb, PSTAT_PB_ALLOC_BCB);
 
   return bufptr;
-
-#undef PGBUF_LOOP_CNT_FORCE_VICTIM
-#undef PGBUF_ALLOC_BCB_NTHREAD
-#undef PGBUF_ALLOC_BCB_CPU_RATIO
-#undef PGBUF_ALLOC_BCB_SLEEP_OVERHEAD
 }
 
 /*
@@ -8803,14 +8656,8 @@ end:
  *       according to the WAL protocol.
  *       Even though success, we must check again the above condition.
  */
-#if !defined(NDEBUG)
 static int
-pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRACKER * time_tracker,
-		     const char *caller_file, int caller_line)
-#else /* NDEBUG */
-static int
-pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRACKER * time_tracker)
-#endif				/* NDEBUG */
+pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *cur_thrd_entry;
@@ -8833,7 +8680,6 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRA
       || bufptr->latch_mode != PGBUF_NO_LATCH || pgbuf_is_exist_blocked_reader_writer_victim (bufptr) == true)
     {
       assert (false);
-      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_BCB_FAIL);
       return ER_FAILED;
     }
 
@@ -8843,7 +8689,6 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRA
   /* a safe victim */
   if (pgbuf_delete_from_hash_chain (bufptr) != NO_ERROR)
     {
-      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_BCB_FAIL);
       return ER_FAILED;
     }
 
@@ -8860,8 +8705,6 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PERF_UTIME_TRA
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
   SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* DIAG_DEVEL && SERVER_MODE */
-
-  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_BCB);
 
   return NO_ERROR;
 }
@@ -9527,25 +9370,6 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
     }
 
-  while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcb_cache, &bcb_flushed))
-    {
-      assert (bcb_flushed != NULL);
-      if (pgbuf_get_direct_victim (thread_p, bcb_flushed))
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_CACHE_SUCCESS);
-	  return bcb_flushed;
-	}
-      else
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_CACHE_FAIL);
-	}
-      if (penalize)
-	{
-	  /* only one try is allowed */
-	  break;
-	}
-    }
-
   /* todo: override penalize if there are many victims... */
   if (penalize)
     {
@@ -9753,7 +9577,7 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
 }
 
 STATIC_INLINE bool
-pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb)
+pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
 {
   /* must not be dirty */
   if (bcb->dirty)
@@ -9767,14 +9591,14 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb)
       return false;
     }
 
-  /* must not be marked as victim candidate. another thread is trying to use this bcb */
-  if (bcb->victim_candidate)
+  if (!has_mutex_lock && bcb->victim_candidate)
     {
+      /* without bcb mutex, this means another thread wants to victimize */
       return false;
     }
 
-  /* must not be fixed and must not have waiters */
-  if (bcb->fcnt > 0 || pgbuf_is_exist_blocked_reader_writer_victim (bcb))
+  /* must not be fixed and must not have waiters. */
+  if (bcb->fcnt > 0 || bcb->next_wait_thrd != NULL)
     {
       return false;
     }
@@ -9973,11 +9797,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       /* flush dirty pages */
       pgbuf_wakeup_flush_thread (thread_p);
     }
-
-#if 0
-  ATOMIC_CGTAS_32 (&pgbuf_Pool.monitor.lru_victim_search_depth_per_lru[lru_idx], search_cnt, search_cnt);
-  ATOMIC_CGTAS_32 (&pgbuf_Pool.monitor.lru_victim_dirty_per_lru[lru_idx], dirty_cnt, dirty_cnt);
-#endif
 
   if (bufptr == NULL)
     {
@@ -11074,16 +10893,12 @@ pgbuf_relocate_chain_private_lru_to_shared (const int private_lru_idx)
   private_lru_list->LRU_1_zone_cnt = 0;
 
   ATOMIC_TAS_32 (&monitor->bcbs_cnt_per_lru[private_lru_idx], 0);
-#if 0
-  ATOMIC_TAS_32 (&monitor->lru_victim_search_depth_per_lru[private_lru_idx], 0);
-  ATOMIC_TAS_32 (&monitor->lru_victim_dirty_per_lru[private_lru_idx], 0);
-#endif
   ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[private_lru_idx], 0);
   ATOMIC_TAS_32 (&monitor->lru_victim_found_per_lru[private_lru_idx], 0);
 
   pthread_mutex_unlock (&private_lru_list->LRU_mutex);
 
-  /* this shared list should be prefered for flushing victims */
+  /* this shared list should be preferred for flushing victims */
   ATOMIC_INC_32 (&monitor->lru_victim_req_per_lru[shared_lru_idx], cnt_private_lru);
   /* avoid flushing from this private list */
   ATOMIC_TAS_32 (&monitor->lru_victim_req_per_lru[private_lru_idx], 0);
@@ -11675,6 +11490,24 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   rv = pthread_mutex_lock (&bufptr->BCB_mutex);
 
   bufptr->avoid_victim = false;
+  if (PGBUF_GET_ZONE (bufptr->zone_lru) == PGBUF_LRU_2_ZONE)
+    {
+      if (pgbuf_assign_direct_victim (thread_p, bufptr))
+        {
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
+        }
+      else
+        {
+          /* update victim hint */
+          PGBUF_LRU_LIST *lru_list = &pgbuf_Pool.buf_LRU_list[PGBUF_GET_LRU_INDEX (bufptr->zone_lru)];
+          PGBUF_BCB *victim_hint = (PGBUF_BCB *) lru_list->LRU_victim_hint;
+          if (victim_hint == NULL || victim_hint->dirty || victim_hint->lru_list_tick > bufptr->lru_list_tick)
+            {
+              /* todo: cas or tas? */
+              (void) ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, victim_hint, bufptr);
+            } 
+        }
+    }
 
 #if defined(SERVER_MODE)
   /* wakeup blocked flushers */
@@ -14960,27 +14793,6 @@ pgbuf_initialize_page_monitor (void)
       goto exit;
     }
 
-#if 0
-  monitor->lru_victim_search_depth_per_lru =
-    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_search_depth_per_lru[0]));
-  if (monitor->lru_victim_search_depth_per_lru == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_search_depth_per_lru[0])));
-      goto exit;
-    }
-
-  monitor->lru_victim_dirty_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_dirty_per_lru[0]));
-  if (monitor->lru_victim_dirty_per_lru == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_dirty_per_lru[0])));
-      goto exit;
-    }
-#endif
-
   monitor->lru_victim_found_per_lru = (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_victim_found_per_lru[0]));
   if (monitor->lru_victim_found_per_lru == NULL)
     {
@@ -15037,10 +14849,6 @@ pgbuf_initialize_page_monitor (void)
 
       monitor->lru_victim_req_per_lru[i] = 0;
       monitor->lru_pending_victim_req_per_lru[i] = 0;
-#if 0
-      monitor->lru_victim_search_depth_per_lru[i] = 0;
-      monitor->lru_victim_dirty_per_lru[i] = 0;
-#endif
       monitor->lru_victim_found_per_lru[i] = 0;
       monitor->lru_victim_pressure_per_lru[i] = 0;
       monitor->lru_tick[i] = 0;
@@ -15065,10 +14873,6 @@ pgbuf_initialize_page_monitor (void)
 
   monitor->lru_shared_pgs = 0;
   monitor->lru_garbage_pgs = 0;
-
-  /* init counters for allocate bcb. give non-zero values to avoid sudden changes on small numbers of allocators */
-  monitor->alloc_bcb_waiting_threads = 0;
-  monitor->alloc_bcb_waiting_loops = 0;
 
 exit:
   return error_status;
@@ -16556,14 +16360,6 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 
   lru_list = &pgbuf_Pool.buf_LRU_list[PGBUF_GET_LRU_INDEX (bcb->zone_lru)];
 
-  /* update victim hint */
-  victim_hint = (PGBUF_BCB *) lru_list->LRU_victim_hint;
-  if (victim_hint == NULL || victim_hint->dirty || victim_hint->lru_list_tick > bcb->lru_list_tick)
-    {
-      /* todo: cas or tas? */
-      (void) ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, victim_hint, bcb);
-    }
-
   /* bufptr was considered non-dirty. we have to decrement the counter. */
   count_non_dirty_prev = ATOMIC_INC_32 (&lru_list->LRU_2_non_dirty_cnt, 1);
   bcbs_in_lru_list = pgbuf_Pool.monitor.bcbs_cnt_per_lru[PGBUF_GET_LRU_INDEX (bcb->zone_lru)];
@@ -16574,21 +16370,6 @@ pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
     {
       abort ();
     }
-
-#if 0
-  if (pgbuf_Pool.monitor.alloc_bcb_waiting_threads > 0)
-    {
-      if (lf_circular_queue_produce (pgbuf_Pool.flushed_bcb_cache, &bcb))
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_CACHE);
-	}
-      else
-	{
-	  /* consider increasing the cache. or maybe pgbuf_Pool.monitor.alloc_bcb_waiting_threads is broken */
-	  abort ();
-	}
-    }
-#endif
 }
 
 STATIC_INLINE bool
@@ -16611,26 +16392,34 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 
   /* do we have any waiter threads? */
 
-  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, &waiter_thread)
-      || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &waiter_thread)
-      || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, &waiter_thread))
+  while (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, &waiter_thread)
+         || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &waiter_thread)
+         || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, &waiter_thread))
     {
       assert (thread_p != NULL);
+
+      /* wakeup thread */
+      (void) thread_lock_entry (waiter_thread);
+
+      if (waiter_thread->resume_status != THREAD_ALLOC_BCB_SUSPENDED)
+        {
+          /* it is not waiting for us anymore */
+          (void) thread_unlock_entry (waiter_thread);
+          continue;
+        }
 
       /* assign bcb to thread */
       bcb->direct_victim = true;
       bcb->victim_candidate = false;
       pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index] = bcb;
 
-      /* wakeup thread */
-      (void) thread_lock_entry (waiter_thread);
+      waiter_thread->resume_status = THREAD_ALLOC_BCB_RESUMED;
       (void) pgbuf_wakeup (waiter_thread);
       return true;
     }
-  else
-    {
-      return false;
-    }
+
+  /* no waiting threads */
+  return false;
 }
 
 STATIC_INLINE PGBUF_BCB *
@@ -16687,25 +16476,11 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
                   || PGBUF_GET_ZONE (bcb->zone_lru) == PGBUF_LRU_1_ZONE);
           lru_idx = PGBUF_GET_LRU_INDEX (bcb->zone_lru);
 
-          /* disconnect bcb from lru list */
-          pthread_mutex_lock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
-          pgbuf_remove_from_lru_list (bcb, &pgbuf_Pool.buf_LRU_list[lru_idx]);
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.bcbs_cnt_per_lru[lru_idx], -1);
-          if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx))
-	    {
-	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, -1);
-	    }
-          bcb->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
-          pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
+          /* remove bcb from lru list */
+          pgbuf_lru_remove_bcb (bcb);
 
-          if (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx))
-	    {
-	      pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
-	    }
-          else
-            {
-              /* do not move shared to AOUT */
-            }
+          /* add to AOUT */
+          pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
           break;
         }
     }
