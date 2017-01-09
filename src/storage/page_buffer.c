@@ -777,7 +777,6 @@ struct pgbuf_page_monitor
 
   /* LRU life cycle */
   /* todo: consider making 8-byte ticks. overflowing may mess up our checks */
-  int *lru_tick;		/* Current age of LRU1 section per LRU */
   int *lru_hits;		/* Current hits in LRU1 per LRU */
   int *lru_activity;		/* Activity level per LRU */
 
@@ -14866,7 +14865,6 @@ pgbuf_initialize_page_monitor (void)
       monitor->lru_pending_victim_req_per_lru[i] = 0;
       monitor->lru_victim_found_per_lru[i] = 0;
       monitor->lru_victim_pressure_per_lru[i] = 0;
-      monitor->lru_tick[i] = 0;
       monitor->lru_hits[i] = 0;
       monitor->lru_activity[i] = 0;
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
