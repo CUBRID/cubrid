@@ -16438,7 +16438,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
          || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &waiter_thread)
          || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, &waiter_thread))
     {
-      assert (thread_p != NULL);
+      assert (waiter_thread != NULL);
       
       (void) thread_lock_entry (waiter_thread);
 
@@ -16446,6 +16446,21 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
         {
           /* it is not waiting for us anymore */
           (void) thread_unlock_entry (waiter_thread);
+
+          /* todo: temporary */
+          abort ();
+          continue;
+        }
+
+      /* wakeup & unlock thread */
+      waiter_thread->resume_status = THREAD_ALLOC_BCB_RESUMED;
+      if (pthread_cond_signal (&waiter_thread->wakeup_cond) != 0)
+        {
+          /* could not wake it... what do we do here? */
+          er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_SIGNAL, 0);
+          abort ();
+
+          thread_unlock_entry (waiter_thread);
           continue;
         }
 
@@ -16454,11 +16469,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
       bcb->victim_candidate = false;
       pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index] = bcb;
 
-      waiter_thread->resume_status = THREAD_ALLOC_BCB_RESUMED;
-
-      /* wakeup & unlock thread */
-      pthread_cond_signal (&thread_p->wakeup_cond);
-      thread_unlock_entry (thread_p);
+      thread_unlock_entry (waiter_thread);
 
       /* bcb was assigned */
       return true;
