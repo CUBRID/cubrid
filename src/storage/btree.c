@@ -23969,7 +23969,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     {
 
 #if defined (SERVER_MODE)
-      if (false /*bts->copy_leaf_page_allowed && bts->key_range.range == GE_LE */ )
+      if (bts->copy_leaf_page_allowed && bts->key_range.range == GE_LE)
 	{
 	  error_code = pgbuf_get_tran_bcb_area (thread_p, &bts->bcb_area);
 	  if (error_code != NO_ERROR)
