@@ -975,12 +975,10 @@ file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (rcv->length == sizeof (VPID));
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (thread_p, fhead);
 
   /* the correct VPID is logged. */
 
   VPID_COPY (&fhead->vpid_last_user_page_ftab, vpid);
-  file_header_sanity_check (thread_p, fhead);
 
   file_log ("file_rv_fhead_set_last_user_page_ftab",
 	    "update vpid_last_user_page_ftab to %d|%d in file %d|%d, "
@@ -4290,8 +4288,6 @@ file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   fhead->n_sector_partial = 0;
   fhead->n_sector_empty = 0;
 
-  file_header_sanity_check (thread_p, fhead);
-
   file_log ("file_rv_perm_expand_undo",
 	    "removed expanded sectors from partial table and file header in file %d|%d, "
 	    "page header %d|%d, lsa %lld|%d, number of sectors %d \n"
@@ -4352,8 +4348,6 @@ file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (fhead->n_page_free == 0);
   fhead->n_page_free = count_vsids * DISK_SECTOR_NPAGES;
   fhead->n_page_total += fhead->n_page_free;
-
-  file_header_sanity_check (thread_p, fhead);
 
   file_log ("file_rv_perm_expand_redo",
 	    "recovery expand in file %d|%d, file header %d|%d, lsa %lld|%d \n"
@@ -6067,6 +6061,9 @@ exit:
 	    }
 	}
     }
+
+  /* deallocation should be completed; check header */
+  file_header_sanity_check (thread_p, fhead);
 
   if (page_fhead != NULL)
     {
@@ -7983,8 +7980,6 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 		FILE_PARTSECT_MSG ("newly reserved sector")
 		FILE_EXTDATA_MSG ("last partial table component"),
 		FILE_PARTSECT_AS_ARGS (&partsect_new), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
-
-      file_header_sanity_check (thread_p, fhead);
     }
   assert (fhead->n_page_free > 0);
 
@@ -8052,6 +8047,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   assert (error_code == NO_ERROR);
 
 exit:
+  file_header_sanity_check (thread_p, fhead);
   if (page_ftab != NULL)
     {
       pgbuf_unfix_and_init (thread_p, page_ftab);
