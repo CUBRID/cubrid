@@ -5053,7 +5053,8 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	  break;
 	}
 
-      required_length = repl_obj->packed_pkey_value_length;
+      /* includes leading and trailing alignment */
+      required_length = repl_obj->packed_pkey_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
       if (repl_obj->operation != LC_FLUSH_DELETE)
 	{
 	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
@@ -5086,8 +5087,11 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       obj_start_p = ptr = mflush->recdes.data;
 
       ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
+
       memcpy (ptr, repl_obj->packed_pkey_value, repl_obj->packed_pkey_value_length);
-      ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+      ptr += repl_obj->packed_pkey_value_length;
+
+      ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);	/* for int alignment. see or_pack_mem_value */
 
       key_length = CAST_BUFLEN (ptr - obj_start_p);
       mflush->recdes.data = ptr;
