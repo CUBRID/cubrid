@@ -779,21 +779,22 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id
   int reason = -1, buffer_size;
   char *buffer = NULL;
   CSS_CONN_ENTRY *return_status;
+  int timeout = -1;
 
   return_status = NULL;
 
-  /* 
-   * Use css_common_connect with the server's port id, since we already
-   * know we'll be connecting to the right server, don't bother sending
-   * the server name.
+  timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT);
+
+  /* Use css_common_connect with the server's port id, since we already know we'll be connecting to the right server,
+   * don't bother sending the server name.
    */
+
   /* timeout in second in css_common_connect() */
-  if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0, port_id,
-			  prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, false) != NULL)
+  if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0, port_id, timeout, rid, false) != NULL)
     {
       /* now ask for a reply from the server */
       css_queue_user_data_buffer (conn, *rid, sizeof (int), (char *) &reason);
-      if (css_receive_data (conn, *rid, &buffer, &buffer_size, -1) == NO_ERRORS)
+      if (css_receive_data (conn, *rid, &buffer, &buffer_size, timeout * 1000) == NO_ERRORS)
 	{
 	  if (buffer_size == sizeof (int) && buffer == (char *) &reason)
 	    {
@@ -990,12 +991,15 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
   char reason_buffer[sizeof (int)];
   char *error_area;
   int error_length;
+  int timeout = -1;
 
   conn = css_make_conn (-1);
   if (conn == NULL)
     {
       return NULL;
     }
+
+  timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
 
   retry_count = 0;
   if (css_server_connect (host_name, conn, server_name, &rid) == NULL)
@@ -1005,7 +1009,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 
   css_queue_user_data_buffer (conn, rid, sizeof (int), reason_buffer);
 
-  css_err_code = css_receive_data (conn, rid, &buffer, &size, -1);
+  css_err_code = css_receive_data (conn, rid, &buffer, &size, timeout);
   if (css_err_code != NO_ERRORS)
     {
       goto error_receive_data;
@@ -1045,7 +1049,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
       /* new style of connection protocol, get the server port id */
       css_queue_user_data_buffer (conn, rid, sizeof (int), reason_buffer);
 
-      css_err_code = css_receive_data (conn, rid, &buffer, &size, -1);
+      css_err_code = css_receive_data (conn, rid, &buffer, &size, timeout);
       if (css_err_code != NO_ERRORS)
 	{
 	  goto error_receive_data;
