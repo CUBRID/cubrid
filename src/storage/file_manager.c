@@ -927,7 +927,11 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
     {
       int part_cnt = 0;
       assert (!file_extdata_is_empty (part_table) || !VPID_ISNULL (&part_table->vpid_next));
-      (void) file_extdata_all_item_count (thread_p, part_table, &part_cnt);
+      if (file_extdata_all_item_count (thread_p, part_table, &part_cnt) != NO_ERROR)
+	{
+	  /* thread might be interrupted; give up checking */
+	  return;
+	}
       assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_partial == part_cnt);
     }
 
@@ -942,7 +946,11 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 	{
 	  int full_cnt = 0;
 	  assert (!file_extdata_is_empty (full_table) || !VPID_ISNULL (&full_table->vpid_next));
-	  (void) file_extdata_all_item_count (thread_p, full_table, &full_cnt);
+	  if (file_extdata_all_item_count (thread_p, full_table, &full_cnt) != NO_ERROR)
+	    {
+	      /* thread might be interrupted; give up checking */
+	      return;
+	    }
 	  assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_full == full_cnt);
 	}
     }
@@ -1154,7 +1162,7 @@ file_log_fhead_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_T
 {
 #define LOG_BOOL_COUNT 3
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-  bool is_ftab_page = (alloc_type == FILE_ALLOC_TABLE_PAGE || alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR);
+  bool is_ftab_page = alloc_type != FILE_ALLOC_USER_PAGE;
   bool log_bools[3];
 
   assert (page_fhead != NULL);
@@ -3943,7 +3951,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (thread_p, fhead);
 
   assert (FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
 
@@ -4261,7 +4268,6 @@ file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   DKNSECTS save_nsects;
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (thread_p, fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
 
   /* how is this done:
@@ -4325,7 +4331,6 @@ file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (count_vsids * (int) sizeof (VSID) == rcv->length);
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (thread_p, fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
 
   FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_table);
@@ -4517,7 +4522,6 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
    */
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (thread_p, fhead);
   assert (!FILE_IS_TEMPORARY (fhead));
 
   /* Caller should have checked */
@@ -4934,6 +4938,8 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       /* Log and link the page in previous table. */
       file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_alloc_out);
       VPID_COPY (&extdata_full_ftab->vpid_next, vpid_alloc_out);
+
+      file_log ("file_perm_alloc", "page has been added to full sectors table \n");
     }
 
   is_full = file_partsect_is_full (partsect);
@@ -5130,7 +5136,6 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
 
   assert (!VPID_ISNULL (vpid_out));
-  file_header_sanity_check (thread_p, fhead);
 
   if (FILE_IS_NUMERABLE (fhead))
     {
@@ -5199,6 +5204,9 @@ exit:
 	  log_sysop_end_logical_undo (thread_p, RVFL_ALLOC, NULL, UNDO_DATA_SIZE, undo_log_data);
 	}
     }
+
+  /* allocation should be completed; check header */
+  file_header_sanity_check (thread_p, fhead);
 
   if (error_code != NO_ERROR && page_out != NULL && *page_out != NULL)
     {
