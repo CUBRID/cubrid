@@ -1374,7 +1374,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
       goto exit_on_error;
     }
   page_type = src_bufptr->iopage_buffer->iopage.prv.ptype;
-  memcpy (bcb_area, src_pgptr, IO_PAGESIZE);
+  memcpy (bcb_area, src_pgptr, DB_PAGESIZE);
   if (count_modifications != ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL))
     {
       goto exit_on_error;
@@ -12686,15 +12686,15 @@ pgbuf_reset_modification (PAGE_PTR pgptr)
  *   return: error code
  *
  *   thread_p(in): thread entry
- *   tran_bcb (out): transaction BCB area
+ *   bcb_area (out): transaction BCB area
  */
 int
-pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **area)
+pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
 {
   PGBUF_BCB *bufptr = NULL;
   PGBUF_IOPAGE_BUFFER *ioptr = NULL;
 
-  assert (area != NULL);
+  assert (bcb_area != NULL);
   bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
   if (bufptr == NULL)
     {
@@ -12752,8 +12752,9 @@ pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **area)
       thread_p->tran_bcb = bufptr;
     }
 
-  *area = bufptr->iopage_buffer->iopage.page;
-  assert (*area != NULL);
+  CAST_BFPTR_TO_PGPTR (*bcb_area, bufptr);
+
+  assert (*bcb_area != NULL);
   return NO_ERROR;
 }
 

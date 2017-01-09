@@ -372,7 +372,7 @@ struct heap_get_context
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache;	/* scan cache */
 
-  char *page_copy_buffer_ptr;
+  char *bcb_area;		/* BCB area, used to fetch the page without S-latch */
   /* physical page watchers  */
   PGBUF_WATCHER home_page_watcher;	/* home page */
   PGBUF_WATCHER fwd_page_watcher;	/* forward page */

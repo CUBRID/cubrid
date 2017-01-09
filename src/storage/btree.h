@@ -241,7 +241,7 @@ struct btree_scan
 
   PERF_UTIME_TRACKER time_track;
 
-  char *page_copy_buffer;
+  char *bcb_area;
   bool copy_leaf_page_allowed;
 
   void *bts_other;
@@ -292,7 +292,7 @@ struct btree_scan
     (bts)->force_restart_from_root = false;		\
     OID_SET_NULL (&(bts)->match_class_oid);		\
     (bts)->time_track.is_perf_tracking = false;		\
-    (bts)->page_copy_buffer = NULL;			\
+    (bts)->bcb_area = NULL;			\
     (bts)->copy_leaf_page_allowed = false;		\
     (bts)->bts_other = NULL;				\
   } while (0)

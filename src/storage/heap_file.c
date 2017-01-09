@@ -7257,16 +7257,16 @@ try_again:
   if (context->copy_leaf_page_allowed
       && latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY && context->home_page_watcher.pgptr == NULL)
     {
-      ret = pgbuf_get_tran_bcb_area (thread_p, &context->page_copy_buffer_ptr);
+      ret = pgbuf_get_tran_bcb_area (thread_p, &context->bcb_area);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto error;
 	}
-      if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->page_copy_buffer_ptr, IO_PAGESIZE) == NO_ERROR)
+      if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->bcb_area, IO_PAGESIZE) == NO_ERROR)
 	{
 	  need_latch = false;
-	  page_ptr = context->page_copy_buffer_ptr;
+	  page_ptr = context->bcb_area;
 	}
       else
 	{
@@ -7536,7 +7536,7 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
   home_page = context->home_page_watcher.pgptr;
   if (home_page == NULL)
     {
-      home_page = context->page_copy_buffer_ptr;
+      home_page = context->bcb_area;
     }
   num_slots = spage_number_of_slots (home_page);
   forward_page = context->fwd_page_watcher.pgptr;
@@ -7633,7 +7633,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   home_page_ptr = context->home_page_watcher.pgptr;
   if (home_page_ptr == NULL)
     {
-      home_page_ptr = context->page_copy_buffer_ptr;
+      home_page_ptr = context->bcb_area;
     }
   num_slots = spage_number_of_slots (home_page_ptr);
 
