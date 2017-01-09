@@ -2101,6 +2101,7 @@ try_again:
       bufptr->async_flush_request = false;
       bufptr->avoid_dealloc_cnt = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+      bufptr->direct_victim = false;
 
 #if defined(ENABLE_SYSTEMTAP)
       if (fetch_mode == NEW_PAGE && pgbuf_hit == false)
@@ -16543,6 +16544,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
           break;
         }
     }
+  bcb->direct_victim = false;
   return bcb;
 }
 
