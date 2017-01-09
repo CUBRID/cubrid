@@ -4939,7 +4939,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       file_log_extdata_set_next (thread_p, extdata_full_ftab, page_fhead, vpid_alloc_out);
       VPID_COPY (&extdata_full_ftab->vpid_next, vpid_alloc_out);
 
-      file_log ("file_perm_alloc", "page has been added to full sectors table \n");
+      file_log ("file_perm_alloc", "%s", "page has been added to full sectors table \n");
     }
 
   is_full = file_partsect_is_full (partsect);
