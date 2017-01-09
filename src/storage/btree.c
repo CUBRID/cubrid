@@ -24341,7 +24341,7 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 		  return error_code;
 		}
 	      /* Advance to next node. */
-	      btree_unfix_and_init_current_page (thread_p, bts->C_page);
+	      btree_unfix_and_init_current_page (thread_p, bts);
 	      bts->C_page = next_node_page;
 	      VPID_COPY (&bts->C_vpid, &next_vpid);
 	      next_node_page = NULL;
