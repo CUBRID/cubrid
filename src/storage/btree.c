@@ -675,7 +675,7 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
       VPID_SET_NULL (&(bts)->C_vpid); \
       if (bts->C_page != NULL) \
 	{ \
-	  pgbuf_unfix_and_init (NULL, bts->C_page); \
+	  btree_unfix_and_init_current_page (NULL, bts);  \
 	} \
     } \
   while (false)
@@ -16216,7 +16216,8 @@ end:
 
   if (bts->O_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      assert (bts->C_page != NULL);
+      btree_unfix_and_init_current_page (thread_p, bts);
     }
 
   if (bts->P_page != NULL)
@@ -24143,7 +24144,8 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      /* Page must have been deallocated/reused for other purposes. */
 	      /* Fall through. */
 	    }
-	  pgbuf_unfix_and_init (thread_p, bts->C_page);
+	  assert (bts->C_page != NULL);
+	  btree_unfix_and_init_current_page (thread_p, bts);
 	}
       else
 	{
