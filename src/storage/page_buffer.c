@@ -16219,6 +16219,13 @@ pgbuf_keep_victim_flush_thread_active (void)
 
   monitor = &pgbuf_Pool.monitor;
 
+#if defined (SERVER_MODE)
+  if (pgbuf_is_any_thread_waiting_for_direct_victim ())
+    {
+      return true;
+    }
+#endif /* SERVER_MDOE */
+
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
 #if defined (PGBUF_ENABLE_FLUSH_LIST)
