@@ -69,14 +69,6 @@
 	    || DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_VARNCHAR) \
            ? ((v)->domain.char_info.length) : 0))
 
-#define DB_GET_ENUMERATION(v) \
-  ((v)->data.enumeration)
-#define DB_GET_ENUM_SHORT(v) \
-  ((v)->data.enumeration.short_val)
-#define DB_GET_ENUM_STRING(v) \
-  ((v)->data.enumeration.str_val.medium.buf)
-#define DB_GET_ENUM_STRING_SIZE(v) \
-  ((v)->data.enumeration.str_val.medium.size)
 #define DB_PULL_STRING(v) \
       ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
 		|| DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
@@ -171,8 +163,6 @@
 	  (v)->data.ch.medium.buf))
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
-#define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
-#define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
 #define DB_GET_UTIME DB_GET_TIMESTAMP
 #define db_get_string_safe(v) DB_GET_STRING_SAFE(v)
 
@@ -190,7 +180,6 @@
 #define db_pull_bit(v, l) DB_PULL_BIT(v, l)
 #define db_pull_nchar(v, l) DB_PULL_NCHAR(v, l)
 #define db_pull_char(v, l) DB_PULL_CHAR(v, l)
-#define db_get_enum_string(v) DB_GET_ENUM_STRING(v)
 
 #define DB_GET_NUMERIC_PRECISION(val) \
     ((val)->domain.numeric_info.precision)

@@ -1592,20 +1592,6 @@ db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount)
 }
 
 /*
- * db_get_method_error_msg() -
- * return :
- */
-char *
-db_get_method_error_msg (void)
-{
-#if !defined(SERVER_MODE)
-  return obj_Method_error_msg;
-#else
-  return NULL;
-#endif
-}
-
-/*
  *  OBTAIN DATA VALUES OF DB_VALUE
  */
 
@@ -1633,51 +1619,6 @@ db_value_get_monetary_amount_as_double (const DB_VALUE * value)
   CHECK_1ARG_ZERO (value);
 
   return value->data.money.amount;
-}
-
-
-/*
- * db_get_enum_short () -
- * return :
- * value(in):
- */
-short
-db_get_enum_short (const DB_VALUE * value)
-{
-  CHECK_1ARG_ZERO (value);
-  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
-
-  return value->data.enumeration.short_val;
-}
-
-/*
- * db_get_enum_string () -
- * return :
- * value(in):
- */
-char *
-db_get_enum_string (const DB_VALUE * value)
-{
-  CHECK_1ARG_ZERO (value);
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  return value->data.enumeration.str_val.medium.buf;
-}
-
-/*
- * db_get_enum_string_size () -
- * return :
- * value(in):
- */
-int
-db_get_enum_string_size (const DB_VALUE * value)
-{
-  CHECK_1ARG_ZERO (value);
-  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
-
-  return value->data.enumeration.str_val.medium.size;
 }
 
 
