@@ -2020,6 +2020,12 @@ try_again:
 
   buf_lock_acquired = false;
   bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
+  if (bufptr != NULL && bufptr->direct_victim)
+    {
+      /* too late, this bcb must be victimized. */
+      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      bufptr = NULL;
+    }
   if (bufptr != NULL)
     {
 #if defined (ENABLE_SYSTEMTAP)
@@ -2221,6 +2227,12 @@ try_again:
 	    }
 	}
       buf_lock_acquired = true;
+    }
+  assert (!bufptr->direct_victim);
+  if (bufptr->direct_victim)
+    {
+      /* todo: temporary */
+      abort ();
     }
 
   /* At this place, the caller is holding bufptr->BCB_mutex */
@@ -8013,23 +8025,11 @@ one_phase:
 #if defined(SERVER_MODE)
 	  loop_cnt = 0;
 
-          if (bufptr->direct_victim)
-            {
-              /* too late. someone is victimizing this */
-              return NULL;
-            }
-
 	mutex_lock:
 
 	  rv = pthread_mutex_trylock (&bufptr->BCB_mutex);
 	  if (rv == 0)
 	    {
-              if (bufptr->direct_victim)
-                {
-                  /* too late. someone is victimizing this */
-                  pthread_mutex_unlock (&bufptr->BCB_mutex);
-                  return NULL;
-                }
 	      /* OK. go ahead */
 	    }
 	  else
