@@ -7645,7 +7645,6 @@ file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (thread_p, fhead);
 
   assert (FILE_IS_NUMERABLE (fhead));
   assert (!FILE_IS_TEMPORARY (fhead));
