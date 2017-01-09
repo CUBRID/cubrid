@@ -837,6 +837,7 @@ struct pgbuf_page_quota
   int is_adjusting;
 };
 
+#if defined (SERVER_MODE)
 typedef struct pgbuf_direct_victim PGBUF_DIRECT_VICTIM;
 struct pgbuf_direct_victim
 {
@@ -845,6 +846,7 @@ struct pgbuf_direct_victim
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_latch_without_waiters;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_latch_none;
 };
+#endif /* SERVER_MODE */
 
 /* The buffer Pool */
 struct pgbuf_buffer_pool
@@ -934,7 +936,9 @@ struct pgbuf_buffer_pool
   int size_permvols_tmparea_volids;	/* size of the array */
   VOLID *permvols_tmparea_volids;	/* the volids array */
 
+#if defined (SERVER_MODE)
   PGBUF_DIRECT_VICTIM direct_victims;
+#endif /* SERVER_MODE */
 };
 
 /* flush priority within a list : 
@@ -1526,6 +1530,7 @@ pgbuf_initialize (void)
   /* TODO[arnia] : not required, if done in monitor initialization */
   pgbuf_Pool.monitor.dirties_cnt = 0;
 
+#if defined (SERVER_MODE)
   pgbuf_Pool.direct_victims.bcb_victims = (PGBUF_BCB **) malloc (thread_num_total_threads () * sizeof (PGBUF_BCB *));
   if (pgbuf_Pool.direct_victims.bcb_victims == NULL)
     {
@@ -1543,18 +1548,23 @@ pgbuf_initialize (void)
               thread_num_total_threads () * sizeof (THREAD_ENTRY *));
       goto error;
     }
+  pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters =
+    lf_circular_queue_create (thread_num_total_threads (), sizeof (THREAD_ENTRY *));
   if (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
               thread_num_total_threads () * sizeof (THREAD_ENTRY *));
       goto error;
     }
+  pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters =
+    lf_circular_queue_create (thread_num_total_threads (), sizeof (THREAD_ENTRY *));
   if (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
               thread_num_total_threads () * sizeof (THREAD_ENTRY *));
       goto error;
     }
+#endif /* SERVER_MODE */
 
   return NO_ERROR;
 
@@ -1774,6 +1784,7 @@ pgbuf_finalize (void)
     }
 #endif
 
+#if defined (SERVER_MODE)
   if (pgbuf_Pool.direct_victims.bcb_victims != NULL)
     {
       free_and_init (pgbuf_Pool.direct_victims.bcb_victims);
@@ -1793,6 +1804,7 @@ pgbuf_finalize (void)
       lf_circular_queue_destroy (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters);
       pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters = NULL;
     }
+#endif /* SERVER_MODE */
 }
 
 /*
