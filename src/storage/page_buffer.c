@@ -12745,7 +12745,7 @@ pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
       bufptr->iopage_buffer = ioptr;
       ioptr->bcb = bufptr;
 #if defined(CUBRID_DEBUG)
-      /* Reinitizalize the buffer */
+      /* Reinitialize the buffer */
       pgbuf_scramble (&bufptr->iopage_buffer->iopage);
       memcpy (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard));
 #endif /* CUBRID_DEBUG */
@@ -12772,6 +12772,7 @@ pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
   bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
   if (bufptr)
     {
+      pthread_mutex_destroy (&bufptr->BCB_mutex);
       if (bufptr->iopage_buffer)
 	{
 	  free_and_init (bufptr->iopage_buffer);

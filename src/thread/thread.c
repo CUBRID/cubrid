@@ -1269,6 +1269,8 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
       entry_p->tran_entries[i] = 0;
     }
 
+  pgbuf_finalize_tran_bcb (entry_p);
+
   return error;
 }
 
