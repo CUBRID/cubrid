@@ -3781,6 +3781,14 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
+#if defined(SERVER_MODE)
+      /*
+       * Clears latch free resources, before shutting down the area manager. This is needed, since latch free resources
+       * may still refers the area manager.
+       */
+      thread_return_all_transactions_entries ();
+      lf_destroy_transaction_systems ();
+#endif
       es_final ();
       tp_final ();
       locator_free_areas ();
@@ -5702,6 +5710,12 @@ boot_decoy_entries_finalize (void)
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_XCACHE);
+  lf_tran_destroy_entry (t_entry);
+
+  t_entry = thread_get_tran_entry (NULL, THREAD_TS_FPCACHE);
   lf_tran_destroy_entry (t_entry);
 }
 #endif
