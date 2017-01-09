@@ -144,7 +144,7 @@ typedef enum
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
 
-/* The upper limit for a numeber that can be represented by a numeric type */
+/* The upper limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_OVERFLOW_LIMIT 1e38
 
 /* The lower limit for a number that can be represented by a numeric type */

@@ -46,8 +46,6 @@
 #include <wchar.h>
 #endif
 
-//#include "util_support.h"
-//#include "dbtype.h"
 #include "system.h"
 
 #ifndef MB_LEN_MAX
@@ -65,6 +63,7 @@
 #endif /* WINDOWS */
 
 /* Structure used for the representation of monetary amounts. */
+/* Taken from dbtype.h. */
 typedef enum
 {
   DB_CURRENCY_DOLLAR,
