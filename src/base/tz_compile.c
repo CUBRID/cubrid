@@ -461,7 +461,7 @@ static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
 static int tzc_extend (TZ_DATA * tzd);
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
-static int tzc_update (TZ_DATA * tzd);
+static int tzc_update (TZ_DATA * tzd, char *database_name);
 static int execute_query (const char *str, bool abort_transaction, DB_QUERY_RESULT ** result);
 
 #if defined(WINDOWS)
@@ -597,9 +597,12 @@ exit:
  * Returns: NO_ERROR if successful, internal error code otherwise
  * input_folder(in): path to the input folder containing timezone data
  * tz_gen_type(in): control flag (type of TZ build/gen to perform)
+ * database_name(in): database name for which to do data migration if an update is necessary, if it is NULL
+ *                    then data migration will be done for all the databases
+ * checksum(out): new checksum to write in the database when extend option is used
  */
 int
-timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *checksum)
+timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *database_name, char *checksum)
 {
   int err_status = NO_ERROR;
   TZ_RAW_DATA tzd_raw;
@@ -670,7 +673,7 @@ timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, 
 	   */
 	  if (err_status == ER_TZ_COMPILE_ERROR)
 	    {
-	      err_status = tzc_update (&tzd);
+	      err_status = tzc_update (&tzd, database_name);
 	      if (err_status != NO_ERROR)
 		{
 		  goto exit;
@@ -5256,6 +5259,8 @@ copy_offset_rule (TZ_OFFSET_RULE * dst, const TZ_DATA * tzd, const int index)
   int err_status = NO_ERROR;
 
   *dst = tzd->offset_rules[index];
+  dst->julian_date = julian_encode (1 + tzd->offset_rules[index].until_mon,
+				    1 + tzd->offset_rules[index].until_day, tzd->offset_rules[index].until_year);
   if (tzd->offset_rules[index].std_format != NULL)
     {
       DUPLICATE_STR (dst->std_format, tzd->offset_rules[index].std_format);
@@ -6405,9 +6410,11 @@ exit:
  *
  * Returns: error or no error
  * tzd (in): Timezone library used to the data migration
+ * database_name(in): Database name for which to do data migration or NULL if data migration should be done
+ *		      for all the databases
  */
 static int
-tzc_update (TZ_DATA * tzd)
+tzc_update (TZ_DATA * tzd, const char *database_name)
 {
 #define TABLE_NAME_MAX_SIZE 100
 #define QUERY_BUF_MAX_SIZE 1024
@@ -6436,6 +6443,11 @@ tzc_update (TZ_DATA * tzd)
   /* Iterate through all the databases */
   for (db_info_p = dir; db_info_p != NULL; db_info_p = db_info_p->next)
     {
+      if (database_name != NULL && strcmp (db_info_p->name, database_name) != 0)
+	{
+	  continue;
+	}
+
       /* Open the database */
       error = db_restart (program_name, TRUE, db_info_p->name);
       if (error != NO_ERROR)
