@@ -5495,7 +5495,6 @@ sysprm_set_er_log_file (const char *db_name)
 static int
 sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload, bool check_intl_param)
 {
-
   char *base_db_name = NULL;
   char file_being_dealt_with[PATH_MAX];
   char local_db_name[DB_MAX_IDENTIFIER_LENGTH];
