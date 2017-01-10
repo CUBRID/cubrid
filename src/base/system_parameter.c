@@ -627,7 +627,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
-
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -5508,6 +5507,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   SESSION_PARAM *sprm = NULL;
   int num_session_prms;
 #endif
+
   if (reload)
     {
       for (i = 0; i < NUM_PRM; i++)
@@ -8089,6 +8089,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	}
     }
 #endif /* SERVER_MODE */
+
   if (strcmp (value, "DEFAULT") == 0)
     {
       set_default = true;
