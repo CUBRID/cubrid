@@ -24169,6 +24169,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  *   oid (in): Object to be obtained.
  *   class_oid (in): 
  *   recdes (out): Record descriptor. NULL if not needed
+ *   copy_page_allowed (in): True, if copy page is allowed
  *   scan_cache(in): Heap scan cache.
  *   ispeeking(in): Peek record or copy.
  *   old_chn (in): Cache coherency number for existing record data. It is
@@ -24178,13 +24179,12 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  */
 SCAN_CODE
 heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			  bool copy_leaf_page_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			  bool copy_page_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, copy_leaf_page_allowed, scan_cache, ispeeking,
-			 old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, copy_page_allowed, scan_cache, ispeeking, old_chn);
 
   scan = heap_get_visible_version_internal (thread_p, &context, false);
 
@@ -24627,6 +24627,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
+      assert (copy_leaf_page_allowed == false);
     }
   else
     {

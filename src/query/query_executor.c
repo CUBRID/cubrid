@@ -13117,7 +13117,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool scan_immediately_stop = false;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool instant_lock_mode_started = false;
-  bool copy_leaf_page_allowed = true;
+  bool copy_leaf_page_allowed = prm_get_bool_value (PRM_ID_PAGE_COPY_AT_READ);
   bool mvcc_select_lock_needed;
 
   /* 
@@ -13667,7 +13667,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    }
 		}
 
-	      /* currently allow copy leaf page without latch only for one one scan block */
+	      /* currently allow copy leaf page without latch only for one one scan block, one access spec */
 	      copy_leaf_page_allowed = false;
 	    }
 

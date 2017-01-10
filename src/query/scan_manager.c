@@ -5756,6 +5756,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   char *indx_name_p;
   char *class_name_p;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  bool copy_page_allowed;
 
   assert (scan_id != NULL);
   assert (isidp != NULL);
@@ -5766,7 +5767,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       recdes.data = NULL;
     }
 
-  sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, true, &isidp->scan_cache,
+  copy_page_allowed = prm_get_bool_value (PRM_ID_PAGE_COPY_AT_READ);
+  sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, copy_page_allowed, &isidp->scan_cache,
 				      scan_id->fixed, NULL_CHN);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
     {
