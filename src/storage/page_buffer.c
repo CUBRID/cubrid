@@ -12738,7 +12738,7 @@ pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool * has_fixed_pages)
     {
       if (holder->bufptr->next_wait_thrd != NULL)
 	{
-	  true;
+	  return true;
 	}
     }
   return false;
