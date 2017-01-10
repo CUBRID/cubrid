@@ -627,6 +627,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -5495,6 +5496,7 @@ sysprm_set_er_log_file (const char *db_name)
 static int
 sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload, bool check_intl_param)
 {
+
   char *base_db_name = NULL;
   char file_being_dealt_with[PATH_MAX];
   char local_db_name[DB_MAX_IDENTIFIER_LENGTH];
@@ -5506,7 +5508,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   SESSION_PARAM *sprm = NULL;
   int num_session_prms;
 #endif
-
   if (reload)
     {
       for (i = 0; i < NUM_PRM; i++)
@@ -8088,7 +8089,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	}
     }
 #endif /* SERVER_MODE */
-
+  if (strcmp (value, "DEFAULT") == 0)
+    {
+      set_default = true;
+    }
   switch (prm->datatype)
     {
     case PRM_INTEGER:
@@ -8158,10 +8162,33 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	  }
 	else
 	  {
-	    int result;
-
-	    result = parse_int (&val, value, 10);
-
+	    int result = 0;
+	    if (strcmp (value, "MAX") == 0)
+	      {
+		if (prm->upper_limit == NULL)
+		  {
+		    val = INT_MAX;
+		  }
+		else
+		  {
+		    val = *(int *) prm->upper_limit;
+		  }
+	      }
+	    else if (strcmp (value, "MIN") == 0)
+	      {
+		if (prm->lower_limit == NULL)
+		  {
+		    val = INT_MIN;
+		  }
+		else
+		  {
+		    val = *(int *) prm->lower_limit;
+		  }
+	      }
+	    else
+	      {
+		result = parse_int (&val, value, 10);
+	      }
 	    if (result != 0)
 	      {
 		return PRM_ERR_BAD_VALUE;
@@ -8208,7 +8235,33 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	  }
 	else
 	  {
-	    result = str_to_uint64 (&val, &end_p, value, 10);
+	    result = 0;
+	    if (strcmp (value, "MAX") == 0)
+	      {
+		if (prm->upper_limit == NULL)
+		  {
+		    val = DB_BIGINT_MAX;
+		  }
+		else
+		  {
+		    val = *(int *) prm->upper_limit;
+		  }
+	      }
+	    else if (strcmp (value, "MIN") == 0)
+	      {
+		if (prm->lower_limit == NULL)
+		  {
+		    val = DB_BIGINT_MIN;
+		  }
+		else
+		  {
+		    val = *(int *) prm->lower_limit;
+		  }
+	      }
+	    else
+	      {
+		result = str_to_uint64 (&val, &end_p, value, 10);
+	      }
 	    if (result != 0)
 	      {
 		return PRM_ERR_BAD_VALUE;
@@ -8272,14 +8325,39 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	  }
 	else
 	  {
-	    val = (float) strtod (value, &end);
-	    if (end == value)
+	    if (strcmp (value, "MAX") == 0)
 	      {
-		return PRM_ERR_BAD_VALUE;
+		if (prm->upper_limit == NULL)
+		  {
+		    val = FLT_MAX;
+		  }
+		else
+		  {
+		    val = *(int *) prm->upper_limit;
+		  }
 	      }
-	    else if (*end != '\0')
+	    else if (strcmp (value, "MIN") == 0)
 	      {
-		return PRM_ERR_BAD_VALUE;
+		if (prm->lower_limit == NULL)
+		  {
+		    val = FLT_MIN;
+		  }
+		else
+		  {
+		    val = *(int *) prm->lower_limit;
+		  }
+	      }
+	    else
+	      {
+		val = (float) strtod (value, &end);
+		if (end == value)
+		  {
+		    return PRM_ERR_BAD_VALUE;
+		  }
+		else if (*end != '\0')
+		  {
+		    return PRM_ERR_BAD_VALUE;
+		  }
 	      }
 
 	    if (prm_check_range (prm, (void *) &val) != NO_ERROR)
@@ -8313,6 +8391,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 
 	/* convert string to boolean */
 
+	{
+	  new_value->b = PRM_GET_BOOL (prm->default_value);
+	  break;
+	}
 	keyvalp = prm_keyword (-1, value, boolean_words, DIM (boolean_words));
 	if (keyvalp == NULL)
 	  {
