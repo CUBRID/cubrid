@@ -1351,6 +1351,8 @@ STATIC_INLINE void pgbuf_lru_set_victim_hint_if_not_set (THREAD_ENTRY * thread_p
                                                          PGBUF_LRU_LIST * lru_list, int lru_idx)
   __attribute__ ((ALWAYS_INLINE));
 
+static void pgbuf_lru_sanity (PGBUF_LRU_LIST * lru);
+
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
  *   return: hash value
@@ -10184,12 +10186,20 @@ pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
     {
       abort ();
     }
+  if (PGBUF_GET_ZONE (lru_list->LRU_bottom_2->zone_lru) != PGBUF_LRU_2_ZONE)
+    {
+      abort ();
+    }
 
   /* change bcb zones from 2 to 3 until lru 2 zone count is down to zone 2 desired threshold. */
   for (bcb_bottom = lru_list->LRU_bottom_2; lru_list->threshold_lru2 < lru_list->count_lru2; bcb_bottom = bcb_prev)
     {
       /* save prev BCB in case this is removed from list */
       bcb_prev = bcb_bottom->prev_BCB;
+      if (bcb_bottom == NULL || PGBUF_GET_ZONE (bcb_bottom->zone_lru) != PGBUF_LRU_2_ZONE)
+        {
+          abort ();
+        }
       pgbuf_lru_fall_bcb_to_zone_3 (thread_p, bcb_bottom, lru_list, lru_idx);
     }
   /* update bottom of lru 2 */
@@ -10239,6 +10249,10 @@ pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
     {
       /* save prev BCB in case this is removed from list */
       bcb_prev = bcb_bottom->prev_BCB;
+      if (bcb_bottom == NULL || PGBUF_GET_ZONE (bcb_bottom->zone_lru) == PGBUF_LRU_3_ZONE)
+        {
+          abort ();
+        }
       pgbuf_lru_fall_bcb_to_zone_3 (thread_p, bcb_bottom, lru_list, lru_idx);
     }
   if (lru_list->count_lru2 == 0)
@@ -10259,6 +10273,8 @@ pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
       assert (bcb_bottom != NULL && PGBUF_GET_ZONE (bcb_bottom->zone_lru) == PGBUF_LRU_2_ZONE);
       lru_list->LRU_bottom_2 = bcb_bottom;
     }
+
+  pgbuf_lru_sanity (lru_list);
 
   pgbuf_lru_adjust_zone1 (thread_p, lru_list, lru_idx);
 }
@@ -10446,6 +10462,8 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
       pgbuf_lru_adjust_zones (thread_p, lru_list, lru_idx);
     }
 
+  pgbuf_lru_sanity (lru_list);
+
   /* unlock list */
   pthread_mutex_unlock (&lru_list->LRU_mutex);
 }
@@ -10475,6 +10493,8 @@ pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_
   bcb->tick_lru_list = lru_list->tick_list;
   pgbuf_lru_add_bcb_to_top (thread_p, bcb, lru_list, lru_idx);
 
+  pgbuf_lru_sanity (lru_list);
+
   /* since we added a new bcb to lru 1, we should adjust zones */
   pgbuf_lru_adjust_zones (thread_p, lru_list, lru_idx);
 
@@ -10483,6 +10503,8 @@ pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_
     {
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, 1);
     }
+
+  pgbuf_lru_sanity (lru_list);
 
   /* unlock list */
   pthread_mutex_unlock (&lru_list->LRU_mutex);
@@ -10510,6 +10532,8 @@ pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int l
   bcb->tick_lru_list = lru_list->tick_list;
   pgbuf_lru_add_bcb_to_middle (thread_p, bcb, lru_list, lru_idx);
 
+  pgbuf_lru_sanity (lru_list);
+
   /* adjust zone 2 */
   pgbuf_lru_adjust_zone2 (thread_p, lru_list, lru_idx);
   
@@ -10518,6 +10542,8 @@ pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int l
     {
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, 1);
     }
+
+  pgbuf_lru_sanity (lru_list);
 
   pthread_mutex_unlock (&lru_list->LRU_mutex);
 }
@@ -10558,6 +10584,8 @@ pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int l
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, 1);
     }
 
+  pgbuf_lru_sanity (lru_list);
+
   /* unlock list */
   pthread_mutex_unlock (&lru_list->LRU_mutex);
 }
@@ -10592,6 +10620,8 @@ pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 
   /* reset zone */
   bcb->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
+
+  pgbuf_lru_sanity (lru_list);
 
   /* unlock list */
   pthread_mutex_unlock (&lru_list->LRU_mutex);
@@ -16365,5 +16395,134 @@ pgbuf_lru_set_victim_hint_if_not_set (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, 
   if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, NULL, bcb))
     {
       PGBUF_MONITOR_LRU_VICT_LIST_ADD (lru_idx);
+    }
+}
+
+static const char *global_error = NULL;
+
+static void
+  pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
+{
+  if (lru->LRU_top == NULL)
+    {
+      /* empty list */
+      if (lru->count_lru1 != 0 || lru->count_lru2 != 0 || lru->count_lru3 != 0 || lru->LRU_bottom != NULL
+          || lru->LRU_bottom_1 != NULL || lru->LRU_bottom_2 != NULL)
+        {
+          global_error = "invalid empty";
+          abort ();
+        }
+      return;
+    }
+
+  /* not empty */
+  if (lru->LRU_bottom == NULL)
+    {
+      global_error = "null bottom";
+      abort ();
+    }
+  if (lru->count_lru1 == 0 && lru->count_lru2 == 0 && lru->count_lru3 == 0)
+    {
+      global_error = "invalid 0 counters";
+      abort ();
+    }
+
+  /* zone 1 */
+  if ((lru->count_lru1 == 0) != (lru->LRU_bottom_1 == NULL))
+    {
+      global_error = "unmatched count lru1 and bottom 1";
+      abort ();
+    }
+  if (lru->LRU_bottom_1 != NULL)
+    {
+      if (PGBUF_GET_ZONE (lru->LRU_bottom_1->zone_lru) != PGBUF_LRU_1_ZONE)
+        {
+          global_error = "bottom 1 not 1";
+          abort ();
+        }
+      if (PGBUF_GET_ZONE (lru->LRU_top->zone_lru) != PGBUF_LRU_1_ZONE)
+        {
+          global_error = "top not 1";
+          abort ();
+        }
+      if (lru->LRU_bottom_1->next_BCB != NULL)
+        {
+          if (PGBUF_GET_ZONE (lru->LRU_bottom_1->next_BCB->zone_lru) == PGBUF_LRU_1_ZONE)
+            {
+              global_error = "bottom 1 not bottom 1";
+              abort ();
+            }
+          else if (PGBUF_GET_ZONE (lru->LRU_bottom_1->next_BCB->zone_lru) == PGBUF_LRU_2_ZONE)
+            {
+              if (lru->count_lru2 == 0 || lru->LRU_bottom_2 == NULL)
+                {
+                  global_error = "zone 2 empty";
+                  abort ();
+                }
+            }
+          else
+            {
+              if (lru->count_lru3 == 0)
+                {
+                  global_error = "zone 3 empty";
+                  abort ();
+                }
+            }
+        }
+      else
+        {
+          if (lru->count_lru2 != 0 || lru->count_lru3 != 0 || lru->LRU_bottom_2 != NULL
+              || lru->LRU_bottom != lru->LRU_bottom_1)
+            {
+              global_error = "zone 2 or 3 not empty";
+              abort ();
+            }
+        }
+    }
+
+  /* zone 2 */
+  if ((lru->count_lru2 == 0) != (lru->LRU_bottom_2 == NULL))
+    {
+      global_error = "unmatched count lru2 and bottom 2";
+      abort ();
+    }
+  if (lru->LRU_bottom_2 != NULL)
+    {
+      if (PGBUF_GET_ZONE (lru->LRU_bottom_2->zone_lru) != PGBUF_LRU_2_ZONE)
+        {
+          global_error = "bottom 2 not 2";
+          abort ();
+        }
+      if (lru->LRU_bottom_1 == NULL && PGBUF_GET_ZONE (lru->LRU_top->zone_lru) != PGBUF_LRU_2_ZONE)
+        {
+          global_error = "top not 2";
+          abort ();
+        }
+      if (lru->LRU_bottom_1->next_BCB != NULL)
+        {
+          if (PGBUF_GET_ZONE (lru->LRU_bottom_2->next_BCB->zone_lru) == PGBUF_LRU_2_ZONE)
+            {
+              global_error = "bottom 2 not bottom 2";
+              abort ();
+            }
+          else if (PGBUF_GET_ZONE (lru->LRU_bottom_2->next_BCB->zone_lru) == PGBUF_LRU_1_ZONE)
+            {
+              global_error = "1 after bottom 2";
+              abort ();
+            }
+          else if (lru->count_lru3 == 0)
+            {
+              global_error = "zone 3 empty (2)";
+              abort ();
+            }
+        }
+      else
+        {
+          if (lru->count_lru3 != 0 || lru->LRU_bottom != lru->LRU_bottom_2)
+            {
+              global_error = "zone 3 not empty";
+              abort ();
+            }
+        }
     }
 }
