@@ -817,6 +817,14 @@ struct pgbuf_page_monitor
   int count_prv_lists_with_victims;
   int count_shared_lists_with_victims;
 
+#if defined (SERVER_MODE)
+  INT64 count_get_victim_extended_search;
+  INT64 count_get_victim_waits;
+
+  INT64 *count_thread_get_victim_extended_search;
+  INT64 *count_thread_get_victim_waits;
+#endif /* SERVER_MODE */
+
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
   int *lru_relocated_destroyed_pages;	/* Count of BCBs relocated after file destroy of each LRU */
   int pg_destroyed_pages;	/* count of all destroyed pages since last update */
@@ -1804,6 +1812,15 @@ pgbuf_finalize (void)
 #endif
 
 #if defined (SERVER_MODE)
+  if (pgbuf_Pool.monitor.count_thread_get_victim_extended_search != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.count_thread_get_victim_extended_search);
+    }
+  if (pgbuf_Pool.monitor.count_thread_get_victim_waits != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.count_thread_get_victim_waits);
+    }
+
   if (pgbuf_Pool.direct_victims.bcb_victims != NULL)
     {
       free_and_init (pgbuf_Pool.direct_victims.bcb_victims);
@@ -8466,6 +8483,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   int check_count;
 
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
+  bool penalize = false;
 
 #if defined (SERVER_MODE)
   bool has_waiters_on_fixed = false;
@@ -8485,10 +8503,30 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       goto end;
     }
 
+#if defined (SERVER_MODE)
+  has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
+  if (!has_waiters_on_fixed)
+    {
+      /* in some systems, when IO becomes a bottleneck and threads require many victims, threads will start waiting.
+       * however, at some point there can be so many waiting threads, that the few remaining can easily find victims
+       * by searching... always. things become unfair with few threads getting advantage of others.
+       * we count how many times each thread finds victims through searching and how many times it had to wait. we
+       * penalize those that seemed to have an advantage so far. */
+      /* penalize if thread_waits / thread_searches < overall_waits / overall_searches.
+       * equivalent to thread_waits * overall_searches < thread_searches * overall_waits. */
+      INT64 thread_waits = pgbuf_Pool.monitor.count_thread_get_victim_waits[thread_get_current_entry_index ()];
+      INT64 thread_searches =
+        pgbuf_Pool.monitor.count_thread_get_victim_extended_search[thread_get_current_entry_index ()];
+      INT64 overall_waits = ATOMIC_LOAD_64 (&pgbuf_Pool.monitor.count_get_victim_waits);
+      INT64 overall_searches = ATOMIC_LOAD_64 (&pgbuf_Pool.monitor.count_get_victim_extended_search);
+      penalize = thread_waits * overall_searches < thread_searches * overall_waits;
+    }
+#endif /* SERVER_MODE */
+
   /* todo: remove check_count */
   check_count =
     MAX (PGBUF_MIN_NUM_VICTIMS, (int) (PGBUF_LRU_SIZE * prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO)));
-  bufptr = pgbuf_get_victim (thread_p, check_count, false, NULL);
+  bufptr = pgbuf_get_victim (thread_p, check_count, penalize, NULL);
   if (bufptr != NULL)
     {
       /* the caller is holding bufptr->BCB_mutex. */
@@ -8510,9 +8548,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 #if defined (SERVER_MODE)
 
-  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb_wait_time);
+  pgbuf_Pool.monitor.count_thread_get_victim_waits[thread_get_current_entry_index ()]++;
+  ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_waits, 1);
 
-  has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb_wait_time);
 
   /* add to waiters thread list to be assigned victim directly */
   to.tv_sec = (int) time (NULL) + 60 /* todo: use PGBUF_TIMEOUT */;
@@ -9333,8 +9372,17 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
               return NULL;
             }
 	}
+      else
+        {
+          /* note: we don't penalize threads with private lists under quota */
+        }
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
     }
+
+#if defined (SERVER_MODE)
+  pgbuf_Pool.monitor.count_thread_get_victim_extended_search[thread_get_current_entry_index ()]++;
+  ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_extended_search, 1);
+#endif /* SERVER_MODE */
 
   if (PGBUF_PAGE_QUOTA_IS_ENABLED)
     {
@@ -14551,6 +14599,9 @@ pgbuf_initialize_page_monitor (void)
   PGBUF_PAGE_MONITOR *monitor;
   int i;
   int error_status = NO_ERROR;
+#if defined (SERVER_MODE)
+  int count_threads = thread_num_total_threads ();
+#endif /* SERVER_MODE */
 
   monitor = &(pgbuf_Pool.monitor);
 
@@ -14654,6 +14705,25 @@ pgbuf_initialize_page_monitor (void)
 
   monitor->lru_shared_pgs = 0;
   monitor->lru_garbage_pgs = 0;
+
+#if defined (SERVER_MODE)
+  monitor->count_get_victim_extended_search = 0;
+  monitor->count_get_victim_waits = 0;
+  monitor->count_thread_get_victim_waits = (INT64 *) calloc (count_threads, sizeof (INT64));
+  if (monitor->count_thread_get_victim_waits == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count_threads * sizeof (INT64));
+      goto exit;
+    }
+  monitor->count_thread_get_victim_extended_search = (INT64 *) calloc (count_threads, sizeof (INT64));
+  if (monitor->count_thread_get_victim_extended_search == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count_threads * sizeof (INT64));
+      goto exit;
+    }
+#endif /* SERVER_MDOE */
 
 exit:
   return error_status;
