@@ -1833,19 +1833,29 @@ spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descript
   SPAGE_SLOT *slot_p;
   int used_space;
   int status;
+  bool update_modification_counter = false;
 
   assert (page_p != NULL);
   assert (record_descriptor_p != NULL);
   assert (out_slot_id_p != NULL);
 
-  pgbuf_start_modification (page_p);
+  update_modification_counter = !pgbuf_is_modification_started (page_p);
+  if (update_modification_counter)
+    {
+      pgbuf_start_modification (page_p);
+    }
+
   status =
     spage_find_slot_for_insert (thread_p, page_p, record_descriptor_p, out_slot_id_p, (void **) &slot_p, &used_space);
   if (status == SP_SUCCESS)
     {
       status = spage_insert_data (thread_p, page_p, record_descriptor_p, slot_p);
     }
-  pgbuf_end_modification (page_p);
+
+  if (update_modification_counter)
+    {
+      pgbuf_end_modification (page_p);
+    }
 
   return status;
 }
