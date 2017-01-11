@@ -1333,6 +1333,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   PAGE_TYPE page_type;
 
   assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL);
+  assert (size >= 0 && size <= DB_PAGESIZE);
 
   /* interrupt check */
   if (thread_get_check_interrupt (thread_p) == true)
@@ -1375,7 +1376,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
       goto exit_on_error;
     }
   page_type = src_bufptr->iopage_buffer->iopage.prv.ptype;
-  memcpy (bcb_area, src_pgptr, DB_PAGESIZE);
+  memcpy (bcb_area, src_pgptr, size);
   if (count_modifications != ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL))
     {
       goto exit_on_error;
@@ -1384,6 +1385,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   assert (VPID_EQ (vpid, &src_bufptr->vpid));
   if ((src_bufptr->fcnt == 0) && (pgbuf_is_exist_blocked_reader_writer (src_bufptr) == false))
     {
+      /* An alternative would be to relocate BCB only if there is no latch on page. */
       pgbuf_relocate_bcb (thread_p, src_bufptr);
     }
 

@@ -9688,6 +9688,15 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
   btree_verify_node (thread_p, btid, R);
+
+  /*
+   * Start the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
+   * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
+   * S-latch on parent page, while access the non-leaf without latch.
+   */
+  pgbuf_start_modification (P);
+  pgbuf_start_modification (Q);
+  pgbuf_start_modification (R);
 #endif
 
   /* initializations */
@@ -9884,11 +9893,19 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
+  pgbuf_end_modification (Q);
+  pgbuf_end_modification (P);
+  pgbuf_end_modification (R);
 #endif
 
   return ret;
 
 exit_on_error:
+#if !defined(NDEBUG)
+  pgbuf_end_modification (Q);
+  pgbuf_end_modification (P);
+  pgbuf_end_modification (R);
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -9921,7 +9938,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 {
   int left_cnt, right_cnt;
   int i, ret = NO_ERROR;
-  VPID *left_vpid = pgbuf_get_vpid_ptr (left_pg);
+  VPID *left_vpid;
 
   /* record decoding */
   RECDES peek_rec;
@@ -9969,6 +9986,13 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   char merged_upper_fence_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int merged_prefix = 0;
 
+  assert (P != NULL && left_pg != NULL && right_pg != NULL);
+  assert (pgbuf_get_latch_mode (P) == PGBUF_LATCH_WRITE);
+  assert (pgbuf_get_latch_mode (left_pg) == PGBUF_LATCH_WRITE);
+  assert (pgbuf_get_latch_mode (right_pg) == PGBUF_LATCH_WRITE);
+
+  left_vpid = pgbuf_get_vpid_ptr (left_pg);
+
 #if !defined(NDEBUG)
   if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
     {
@@ -9983,6 +10007,15 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, left_pg);
+
+  /*
+   * Start the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
+   * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
+   * S-latch on parent page, while access the non-leaf without latch.
+   */
+  pgbuf_start_modification (P);
+  pgbuf_start_modification (left_pg);
+  pgbuf_start_modification (right_pg);
 #endif
 
   /***********************************************************
@@ -10399,6 +10432,12 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       db_private_free_and_init (thread_p, merge_buf_ptr);
     }
 
+#if !defined(NDEBUG)
+  pgbuf_end_modification (P);
+  pgbuf_end_modification (left_pg);
+  pgbuf_end_modification (right_pg);
+#endif
+
   /* Success. */
   return NO_ERROR;
 
@@ -10413,6 +10452,12 @@ exit_on_error:
 
   btree_clear_key_value (&left_fence_key_clear, &left_fence_key);
   btree_clear_key_value (&right_fence_key_clear, &right_fence_key);
+
+#if !defined(NDEBUG)
+  pgbuf_end_modification (P);
+  pgbuf_end_modification (left_pg);
+  pgbuf_end_modification (right_pg);
+#endif
 
   return ret;
 }
@@ -12637,6 +12682,17 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 #endif
 
+#if !defined(NDEBUG)
+  /*
+   * Start the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
+   * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
+   * S-latch on parent page, while access the non-leaf without latch.
+   */
+  pgbuf_start_modification (Q);
+  pgbuf_start_modification (P);
+  pgbuf_start_modification (R);
+#endif
+
   /********************************************************************
    ***  STEP 1: find split point & sep_key
    ***          make fence key to be inserted
@@ -12714,10 +12770,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   sep_key_len = btree_get_disk_size_of_key (sep_key);
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (sep_key_len);
 
-  /* Start the modification on Q, for debugging purpose. Currently, this page is not accessed by concurrent readers
-   * without latch. This may be changed in future.
-   */
-  pgbuf_start_modification (Q);
   qheader->max_key_len = MAX (sep_key_len, qheader->max_key_len);
 
   /* set rheader max_key_len as qheader max_key_len */
@@ -12769,10 +12821,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
-  /* Start the modification here on R. This page will be connected to parent Q, and can be accessed by concurrent
-   * reader without latch, afterward. For non-leaf pages the modification counter may be used for debugging purpose.
-   */
-  pgbuf_start_modification (R);
   ret = btree_init_node_header (thread_p, &btid->sys_btid->vfid, R, rheader, false);
   if (ret != NO_ERROR)
     {
@@ -12850,7 +12898,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ASSERT_ERROR ();
       goto exit_on_error;
     }
-  pgbuf_end_modification (Q);
 
   /* add redo logging for page Q */
   log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, Q, -1, DB_PAGESIZE, Q);
@@ -12867,7 +12914,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ASSERT_ERROR ();
       goto exit_on_error;
     }
-  pgbuf_end_modification (R);
 
   log_append_redo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, R, -1, DB_PAGESIZE, R);
 
@@ -12938,11 +12984,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   assert_release (pheader->split_info.pivot >= 0);
 
   btree_node_header_undo_log (thread_p, &btid->sys_btid->vfid, P);
-
-  /* Start modification on page P. This page may be accessed by concurrent reader without latch.
-   * For non-leaf pages the modification counter may be used for debugging purpose.
-   */
-  pgbuf_start_modification (P);
   btree_split_next_pivot (&pheader->split_info, (float) p_slot_id / key_cnt, key_cnt);
 
   /* We may need to update the max_key length if the mid key is larger than the max key length. This can happen due to
@@ -12950,7 +12991,6 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   sep_key_len = btree_get_disk_size_of_key (sep_key);
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (sep_key_len);
   pheader->max_key_len = MAX (sep_key_len, pheader->max_key_len);
-  pgbuf_end_modification (P);
 
   btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, P);
 
@@ -13008,6 +13048,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
   btree_verify_node (thread_p, btid, R);
+  pgbuf_end_modification (Q);
+  pgbuf_end_modification (P);
+  pgbuf_end_modification (R);
 #endif
 
   return ret;
@@ -13020,20 +13063,11 @@ exit_on_error:
       db_private_free_and_init (thread_p, sep_key);
     }
 
-  if (P && pgbuf_is_modification_started (P))
-    {
-      pgbuf_end_modification (P);
-    }
-
-  if (Q && pgbuf_is_modification_started (Q))
-    {
-      pgbuf_end_modification (Q);
-    }
-
-  if (R && pgbuf_is_modification_started (R))
-    {
-      pgbuf_end_modification (R);
-    }
+#if !defined(NDEBUG)
+  pgbuf_end_modification (Q);
+  pgbuf_end_modification (P);
+  pgbuf_end_modification (R);
+#endif
 
   assert (ret != NO_ERROR);
   return ret;
@@ -13487,6 +13521,15 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
+
+  /*
+   * Start the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
+   * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
+   * S-latch on parent page, while access the non-leaf without latch.
+   */
+  pgbuf_start_modification (P);
+  pgbuf_start_modification (Q);
+  pgbuf_start_modification (R);
 #endif
 
   /* initializations */
@@ -13590,7 +13633,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    ***  STEP 2: update P, Q, R header info
    *********************************************************************/
   /* update page P header */
-  pgbuf_start_modification (P);
   pheader->node.node_level++;
 
   /* We may need to update the max_key length if the sep key is larger than the max key length. This can happen due to
@@ -13602,10 +13644,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, P);
 
-  /* Start the modification here on Q. This page will be connected to parent P, and can be accessed by concurrent
-   * reader without latch, afterward.
-   */
-  pgbuf_start_modification (Q);
   /* update page Q header */
   qheader->node_level = pheader->node.node_level - 1;
   qheader->max_key_len = pheader->node.max_key_len;
@@ -13634,10 +13672,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       goto exit_on_error;
     }
 
-  /* Start the modification here on R. This page will be connected to parent P, and can be accessed by concurrent
-   * reader without latch, afterward.
-   */
-  pgbuf_start_modification (R);
   /* update page R header */
   rheader->node_level = pheader->node.node_level - 1;
   rheader->max_key_len = pheader->node.max_key_len;
@@ -13711,8 +13745,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	}
     }
 
-  pgbuf_end_modification (R);
-
   /* for recovery purposes */
   recset_data = PTR_ALIGN (recset_data_buf, BTREE_MAX_ALIGN);
 
@@ -13767,8 +13799,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       i--;
     }
-
-  pgbuf_end_modification (Q);
 
   /* Log page Q records for redo purposes */
   ret = btree_rv_util_save_page_records (Q, 1, i, 1, recset_data, &recset_length);
@@ -13850,8 +13880,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       goto exit_on_error;
     }
 
-  pgbuf_end_modification (P);
-
   /* log the inserted record for undo/redo purposes, */
   btree_rv_write_log_record (recset_data, &recset_length, &rec, BTREE_NON_LEAF_NODE);
 
@@ -13896,6 +13924,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
   btree_verify_node (thread_p, btid, R);
+  pgbuf_end_modification (P);
+  pgbuf_end_modification (Q);
+  pgbuf_end_modification (R);
 #endif
 
   return ret;
@@ -13908,20 +13939,11 @@ exit_on_error:
       db_private_free_and_init (thread_p, sep_key);
     }
 
-  if (P && pgbuf_is_modification_started (P))
-    {
-      pgbuf_end_modification (P);
-    }
-
-  if (Q && pgbuf_is_modification_started (Q))
-    {
-      pgbuf_end_modification (Q);
-    }
-
-  if (R && pgbuf_is_modification_started (R))
-    {
-      pgbuf_end_modification (R);
-    }
+#if !defined(NDEBUG)
+  pgbuf_end_modification (P);
+  pgbuf_end_modification (Q);
+  pgbuf_end_modification (R);
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -18587,7 +18609,6 @@ static int
 btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p, VPID * prev)
 {
   BTREE_NODE_HEADER *header = NULL;
-  bool update_modification_counter = false;
 
   if (page_p == NULL)
     {
@@ -18601,17 +18622,7 @@ btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
     }
 
   btree_node_header_undo_log (thread_p, &btid->sys_btid->vfid, page_p);
-  update_modification_counter = !pgbuf_is_modification_started (page_p);
-  if (update_modification_counter)
-    {
-      pgbuf_start_modification (page_p);
-    }
   header->prev_vpid = *prev;
-  if (update_modification_counter)
-    {
-      pgbuf_end_modification (page_p);
-    }
-
   btree_node_header_redo_log (thread_p, &btid->sys_btid->vfid, page_p);
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 
