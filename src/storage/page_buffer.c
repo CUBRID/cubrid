@@ -10132,7 +10132,7 @@ pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
 
   assert (lru_list->count_lru1 > 0);
   assert (lru_list->LRU_bottom_1 != NULL);
-  if (lru_list->count_lru2 <= 0 || lru_list->LRU_bottom_1 == NULL)
+  if (lru_list->count_lru1 <= 0 || lru_list->LRU_bottom_1 == NULL)
     {
       abort ();
     }
