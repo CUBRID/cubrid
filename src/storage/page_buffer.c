@@ -8488,6 +8488,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 #if defined (SERVER_MODE)
   bool has_waiters_on_fixed = false;
   bool has_fixed_pages = true;
+  bool prioritize_vacuum = false;
   PERF_UTIME_TRACKER time_tracker_alloc_bcb_wait_time = PERF_UTIME_TRACKER_INITIALIZER;
   struct timespec to;
   int r = 0;
@@ -8504,22 +8505,33 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     }
 
 #if defined (SERVER_MODE)
-  has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
-  if (!has_waiters_on_fixed)
+  /* ok, we need to consider here that vacuum threads have an unfair chance against active workers. usually this is
+   * not an issue, because vacuum workers are not blocked. however, here they can be. if 1k active workers battle with
+   * 50 vacuum workers for victims, vacuum workers may stay here quite a while. we cannot allow that, because if
+   * vacuum lags behind, the overall system is doomed. check if we need to prioritize vacuum worker threads. */
+  prioritize_vacuum =
+    VACUUM_IS_THREAD_VACUUM_MASTER (thread_p)     /* master always has priority */
+    || (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && vacuum_has_lag ()) /* check vacuum lag */;
+
+  if (!prioritize_vacuum)
     {
-      /* in some systems, when IO becomes a bottleneck and threads require many victims, threads will start waiting.
-       * however, at some point there can be so many waiting threads, that the few remaining can easily find victims
-       * by searching... always. things become unfair with few threads getting advantage of others.
-       * we count how many times each thread finds victims through searching and how many times it had to wait. we
-       * penalize those that seemed to have an advantage so far. */
-      /* penalize if thread_waits / thread_searches < overall_waits / overall_searches.
-       * equivalent to thread_waits * overall_searches < thread_searches * overall_waits. */
-      INT64 thread_waits = pgbuf_Pool.monitor.count_thread_get_victim_waits[thread_get_current_entry_index ()];
-      INT64 thread_searches =
-        pgbuf_Pool.monitor.count_thread_get_victim_extended_search[thread_get_current_entry_index ()];
-      INT64 overall_waits = ATOMIC_LOAD_64 (&pgbuf_Pool.monitor.count_get_victim_waits);
-      INT64 overall_searches = ATOMIC_LOAD_64 (&pgbuf_Pool.monitor.count_get_victim_extended_search);
-      penalize = thread_waits * overall_searches < thread_searches * overall_waits;
+      has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
+      if (!has_waiters_on_fixed)
+        {
+          /* in some systems, when IO becomes a bottleneck and threads require many victims, threads will start waiting.
+           * however, at some point there can be so many waiting threads, that the few remaining can easily find victims
+           * by searching... always. things become unfair with few threads getting advantage of others.
+           * we count how many times each thread finds victims through searching and how many times it had to wait. we
+           * penalize those that seemed to have an advantage so far. */
+          /* penalize if thread_waits / thread_searches < overall_waits / overall_searches.
+           * equivalent to thread_waits * overall_searches < thread_searches * overall_waits. */
+          INT64 thread_waits = pgbuf_Pool.monitor.count_thread_get_victim_waits[thread_get_current_entry_index ()];
+          INT64 thread_searches =
+            pgbuf_Pool.monitor.count_thread_get_victim_extended_search[thread_get_current_entry_index ()];
+          INT64 overall_waits = ATOMIC_LOAD_64 (&pgbuf_Pool.monitor.count_get_victim_waits);
+          INT64 overall_searches = ATOMIC_LOAD_64 (&pgbuf_Pool.monitor.count_get_victim_extended_search);
+          penalize = thread_waits * overall_searches < thread_searches * overall_waits;
+        }
     }
 #endif /* SERVER_MODE */
 
@@ -8560,8 +8572,12 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   thread_lock_entry (thread_p);
   
   /* push to waiter thread list */
-  if (has_waiters_on_fixed)
+  if (prioritize_vacuum || has_waiters_on_fixed)
     {
+      if (prioritize_vacuum)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM);
+        }
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, &thread_p))
         {
           assert (false);
@@ -9369,6 +9385,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
           if (penalize)
             {
               ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
+              perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PENALIZE);
               return NULL;
             }
 	}
@@ -9377,6 +9394,11 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
           /* note: we don't penalize threads with private lists under quota */
         }
       ATOMIC_INC_32 (&monitor->lru_pending_victim_req_per_lru[private_lru_idx], -1);
+    }
+  else if (penalize)
+    {
+      perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PENALIZE);
+      return NULL;
     }
 
 #if defined (SERVER_MODE)

@@ -7589,3 +7589,17 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
 
   return NO_ERROR;
 }
+
+bool
+vacuum_has_lag (void)
+{
+  VACUUM_DATA_PAGE *first_page = vacuum_Data.first_page;
+  if (first_page == NULL)
+    {
+      /* first page may be temporarily disabled during checkpoint. be conservative and assume we had lag */
+      return true;
+    }
+
+  /* high-load systems are very likely to return true here. */
+  return first_page->next_page.pageid != NULL_PAGEID;
+}
