@@ -4932,10 +4932,6 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   error = ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
 				   operation, has_index);
-
-  item->packed_key_value = NULL;	/* to prevent double free. see ws_add_to_repl_obj_list */
-  item->packed_key_value_length = 0;
-
   return error;
 }
 
