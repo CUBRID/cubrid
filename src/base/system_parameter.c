@@ -5506,7 +5506,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   SESSION_PARAM *sprm = NULL;
   int num_session_prms;
 #endif
-
   if (reload)
     {
       for (i = 0; i < NUM_PRM; i++)
@@ -8391,10 +8390,6 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 
 	/* convert string to boolean */
 
-	{
-	  new_value->b = PRM_GET_BOOL (prm->default_value);
-	  break;
-	}
 	keyvalp = prm_keyword (-1, value, boolean_words, DIM (boolean_words));
 	if (keyvalp == NULL)
 	  {
