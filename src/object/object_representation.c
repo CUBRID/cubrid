@@ -6894,12 +6894,13 @@ or_pack_value (char *buf, DB_VALUE * value)
 }
 
 char *
-or_pack_mem_value (char *ptr, DB_VALUE * value)
+or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment)
 {
   OR_BUF orbuf, *buf;
   PR_TYPE *type;
   TP_DOMAIN *domain;
   char *start, length, bits;
+  char *ptr_to_packed_value;
   int rc = NO_ERROR;
   DB_TYPE dbval_type;
 
@@ -6913,6 +6914,9 @@ or_pack_mem_value (char *ptr, DB_VALUE * value)
   start = buf->ptr;
 
   or_get_align64 (buf);
+
+  /* notice that it points to real starting ptr to packed value */
+  ptr_to_packed_value = buf->ptr;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
   type = PR_TYPE_FROM_ID (dbval_type);
@@ -6957,12 +6961,19 @@ or_pack_mem_value (char *ptr, DB_VALUE * value)
 
   if (rc == NO_ERROR)
     {
+      if (packed_len_except_alignment)
+	{
+	  /* it excludes both leading and trailing alignments */
+	  *packed_len_except_alignment = (int) (buf->ptr - ptr_to_packed_value);
+	}
+
       length = (int) (buf->ptr - start);
       bits = length & 3;
       if (bits)
 	{
 	  rc = or_pad (buf, 4 - bits);
 	}
+
     }
 
   return buf->ptr;
@@ -8065,7 +8076,7 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
  * sha1 (in) : Value to pack.
  */
 char *
-or_pack_sha1 (char *ptr, SHA1Hash * sha1)
+or_pack_sha1 (char *ptr, const SHA1Hash * sha1)
 {
   assert (sha1 != NULL);
 

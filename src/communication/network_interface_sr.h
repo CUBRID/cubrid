@@ -41,7 +41,6 @@ extern void slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char
 extern void slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slocator_force_repl_update (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_find_class_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -108,7 +107,6 @@ extern void sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 extern void sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void srepl_btree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

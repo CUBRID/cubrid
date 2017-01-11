@@ -38,79 +38,80 @@
 # define YYTOKENTYPE
    /* Put the tokens into the symbol table, so that GDB and other debuggers
       know about them.  */
-   enum yytokentype {
-     NL = 258,
-     NULL_ = 259,
-     CLASS = 260,
-     SHARED = 261,
-     DEFAULT = 262,
-     DATE_ = 263,
-     TIME = 264,
-     UTIME = 265,
-     TIMESTAMP = 266,
-     TIMESTAMPLTZ = 267,
-     TIMESTAMPTZ = 268,
-     DATETIME = 269,
-     DATETIMELTZ = 270,
-     DATETIMETZ = 271,
-     CMD_ID = 272,
-     CMD_CLASS = 273,
-     CMD_CONSTRUCTOR = 274,
-     REF_ELO_INT = 275,
-     REF_ELO_EXT = 276,
-     REF_USER = 277,
-     REF_CLASS = 278,
-     OBJECT_REFERENCE = 279,
-     OID_DELIMETER = 280,
-     SET_START_BRACE = 281,
-     SET_END_BRACE = 282,
-     START_PAREN = 283,
-     END_PAREN = 284,
-     REAL_LIT = 285,
-     INT_LIT = 286,
-     OID_ = 287,
-     TIME_LIT4 = 288,
-     TIME_LIT42 = 289,
-     TIME_LIT3 = 290,
-     TIME_LIT31 = 291,
-     TIME_LIT2 = 292,
-     TIME_LIT1 = 293,
-     DATE_LIT2 = 294,
-     YEN_SYMBOL = 295,
-     WON_SYMBOL = 296,
-     BACKSLASH = 297,
-     DOLLAR_SYMBOL = 298,
-     TURKISH_LIRA_CURRENCY = 299,
-     BRITISH_POUND_SYMBOL = 300,
-     CAMBODIAN_RIEL_SYMBOL = 301,
-     CHINESE_RENMINBI_SYMBOL = 302,
-     INDIAN_RUPEE_SYMBOL = 303,
-     RUSSIAN_RUBLE_SYMBOL = 304,
-     AUSTRALIAN_DOLLAR_SYMBOL = 305,
-     CANADIAN_DOLLAR_SYMBOL = 306,
-     BRASILIAN_REAL_SYMBOL = 307,
-     ROMANIAN_LEU_SYMBOL = 308,
-     EURO_SYMBOL = 309,
-     SWISS_FRANC_SYMBOL = 310,
-     DANISH_KRONE_SYMBOL = 311,
-     NORWEGIAN_KRONE_SYMBOL = 312,
-     BULGARIAN_LEV_SYMBOL = 313,
-     VIETNAMESE_DONG_SYMBOL = 314,
-     CZECH_KORUNA_SYMBOL = 315,
-     POLISH_ZLOTY_SYMBOL = 316,
-     SWEDISH_KRONA_SYMBOL = 317,
-     CROATIAN_KUNA_SYMBOL = 318,
-     SERBIAN_DINAR_SYMBOL = 319,
-     IDENTIFIER = 320,
-     Quote = 321,
-     DQuote = 322,
-     NQuote = 323,
-     BQuote = 324,
-     XQuote = 325,
-     SQS_String_Body = 326,
-     DQS_String_Body = 327,
-     COMMA = 328
-   };
+enum yytokentype
+{
+  NL = 258,
+  NULL_ = 259,
+  CLASS = 260,
+  SHARED = 261,
+  DEFAULT = 262,
+  DATE_ = 263,
+  TIME = 264,
+  UTIME = 265,
+  TIMESTAMP = 266,
+  TIMESTAMPLTZ = 267,
+  TIMESTAMPTZ = 268,
+  DATETIME = 269,
+  DATETIMELTZ = 270,
+  DATETIMETZ = 271,
+  CMD_ID = 272,
+  CMD_CLASS = 273,
+  CMD_CONSTRUCTOR = 274,
+  REF_ELO_INT = 275,
+  REF_ELO_EXT = 276,
+  REF_USER = 277,
+  REF_CLASS = 278,
+  OBJECT_REFERENCE = 279,
+  OID_DELIMETER = 280,
+  SET_START_BRACE = 281,
+  SET_END_BRACE = 282,
+  START_PAREN = 283,
+  END_PAREN = 284,
+  REAL_LIT = 285,
+  INT_LIT = 286,
+  OID_ = 287,
+  TIME_LIT4 = 288,
+  TIME_LIT42 = 289,
+  TIME_LIT3 = 290,
+  TIME_LIT31 = 291,
+  TIME_LIT2 = 292,
+  TIME_LIT1 = 293,
+  DATE_LIT2 = 294,
+  YEN_SYMBOL = 295,
+  WON_SYMBOL = 296,
+  BACKSLASH = 297,
+  DOLLAR_SYMBOL = 298,
+  TURKISH_LIRA_CURRENCY = 299,
+  BRITISH_POUND_SYMBOL = 300,
+  CAMBODIAN_RIEL_SYMBOL = 301,
+  CHINESE_RENMINBI_SYMBOL = 302,
+  INDIAN_RUPEE_SYMBOL = 303,
+  RUSSIAN_RUBLE_SYMBOL = 304,
+  AUSTRALIAN_DOLLAR_SYMBOL = 305,
+  CANADIAN_DOLLAR_SYMBOL = 306,
+  BRASILIAN_REAL_SYMBOL = 307,
+  ROMANIAN_LEU_SYMBOL = 308,
+  EURO_SYMBOL = 309,
+  SWISS_FRANC_SYMBOL = 310,
+  DANISH_KRONE_SYMBOL = 311,
+  NORWEGIAN_KRONE_SYMBOL = 312,
+  BULGARIAN_LEV_SYMBOL = 313,
+  VIETNAMESE_DONG_SYMBOL = 314,
+  CZECH_KORUNA_SYMBOL = 315,
+  POLISH_ZLOTY_SYMBOL = 316,
+  SWEDISH_KRONA_SYMBOL = 317,
+  CROATIAN_KUNA_SYMBOL = 318,
+  SERBIAN_DINAR_SYMBOL = 319,
+  IDENTIFIER = 320,
+  Quote = 321,
+  DQuote = 322,
+  NQuote = 323,
+  BQuote = 324,
+  XQuote = 325,
+  SQS_String_Body = 326,
+  DQS_String_Body = 327,
+  COMMA = 328
+};
 #endif
 /* Tokens.  */
 #define NL 258
@@ -190,22 +191,20 @@
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 79 "../../src/executables/loader_grammar.y"
 {
-	int 	intval;
-	LDR_STRING	*string;
-	LDR_CLASS_COMMAND_SPEC *cmd_spec;
-	LDR_CONSTRUCTOR_SPEC *ctor_spec;
-	LDR_CONSTANT *constant;
-	LDR_OBJECT_REF *obj_ref;
+  int intval;
+  LDR_STRING *string;
+  LDR_CLASS_COMMAND_SPEC *cmd_spec;
+  LDR_CONSTRUCTOR_SPEC *ctor_spec;
+  LDR_CONSTANT *constant;
+  LDR_OBJECT_REF *obj_ref;
 }
-/* Line 1489 of yacc.c.  */
-#line 204 "../../src/executables/loader_grammar.h"
-	YYSTYPE;
-# define yystype YYSTYPE /* obsolescent; will be withdrawn */
+/* Line 1529 of yacc.c.  */
+
+YYSTYPE;
+# define yystype YYSTYPE	/* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
 #endif
 
 extern YYSTYPE loader_yylval;
-
