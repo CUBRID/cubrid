@@ -22299,6 +22299,11 @@ start_btree_traversal:
   /* Root page must be fixed. */
   assert (crt_page != NULL);
 
+  if (!VFID_ISNULL (&btid_int->ovfid))
+    {
+      /* Currently do not use copy leaf page in case that we need to access more than one page. */
+      bcb_area = NULL;
+    }
   /* Advance until leaf page is found. */
   while (!is_leaf)
     {
@@ -23998,7 +24003,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  return error_code;
 	}
 
-      if (found && bts->bcb_area != NULL && !VPID_ISNULL (vpid_ovf_p))
+      if (found && (bts->C_page == bts->bcb_area) && (!VPID_ISNULL (vpid_ovf_p)))
 	{
 	  /* Currently do not use copy leaf page in case that we need to access more than one page. */
 	  bts->bcb_area = NULL;
