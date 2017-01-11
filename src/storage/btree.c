@@ -427,10 +427,11 @@ struct btree_search_key_helper
 {
   BTREE_SEARCH result;		/* Result of key search. */
   PGSLOTID slotid;		/* Slot ID of found key or slot ID of the biggest key smaller then key (if not found). */
+  VPID ovfl;			/* VPID overflow */
 };
 /* BTREE_SEARCH_KEY_HELPER static initializer. */
 #define BTREE_SEARCH_KEY_HELPER_INITIALIZER \
-  { BTREE_KEY_NOTFOUND, NULL_SLOTID }
+  { BTREE_KEY_NOTFOUND, NULL_SLOTID, VPID_INITIALIZER }
 
 /* BTREE_FIND_UNIQUE_HELPER -
  * Structure used by find unique functions.
@@ -1315,7 +1316,7 @@ static int btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR 
 			     VPID * P_vpid, VPID * Q_vpid, VPID * R_vpid, BTREE_NODE_TYPE node_type, DB_VALUE * key,
 			     BTREE_INSERT_HELPER * helper, VPID * child_vpid);
 static PAGE_PTR btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, char *bcb_area,
-				  VPID * pg_vpid, INT16 * slot_id, bool * found_p);
+				  VPID * pg_vpid, INT16 * slot_id, bool * found_p, VPID * vpid_ovf_p);
 static int btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * BTS, BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_leftmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 					  BTREE_STATS * stat_info_p);
@@ -5334,6 +5335,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	      /* Key exists in page in current middle slot. */
 	      search_key->result = BTREE_KEY_FOUND;
 	      search_key->slotid = middle;
+	      VPID_COPY (&search_key->ovfl, &leaf_pnt.ovfl);
 	      return NO_ERROR;
 	    }
 	}
@@ -14122,13 +14124,14 @@ exit_on_error:
  *   pg_vpid (out) : Outputs Leaf node page VPID.
  *   slot_id (out) : Outputs slot ID of key if found, or slot ID of key if it was to be inserted.
  *   found_p (out) : Outputs true if key was found and false otherwise.
+ *   vpid_ovf_p (out) : VPID overflow
  *
  * Note: Search the B+tree index to locate the page and record that contains
  *	 the key, or would contain the key if the key was to be located.
  */
 static PAGE_PTR
 btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, char *bcb_area, VPID * pg_vpid,
-		  INT16 * slot_id, bool * found_p)
+		  INT16 * slot_id, bool * found_p, VPID * vpid_ovf_p)
 {
   PAGE_PTR leaf_page = NULL;	/* Leaf node page pointer. */
   /* Search key result. */
@@ -14159,6 +14162,10 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
   /* Output found and slot ID. */
   *found_p = (search_key.result == BTREE_KEY_FOUND);
   *slot_id = search_key.slotid;
+  if (vpid_ovf_p)
+    {
+      VPID_COPY (vpid_ovf_p, &search_key.ovfl);
+    }
   if (pg_vpid != NULL)
     {
       /* Output leaf node page VPID. */
@@ -22480,7 +22487,6 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
   BTREE_NODE_TYPE node_type;
   VPID child_vpid;
   int error_code;
-  char *page_ptr;
 
   assert (btid_int != NULL);
   assert (key != NULL);
@@ -22528,16 +22534,13 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
       *advance_to_page = NULL;
       if (bcb_area && node_header->node_level == 2)
 	{
-	  page_ptr = PTR_ALIGN (bcb_area, MAX_ALIGNMENT);
-	  pgbuf_copy_to_bcb_area (thread_p, &child_vpid, page_ptr, IO_PAGESIZE);
+	  pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, IO_PAGESIZE);
 
 #if !defined(NDEBUG)
-	  *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  node_header = btree_get_node_header (page_ptr);
+	  node_header = btree_get_node_header (bcb_area);
 	  assert (node_header->node_level == 1);
-	  pgbuf_unfix_and_init (thread_p, *advance_to_page);
 #endif
-	  *advance_to_page = page_ptr;
+	  *advance_to_page = bcb_area;
 	}
 
       if (*advance_to_page == NULL)
@@ -23943,6 +23946,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   int error_code = NO_ERROR;
   bool found = false;
+  VPID vpid_ovf, *vpid_ovf_p = NULL;
 
   /* Assert expected arguments. */
   assert (bts != NULL);
@@ -23978,18 +23982,27 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
+	  vpid_ovf_p = &vpid_ovf;
 	}
 #endif
 
+    locate_key:
       /* Has lower limit. Try to locate the key. */
       bts->C_page =
 	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key, bts->bcb_area,
-			  &bts->C_vpid, &bts->slot_id, &found);
+			  &bts->C_vpid, &bts->slot_id, &found, vpid_ovf_p);
       if (bts->C_page == NULL)
 	{
 	  /* Error locating or fixing leaf. */
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
+	}
+
+      if (found && bts->bcb_area != NULL && !VPID_ISNULL (vpid_ovf_p))
+	{
+	  /* Currently do not use copy leaf page in case that we need to access more than one page. */
+	  bts->bcb_area = NULL;
+	  goto locate_key;
 	}
       if (!found && bts->use_desc_index)
 	{
@@ -24161,7 +24174,8 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   bts->force_restart_from_root = false;
 
   /* Search key from top. */
-  bts->C_page = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, NULL, &bts->C_vpid, &bts->slot_id, &found);
+  bts->C_page = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, NULL, &bts->C_vpid, &bts->slot_id, &found,
+				  NULL);
   if (bts->C_page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
