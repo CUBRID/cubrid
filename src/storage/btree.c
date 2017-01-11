@@ -22550,7 +22550,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
       *advance_to_page = NULL;
       if (bcb_area && node_header->node_level == 2)
 	{
-	  pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, IO_PAGESIZE);
+	  pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, DB_PAGESIZE);
 
 #if !defined(NDEBUG)
 	  node_header = btree_get_node_header (bcb_area);
