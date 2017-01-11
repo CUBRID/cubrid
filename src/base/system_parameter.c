@@ -5506,6 +5506,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   SESSION_PARAM *sprm = NULL;
   int num_session_prms;
 #endif
+
   if (reload)
     {
       for (i = 0; i < NUM_PRM; i++)
