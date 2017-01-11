@@ -1953,8 +1953,7 @@ end:
       log_sysop_commit (thread_p);
     }
 
-  /* success */
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
