@@ -783,6 +783,7 @@ static int pgbuf_relocate_top_ain (PGBUF_BCB * bufptr);
 static void pgbuf_remove_from_lru_list (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list);
 static void pgbuf_remove_from_ain_list (PGBUF_BCB * bufptr);
 static void pgbuf_move_from_ain_to_lru (PGBUF_BCB * bufptr);
+static void pgbuf_relocate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 
 static int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
@@ -1381,8 +1382,10 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
     }
 
   assert (VPID_EQ (vpid, &src_bufptr->vpid));
-
-  /* TO DO - move in LRU lists */
+  if ((src_bufptr->fcnt == 0) && (pgbuf_is_exist_blocked_reader_writer (src_bufptr) == false))
+    {
+      pgbuf_relocate_bcb (thread_p, src_bufptr);
+    }
 
   pthread_mutex_unlock (&src_bufptr->BCB_mutex);
 
@@ -6179,7 +6182,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 #endif				/* NDEBUG */
 {
   PAGE_PTR pgptr;
-  int ain_age;
 
   assert (holder_status == NO_ERROR);
 
@@ -6234,50 +6236,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
 	{
-	  switch (bufptr->zone)
-	    {
-	    case PGBUF_LRU_1_ZONE:
-	      /* do nothing in this case */
-	      break;
-
-	    case PGBUF_AIN_ZONE:
-	      ain_age = pgbuf_Pool.buf_AIN_list.tick - bufptr->ain_tick;
-	      ain_age = (ain_age > 0) ? (ain_age) : (DB_INT32_MAX);
-
-	      if (ain_age > pgbuf_Pool.buf_AIN_list.max_count / 2)
-		{
-		  /* Correlated references are contrainted to half of the AIN list. If a page in AIN is referenced
-		   * again and is older than half the AIN size, we consider it hot and relocate it to LRU. This aims to 
-		   * avoid discarding soon-to-become hot pages: in classic 2Q, a page is discarded from AIN only when
-		   * removed from page buffer, it becomes hot page (put in LRU) only after is loaded a second time and
-		   * still resides in AOUT list. */
-		  pgbuf_move_from_ain_to_lru (bufptr);
-		}
-	      break;
-
-	    case PGBUF_VOID_ZONE:
-	      if (!PGBUF_IS_2Q_ENABLED || pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid))
-		{
-		  /* Put BCB in "middle" of LRU if VPID is in Aout list or is the first reference and 2Q is disabled.
-		   * The page is not yet hot. */
-		  pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE);
-		}
-	      else
-		{
-		  /* 2Q enabled and is first time the page is referenced: we put it in AIN to filter out correlated
-		   * references */
-		  pgbuf_relocate_top_ain (bufptr);
-		}
-	      break;
-
-	    case PGBUF_LRU_2_ZONE:
-	      (void) pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_1_ZONE);
-	      break;
-
-	    default:
-	      assert (false);
-	      break;
-	    }
+	  pgbuf_relocate_bcb (thread_p, bufptr);
 	}
 
       if (bufptr->latch_mode != PGBUF_LATCH_FLUSH && bufptr->latch_mode != PGBUF_LATCH_VICTIM)
@@ -12684,7 +12643,6 @@ pgbuf_reset_modification (PAGE_PTR pgptr)
 /*
  * pgbuf_get_tran_bcb_area () - Get transaction BCB area
  *   return: error code
- *
  *   thread_p(in): thread entry
  *   bcb_area (out): transaction BCB area
  */
@@ -12761,7 +12719,6 @@ pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
 /*
  * pgbuf_finalize_tran_bcb () - Finalize transaction BCB
  *   return: error code
- *
  *   thread_p(in): thread entry
  *   tran_bcb (out): transaction BCB area
  */
@@ -12781,3 +12738,60 @@ pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
     }
 }
 #endif
+
+/*
+ * pgbuf_relocate_bcb () - Relocate BCB
+ * return : void
+ * bufptr (in) : BCB
+ *
+ * Note: The caller must hold the BCB mutex.
+ */
+static void
+pgbuf_relocate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  int ain_age;
+  switch (bufptr->zone)
+    {
+    case PGBUF_LRU_1_ZONE:
+      /* do nothing in this case */
+      break;
+
+    case PGBUF_AIN_ZONE:
+      ain_age = pgbuf_Pool.buf_AIN_list.tick - bufptr->ain_tick;
+      ain_age = (ain_age > 0) ? (ain_age) : (DB_INT32_MAX);
+
+      if (ain_age > pgbuf_Pool.buf_AIN_list.max_count / 2)
+	{
+	  /* Correlated references are constrainted to half of the AIN list. If a page in AIN is referenced
+	   * again and is older than half the AIN size, we consider it hot and relocate it to LRU. This aims to 
+	   * avoid discarding soon-to-become hot pages: in classic 2Q, a page is discarded from AIN only when
+	   * removed from page buffer, it becomes hot page (put in LRU) only after is loaded a second time and
+	   * still resides in AOUT list. */
+	  pgbuf_move_from_ain_to_lru (bufptr);
+	}
+      break;
+
+    case PGBUF_VOID_ZONE:
+      if (!PGBUF_IS_2Q_ENABLED || pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid))
+	{
+	  /* Put BCB in "middle" of LRU if VPID is in Aout list or is the first reference and 2Q is disabled.
+	   * The page is not yet hot. */
+	  pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_2_ZONE);
+	}
+      else
+	{
+	  /* 2Q enabled and is first time the page is referenced: we put it in AIN to filter out correlated
+	   * references */
+	  pgbuf_relocate_top_ain (bufptr);
+	}
+      break;
+
+    case PGBUF_LRU_2_ZONE:
+      (void) pgbuf_relocate_top_lru (bufptr, PGBUF_LRU_1_ZONE);
+      break;
+
+    default:
+      assert (false);
+      break;
+    }
+}
