@@ -7323,11 +7323,14 @@ prepare_object_page:
       return S_DOESNT_EXIST;
     }
 
-  if (slot_p->record_type == REC_BIGONE && need_latch == false)
+  if (need_latch == false)
     {
-      /* quick fix to avoid NULL group id issue */
-      need_latch = true;
-      goto prepare_object_page;
+      if (slot_p->record_type == REC_BIGONE || slot_p->record_type == REC_RELOCATION)
+	{
+	  /* Quick fix to avoid NULL group id issue and multi page object issue. */
+	  need_latch = true;
+	  goto prepare_object_page;
+	}
     }
 
   /* Output record type. */
