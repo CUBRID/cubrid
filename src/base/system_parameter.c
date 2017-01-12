@@ -2094,8 +2094,7 @@ struct sysprm_param
 };
 
 static SYSPRM_PARAM prm_Def[] = {
-  {
-   PRM_ID_ER_LOG_DEBUG,
+  {PRM_ID_ER_LOG_DEBUG,
    PRM_NAME_ER_LOG_DEBUG,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
