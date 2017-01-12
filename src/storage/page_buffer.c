@@ -1336,6 +1336,8 @@ static void pgbuf_print_lru_pending_vict_req (void);
 static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 
 STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_victimizable_ignore_direct_victim (PGBUF_BCB * bcb, bool has_mutex_lock)
+  __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
@@ -9616,8 +9618,16 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
     }
 }
 
+/*
+ * pgbuf_bcb_victimizable_ignore_direct_victim () - check if bcb passes all victimizable condition expect direct_victim
+                                                    flag
+ *
+ * return              : true if bcb can be victimized, false otherwise
+ * bcb (in)            : bcb
+ * has_mutex_lock (in) : true if bcb mutex is owned
+ */
 STATIC_INLINE bool
-pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
+pgbuf_bcb_victimizable_ignore_direct_victim (PGBUF_BCB * bcb, bool has_mutex_lock)
 {
   /* must not be dirty */
   if (bcb->dirty)
@@ -9632,11 +9642,6 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
       return false;
     }
 
-  if (bcb->direct_victim)
-    {
-      return false;
-    }
-
   if (!has_mutex_lock && bcb->victim_candidate)
     {
       /* without bcb mutex, this means another thread wants to victimize */
@@ -9645,6 +9650,33 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
 
   /* must not be fixed and must not have waiters. */
   if (bcb->fcnt > 0 || bcb->next_wait_thrd != NULL)
+    {
+      return false;
+    }
+#endif /* SERVER_MODE */
+
+  /* valid */
+  return true;
+}
+
+/*
+ * pgbuf_is_bcb_victimizable () - check whether bcb can be victimized.
+ *
+ * return              : true if bcb can be victimized, false otherwise
+ * bcb (in)            : bcb
+ * has_mutex_lock (in) : true if bcb mutex is owned
+ */
+STATIC_INLINE bool
+pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
+{
+  /* must not be dirty */
+  if (!pgbuf_bcb_victimizable_ignore_direct_victim (bcb, has_mutex_lock))
+    {
+      return false;
+    }
+
+#if defined (SERVER_MODE)
+  if (bcb->direct_victim)
     {
       return false;
     }
@@ -16288,7 +16320,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
 
   pthread_mutex_lock (&bcb->BCB_mutex);
 
-  if (!bcb->direct_victim || !pgbuf_is_bcb_victimizable (bcb, true))
+  if (!bcb->direct_victim || !pgbuf_bcb_victimizable_ignore_direct_victim (bcb, true))
     {
       /* should not happen */
       assert (false);
