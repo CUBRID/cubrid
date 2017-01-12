@@ -820,6 +820,7 @@ struct pgbuf_page_monitor
 #if defined (SERVER_MODE)
   INT64 count_get_victim_extended_search;
   INT64 count_get_victim_waits;
+  INT64 count_get_victim_wait_in_progress;
 
   INT64 *count_thread_get_victim_extended_search;
   INT64 *count_thread_get_victim_waits;
@@ -1121,8 +1122,11 @@ struct pgbuf_temp_stats
   INT64 skip_avoid_victims;
   INT64 skip_other_victims;
   INT64 skip_fixed;
+
+  INT64 fall_3_count;
+  INT64 fall_3_try_success;
 };
-static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
@@ -8518,7 +8522,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   if (!prioritize_vacuum)
     {
       has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
-      if (!has_waiters_on_fixed)
+      if (!has_waiters_on_fixed && pgbuf_is_any_thread_waiting_for_direct_victim ())
         {
           /* in some systems, when IO becomes a bottleneck and threads require many victims, threads will start waiting.
            * however, at some point there can be so many waiting threads, that the few remaining can easily find victims
@@ -8567,6 +8571,11 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb_wait_time);
 
+  /* make sure at least flush will feed us with bcb's */
+  /* increment count_get_victim_wait_in_progress to let flush thread know there will be someone needing victims. */
+  ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, 1);
+  pgbuf_wakeup_flush_thread (thread_p);
+
   /* add to waiters thread list to be assigned victim directly */
   to.tv_sec = (int) time (NULL) + 60 /* todo: use PGBUF_TIMEOUT */;
   to.tv_nsec = 0;
@@ -8611,6 +8620,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
         }
       pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_NO_LATCH;
     }
+
+  /* now that we added to queue, decrement count_get_victim_wait_in_progress */
+  ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, -1);
 
   thread_p->resume_status = THREAD_ALLOC_BCB_SUSPENDED;
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, &to);
@@ -10300,30 +10312,36 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 
   assert (zone == PGBUF_LRU_1_ZONE || zone == PGBUF_LRU_2_ZONE);
 
+  ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_count, 1);
+
 #if defined (SERVER_MODE)
   /* can we assign this directly as victim? */
-  /* we first need mutex on bcb. however, we'd normally first get mutex on bcb and then on list. since we don't want
-   * to over complicate things, just try a conditional lock on mutex. if it fails, we'll just give up assigning the bcb
-   * directly as victim */
-  if (pgbuf_is_bcb_victimizable (bcb, false) && pgbuf_is_any_thread_waiting_for_direct_victim ()
-      && pthread_mutex_trylock (&bcb->BCB_mutex) == 0)
+
+  if (pgbuf_is_bcb_victimizable (bcb, false) && pgbuf_is_any_thread_waiting_for_direct_victim ())
     {
-      if (pgbuf_assign_direct_victim (thread_p, bcb))
+      /* we first need mutex on bcb. however, we'd normally first get mutex on bcb and then on list. since we don't want
+       * to over complicate things, just try a conditional lock on mutex. if it fails, we'll just give up assigning the
+       * bcb directly as victim */
+      if (pthread_mutex_trylock (&bcb->BCB_mutex) == 0)
         {
-          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
+          ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_success, 1);
 
-          /* since bcb is going to be removed from list and I have both lru and bcb mutex, why not do it now. */
-          pgbuf_remove_from_lru_list (bcb, lru_list);
-          bcb->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_INVALID_ZONE);
+          if (pgbuf_assign_direct_victim (thread_p, bcb))
+            {
+              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
 
+              /* since bcb is going to be removed from list and I have both lru and bcb mutex, why not do it now. */
+              pgbuf_remove_from_lru_list (bcb, lru_list);
+              bcb->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_INVALID_ZONE);
+
+              pthread_mutex_unlock (&bcb->BCB_mutex);
+
+              pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
+              return;
+            }
+          /* not assigned. unlock bcb mutex and fall through */
           pthread_mutex_unlock (&bcb->BCB_mutex);
-
-          pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
-          return;
         }
-
-      /* not assigned. unlock bcb mutex and fall through */
-      pthread_mutex_unlock (&bcb->BCB_mutex);
     }
   /* not assigned directly */
 #endif /* SERVER_MODE */
@@ -14766,6 +14784,7 @@ pgbuf_initialize_page_monitor (void)
 #if defined (SERVER_MODE)
   monitor->count_get_victim_extended_search = 0;
   monitor->count_get_victim_waits = 0;
+  monitor->count_get_victim_wait_in_progress = 0;
   monitor->count_thread_get_victim_waits = (INT64 *) calloc (count_threads, sizeof (INT64));
   if (monitor->count_thread_get_victim_waits == NULL)
     {
@@ -16141,7 +16160,7 @@ pgbuf_keep_victim_flush_thread_active (void)
   monitor = &pgbuf_Pool.monitor;
 
 #if defined (SERVER_MODE)
-  if (pgbuf_is_any_thread_waiting_for_direct_victim ())
+  if (pgbuf_Pool.monitor.count_get_victim_wait_in_progress > 0 || pgbuf_is_any_thread_waiting_for_direct_victim ())
     {
       return true;
     }
