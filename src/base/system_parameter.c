@@ -8039,7 +8039,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
   int set_min = 0;
   int set_max = 0;
   SYSPRM_ERR ret = PRM_ERR_NO_ERROR;
-
+  SYSPRM_VALUE min, max;
   if (prm == NULL)
     {
       return PRM_ERR_UNKNOWN_PARAM;
@@ -8111,6 +8111,23 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
     {
       set_min = true;
     }
+  if (set_max || set_min)
+    {
+      ret = sysprm_get_param_range (prm, &min, &max);
+      if (ret != PRM_ERR_NO_ERROR)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+      if (set_min)
+	{
+	  new_value = &min;
+	}
+      else
+	{
+	  new_value = &max;
+	}
+      return PRM_ERR_NO_ERROR;
+    }
   switch (prm->datatype)
     {
     case PRM_INTEGER:
@@ -8124,23 +8141,6 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	    break;
 	  }
 
-	if (set_min || set_max)
-	  {
-	    ret = sysprm_get_param_range (prm, &min, &max);
-	    if (ret != PRM_ERR_NO_ERROR)
-	      {
-		return PRM_ERR_BAD_VALUE;
-	      }
-	    if (set_min)
-	      {
-		new_value->i = min;
-	      }
-	    else
-	      {
-		new_value->i = max;
-	      }
-	    break;
-	  }
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    UINT64 dup_val;
@@ -8237,24 +8237,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	    new_value->bi = PRM_GET_BIGINT (prm->default_value);
 	    break;
 	  }
-	if (set_min || set_max)
-	  {
 
-	    ret = sysprm_get_param_range (prm, &min, &max);
-	    if (ret != PRM_ERR_NO_ERROR)
-	      {
-		return PRM_ERR_BAD_VALUE;
-	      }
-	    if (set_min)
-	      {
-		new_value->i = min;
-	      }
-	    else
-	      {
-		new_value->i = max;
-	      }
-	    break;
-	  }
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    if (util_size_string_to_byte (&val, value) != NO_ERROR)
@@ -8300,24 +8283,6 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	    break;
 	  }
 
-	if (set_min || set_max)
-	  {
-	    int min, max;
-	    ret = sysprm_get_param_range (prm, &min, &max);
-	    if (ret != PRM_ERR_NO_ERROR)
-	      {
-		return PRM_ERR_BAD_VALUE;
-	      }
-	    if (set_min)
-	      {
-		new_value->i = min;
-	      }
-	    else
-	      {
-		new_value->i = max;
-	      }
-	    break;
-	  }
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    UINT64 dup_val;
