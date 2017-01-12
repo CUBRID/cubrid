@@ -1125,8 +1125,10 @@ struct pgbuf_temp_stats
 
   INT64 fall_3_count;
   INT64 fall_3_try_success;
+  INT64 fall_3_try_fail;
 };
-static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static const char *pgbuf_Global_error = NULL;
 
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
@@ -3870,7 +3872,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       for (bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom;
            bufptr != NULL && bufptr->zone_lru == zone_lru3 && i > 0; bufptr = bufptr->prev_BCB, i--)
         {
-          if (bufptr->fcnt == 0 && !bufptr->dirty)
+          if (bufptr->fcnt == 0 && bufptr->dirty)
             {
               /* save victim candidate information temporarily. */
               victim_cand_list[victim_cand_count].bufptr = bufptr;
@@ -8576,7 +8578,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   /* make sure at least flush will feed us with bcb's */
   /* increment count_get_victim_wait_in_progress to let flush thread know there will be someone needing victims. */
   ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, 1);
-  pgbuf_wakeup_flush_thread (thread_p);
+  if (!pgbuf_Pool.is_flushing_victims)
+    {
+      pgbuf_wakeup_flush_thread (thread_p);
+    }
 
   /* add to waiters thread list to be assigned victim directly */
   to.tv_sec = (int) time (NULL) + 60 /* todo: use PGBUF_TIMEOUT */;
@@ -8594,6 +8599,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, &thread_p))
         {
           assert (false);
+          pgbuf_Global_error = "cannot produce with waiters";
           abort ();
           thread_unlock_entry (thread_p);
           return NULL;
@@ -8605,6 +8611,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &thread_p))
         {
           assert (false);
+          pgbuf_Global_error = "cannot produce without waiters";
           abort ();
           thread_unlock_entry (thread_p);
           return NULL;
@@ -8616,6 +8623,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_none, &thread_p))
         {
           assert (false);
+          pgbuf_Global_error = "cannot produce no latch";
           abort ();
           thread_unlock_entry (thread_p);
           return NULL;
@@ -8641,6 +8649,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
           if (bufptr == NULL)
             {
               assert (false);
+              pgbuf_Global_error = "null bufptr";
               abort ();
               goto end;
             }
@@ -8670,6 +8679,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   else
     {
       assert (false);
+      pgbuf_Global_error = "alloc bcb timed out";
       abort ();
       thread_p->resume_status = THREAD_ALLOC_BCB_RESUMED;
       thread_unlock_entry (thread_p);
@@ -10373,6 +10383,10 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
             }
           /* not assigned. unlock bcb mutex and fall through */
           pthread_mutex_unlock (&bcb->BCB_mutex);
+        }
+      else
+        {
+          ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_fail, 1);
         }
     }
   /* not assigned directly */
@@ -16314,6 +16328,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
     {
       /* should not happen */
       assert (false);
+      pgbuf_Global_error = "direct victim null";
       abort ();
       return NULL;
     }
@@ -16324,6 +16339,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
     {
       /* should not happen */
       assert (false);
+      pgbuf_Global_error = "direct victim not victimizable";
       abort ();
       pthread_mutex_unlock (&bcb->BCB_mutex);
       return NULL;
@@ -16454,8 +16470,6 @@ pgbuf_lru_set_victim_hint_if_not_set (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, 
     }
 }
 
-static const char *global_error = NULL;
-
 static void
 pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
 {
@@ -16465,7 +16479,7 @@ pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
       if (lru->count_lru1 != 0 || lru->count_lru2 != 0 || lru->count_lru3 != 0 || lru->LRU_bottom != NULL
           || lru->LRU_bottom_1 != NULL || lru->LRU_bottom_2 != NULL)
         {
-          global_error = "invalid empty";
+          pgbuf_Global_error = "invalid empty";
           abort ();
         }
       return;
@@ -16474,45 +16488,45 @@ pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
   /* not empty */
   if (lru->LRU_bottom == NULL)
     {
-      global_error = "null bottom";
+      pgbuf_Global_error = "null bottom";
       abort ();
     }
   if (lru->count_lru1 == 0 && lru->count_lru2 == 0 && lru->count_lru3 == 0)
     {
-      global_error = "invalid 0 counters";
+      pgbuf_Global_error = "invalid 0 counters";
       abort ();
     }
 
   /* zone 1 */
   if ((lru->count_lru1 == 0) != (lru->LRU_bottom_1 == NULL))
     {
-      global_error = "unmatched count lru1 and bottom 1";
+      pgbuf_Global_error = "unmatched count lru1 and bottom 1";
       abort ();
     }
   if (lru->LRU_bottom_1 != NULL)
     {
       if (PGBUF_GET_ZONE (lru->LRU_bottom_1->zone_lru) != PGBUF_LRU_1_ZONE)
         {
-          global_error = "bottom 1 not 1";
+          pgbuf_Global_error = "bottom 1 not 1";
           abort ();
         }
       if (PGBUF_GET_ZONE (lru->LRU_top->zone_lru) != PGBUF_LRU_1_ZONE)
         {
-          global_error = "top not 1";
+          pgbuf_Global_error = "top not 1";
           abort ();
         }
       if (lru->LRU_bottom_1->next_BCB != NULL)
         {
           if (PGBUF_GET_ZONE (lru->LRU_bottom_1->next_BCB->zone_lru) == PGBUF_LRU_1_ZONE)
             {
-              global_error = "bottom 1 not bottom 1";
+              pgbuf_Global_error = "bottom 1 not bottom 1";
               abort ();
             }
           else if (PGBUF_GET_ZONE (lru->LRU_bottom_1->next_BCB->zone_lru) == PGBUF_LRU_2_ZONE)
             {
               if (lru->count_lru2 == 0 || lru->LRU_bottom_2 == NULL)
                 {
-                  global_error = "zone 2 empty";
+                  pgbuf_Global_error = "zone 2 empty";
                   abort ();
                 }
             }
@@ -16520,7 +16534,7 @@ pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
             {
               if (lru->count_lru3 == 0)
                 {
-                  global_error = "zone 3 empty";
+                  pgbuf_Global_error = "zone 3 empty";
                   abort ();
                 }
             }
@@ -16530,7 +16544,7 @@ pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
           if (lru->count_lru2 != 0 || lru->count_lru3 != 0 || lru->LRU_bottom_2 != NULL
               || lru->LRU_bottom != lru->LRU_bottom_1)
             {
-              global_error = "zone 2 or 3 not empty";
+              pgbuf_Global_error = "zone 2 or 3 not empty";
               abort ();
             }
         }
@@ -16539,36 +16553,36 @@ pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
   /* zone 2 */
   if ((lru->count_lru2 == 0) != (lru->LRU_bottom_2 == NULL))
     {
-      global_error = "unmatched count lru2 and bottom 2";
+      pgbuf_Global_error = "unmatched count lru2 and bottom 2";
       abort ();
     }
   if (lru->LRU_bottom_2 != NULL)
     {
       if (PGBUF_GET_ZONE (lru->LRU_bottom_2->zone_lru) != PGBUF_LRU_2_ZONE)
         {
-          global_error = "bottom 2 not 2";
+          pgbuf_Global_error = "bottom 2 not 2";
           abort ();
         }
       if (lru->LRU_bottom_2 == NULL && PGBUF_GET_ZONE (lru->LRU_top->zone_lru) != PGBUF_LRU_2_ZONE)
         {
-          global_error = "top not 2";
+          pgbuf_Global_error = "top not 2";
           abort ();
         }
       if (lru->LRU_bottom_2->next_BCB != NULL)
         {
           if (PGBUF_GET_ZONE (lru->LRU_bottom_2->next_BCB->zone_lru) == PGBUF_LRU_2_ZONE)
             {
-              global_error = "bottom 2 not bottom 2";
+              pgbuf_Global_error = "bottom 2 not bottom 2";
               abort ();
             }
           else if (PGBUF_GET_ZONE (lru->LRU_bottom_2->next_BCB->zone_lru) == PGBUF_LRU_1_ZONE)
             {
-              global_error = "1 after bottom 2";
+              pgbuf_Global_error = "1 after bottom 2";
               abort ();
             }
           else if (lru->count_lru3 == 0)
             {
-              global_error = "zone 3 empty (2)";
+              pgbuf_Global_error = "zone 3 empty (2)";
               abort ();
             }
         }
@@ -16576,7 +16590,7 @@ pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
         {
           if (lru->count_lru3 != 0 || lru->LRU_bottom != lru->LRU_bottom_2)
             {
-              global_error = "zone 3 not empty";
+              pgbuf_Global_error = "zone 3 not empty";
               abort ();
             }
         }
