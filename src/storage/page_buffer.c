@@ -518,6 +518,8 @@ typedef struct pgbuf_victim_candidate_list PGBUF_VICTIM_CANDIDATE_LIST;
 
 typedef struct pgbuf_buffer_pool PGBUF_BUFFER_POOL;
 
+typedef struct pgbuf_monitor_bcb_mutex PGBUF_MONITOR_BCB_MUTEX;
+
 typedef struct pgbuf_holder_info PGBUF_HOLDER_INFO;
 struct pgbuf_holder_info
 {
@@ -591,6 +593,7 @@ struct pgbuf_bcb
 {
 #if defined(SERVER_MODE)
   pthread_mutex_t BCB_mutex;	/* BCB mutex */
+  int owner_mutex;              /* mutex owner */
 #endif				/* SERVER_MODE */
   VPID vpid;			/* Volume and page identifier of resident page */
   int ipool;			/* Buffer pool index */
@@ -824,6 +827,8 @@ struct pgbuf_page_monitor
 
   INT64 *count_thread_get_victim_extended_search;
   INT64 *count_thread_get_victim_waits;
+
+  PGBUF_MONITOR_BCB_MUTEX *thread_bcb_mutex;
 #endif /* SERVER_MODE */
 
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
@@ -1107,6 +1112,103 @@ static bool pgbuf_SA_check_page_validation = true;
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_prv_lists_with_victims, -1) : \
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_shared_lists_with_victims, -1)
 
+struct pgbuf_monitor_bcb_mutex
+{
+  PGBUF_BCB *bcb;
+  PGBUF_BCB *try_bcb;
+  int line;
+  int try_line;
+};
+
+/* todo: change to server_mode && debug mode */
+#if defined (SERVER_MODE)
+/* check locking bcb mutex:
+ * 1. thread should have no other bcb mutex!
+ * 2. bcb mutex should not be owned by this thread
+ * 3. when thread gets mutex, bcb mutex should not be owned by anyone else
+ */
+#define PGBUF_LOCK_BCB(bcb_arg) \
+  do \
+    { \
+      int index = thread_get_current_entry_index (); \
+      PGBUF_MONITOR_BCB_MUTEX *mon_bcb_mutex = &pgbuf_Pool.monitor.thread_bcb_mutex[index]; \
+      if (mon_bcb_mutex->bcb != NULL || mon_bcb_mutex->try_bcb != NULL || (bcb_arg)->owner_mutex == index) \
+        { \
+          pgbuf_Global_error = "has bcb mutex"; \
+          abort (); \
+        } \
+      (void) pthread_mutex_lock (&(bcb_arg)->BCB_mutex); \
+      if ((bcb_arg)->owner_mutex >= 0) \
+        { \
+          pgbuf_Global_error = "bcb owner mutex"; \
+          abort (); \
+        } \
+      mon_bcb_mutex->bcb = bcb_arg; \
+      mon_bcb_mutex->line = __LINE__; \
+      (bcb_arg)->owner_mutex = index; \
+    } \
+  while (false)
+/* check trying to lock bcb mutex
+ * 1. thread should not own same bcb (is this necessary?) */
+#define PGBUF_TRYLOCK_BCB(bcb_arg, try_res) \
+  do \
+    { \
+      int index = thread_get_current_entry_index (); \
+      PGBUF_MONITOR_BCB_MUTEX *mon_bcb_mutex = &pgbuf_Pool.monitor.thread_bcb_mutex[index]; \
+      if (mon_bcb_mutex->bcb == (bcb_arg)) \
+        { \
+          pgbuf_Global_error = "try same bcb"; \
+          abort (); \
+        } \
+      try_res = pthread_mutex_trylock (&(bcb_arg)->BCB_mutex); \
+      if ((try_res) == 0) \
+        { \
+          mon_bcb_mutex->try_bcb = bcb_arg; \
+          mon_bcb_mutex->try_line = __LINE__; \
+          (bcb_arg)->owner_mutex = index; \
+        } \
+    } \
+  while (false)
+/* check unlock bcb mutex:
+ * 1. bcb must be owned by this thread */
+#define PGBUF_UNLOCK_BCB(bcb_arg) \
+  do \
+    { \
+      int index = thread_get_current_entry_index (); \
+      PGBUF_MONITOR_BCB_MUTEX *mon_bcb_mutex = &pgbuf_Pool.monitor.thread_bcb_mutex[index]; \
+      if ((bcb_arg)->owner_mutex != index) \
+        { \
+          pgbuf_Global_error = "unlock from another?"; \
+          abort (); \
+        } \
+      (bcb_arg)->owner_mutex = -1; \
+      if (mon_bcb_mutex->try_bcb == (bcb_arg)) \
+        { \
+          (void) pthread_mutex_unlock (&(bcb_arg)->BCB_mutex); \
+          mon_bcb_mutex->try_bcb = NULL; \
+          break; \
+        } \
+      if (mon_bcb_mutex->bcb == NULL || mon_bcb_mutex->bcb != bcb_arg) \
+        { \
+          (void) pthread_mutex_unlock (&(bcb_arg)->BCB_mutex); \
+          mon_bcb_mutex->bcb = NULL; \
+        } \
+      pgbuf_Global_error = "invalid unlock bcb mutex"; \
+      abort (); \
+    } \
+  while (false)
+/* check bcb mutex leaks */
+#define PGBUF_CHECK_BCB_MUTEX_LEAKS() \
+  if (pgbuf_Pool.monitor.thread_bcb_mutex[thread_get_current_entry_index ()].bcb != NULL \
+      || pgbuf_Pool.monitor.thread_bcb_mutex[thread_get_current_entry_index ()].try_bcb != NULL) \
+    abort ()
+#else
+#define PGBUF_LOCK_BCB(bcb)
+#define PGBUF_TRYLOCK_BCB(bcb, try_res) try_res = 0
+#define PGBUF_UNLOCK_BCB(bcb)
+#define PGBUF_CHECK_BCB_MUTEX_LEAKS()
+#endif
+
 /* todo: remove me */
 typedef struct pgbuf_temp_stats PGBUF_TEMP_STATS;
 struct pgbuf_temp_stats
@@ -1213,12 +1315,12 @@ STATIC_INLINE void pgbuf_lru_add_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_B
                                                 int lru_idx) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_add_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list,
                                                 int lru_idx) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx,
+                                           bool min_one) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx,
+                                           bool min_one) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx,
+                                           bool min_one) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list,
                                                  int lru_idx) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
@@ -1976,9 +2078,6 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   PAGE_PTR pgptr;
   int buf_lock_acquired;
   int wait_msecs;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 #if defined(ENABLE_SYSTEMTAP)
   bool pgbuf_hit = false;
   bool monitored = false;
@@ -2056,6 +2155,7 @@ try_again:
       if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+          PGBUF_CHECK_BCB_MUTEX_LEAKS ();
 	  return NULL;
 	}
     }
@@ -2069,7 +2169,7 @@ try_again:
   if (bufptr != NULL && bufptr->direct_victim)
     {
       /* too late, this bcb must be victimized. */
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       bufptr = NULL;
     }
   if (bufptr != NULL)
@@ -2096,6 +2196,7 @@ try_again:
       if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK || fetch_mode == OLD_PAGE_IF_EXISTS)
 	{
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+          PGBUF_CHECK_BCB_MUTEX_LEAKS ();
 	  return NULL;
 	}
 
@@ -2138,6 +2239,7 @@ try_again:
       if (bufptr == NULL)
 	{
 	  (void) pgbuf_unlock_page (hash_anchor, vpid, true);
+          PGBUF_CHECK_BCB_MUTEX_LEAKS ();
 	  return NULL;
 	}
 
@@ -2202,6 +2304,7 @@ try_again:
 		}
 #endif /* ENABLE_SYSTEMTAP */
 
+              PGBUF_CHECK_BCB_MUTEX_LEAKS ();
 	      return NULL;
 	    }
 
@@ -2302,9 +2405,10 @@ try_again:
 	}
       else
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+          PGBUF_UNLOCK_BCB (bufptr);
 	}
 
+      PGBUF_CHECK_BCB_MUTEX_LEAKS ();
       return NULL;
     }
 
@@ -2324,8 +2428,9 @@ try_again:
 	}
       else
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+          PGBUF_UNLOCK_BCB (bufptr);
 	}
+      PGBUF_CHECK_BCB_MUTEX_LEAKS ();
       return NULL;
     }
 
@@ -2354,7 +2459,7 @@ try_again:
       if (buf_lock_acquired)
 	{
 	  /* hold bufptr->BCB_mutex again */
-	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+          PGBUF_LOCK_BCB (bufptr);
 
 	  /* bufptr->BCB_mutex will be released in the following function. */
 	  pgbuf_put_bcb_into_invalid_list (bufptr);
@@ -2367,6 +2472,7 @@ try_again:
 	  (void) pgbuf_unlock_page (hash_anchor, vpid, true);
 	}
 
+      PGBUF_CHECK_BCB_MUTEX_LEAKS ();
       return NULL;
     }
 
@@ -2491,6 +2597,8 @@ try_again:
 #endif /* NDEBUG */
 #endif /* PAGE_STATISTICS */
 
+  PGBUF_CHECK_BCB_MUTEX_LEAKS ();
+
   return pgptr;
 }
 
@@ -2573,7 +2681,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
       tsc_getticks (&start_tick);
     }
 
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   /* save info for performance tracking */
   vpid = bufptr->vpid;
@@ -2610,7 +2718,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
       if (bufptr->latch_mode == PGBUF_LATCH_FLUSH)
 	{
 	  /* if page is being flushed just abandon promotion; case is very rare */
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  rv = ER_PAGE_LATCH_PROMOTE_FAIL;
 #if !defined(NDEBUG)
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
@@ -2623,7 +2731,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
       /* check for waiters for promotion */
       if (bufptr->next_wait_thrd != NULL && bufptr->next_wait_thrd->wait_for_latch_promote)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+          PGBUF_UNLOCK_BCB (bufptr);
 	  rv = ER_PAGE_LATCH_PROMOTE_FAIL;
 #if !defined(NDEBUG)
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
@@ -2635,7 +2743,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
       bufptr->latch_mode = PGBUF_LATCH_WRITE;
       holder->perf_stat.hold_has_write_latch = 1;
       /* NOTE: no need to set the promoted flag as long as we don't wait */
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
   else
     {
@@ -2649,7 +2757,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 	   * CASE #2: PGBUF_PROMOTE_ONLY_READER condition, we're only allowed
 	   * to promote if we're the only reader; this is not the case
 	   */
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  rv = ER_PAGE_LATCH_PROMOTE_FAIL;
 #if !defined(NDEBUG)
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_PROMOTE_FAIL, 2, vpid.pageid, vpid.volid);
@@ -2669,7 +2777,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 	      *pgptr_p = NULL;
 
 	      /* shouldn't happen */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      assert_release (false);
 	      return ER_FAILED;
 	    }
@@ -2778,9 +2886,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
   int holder_status;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   PERF_HOLDER_LATCH perf_holder_latch;
   PGBUF_HOLDER *holder;
   PGBUF_WATCHER *watcher;
@@ -2892,7 +2997,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
     }
 
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
 #if !defined(NDEBUG)
   (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, holder_status, caller_file, caller_line);
@@ -2900,6 +3005,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, holder_status);
 #endif /* NDEBUG */
   /* bufptr->BCB_mutex has been released in above function. */
+
+  PGBUF_CHECK_BCB_MUTEX_LEAKS ();
 
 #if defined(CUBRID_DEBUG)
   /* 
@@ -2914,7 +3021,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
        * Check if the content of the page is consistent and then scramble
        * the page to detect illegal access to the page in the future.
        */
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
       if (bufptr->fcnt == 0)
 	{
 	  /* Check for consistency */
@@ -2942,7 +3049,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 		   * Since above function releases bufptr->BCB_mutex,
 		   * the caller must hold bufptr->BCB_mutex again.
 		   */
-		  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+		  PGBUF_LOCK_BCB (bufptr);
 		}
 
 	      /* 
@@ -2959,7 +3066,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 		   * Since above function releases BCB_mutex after flushing,
 		   * the caller must hold bufptr->BCB_mutex again.
 		   */
-		  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+		  PGBUF_LOCK_BCB (bufptr);
 		}
 
 	      pgbuf_scramble (&bufptr->iopage_buffer->iopage);
@@ -2971,7 +3078,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	       */
 	    }
 	}
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
 #endif /* CUBRID_DEBUG */
 }
@@ -3088,9 +3195,6 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PGBUF_BCB *bufptr;
   VPID temp_vpid;
   int holder_status;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
@@ -3104,7 +3208,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   /* 
    * This function is called by the caller while it is fixing the page
@@ -3141,7 +3245,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
        */
       if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  return ER_FAILED;
 	}
@@ -3163,13 +3267,13 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   /* bufptr->BCB_mutex has been released in above function. */
 
   /* hold BCB_mutex again to invalidate the BCB */
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   /* check if the page should be invalidated. */
   if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid) || bufptr->fcnt > 0
       || bufptr->avoid_victim == true)
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       return NO_ERROR;
     }
 
@@ -3233,14 +3337,14 @@ pgbuf_invalidate_temporary_file (THREAD_ENTRY * thread_p, VOLID volid, PAGEID fi
        * pgbuf_fix()). */
       if (bufptr->fcnt > 0)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  continue;
 	}
 
       /* check if page should be invalidated */
       if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&vpid, &bufptr->vpid))
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  continue;
 	}
 
@@ -3311,7 +3415,7 @@ pgbuf_invalidate_temporary_file (THREAD_ENTRY * thread_p, VOLID volid, PAGEID fi
       else
 #endif
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	}
 
       if (is_last_page)
@@ -3341,9 +3445,6 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
   PGBUF_BCB *bufptr;
   VPID temp_vpid;
   int bufid;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   /* 
    * While searching all the buffer pages or corresponding buffer pages,
@@ -3358,11 +3459,11 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 	  continue;
 	}
 
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
       if (VPID_ISNULL (&bufptr->vpid) || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0)
 	{
 	  /* PGBUF_LATCH_READ/PGBUF_LATCH_WRITE */
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  continue;
 	}
 
@@ -3382,14 +3483,14 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 	   * Since above function releases bufptr->BCB_mutex,
 	   * the caller must hold bufptr->BCB_mutex again to invalidate the BCB.
 	   */
-	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+	  PGBUF_LOCK_BCB (bufptr);
 
 	  /* check if page invalidation should be performed on the page */
 	  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&temp_vpid, &bufptr->vpid)
 	      || (volid != NULL_VOLID && volid != bufptr->vpid.volid) || bufptr->fcnt > 0
 	      || bufptr->avoid_victim == true)
 	    {
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      continue;
 	    }
 	}
@@ -3430,9 +3531,6 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 {
   PGBUF_BCB *bufptr;
   int holder_status;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
@@ -3447,13 +3545,13 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   /* the caller is holding a page latch with PGBUF_LATCH_WRITE mode. */
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   if (bufptr->dirty == true)
     {
       if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  return NULL;
 	}
@@ -3476,7 +3574,7 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
     }
   else
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
 
   return pgptr;
@@ -3496,9 +3594,6 @@ PAGE_PTR
 pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
@@ -3514,19 +3609,19 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   /* In CUBRID, the caller is holding WRITE page latch */
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   /* Flush the page only when it is dirty */
   if (bufptr->dirty == true)
     {
       if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  return NULL;
 	}
     }
-  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  PGBUF_UNLOCK_BCB (bufptr);
 
   return pgptr;
 }
@@ -3542,9 +3637,6 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_unfixed_on
 {
   PGBUF_BCB *bufptr;
   int i, ret = NO_ERROR;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   /* Flush all unfixed dirty buffers */
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
@@ -3555,12 +3647,12 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_unfixed_on
 	  continue;
 	}
 
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
       /* flush condition check */
       if ((bufptr->dirty == false) || (is_unfixed_only && bufptr->fcnt > 0)
 	  || (volid != NULL_VOLID && volid != bufptr->vpid.volid))
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  continue;
 	}
 
@@ -3951,7 +4043,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   int lru_victim_req_cnt, ain_victim_req_cnt, fix_req_cnt;
   float lru_sum_flush_priority;
 #if defined(SERVER_MODE)
-  int rv;
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
   static PERF_UTIME_TRACKER time_tracker_run_sleep = PERF_UTIME_TRACKER_INITIALIZER;
@@ -4151,7 +4242,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
 	  bufptr = victim_cand_list[i].bufptr;
 
-	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+	  PGBUF_LOCK_BCB (bufptr);
 
 	  /* check flush conditions */
 
@@ -4159,7 +4250,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      || !LSA_EQ (&bufptr->oldest_unflush_lsa, &victim_cand_list[i].recLSA))
 	    {
 	      /* must be already flushed */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
 	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED);
 	      continue;
@@ -4171,7 +4262,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      || bufptr->latch_mode != PGBUF_NO_LATCH || bufptr->avoid_victim == true)
 	    {
 	      /* page was fixed or became hot after selected as victim. do not flush it. */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
 	      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT);
 	      continue;
@@ -4184,7 +4275,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      if (num_tries == 1)
 		{
 		  /* maybe next time */
-		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  PGBUF_UNLOCK_BCB (bufptr);
 		  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
 		  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL);
 		  continue;
@@ -4207,7 +4298,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	  else
 	    {
 	      error = pgbuf_flush_page_with_wal (thread_p, bufptr);
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      flushed_pages = (error == NO_ERROR) ? 1 : 0;
 	    }
 
@@ -4323,7 +4414,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   struct timeval cur_time = {
     0, 0
   };
-  int rv;
 #endif /* SERVER_MODE */
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
@@ -4376,13 +4466,13 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 	}
 
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
 
       /* flush condition check */
       if (bufptr->dirty == false
 	  || (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && LSA_GT (&bufptr->oldest_unflush_lsa, flush_upto_lsa)))
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  continue;
 	}
 
@@ -4404,7 +4494,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
       f_list[collected_bcbs].bufptr = bufptr;
       VPID_COPY (&f_list[collected_bcbs].vpid, &bufptr->vpid);
       f_list[collected_bcbs].flush_order = PGBUG_FLUSH_PRIORITY_CHKPT;
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 
       collected_bcbs++;
 
@@ -4572,9 +4662,6 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
   VPID vpid;
   PAGE_PTR pgptr;
   double sleep_msecs = 0;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
   int avail_time_msec = 0, time_rem_msec = 0;
@@ -4666,13 +4753,13 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	  flush_if_already_flushed = false;
 	}
 
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
 
       if (!VPID_EQ (&bufptr->vpid, &f_list[seq_flusher->flush_idx].vpid) || bufptr->dirty == false
 	  || (flush_if_already_flushed == false && !LSA_ISNULL (&bufptr->oldest_unflush_lsa)
 	      && LSA_GT (&bufptr->oldest_unflush_lsa, &seq_flusher->flush_upto_lsa)))
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  dropped_pages++;
 	  continue;
 	}
@@ -4688,7 +4775,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	    {
 	      if (is_ckpt == false)
 		{
-		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  PGBUF_UNLOCK_BCB (bufptr);
 		  break;
 		}
 	    }
@@ -4704,13 +4791,13 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	  if (LSA_ISNULL (&bufptr->oldest_unflush_lsa))
 	    {
 	      /* this page skipped logging.(log_skip_logging()) */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	    }
 	  else if (prev_chkpt_redo_lsa != NULL && !LSA_ISNULL (prev_chkpt_redo_lsa)
 		   && LSA_LT (&bufptr->oldest_unflush_lsa, prev_chkpt_redo_lsa))
 	    {
 	      /* invalid page */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 
 	      assert (false);
 	    }
@@ -4723,7 +4810,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	      PAGE_TYPE page_type = bufptr->iopage_buffer->iopage.prv.ptype;
 	      bufptr->avoid_victim = true;
 	      vpid = bufptr->vpid;
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 
 	      if (page_type == PAGE_VACUUM_DATA)
 		{
@@ -4764,7 +4851,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 		      assert (pgptr_bufptr == bufptr);
 		    }
 #endif
-		  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+		  PGBUF_LOCK_BCB (bufptr);
 
 		  /* get the smallest oldest_unflush_lsa */
 		  if (LSA_ISNULL (chkpt_smallest_lsa) || LSA_LT (&bufptr->oldest_unflush_lsa, chkpt_smallest_lsa))
@@ -4779,13 +4866,13 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 		      bufptr->avoid_victim = false;
 		    }
 
-		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  PGBUF_UNLOCK_BCB (bufptr);
 		}
 	      else
 		{
-		  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+		  PGBUF_LOCK_BCB (bufptr);
 		  bufptr->avoid_victim = false;
-		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  PGBUF_UNLOCK_BCB (bufptr);
 
 		  /* pgbuf_flush_with_wal successful */
 		  seq_flusher->flushed_pages++;
@@ -4806,7 +4893,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
       else
 	{
 	  assert (is_ckpt == false || done_flush == true);
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+          PGBUF_UNLOCK_BCB (bufptr);
 	}
 
 #if defined(SERVER_MODE)
@@ -5004,7 +5091,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	}
 
       /* release BCB_mutex */
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
 
   return area;
@@ -5090,7 +5177,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
   else
     {
       /* the caller is holding only bufptr->BCB_mutex. */
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
 
   pgptr = pgbuf_fix (thread_p, vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -5885,6 +5972,9 @@ pgbuf_initialize_bcb_table (void)
     {
       bufptr = PGBUF_FIND_BCB_PTR (i);
       pthread_mutex_init (&bufptr->BCB_mutex, NULL);
+#if defined (SERVER_MODE)
+      bufptr->owner_mutex = -1;
+#endif /* SERVER_MODE */
       bufptr->ipool = i;
       VPID_SET_NULL (&bufptr->vpid);
       bufptr->fcnt = 0;
@@ -6597,7 +6687,7 @@ pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_
   bufptr->latch_mode = request_mode;
   bufptr->fcnt = 1;
 
-  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  PGBUF_UNLOCK_BCB (bufptr);
 
   /* allocate a BCB holder entry */
 
@@ -6737,7 +6827,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	  bufptr->fcnt++;
 	  assert (0 < bufptr->fcnt);
 
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  /* allocate a BCB holder entry */
 
@@ -6815,7 +6905,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       bufptr->fcnt++;
       assert (0 < bufptr->fcnt);
 
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 
       /* set BCB holder entry */
 
@@ -6859,7 +6949,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	  /* This situation must not be occurred. */
 	  assert (false);
 
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  return ER_FAILED;
 	}
@@ -6873,7 +6963,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       bufptr->fcnt++;
       assert (0 < bufptr->fcnt);
 
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 
       /* set BCB holder entry */
 
@@ -6907,7 +6997,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	  bufptr->fcnt++;
 	  assert (0 < bufptr->fcnt);
 
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  /* set BCB holder entry */
 
@@ -6948,7 +7038,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	  /* This situation must not be occurred. */
 	  assert (false);
 
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  return ER_FAILED;
 	}
@@ -6988,7 +7078,7 @@ do_block:
 
 	  /* setup timeout error, if wait_msec == LK_ZERO_WAIT */
 
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  (void) logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
 						  &client_pid);
@@ -6999,7 +7089,7 @@ do_block:
 	}
       else
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	}
 
       return ER_FAILED;
@@ -7132,7 +7222,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
     {
       /* This situation must not be occurred. */
       assert (false);
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       return ER_FAILED;
     }
 
@@ -7182,6 +7272,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
                     {
                       /* assigned victim directly */
                       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM);
+
+                      /* add to AOUT */
+                      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, aout_list_id);
                       break;
                     }
 
@@ -7357,7 +7450,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
       bufptr->latch_mode = PGBUF_LATCH_FLUSH;
       if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  return ER_FAILED;
 	}
@@ -7389,15 +7482,15 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	}
       else
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	}
 #else /* SERVER_MODE */
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 #endif /* SERVER_MODE */
     }
   else
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
 
   return NO_ERROR;
@@ -7500,14 +7593,23 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 
   if (request_mode == PGBUF_LATCH_FLUSH || request_mode == PGBUF_LATCH_VICTIM)
     {
-      pgbuf_sleep (cur_thrd_entry, &bufptr->BCB_mutex);
+      rv = thread_lock_entry (cur_thrd_entry);
+      if (rv == 0)
+        {
+          PGBUF_UNLOCK_BCB (bufptr);
+          rv = thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
+        }
+      else
+        {
+          /* we don't treat the case */
+        }
 
       if (cur_thrd_entry->resume_status != THREAD_PGBUF_RESUMED)
 	{
 	  /* interrupt operation */
 	  THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
 
-	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+          PGBUF_LOCK_BCB (bufptr);
 	  thrd_entry = bufptr->next_wait_thrd;
 
 	  while (thrd_entry != NULL)
@@ -7524,14 +7626,14 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 		    }
 
 		  thrd_entry->next_wait_thrd = NULL;
-		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  PGBUF_UNLOCK_BCB (bufptr);
 		  return ER_FAILED;
 		}
 
 	      prev_thrd_entry = thrd_entry;
 	      thrd_entry = thrd_entry->next_wait_thrd;
 	    }
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	}
     }
   else
@@ -7581,11 +7683,8 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, T
 {
   THREAD_ENTRY *prev_thrd_entry;
   THREAD_ENTRY *curr_thrd_entry;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   /* case 1 : empty waiting queue */
   if (bufptr->next_wait_thrd == NULL)
@@ -7679,7 +7778,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
 
   /* After holding the mutex associated with conditional variable, release the bufptr->BCB_mutex. */
   thread_lock_entry (thrd_entry);
-  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  PGBUF_UNLOCK_BCB (bufptr);
 
   old_wait_msecs = wait_secs = logtb_find_current_wait_msecs (thread_p);
 
@@ -7734,7 +7833,7 @@ try_again:
       if (pgbuf_timed_sleep_error_handling (thread_p, bufptr, thrd_entry) == NO_ERROR)
 #endif /* NDEBUG */
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -7790,7 +7889,7 @@ er_set_return:
       /* FIXME: remove it. temporarily added for debugging */
       assert (0);
 
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       if (logtb_is_current_active (thread_p) == true)
 	{
 	  char *client_prog_name;	/* Client user name for transaction */
@@ -7821,7 +7920,7 @@ er_set_return:
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_TIMEDOUT, 2, bufptr->vpid.volid, bufptr->vpid.pageid);
 
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 
       (void) logtb_find_client_name_host_pid (thrd_entry->tran_index, &client_prog_name, &client_user_name,
 					      &client_host_name, &client_pid);
@@ -7832,7 +7931,7 @@ er_set_return:
     }
   else
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
 
   return ER_FAILED;
@@ -7955,7 +8054,7 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	}
     }
 
-  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  PGBUF_UNLOCK_BCB (bufptr);
 
   /* at this point, the caller does not hold bufptr->BCB_mutex */
   return NO_ERROR;
@@ -8002,7 +8101,7 @@ one_phase:
 
 	mutex_lock:
 
-	  rv = pthread_mutex_trylock (&bufptr->BCB_mutex);
+          PGBUF_TRYLOCK_BCB (bufptr, rv);
 	  if (rv == 0)
 	    {
 	      /* OK. go ahead */
@@ -8021,16 +8120,16 @@ one_phase:
 		}
 
 	      /* An unconditional request is given for acquiring BCB_mutex */
-	      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+              PGBUF_LOCK_BCB (bufptr);
 	    }
 #else /* SERVER_MODE */
-	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+	  PGBUF_LOCK_BCB (bufptr);
 #endif /* SERVER_MODE */
 
 	  if (!VPID_EQ (&(bufptr->vpid), vpid))
 	    {
 	      /* updated or replaced */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      /* retry one_phase */
 	      goto one_phase;
 	    }
@@ -8076,7 +8175,7 @@ try_again:
 
 	mutex_lock2:
 
-	  rv = pthread_mutex_trylock (&bufptr->BCB_mutex);
+          PGBUF_TRYLOCK_BCB (bufptr, rv);
 	  if (rv == 0)
 	    {
 	      /* bufptr->BCB_mutex is held */
@@ -8098,17 +8197,17 @@ try_again:
 	      /* ret == EBUSY : bufptr->BCB_mutex is not held */
 	      /* An unconditional request is given for acquiring BCB_mutex after releasing hash_mutex. */
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+	      PGBUF_LOCK_BCB (bufptr);
 	    }
 #else /* SERVER_MODE */
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+          PGBUF_LOCK_BCB (bufptr);
 #endif /* SERVER_MODE */
 
 	  if (!VPID_EQ (&(bufptr->vpid), vpid))
 	    {
 	      /* updated or replaced */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      goto try_again;
 	    }
 	  break;
@@ -8225,7 +8324,7 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
       /* Someone tries to fix the current buffer page. So, give up selecting current buffer page as a victim. */
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       bufptr->latch_mode = PGBUF_NO_LATCH;
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       return ER_FAILED;
     }
   else
@@ -8735,6 +8834,8 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       || bufptr->latch_mode != PGBUF_NO_LATCH || pgbuf_is_exist_blocked_reader_writer_victim (bufptr) == true)
     {
       assert (false);
+      abort ();
+      PGBUF_UNLOCK_BCB (bufptr);
       return ER_FAILED;
     }
 
@@ -8781,7 +8882,7 @@ pgbuf_invalidate_bcb (PGBUF_BCB * bufptr)
   if (bufptr->latch_mode == PGBUF_LATCH_FLUSH_INVALID || bufptr->latch_mode == PGBUF_LATCH_VICTIM_INVALID
       || bufptr->latch_mode == PGBUF_LATCH_INVALID)
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       return NO_ERROR;
     }
 
@@ -8835,7 +8936,7 @@ pgbuf_invalidate_bcb (PGBUF_BCB * bufptr)
 	{
 	  bufptr->latch_mode = PGBUF_LATCH_VICTIM_INVALID;
 	}
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
 
   return NO_ERROR;
@@ -8871,7 +8972,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
   if (bufptr->latch_mode == PGBUF_LATCH_INVALID || bufptr->latch_mode == PGBUF_LATCH_FLUSH_INVALID
       || bufptr->latch_mode == PGBUF_LATCH_VICTIM_INVALID)
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       return NO_ERROR;
     }
 
@@ -8883,7 +8984,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
       if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
 	{
 	  bufptr->latch_mode = saved_latch_mode;
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 
 	  return ER_FAILED;
 	}
@@ -8933,7 +9034,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 		    }
 		  else
 		    {
-		      pthread_mutex_unlock (&bufptr->BCB_mutex);
+		      PGBUF_UNLOCK_BCB (bufptr);
 		    }
 		}
 	    }
@@ -8955,18 +9056,18 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 		}
 	      else
 		{
-		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  PGBUF_UNLOCK_BCB (bufptr);
 		}
 	    }
 #else /* SERVER_MODE */
 	  bufptr->latch_mode = PGBUF_NO_LATCH;
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 #endif /* SERVER_MODE */
 	}
       else
 	{
 	  bufptr->latch_mode = PGBUF_LATCH_READ;
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	}
     }
   else
@@ -8980,14 +9081,14 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 	    {
 	      if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
 		{
-		  pthread_mutex_unlock (&bufptr->BCB_mutex);
+		  PGBUF_UNLOCK_BCB (bufptr);
 
 		  return ER_FAILED;
 		}
 
 	      /* If above function returns failure, the caller does not hold bufptr->BCB_mutex. Otherwise, the caller
 	       * is still holding bufptr->BCB_mutex. */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 
 	      return NO_ERROR;
 	    }
@@ -9012,7 +9113,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 	}
       else
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	}
     }
 
@@ -9060,7 +9161,7 @@ pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p)
       pgbuf_Pool.buf_invalid_list.invalid_cnt -= 1;
       pthread_mutex_unlock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
 
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
       bufptr->next_BCB = NULL;
       bufptr->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
 
@@ -9096,7 +9197,7 @@ pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr)
   bufptr->next_BCB = pgbuf_Pool.buf_invalid_list.invalid_top;
   pgbuf_Pool.buf_invalid_list.invalid_top = bufptr;
   pgbuf_Pool.buf_invalid_list.invalid_cnt += 1;
-  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  PGBUF_UNLOCK_BCB (bufptr);
   pthread_mutex_unlock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
 
   return NO_ERROR;
@@ -9588,7 +9689,7 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
 	}
     }
 
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   /* Since this is the first time we actually get exclusive access to this bufptr, we have to reevaluate our choice
    */
@@ -9602,7 +9703,7 @@ pgbuf_get_victim_from_ain_list (THREAD_ENTRY * thread_p, int max_count)
       /* Oops! While we were playing around with the Ain list, somebody else fixed this page and we can't know if we
        * should victimize it or not. Release bufptr mutex and return NULL. We will find another victim at next pass. */
       bufptr->victim_candidate = false;
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_ain_vict_req_failed, 1);
 
       return NULL;
@@ -9750,7 +9851,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   if (PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA (lru_idx))
     {
       /* first adjust lru1 zone */
-      pgbuf_lru_adjust_zones (thread_p, lru_list, lru_idx);
+      pgbuf_lru_adjust_zones (thread_p, lru_list, lru_idx, false);
     }
 
   /* search for non dirty bcb */
@@ -9875,7 +9976,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   if (bufptr->zone_lru != zone3_list || !pgbuf_is_bcb_victimizable (bufptr, true))
     {
@@ -9887,7 +9988,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
           pgbuf_lru_set_victim_hint_if_older (thread_p, bufptr, lru_list, lru_idx);
         }
 
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 
       ATOMIC_INC_64 (&pgbuf_Temp_stats.invalidated_after_mutex, 1);
       return NULL;
@@ -10172,15 +10273,22 @@ pgbuf_lru_add_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
  * thread_p (in) : thread entry
  * lru_list (in) : lru list
  * lru_idx (in)  : lru index
+ * min_one (in)  : true to stop to at least one entry.
  */
 STATIC_INLINE void
-pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx)
+pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx, bool min_one)
 {
+  int threshold;
   PGBUF_BCB *bcb_bottom;
 
   assert (lru_idx == (lru_list - pgbuf_Pool.buf_LRU_list));
 
-  if (!PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD (lru_list))
+  threshold = lru_list->threshold_lru1;
+  if (min_one)
+    {
+      threshold = MAX (1, threshold);
+    }
+  if (threshold >= lru_list->count_lru1)
     {
       /* no adjustments can be made */
       return;
@@ -10200,8 +10308,7 @@ pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
       /* bottom 1 will become bottom 2. */
       lru_list->LRU_bottom_2 = lru_list->LRU_bottom_1;
     }
-  for (bcb_bottom = lru_list->LRU_bottom_1; lru_list->threshold_lru1 < lru_list->count_lru1;
-       bcb_bottom = bcb_bottom->prev_BCB)
+  for (bcb_bottom = lru_list->LRU_bottom_1; threshold < lru_list->count_lru1; bcb_bottom = bcb_bottom->prev_BCB)
     {
       bcb_bottom->zone_lru = PGBUF_MAKE_ZONE (lru_idx, PGBUF_LRU_2_ZONE);
       lru_list->count_lru1--;
@@ -10226,16 +10333,23 @@ pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
  * thread_p (in) : thread entry
  * lru_list (in) : lru list
  * lru_idx (in)  : lru index
+ * min_one (in)  : true to stop to at least one entry.
  */
 STATIC_INLINE void
-pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx)
+pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx, bool min_one)
 {
   PGBUF_BCB *bcb_bottom;
   PGBUF_BCB *bcb_prev;
+  int threshold;
 
-  if (!PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD (lru_list))
+  threshold = lru_list->threshold_lru2;
+  if (min_one)
     {
-      /* no change when threshold is bigger or equal */
+      threshold = MAX (1, threshold);
+    }
+  if (threshold >= lru_list->count_lru2)
+    {
+      /* no adjustments can be made */
       return;
     }
 
@@ -10251,7 +10365,7 @@ pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
     }
 
   /* change bcb zones from 2 to 3 until lru 2 zone count is down to zone 2 desired threshold. */
-  for (bcb_bottom = lru_list->LRU_bottom_2; lru_list->threshold_lru2 < lru_list->count_lru2; bcb_bottom = bcb_prev)
+  for (bcb_bottom = lru_list->LRU_bottom_2; threshold < lru_list->count_lru2; bcb_bottom = bcb_prev)
     {
       /* save prev BCB in case this is removed from list */
       bcb_prev = bcb_bottom->prev_BCB;
@@ -10280,18 +10394,25 @@ pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
  * thread_p (in) : thread entry
  * lru_list (in) : lru list
  * lru_idx (in)  : lru index
+ * min_one (in)  : true to keep at least one entry in 1&2 zones.
  */
 STATIC_INLINE void
-pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx)
+pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int lru_idx, bool min_one)
 {
   PGBUF_BCB *bcb_bottom;
   PGBUF_BCB *bcb_prev;
+  int threshold;
 
   /* first adjust zone 1 & 2 and convert to zone 3. then we'll adjust zone 1 (and convert to 2) */
-  if (!PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD (lru_list))
+  threshold = lru_list->threshold_lru1 + lru_list->threshold_lru2;
+  if (min_one)
+    {
+      threshold = MAX (1, threshold);
+    }
+  if (threshold >= PGBUF_LRU_ZONE_ONE_TWO_COUNT (lru_list))
     {
       /* just try to adjust zone 1. */
-      pgbuf_lru_adjust_zone1 (thread_p, lru_list, lru_idx);
+      pgbuf_lru_adjust_zone1 (thread_p, lru_list, lru_idx, min_one);
       return;
     }
 
@@ -10303,8 +10424,7 @@ pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
     }
 
   for (bcb_bottom = lru_list->LRU_bottom_2 != NULL ? lru_list->LRU_bottom_2 : lru_list->LRU_bottom_1;
-       lru_list->threshold_lru1 + lru_list->threshold_lru2 < lru_list->count_lru1 + lru_list->count_lru2;
-       bcb_bottom = bcb_prev)
+       threshold < PGBUF_LRU_ZONE_ONE_TWO_COUNT (lru_list); bcb_bottom = bcb_prev)
     {
       /* save prev BCB in case this is removed from list */
       bcb_prev = bcb_bottom->prev_BCB;
@@ -10335,7 +10455,7 @@ pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
 
   pgbuf_lru_sanity (lru_list);
 
-  pgbuf_lru_adjust_zone1 (thread_p, lru_list, lru_idx);
+  pgbuf_lru_adjust_zone1 (thread_p, lru_list, lru_idx, min_one);
 }
 
 /*
@@ -10364,7 +10484,9 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
       /* we first need mutex on bcb. however, we'd normally first get mutex on bcb and then on list. since we don't want
        * to over complicate things, just try a conditional lock on mutex. if it fails, we'll just give up assigning the
        * bcb directly as victim */
-      if (pthread_mutex_trylock (&bcb->BCB_mutex) == 0)
+      int rv;
+      PGBUF_TRYLOCK_BCB (bcb, rv);
+      if (rv == 0)
         {
           ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_success, 1);
 
@@ -10374,15 +10496,15 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 
               /* since bcb is going to be removed from list and I have both lru and bcb mutex, why not do it now. */
               pgbuf_remove_from_lru_list (bcb, lru_list);
-              bcb->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_INVALID_ZONE);
+              bcb->zone_lru = PGBUF_MAKE_ZONE (0, PGBUF_VOID_ZONE);
 
-              pthread_mutex_unlock (&bcb->BCB_mutex);
+              PGBUF_UNLOCK_BCB (bcb);
 
               pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
               return;
             }
           /* not assigned. unlock bcb mutex and fall through */
-          pthread_mutex_unlock (&bcb->BCB_mutex);
+          PGBUF_UNLOCK_BCB (bcb);
         }
       else
         {
@@ -10524,11 +10646,11 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   if (zone == PGBUF_LRU_2_ZONE)
     {
       /* adjust only zone 1 */
-      pgbuf_lru_adjust_zone1 (thread_p, lru_list, lru_idx);
+      pgbuf_lru_adjust_zone1 (thread_p, lru_list, lru_idx, true);
     }
   else
     {
-      pgbuf_lru_adjust_zones (thread_p, lru_list, lru_idx);
+      pgbuf_lru_adjust_zones (thread_p, lru_list, lru_idx, true);
     }
 
   pgbuf_lru_sanity (lru_list);
@@ -10565,7 +10687,7 @@ pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_
   pgbuf_lru_sanity (lru_list);
 
   /* since we added a new bcb to lru 1, we should adjust zones */
-  pgbuf_lru_adjust_zones (thread_p, lru_list, lru_idx);
+  pgbuf_lru_adjust_zones (thread_p, lru_list, lru_idx, true);
 
   /* update bcb counters */
   if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx))
@@ -10604,7 +10726,7 @@ pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int l
   pgbuf_lru_sanity (lru_list);
 
   /* adjust zone 2 */
-  pgbuf_lru_adjust_zone2 (thread_p, lru_list, lru_idx);
+  pgbuf_lru_adjust_zone2 (thread_p, lru_list, lru_idx, true);
   
   /* update bcb counters */
   if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx))
@@ -11376,7 +11498,6 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *thrd_entry;
-  int rv;
 #endif /* SERVER_MODE */
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
@@ -11435,7 +11556,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
-  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  PGBUF_UNLOCK_BCB (bufptr);
 
   /* confirm WAL protocol */
   /* force log record to disk */
@@ -11457,7 +11578,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
 		    IO_PAGESIZE) == NULL)
     {
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
       PGBUF_SET_DIRTY (bufptr);
       LSA_COPY (&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
 
@@ -11479,7 +11600,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
 
   bufptr->avoid_victim = false;
   if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr))
@@ -11701,9 +11822,6 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
   int bufid;
-#if defined(SERVER_MODE)
-  int rv;
-#endif
 
   assert (pgptr != NULL);
 
@@ -11711,7 +11829,7 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
   for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
 
       if (((PAGE_PTR) (&(bufptr->iopage_buffer->iopage.page[0]))) == pgptr)
 	{
@@ -11721,20 +11839,20 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 	      assert (false);
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bufptr->vpid.pageid,
 		      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 
 	      return false;
 	    }
 	  else
 	    {
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 
 	      return true;
 	    }
 	}
       else
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	}
     }
 
@@ -11936,18 +12054,18 @@ pgbuf_dump_if_any_fixed (void)
   for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
 
       if (bufptr->latch_mode != PGBUF_LATCH_INVALID && bufptr->fcnt > 0)
 	{
 	  /* The buffer is not unfixed */
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  pgbuf_dump ();
 	  return;
 	}
 
       consistent = pgbuf_is_consistent (bufptr, 0);
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 
       if (consistent == PGBUF_CONTENT_BAD)
 	{
@@ -12012,7 +12130,7 @@ pgbuf_dump (void)
   for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
 
       if (bufptr->fcnt > 0)
 	{
@@ -12028,7 +12146,7 @@ pgbuf_dump (void)
       consistent = pgbuf_is_consistent (bufptr, 0);
       if (bufptr->dirty == false && bufptr->fcnt == 0 && consistent != PGBUF_CONTENT_BAD)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  continue;
 	}
       else
@@ -12045,7 +12163,7 @@ pgbuf_dump (void)
 		   (void *) (&bufptr->iopage_buffer->iopage.page[0]),
 		   (void *) (&bufptr->iopage_buffer->iopage.page[DB_PAGESIZE - 1]));
 	}
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
     }
 
   (void) fprintf (stdout, "Number of fetched buffers = %d\nNumber of dirty buffers = %d\n", nfetched, ndirty);
@@ -12771,7 +12889,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
   pgbuf_add_bufptr_to_batch (bufptr, 0);
   VPID_COPY (&first_vpid, &bufptr->vpid);
   LSA_COPY (&log_newest_oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
-  pthread_mutex_unlock (&bufptr->BCB_mutex);
+  PGBUF_UNLOCK_BCB (bufptr);
 
   VPID_COPY (&vpid, &first_vpid);
 
@@ -12856,7 +12974,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
       /* Abandon batch for: fixed pages, latched pages or with 'avoid_victim' */
       if (bufptr->avoid_victim == true || bufptr->latch_mode > PGBUF_LATCH_READ)
 	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  if (search_nondirty == true)
 	    {
 	      if (forward == false)
@@ -12895,7 +13013,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
 	{
 	  if (search_nondirty == false)
 	    {
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      if (forward == true)
 		{
 		  forward = false;
@@ -12914,7 +13032,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
 	  if (prev_page_dirty == false)
 	    {
 	      /* two consecutive non-dirty pages */
-	      pthread_mutex_unlock (&bufptr->BCB_mutex);
+	      PGBUF_UNLOCK_BCB (bufptr);
 	      abort_reason = NEIGHBOR_ABORT_TWO_CONSECTIVE_NONDIRTIES;
 	      break;
 	    }
@@ -12931,7 +13049,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
       if (helper->npages > PGBUF_PAGES_COUNT_THRESHOLD && ((2 * dirty_pages_cnt) < helper->npages))
 	{
 	  /* too many nondirty pages */
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_UNLOCK_BCB (bufptr);
 	  helper->npages = 1;
 	  abort_reason = NEIGHBOR_ABORT_TOO_MANY_NONDIRTIES;
 	  break;
@@ -12941,7 +13059,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
 
       /* add bufptr to batch */
       pgbuf_add_bufptr_to_batch (bufptr, vpid.pageid - first_vpid.pageid);
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       i++;
     }
 
@@ -13088,23 +13206,23 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 
   *flushed = false;
 
-  rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+  PGBUF_LOCK_BCB (bufptr);
   if (!VPID_EQ (&bufptr->vpid, expected_vpid))
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       return NO_ERROR;
     }
 
   if (bufptr->avoid_victim == true || bufptr->latch_mode > PGBUF_LATCH_READ)
     {
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       return NO_ERROR;
     }
 
   if (bufptr->dirty)
     {
       error = pgbuf_flush_page_with_wal (thread_p, bufptr);
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
       if (error == NO_ERROR)
 	{
 	  *flushed = true;
@@ -13125,7 +13243,7 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 
       memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
       bufptr->avoid_victim = true;
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 
       /* flush buffer page */
       if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
@@ -13137,9 +13255,9 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 	  error = ER_FAILED;
 	}
 
-      rv = pthread_mutex_lock (&bufptr->BCB_mutex);
+      PGBUF_LOCK_BCB (bufptr);
       bufptr->avoid_victim = false;
-      pthread_mutex_unlock (&bufptr->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bufptr);
 
 #if defined(ENABLE_SYSTEMTAP)
       {
@@ -14845,6 +14963,15 @@ pgbuf_initialize_page_monitor (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count_threads * sizeof (INT64));
       goto exit;
     }
+
+  monitor->thread_bcb_mutex = (PGBUF_MONITOR_BCB_MUTEX *) calloc (count_threads, sizeof (PGBUF_MONITOR_BCB_MUTEX));
+  if (monitor->thread_bcb_mutex == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+              count_threads * sizeof (PGBUF_MONITOR_BCB_MUTEX));
+      goto exit;
+    }
 #endif /* SERVER_MDOE */
 
 exit:
@@ -15307,8 +15434,9 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
           if (lru_list->count_lru1 + lru_list->count_lru2 > 0)
             {
               pthread_mutex_lock (&lru_list->LRU_mutex);
-              pgbuf_lru_adjust_zones (thread_p, lru_list, i);
+              pgbuf_lru_adjust_zones (thread_p, lru_list, i, false);
               pthread_mutex_unlock (&lru_list->LRU_mutex);
+              PGBUF_CHECK_BCB_MUTEX_LEAKS ();
             }
 	}
     }
@@ -15341,8 +15469,10 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
           if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list))
             {
               pthread_mutex_lock (&lru_list->LRU_mutex);
-              pgbuf_lru_adjust_zones (thread_p, lru_list, i);
+              pgbuf_lru_adjust_zones (thread_p, lru_list, i, false);
               pthread_mutex_unlock (&lru_list->LRU_mutex);
+
+              PGBUF_CHECK_BCB_MUTEX_LEAKS ();
             }
 	}
     }
@@ -16333,7 +16463,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
-  pthread_mutex_lock (&bcb->BCB_mutex);
+  PGBUF_LOCK_BCB (bcb);
 
   if (!bcb->direct_victim || !pgbuf_bcb_victimizable_ignore_direct_victim (bcb, true))
     {
@@ -16341,7 +16471,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
       assert (false);
       pgbuf_Global_error = "direct victim not victimizable";
       abort ();
-      pthread_mutex_unlock (&bcb->BCB_mutex);
+      PGBUF_UNLOCK_BCB (bcb);
       return NULL;
     }
 
@@ -16354,10 +16484,8 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
       switch (bcb->zone_lru)
         {
         case PGBUF_VOID_ZONE:
-          pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, 0);
           break;
         case PGBUF_INVALID_ZONE:
-          break;
         case PGBUF_AIN_ZONE:
           /* todo: */
           abort ();
@@ -16376,6 +16504,11 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
         }
     }
   bcb->direct_victim = false;
+  if (PGBUF_GET_ZONE (bcb->zone_lru) != PGBUF_VOID_ZONE)
+    {
+      pgbuf_Global_error = "direct victim not void";
+      abort ();
+    }
   return bcb;
 }
 

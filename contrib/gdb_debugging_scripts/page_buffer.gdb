@@ -368,6 +368,7 @@ define pgbuf_print_alloc_bcb_waits
     set $i = $i + 1
     end
   printf "\n"
+  end
   
 define pgbuf_find_alloc_bcb_wait_thread
   printf "bcb = %p \n", pgbuf_Pool.direct_victims.bcb_victims[$arg0]
