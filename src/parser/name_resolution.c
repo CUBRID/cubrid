@@ -7963,7 +7963,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   PT_NODE *cte_defs = (PT_NODE *) arg;
   PT_NODE *cte = NULL;
-  int *match_count;
+  int match_count = 0;		/* init match counter from the beginning; it is important for pt_count_ctes_post */
 
   if (node == NULL)
     {
@@ -7971,9 +7971,8 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       return NULL;
     }
 
-  /* init match counter from the beginning; it is important for pt_count_ctes_post() */
-  match_count = (int *) pt_node_etc (node);
-  *match_count = 0;
+  /* etc will be deallocated in pt_count_ctes_post; must be initialized to NULL */
+  pt_null_etc (node);
 
   if (cte_defs == NULL)
     {
@@ -7989,7 +7988,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
   if (node->info.spec.entity_name == NULL)
     {
-      /* only interested in specs with entity names */
+      /* only interested in specs without entity names */
       return node;
     }
 
@@ -8000,7 +7999,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
       if (pt_name_equal (parser, cte_name, node->info.spec.entity_name))
 	{
-	  if (*match_count > 0)
+	  if (match_count > 0)
 	    {
 	      /* there are more CTEs with the same name */
 	      PT_INTERNAL_ERROR (parser, "CTE name ambiguity");
@@ -8010,14 +8009,22 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	  node->info.spec.cte_pointer = pt_point (parser, cte);
 	  node->info.spec.cte_pointer->info.pointer.do_walk = false;
 	  node->info.spec.as_attr_list = cte->info.cte.as_attr_list;
-	  (*match_count)++;
+	  match_count++;
 	  *continue_walk = PT_LIST_WALK;
 	}
     }
 
-  if (*match_count > 0)
+  if (match_count > 0)
     {
+      int *cte_count;
+      /* spec points to a cte; set node->etc to an integer with the number of cte occurences (one or zero) */
       node->info.spec.entity_name = NULL;
+
+
+      cte_count = (int *) malloc (sizeof (int));
+      *cte_count = match_count;
+      node->etc = (void *) cte_count;
+      /* the integer will be deallocated in pt_count_ctes_post */
     }
 
   return node;
@@ -8034,15 +8041,26 @@ static PT_NODE *
 pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   int *cnt = (int *) arg;
-  if (!cnt)
+  int *cte_matches = NULL;
+
+  if (node->node_type == PT_SPEC && node->info.spec.cte_pointer != NULL)
     {
-      return NULL;
+      /* the node points to a CTE; check if node->etc holds the cte counter integer and clean etc */
+      cte_matches = (int *) pt_node_etc (node);
+      pt_null_etc (node);
     }
 
-  if (node->etc)
+  if (cte_matches != NULL)
     {
-      (*cnt)++;
+      if (cnt != NULL)
+	{
+	  (*cnt)++;
+	}
+
+      /* cte_matches counter is no longer needed; pt_resolve_spec_to_cte expects to clean it here */
+      free (cte_matches);
     }
+
   return node;
 }
 
