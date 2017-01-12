@@ -405,8 +405,10 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
   int cnt1, cnt2;
   PT_TYPE_ENUM common_type;
 
-  if (!query)
-    return NULL;
+  if (query == NULL)
+    {
+      return NULL;
+    }
 
   switch (query->node_type)
     {
@@ -415,8 +417,10 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 
     case PT_SELECT:
       list = query->info.query.q.select.list;
-      if (!list)
-	return NULL;
+      if (list == NULL)
+	{
+	  return NULL;
+	}
 
       /* return the first row of PT_NODE_LIST */
       if (list->node_type == PT_NODE_LIST)
@@ -425,7 +429,9 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
 
       if (list->node_type == PT_VALUE && list->type_enum == PT_TYPE_STAR)
-	return NULL;
+	{
+	  return NULL;
+	}
 
       for (attr = list; attr; attr = attr->next)
 	{
@@ -591,8 +597,10 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 static PT_NODE *
 pt_get_from_list (const PARSER_CONTEXT * parser, const PT_NODE * query)
 {
-  if (!query)
-    return NULL;
+  if (query == NULL)
+    {
+      return NULL;
+    }
 
   switch (query->node_type)
     {
@@ -635,7 +643,9 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
 
   s = pt_get_select_list (parser, query);
   if (pt_length_of_select_list (s, EXCLUDE_HIDDEN_COLUMNS) <= 0)
-    return NULL;
+    {
+      return NULL;
+    }
   f = pt_get_from_list (parser, query);
 
   for (q = NULL, tail = NULL; s; s = s->next)
@@ -657,9 +667,13 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
 	    }
 
 	  if (q == NULL)
-	    q = t;
+	    {
+	      q = t;
+	    }
 	  else
-	    tail->next = t;
+	    {
+	      tail->next = t;
+	    }
 
 	  t->next = NULL;
 	  tail = t;
