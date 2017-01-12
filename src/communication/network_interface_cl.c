@@ -107,8 +107,6 @@ static char *pack_string_with_null_padding (char *buffer, const char *stream, in
 static int length_const_string (const char *cstring, int *strlen);
 static int length_string_with_null_padding (int len);
 #endif /* CS_MODE */
-static BTREE_SEARCH btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-						bool is_replication);
 
 #if defined(CS_MODE)
 /*
@@ -532,8 +530,7 @@ locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea)
 }
 
 /*
- * locator_repl_force - flush copy area containing replication objects
- *                       and receive error occurred in server
+ * locator_repl_force - flush copy area containing replication objects and receive error occurred in server
  *
  * return:
  *
@@ -547,9 +544,9 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
+  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE) a_request;
   char *request;
   char *request_ptr;
-  int request_size;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
   char *desc_ptr = NULL;
@@ -559,15 +556,7 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   int num_objs = 0;
   int req_error;
 
-  request_size = NET_COPY_AREA_SENDRECV_SIZE;
-  request = (char *) malloc (request_size);
-
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
+  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
@@ -577,12 +566,13 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   request_ptr = or_pack_int (request_ptr, content_size);
 
   req_error =
-    net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request, request_size, desc_ptr, desc_size,
-					     content_ptr, content_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+    net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request, NET_COPY_AREA_SENDRECV_SIZE, desc_ptr,
+					     desc_size, content_ptr, content_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 					     reply_copy_area);
 
   if (req_error == NO_ERROR)
     {
+      /* skip first 3 */
       (void) or_unpack_int (reply + NET_COPY_AREA_SENDRECV_SIZE, &error_code);
     }
   else
@@ -595,14 +585,12 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
     {
       free_and_init (desc_ptr);
     }
-  if (request)
-    {
-      free_and_init (request);
-    }
 
   return error_code;
-#endif /* CS_MODE */
+#else /* CS_MODE */
+  /* Not allowed in SA_MODE */
   return ER_FAILED;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -709,70 +697,6 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   return error_code;
 #endif /* !CS_MODE */
-}
-
-int
-locator_force_repl_update (BTID * btid, OID * class_oid, DB_VALUE * key_value, bool has_index, int operation,
-			   RECDES * recdes)
-{
-  int error_code = ER_FAILED;
-#ifdef CS_MODE
-  int req_error, request_size, key_size;
-  char *ptr = NULL;
-  char *request = NULL;
-  char *reply = NULL;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-
-  if (btid == NULL || class_oid == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-  key_size = OR_VALUE_ALIGNED_SIZE (key_value);
-  request_size = OR_BTID_ALIGNED_SIZE	/* btid */
-    + OR_OID_SIZE		/* class_oid */
-    + key_size			/* key_value */
-    + OR_INT_SIZE		/* has_index */
-    + OR_INT_SIZE		/* operation */
-    + or_packed_recdesc_length (recdes->length);	/* recdes */
-
-  request = (char *) malloc (request_size);
-
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  ptr = or_pack_btid (request, btid);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_mem_value (ptr, key_value);
-  if (ptr == NULL)
-    {
-      goto free_and_return;
-    }
-
-  ptr = or_pack_int (ptr, has_index ? 1 : 0);
-  ptr = or_pack_int (ptr, operation);
-  ptr = or_pack_recdes (ptr, recdes);
-
-  request_size = CAST_BUFLEN (ptr - request);
-
-  req_error =
-    net_client_request (NET_SERVER_LC_FORCE_REPL_UPDATE, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			NULL, 0, NULL, 0);
-
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error_code);
-    }
-
-free_and_return:
-  free_and_init (request);
-#endif /* CS_MODE */
-  return error_code;
 }
 
 /*
@@ -6007,18 +5931,6 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
 BTREE_SEARCH
 btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
 {
-  return btree_find_unique_internal (btid, key, class_oid, oid, false);
-}
-
-BTREE_SEARCH
-repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
-{
-  return btree_find_unique_internal (btid, key, class_oid, oid, true);
-}
-
-static BTREE_SEARCH
-btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid, bool is_replication)
-{
   BTREE_SEARCH status = BTREE_ERROR_OCCURRED;
 
   if (btid == NULL || key == NULL || class_oid == NULL || oid == NULL)
@@ -6048,21 +5960,8 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * 
 	}
 
       ptr = request;
-      if (is_replication == true)
-	{
-	  ptr = or_pack_mem_value (ptr, key);
-	  if (ptr == NULL)
-	    {
-	      free_and_init (request);
-	      return status;
-	    }
-	  request_id = NET_SERVER_REPL_BTREE_FIND_UNIQUE;
-	}
-      else
-	{
-	  ptr = or_pack_value (ptr, key);
-	  request_id = NET_SERVER_BTREE_FIND_UNIQUE;
-	}
+      ptr = or_pack_value (ptr, key);
+      request_id = NET_SERVER_BTREE_FIND_UNIQUE;
 
       ptr = or_pack_oid (ptr, class_oid);
       ptr = or_pack_btid (ptr, btid);
@@ -6267,83 +6166,6 @@ cleanup:
 
   return result;
 #endif
-}
-
-/*
- * btree_delete_with_unique_key -
- *
- * return:
- *
- *   btid(in):
- *   class_oid(in):
- *   key_value(in):
- *
- * NOTE:
- */
-int
-btree_delete_with_unique_key (BTID * btid, OID * class_oid, DB_VALUE * key_value)
-{
-#if defined(CS_MODE)
-  int error = ER_FAILED;
-  int req_error, request_size, key_size;
-  char *ptr;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  if (btid == NULL || class_oid == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  key_size = OR_VALUE_ALIGNED_SIZE (key_value);
-  request_size = OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + key_size;
-  request = (char *) malloc (request_size);
-
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  ptr = request;
-  ptr = or_pack_btid (ptr, btid);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_mem_value (ptr, key_value);
-  if (ptr == NULL)
-    {
-      free_and_init (request);
-      return ER_FAILED;
-    }
-
-  req_error =
-    net_client_request (NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY, request, request_size, reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error);
-    }
-
-  free_and_init (request);
-#else /* CS_MODE */
-  int error = ER_FAILED;
-
-  if (btid == NULL || class_oid == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  ENTER_SERVER ();
-  error = xbtree_delete_with_unique_key (NULL, btid, class_oid, key_value);
-  EXIT_SERVER ();
-#endif /* !CS_MODE */
-
-  return error;
 }
 
 /*
@@ -8858,7 +8680,7 @@ locator_prefetch_repl_update_or_delete (OID * class_oid, BTID * btid, DB_VALUE *
 
   ptr = or_pack_btid (request, btid);
   ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_mem_value (ptr, key_value);
+  ptr = or_pack_mem_value (ptr, key_value, NULL);
   if (ptr == NULL)
     {
       goto free_and_return;

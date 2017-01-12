@@ -79,7 +79,8 @@ struct ws_repl_obj
 {
   struct ws_repl_obj *next;
   OID class_oid;
-  DB_VALUE *pkey_value;
+  char *packed_pkey_value;
+  int packed_pkey_value_length;
   bool has_index;
   int operation;
   RECDES *recdes;
@@ -646,7 +647,8 @@ extern bool ws_need_flush (void);
 
 extern int ws_set_ignore_error_list_for_mflush (int error_count, int *error_list);
 
-extern int ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key, RECDES * recdes, int operation, bool has_index);
+extern int ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
+				    RECDES * recdes, int operation, bool has_index);
 extern void ws_init_repl_objs (void);
 extern void ws_clear_all_repl_objs (void);
 extern void ws_free_repl_obj (WS_REPL_OBJ * obj);
