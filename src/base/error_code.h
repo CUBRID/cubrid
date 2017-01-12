@@ -1538,7 +1538,7 @@
 
 #define ER_BUILDVALUE_IN_REC_CTE		    -1195
 
-#define ER_LAST_ERROR                               -1195
+#define ER_LAST_ERROR                               -1196
 
 /*
  * CAUTION!
