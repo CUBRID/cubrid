@@ -212,6 +212,9 @@ static void pt_resolve_group_having_alias_internal (PARSER_CONTEXT * parser, PT_
 static PT_NODE *pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent,
 					       int *continue_walk);
 
+static PT_NODE *pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
 static PT_NODE *pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from);
 static PT_NODE *pt_bind_reserved_name (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * spec);
 static PT_NODE *pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -7955,7 +7958,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
  *   arg(in): cte_defs ( only the CTEs that can be referenced )
  *   continue_walk(in/out):
  */
-PT_NODE *
+static PT_NODE *
 pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *cte_defs = (PT_NODE *) arg;
@@ -7969,7 +7972,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     }
 
   /* init match counter from the beginning; it is important for pt_count_ctes_post() */
-  match_count = &(node->etc);
+  match_count = (int *) pt_node_etc (node);
   *match_count = 0;
 
   if (cte_defs == NULL)
@@ -8027,7 +8030,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 *   arg(out): count of CTEs
 *   continue_walk(in):
 */
-PT_NODE *
+static PT_NODE *
 pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   int *cnt = (int *) arg;

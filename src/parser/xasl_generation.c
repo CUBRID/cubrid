@@ -12078,7 +12078,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
   int *pred_offsets = NULL, *rest_offsets = NULL;
   PRED_EXPR *where = NULL;
 
-  if (!spec || !cte_def || !spec->info.spec.cte_pointer)
+  if (spec == NULL || cte_def == NULL || spec->info.spec.cte_pointer == NULL)
     {
       return NULL;
     }
@@ -12089,10 +12089,11 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
     }
   else
     {
-      /* The CTE xasl is null because the recursive part xasl has not been
-         generated yet, but this is not a problem because the recursive part
-         should have access only to the non recursive part */
+      /* The CTE xasl is null because the recursive part xasl has not been generated yet, but this is not a problem 
+       * because the recursive part should have access only to the non recursive part.
+       */
       PT_NODE *non_recursive_part = cte_def->info.cte.non_recursive_part;
+
       if (non_recursive_part->info.query.xasl)
 	{
 	  cte_proc = (XASL_NODE *) non_recursive_part->info.query.xasl;
@@ -12127,12 +12128,10 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
   parser->symbols->listfile_unbox = UNBOX_AS_VALUE;
   parser->symbols->current_listfile = NULL;
 
-  /* The where predicate is now evaluated after the val list has been
-   * fetched.  This means that we want to generate "CONSTANT" regu
-   * variables instead of "POSITION" regu variables which would happen
-   * if parser->symbols->current_listfile != NULL.
-   * pred should never user the current instance for fetches
-   * either, so we turn off the current_class, if there is one.
+  /* The where predicate is now evaluated after the val list has been fetched. 
+   * This means that we want to generate "CONSTANT" regu variables instead of "POSITION" regu variables which would 
+   * happen if parser->symbols->current_listfile != NULL.
+   * pred should never use the current instance for fetches either, so we turn off the current_class, if there is one.
    */
   saved_current_class = parser->symbols->current_class;
   parser->symbols->current_class = NULL;
@@ -12171,7 +12170,7 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
     {
       access = pt_to_class_spec_list (parser, spec, where_key_part, where_part, plan, index_part);
     }
-  else if (spec->info.spec.derived_table)
+  else if (spec->info.spec.derived_table != NULL)
     {
       /* derived table index_part better be NULL here! */
       if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
@@ -12194,8 +12193,10 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 	}
     }
   else
-    {				/* there is a cte_pointer inside spec */
+    {
+      /* there is a cte_pointer inside spec */
       assert (spec->info.spec.cte_pointer != NULL);
+
       /* the subquery should be in non_recursive_part of the cte */
       access = pt_to_cte_table_spec_list (parser, spec, spec->info.spec.cte_pointer->info.pointer.node, where_part);
     }
@@ -16141,7 +16142,7 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   XASL_NODE *non_recursive_part_xasl = NULL, *recursive_part_xasl = NULL;
   PT_NODE *non_recursive_part, *recursive_part;
 
-  if (!node)
+  if (node == NULL)
     {
       return NULL;
     }
@@ -16149,7 +16150,7 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   non_recursive_part = node->info.cte.non_recursive_part;
   recursive_part = node->info.cte.recursive_part;
 
-  if (!non_recursive_part)
+  if (non_recursive_part == NULL)
     {
       PT_INTERNAL_ERROR (parser, "Non recursive part should be not null");
       return NULL;
@@ -16163,13 +16164,13 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 
   xasl = regu_xasl_node_alloc (proc_type);
 
-  if (xasl)
+  if (xasl != NULL)
     {
       xasl->proc.cte.non_recursive_part = non_recursive_part_xasl;
       xasl->proc.cte.recursive_part = recursive_part_xasl;
     }
 
-  if (!recursive_part_xasl && non_recursive_part_xasl)
+  if (recursive_part_xasl == NULL && non_recursive_part_xasl != NULL)
     {
       /* save single tuple info, cardinality, limit... from non_recursive_part */
       if (non_recursive_part->info.query.single_tuple == 1)
@@ -16179,6 +16180,7 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 
       xasl->projected_size = non_recursive_part_xasl->projected_size;
       xasl->cardinality = non_recursive_part_xasl->cardinality;
+
       if (non_recursive_part->info.query.limit)
 	{
 	  PT_NODE *limit;
@@ -16494,7 +16496,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  fprintf (query_Plan_dump_fp, "\nend of non recursive part of CTE\n");
 	}
-      if (select_node->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY)
+      else if (select_node->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY)
 	{
 	  fprintf (query_Plan_dump_fp, "\nend of CTE definition\n");
 	}
@@ -20454,10 +20456,13 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	    }
 	}
       break;
+
     case PT_CTE:
       assert (node->info.cte.xasl == NULL);
+
       xasl = parser_generate_xasl_proc (parser, node, info->query_list);
       break;
+
     default:
       break;
     }

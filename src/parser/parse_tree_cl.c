@@ -17225,7 +17225,9 @@ static PT_NODE *
 pt_init_with_clause (PT_NODE * p)
 {
   p->info.with_clause.cte_definition_list = NULL;
-  p->info.with_clause.recursive = NULL;
+  p->info.with_clause.recursive = 0;
+
+  return p;
 }
 
 /* CTE */
@@ -17259,6 +17261,8 @@ pt_init_cte (PT_NODE * p)
   p->info.cte.as_attr_list = NULL;
   p->info.cte.recursive_part = NULL;
   p->info.cte.non_recursive_part = NULL;
+
+  return p;
 }
 
 /*
@@ -17296,7 +17300,7 @@ pt_print_insert_value (PARSER_CONTEXT * parser, PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0;
+  PARSER_VARCHAR *q = NULL;
   PT_NODE *cte;
 
   q = pt_append_nulstring (parser, q, "with ");
@@ -17323,7 +17327,7 @@ pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1;
+  PARSER_VARCHAR *q = NULL, *r1;
   PT_NODE *list;
 
   /* name of cte */

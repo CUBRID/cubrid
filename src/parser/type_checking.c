@@ -8355,7 +8355,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	{
 	  arg1 = node->info.cte.non_recursive_part;
 	  arg2 = node->info.cte.recursive_part;
-	  if (!arg2)
+	  if (arg2 == NULL)
 	    {
 	      /* then the CTE is not recursive (just one part) */
 	      break;
@@ -19888,7 +19888,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 				     qualifier))
 	{
 	  result = pt_dbval_to_value (parser, &dbval_res);
-	  if (!result->data_type && result->type_enum != PT_TYPE_NULL)
+	  if (result->data_type == NULL && result->type_enum != PT_TYPE_NULL)
 	    {
 	      /* data_type may be needed later... e.g. in CTEs */
 	      result->data_type = parser_copy_tree_list (parser, expr->data_type);

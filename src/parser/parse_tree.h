@@ -925,6 +925,7 @@ enum pt_node_type
   PT_KILL_STMT,
   PT_VACUUM,
   PT_WITH_CLAUSE,
+
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -2007,8 +2008,7 @@ struct pt_cte_info
   PT_NODE *as_attr_list;	/* PT_NAME */
   PT_NODE *non_recursive_part;	/* the non-recursive subquery */
   PT_NODE *recursive_part;	/* a recursive subquery */
-  PT_MISC_TYPE only_all;	/* Type of UNION between 
-				   non-recursive and recursive parts */
+  PT_MISC_TYPE only_all;	/* Type of UNION between non-recursive and recursive parts */
   void *xasl;			/* xasl proc pointer */
 };
 
@@ -3220,16 +3220,14 @@ struct pt_set_session_variable_info
   PT_NODE *assignments;
 };
 
-/* Retains expressions for check when 'with check option' option is
- * specified. Used in update statement */
+/* Retains expressions for check when 'with check option' option is specified. Used in update statement */
 struct pt_check_option_info
 {
   UINTPTR spec_id;		/* id of spec for wich to check condition */
   PT_NODE *expr;		/* condition to check */
 };
 
-/* info structure for a node which can be evaluated during constant folding
- * as a value of a tuple from a cursor */
+/* info structure for a node which can be evaluated during constant folding as a value of a tuple from a cursor */
 struct pt_tuple_value_info
 {
   PT_NODE *name;		/* name alias in the original query */
@@ -3243,18 +3241,14 @@ struct pt_trace_info
   PT_MISC_TYPE format;
 };
 
-/* pt_with_clause_info - 
- * Parse tree node info which contains CTEs data(used by DML statements) */
+/* pt_with_clause_info - Parse tree node info which contains CTEs data(used by DML statements) */
 struct pt_with_clause_info
 {
   int recursive;
   PT_NODE *cte_definition_list;	/* PT_CTE (list) */
 };
 
-/* pt_insert_value_info -
- * Parse tree node info used to replace nodes in insert value list after being
- * evaluated.
- */
+/* pt_insert_value_info - Parse tree node info used to replace nodes in insert value list after being evaluated. */
 struct pt_insert_value_info
 {
   PT_NODE *original_node;	/* original node before first evaluation. if this is NULL, it is considered that

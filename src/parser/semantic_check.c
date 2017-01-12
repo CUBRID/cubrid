@@ -2650,6 +2650,13 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
 
   assert (parser != NULL);
 
+  if (node == NULL
+      || (node->node_type != PT_UNION && node->node_type != PT_INTERSECTION && node->node_type != PT_DIFFERENCE
+	  && node->node_type != PT_CTE))
+    {
+      return NULL;
+    }
+
   if (node->node_type == PT_CTE)
     {
       arg1 = node->info.cte.non_recursive_part;
@@ -2661,10 +2668,13 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
       arg2 = node->info.query.q.union_.arg2;
     }
 
-  if (!node
-      || !(node->node_type == PT_UNION || node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE
-	   || node->node_type == PT_CTE) || !(attrs1 = pt_get_select_list (parser, arg1))
-      || !(attrs2 = pt_get_select_list (parser, arg2)))
+  attrs1 = pt_get_select_list (parser, arg1);
+  if (attrs1 == NULL)
+    {
+      return NULL;
+    }
+  attrs2 = pt_get_select_list (parser, arg2);
+  if (attrs2 == NULL)
     {
       return NULL;
     }
@@ -12770,7 +12780,7 @@ check_select_list:
  *   q(in):
  */
 int
-pt_check_path_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
+pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 {
   PT_NODE_TYPE n;
 
