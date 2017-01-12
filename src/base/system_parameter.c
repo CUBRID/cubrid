@@ -8040,6 +8040,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
   int set_max = 0;
   SYSPRM_ERR ret = PRM_ERR_NO_ERROR;
   SYSPRM_VALUE min, max;
+
   if (prm == NULL)
     {
       return PRM_ERR_UNKNOWN_PARAM;
@@ -8133,7 +8134,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
     case PRM_INTEGER:
       {
 	/* convert string to int */
-	int val, min, max;
+	int val;
 
 	if (set_default)
 	  {
@@ -8229,7 +8230,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
       {
 	/* convert string to UINT64 */
 	int result;
-	UINT64 val, min, max;
+	UINT64 val;
 	char *end_p;
 
 	if (set_default)
@@ -8275,7 +8276,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
     case PRM_FLOAT:
       {
 	/* convert string to float */
-	float val, min, max;
+	float val;
 
 	if (set_default)
 	  {
