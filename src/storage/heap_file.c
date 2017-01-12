@@ -24596,6 +24596,12 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
     }
 
   assert (context->home_page_watcher.pgptr == NULL && context->fwd_page_watcher.pgptr == NULL);
+#if defined (SERVER_MODE)
+  if (context->bcb_area)
+    {
+      pgbuf_retire_tran_bcb_area (thread_p);
+    }
+#endif
 }
 
 /* 

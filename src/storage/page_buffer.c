@@ -1367,7 +1367,8 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   src_bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
   if (src_bufptr == NULL)
     {
-      /* not in memory, I can't get the page */
+      /* not in memory, I can't get the page. The caller is holding only hash_anchor->hash_mutex. */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
       goto exit_on_error;
     }
 
@@ -12741,10 +12742,23 @@ pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
       thread_p->tran_bcb = bufptr;
     }
 
+  assert (thread_p->tran_bcb_used == false);
+  thread_p->tran_bcb_used = true;
   CAST_BFPTR_TO_PGPTR (*bcb_area, bufptr);
 
   assert (*bcb_area != NULL);
   return NO_ERROR;
+}
+
+/*
+ * pgbuf_retire_tran_bcb_area () - Retire transaction BCB area
+ *   return: error code
+ *   thread_p(in): thread entry 
+ */
+int
+pgbuf_retire_tran_bcb_area (THREAD_ENTRY * thread_p)
+{
+  thread_p->tran_bcb_used = false;
 }
 
 /*

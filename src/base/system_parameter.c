@@ -893,7 +893,7 @@ static int prm_pb_nbuffers_default = 32768;
 static int prm_pb_nbuffers_lower = 1024;
 static unsigned int prm_pb_nbuffers_flag = 0;
 
-bool PRM_PAGE_COPY_AT_READ = true;
+bool PRM_PAGE_READ_WITHOUT_LATCH = true;
 static bool prm_page_read_without_latch_default = true;
 static bool prm_page_read_without_latch = 0;
 
@@ -2253,7 +2253,7 @@ static SYSPRM_PARAM prm_Def[] = {
    PRM_BOOLEAN,
    (void *) &prm_page_read_without_latch,
    (void *) &prm_page_read_without_latch_default,
-   (void *) &PRM_PAGE_COPY_AT_READ,
+   (void *) &PRM_PAGE_READ_WITHOUT_LATCH,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

@@ -359,6 +359,7 @@ struct thread_entry
 #endif
 
   void *tran_bcb;
+  bool tran_bcb_used;
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \

@@ -33281,6 +33281,12 @@ btree_unfix_and_init_current_page (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
   else
     {
+#if defined (SERVER_MODE)
+      if (bts->bcb_area)
+	{
+	  pgbuf_retire_tran_bcb_area (thread_p);
+	}
+#endif
       bts->C_page = NULL;
     }
 }

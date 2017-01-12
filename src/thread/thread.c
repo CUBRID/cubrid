@@ -1174,6 +1174,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 #endif
 
   entry_p->tran_bcb = NULL;
+  entry_p->tran_bcb_used = false;
 
   return NO_ERROR;
 }
