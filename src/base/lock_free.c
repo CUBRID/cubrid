@@ -2520,7 +2520,7 @@ lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue)
   UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
   /* The queue is empty if the consume cursor is equal to produce cursor. */
-  return cc <= pc;
+  return cc >= pc;
 }
 
 /*
