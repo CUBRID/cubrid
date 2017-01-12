@@ -1192,6 +1192,7 @@ struct pgbuf_monitor_bcb_mutex
         { \
           (void) pthread_mutex_unlock (&(bcb_arg)->BCB_mutex); \
           mon_bcb_mutex->bcb = NULL; \
+          break; \
         } \
       pgbuf_Global_error = "invalid unlock bcb mutex"; \
       abort (); \
