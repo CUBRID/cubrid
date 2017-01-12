@@ -10141,6 +10141,11 @@ pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
 
   /* change bcb zones from 1 to 2 until lru 1 zone count is down to zone 1 desired threshold.
    * note: if zone 1 desired threshold is bigger, its bottom is not moved. */
+  if (lru_list->LRU_bottom_2 == NULL)
+    {
+      /* bottom 1 will become bottom 2. */
+      lru_list->LRU_bottom_2 = lru_list->LRU_bottom_1;
+    }
   for (bcb_bottom = lru_list->LRU_bottom_1; lru_list->threshold_lru1 < lru_list->count_lru1;
        bcb_bottom = bcb_bottom->prev_BCB)
     {
