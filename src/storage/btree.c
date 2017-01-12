@@ -538,6 +538,7 @@ typedef int BTREE_ROOT_WITH_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID * btid, 
  * thread_p (in)       : Thread entry.
  * btid_int (int)      : B-tree info.
  * key (in)	       : Key value.
+ * bcb_area (in)       : BCB area
  * is_leaf (out)       : Output true if root is leaf node.
  * key_slotid (out)    : Output slotid of key if found, NULL_SLOTID otherwise.
  * stop (out)	       : Output true when advancing in b-tree should be
@@ -9658,6 +9659,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   int Q_end, R_start;
 #if !defined(NDEBUG)
   int p_level, q_level, r_level;
+  bool P_modification_started = false, Q_modification_started = false, R_modification_started = false;
 #endif
   BTREE_NODE_HEADER *q_header = NULL, *r_header = NULL;
 
@@ -9694,9 +9696,9 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
    * S-latch on parent page, while access the non-leaf without latch.
    */
-  pgbuf_start_modification (P);
-  pgbuf_start_modification (Q);
-  pgbuf_start_modification (R);
+  pgbuf_start_modification (P, &P_modification_started);
+  pgbuf_start_modification (Q, &Q_modification_started);
+  pgbuf_start_modification (R, &R_modification_started);
 #endif
 
   /* initializations */
@@ -9893,18 +9895,36 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
-  pgbuf_end_modification (Q);
-  pgbuf_end_modification (P);
-  pgbuf_end_modification (R);
+  if (Q_modification_started)
+    {
+      pgbuf_end_modification (Q);
+    }
+  if (P_modification_started)
+    {
+      pgbuf_end_modification (P);
+    }
+  if (R_modification_started)
+    {
+      pgbuf_end_modification (R);
+    }
 #endif
 
   return ret;
 
 exit_on_error:
 #if !defined(NDEBUG)
-  pgbuf_end_modification (Q);
-  pgbuf_end_modification (P);
-  pgbuf_end_modification (R);
+  if (Q_modification_started)
+    {
+      pgbuf_end_modification (Q);
+    }
+  if (P_modification_started)
+    {
+      pgbuf_end_modification (P);
+    }
+  if (R_modification_started)
+    {
+      pgbuf_end_modification (R);
+    }
 #endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -9986,6 +10006,10 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   char merged_upper_fence_record_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int merged_prefix = 0;
 
+#if !defined(NDEBUG)
+  bool P_modification_started = false, left_pg_modification_started = false, right_pg_modification_started = false;
+#endif
+
   assert (P != NULL && left_pg != NULL && right_pg != NULL);
   assert (pgbuf_get_latch_mode (P) == PGBUF_LATCH_WRITE);
   assert (pgbuf_get_latch_mode (left_pg) == PGBUF_LATCH_WRITE);
@@ -10013,9 +10037,9 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
    * S-latch on parent page, while access the non-leaf without latch.
    */
-  pgbuf_start_modification (P);
-  pgbuf_start_modification (left_pg);
-  pgbuf_start_modification (right_pg);
+  pgbuf_start_modification (P, &P_modification_started);
+  pgbuf_start_modification (left_pg, &left_pg_modification_started);
+  pgbuf_start_modification (right_pg, &right_pg_modification_started);
 #endif
 
   /***********************************************************
@@ -10433,9 +10457,18 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
 #if !defined(NDEBUG)
-  pgbuf_end_modification (P);
-  pgbuf_end_modification (left_pg);
-  pgbuf_end_modification (right_pg);
+  if (P_modification_started)
+    {
+      pgbuf_end_modification (P);
+    }
+  if (left_pg_modification_started)
+    {
+      pgbuf_end_modification (left_pg);
+    }
+  if (right_pg_modification_started)
+    {
+      pgbuf_end_modification (right_pg);
+    }
 #endif
 
   /* Success. */
@@ -10454,9 +10487,18 @@ exit_on_error:
   btree_clear_key_value (&right_fence_key_clear, &right_fence_key);
 
 #if !defined(NDEBUG)
-  pgbuf_end_modification (P);
-  pgbuf_end_modification (left_pg);
-  pgbuf_end_modification (right_pg);
+  if (P_modification_started)
+    {
+      pgbuf_end_modification (P);
+    }
+  if (left_pg_modification_started)
+    {
+      pgbuf_end_modification (left_pg);
+    }
+  if (right_pg_modification_started)
+    {
+      pgbuf_end_modification (right_pg);
+    }
 #endif
 
   return ret;
@@ -12628,6 +12670,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   char p_redo_data_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
 
   PAGE_PTR page_after_right = NULL;
+#if !defined(NDEBUG)
+  bool P_modification_started = false, Q_modification_started = false, R_modification_started = false;
+#endif
 
   rheader = &right_header_info;
 
@@ -12688,9 +12733,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
    * S-latch on parent page, while access the non-leaf without latch.
    */
-  pgbuf_start_modification (Q);
-  pgbuf_start_modification (P);
-  pgbuf_start_modification (R);
+  pgbuf_start_modification (Q, &Q_modification_started);
+  pgbuf_start_modification (P, &P_modification_started);
+  pgbuf_start_modification (R, &R_modification_started);
 #endif
 
   /********************************************************************
@@ -12769,14 +12814,12 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    * disk padding when the prefix key length approaches the fixed key length. */
   sep_key_len = btree_get_disk_size_of_key (sep_key);
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (sep_key_len);
-
   qheader->max_key_len = MAX (sep_key_len, qheader->max_key_len);
 
   /* set rheader max_key_len as qheader max_key_len */
   right_max_key_len = qheader->max_key_len;
   right_next_vpid = qheader->next_vpid;
 
-  /* no need to update modification counter for page Q since is a non-leaf page */
   if (node_type == BTREE_LEAF_NODE)
     {
       qheader->next_vpid = *R_vpid;
@@ -13048,9 +13091,18 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
   btree_verify_node (thread_p, btid, R);
-  pgbuf_end_modification (Q);
-  pgbuf_end_modification (P);
-  pgbuf_end_modification (R);
+  if (Q_modification_started)
+    {
+      pgbuf_end_modification (Q);
+    }
+  if (P_modification_started)
+    {
+      pgbuf_end_modification (P);
+    }
+  if (R_modification_started)
+    {
+      pgbuf_end_modification (R);
+    }
 #endif
 
   return ret;
@@ -13064,9 +13116,18 @@ exit_on_error:
     }
 
 #if !defined(NDEBUG)
-  pgbuf_end_modification (Q);
-  pgbuf_end_modification (P);
-  pgbuf_end_modification (R);
+  if (Q_modification_started)
+    {
+      pgbuf_end_modification (Q);
+    }
+  if (P_modification_started)
+    {
+      pgbuf_end_modification (P);
+    }
+  if (R_modification_started)
+    {
+      pgbuf_end_modification (R);
+    }
 #endif
 
   assert (ret != NO_ERROR);
@@ -13490,6 +13551,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   bool flag_fence_insert = false;
   OID dummy_oid = { NULL_PAGEID, 0, 0 };
   int leftsize, rightsize;
+#if !defined(NDEBUG)
+  bool P_modification_started = false, Q_modification_started = false, R_modification_started = false;
+#endif
 
   qheader = &q_header_info;
   rheader = &r_header_info;
@@ -13527,9 +13591,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
    * S-latch on parent page, while access the non-leaf without latch.
    */
-  pgbuf_start_modification (P);
-  pgbuf_start_modification (Q);
-  pgbuf_start_modification (R);
+  pgbuf_start_modification (P, &P_modification_started);
+  pgbuf_start_modification (Q, &Q_modification_started);
+  pgbuf_start_modification (R, &R_modification_started);
 #endif
 
   /* initializations */
@@ -13924,9 +13988,18 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
   btree_verify_node (thread_p, btid, R);
-  pgbuf_end_modification (P);
-  pgbuf_end_modification (Q);
-  pgbuf_end_modification (R);
+  if (P_modification_started)
+    {
+      pgbuf_end_modification (P);
+    }
+  if (Q_modification_started)
+    {
+      pgbuf_end_modification (Q);
+    }
+  if (R_modification_started)
+    {
+      pgbuf_end_modification (R);
+    }
 #endif
 
   return ret;
@@ -13940,9 +14013,18 @@ exit_on_error:
     }
 
 #if !defined(NDEBUG)
-  pgbuf_end_modification (P);
-  pgbuf_end_modification (Q);
-  pgbuf_end_modification (R);
+  if (P_modification_started)
+    {
+      pgbuf_end_modification (P);
+    }
+  if (Q_modification_started)
+    {
+      pgbuf_end_modification (Q);
+    }
+  if (R_modification_started)
+    {
+      pgbuf_end_modification (R);
+    }
 #endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -14143,6 +14225,7 @@ exit_on_error:
  *   return: Leaf node page pointer.
  *   btid_int (in) : B+tree index info.
  *   key (in) : Key to locate
+ *   bcb_area (in): BCB area
  *   pg_vpid (out) : Outputs Leaf node page VPID.
  *   slot_id (out) : Outputs slot ID of key if found, or slot ID of key if it was to be inserted.
  *   found_p (out) : Outputs true if key was found and false otherwise.
@@ -22214,6 +22297,7 @@ error:
  * btid (in)		     : B-tree identifier.
  * btid_int (out)	     : Output b-tree info if not NULL.
  * key (in)		     : Search key value.
+ * bcb_area(in)		     : BCB area
  * root_function (in)	     : Function called to fix/process root node.
  * root_args (in/out)	     : Arguments for root function.
  * advance_function (in)     : Function called to advance and process nodes discovered nodes.
@@ -22486,6 +22570,7 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
  * thread_p (in)	 : Thread entry.
  * btid_int (in)	 : B-tree data.
  * key (in)		 : Search key value.
+ * bcb_area (in)	 : BCB area
  * crt_page (in)	 : Page of current node.
  * advance_to_page (out) : Fixed page of child node found by following key.
  * is_leaf (out)	 : Output true if current page is leaf node.
@@ -23990,7 +24075,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     {
 
 #if defined (SERVER_MODE)
-      if (bts->copy_leaf_page_allowed && bts->key_range.range == GE_LE)
+      if (bts->copy_leaf_page_without_latch_allowed && bts->key_range.range == GE_LE)
 	{
 	  error_code = pgbuf_get_tran_bcb_area (thread_p, &bts->bcb_area);
 	  if (error_code != NO_ERROR)
@@ -26344,6 +26429,7 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
  * thread_p (in)	 : Thread entry.
  * btid_int (in)	 : B-tree data.
  * key (in)		 : Search key value.
+ * bcb_area (in)	 : BCB area
  * crt_page (in)	 : Page of current node.
  * advance_to_page (out) : Fixed page of child node found by following key.
  * is_leaf (out)	 : Output true if current page is leaf node.
@@ -29751,6 +29837,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
  * btid_int (in)	 : B-tree info.
  * key (in)		 : Key to follow while advancing.
  * crt_page (in)	 : Pointer to current node's page.
+ * bcb_area (in)	 : BCB area
  * advance_to_page (out) : Outputs next node page to advance to.
  * is_leaf (out)	 : Outputs whether current node is leaf.
  * search_key (out)	 : Outputs search key result when current node is leaf.
@@ -33182,6 +33269,7 @@ btree_op_type_to_string (int op_type)
  * btree_unfix_and_init_current_page () - Unifx and init the current page
  *
  * return       : error code
+ * thread_p (in): thread entry
  * bts (in) : btree scan structure
  */
 STATIC_INLINE void

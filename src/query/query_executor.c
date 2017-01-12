@@ -498,7 +498,7 @@ static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 static int qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
 			    bool force_select_lock, int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
 			    QUERY_ID query_id, SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
-			    bool copy_leaf_page_allowed, bool * p_mvcc_select_lock_needed);
+			    bool copy_leaf_page_without_latch_allowed, bool * p_mvcc_select_lock_needed);
 static void qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec);
 static void qexec_end_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec);
 static SCAN_CODE qexec_next_merge_block (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE ** spec);
@@ -6303,6 +6303,10 @@ exit_on_error:
  *   grouped(in)        : Grouped scan flag
  *   iscan_oid_order(in)       :
  *   s_id(out)   : Set to the scan identifier
+ *   query_id(in): Query id
+ *   scan_op_type(in): Scan operation type
+ *   scan_immediately_stop(in): true, if stop scan immediately
+ *   copy_page_without_latch_allowed(in): true, if copy page without latch is allowed, currently used for index scan
  *   p_mvcc_select_lock_needed(out): true, whether instance lock needed at select 
  *
  * Note: This routine is used to open a scan on an access specification
@@ -6312,7 +6316,7 @@ static int
 qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
 		 bool force_select_lock, int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
 		 QUERY_ID query_id, SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
-		 bool copy_leaf_page_allowed, bool * p_mvcc_select_lock_needed)
+		 bool copy_page_without_latch_allowed, bool * p_mvcc_select_lock_needed)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
@@ -6456,7 +6460,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 				    curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 				    curr_spec->s.cls_node.cache_rest, curr_spec->s.cls_node.num_attrs_range,
 				    curr_spec->s.cls_node.attrids_range, curr_spec->s.cls_node.cache_range,
-				    iscan_oid_order, query_id, copy_leaf_page_allowed) != NO_ERROR)
+				    iscan_oid_order, query_id, copy_page_without_latch_allowed) != NO_ERROR)
 
 	    {
 	      goto exit_on_error;
@@ -13117,7 +13121,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool scan_immediately_stop = false;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool instant_lock_mode_started = false;
-  bool copy_leaf_page_allowed = prm_get_bool_value (PRM_ID_PAGE_COPY_AT_READ);
+  bool copy_page_without_latch_allowed = prm_get_bool_value (PRM_ID_PAGE_READ_WITHOUT_LATCH);
   bool mvcc_select_lock_needed;
 
   /* 
@@ -13614,7 +13618,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (qexec_open_scan (thread_p, specp, xptr->merge_val_list, &xasl_state->vd,
 					       force_select_lock, specp->fixed_scan, specp->grouped_scan,
 					       iscan_oid_order, &specp->s_id, xasl_state->query_id, xasl->scan_op_type,
-					       scan_immediately_stop, copy_leaf_page_allowed,
+					       scan_immediately_stop, copy_page_without_latch_allowed,
 					       &mvcc_select_lock_needed) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
@@ -13648,7 +13652,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (qexec_open_scan (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock,
 					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
 					       xasl_state->query_id, xptr->scan_op_type, scan_immediately_stop,
-					       copy_leaf_page_allowed, &mvcc_select_lock_needed) != NO_ERROR)
+					       copy_page_without_latch_allowed, &mvcc_select_lock_needed) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
@@ -13663,12 +13667,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    }
 			}
 		      /* currently allow copy leaf page without latch only for one spec */
-		      copy_leaf_page_allowed = false;
+		      copy_page_without_latch_allowed = false;
 		    }
 		}
 
 	      /* currently allow copy leaf page without latch only for one one scan block, one access spec */
-	      copy_leaf_page_allowed = false;
+	      copy_page_without_latch_allowed = false;
 	    }
 
 	  /* allocate xasl scan function vector */

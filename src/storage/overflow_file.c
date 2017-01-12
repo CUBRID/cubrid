@@ -105,6 +105,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
   VPID vpids_buffer[OVERFLOW_ALLOCVPID_ARRAY_SIZE + 1];
   bool is_sysop_started = false;
   PAGE_TYPE ptype = PAGE_OVERFLOW;
+  bool modification_started = false;
 
   int error_code = NO_ERROR;
 
@@ -189,13 +190,13 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 	  goto exit_on_error;
 	}
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+      pgbuf_start_modification (addr.pgptr, &modification_started);
 
       /* Is this the first page ? */
       if (i == 0)
 	{
 	  /* This is the first part */
 	  first_part = (OVERFLOW_FIRST_PART *) addr.pgptr;
-
 	  first_part->next_vpid = vpids[i + 1];
 	  first_part->length = length;
 	  copyto = (char *) first_part->data;
@@ -211,13 +212,10 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 	    {
 	      log_append_empty_record (thread_p, LOG_DUMMY_OVF_RECORD, &addr);
 	    }
-
-	  pgbuf_start_modification (first_part);
 	}
       else
 	{
 	  rest_parts = (OVERFLOW_REST_PART *) addr.pgptr;
-
 	  rest_parts->next_vpid = vpids[i + 1];
 	  copyto = (char *) rest_parts->data;
 
@@ -239,9 +237,10 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
       data += copy_length;
       length -= copy_length;
 
-      if (i == 0)
+      if (modification_started)
 	{
-	  pgbuf_end_modification (first_part);
+	  pgbuf_end_modification (addr.pgptr);
+	  modification_started = false;
 	}
 
       pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
@@ -404,6 +403,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
   bool isnewpage = false;
   PAGE_TYPE ptype = PAGE_OVERFLOW;
   int error_code = NO_ERROR;
+  bool modification_started = false;
 
   assert (ovf_vfid != NULL && !VFID_ISNULL (ovf_vfid));
 
@@ -430,6 +430,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	  goto exit_on_error;
 	}
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+      pgbuf_start_modification (addr.pgptr, &modification_started);
 
       addr_vpid_ptr = pgbuf_get_vpid_ptr (addr.pgptr);
 
@@ -438,8 +439,6 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
       /* Is this the first page ? */
       if (VPID_EQ (addr_vpid_ptr, ovf_vpid))
 	{
-	  pgbuf_start_modification (addr.pgptr);
-
 	  /* This is the first part */
 	  first_part = (OVERFLOW_FIRST_PART *) addr.pgptr;
 	  old_length = first_part->length;
@@ -551,9 +550,10 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 		}
 	    }
 
-	  if (VPID_EQ (addr_vpid_ptr, ovf_vpid))
+	  if (modification_started)
 	    {
 	      pgbuf_end_modification (addr.pgptr);
+	      modification_started = false;
 	    }
 	  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 	}
@@ -576,9 +576,10 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	      VPID_SET_NULL (&rest_parts->next_vpid);
 	    }
 
-	  if (VPID_EQ (addr_vpid_ptr, ovf_vpid))
+	  if (modification_started)
 	    {
 	      pgbuf_end_modification (addr.pgptr);
+	      modification_started = false;
 	    }
 	  pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 
@@ -590,6 +591,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 		  ASSERT_ERROR_AND_SET (error_code);
 		  goto exit_on_error;
 		}
+	      pgbuf_start_modification (addr.pgptr, &modification_started);
 
 	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
 
@@ -597,6 +599,11 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	      rest_parts = (OVERFLOW_REST_PART *) addr.pgptr;
 	      next_vpid = rest_parts->next_vpid;
 
+	      if (modification_started)
+		{
+		  pgbuf_end_modification (addr.pgptr);
+		  modification_started = false;
+		}
 	      pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
 	      error_code = file_dealloc (thread_p, ovf_vfid, &tmp_vpid, file_type);

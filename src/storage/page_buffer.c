@@ -1315,12 +1315,29 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid
 }
 #endif /* NDEBUG */
 
-
 #if !defined(NDEBUG)
+/*
+ * pgbuf_copy_to_bcb_area_debug () - copy page to bcb area, debug version
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   vpid(in): complete Page identifier
+ *   bcb_area(in/out): bcb area
+ *   size(in): size to copy
+ *   caller_file(in): caller file
+ *   caller_line(in): caller line
+ */
 int
 pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
 			      const char *caller_file, int caller_line)
 #else
+/*
+ * pgbuf_copy_to_bcb_area_release () - copy page to bcb area, release version
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   vpid(in): complete Page identifier
+ *   bcb_area(in/out): bcb area
+ *   size(in): size to copy
+ */
 int
 pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * bcb_area, int size)
 #endif
@@ -12570,16 +12587,28 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
  *
  * return     : nothing.
  * pgptr (in) : Page pointer.
+ * modification_started (out): true, if the modification is started
  */
 void
-pgbuf_start_modification (PAGE_PTR pgptr)
+pgbuf_start_modification (PAGE_PTR pgptr, bool * modification_started)
 {
 #if defined (SERVER_MODE)
   PGBUF_BCB *bufptr = NULL;
-  assert (pgptr != NULL);
+  assert (pgptr != NULL && modification_started != NULL);
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  PGBUF_BCB_START_MODIFICATION (bufptr);
+  if (bufptr->count_modifications & 1)
+    {
+      /* Modification already started, nothing to do. */
+      *modification_started = false;
+    }
+  else
+    {
+      PGBUF_BCB_START_MODIFICATION (bufptr);
+      *modification_started = true;
+    }
+#else
+  *modification_started = false;
 #endif
 }
 
@@ -12722,7 +12751,6 @@ pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
  * pgbuf_finalize_tran_bcb () - Finalize transaction BCB
  *   return: error code
  *   thread_p(in): thread entry
- *   tran_bcb (out): transaction BCB area
  */
 void
 pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
@@ -12744,6 +12772,7 @@ pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
 /*
  * pgbuf_relocate_bcb () - Relocate BCB
  * return : void
+ * thread_p (in) : thread entry
  * bufptr (in) : BCB
  *
  * Note: The caller must hold the BCB mutex.

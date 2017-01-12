@@ -125,7 +125,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_BUFFER_SIZE "data_buffer_size"
 
-#define PRM_NAME_PAGE_COPY_AT_READ "page_copy_at_read"
+#define PRM_NAME_PAGE_READ_WITHOUT_LATCH "page_read_without_latch"
 
 #define PRM_NAME_PB_BUFFER_FLUSH_RATIO "data_buffer_flush_ratio"
 
@@ -894,8 +894,8 @@ static int prm_pb_nbuffers_lower = 1024;
 static unsigned int prm_pb_nbuffers_flag = 0;
 
 bool PRM_PAGE_COPY_AT_READ = true;
-static bool prm_page_copy_at_read_default = true;
-static bool prm_page_copy_at_read_flag = 0;
+static bool prm_page_read_without_latch_default = true;
+static bool prm_page_read_without_latch = 0;
 
 float PRM_PB_BUFFER_FLUSH_RATIO = 0.01f;
 static float prm_pb_buffer_flush_ratio_default = 0.01f;
@@ -2248,11 +2248,11 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_io_pages,
    (DUP_PRM_FUNC) prm_io_pages_to_size},
-  {PRM_NAME_PAGE_COPY_AT_READ,
+  {PRM_NAME_PAGE_READ_WITHOUT_LATCH,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
-   (void *) &prm_page_copy_at_read_flag,
-   (void *) &prm_page_copy_at_read_default,
+   (void *) &prm_page_read_without_latch,
+   (void *) &prm_page_read_without_latch_default,
    (void *) &PRM_PAGE_COPY_AT_READ,
    (void *) NULL, (void *) NULL,
    (char *) NULL,

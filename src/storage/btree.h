@@ -242,7 +242,7 @@ struct btree_scan
   PERF_UTIME_TRACKER time_track;
 
   char *bcb_area;
-  bool copy_leaf_page_allowed;
+  bool copy_leaf_page_without_latch_allowed;
 
   void *bts_other;
 };
@@ -293,27 +293,27 @@ struct btree_scan
     OID_SET_NULL (&(bts)->match_class_oid);		\
     (bts)->time_track.is_perf_tracking = false;		\
     (bts)->bcb_area = NULL;			\
-    (bts)->copy_leaf_page_allowed = false;		\
+    (bts)->copy_leaf_page_without_latch_allowed = false;		\
     (bts)->bts_other = NULL;				\
   } while (0)
 
-#define BTREE_RESET_SCAN(bts)				\
-  do {							\
-    (bts)->P_vpid.pageid = NULL_PAGEID;			\
-    (bts)->C_vpid.pageid = NULL_PAGEID;			\
-    (bts)->O_vpid.pageid = NULL_PAGEID;			\
-    (bts)->P_page = NULL;				\
-    (bts)->C_page = NULL;				\
-    (bts)->O_page = NULL;				\
-    (bts)->slot_id = -1;				\
-    (bts)->oid_pos = 0;					\
-    (bts)->restart_scan = 0;                    	\
-    (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
-    pr_clear_value (&(bts)->cur_key);			\
-    DB_MAKE_NULL (&(bts)->cur_key);			\
-    (bts)->clear_cur_key = false;			\
-    (bts)->is_scan_started = false;			\
-    (bts)->copy_leaf_page_allowed = false;		\
+#define BTREE_RESET_SCAN(bts)				 \
+  do {							 \
+    (bts)->P_vpid.pageid = NULL_PAGEID;			 \
+    (bts)->C_vpid.pageid = NULL_PAGEID;			 \
+    (bts)->O_vpid.pageid = NULL_PAGEID;			 \
+    (bts)->P_page = NULL;				 \
+    (bts)->C_page = NULL;				 \
+    (bts)->O_page = NULL;				 \
+    (bts)->slot_id = -1;				 \
+    (bts)->oid_pos = 0;					 \
+    (bts)->restart_scan = 0;                    	 \
+    (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	 \
+    pr_clear_value (&(bts)->cur_key);			 \
+    DB_MAKE_NULL (&(bts)->cur_key);			 \
+    (bts)->clear_cur_key = false;			 \
+    (bts)->is_scan_started = false;			 \
+    (bts)->copy_leaf_page_without_latch_allowed = false; \
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \

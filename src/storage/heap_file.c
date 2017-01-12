@@ -7254,7 +7254,7 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   need_latch = true;
 try_again:
 #if defined(SERVER_MODE)
-  if (context->copy_leaf_page_allowed
+  if (context->copy_page_without_latch_allowed
       && latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY && context->home_page_watcher.pgptr == NULL)
     {
       ret = pgbuf_get_tran_bcb_area (thread_p, &context->bcb_area);
@@ -18756,6 +18756,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 {
   RECDES ovf_recdes;
   int error_code = NO_ERROR;
+  bool modification_started = false;
 
   assert (ovf_page != NULL);
   assert (mvcc_header != NULL);
@@ -18782,9 +18783,12 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 
   /* Safe guard */
   assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header)] == OR_MVCC_MAX_HEADER_SIZE);
-  pgbuf_start_modification (ovf_page);
+  pgbuf_start_modification (ovf_page, &modification_started);
   error_code = or_mvcc_set_header (&ovf_recdes, mvcc_header);
-  pgbuf_end_modification (ovf_page);
+  if (modification_started)
+    {
+      pgbuf_end_modification (ovf_page);
+    }
   return error_code;
 }
 
@@ -24172,7 +24176,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  *   oid (in): Object to be obtained.
  *   class_oid (in): 
  *   recdes (out): Record descriptor. NULL if not needed
- *   copy_page_allowed (in): True, if copy page is allowed
+ *   copy_page_without_latch_allowed (in): True, if copy page without latch is allowed
  *   scan_cache(in): Heap scan cache.
  *   ispeeking(in): Peek record or copy.
  *   old_chn (in): Cache coherency number for existing record data. It is
@@ -24182,12 +24186,13 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  */
 SCAN_CODE
 heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			  bool copy_page_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			  bool copy_page_without_latch_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, copy_page_allowed, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, copy_page_without_latch_allowed, scan_cache,
+			 ispeeking, old_chn);
 
   scan = heap_get_visible_version_internal (thread_p, &context, false);
 
@@ -24596,19 +24601,20 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 /* 
  * heap_init_get_context () - Initiate all heap get context fields with generic informations
  *
- * thread_p (in)   : Thread_identifier.
- * context (out)   : Heap get context.
- * oid (in)	   : Object identifier.
- * class_oid (in)  : Class oid.
- * recdes (in)     : Record descriptor.
- * scan_cache (in) : Scan cache. 
- * is_peeking (in) : PEEK or COPY.
- * old_chn (in)	   : Cache coherency number. 
+ * thread_p (in)			: Thread_identifier.
+ * context (out)			: Heap get context.
+ * oid (in)				: Object identifier.
+ * class_oid (in)			: Class oid.
+ * recdes (in)				: Record descriptor.
+ * copy_page_without_latch_allowed (in) : True, if copy page without latch is allowed
+ * scan_cache (in)			: Scan cache.
+ * is_peeking (in)			: PEEK or COPY.
+ * old_chn (in)				: Cache coherency number.
 */
 void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid, OID * class_oid,
-		       RECDES * recdes, bool copy_leaf_page_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking,
-		       int old_chn)
+		       RECDES * recdes, bool copy_page_without_latch_allowed, HEAP_SCANCACHE * scan_cache,
+		       int ispeeking, int old_chn)
 {
   context->oid_p = oid;
   context->class_oid_p = class_oid;
@@ -24630,13 +24636,13 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
-      assert (copy_leaf_page_allowed == false);
+      assert (copy_page_without_latch_allowed == false);
     }
   else
     {
       context->latch_mode = PGBUF_LATCH_READ;
     }
-  context->copy_leaf_page_allowed = copy_leaf_page_allowed;
+  context->copy_page_without_latch_allowed = copy_page_without_latch_allowed;
 }
 
 /*
