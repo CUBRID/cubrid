@@ -7728,7 +7728,6 @@ xsysprm_dump_server_parameters (FILE * outfp)
 }
 #endif /* !CS_MODE */
 
-
 int
 sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
 {
@@ -7854,7 +7853,6 @@ sysprm_get_range (const char *pname, void *min, void *max)
     }
   return sysprm_get_param_range (prm, min, max);
 }
-
 
 /*
  * sysprm_check_range -
@@ -8125,6 +8123,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	    new_value->i = PRM_GET_INT (prm->default_value);
 	    break;
 	  }
+
 	if (set_min || set_max)
 	  {
 	    ret = sysprm_get_param_range (prm, &min, &max);
@@ -8199,6 +8198,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	else
 	  {
 	    int result;
+
 	    result = parse_int (&val, value, 10);
 
 	    if (result != 0)
@@ -8299,6 +8299,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	    new_value->f = PRM_GET_FLOAT (prm->default_value);
 	    break;
 	  }
+
 	if (set_min || set_max)
 	  {
 	    int min, max;
@@ -8345,7 +8346,6 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	  }
 	else
 	  {
-
 	    val = (float) strtod (value, &end);
 	    if (end == value)
 	      {
@@ -8355,7 +8355,6 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
-
 
 	    if (prm_check_range (prm, (void *) &val) != NO_ERROR)
 	      {
