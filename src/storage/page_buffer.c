@@ -1188,7 +1188,7 @@ struct pgbuf_monitor_bcb_mutex
           mon_bcb_mutex->try_bcb = NULL; \
           break; \
         } \
-      if (mon_bcb_mutex->bcb == NULL || mon_bcb_mutex->bcb != bcb_arg) \
+      if (mon_bcb_mutex->bcb == (bcb_arg)) \
         { \
           (void) pthread_mutex_unlock (&(bcb_arg)->BCB_mutex); \
           mon_bcb_mutex->bcb = NULL; \
