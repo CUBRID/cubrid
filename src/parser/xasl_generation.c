@@ -16529,7 +16529,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
   bool query_Plan_dump_fp_open = false;
 
   /* we should propagate abort error from the server */
-  if ((!parser->abort && PT_IS_QUERY (node)) || node->node_type == PT_CTE)
+  if (!parser->abort && (PT_IS_QUERY (node) || node->node_type == PT_CTE))
     {
       /* check for cached query xasl */
       for (query = query_list; query; query = query->next)
