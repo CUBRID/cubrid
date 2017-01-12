@@ -16406,7 +16406,7 @@ pgbuf_lru_set_victim_hint_if_not_set (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, 
 static const char *global_error = NULL;
 
 static void
-  pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
+pgbuf_lru_sanity (PGBUF_LRU_LIST * lru)
 {
   if (lru->LRU_top == NULL)
     {
@@ -16498,12 +16498,12 @@ static void
           global_error = "bottom 2 not 2";
           abort ();
         }
-      if (lru->LRU_bottom_1 == NULL && PGBUF_GET_ZONE (lru->LRU_top->zone_lru) != PGBUF_LRU_2_ZONE)
+      if (lru->LRU_bottom_2 == NULL && PGBUF_GET_ZONE (lru->LRU_top->zone_lru) != PGBUF_LRU_2_ZONE)
         {
           global_error = "top not 2";
           abort ();
         }
-      if (lru->LRU_bottom_1->next_BCB != NULL)
+      if (lru->LRU_bottom_2->next_BCB != NULL)
         {
           if (PGBUF_GET_ZONE (lru->LRU_bottom_2->next_BCB->zone_lru) == PGBUF_LRU_2_ZONE)
             {
