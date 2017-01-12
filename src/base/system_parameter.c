@@ -626,6 +626,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_FILE_LOGGING "file_logging_debug"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
+#define PRM_VALUE_MAX "MAX"
+#define PRM_VALUE_MIN "MIN"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -7726,29 +7728,11 @@ xsysprm_dump_server_parameters (FILE * outfp)
 }
 #endif /* !CS_MODE */
 
-/*
- * sysprm_get_range -
- *   return:
- *   pname (in): parameter name
- *   value (in): parameter value
- */
+
 int
-sysprm_get_range (const char *pname, void *min, void *max)
+sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
 {
   int error = NO_ERROR;
-  SYSPRM_PARAM *prm;
-
-  prm = prm_find (pname, NULL);
-  if (prm == NULL)
-    {
-      return PRM_ERR_UNKNOWN_PARAM;
-    }
-
-  if (PRM_DIFFERENT_UNIT (prm->static_flag))
-    {
-      assert (prm->get_dup != NULL);
-    }
-
   if (PRM_IS_INTEGER (prm))
     {
       if (prm->lower_limit)
@@ -7845,6 +7829,32 @@ sysprm_get_range (const char *pname, void *min, void *max)
 
   return PRM_ERR_NO_ERROR;
 }
+
+/*
+ * sysprm_get_range -
+ *   return:
+ *   pname (in): parameter name
+ *   value (in): parameter value
+ */
+int
+sysprm_get_range (const char *pname, void *min, void *max)
+{
+  int error = NO_ERROR;
+  SYSPRM_PARAM *prm;
+
+  prm = prm_find (pname, NULL);
+  if (prm == NULL)
+    {
+      return PRM_ERR_UNKNOWN_PARAM;
+    }
+
+  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+    {
+      assert (prm->get_dup != NULL);
+    }
+  return sysprm_get_param_range (prm, min, max);
+}
+
 
 /*
  * sysprm_check_range -
@@ -8028,6 +8038,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 {
   char *end = NULL;
   int error = NO_ERROR;
+  int set_min = 0;
+  int set_max = 0;
   SYSPRM_ERR ret = PRM_ERR_NO_ERROR;
 
   if (prm == NULL)
@@ -8089,23 +8101,47 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
     }
 #endif /* SERVER_MODE */
 
-  if (strcmp (value, "DEFAULT") == 0)
+  if (strcasecmp (value, PRM_VALUE_DEFAULT) == 0)
     {
       set_default = true;
+    }
+  if (strcasecmp (value, PRM_VALUE_MAX) == 0)
+    {
+      set_max = true;
+    }
+  if (strcasecmp (value, PRM_VALUE_MIN) == 0)
+    {
+      set_min = true;
     }
   switch (prm->datatype)
     {
     case PRM_INTEGER:
       {
 	/* convert string to int */
-	int val;
+	int val, min, max;
 
 	if (set_default)
 	  {
 	    new_value->i = PRM_GET_INT (prm->default_value);
 	    break;
 	  }
-
+	if (set_min || set_max)
+	  {
+	    ret = sysprm_get_param_range (prm, &min, &max);
+	    if (ret != PRM_ERR_NO_ERROR)
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
+	    if (set_min)
+	      {
+		new_value->i = min;
+	      }
+	    else
+	      {
+		new_value->i = max;
+	      }
+	    break;
+	  }
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    UINT64 dup_val;
@@ -8162,33 +8198,9 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	  }
 	else
 	  {
-	    int result = 0;
-	    if (strcmp (value, "MAX") == 0)
-	      {
-		if (prm->upper_limit == NULL)
-		  {
-		    val = INT_MAX;
-		  }
-		else
-		  {
-		    val = *(int *) prm->upper_limit;
-		  }
-	      }
-	    else if (strcmp (value, "MIN") == 0)
-	      {
-		if (prm->lower_limit == NULL)
-		  {
-		    val = INT_MIN;
-		  }
-		else
-		  {
-		    val = *(int *) prm->lower_limit;
-		  }
-	      }
-	    else
-	      {
-		result = parse_int (&val, value, 10);
-	      }
+	    int result;
+	    result = parse_int (&val, value, 10);
+
 	    if (result != 0)
 	      {
 		return PRM_ERR_BAD_VALUE;
@@ -8217,7 +8229,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
       {
 	/* convert string to UINT64 */
 	int result;
-	UINT64 val;
+	UINT64 val, min, max;
 	char *end_p;
 
 	if (set_default)
@@ -8225,7 +8237,24 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	    new_value->bi = PRM_GET_BIGINT (prm->default_value);
 	    break;
 	  }
+	if (set_min || set_max)
+	  {
 
+	    ret = sysprm_get_param_range (prm, &min, &max);
+	    if (ret != PRM_ERR_NO_ERROR)
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
+	    if (set_min)
+	      {
+		new_value->i = min;
+	      }
+	    else
+	      {
+		new_value->i = max;
+	      }
+	    break;
+	  }
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    if (util_size_string_to_byte (&val, value) != NO_ERROR)
@@ -8235,33 +8264,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	  }
 	else
 	  {
-	    result = 0;
-	    if (strcmp (value, "MAX") == 0)
-	      {
-		if (prm->upper_limit == NULL)
-		  {
-		    val = DB_BIGINT_MAX;
-		  }
-		else
-		  {
-		    val = *(int *) prm->upper_limit;
-		  }
-	      }
-	    else if (strcmp (value, "MIN") == 0)
-	      {
-		if (prm->lower_limit == NULL)
-		  {
-		    val = DB_BIGINT_MIN;
-		  }
-		else
-		  {
-		    val = *(int *) prm->lower_limit;
-		  }
-	      }
-	    else
-	      {
-		result = str_to_uint64 (&val, &end_p, value, 10);
-	      }
+	    result = str_to_uint64 (&val, &end_p, value, 10);
 	    if (result != 0)
 	      {
 		return PRM_ERR_BAD_VALUE;
@@ -8289,14 +8292,31 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
     case PRM_FLOAT:
       {
 	/* convert string to float */
-	float val;
+	float val, min, max;
 
 	if (set_default)
 	  {
 	    new_value->f = PRM_GET_FLOAT (prm->default_value);
 	    break;
 	  }
-
+	if (set_min || set_max)
+	  {
+	    int min, max;
+	    ret = sysprm_get_param_range (prm, &min, &max);
+	    if (ret != PRM_ERR_NO_ERROR)
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
+	    if (set_min)
+	      {
+		new_value->i = min;
+	      }
+	    else
+	      {
+		new_value->i = max;
+	      }
+	    break;
+	  }
 	if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	  {
 	    UINT64 dup_val;
@@ -8325,40 +8345,17 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	  }
 	else
 	  {
-	    if (strcmp (value, "MAX") == 0)
+
+	    val = (float) strtod (value, &end);
+	    if (end == value)
 	      {
-		if (prm->upper_limit == NULL)
-		  {
-		    val = FLT_MAX;
-		  }
-		else
-		  {
-		    val = *(int *) prm->upper_limit;
-		  }
+		return PRM_ERR_BAD_VALUE;
 	      }
-	    else if (strcmp (value, "MIN") == 0)
+	    else if (*end != '\0')
 	      {
-		if (prm->lower_limit == NULL)
-		  {
-		    val = FLT_MIN;
-		  }
-		else
-		  {
-		    val = *(int *) prm->lower_limit;
-		  }
+		return PRM_ERR_BAD_VALUE;
 	      }
-	    else
-	      {
-		val = (float) strtod (value, &end);
-		if (end == value)
-		  {
-		    return PRM_ERR_BAD_VALUE;
-		  }
-		else if (*end != '\0')
-		  {
-		    return PRM_ERR_BAD_VALUE;
-		  }
-	      }
+
 
 	    if (prm_check_range (prm, (void *) &val) != NO_ERROR)
 	      {
