@@ -6893,7 +6893,6 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
     {
       /* parse data */
       SYSPRM_ASSIGN_VALUE *assign = NULL;
-      bool set_default = false;
 
       /* get parameter name and value */
       err = prm_get_next_param_value (&p, &name, &value);
@@ -6918,48 +6917,6 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
 	{
 	  err = PRM_ERR_CANNOT_CHANGE;
 	  break;
-	}
-
-      if (check && !set_default)
-	{
-	  if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0 || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
-	    {
-	      INTL_LANG dummy;
-
-	      if (lang_get_lang_id_from_name (value, &dummy) != 0)
-		{
-		  err = PRM_ERR_BAD_VALUE;
-		  break;
-		}
-	    }
-	  if (strcmp (prm->name, PRM_NAME_INTL_COLLATION) == 0)
-	    {
-	      LANG_COLLATION *lc = NULL;
-	      if (value != NULL)
-		{
-		  lc = lang_get_collation_by_name (value);
-		}
-
-	      if (lc == NULL)
-		{
-		  err = PRM_ERR_BAD_VALUE;
-		  break;
-		}
-	    }
-	  if (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0)
-	    {
-	      int er_status = NO_ERROR;
-
-	      if (value != NULL)
-		{
-		  er_status = tz_str_to_region (value, strlen (value), NULL);
-		  if (er_status != NO_ERROR)
-		    {
-		      err = PRM_ERR_BAD_VALUE;
-		      break;
-		    }
-		}
-	    }
 	}
 
       /* create a SYSPRM_CHANGE_VAL object */
@@ -8386,6 +8343,46 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
     {
       set_min = true;
     }
+#if !defined(SERVER_MODE)
+  if (!set_default)
+    {
+      if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0 || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
+	{
+	  INTL_LANG dummy;
+
+	  if (lang_get_lang_id_from_name (value, &dummy) != 0)
+	    {
+	      return PRM_ERR_BAD_VALUE;
+	    }
+	}
+      if (strcmp (prm->name, PRM_NAME_INTL_COLLATION) == 0)
+	{
+	  LANG_COLLATION *lc = NULL;
+	  if (value != NULL)
+	    {
+	      lc = lang_get_collation_by_name (value);
+	    }
+
+	  if (lc == NULL)
+	    {
+	      return PRM_ERR_BAD_VALUE;
+	    }
+	}
+      if (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0)
+	{
+	  int er_status = NO_ERROR;
+
+	  if (value != NULL)
+	    {
+	      er_status = tz_str_to_region (value, strlen (value), NULL);
+	      if (er_status != NO_ERROR)
+		{
+		  return PRM_ERR_BAD_VALUE;
+		}
+	    }
+	}
+    }
+#endif
   if (set_max || set_min)
     {
       ret = sysprm_get_param_range (prm, &min, &max);
