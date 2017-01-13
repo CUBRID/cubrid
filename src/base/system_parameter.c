@@ -5610,7 +5610,7 @@ static PARAM_ID sysprm_get_id (const SYSPRM_PARAM * prm);
 static int sysprm_compare_values (void *first_value, void *second_value, unsigned int val_type);
 static void sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value, SYSPRM_PARAM * prm);
 static SESSION_PARAM *sysprm_alloc_session_parameters (void);
-static SYSPRM_ERR sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bool set_default,
+static SYSPRM_ERR sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 					     SYSPRM_VALUE * new_value);
 static int sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate);
 static void sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value);
@@ -6920,11 +6920,6 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
 	  break;
 	}
 
-      if (strlen (value) == 7 && intl_identifier_casecmp (value, PRM_VALUE_DEFAULT) == 0)
-	{
-	  set_default = true;
-	}
-
       if (check && !set_default)
 	{
 	  if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0 || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
@@ -6975,7 +6970,7 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
 	  err = PRM_ERR_NO_MEM_FOR_PRM;
 	  break;
 	}
-      err = sysprm_generate_new_value (prm, value, check, set_default, &assign->value);
+      err = sysprm_generate_new_value (prm, value, check, &assign->value);
       if (err != PRM_ERR_NO_ERROR)
 	{
 	  if (err == PRM_ERR_NOT_FOR_CLIENT || err == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
@@ -8309,17 +8304,14 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
  * value (in)	   : parameter value in char * format
  * check (in)	   : check if value can be changed. set to false if value
  *		     should be forced
- * set_default(in) : whether set this sysprm to default value
  * new_value (out) : SYSPRM_VALUE converted from string
  */
 static SYSPRM_ERR
-sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bool set_default,
-			   SYSPRM_VALUE * new_value)
+sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SYSPRM_VALUE * new_value)
 {
   char *end = NULL;
   int error = NO_ERROR;
-  int set_min = 0;
-  int set_max = 0;
+  int set_min = 0, set_max = 0, set_default = 0;
   SYSPRM_ERR ret = PRM_ERR_NO_ERROR;
   SYSPRM_VALUE min, max;
 
@@ -8918,7 +8910,7 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
   SYSPRM_ERR error = PRM_ERR_NO_ERROR;
   SYSPRM_VALUE new_value;
 
-  error = sysprm_generate_new_value (prm, value, false, false, &new_value);
+  error = sysprm_generate_new_value (prm, value, false, &new_value);
   if (error != PRM_ERR_NO_ERROR)
     {
       return error;
