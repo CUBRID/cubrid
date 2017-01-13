@@ -12685,6 +12685,11 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
   PGBUF_IOPAGE_BUFFER *ioptr = NULL;
 
   assert (bcb_area != NULL);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
   bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
   if (bufptr == NULL)
     {
@@ -12758,6 +12763,10 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
 int
 pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p)
 {
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
   thread_p->tran_bcb_used = false;
 }
 
@@ -12770,6 +12779,8 @@ void
 pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bufptr;
+  assert (thread_p != NULL);
+
   bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
   if (bufptr)
     {
