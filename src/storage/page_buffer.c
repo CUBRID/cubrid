@@ -12673,13 +12673,13 @@ pgbuf_reset_modification (PAGE_PTR pgptr)
 
 #if defined (SERVER_MODE)
 /*
- * pgbuf_get_tran_bcb_area () - Get transaction BCB area
+ * pgbuf_acquire_tran_bcb_area () - Acquires transaction BCB area
  *   return: error code
  *   thread_p(in): thread entry
  *   bcb_area (out): transaction BCB area
  */
 int
-pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
+pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
 {
   PGBUF_BCB *bufptr = NULL;
   PGBUF_IOPAGE_BUFFER *ioptr = NULL;
@@ -12751,12 +12751,12 @@ pgbuf_get_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
 }
 
 /*
- * pgbuf_retire_tran_bcb_area () - Retire transaction BCB area
+ * pgbuf_release_tran_bcb_area () - Release transaction BCB area
  *   return: error code
  *   thread_p(in): thread entry 
  */
 int
-pgbuf_retire_tran_bcb_area (THREAD_ENTRY * thread_p)
+pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p)
 {
   thread_p->tran_bcb_used = false;
 }

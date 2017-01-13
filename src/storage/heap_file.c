@@ -7257,7 +7257,7 @@ try_again:
   if (context->copy_page_without_latch_allowed
       && latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY && context->home_page_watcher.pgptr == NULL)
     {
-      ret = pgbuf_get_tran_bcb_area (thread_p, &context->bcb_area);
+      ret = pgbuf_acquire_tran_bcb_area (thread_p, &context->bcb_area);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -24599,7 +24599,7 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 #if defined (SERVER_MODE)
   if (context->bcb_area)
     {
-      pgbuf_retire_tran_bcb_area (thread_p);
+      pgbuf_release_tran_bcb_area (thread_p);
     }
 #endif
 }

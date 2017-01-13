@@ -24077,7 +24077,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 #if defined (SERVER_MODE)
       if (bts->copy_leaf_page_without_latch_allowed && bts->key_range.range == GE_LE)
 	{
-	  error_code = pgbuf_get_tran_bcb_area (thread_p, &bts->bcb_area);
+	  error_code = pgbuf_acquire_tran_bcb_area (thread_p, &bts->bcb_area);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -33266,7 +33266,7 @@ btree_op_type_to_string (int op_type)
 }
 
 /*
- * btree_unfix_and_init_current_page () - Unifx and init the current page
+ * btree_unfix_and_init_current_page () - Unfix and init the current page
  *
  * return       : error code
  * thread_p (in): thread entry
@@ -33275,18 +33275,20 @@ btree_op_type_to_string (int op_type)
 STATIC_INLINE void
 btree_unfix_and_init_current_page (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
+  assert (bts->C_page != NULL);
   if (bts->C_page != bts->bcb_area)
     {
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
   else
     {
-#if defined (SERVER_MODE)
-      if (bts->bcb_area)
-	{
-	  pgbuf_retire_tran_bcb_area (thread_p);
-	}
-#endif
       bts->C_page = NULL;
     }
+
+#if defined (SERVER_MODE)
+  if (bts->bcb_area)
+    {
+      pgbuf_release_tran_bcb_area (thread_p);
+    }
+#endif
 }
