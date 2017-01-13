@@ -1261,8 +1261,8 @@ $ LOADDB
 1192 Value's precision of %1$zu exceeds maximum allowed %2$d
 1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
 1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 Last Error
-
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Last Error
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
 2 No error message available.
