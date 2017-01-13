@@ -7931,8 +7931,8 @@ xsysprm_dump_server_parameters (FILE * outfp)
  *                          for a SYSPRM_PARAM           
  *   return: error code
  *   prm (in): the paramter for which we want the limits
- *   min (in): the minimum possible value for the parameter
- *   max (in): the maximum possible value for the parameter
+ *   min (out): the minimum possible value for the parameter
+ *   max (out): the maximum possible value for the parameter
  */
 int
 sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
@@ -8040,8 +8040,8 @@ sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
  *                    for a paramter, given by its name 
  *   return: error code
  *   pname (in): parameter name
- *   min (in): the minimum possible value for the parameter
- *   max (in): the maximum possible value for the parameter
+ *   min (out): the minimum possible value for the parameter
+ *   max (out): the maximum possible value for the parameter
  */
 int
 sysprm_get_range (const char *pname, void *min, void *max)
