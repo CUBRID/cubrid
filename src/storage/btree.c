@@ -9692,9 +9692,9 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, R);
 
   /*
-   * Start the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
-   * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
-   * S-latch on parent page, while access the non-leaf without latch.
+   * Starts the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
+   * readers without latch. That's because the readers uses latch to access the non-leaf page. Also, the readers uses
+   * S-latch on parent page, while accessing the leaf without latch.
    */
   pgbuf_start_modification (P, &P_modification_started);
   pgbuf_start_modification (Q, &Q_modification_started);
@@ -10033,9 +10033,9 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, left_pg);
 
   /*
-   * Start the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
-   * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
-   * S-latch on parent page, while access the non-leaf without latch.
+   * Starts the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
+   * readers without latch. That's because the readers uses latch to access the non-leaf page. Also, the readers uses
+   * S-latch on parent page, while accessing the leaf without latch.
    */
   pgbuf_start_modification (P, &P_modification_started);
   pgbuf_start_modification (left_pg, &left_pg_modification_started);
@@ -12729,9 +12729,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
 #if !defined(NDEBUG)
   /*
-   * Start the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
-   * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
-   * S-latch on parent page, while access the non-leaf without latch.
+   * Starts the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
+   * readers without latch. That's because the readers uses latch to access the non-leaf page. Also, the readers uses
+   * S-latch on parent page, while accessing the leaf without latch.
    */
   pgbuf_start_modification (Q, &Q_modification_started);
   pgbuf_start_modification (P, &P_modification_started);
@@ -13587,9 +13587,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
 
   /*
-   * Start the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
-   * readers without latch. That's because the readers use latch to access the non-leaf page. Also, the readers uses
-   * S-latch on parent page, while access the non-leaf without latch.
+   * Starts the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
+   * readers without latch. That's because the readers uses latch to access the non-leaf page. Also, the readers uses
+   * S-latch on parent page, while accessing the leaf without latch.
    */
   pgbuf_start_modification (P, &P_modification_started);
   pgbuf_start_modification (Q, &Q_modification_started);
@@ -22587,7 +22587,8 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
   BTREE_NODE_HEADER *node_header;
   BTREE_NODE_TYPE node_type;
   VPID child_vpid;
-  int error_code;
+  int retry_count = 1, retry_max = 5, error_code;
+  bool copy_result;
 
   assert (btid_int != NULL);
   assert (key != NULL);
@@ -22635,13 +22636,29 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
       *advance_to_page = NULL;
       if (bcb_area && node_header->node_level == 2)
 	{
-	  pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, DB_PAGESIZE);
+	try_again:
+	  if (pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, DB_PAGESIZE, &copy_result) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
 
+	  if (copy_result)
+	    {
 #if !defined(NDEBUG)
-	  node_header = btree_get_node_header (bcb_area);
-	  assert (node_header->node_level == 1);
+	      node_header = btree_get_node_header (bcb_area);
+	      assert (node_header->node_level == 1);
 #endif
-	  *advance_to_page = bcb_area;
+	      *advance_to_page = bcb_area;
+	    }
+	  else
+	    {
+	      if (retry_count < retry_max)
+		{
+		  retry_count++;
+		  goto try_again;
+		}
+	    }
 	}
 
       if (*advance_to_page == NULL)
@@ -24073,7 +24090,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
   else
     {
-
+      bts->bcb_area = NULL;
 #if defined (SERVER_MODE)
       if (bts->copy_leaf_page_without_latch_allowed && bts->key_range.range == GE_LE)
 	{
@@ -24083,7 +24100,11 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  vpid_ovf_p = &vpid_ovf;
+
+	  if (bts->bcb_area != NULL)
+	    {
+	      vpid_ovf_p = &vpid_ovf;
+	    }
 	}
 #endif
 
@@ -24099,12 +24120,17 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  return error_code;
 	}
 
-      if (found && (bts->C_page == bts->bcb_area) && (!VPID_ISNULL (vpid_ovf_p)))
+#if defined (SERVER_MODE)
+      if (found && bts->C_page == bts->bcb_area && vpid_ovf_p != NULL && !VPID_ISNULL (vpid_ovf_p))
 	{
 	  /* Currently do not use copy leaf page in case that we need to access more than one page. */
+
+	  pgbuf_release_tran_bcb_area (thread_p);
 	  bts->bcb_area = NULL;
+	  vpid_ovf_p = NULL;
 	  goto locate_key;
 	}
+#endif
       if (!found && bts->use_desc_index)
 	{
 	  /* Key was not found and the bts->slot_id was positioned to next key bigger than bts->key_range.lower_key.
@@ -33289,6 +33315,7 @@ btree_unfix_and_init_current_page (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   if (bts->bcb_area)
     {
       pgbuf_release_tran_bcb_area (thread_p);
+      bts->bcb_area = NULL;
     }
 #endif
 }

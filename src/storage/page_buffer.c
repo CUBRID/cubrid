@@ -167,7 +167,7 @@ static int rv;
 			+ offsetof(PGBUF_IOPAGE_BUFFER, iopage.page))); \
   } while (0)
 
-/* Macros for page modifications*/
+/* Macros for page modifications */
 #define PGBUF_BCB_START_MODIFICATION(bufptr)                        \
   do {                                                              \
     assert (bufptr != NULL);					    \
@@ -1328,7 +1328,7 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid
  */
 int
 pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
-			      const char *caller_file, int caller_line)
+			      bool * copy_result, const char *caller_file, int caller_line)
 #else
 /*
  * pgbuf_copy_to_bcb_area_release () - copy page to bcb area, release version
@@ -1337,9 +1337,11 @@ pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_P
  *   vpid(in): complete Page identifier
  *   bcb_area(in/out): bcb area
  *   size(in): size to copy
+ *   copy_result(out): copy result
  */
 int
-pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * bcb_area, int size)
+pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * bcb_area, int size,
+				bool * copy_result)
 #endif
 {
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -1349,9 +1351,10 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   int err = NO_ERROR;
   PAGE_TYPE page_type;
 
-  assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL);
+  assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL && copy_result != NULL);
   assert (size >= 0 && size <= DB_PAGESIZE);
 
+  *copy_result = false;
   /* interrupt check */
   if (thread_get_check_interrupt (thread_p) == true)
     {
@@ -1391,13 +1394,23 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   count_modifications = ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL);
   if (count_modifications & 1)
     {
-      goto exit_on_error;
+      /*
+       * There is a concurrent writer that modify the page. The current transaction can retry, or decide to use
+       * the S-latch.
+       */
+      pthread_mutex_unlock (&src_bufptr->BCB_mutex);
+      return NO_ERROR;
     }
   page_type = src_bufptr->iopage_buffer->iopage.prv.ptype;
   memcpy (bcb_area, src_pgptr, size);
   if (count_modifications != ATOMIC_INC_64 (&src_bufptr->count_modifications, 0LL))
     {
-      goto exit_on_error;
+      /*
+       * A concurrent writer has modified the page. The copy is not atomic. The current transaction can retry,
+       * or decide to use the S-latch.
+       */
+      pthread_mutex_unlock (&src_bufptr->BCB_mutex);
+      return NO_ERROR;
     }
 
   assert (VPID_EQ (vpid, &src_bufptr->vpid));
@@ -1414,6 +1427,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   dest_bufptr->iopage_buffer->iopage.prv.pageid = NULL_PAGEID;
   dest_bufptr->iopage_buffer->iopage.prv.volid = NULL_VOLID;
   pgbuf_set_page_ptype (thread_p, bcb_area, page_type);
+  *copy_result = true;
 
   return NO_ERROR;
 
@@ -12690,6 +12704,14 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
       thread_p = thread_get_thread_entry_info ();
     }
 
+  *bcb_area = NULL;
+  if (thread_p->tran_bcb_used)
+    {
+      /* The transaction BCB already used for another page. In future, we can extend to have many transaction BCBs. */
+      assert (thread_p->tran_bcb != NULL);
+      return NO_ERROR;
+    }
+
   bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
   if (bufptr == NULL)
     {
@@ -12747,9 +12769,8 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
       thread_p->tran_bcb = bufptr;
     }
 
-  assert (thread_p->tran_bcb_used == false);
-  thread_p->tran_bcb_used = true;
   CAST_BFPTR_TO_PGPTR (*bcb_area, bufptr);
+  thread_p->tran_bcb_used = true;
 
   assert (*bcb_area != NULL);
   return NO_ERROR;
@@ -12760,7 +12781,7 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
  *   return: error code
  *   thread_p(in): thread entry 
  */
-int
+void
 pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)

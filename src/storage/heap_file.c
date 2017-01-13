@@ -7242,16 +7242,17 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   int try_max = 1;
   int ret;
   bool is_system_class = false;
-  int retry_count = 1, retry_max = 5;
+  int copy_retry_count = 1, copy_retry_max = 5;
+  bool copy_result;
   VPID object_vpid;
-  PAGE_PTR page_ptr = NULL;
-  bool need_latch = false;
+  PAGE_PTR page_ptr;
 
   assert (context->oid_p != NULL);
 
   VPID_GET_FROM_OID (&object_vpid, context->oid_p);
 
-  need_latch = true;
+  page_ptr = NULL;
+  context->bcb_area = NULL;
 try_again:
 #if defined(SERVER_MODE)
   if (context->copy_page_without_latch_allowed
@@ -7263,24 +7264,35 @@ try_again:
 	  ASSERT_ERROR ();
 	  goto error;
 	}
-      if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->bcb_area, DB_PAGESIZE) == NO_ERROR)
+
+      if (context->bcb_area != NULL)
 	{
-	  need_latch = false;
-	  page_ptr = context->bcb_area;
-	}
-      else
-	{
-	  if (retry_count < retry_max)
+	try_copy_area_again:
+	  if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->bcb_area, DB_PAGESIZE, &copy_result) != NO_ERROR)
 	    {
-	      retry_count++;
-	      goto try_again;
+	      ASSERT_ERROR ();
+	      goto error;
+	    }
+
+	  if (copy_result)
+	    {
+	      page_ptr = context->bcb_area;
+	    }
+	  else
+	    {
+	      if (copy_retry_count < copy_retry_max)
+		{
+		  /* try again */
+		  copy_retry_count++;
+		  goto try_copy_area_again;
+		}
 	    }
 	}
     }
 #endif
 
 prepare_object_page:
-  if (need_latch)
+  if (page_ptr == NULL)
     {
       ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
       if (ret != NO_ERROR)
@@ -7295,6 +7307,7 @@ prepare_object_page:
 	}
       page_ptr = context->home_page_watcher.pgptr;
     }
+  assert (page_ptr != NULL);
 
   /* Output class_oid if necessary. */
   if (context->class_oid_p != NULL && OID_ISNULL (context->class_oid_p)
@@ -7323,15 +7336,19 @@ prepare_object_page:
       return S_DOESNT_EXIST;
     }
 
-  if (need_latch == false)
+#if defined(SERVER_MODE)
+  if (page_ptr == context->bcb_area)
     {
       if (slot_p->record_type == REC_BIGONE || slot_p->record_type == REC_RELOCATION)
 	{
 	  /* Quick fix to avoid NULL group id issue and multi page object issue. */
-	  need_latch = true;
+	  pgbuf_release_tran_bcb_area (thread_p);
+	  context->bcb_area = NULL;
+	  page_ptr = NULL;
 	  goto prepare_object_page;
 	}
     }
+#endif
 
   /* Output record type. */
   context->record_type = slot_p->record_type;
@@ -24600,6 +24617,7 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   if (context->bcb_area)
     {
       pgbuf_release_tran_bcb_area (thread_p);
+      context->bcb_area = NULL;
     }
 #endif
 }
@@ -24649,6 +24667,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
       context->latch_mode = PGBUF_LATCH_READ;
     }
   context->copy_page_without_latch_allowed = copy_page_without_latch_allowed;
+  context->bcb_area = NULL;
 }
 
 /*

@@ -13666,12 +13666,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
-		      /* currently allow copy leaf page without latch only for one spec */
+		      /* currently, allow copy leaf page without latch only for one spec */
 		      copy_page_without_latch_allowed = false;
 		    }
 		}
 
-	      /* currently allow copy leaf page without latch only for one one scan block, one access spec */
+	      /* currently, allow copy leaf page without latch only for one scan block, one access spec */
 	      copy_page_without_latch_allowed = false;
 	    }
 

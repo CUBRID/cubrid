@@ -272,10 +272,10 @@ extern PAGE_PTR pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid
 	pgbuf_flush_debug(thread_p, pgptr, free_page, __FILE__, __LINE__)
 extern PAGE_PTR pgbuf_flush_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page, const char *caller_file,
 				   int caller_line);
-#define pgbuf_copy_to_bcb_area(thread_p, vpid, bcb_area, size) \
-	pgbuf_copy_to_bcb_area_debug(thread_p, vpid, bcb_area, size, __FILE__, __LINE__)
+#define pgbuf_copy_to_bcb_area(thread_p, vpid, bcb_area, size, copy_result) \
+	pgbuf_copy_to_bcb_area_debug(thread_p, vpid, bcb_area, size, copy_result, __FILE__, __LINE__)
 extern int pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
-					 const char *caller_file, int caller_line);
+					 bool * copy_result, const char *caller_file, int caller_line);
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
         pgbuf_fix_debug(thread_p, vpid, fetch_mode, requestmode, condition, \
                         __FILE__, __LINE__)
@@ -332,9 +332,10 @@ extern PAGE_PTR pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_p
 extern PAGE_PTR pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid,
 						      PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
 						      PGBUF_LATCH_CONDITION condition);
-#define pgbuf_copy_to_bcb_area(thread_p, vpid, bcb_area, size) \
-      pgbuf_copy_to_bcb_area_release(thread_p, vpid, bcb_area, size)
-extern int pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * bcb_area, int size);
+#define pgbuf_copy_to_bcb_area(thread_p, vpid, bcb_area, size, copy_result) \
+      pgbuf_copy_to_bcb_area_release(thread_p, vpid, bcb_area, size, copy_result)
+extern int pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * bcb_area, int size,
+					   bool * copy_result);
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
         pgbuf_fix_release(thread_p, vpid, fetch_mode, requestmode, condition)
 extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
@@ -507,6 +508,6 @@ extern void pgbuf_reset_modification (PAGE_PTR pgptr);
 #if defined (SERVER_MODE)
 extern int pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **area);
 extern void pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p);
-extern int pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p);
+extern void pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p);
 #endif
 #endif /* _PAGE_BUFFER_H_ */
