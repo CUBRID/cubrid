@@ -7243,7 +7243,7 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   int ret;
   bool is_system_class = false;
   int copy_retry_count = 1, copy_retry_max = 5;
-  bool copy_result;
+  bool bcb_area_copied = false;
   VPID object_vpid;
   PAGE_PTR page_ptr;
 
@@ -7252,11 +7252,10 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   VPID_GET_FROM_OID (&object_vpid, context->oid_p);
 
   page_ptr = NULL;
-  context->bcb_area = NULL;
 try_again:
 #if defined(SERVER_MODE)
-  if (context->copy_page_without_latch_allowed
-      && latch_mode == PGBUF_LATCH_READ && context->ispeeking == COPY && context->home_page_watcher.pgptr == NULL)
+  if (context->copy_page_without_latch_allowed && latch_mode == PGBUF_LATCH_READ
+      && context->ispeeking == COPY && context->bcb_area == NULL && context->home_page_watcher.pgptr == NULL)
     {
       ret = pgbuf_acquire_tran_bcb_area (thread_p, &context->bcb_area);
       if (ret != NO_ERROR)
@@ -7268,13 +7267,14 @@ try_again:
       if (context->bcb_area != NULL)
 	{
 	try_copy_area_again:
-	  if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->bcb_area, DB_PAGESIZE, &copy_result) != NO_ERROR)
+	  if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->bcb_area, DB_PAGESIZE,
+				      &bcb_area_copied) != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error;
 	    }
 
-	  if (copy_result)
+	  if (bcb_area_copied)
 	    {
 	      page_ptr = context->bcb_area;
 	    }
@@ -7376,11 +7376,8 @@ prepare_object_page:
       COPY_OID (&context->forward_oid, (OID *) peek_recdes.data);
 
       /* Try to latch forward_page. */
-      if (context->home_page_watcher.pgptr == page_ptr)
-	{
-	  PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
-	}
-
+      assert (context->bcb_area == NULL && context->home_page_watcher.pgptr == page_ptr);
+      PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
       ret = heap_prepare_object_page (thread_p, &context->forward_oid, &context->fwd_page_watcher, latch_mode);
       if (ret == NO_ERROR)
 	{
@@ -7423,10 +7420,9 @@ prepare_object_page:
       /* Fix overflow page. Since overflow pages should be always accessed with their home pages latched, unconditional 
        * latch should work; However, we need to use the same ordered_fix approach. */
       PGBUF_WATCHER_RESET_RANK (&context->fwd_page_watcher, PGBUF_ORDERED_HEAP_OVERFLOW);
-      if (context->home_page_watcher.pgptr == page_ptr)
-	{
-	  PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
-	}
+      assert (context->bcb_area == NULL && context->home_page_watcher.pgptr == page_ptr);
+      PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
+
       ret = heap_prepare_object_page (thread_p, &context->forward_oid, &context->fwd_page_watcher, latch_mode);
       if (ret == NO_ERROR)
 	{
@@ -7558,11 +7554,11 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
     {
       home_page = context->bcb_area;
     }
+  assert (home_page != NULL);
+
   num_slots = spage_number_of_slots (home_page);
   forward_page = context->fwd_page_watcher.pgptr;
 
-  assert (home_page != NULL);
-  //assert (pgbuf_get_page_id (home_page) == oid->pageid && pgbuf_get_volume_id (home_page) == oid->volid);
   assert (context->record_type == REC_HOME || context->record_type == REC_RELOCATION
 	  || context->record_type == REC_BIGONE);
   assert (context->record_type == REC_HOME
@@ -7655,6 +7651,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
     {
       home_page_ptr = context->bcb_area;
     }
+  assert (home_page_ptr != NULL);
   num_slots = spage_number_of_slots (home_page_ptr);
 
   /* Assert ispeeking, scan_cache and recdes are compatible. If ispeeking is PEEK, it is the caller responsabilty to

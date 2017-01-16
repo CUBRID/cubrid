@@ -241,8 +241,8 @@ struct btree_scan
 
   PERF_UTIME_TRACKER time_track;
 
-  char *bcb_area;
-  bool copy_leaf_page_without_latch_allowed;
+  char *bcb_area;		/* BCB area, used to copy leaf page without acquiring latch. */
+  bool copy_leaf_page_without_latch_allowed;	/* true, if copy leaf page without acquiring latch is allowed. */
 
   void *bts_other;
 };

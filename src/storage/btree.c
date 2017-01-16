@@ -22588,7 +22588,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
   BTREE_NODE_TYPE node_type;
   VPID child_vpid;
   int retry_count = 1, retry_max = 5, error_code;
-  bool copy_result;
+  bool bcb_area_copied = false;
 
   assert (btid_int != NULL);
   assert (key != NULL);
@@ -22637,13 +22637,13 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
       if (bcb_area && node_header->node_level == 2)
 	{
 	try_again:
-	  if (pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, DB_PAGESIZE, &copy_result) != NO_ERROR)
+	  if (pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, DB_PAGESIZE, &bcb_area_copied) != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      return error_code;
 	    }
 
-	  if (copy_result)
+	  if (bcb_area_copied)
 	    {
 #if !defined(NDEBUG)
 	      node_header = btree_get_node_header (bcb_area);
@@ -24090,9 +24090,8 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
   else
     {
-      bts->bcb_area = NULL;
 #if defined (SERVER_MODE)
-      if (bts->copy_leaf_page_without_latch_allowed && bts->key_range.range == GE_LE)
+      if (bts->copy_leaf_page_without_latch_allowed && bts->bcb_area == NULL && bts->key_range.range == GE_LE)
 	{
 	  error_code = pgbuf_acquire_tran_bcb_area (thread_p, &bts->bcb_area);
 	  if (error_code != NO_ERROR)

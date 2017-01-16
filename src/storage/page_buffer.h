@@ -334,7 +334,7 @@ extern PAGE_PTR pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, c
 						      PGBUF_LATCH_CONDITION condition);
 #define pgbuf_copy_to_bcb_area(thread_p, vpid, bcb_area, size, copy_result) \
       pgbuf_copy_to_bcb_area_release(thread_p, vpid, bcb_area, size, copy_result)
-extern int pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * bcb_area, int size,
+extern int pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
 					   bool * copy_result);
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
         pgbuf_fix_release(thread_p, vpid, fetch_mode, requestmode, condition)

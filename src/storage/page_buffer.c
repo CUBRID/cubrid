@@ -1321,27 +1321,26 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid
  *   return: error code
  *   thread_p(in): thread entry
  *   vpid(in): complete Page identifier
- *   bcb_area(in/out): bcb area
  *   size(in): size to copy
+ *   bcb_area_copied(in/out): true, if BCB area is successfully copied
  *   caller_file(in): caller file
  *   caller_line(in): caller line
  */
 int
 pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
-			      bool * copy_result, const char *caller_file, int caller_line)
+			      bool * bcb_area_copied, const char *caller_file, int caller_line)
 #else
 /*
  * pgbuf_copy_to_bcb_area_release () - copy page to bcb area, release version
  *   return: error code
  *   thread_p(in): thread entry
  *   vpid(in): complete Page identifier
- *   bcb_area(in/out): bcb area
  *   size(in): size to copy
- *   copy_result(out): copy result
+ *   bcb_area_copied(in/out): true, if BCB area is successfully copied
  */
 int
-pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR * bcb_area, int size,
-				bool * copy_result)
+pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
+				bool * bcb_area_copied)
 #endif
 {
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -1351,10 +1350,10 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   int err = NO_ERROR;
   PAGE_TYPE page_type;
 
-  assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL && copy_result != NULL);
+  assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL && bcb_area_copied != NULL);
   assert (size >= 0 && size <= DB_PAGESIZE);
 
-  *copy_result = false;
+  *bcb_area_copied = false;
   /* interrupt check */
   if (thread_get_check_interrupt (thread_p) == true)
     {
@@ -1427,7 +1426,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   dest_bufptr->iopage_buffer->iopage.prv.pageid = NULL_PAGEID;
   dest_bufptr->iopage_buffer->iopage.prv.volid = NULL_VOLID;
   pgbuf_set_page_ptype (thread_p, bcb_area, page_type);
-  *copy_result = true;
+  *bcb_area_copied = true;
 
   return NO_ERROR;
 
@@ -1475,8 +1474,6 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   PERF_HOLDER_LATCH perf_latch_mode;
   PERF_CONDITIONAL_FIX_TYPE perf_cond_type;
   TSC_TICKS start_tick, end_tick, start_holder_tick;
-  PGBUF_HOLDER *holder;
-  PGBUF_WATCHER *watcher;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time, holder_wait_time, fix_wait_time;
   bool is_perf_tracking;
@@ -2260,8 +2257,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
   PERF_HOLDER_LATCH perf_holder_latch;
-  PGBUF_HOLDER *holder;
-  PGBUF_WATCHER *watcher;
   PGBUF_HOLDER_STAT holder_perf_stat;
   PERF_PAGE_TYPE perf_page_type;
   bool is_perf_tracking;
@@ -4919,7 +4914,7 @@ pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  /* Set Page identifier iff needed */
+  /* Set Page identifier if needed */
   (void) pgbuf_set_bcb_page_vpid (thread_p, bufptr);
 
   if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
