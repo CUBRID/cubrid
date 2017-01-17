@@ -11467,12 +11467,14 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       ABORT_RELEASE ();
     }
 
+#if defined (SERVER_MODE)
   if (!pgbuf_bcb_is_dirty (bufptr) && bufptr->fcnt == 0 && bufptr->next_wait_thrd == NULL
       && pgbuf_assign_direct_victim (thread_p, bufptr))
     {
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
     }
   else
+#endif /* SERVER_MODE */
     {
       pgbuf_bcb_mark_was_flushed (bufptr);
     }
