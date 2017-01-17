@@ -208,10 +208,11 @@ typedef enum
   /* make sure lru zone mask covers all lru zone values */
   PGBUF_LRU_ZONE_MASK = PGBUF_LRU_1_ZONE | PGBUF_LRU_2_ZONE | PGBUF_LRU_3_ZONE,
 
-  /* other zone values must have a completely different mask than lru zone */
-  PGBUF_INVALID_ZONE = 4 << PGBUF_LRU_NBITS,
-  PGBUF_VOID_ZONE = 5 << PGBUF_LRU_NBITS,
-  PGBUF_AIN_ZONE = 6 << PGBUF_LRU_NBITS,		/* todo: do we keep ain? */
+  /* other zone values must have a completely different mask than lru zone. so also skip the two bits used for
+   * PGBUF_LRU_ZONE_MASK */
+  PGBUF_INVALID_ZONE = 1 << (PGBUF_LRU_NBITS + 2),
+  PGBUF_VOID_ZONE = 2 << (PGBUF_LRU_NBITS + 2),
+  PGBUF_AIN_ZONE = 3 << (PGBUF_LRU_NBITS+ 2),		/* todo: do we keep ain? */
 
   /* zone mask should cover all zone values */
   PGBUF_ZONE_MASK = (PGBUF_LRU_ZONE_MASK | PGBUF_INVALID_ZONE | PGBUF_VOID_ZONE | PGBUF_AIN_ZONE),
@@ -16985,6 +16986,10 @@ pgbuf_flags_mask_sanity_check (void)
       ABORT_RELEASE ();
     }
   if (PGBUF_ZONE_MASK & PGBUF_LRU_INDEX_MASK)
+    {
+      ABORT_RELEASE ();
+    }
+  if ((PGBUF_INVALID_ZONE | PGBUF_VOID_ZONE | PGBUF_AIN_ZONE) & PGBUF_LRU_ZONE_MASK)
     {
       ABORT_RELEASE ();
     }
