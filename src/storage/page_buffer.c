@@ -8643,6 +8643,8 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
 static PGBUF_BCB *
 pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 {
+#define PGBUF_ALLOC_BCB_PENALIZE_DIRTY_RATIO 0.8f
+#define PGBUF_ALLOC_BCB_PENALIZE_SEARCH_THRESHOLD 10
   PGBUF_BCB *bufptr;
   int check_count;
 
@@ -8680,7 +8682,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   if (!prioritize_vacuum)
     {
       has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
-      if (!has_waiters_on_fixed && pgbuf_is_any_thread_waiting_for_direct_victim ())
+      if (!has_waiters_on_fixed && pgbuf_is_any_thread_waiting_for_direct_victim ()
+          && pgbuf_Pool.monitor.dirties_cnt > (int) pgbuf_Pool.num_buffers * PGBUF_ALLOC_BCB_PENALIZE_DIRTY_RATIO
+          && pgbuf_Pool.monitor.count_thread_get_victim_extended_search[thread_get_current_entry_index ()]
+             > PGBUF_ALLOC_BCB_PENALIZE_SEARCH_THRESHOLD)
         {
           /* in some systems, when IO becomes a bottleneck and threads require many victims, threads will start waiting.
            * however, at some point there can be so many waiting threads, that the few remaining can easily find victims
@@ -8843,6 +8848,9 @@ end:
   PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_bcb, PSTAT_PB_ALLOC_BCB);
 
   return bufptr;
+
+#undef PGBUF_ALLOC_BCB_PENALIZE_DIRTY_RATIO
+#undef PGBUF_ALLOC_BCB_PENALIZE_SEARCH_THRESHOLD
 }
 
 /*
