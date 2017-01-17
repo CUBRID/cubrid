@@ -1744,14 +1744,14 @@ pgbuf_initialize (void)
 #endif /* SERVER_MODE */
   if (PGBUF_PAGE_QUOTA_IS_ENABLED)
     {
-      pgbuf_Pool.private_lrus_with_victims = lf_circular_queue_create (PGBUF_PRIVATE_LRU, sizeof (int));
+      pgbuf_Pool.private_lrus_with_victims = lf_circular_queue_create (PGBUF_PRIVATE_LRU * 2, sizeof (int));
       if (pgbuf_Pool.private_lrus_with_victims == NULL)
         {
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PGBUF_PRIVATE_LRU * sizeof (int));
           goto error;
         }
     }
-  pgbuf_Pool.shared_lrus_with_victims = lf_circular_queue_create (PGBUF_SHARED_LRU, sizeof (int));
+  pgbuf_Pool.shared_lrus_with_victims = lf_circular_queue_create (PGBUF_SHARED_LRU * 2, sizeof (int));
   if (pgbuf_Pool.shared_lrus_with_victims == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PGBUF_PRIVATE_LRU * sizeof (int));

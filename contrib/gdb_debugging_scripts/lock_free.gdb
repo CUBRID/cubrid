@@ -26,3 +26,24 @@ define lf_print_counters
   printf "lf_transports                  %d\n", lf_transports
   printf "lf_temps                       %d\n", lf_temps
   end
+
+define lfcq_print_entry_states
+  set $lfcq = $arg0
+  set $i = 0
+  while $i < $lfcq->capacity
+    set $flag = $lfcq->entry_state[$i] & 0xC000000000000000
+    if $flag == 0x0000000000000000
+      printf "%10d\tready for produce \n", $lfcq->entry_state[$i] & ~0xC000000000000000
+      end
+    if $flag == 0x8000000000000000
+      printf "%10d\treserved for produce \n", $lfcq->entry_state[$i] & ~0xC000000000000000
+      end
+    if $flag == 0x4000000000000000
+      printf "%10d\tready for consume \n", $lfcq->entry_state[$i] & ~0xC000000000000000
+      end
+    if $flag == 0xC000000000000000
+      printf "%10d\treserved for consume \n", $lfcq->entry_state[$i] & ~0xC000000000000000
+      end
+    set $i = $i+1
+    end
+  end
