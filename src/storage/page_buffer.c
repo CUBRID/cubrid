@@ -362,7 +362,16 @@ typedef enum
 #define PGBUF_AIN_AGE_THRESHOLD (pgbuf_Pool.buf_AIN_list.max_count / 2)
 
 /* MACRO to increase hits in lru lists. hits are used to compute private/shared activity */
-#define PGBUF_LRU_HIT(lru_idx) ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_hits[lru_idx], 1)
+#define PGBUF_LRU_HIT(bcb, lru_idx) \
+  do \
+    { \
+      if ((bcb)->hit_age != pgbuf_Pool.quota.adjust_age) \
+        { \
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_hits[lru_idx], 1); \
+          (bcb)->hit_age = pgbuf_Pool.quota.adjust_age; \
+        } \
+    } \
+  while (false)
 
 #define PGBUF_LRU_VICTIM_LFCQ_FLAG ((int) 0x80000000)
 
@@ -655,6 +664,8 @@ struct pgbuf_bcb
   volatile bool direct_victim;
   bool sticky_private_list;
 
+  int hit_age;
+
   volatile LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
   PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
 };
@@ -901,6 +912,7 @@ struct pgbuf_page_quota
 				 * from this LRU */
 
   struct timeval last_adjust_time;
+  INT32 adjust_age;
   int is_adjusting;
 };
 
@@ -6055,6 +6067,7 @@ pgbuf_initialize_bcb_table (void)
 #endif
       bufptr->async_flush_request = false;
       bufptr->sticky_private_list = false;
+      bufptr->hit_age = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
       /* link BCB and iopage buffer */
@@ -7355,7 +7368,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
                       /* add to top of current private list */
                       pgbuf_lru_add_new_bcb_to_top (thread_p, bufptr, th_lru_idx);
                       perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_TOP);
-                      PGBUF_LRU_HIT (th_lru_idx);
+                      PGBUF_LRU_HIT (bufptr, th_lru_idx);
                       break;
                     }
                   if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
@@ -7369,7 +7382,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
                       else
                         {
                           perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_MID);
-                          PGBUF_LRU_HIT (th_lru_idx);
+                          PGBUF_LRU_HIT (bufptr, th_lru_idx);
                         }
                       break;
                     }
@@ -7380,7 +7393,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
               perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_SHARED_MID);
               if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
                 {
-                  PGBUF_LRU_HIT (shared_lru_idx);
+                  PGBUF_LRU_HIT (bufptr, shared_lru_idx);
                 }
               break;
 
@@ -7426,13 +7439,13 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
                     {
                       perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_THREE_PRV_TO_SHR_MID);
                     }
-                  PGBUF_LRU_HIT (shared_lru_idx);
+                  PGBUF_LRU_HIT (bufptr, shared_lru_idx);
                   break;
                 }
 
               /* boost bcb */
               pgbuf_lru_boost_bcb (thread_p, bufptr);
-              PGBUF_LRU_HIT (bcb_lru_idx);
+              PGBUF_LRU_HIT (bufptr, bcb_lru_idx);
               break;
 
 	    case PGBUF_AIN_ZONE:
@@ -7471,28 +7484,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 #if defined (PGBUF_ENABLE_FLUSH_LIST)
       bufptr->is_flush_candidate = false;
 #endif
-    }
-  else
-    {
-      /* we need to track activity */
-      if (PGBUF_PAGE_QUOTA_IS_ENABLED && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
-	{
-	  if (PGBUF_IS_BCB_IN_LRU (bufptr))
-	    {
-	      /* increment the activity of current lru list */
-              PGBUF_LRU_HIT (pgbuf_bcb_get_lru_index (bufptr));
-	    }
-	  else if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
-	    {
-	      /* increment the activity of thread's private list */
-	      th_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
-              PGBUF_LRU_HIT (th_lru_idx);
-	    }
-	  else
-	    {
-	      /* who's activity to increment? */
-	    }
-	}
     }
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
@@ -9544,7 +9535,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
       lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
 
       /* todo: should we allow lru1 victimizations? */
-      if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list) || lru_list->count_vict_cand > 0)
+      if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
+          || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) &&  lru_list->count_vict_cand > 0))
 	{
 	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[private_lru_idx], 1);
 
@@ -14525,6 +14517,7 @@ pgbuf_initialize_page_quota_parameters (void)
   memset (quota, 0, sizeof (PGBUF_PAGE_QUOTA));
 
   (void) gettimeofday (&quota->last_adjust_time, NULL);
+  quota->adjust_age = 0;
   quota->is_adjusting = 0;
 
   quota->max_pages_private_quota = prm_get_integer_value (PRM_ID_PB_TRAN_PAGES_QUOTA);
@@ -15221,6 +15214,8 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
       pgbuf_print_lru_pending_vict_req ();
     }
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
+
+  (void) ATOMIC_INC_32 (&quota->adjust_age, 1);
 
   /* process hits since last adjust:
    * 1. collect lru_private_hits and lru_shared_hits.
