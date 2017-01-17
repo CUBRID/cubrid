@@ -1234,7 +1234,11 @@ struct pgbuf_temp_stats
 static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 static int pgbuf_Global_error = 0;
+#if defined (NDEBUG)
 #define ABORT_RELEASE() pgbuf_Global_error = __LINE__; abort ()
+#else /* !NDEBUG */
+#define ABORT_RELEASE() assert (false)
+#endif /* !NDEBUG */
 
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
