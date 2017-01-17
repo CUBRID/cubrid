@@ -15655,9 +15655,12 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
 	  *victim_cand_cnt = *victim_cand_cnt + 1;
 	}
 
-      if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bufptr)))
+      if (PGBUF_IS_BCB_IN_LRU (bufptr))
         {
-          *private_cnt = *private_cnt + 1;
+          if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bufptr)))
+            {
+              *private_cnt = *private_cnt + 1;
+            }
         }
     }
 
