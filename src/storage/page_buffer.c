@@ -1139,14 +1139,12 @@ struct pgbuf_monitor_bcb_mutex
       PGBUF_MONITOR_BCB_MUTEX *mon_bcb_mutex = &pgbuf_Pool.monitor.thread_bcb_mutex[index]; \
       if (mon_bcb_mutex->bcb != NULL || mon_bcb_mutex->try_bcb != NULL || (bcb_arg)->owner_mutex == index) \
         { \
-          pgbuf_Global_error = "has bcb mutex"; \
-          abort (); \
+          ABORT_RELEASE (); \
         } \
       (void) pthread_mutex_lock (&(bcb_arg)->BCB_mutex); \
       if ((bcb_arg)->owner_mutex >= 0) \
         { \
-          pgbuf_Global_error = "bcb owner mutex"; \
-          abort (); \
+          ABORT_RELEASE (); \
         } \
       mon_bcb_mutex->bcb = bcb_arg; \
       mon_bcb_mutex->line = __LINE__; \
@@ -1162,8 +1160,7 @@ struct pgbuf_monitor_bcb_mutex
       PGBUF_MONITOR_BCB_MUTEX *mon_bcb_mutex = &pgbuf_Pool.monitor.thread_bcb_mutex[index]; \
       if (mon_bcb_mutex->bcb == (bcb_arg)) \
         { \
-          pgbuf_Global_error = "try same bcb"; \
-          abort (); \
+          ABORT_RELEASE (); \
         } \
       try_res = pthread_mutex_trylock (&(bcb_arg)->BCB_mutex); \
       if ((try_res) == 0) \
@@ -1183,8 +1180,7 @@ struct pgbuf_monitor_bcb_mutex
       PGBUF_MONITOR_BCB_MUTEX *mon_bcb_mutex = &pgbuf_Pool.monitor.thread_bcb_mutex[index]; \
       if ((bcb_arg)->owner_mutex != index) \
         { \
-          pgbuf_Global_error = "unlock from another?"; \
-          abort (); \
+          ABORT_RELEASE (); \
         } \
       (bcb_arg)->owner_mutex = -1; \
       if (mon_bcb_mutex->try_bcb == (bcb_arg)) \
@@ -1199,15 +1195,14 @@ struct pgbuf_monitor_bcb_mutex
           mon_bcb_mutex->bcb = NULL; \
           break; \
         } \
-      pgbuf_Global_error = "invalid unlock bcb mutex"; \
-      abort (); \
+      ABORT_RELEASE (); \
     } \
   while (false)
 /* check bcb mutex leaks */
 #define PGBUF_CHECK_BCB_MUTEX_LEAKS() \
   if (pgbuf_Pool.monitor.thread_bcb_mutex[thread_get_current_entry_index ()].bcb != NULL \
       || pgbuf_Pool.monitor.thread_bcb_mutex[thread_get_current_entry_index ()].try_bcb != NULL) \
-    abort ()
+    ABORT_RELEASE ()
 #else
 #define PGBUF_LOCK_BCB(bcb)
 #define PGBUF_TRYLOCK_BCB(bcb, try_res) try_res = 0
@@ -1236,7 +1231,9 @@ struct pgbuf_temp_stats
   INT64 fall_3_try_fail;
 };
 static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-static const char *pgbuf_Global_error = NULL;
+
+static int pgbuf_Global_error = 0;
+#define ABORT_RELEASE() pgbuf_Global_error = __LINE__; abort ()
 
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
@@ -2299,8 +2296,7 @@ try_again:
       bufptr->vpid = *vpid;
       if (pgbuf_bcb_avoid_victim (bufptr))
         {
-          pgbuf_Global_error = "fix a bcb that is not victimizable";
-          abort ();
+          ABORT_RELEASE ();
         }
 #if defined (PGBUF_ENABLE_FLUSH_LIST)
       bufptr->is_flush_candidate = false;
@@ -2434,7 +2430,7 @@ try_again:
   if (pgbuf_bcb_is_direct_victim (bufptr))
     {
       /* todo: temporary */
-      abort ();
+      ABORT_RELEASE ();
     }
 
   /* At this place, the caller is holding bufptr->BCB_mutex */
@@ -8752,8 +8748,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, &thread_p))
         {
           assert (false);
-          pgbuf_Global_error = "cannot produce with waiters";
-          abort ();
+          ABORT_RELEASE ();
           thread_unlock_entry (thread_p);
           return NULL;
         }
@@ -8764,8 +8759,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &thread_p))
         {
           assert (false);
-          pgbuf_Global_error = "cannot produce without waiters";
-          abort ();
+          ABORT_RELEASE ();
           thread_unlock_entry (thread_p);
           return NULL;
         }
@@ -8776,8 +8770,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_none, &thread_p))
         {
           assert (false);
-          pgbuf_Global_error = "cannot produce no latch";
-          abort ();
+          ABORT_RELEASE ();
           thread_unlock_entry (thread_p);
           return NULL;
         }
@@ -8802,8 +8795,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
           if (bufptr == NULL)
             {
               assert (false);
-              pgbuf_Global_error = "null bufptr";
-              abort ();
+              ABORT_RELEASE ();
               goto end;
             }
           if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
@@ -8832,8 +8824,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   else
     {
       assert (false);
-      pgbuf_Global_error = "alloc bcb timed out";
-      abort ();
+      ABORT_RELEASE ();
       thread_p->resume_status = THREAD_ALLOC_BCB_RESUMED;
       thread_unlock_entry (thread_p);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -8884,7 +8875,7 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   if (!pgbuf_is_bcb_victimizable (bufptr, true))
     {
       assert (false);
-      abort ();
+      ABORT_RELEASE ();
       PGBUF_UNLOCK_BCB (bufptr);
       return ER_FAILED;
     }
@@ -9241,7 +9232,7 @@ pgbuf_put_bcb_into_invalid_list (PGBUF_BCB * bufptr)
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
   if (bufptr->flags & PGBUF_BCB_FLAGS_MASK)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
   pgbuf_bcb_change_zone (bufptr, 0, PGBUF_INVALID_ZONE);
   bufptr->sticky_private_list = false;
@@ -10005,7 +9996,7 @@ pgbuf_invalidate_bcb_from_ain (PGBUF_BCB * bufptr)
   bufptr->prev_BCB = NULL;
   if (bufptr->flags & PGBUF_BCB_FLAGS_MASK)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
   pgbuf_bcb_change_zone (bufptr, 0, PGBUF_VOID_ZONE);
 
@@ -10243,7 +10234,7 @@ pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
   assert (lru_list->LRU_bottom_1 != NULL);
   if (lru_list->count_lru1 <= 0 || lru_list->LRU_bottom_1 == NULL)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
 
   /* change bcb zones from 1 to 2 until lru 1 zone count is down to zone 1 desired threshold.
@@ -10300,11 +10291,11 @@ pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
   assert (lru_list->LRU_bottom_2 != NULL);
   if (lru_list->count_lru2 <= 0 || lru_list->LRU_bottom_2 == NULL)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
   if (pgbuf_bcb_get_zone (lru_list->LRU_bottom_2) != PGBUF_LRU_2_ZONE)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
 
   /* change bcb zones from 2 to 3 until lru 2 zone count is down to zone 2 desired threshold. */
@@ -10314,7 +10305,7 @@ pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
       bcb_prev = bcb_bottom->prev_BCB;
       if (bcb_bottom == NULL || pgbuf_bcb_get_zone (bcb_bottom) != PGBUF_LRU_2_ZONE)
         {
-          abort ();
+          ABORT_RELEASE ();
         }
       pgbuf_lru_fall_bcb_to_zone_3 (thread_p, bcb_bottom, lru_list, lru_idx);
     }
@@ -10363,7 +10354,7 @@ pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
   assert (lru_list->LRU_bottom_1 != NULL || lru_list->LRU_bottom_2 != NULL);
   if (PGBUF_LRU_ZONE_ONE_TWO_COUNT (lru_list) <= 0 || (lru_list->LRU_bottom_1 == NULL && lru_list->LRU_bottom_2 == NULL))
     {
-      abort ();
+      ABORT_RELEASE ();
     }
 
   for (bcb_bottom = lru_list->LRU_bottom_2 != NULL ? lru_list->LRU_bottom_2 : lru_list->LRU_bottom_1;
@@ -10373,7 +10364,7 @@ pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, int 
       bcb_prev = bcb_bottom->prev_BCB;
       if (bcb_bottom == NULL || pgbuf_bcb_get_zone (bcb_bottom) == PGBUF_LRU_3_ZONE)
         {
-          abort ();
+          ABORT_RELEASE ();
         }
       pgbuf_lru_fall_bcb_to_zone_3 (thread_p, bcb_bottom, lru_list, lru_idx);
     }
@@ -10722,7 +10713,7 @@ pgbuf_relocate_chain_private_lru_to_shared (const int private_lru_idx)
   assert (PGBUF_IS_PRIVATE_LRU_INDEX (private_lru_idx));
 
   /* code to be removed */
-  abort ();
+  ABORT_RELEASE ();
 
   monitor = &pgbuf_Pool.monitor;
 
@@ -11440,7 +11431,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   if (pgbuf_bcb_is_direct_victim (bufptr))
     {
       /* this was not a valid victim candidate. how was it assigned directly? */
-      abort ();
+      ABORT_RELEASE ();
     }
 
   if (!pgbuf_bcb_is_dirty (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
@@ -16233,12 +16224,12 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   if (pgbuf_bcb_is_direct_victim (bcb))
     {
       /* should not happen */
-      abort ();
+      ABORT_RELEASE ();
     }
   if (pgbuf_bcb_is_dirty (bcb))
     {
       /* should not happen */
-      abort ();
+      ABORT_RELEASE ();
     }
 
   /* is flushing is expected, since this is called from flush too. caller should make sure no other case should get
@@ -16260,7 +16251,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
           (void) thread_unlock_entry (waiter_thread);
 
           /* todo: temporary */
-          abort ();
+          ABORT_RELEASE ();
           continue;
         }
 
@@ -16270,7 +16261,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
         {
           /* could not wake it... what do we do here? */
           er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_SIGNAL, 0);
-          abort ();
+          ABORT_RELEASE ();
 
           thread_unlock_entry (waiter_thread);
           continue;
@@ -16281,7 +16272,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
                               PGBUF_BCB_FLUSHING_TO_DISK_FLAG | PGBUF_BCB_VICTIM_RESERVED_FLAG);
       if (pgbuf_bcb_is_dirty (bcb))
         {
-          abort ();
+          ABORT_RELEASE ();
         }
       pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index] = bcb;
 
@@ -16314,8 +16305,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
     {
       /* should not happen */
       assert (false);
-      pgbuf_Global_error = "direct victim null";
-      abort ();
+      ABORT_RELEASE ();
       return NULL;
     }
 
@@ -16328,8 +16318,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
     {
       /* should not happen */
       assert (false);
-      pgbuf_Global_error = "direct victim not victimizable";
-      abort ();
+      ABORT_RELEASE ();
       PGBUF_UNLOCK_BCB (bcb);
       return NULL;
     }
@@ -16347,7 +16336,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
         case PGBUF_INVALID_ZONE:
         case PGBUF_AIN_ZONE:
           /* todo: */
-          abort ();
+          ABORT_RELEASE ();
           break;
         default:
           /* lru zones */
@@ -16365,8 +16354,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
 
   if (pgbuf_bcb_get_zone (bcb) != PGBUF_VOID_ZONE)
     {
-      pgbuf_Global_error = "direct victim not void";
-      abort ();
+      ABORT_RELEASE ();
     }
   return bcb;
 }
@@ -16485,13 +16473,11 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
   assert ((clear_flags & (~PGBUF_BCB_FLAGS_MASK)) == 0);
   if ((set_flags & (~PGBUF_BCB_FLAGS_MASK)) != 0)
     {
-      pgbuf_Global_error = "invalid set_flags";
-      abort ();
+      ABORT_RELEASE ();
     }
   if ((clear_flags & (~PGBUF_BCB_FLAGS_MASK)) != 0)
     {
-      pgbuf_Global_error = "invalid clear_flags";
-      abort ();
+      ABORT_RELEASE ();
     }
 
   /* update flags by making sure that other flags + zone + lru_index are not modified. */
@@ -16572,7 +16558,7 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
   assert (bcb != NULL);
   if (new_lru_idx != 0 && new_zone != PGBUF_LRU_1_ZONE && new_zone != PGBUF_LRU_2_ZONE && new_zone != PGBUF_LRU_3_ZONE)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
 
   /* update bcb->flags. make sure we are only changing the values for zone and lru index, but we preserve the flags. */
@@ -16621,7 +16607,7 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
             }
           break;
         default:
-          abort ();
+          ABORT_RELEASE ();
         }
     }
   if (new_zone & PGBUF_LRU_ZONE_MASK)
@@ -16649,7 +16635,7 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
             }
           break;
         default:
-          abort ();
+          ABORT_RELEASE ();
         }
     }
 }
@@ -16678,7 +16664,7 @@ pgbuf_bcb_get_lru_index (const PGBUF_BCB * bcb)
   if (!PGBUF_IS_BCB_IN_LRU (bcb))
     {
       /* logic flaw */
-      abort ();
+      ABORT_RELEASE ();
     }
   return PGBUF_GET_LRU_INDEX (bcb->flags);
 }
@@ -16751,7 +16737,7 @@ pgbuf_bcb_mark_is_flushing (PGBUF_BCB * bcb)
   if (!pgbuf_bcb_is_dirty (bcb))
     {
       /* must be dirty  */
-      abort ();
+      ABORT_RELEASE ();
     }
 
   /* decrement the global dirty counter */
@@ -16872,8 +16858,7 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
           /* private list */
           if (!lf_circular_queue_produce (pgbuf_Pool.private_lrus_with_victims, &lru_list->index))
             {
-              pgbuf_Global_error = "full private_lrus_with_victims";
-              abort ();
+              ABORT_RELEASE ();
             }
         }
       else
@@ -16881,8 +16866,7 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
           /* shared list */
           if (!lf_circular_queue_produce (pgbuf_Pool.shared_lrus_with_victims, &lru_list->index))
             {
-              pgbuf_Global_error = "full shared_lrus_with_victims";
-              abort ();
+              ABORT_RELEASE ();
             }
         }
       return true;
@@ -16925,8 +16909,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
   /* popped a list with victim candidates from queue */
   if (from_private != PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx))
     {
-      pgbuf_Global_error = "pgbuf_lfcq_get_victim_from_lru: private did not match";
-      abort ();
+      ABORT_RELEASE ();
     }
 
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
@@ -16943,8 +16926,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
       /* add lru list back to queue */
       if (!lf_circular_queue_produce (lfcq, &lru_idx))
         {
-          pgbuf_Global_error = "pgbuf_lfcq_get_victim_from_lru: could no produce";
-          abort ();
+          ABORT_RELEASE ();
         }
     }
   else
@@ -16958,7 +16940,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
       if ((lru_list->flags & PGBUF_LRU_VICTIM_LFCQ_FLAG) == 0)
         {
           /* should be set */
-          abort ();
+          ABORT_RELEASE ();
         }
       /* note: we are not using an atomic operation here, because this is the only flag and we are certain no one else
        *       changes it from set to cleared. however, if more flags are added, or more cases that should clear the
@@ -16980,8 +16962,7 @@ pgbuf_lru_list_from_bcb (const PGBUF_BCB * bcb)
 {
   if (!PGBUF_IS_BCB_IN_LRU (bcb))
     {
-      pgbuf_Global_error = "bcb not in lru list";
-      abort ();
+      ABORT_RELEASE ();
     }
   return PGBUF_GET_LRU_LIST (pgbuf_bcb_get_lru_index (bcb));
 }
@@ -16997,15 +16978,15 @@ pgbuf_flags_mask_sanity_check (void)
    * caught, so abort the server whenever happens. */
   if (PGBUF_BCB_FLAGS_MASK & PGBUF_ZONE_MASK)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
   if (PGBUF_BCB_FLAGS_MASK & PGBUF_LRU_INDEX_MASK)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
   if (PGBUF_ZONE_MASK & PGBUF_LRU_INDEX_MASK)
     {
-      abort ();
+      ABORT_RELEASE ();
     }
 }
 
@@ -17024,8 +17005,7 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
       if (lru->count_lru1 != 0 || lru->count_lru2 != 0 || lru->count_lru3 != 0 || lru->LRU_bottom != NULL
           || lru->LRU_bottom_1 != NULL || lru->LRU_bottom_2 != NULL)
         {
-          pgbuf_Global_error = "invalid empty";
-          abort ();
+          ABORT_RELEASE ();
         }
       return;
     }
@@ -17033,54 +17013,46 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
   /* not empty */
   if (lru->LRU_bottom == NULL)
     {
-      pgbuf_Global_error = "null bottom";
-      abort ();
+      ABORT_RELEASE ();
     }
   if (lru->count_lru1 == 0 && lru->count_lru2 == 0 && lru->count_lru3 == 0)
     {
-      pgbuf_Global_error = "invalid 0 counters";
-      abort ();
+      ABORT_RELEASE ();
     }
 
   /* zone 1 */
   if ((lru->count_lru1 == 0) != (lru->LRU_bottom_1 == NULL))
     {
-      pgbuf_Global_error = "unmatched count lru1 and bottom 1";
-      abort ();
+      ABORT_RELEASE ();
     }
   if (lru->LRU_bottom_1 != NULL)
     {
       if (pgbuf_bcb_get_zone (lru->LRU_bottom_1) != PGBUF_LRU_1_ZONE)
         {
-          pgbuf_Global_error = "bottom 1 not 1";
-          abort ();
+          ABORT_RELEASE ();
         }
       if (pgbuf_bcb_get_zone (lru->LRU_top) != PGBUF_LRU_1_ZONE)
         {
-          pgbuf_Global_error = "top not 1";
-          abort ();
+          ABORT_RELEASE ();
         }
       if (lru->LRU_bottom_1->next_BCB != NULL)
         {
           if (pgbuf_bcb_get_zone (lru->LRU_bottom_1->next_BCB) == PGBUF_LRU_1_ZONE)
             {
-              pgbuf_Global_error = "bottom 1 not bottom 1";
-              abort ();
+              ABORT_RELEASE ();
             }
           else if (pgbuf_bcb_get_zone (lru->LRU_bottom_1->next_BCB) == PGBUF_LRU_2_ZONE)
             {
               if (lru->count_lru2 == 0 || lru->LRU_bottom_2 == NULL)
                 {
-                  pgbuf_Global_error = "zone 2 empty";
-                  abort ();
+                  ABORT_RELEASE ();
                 }
             }
           else
             {
               if (lru->count_lru3 == 0)
                 {
-                  pgbuf_Global_error = "zone 3 empty";
-                  abort ();
+                  ABORT_RELEASE ();
                 }
             }
         }
@@ -17089,8 +17061,7 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
           if (lru->count_lru2 != 0 || lru->count_lru3 != 0 || lru->LRU_bottom_2 != NULL
               || lru->LRU_bottom != lru->LRU_bottom_1)
             {
-              pgbuf_Global_error = "zone 2 or 3 not empty";
-              abort ();
+              ABORT_RELEASE ();
             }
         }
     }
@@ -17098,45 +17069,38 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
   /* zone 2 */
   if ((lru->count_lru2 == 0) != (lru->LRU_bottom_2 == NULL))
     {
-      pgbuf_Global_error = "unmatched count lru2 and bottom 2";
-      abort ();
+      ABORT_RELEASE ();
     }
   if (lru->LRU_bottom_2 != NULL)
     {
       if (pgbuf_bcb_get_zone (lru->LRU_bottom_2) != PGBUF_LRU_2_ZONE)
         {
-          pgbuf_Global_error = "bottom 2 not 2";
-          abort ();
+          ABORT_RELEASE ();
         }
       if (lru->LRU_bottom_2 == NULL && pgbuf_bcb_get_zone (lru->LRU_top) != PGBUF_LRU_2_ZONE)
         {
-          pgbuf_Global_error = "top not 2";
-          abort ();
+          ABORT_RELEASE ();
         }
       if (lru->LRU_bottom_2->next_BCB != NULL)
         {
           if (pgbuf_bcb_get_zone (lru->LRU_bottom_2->next_BCB) == PGBUF_LRU_2_ZONE)
             {
-              pgbuf_Global_error = "bottom 2 not bottom 2";
-              abort ();
+              ABORT_RELEASE ();
             }
           else if (pgbuf_bcb_get_zone (lru->LRU_bottom_2->next_BCB) == PGBUF_LRU_1_ZONE)
             {
-              pgbuf_Global_error = "1 after bottom 2";
-              abort ();
+              ABORT_RELEASE ();
             }
           else if (lru->count_lru3 == 0)
             {
-              pgbuf_Global_error = "zone 3 empty (2)";
-              abort ();
+              ABORT_RELEASE ();
             }
         }
       else
         {
           if (lru->count_lru3 != 0 || lru->LRU_bottom != lru->LRU_bottom_2)
             {
-              pgbuf_Global_error = "zone 3 not empty";
-              abort ();
+              ABORT_RELEASE ();
             }
         }
     }
