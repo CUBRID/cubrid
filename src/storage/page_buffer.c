@@ -16432,11 +16432,11 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
             {
               if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
                 {
-                  perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_PRV_ADD_ADD_VICTIM);
+                  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_LFCQ_LRU_PRV_ADD_ADD_VICTIM);
                 }
               else
                 {
-                  perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_SHR_ADD_ADD_VICTIM);
+                  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_LFCQ_LRU_SHR_ADD_ADD_VICTIM);
                 }
             }
         }
