@@ -16717,7 +16717,7 @@ pgbuf_bcb_clear_dirty (PGBUF_BCB * bcb)
     {
       /* decrement global dirty counter */
       ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, -1);
-      assert (pgbuf_Pool.monitor.dirties_cnt > 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
+      assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt < pgbuf_Pool.num_buffers);
     }
 
   /* set no flag and clear dirty */
@@ -16743,7 +16743,7 @@ pgbuf_bcb_mark_is_flushing (PGBUF_BCB * bcb)
 
   /* decrement the global dirty counter */
   ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, -1);
-  assert (pgbuf_Pool.monitor.dirties_cnt > 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
+  assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt < pgbuf_Pool.num_buffers);
 
   /* set flushing flag and clear dirty */
   pgbuf_bcb_update_flags (bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG, PGBUF_BCB_DIRTY_FLAG);
