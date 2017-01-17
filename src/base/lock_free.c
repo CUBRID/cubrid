@@ -2504,7 +2504,7 @@ lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue)
   UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
   /* The queue is full is consume cursor is behind produce cursor with one generation (difference of capacity + 1). */
-  return cc + queue->capacity <= pc + 1;
+  return cc + queue->capacity <= pc;
 }
 
 /*
@@ -2578,7 +2578,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       consume_cursor = ATOMIC_LOAD_64 (&queue->consume_cursor);
       produce_cursor = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
-      if (consume_cursor + queue->capacity <= produce_cursor + 1)
+      if (consume_cursor + queue->capacity <= produce_cursor)
 	{
 	  /* The queue is full, cannot produce new entries */
 	  return false;
