@@ -9912,7 +9912,17 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
                       /* try to update hint on next */
                       PGBUF_BCB *victim_hint =
                         bufptr->prev_BCB != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) ? bufptr->prev_BCB : NULL;
-                      ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, victim_hint);
+                      if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, victim_hint))
+                        {
+                          if (victim_hint == NULL)
+                            {
+                              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_NULL_HINT_WITH_VICTIM);
+                            }
+                          else
+                            {
+                              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT_WITH_VICTIM);
+                            }
+                        }
                     }
                   pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
@@ -9953,7 +9963,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       /* nothing can be victimized in this list */
       if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, NULL))
         {
-          /* perf */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_NULL_HINT);
         }
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_BAD_HINT);
     }
@@ -10903,7 +10913,17 @@ pgbuf_remove_from_lru_list (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
    * disconnecting the bcb from list, we need to be sure no one else sets the hint to this bcb. */
   if (lru_list->LRU_victim_hint == bufptr)
     {
-      ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr, new_victim_hint);
+      if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr, new_victim_hint))
+        {
+          if (new_victim_hint == NULL)
+            {
+              perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_REM_BCB_NULL_HINT);
+            }
+          else
+            {
+              perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_REM_BCB_ADVANCE_HINT);
+            }
+        }
     }
   pgbuf_bcb_change_zone (bufptr, 0, PGBUF_VOID_ZONE);
 }
@@ -16410,6 +16430,7 @@ STATIC_INLINE void
 pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
 {
   PGBUF_BCB *old_victim_hint;
+  bool updated_hint = true;
 
   /* first, let's update the victim hint. */
   do
@@ -16422,6 +16443,8 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
              > PGBUF_AGE_DIFF (bcb->tick_lru3, lru_list->tick_lru3))
         {
           /* current hint is older. */
+          updated_hint = false;
+          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_ADD_VICTIM_KEEP_HINT);
           break;
         }
 
@@ -16430,6 +16453,11 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
        * is better. */
     }
   while (!ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, old_victim_hint, bcb));
+
+  if (updated_hint)
+    {
+      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_ADD_VICTIM_CHANGE_HINT);
+    }
 
   /* update victim counter. */
   if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 1) == 1)
@@ -16484,7 +16512,17 @@ pgbuf_lru_remove_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
     {
       new_victim_hint = bcb->prev_BCB;
     }
-  ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bcb, new_victim_hint);
+  if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bcb, new_victim_hint))
+    {
+      if (new_victim_hint == NULL)
+        {
+          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_REM_VICTIM_NULL_HINT);
+        }
+      else
+        {
+          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_REM_VICTIM_ADVANCE_HINT);
+        }
+    }
 }
 
 /*
