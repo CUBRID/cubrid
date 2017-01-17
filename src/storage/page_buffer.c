@@ -15271,7 +15271,10 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
           if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
             {
               /* make sure this is added to victim list */
-              pgbuf_lfcq_add_lru_with_victims (lru_list);
+              if (pgbuf_lfcq_add_lru_with_victims (lru_list))
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_PRV_ADD_ADJUST_QUOTA);
+                }
             }
 	}
     }
@@ -15312,7 +15315,10 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
           if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
             {
               /* make sure this is added to victim list */
-              pgbuf_lfcq_add_lru_with_victims (lru_list);
+              if (pgbuf_lfcq_add_lru_with_victims (lru_list))
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_PRV_ADD_ADJUST_QUOTA);
+                }
             }
 	}
     }
@@ -15335,7 +15341,10 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
       if (lru_list->count_vict_cand > 0)
         {
           /* make sure this is added to victim list */
-          pgbuf_lfcq_add_lru_with_victims (lru_list);
+          if (pgbuf_lfcq_add_lru_with_victims (lru_list))
+            {
+              perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_SHR_ADD_ADJUST_QUOTA);
+            }
         }
     }
 
@@ -16419,7 +16428,17 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
        * ... if this is not a private list under quota. */
       if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index) || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
         {
-          pgbuf_lfcq_add_lru_with_victims (lru_list);
+          if (pgbuf_lfcq_add_lru_with_victims (lru_list))
+            {
+              if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_PRV_ADD_ADD_VICTIM);
+                }
+              else
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_SHR_ADD_ADD_VICTIM);
+                }
+            }
         }
     }
 }
@@ -16851,7 +16870,7 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
 {
   int old_flags = lru_list->flags;
 
-  if (old_flags | PGBUF_LRU_VICTIM_LFCQ_FLAG)
+  if (old_flags & PGBUF_LRU_VICTIM_LFCQ_FLAG)
     {
       /* already added. */
       return false;
@@ -16907,11 +16926,12 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
       assert (from_private);
       return NULL;
     }
+  perfmon_inc_stat (thread_p, from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_CALLS : PSTAT_PB_LFCQ_LRU_SHR_GET_CALLS);
 
   if (!lf_circular_queue_consume (lfcq, &lru_idx))
     {
       /* no list has candidates! */
-      /* perf */
+      perfmon_inc_stat (thread_p, from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_EMPTY : PSTAT_PB_LFCQ_LRU_SHR_GET_EMPTY);
       return NULL;
     }
   /* popped a list with victim candidates from queue */
@@ -16936,6 +16956,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
         {
           ABORT_RELEASE ();
         }
+      perfmon_inc_stat (thread_p, from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_READD : PSTAT_PB_LFCQ_LRU_SHR_GET_READD);
     }
   else
     {
@@ -16954,6 +16975,9 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
        *       changes it from set to cleared. however, if more flags are added, or more cases that should clear the
        *       flag, then consider replacing with some atomic operation. */
       lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
+
+      perfmon_inc_stat (thread_p,
+                        from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_DONT_ADD : PSTAT_PB_LFCQ_LRU_SHR_GET_DONT_ADD);
     }
 
   return victim;

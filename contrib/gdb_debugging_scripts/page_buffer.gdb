@@ -282,53 +282,69 @@ define pgbuf_lru_print_vict
 end
 
 define pgbuf_lru_print_victim_status
-  set $pcnt = 0
-  set $scnt = 0
-  set $slists = 0
-  set $plists = 0
-  set $ploq = 0
-  set $ploq_cnt = 0
-  set $ploq_full = 0
-  set $ploq_cnt_full = 0
-  
-  set $npages_shared = 0
-  set $npages_private = 0
   set $i = 0
+  
+  set $shared_1 = 0
+  set $shared_2 = 0
+  set $shared_3 = 0
+  set $shared_vc = 0
+  
   while $i < pgbuf_Pool.num_LRU_list
-    if pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt > 0
-      set $scnt = $scnt + pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt
-      set $slists = $slists + 1
-      end
+    set $lru_list = &pgbuf_Pool.buf_LRU_list[$i]
+    set $shared_1 = $shared_1 + $lru_list->count_lru1
+    set $shared_2 = $shared_2 + $lru_list->count_lru2
+    set $shared_3 = $shared_3 + $lru_list->count_lru3
+    set $shared_vc = $shared_vc + $lru_list->count_vict_cand
     set $i = $i + 1
-    set $npages_shared = $npages_shared + pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i]
     end
+    
+  set $private_1 = 0
+  set $private_2 = 0
+  set $private_3 = 0
+  set $private_vc = 0
+  set $private_quota = 0
+  set $oq_lists = 0
+  set $oq_bcbs = 0
+  set $oq_with_vc = 0
+  set $oq_with_vc_bcbs = 0
+  
   set $i = pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list
   while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
-    if pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt > 0
-      set $pcnt = $pcnt + pgbuf_Pool.buf_LRU_list[$i].LRU_2_non_dirty_cnt
-      set $plists = $plists + 1
-      if pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i] > pgbuf_Pool.quota.target_bcbs_per_lru[$i]
-        set $ploq = $ploq + 1
-        set $ploq_cnt = $ploq_cnt + pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i] - pgbuf_Pool.quota.target_bcbs_per_lru[$i]
-        end
-    else
-      if pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i] > pgbuf_Pool.quota.target_bcbs_per_lru[$i]
-        set $ploq_full = $ploq_full + 1
-        set $ploq_cnt_full = $ploq_cnt_full + pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i] - pgbuf_Pool.quota.target_bcbs_per_lru[$i]
+    set $lru_list = &pgbuf_Pool.buf_LRU_list[$i]
+    set $private_1 = $private_1 + $lru_list->count_lru1
+    set $private_2 = $private_2 + $lru_list->count_lru2
+    set $private_3 = $private_3 + $lru_list->count_lru3
+    set $private_vc = $private_vc + $lru_list->count_vict_cand
+    set $private_quota = $private_quota + $lru_list->quota
+    set $diff = $lru_list->count_lru1 + $lru_list->count_lru2 + $lru_list->count_lru3 - $lru_list->quota
+    if $diff > 0
+      set $oq_lists = $oq_lists + 1
+      set $oq_bcbs = $oq_bcbs + $diff
+      if $lru_list->count_vict_cand > 0
+        set $oq_with_vc = $oq_with_vc + 1
+        set $oq_with_vc_bcbs = $oq_with_vc_bcbs + $lru_list->count_vict_cand
         end
       end
     set $i = $i + 1
-    set $npages_private = $npages_private + pgbuf_Pool.monitor.bcbs_cnt_per_lru[$i]
     end
-  printf "Have non-dirty: \n"
-  printf "Private lru's: %d, total non-dirty count : %d, over quota = %d, count over quota = %d \n", $plists, $pcnt, $ploq, $ploq_cnt
-  printf "Shared lru's: %d, total non-dirty count : %d \n", $slists, $scnt
-  printf "Don't have non-dirty: \n"
-  printf "Private lru's: %d, over quota = %d, count over quota = %d \n", pgbuf_Pool.quota.num_private_LRU_list - $plists, $ploq_full, $ploq_cnt_full
-  printf "Shared lru's: %d \n", pgbuf_Pool.num_LRU_list - $slists
-  printf "Total pages:"
-  printf "Private %d \n", $npages_private
-  printf "Shared %d \n", $npages_shared
+  
+  printf "\n"
+  printf "Shared lists: \n"
+  printf "Total bcbs: %d \n", $shared_1 + $shared_2 + $shared_3
+  printf "Zone 1: %d \n", $shared_1
+  printf "Zone 2: %d \n", $shared_2
+  printf "Zone 3: %d \n", $shared_3
+  printf "Victim candidates: %d \n", $shared_vc
+  printf "\n"
+  printf "Private lists: \n"
+  printf "Total bcbs: %d \n", $private_1 + $private_2 + $private_3
+  printf "Zone 1: %d \n", $private_1
+  printf "Zone 2: %d \n", $private_2
+  printf "Zone 3: %d \n", $private_3
+  printf "Victim candidates: %d \n", $private_vc
+  printf "Over quota: lists = %d, bcb's = %d \n", $oq_lists, $oq_bcbs
+  printf "Candidates in over quota: lists = %d, bcb's = %d \n", $oq_with_vc, $oq_with_vc_bcbs
+  printf "\n"
   end
   
 define pgbuf_print_alloc_bcb_waits
