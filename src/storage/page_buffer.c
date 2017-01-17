@@ -11439,7 +11439,8 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       ABORT_RELEASE ();
     }
 
-  if (!pgbuf_bcb_is_dirty (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
+  if (!pgbuf_bcb_is_dirty (bufptr) && bufptr->fcnt == 0 && bufptr->next_wait_thrd == NULL
+      && pgbuf_assign_direct_victim (thread_p, bufptr))
     {
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
     }
@@ -16248,6 +16249,10 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
       /* should not happen */
       ABORT_RELEASE ();
     }
+  if (bcb->fcnt > 0 || bcb->next_wait_thrd != NULL)
+    {
+      ABORT_RELEASE ();
+    }
 
   /* is flushing is expected, since this is called from flush too. caller should make sure no other case should get
    * here with is flushing true. */
@@ -16327,6 +16332,11 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
     }
 
   PGBUF_LOCK_BCB (bcb);
+
+  if (!pgbuf_bcb_is_direct_victim (bcb))
+    {
+      ABORT_RELEASE ();
+    }
 
   /* clear direct victim flag */
   pgbuf_bcb_update_flags (bcb, 0, PGBUF_BCB_VICTIM_DIRECT_FLAG);
