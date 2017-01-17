@@ -203,15 +203,15 @@ typedef enum
 {
   /* zone values start after reserved values for lru indexes */
   PGBUF_LRU_1_ZONE = 1 << PGBUF_LRU_NBITS,
-  PGBUF_LRU_2_ZONE = PGBUF_LRU_1_ZONE + 1,
-  PGBUF_LRU_3_ZONE = PGBUF_LRU_2_ZONE + 1,
+  PGBUF_LRU_2_ZONE = 2 << PGBUF_LRU_1_ZONE,
+  PGBUF_LRU_3_ZONE = 3 << PGBUF_LRU_2_ZONE,
   /* make sure lru zone mask covers all lru zone values */
   PGBUF_LRU_ZONE_MASK = PGBUF_LRU_1_ZONE | PGBUF_LRU_2_ZONE | PGBUF_LRU_3_ZONE,
 
   /* other zone values must have a completely different mask than lru zone */
-  PGBUF_INVALID_ZONE = PGBUF_LRU_ZONE_MASK + 1,
-  PGBUF_VOID_ZONE = PGBUF_INVALID_ZONE + 1,
-  PGBUF_AIN_ZONE = PGBUF_VOID_ZONE + 1,		/* todo: do we keep ain? */
+  PGBUF_INVALID_ZONE = 4 << PGBUF_LRU_ZONE_MASK,
+  PGBUF_VOID_ZONE = 5 << PGBUF_INVALID_ZONE,
+  PGBUF_AIN_ZONE = 6 << PGBUF_VOID_ZONE,		/* todo: do we keep ain? */
 
   /* zone mask should cover all zone values */
   PGBUF_ZONE_MASK = (PGBUF_LRU_ZONE_MASK | PGBUF_INVALID_ZONE | PGBUF_VOID_ZONE | PGBUF_AIN_ZONE),
@@ -884,6 +884,7 @@ struct pgbuf_page_quota
   float *private_lru_distr;	/* How quota is destributed among private lists */
   float private_pages_ratio;	/* Ratio of all private BCBs among total BCBs */
 
+  /* todo: remove me --> */
   unsigned int vict_shared_lru_idx;	/* circular index of shared LRU for victimization */
   unsigned int vict_garbage_lru_idx;	/* circular index of garbage LRU for victimization */
   unsigned int vict_private_lru_idx;	/* circular index of private LRU for victimization */
@@ -9799,7 +9800,7 @@ static PGBUF_BCB *
 pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
   PGBUF_BCB *bufptr;
-  int dirty_cnt;
+  int dirty_cnt = 0;
   PGBUF_LRU_LIST *lru_list;
   int search_cnt = 0;
   PGBUF_BCB *bufptr_victimizable = NULL;
@@ -9810,14 +9811,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   /* check if LRU list is empty */
   if (lru_list->LRU_bottom == NULL)
     {
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_EMPTY);
       return NULL;
     }
-
-  dirty_cnt = 0;
 
   pthread_mutex_lock (&lru_list->LRU_mutex);
   if (lru_list->LRU_bottom == NULL)
     {
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_EMPTY);
       pthread_mutex_unlock (&lru_list->LRU_mutex);
       return NULL;
     }
@@ -9832,19 +9833,21 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   if (lru_list->count_vict_cand <= 0)
     {
-      pthread_mutex_unlock (&lru_list->LRU_mutex);
-      return NULL;
-    }
-
-  if (lru_list->LRU_victim_hint == NULL)
-    {
-      /* all zone three bcb's are dirty */
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_NO_VICT_CAND);
       pthread_mutex_unlock (&lru_list->LRU_mutex);
       return NULL;
     }
 
   /* start searching with victim hint */
   bufptr_start = lru_list->LRU_victim_hint;
+
+  if (bufptr_start == NULL)
+    {
+      /* all zone three bcb's are dirty */
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_NULL_HINT);
+      pthread_mutex_unlock (&lru_list->LRU_mutex);
+      return NULL;
+    }
 
   if (bufptr_start == lru_list->LRU_bottom)
     {
@@ -9890,7 +9893,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	    {
 	      bufptr_victimizable = bufptr;
               /* try to replace victim if it was not already changed. */
-              ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable);
+              if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable))
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
+                }
 	    }
 	}
       else
@@ -9915,13 +9921,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
                     }
                   pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
-                  /* perf search_cnt */
+                  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
+                  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, search_cnt);
 
                   return bufptr;
                 }
               else
                 {
-                  /* perf */
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_TRYLOCK_SUCCESS_NOT_VICT);
                   PGBUF_UNLOCK_BCB (bufptr);
                 }
             }
@@ -9933,13 +9940,17 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	          bufptr_victimizable = bufptr;
                   /* try to replace victim if it was not already changed. */
                   ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable);
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
 	        }
+              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_TRYLOCK_FAILED);
             }
 	}
       search_cnt++;
     }
 
   perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_ZONE_2);
+  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_FAIL_DIRTY_CNT, dirty_cnt);
+  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_FAIL_DIRTY_CNT, search_cnt);
   /* perf search_cnt */
 
   if (bufptr_victimizable == NULL)
