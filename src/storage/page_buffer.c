@@ -203,15 +203,15 @@ typedef enum
 {
   /* zone values start after reserved values for lru indexes */
   PGBUF_LRU_1_ZONE = 1 << PGBUF_LRU_NBITS,
-  PGBUF_LRU_2_ZONE = 2 << PGBUF_LRU_1_ZONE,
-  PGBUF_LRU_3_ZONE = 3 << PGBUF_LRU_2_ZONE,
+  PGBUF_LRU_2_ZONE = 2 << PGBUF_LRU_NBITS,
+  PGBUF_LRU_3_ZONE = 3 << PGBUF_LRU_NBITS,
   /* make sure lru zone mask covers all lru zone values */
   PGBUF_LRU_ZONE_MASK = PGBUF_LRU_1_ZONE | PGBUF_LRU_2_ZONE | PGBUF_LRU_3_ZONE,
 
   /* other zone values must have a completely different mask than lru zone */
-  PGBUF_INVALID_ZONE = 4 << PGBUF_LRU_ZONE_MASK,
-  PGBUF_VOID_ZONE = 5 << PGBUF_INVALID_ZONE,
-  PGBUF_AIN_ZONE = 6 << PGBUF_VOID_ZONE,		/* todo: do we keep ain? */
+  PGBUF_INVALID_ZONE = 4 << PGBUF_LRU_NBITS,
+  PGBUF_VOID_ZONE = 5 << PGBUF_LRU_NBITS,
+  PGBUF_AIN_ZONE = 6 << PGBUF_LRU_NBITS,		/* todo: do we keep ain? */
 
   /* zone mask should cover all zone values */
   PGBUF_ZONE_MASK = (PGBUF_LRU_ZONE_MASK | PGBUF_INVALID_ZONE | PGBUF_VOID_ZONE | PGBUF_AIN_ZONE),
