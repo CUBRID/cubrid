@@ -9540,8 +9540,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
       lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
 
       /* todo: should we allow lru1 victimizations? */
-      if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
-          || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) > lru_list->count_vict_cand > 0))
+      if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list) || lru_list->count_vict_cand > 0)
 	{
 	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[private_lru_idx], 1);
 
