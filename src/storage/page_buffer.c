@@ -1235,7 +1235,7 @@ static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 
 static int pgbuf_Global_error = 0;
 #if defined (NDEBUG)
-#define ABORT_RELEASE() pgbuf_Global_error = __LINE__; abort ()
+#define ABORT_RELEASE() do { pgbuf_Global_error = __LINE__; abort () } while (false)
 #else /* !NDEBUG */
 #define ABORT_RELEASE() assert (false)
 #endif /* !NDEBUG */
