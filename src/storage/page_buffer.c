@@ -10146,7 +10146,7 @@ pgbuf_lru_add_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
       lru_list->tick_list = 0;
     }
 
-  pgbuf_bcb_change_zone (bcb, lru_idx, PGBUF_LRU_1_ZONE);
+  pgbuf_bcb_change_zone (bcb, lru_idx, PGBUF_LRU_2_ZONE);
 }
 
 /*
@@ -10200,7 +10200,7 @@ pgbuf_lru_add_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
   /* update zone 3 count */
   lru_list->count_lru3++;
 
-  pgbuf_bcb_change_zone (bcb, lru_idx, PGBUF_LRU_1_ZONE);
+  pgbuf_bcb_change_zone (bcb, lru_idx, PGBUF_LRU_3_ZONE);
 }
 
 /*
