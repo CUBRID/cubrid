@@ -10870,7 +10870,7 @@ pgbuf_remove_from_lru_list (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
 
   if (lru_list->LRU_bottom_2 == bufptr)
     {
-      if (bufptr->prev_BCB != NULL && zone == PGBUF_LRU_2_ZONE)
+      if (bufptr->prev_BCB != NULL && pgbuf_bcb_get_zone (bufptr->prev_BCB) == PGBUF_LRU_2_ZONE)
         {
           lru_list->LRU_bottom_2 = bufptr->prev_BCB;
         }
@@ -16403,7 +16403,7 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
              > PGBUF_AGE_DIFF (bcb->tick_lru3, lru_list->tick_lru3))
         {
           /* current hint is older. */
-          return;
+          break;
         }
 
       /* compare & swap. if it fails, the hint must have been updated by someone else (it is possible even if we hold

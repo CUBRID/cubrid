@@ -417,3 +417,44 @@ define pgbuf_find_alloc_bcb_wait_thread
     printf "not found \n"
     end
   end
+  
+define pgbuf_read_bcb_flags
+  set $flags = $arg0
+  
+  printf "Flags: %x \n", ($flags & 0xF0000000)
+  if $flags & 0x80000000
+    printf "BCB is dirty \n"
+    end
+  if $flags & 0x40000000
+    printf "BCB is being flushed to disk \n"
+    end
+  if $flags & 0x20000000
+    printf "BCB is victim candidate \n"
+    end
+  if $flags & 0x10000000
+    printf "BCB is direct victim \n"
+    end
+  
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
+    printf "BCB is in lru 1 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_2_ZONE
+    printf "BCB is in lru 2 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_3_ZONE
+    printf "BCB is in lru 3 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_VOID_ZONE
+    printf "BCB is in void zone \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_INVALID_ZONE
+    printf "BCB is in invalid zone \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_AIN_ZONE
+    printf "BCB is in ain \n"
+    end
+  
+  if $flags & PGBUF_LRU_ZONE_MASK
+    printf "BCB is in lru list with index %d \n", $flags & 0xFFFF
+    end
+  end
