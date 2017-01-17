@@ -2545,9 +2545,6 @@ lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue)
   return (int) (pc - cc);
 }
 
-static int lf_abort_line = 0;
-#define ABORT_RELEASE() do { lf_abort_line = __LINE__; abort (); } while (false)
-
 /*
  * lf_circular_queue_produce () - Add new entry to queue.
  *
@@ -2584,7 +2581,6 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       if (consume_cursor + queue->capacity <= produce_cursor)
 	{
 	  /* The queue is full, cannot produce new entries */
-          ABORT_RELEASE ();
 	  return false;
 	}
 
@@ -2628,7 +2624,6 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	  /* The entry at produce_cursor is being consumed still. The consume cursor is behind one generation and
 	   * it was already incremented, but the consumer did not yet finish consuming. We can consider the queue
 	   * is still full since we don't want to loop here for an indefinite time. */
-          ABORT_RELEASE ();
 	  return false;
 	}
       else
