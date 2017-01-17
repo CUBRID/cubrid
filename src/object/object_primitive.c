@@ -2124,7 +2124,8 @@ pr_clear_value (DB_VALUE * value)
 	{
 	  if (DB_GET_ENUM_STRING (value) != NULL)
 	    {
-	      db_private_free_and_init (NULL, DB_GET_ENUM_STRING (value));
+	      char *temp = DB_GET_ENUM_STRING (value);
+	      db_private_free_and_init (NULL, temp);
 	    }
 	}
       db_make_enumeration (value, 0, NULL, 0, DB_GET_ENUM_CODESET (value), DB_GET_ENUM_COLLATION (value));

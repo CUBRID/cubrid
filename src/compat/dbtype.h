@@ -3377,4 +3377,6 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 
 #define DB_GET_ENUM_STRING(value) db_get_enum_string(value)
 
+#define DB_GET_ENUM_STRING_SIZE(value) db_get_enum_string_size(value)
+
 #endif /* _DBTYPE_H_ */
