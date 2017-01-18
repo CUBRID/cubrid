@@ -9600,7 +9600,9 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   int Q_end, R_start;
 #if !defined(NDEBUG)
   int p_level, q_level, r_level;
+#if defined (SERVER_MODE)
   bool P_modification_started = false, Q_modification_started = false, R_modification_started = false;
+#endif /* SERVER_MODE */
 #endif
   BTREE_NODE_HEADER *q_header = NULL, *r_header = NULL;
 
@@ -9632,6 +9634,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, Q);
   btree_verify_node (thread_p, btid, R);
 
+#if defined (SERVER_MODE)
   /*
    * Starts the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
    * readers without latch. That's because the readers uses latch to access the non-leaf page. Also, the readers uses
@@ -9640,7 +9643,8 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   pgbuf_start_modification (P, &P_modification_started);
   pgbuf_start_modification (Q, &Q_modification_started);
   pgbuf_start_modification (R, &R_modification_started);
-#endif
+#endif /* SERVER_MODE */
+#endif /* !NDEBUG */
 
   /* initializations */
   recset_data = NULL;
@@ -9836,6 +9840,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
+#if defined (SERVER_MODE)
   if (Q_modification_started)
     {
       pgbuf_end_modification (Q);
@@ -9848,12 +9853,14 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       pgbuf_end_modification (R);
     }
+#endif /* SERVER_MODE */
 #endif
 
   return ret;
 
 exit_on_error:
 #if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   if (Q_modification_started)
     {
       pgbuf_end_modification (Q);
@@ -9866,6 +9873,7 @@ exit_on_error:
     {
       pgbuf_end_modification (R);
     }
+#endif /* SERVER_MODE */
 #endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -9948,7 +9956,9 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   int merged_prefix = 0;
 
 #if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   bool P_modification_started = false, left_pg_modification_started = false, right_pg_modification_started = false;
+#endif
 #endif
 
   assert (P != NULL && left_pg != NULL && right_pg != NULL);
@@ -9973,6 +9983,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, left_pg);
 
+#if defined (SERVER_MODE)
   /*
    * Starts the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
    * readers without latch. That's because the readers uses latch to access the non-leaf page. Also, the readers uses
@@ -9981,7 +9992,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   pgbuf_start_modification (P, &P_modification_started);
   pgbuf_start_modification (left_pg, &left_pg_modification_started);
   pgbuf_start_modification (right_pg, &right_pg_modification_started);
-#endif
+#endif /* SERVER_MODE */
+#endif /* !NDEBUG */
 
   /***********************************************************
    ***  Merging two b-tree nodes (leaf or non-leaf).
@@ -10398,6 +10410,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
 #if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   if (P_modification_started)
     {
       pgbuf_end_modification (P);
@@ -10410,6 +10423,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       pgbuf_end_modification (right_pg);
     }
+#endif /* SERVER_MODE */
 #endif
 
   /* Success. */
@@ -10428,6 +10442,7 @@ exit_on_error:
   btree_clear_key_value (&right_fence_key_clear, &right_fence_key);
 
 #if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   if (P_modification_started)
     {
       pgbuf_end_modification (P);
@@ -10440,6 +10455,7 @@ exit_on_error:
     {
       pgbuf_end_modification (right_pg);
     }
+#endif /* SERVER_MODE */
 #endif
 
   return ret;
@@ -12612,7 +12628,9 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   PAGE_PTR page_after_right = NULL;
 #if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   bool P_modification_started = false, Q_modification_started = false, R_modification_started = false;
+#endif
 #endif
 
   rheader = &right_header_info;
@@ -12666,9 +12684,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       btree_split_test (thread_p, btid, key, Q_vpid, Q, node_type);
     }
-#endif
-
-#if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   /*
    * Starts the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
    * readers without latch. That's because the readers uses latch to access the non-leaf page. Also, the readers uses
@@ -12677,8 +12693,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   pgbuf_start_modification (Q, &Q_modification_started);
   pgbuf_start_modification (P, &P_modification_started);
   pgbuf_start_modification (R, &R_modification_started);
-#endif
-
+#endif /* SERVER_MODE */
+#endif /* !NDEBUG */
   /********************************************************************
    ***  STEP 1: find split point & sep_key
    ***          make fence key to be inserted
@@ -13032,6 +13048,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
   btree_verify_node (thread_p, btid, R);
+#if defined (SERVER_MODE)
   if (Q_modification_started)
     {
       pgbuf_end_modification (Q);
@@ -13044,6 +13061,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       pgbuf_end_modification (R);
     }
+#endif /* SERVER_MODE */
 #endif
 
   return ret;
@@ -13057,6 +13075,7 @@ exit_on_error:
     }
 
 #if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   if (Q_modification_started)
     {
       pgbuf_end_modification (Q);
@@ -13069,6 +13088,7 @@ exit_on_error:
     {
       pgbuf_end_modification (R);
     }
+#endif /* SERVER_MODE */
 #endif
 
   assert (ret != NO_ERROR);
@@ -13493,7 +13513,9 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   OID dummy_oid = { NULL_PAGEID, 0, 0 };
   int leftsize, rightsize;
 #if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   bool P_modification_started = false, Q_modification_started = false, R_modification_started = false;
+#endif
 #endif
 
   qheader = &q_header_info;
@@ -13527,6 +13549,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
 
+#if defined (SERVER_MODE)
   /*
    * Starts the modification on pages, for debugging purpose. Currently, these pages can't be accessed by concurrent
    * readers without latch. That's because the readers uses latch to access the non-leaf page. Also, the readers uses
@@ -13535,6 +13558,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   pgbuf_start_modification (P, &P_modification_started);
   pgbuf_start_modification (Q, &Q_modification_started);
   pgbuf_start_modification (R, &R_modification_started);
+#endif
 #endif
 
   /* initializations */
@@ -13929,6 +13953,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   btree_verify_node (thread_p, btid, P);
   btree_verify_node (thread_p, btid, Q);
   btree_verify_node (thread_p, btid, R);
+#if defined (SERVER_MODE)
   if (P_modification_started)
     {
       pgbuf_end_modification (P);
@@ -13941,6 +13966,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       pgbuf_end_modification (R);
     }
+#endif /* SERVER_MODE */
 #endif
 
   return ret;
@@ -13954,6 +13980,7 @@ exit_on_error:
     }
 
 #if !defined(NDEBUG)
+#if defined (SERVER_MODE)
   if (P_modification_started)
     {
       pgbuf_end_modification (P);
@@ -13966,6 +13993,7 @@ exit_on_error:
     {
       pgbuf_end_modification (R);
     }
+#endif /* SERVER_MODE */
 #endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;

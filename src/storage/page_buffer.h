@@ -501,11 +501,11 @@ extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, con
   pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)
 #endif /* !NDEBUG */
 
+#if defined (SERVER_MODE)
 extern void pgbuf_start_modification (PAGE_PTR pgptr, bool * modification_started);
 extern bool pgbuf_is_modification_started (PAGE_PTR pgptr);
 extern void pgbuf_end_modification (PAGE_PTR pgptr);
 extern void pgbuf_reset_modification (PAGE_PTR pgptr);
-#if defined (SERVER_MODE)
 extern int pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **area);
 extern void pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p);
 extern void pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p);

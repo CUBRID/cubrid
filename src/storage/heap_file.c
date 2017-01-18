@@ -18770,7 +18770,9 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 {
   RECDES ovf_recdes;
   int error_code = NO_ERROR;
+#if defined (SERVER_MODE)
   bool modification_started = false;
+#endif
 
   assert (ovf_page != NULL);
   assert (mvcc_header != NULL);
@@ -18797,12 +18799,18 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 
   /* Safe guard */
   assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header)] == OR_MVCC_MAX_HEADER_SIZE);
+#if defined (SERVER_MODE)
   pgbuf_start_modification (ovf_page, &modification_started);
+#endif /* SERVER_MODE */
+
   error_code = or_mvcc_set_header (&ovf_recdes, mvcc_header);
+
+#if defined (SERVER_MODE)
   if (modification_started)
     {
       pgbuf_end_modification (ovf_page);
     }
+#endif /* SERVER_MODE */
   return error_code;
 }
 
