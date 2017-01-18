@@ -215,6 +215,8 @@ PSTAT_METADATA pstat_Metadata[] = {
                                   "Num_victim_lru_hint_set_null_successful_search"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_ADD_VICTIM_KEEP_HINT, "Num_victim_lru_hint_keep_add_victim"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_ADD_VICTIM_CHANGE_HINT, "Num_victim_lru_hint_change_add_victim"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_ADD_VICTIM_CHANGE_NULL_HINT,
+                                  "Num_victim_lru_hint_change_null_add_victim"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_REM_VICTIM_NULL_HINT,
                                   "Num_victim_lru_hint_set_null_remove_victim"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_REM_VICTIM_ADVANCE_HINT,

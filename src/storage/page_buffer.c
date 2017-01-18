@@ -4101,12 +4101,14 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       goto end;
     }
 
+  /* wake up log flush thread. we need log up to date to be able to flush pages */
+  thread_wakeup_log_flush_thread ();
+
   if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
     {
       qsort ((void *) victim_cand_list, victim_count, sizeof (PGBUF_VICTIM_CANDIDATE_LIST), pgbuf_compare_victim_list);
     }
 
-  num_tries = 1;
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = true;
 #endif
@@ -9419,8 +9421,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
                 {
                   PGBUF_BCB *bcb_prev = bufptr->prev_BCB;
                   PGBUF_BCB *victim_hint = NULL;
-                  pgbuf_remove_from_lru_list (bufptr, lru_list);
-                  pthread_mutex_unlock (&lru_list->LRU_mutex);
 
                   if (bufptr_victimizable == NULL)
                     {
@@ -9438,6 +9438,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
                             }
                         }
                     }
+
+                  pgbuf_remove_from_lru_list (bufptr, lru_list);
+                  pthread_mutex_unlock (&lru_list->LRU_mutex);
+
                   pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
                   perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
@@ -15518,7 +15522,7 @@ pgbuf_get_thread_waiting_for_direct_victim (THREAD_ENTRY ** waiting_thread_out)
   int my_count = ATOMIC_INC_64 (&count, 1);
 
   /* every now and then, force getting waiting threads from queues with lesser priority */
-  if (my_count % 8 == 0)
+  if (my_count % 4 == 0)
     {
       if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters,
                                      waiting_thread_out))
@@ -15526,7 +15530,7 @@ pgbuf_get_thread_waiting_for_direct_victim (THREAD_ENTRY ** waiting_thread_out)
           return true;
         }
     }
-  else if (my_count % 8 == 1)
+  else if (my_count % 16 == 1)
     {
       if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, waiting_thread_out))
         {
@@ -15670,7 +15674,14 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
 
   if (updated_hint)
     {
-      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_ADD_VICTIM_CHANGE_HINT);
+      if (old_victim_hint == NULL)
+        {
+          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_ADD_VICTIM_CHANGE_NULL_HINT);
+        }
+      else
+        {
+          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_ADD_VICTIM_CHANGE_HINT);
+        }
     }
 
   /* update victim counter. */
@@ -16226,7 +16237,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
   /* we add a lru list back to queue if all conditions are met:
    * 1. it has victim candidates
    * 2. list is not private or is not over quota. */
-  if (lru_list->count_vict_cand > 0 && (!from_private || !PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list)))
+  if (lru_list->count_vict_cand > 0 && (!from_private || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list)))
     {
       /* add lru list back to queue */
       if (!lf_circular_queue_produce (lfcq, &lru_idx))
