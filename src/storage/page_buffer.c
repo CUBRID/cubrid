@@ -9822,14 +9822,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
             {
               if (pgbuf_is_bcb_victimizable (bufptr, true))
                 {
+                  PGBUF_BCB *bcb_prev = bufptr->prev_BCB;
+                  PGBUF_BCB *victim_hint = NULL;
                   pgbuf_remove_from_lru_list (bufptr, lru_list);
                   pthread_mutex_unlock (&lru_list->LRU_mutex);
 
                   if (bufptr_victimizable == NULL)
                     {
                       /* try to update hint on next */
-                      PGBUF_BCB *victim_hint =
-                        bufptr->prev_BCB != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) ? bufptr->prev_BCB : NULL;
+                      victim_hint = bcb_prev != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_prev) ? bcb_prev : NULL;
                       if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, victim_hint))
                         {
                           if (victim_hint == NULL)
