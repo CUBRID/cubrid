@@ -228,6 +228,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, "Num_victim_lru_search_count_on_success"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_FAIL_DIRTY_CNT, "Num_victim_lru_dirty_count_on_fail"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_FAIL_SEARCH_CNT, "Num_victim_lru_search_count_on_fail"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_SKIPPED_NON_DIRTY, "Num_victim_lru_skipped_victims"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_TRYLOCK_FAILED, "Num_victim_lru_failed_trylock_on_cand"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_TRYLOCK_SUCCESS_NOT_VICT,
                                   "Num_victim_lru_cand_invalid_after_success_trylock"),
@@ -287,7 +288,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_ADD_ADJUST_QUOTA, "Num_lfcq_shr_add_from_adjust_quota"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_ADD_ADD_VICTIM, "Num_lfcq_shr_add_from_add_victim"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_READD, "Num_lfcq_shr_get_readd"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_DONT_ADD, "NumNum_lfcq_shr_get_dont_readd_"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_DONT_ADD, "Num_lfcq_shr_get_dont_readd"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_CALLS, "Num_lfcq_shr_get_total_calls"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_EMPTY, "Num_lfcq_shr_get_empty"),
 

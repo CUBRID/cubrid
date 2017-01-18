@@ -9732,8 +9732,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
   PGBUF_BCB *bufptr;
   int dirty_cnt = 0;
-  PGBUF_LRU_LIST *lru_list;
+  int found_victim_cnt = 0;
   int search_cnt = 0;
+  int lru_victim_cnt = 0;
+  PGBUF_LRU_LIST *lru_list;
   PGBUF_BCB *bufptr_victimizable = NULL;
   PGBUF_BCB *bufptr_start = NULL;
 
@@ -9762,7 +9764,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   /* search for non dirty bcb */
 
-  if (lru_list->count_vict_cand <= 0)
+  lru_victim_cnt = lru_list->count_vict_cand;
+  if (lru_victim_cnt <= 0)
     {
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_NO_VICT_CAND);
       pthread_mutex_unlock (&lru_list->LRU_mutex);
@@ -9824,11 +9827,19 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	    {
 	      bufptr_victimizable = bufptr;
               /* try to replace victim if it was not already changed. */
-              if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable))
+              if (bufptr != bufptr_start
+                  && ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable))
                 {
                   perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
                 }
 	    }
+          found_victim_cnt++;
+          if (found_victim_cnt >= lru_victim_cnt)
+            {
+              /* early out: probably we won't find others */
+              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_SKIPPED_NON_DIRTY);
+              break;
+            }
 	}
       else
 	{
@@ -9881,9 +9892,19 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	        {
 	          bufptr_victimizable = bufptr;
                   /* try to replace victim if it was not already changed. */
-                  ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable);
-                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
+                  if (bufptr != bufptr_start
+                      && ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable))
+                    {
+                      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
+                    }
 	        }
+              found_victim_cnt++;
+              if (found_victim_cnt >= lru_victim_cnt)
+                {
+                  /* early out: probably we won't find others */
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_SKIPPED_NON_DIRTY);
+                  break;
+                }
               perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_TRYLOCK_FAILED);
             }
 	}
