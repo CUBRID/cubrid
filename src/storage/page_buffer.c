@@ -4101,8 +4101,10 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       goto end;
     }
 
+#if defined (SERVER_MODE)
   /* wake up log flush thread. we need log up to date to be able to flush pages */
   thread_wakeup_log_flush_thread ();
+#endif /* SERVER_MODE */
 
   if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
     {
@@ -14825,10 +14827,8 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
   *dirty_cnt = 0;
   *lru1_cnt = 0;
   *lru2_cnt = 0;
-  *aint_cnt = 0;
   *avoid_dealloc_cnt = 0;
   *avoid_victim_cnt = 0;
-  *victim_cand_cnt = 0;
   *private_cnt = 0;
 
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
