@@ -1396,8 +1396,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads[num++] = sig;
 
       /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_DATE;
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATE;
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
