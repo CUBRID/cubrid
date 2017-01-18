@@ -1451,6 +1451,8 @@ STATIC_INLINE void pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, P
 STATIC_INLINE bool pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
+STATIC_INLINE bool pgbuf_get_thread_waiting_for_direct_victim (THREAD_ENTRY ** waiting_thread_out)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_BCB *pgbuf_get_direct_victim (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_is_any_thread_waiting_for_direct_victim (void) __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
@@ -16097,9 +16099,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   /* if marked as victim candidate, we are sorry for the one that marked it. we'll override the flag. */
 
   /* do we have any waiter threads? */
-  while (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, &waiter_thread)
-         || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &waiter_thread)
-         || lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, &waiter_thread))
+  while (pgbuf_get_thread_waiting_for_direct_victim (&waiter_thread))
     {
       assert (waiter_thread != NULL);
       
@@ -16148,6 +16148,51 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 }
 
 #if defined (SERVER_MODE)
+/*
+ * pgbuf_get_thread_waiting_for_direct_victim () - get one of the threads waiting
+ *
+ * return                   : true if got thread, false otherwise
+ * waiting_thread_out (out) : output thread waiting for victim
+ */
+STATIC_INLINE bool
+pgbuf_get_thread_waiting_for_direct_victim (THREAD_ENTRY ** waiting_thread_out)
+{
+  static INT64 count = 0;
+  int my_count = ATOMIC_INC_64 (&count, 1);
+
+  /* every now and then, force getting waiting threads from queues with lesser priority */
+  if (my_count % 8 == 0)
+    {
+      if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters,
+                                     waiting_thread_out))
+        {
+          return true;
+        }
+    }
+  else if (my_count % 8 == 1)
+    {
+      if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, waiting_thread_out))
+        {
+          return true;
+        }
+    }
+
+  /* try queue in their priority order */
+  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, waiting_thread_out))
+    {
+      return true;
+    }
+  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, waiting_thread_out))
+    {
+      return true;
+    }
+  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, waiting_thread_out))
+    {
+      return true;
+    }
+  return false;
+}
+
 /*
  * pgbuf_get_direct_victim () - get victim assigned directly.
  *
