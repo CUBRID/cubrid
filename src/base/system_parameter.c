@@ -8317,7 +8317,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
     {
       set_min = true;
     }
-#if !defined(SERVER_MODE)
+#if defined(CS_MODE)
   if (!set_default)
     {
       if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0 || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
