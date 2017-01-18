@@ -9510,11 +9510,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
       victim = pgbuf_lfcq_get_victim_from_lru (thread_p, true);
       if (victim != NULL)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_SUCCESS);
 	  return victim;
 	}
-      /* failed */
-      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_FAIL);
     }
 
   if (!PGBUF_PAGE_QUOTA_IS_ENABLED && pgbuf_Pool.buf_AIN_list.ain_count > pgbuf_Pool.buf_AIN_list.max_count)
@@ -9539,10 +9536,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, int max_count, bool penalize, PERF_UT
   victim = pgbuf_lfcq_get_victim_from_lru (thread_p, false);
   if (victim != NULL)
     {
-      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS);
       return victim;
     }
-  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
 
   perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
 
@@ -16856,6 +16851,28 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
 
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+  if (victim != NULL)
+    {
+      if (from_private)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_SUCCESS);
+        }
+      else
+        {
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS);
+        }
+    }
+  else
+    {
+      if (from_private)
+        {
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_FAIL);
+        }
+      else
+        {
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
+        }
+    }
 
   /* we add a lru list back to queue if all conditions are met:
    * 1. it has victim candidates
