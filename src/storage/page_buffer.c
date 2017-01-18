@@ -11165,7 +11165,6 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *thrd_entry;
-  int lru_idx;
 #endif /* SERVER_MODE */
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
@@ -11275,14 +11274,15 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
 
 #if defined (SERVER_MODE)
-  lru_idx = pgbuf_bcb_get_lru_index (bufptr);
   /* assign victim directly if:
    * 1. bcb is not dirty already
    * 2. bcb is not fixed and has no waiters
    * 3. bcb does not belong to under quota private list
    * 4. there are threads waiting for victims */
   if (!pgbuf_bcb_is_dirty (bufptr) && bufptr->fcnt == 0 && bufptr->next_wait_thrd == NULL
-      && (!PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) || !PGBUF_LRU_LIST_IS_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
+      && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr)
+      && (!PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bufptr))
+          || PGBUF_LRU_LIST_IS_OVER_QUOTA (pgbuf_lru_list_from_bcb (bufptr)))
       && pgbuf_assign_direct_victim (thread_p, bufptr))
     {
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
