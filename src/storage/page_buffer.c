@@ -6239,7 +6239,7 @@ pgbuf_initialize_ain_list (void)
 
   if (true)
     {
-      return;
+      return NO_ERROR;
     }
 
   pgbuf_Pool.buf_AIN_list.max_count = (int) (pgbuf_Pool.num_buffers * ain_ratio);
@@ -16628,7 +16628,7 @@ pgbuf_bcb_set_dirty (PGBUF_BCB * bcb)
   if (!pgbuf_bcb_is_dirty (bcb))
     {
       /* increment global dirty counter */
-      ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1);
+      ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt,pgbuf_initialize_ain_list 1);
       assert (pgbuf_Pool.monitor.dirties_cnt > 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
 
       if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb))
