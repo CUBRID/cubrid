@@ -128,6 +128,7 @@ static int thread_First_vacuum_worker_thread_index = -1;
 
 static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
+static int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 
 static void thread_stop_oob_handler_thread ();
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
@@ -1260,17 +1261,54 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   fi_thread_final (entry_p);
 #endif
 
-  /* transaction entries */
+  pgbuf_finalize_tran_bcb (entry_p);
+  if (thread_return_transaction_entry (entry_p) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  return error;
+}
+
+/*
+ * thread_return_transaction_entry() - return previously requested entries
+ *   return: error code
+ *   entry_p(in): thread entry
+ */
+static int
+thread_return_transaction_entry (THREAD_ENTRY * entry_p)
+{
+  int i, error = NO_ERROR;
   for (i = 0; i < THREAD_TS_COUNT; i++)
     {
-      if (lf_tran_return_entry (entry_p->tran_entries[i]) != NO_ERROR)
+      if (entry_p->tran_entries[i] != 0)
 	{
-	  return ER_FAILED;
+	  error = lf_tran_return_entry (entry_p->tran_entries[i]);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  entry_p->tran_entries[i] = 0;
 	}
-      entry_p->tran_entries[i] = 0;
     }
+  return error;
+}
 
-  pgbuf_finalize_tran_bcb (entry_p);
+/*
+ * thread_return_all_transactions_entries() - return previously requested entries for all transactions
+ *   return:
+ */
+int
+thread_return_all_transactions_entries (void)
+{
+  int error = NO_ERROR, i;
+  for (i = 0; i < thread_Manager.num_total; i++)
+    {
+      error = thread_return_transaction_entry (&thread_Manager.thread_array[i]);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+    }
 
   return error;
 }
@@ -3298,7 +3336,7 @@ thread_page_flush_thread (void *arg_p)
     {
       er_clear ();
 
-      wakeup_interval = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSEC);
+      wakeup_interval = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
 
       if (wakeup_interval > 0)
 	{

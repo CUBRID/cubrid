@@ -473,6 +473,7 @@ extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p, pthread_mutex_t * mutexp, int timeout,
 					    struct timespec *to, int suspended_reason);
 extern void thread_print_entry_info (THREAD_ENTRY * p);
+extern int thread_return_all_transactions_entries (void);
 extern void thread_dump_threads (void);
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern bool thread_get_check_page_validation (THREAD_ENTRY * thread_p);

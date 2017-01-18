@@ -3751,7 +3751,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  return;
 	}
       /* check this is not a system op postpone during system op postpone */
-      assert (sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+      assert (sysop_start_postpone.sysop_end.type != LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
 	      || !sysop_start_postpone.sysop_end.run_postpone.is_sysop_postpone);
 
       log_sysop_end_recovery_postpone (thread_p, &sysop_start_postpone.sysop_end, undo_data_size, undo_data);

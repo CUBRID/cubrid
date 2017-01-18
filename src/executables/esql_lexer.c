@@ -1,6 +1,5 @@
-#line 2 "../../src/executables/esql_lexer.c"
 
-#line 4 "../../src/executables/esql_lexer.c"
+#line 3 "/home1/beatrice/workspace/myfork/src/executables/esql_lexer.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -212,38 +211,57 @@ struct yy_buffer_state
   char *yy_ch_buf;		/* input buffer */
   char *yy_buf_pos;		/* current position in input buffer */
 
-  /* Size of input buffer in bytes, not including room for EOB characters. */
+  /* Size of input buffer in bytes, not including room for EOB
+   * characters.
+   */
   yy_size_t yy_buf_size;
 
-  /* Number of characters read into yy_ch_buf, not including EOB characters. */
+  /* Number of characters read into yy_ch_buf, not including EOB
+   * characters.
+   */
   int yy_n_chars;
 
-  /* Whether we "own" the buffer - i.e., we know we created it, and can realloc() it to grow it, and should free() it
-   * to delete it. */
+  /* Whether we "own" the buffer - i.e., we know we created it,
+   * and can realloc() it to grow it, and should free() it to
+   * delete it.
+   */
   int yy_is_our_buffer;
 
-  /* Whether this is an "interactive" input source; if so, and if we're using stdio for input, then we want to use
-   * getc() instead of fread(), to make sure we stop fetching input after each newline. */
+  /* Whether this is an "interactive" input source; if so, and
+   * if we're using stdio for input, then we want to use getc()
+   * instead of fread(), to make sure we stop fetching input after
+   * each newline.
+   */
   int yy_is_interactive;
 
-  /* Whether we're considered to be at the beginning of a line. If so, '^' rules will be active on the next match,
-   * otherwise not. */
+  /* Whether we're considered to be at the beginning of a line.
+   * If so, '^' rules will be active on the next match, otherwise
+   * not.
+   */
   int yy_at_bol;
 
   int yy_bs_lineno;   /**< The line count. */
   int yy_bs_column;   /**< The column count. */
 
-  /* Whether to try to fill the input buffer when we reach the end of it. */
+  /* Whether to try to fill the input buffer when we reach the
+   * end of it.
+   */
   int yy_fill_buffer;
 
   int yy_buffer_status;
 
 #define YY_BUFFER_NEW 0
 #define YY_BUFFER_NORMAL 1
-  /* When an EOF's been seen but there's still some text to process then we mark the buffer as YY_EOF_PENDING, to
-   * indicate that we shouldn't try reading from the input source any more.  We might still have a bunch of tokens to
-   * match, though, because of possible backing-up. When we actually see the EOF, we change the status to "new" (via
-   * esql_yyrestart()), so that the user can continue scanning by just pointing esql_yyin at a new input file. */
+  /* When an EOF's been seen but there's still some text to process
+   * then we mark the buffer as YY_EOF_PENDING, to indicate that we
+   * shouldn't try reading from the input source any more.  We might
+   * still have a bunch of tokens to match, though, because of
+   * possible backing-up.
+   *
+   * When we actually see the EOF, we change the status to "new"
+   * (via esql_yyrestart()), so that the user can continue scanning by
+   * just pointing esql_yyin at a new input file.
+   */
 #define YY_BUFFER_EOF_PENDING 2
 
 };
@@ -460,7 +478,6 @@ int esql_yy_flex_debug = 0;
 #define YY_MORE_ADJ 0
 #define YY_RESTORE_YY_MORE_OFFSET
 char *esql_yytext;
-#line 1 "../../src/executables/esql_lexer.l"
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
@@ -482,20 +499,17 @@ char *esql_yytext;
 /*
  * esql_lexer.l : esql lexer file
  */
-#line 25 "../../src/executables/esql_lexer.l"
 
 #include "esql_grammar.h"
 #include "esql_scanner_support.h"
 
 //#define LEXER_DEBUG
 
-
 #ifdef LEXER_DEBUG
 #define PRINT(a, b) printf(a, b)
 #else
 #define PRINT(a, b)
 #endif
-
 
 static void parser_c_comment (void);
 static void parser_line_comment (void);
@@ -505,12 +519,8 @@ static int esql_yyinput (char *buff, int max_size);
 
 #define JP_MAXNAME	256
 
-
 #undef YY_INPUT
 #define YY_INPUT(buffer, result, max_size) (result = esql_yyinput(buffer, max_size))
-
-
-#line 540 "../../src/executables/esql_lexer.c"
 
 #define INITIAL 0
 
@@ -692,11 +702,6 @@ YY_DECL
   register char *yy_cp, *yy_bp;
   register int yy_act;
 
-#line 55 "../../src/executables/esql_lexer.l"
-
-
-#line 725 "../../src/executables/esql_lexer.c"
-
   if (!(yy_init))
     {
       (yy_init) = 1;
@@ -730,7 +735,9 @@ YY_DECL
       /* Support of esql_yytext. */
       *yy_cp = (yy_hold_char);
 
-      /* yy_bp points to the position in yy_ch_buf of the start of the current run. */
+      /* yy_bp points to the position in yy_ch_buf of the start of
+       * the current run.
+       */
       yy_bp = yy_cp;
 
       yy_current_state = (yy_start);
@@ -778,7 +785,6 @@ YY_DECL
 
 	case 1:
 	  YY_RULE_SETUP
-#line 57 "../../src/executables/esql_lexer.l"
 	  {
 	    {
 
@@ -789,20 +795,19 @@ YY_DECL
 
 	    }
 	  }
-	  YY_BREAK case 2:
+	YY_BREAK case 2:
 /* rule 2 can match eol */
-	    YY_RULE_SETUP
-#line 66 "../../src/executables/esql_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    {
 
 	      int mode = esql_yy_mode ();
 	      if (mode != BUFFER_mode)
-		  ECHO;
+		ECHO;
 	      else
-		  ECHO_STR (" ", strlen (" "));
+		ECHO_STR (" ", strlen (" "));
 
-	        esql_yylineno++;
+	      esql_yylineno++;
 
 	      if (mode == ECHO_mode || mode == C_mode)
 		{
@@ -811,34 +816,34 @@ YY_DECL
 
 	    }
 	  }
-	  YY_BREAK case 3:YY_RULE_SETUP
-#line 83 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 3:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("tok: %s\n", esql_yytext);
 	    ECHO;
 	    parser_line_comment ();
 
 	  }
-	  YY_BREAK case 4:YY_RULE_SETUP
-#line 91 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 4:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("tok: %s\n", esql_yytext);
 	    ECHO;
 	    parser_c_comment ();
 	  }
-	  YY_BREAK case 5:YY_RULE_SETUP
-#line 97 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 5:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("tok: %s\n", esql_yytext);
 	    ECHO;
 	    parser_line_comment ();
 	  }
-	  YY_BREAK case 6:YY_RULE_SETUP
-#line 103 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 6:
+	  YY_RULE_SETUP
 	  {
 	    {
 	      int mode = esql_yy_mode ();
-	        PRINT ("tok: %s\n", esql_yytext);
+	      PRINT ("tok: %s\n", esql_yytext);
 
 	      if (mode == C_mode)
 		{
@@ -862,17 +867,17 @@ YY_DECL
 
 	    }
 	  }
-	  YY_BREAK case 7:YY_RULE_SETUP
-#line 129 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 7:
+	  YY_RULE_SETUP
 	  {
 	    {
 	      const char *quote = "\"";
 	      char *buff = parser_quoted_string ('\"');
-	        PRINT ("tok: %s\n", esql_yytext);
+	      PRINT ("tok: %s\n", esql_yytext);
 
-	        ECHO_STR (quote, strlen (quote));
-	        ECHO_STR (buff, strlen (buff));
-	        ECHO_STR (quote, strlen (quote));
+	      ECHO_STR (quote, strlen (quote));
+	      ECHO_STR (buff, strlen (buff));
+	      ECHO_STR (quote, strlen (quote));
 
 	      if (esql_yy_mode () == EXPR_mode)
 		{
@@ -882,34 +887,32 @@ YY_DECL
 
 	    }
 	  }
-	  YY_BREAK case 8:YY_RULE_SETUP
-#line 147 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 8:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("tok: %s\n", esql_yytext);
 	    return EXEC;
 	  }
-	  YY_BREAK case 9:
+	YY_BREAK case 9:
 /* rule 9 can match eol */
-	    YY_RULE_SETUP
-#line 152 "../../src/executables/esql_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("tok: %s\n", esql_yytext);
 	    return SQLX;
 	  }
-	  YY_BREAK case 10:
+	YY_BREAK case 10:
 /* rule 10 can match eol */
-	    YY_RULE_SETUP
-#line 157 "../../src/executables/esql_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("tok: %s\n", esql_yytext);
 	    return SQLX;
 	  }
-	  YY_BREAK case 11:YY_RULE_SETUP
-#line 162 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 11:
+	  YY_RULE_SETUP
 	  {
 	    {
 	      int mode = esql_yy_mode ();
-	        PRINT ("tok: %s\n", esql_yytext);
+	      PRINT ("tok: %s\n", esql_yytext);
 
 	      if (mode == ECHO_mode)
 		{
@@ -938,14 +941,14 @@ YY_DECL
 
 	    }
 	  }
-	  YY_BREAK case 12:YY_RULE_SETUP
-#line 193 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 12:
+	  YY_RULE_SETUP
 	  {
 	    {
 	      int mode = esql_yy_mode ();
 	      int code;
-	        PRINT ("tok: %s\n", esql_yytext);
-	        esql_yylval.ptr = mm_strdup (esql_yytext);
+	      PRINT ("tok: %s\n", esql_yytext);
+	      esql_yylval.ptr = mm_strdup (esql_yytext);
 
 	      if (mode == ECHO_mode)
 		{
@@ -1024,7 +1027,6 @@ YY_DECL
 
 		    }
 
-
 		  return code;
 		}
 	      else if (mode == BUFFER_mode)
@@ -1068,14 +1070,13 @@ YY_DECL
 
 	    }
 	  }
-	  YY_BREAK case 13:
+	YY_BREAK case 13:
 /* rule 13 can match eol */
-	    YY_RULE_SETUP
-#line 320 "../../src/executables/esql_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    {
 	      int mode = esql_yy_mode ();
-	        PRINT ("tok: %s\n", esql_yytext);
+	      PRINT ("tok: %s\n", esql_yytext);
 
 	      if (mode == ECHO_mode)
 		{
@@ -1095,12 +1096,12 @@ YY_DECL
 
 	    }
 	  }
-	  YY_BREAK case 14:YY_RULE_SETUP
-#line 342 "../../src/executables/esql_lexer.l"
+	YY_BREAK case 14:
+	  YY_RULE_SETUP
 	  {
 	    {
 	      int mode = esql_yy_mode ();
-	        PRINT ("tok: %s\n", esql_yytext);
+	      PRINT ("tok: %s\n", esql_yytext);
 
 	      if (mode == ECHO_mode)
 		{
@@ -1144,7 +1145,6 @@ YY_DECL
 		      recognize_keywords = false;
 		    }
 
-
 		  switch (esql_yytext[0])
 		    {
 		    case '.':
@@ -1186,7 +1186,6 @@ YY_DECL
 		      recognize_keywords = false;
 		    }
 
-
 		  if (c == ':' || c == ';')
 		    return c;
 
@@ -1199,12 +1198,9 @@ YY_DECL
 
 	    }
 	  }
-	  YY_BREAK case 15:YY_RULE_SETUP
-#line 444 "../../src/executables/esql_lexer.l"
-	    ECHO;
-	  YY_BREAK
-#line 1243 "../../src/executables/esql_lexer.c"
-	case YY_STATE_EOF (INITIAL):
+	YY_BREAK case 15:
+	  YY_RULE_SETUP ECHO;
+	YY_BREAK case YY_STATE_EOF (INITIAL):
 	  yyterminate ();
 
 	case YY_END_OF_BUFFER:
@@ -1216,18 +1212,27 @@ YY_DECL
 	    *yy_cp = (yy_hold_char);
 	    YY_RESTORE_YY_MORE_OFFSET if (YY_CURRENT_BUFFER_LVALUE->yy_buffer_status == YY_BUFFER_NEW)
 	      {
-		/* We're scanning a new file or input source.  It's possible that this happened because the user just
-		 * pointed esql_yyin at a new source and called esql_yylex().  If so, then we have to assure
-		 * consistency between YY_CURRENT_BUFFER and our globals.  Here is the right place to do so, because
-		 * this is the first action (other than possibly a back-up) that will match for the new input source. */
+		/* We're scanning a new file or input source.  It's
+		 * possible that this happened because the user
+		 * just pointed esql_yyin at a new source and called
+		 * esql_yylex().  If so, then we have to assure
+		 * consistency between YY_CURRENT_BUFFER and our
+		 * globals.  Here is the right place to do so, because
+		 * this is the first action (other than possibly a
+		 * back-up) that will match for the new input source.
+		 */
 		(yy_n_chars) = YY_CURRENT_BUFFER_LVALUE->yy_n_chars;
 		YY_CURRENT_BUFFER_LVALUE->yy_input_file = esql_yyin;
 		YY_CURRENT_BUFFER_LVALUE->yy_buffer_status = YY_BUFFER_NORMAL;
 	      }
 
-	    /* Note that here we test for yy_c_buf_p "<=" to the position of the first EOB in the buffer, since
-	     * yy_c_buf_p will already have been incremented past the NUL character (since all states make transitions
-	     * on EOB to the end-of-buffer state).  Contrast this with the test in input(). */
+	    /* Note that here we test for yy_c_buf_p "<=" to the position
+	     * of the first EOB in the buffer, since yy_c_buf_p will
+	     * already have been incremented past the NUL character
+	     * (since all states make transitions on EOB to the
+	     * end-of-buffer state).  Contrast this with the test
+	     * in input().
+	     */
 	    if ((yy_c_buf_p) <= &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)])
 	      {			/* This was really a NUL. */
 		yy_state_type yy_next_state;
@@ -1236,9 +1241,14 @@ YY_DECL
 
 		yy_current_state = yy_get_previous_state ();
 
-		/* Okay, we're now positioned to make the NUL transition.  We couldn't have yy_get_previous_state() go
-		 * ahead and do it for us because it doesn't know how to deal with the possibility of jamming (and we
-		 * don't want to build jamming into it because then it will run more slowly). */
+		/* Okay, we're now positioned to make the NUL
+		 * transition.  We couldn't have
+		 * yy_get_previous_state() go ahead and do it
+		 * for us because it doesn't know how to deal
+		 * with the possibility of jamming (and we don't
+		 * want to build jamming into it because then it
+		 * will run more slowly).
+		 */
 
 		yy_next_state = yy_try_NUL_trans (yy_current_state);
 
@@ -1268,9 +1278,15 @@ YY_DECL
 
 		    if (esql_yywrap ())
 		      {
-			/* Note: because we've taken care in yy_get_next_buffer() to have set up esql_yytext, we can
-			 * now set up yy_c_buf_p so that if some total hoser (like flex itself) wants to call the
-			 * scanner after we return the YY_NULL, it'll still work - another YY_NULL will get returned. */
+			/* Note: because we've taken care in
+			 * yy_get_next_buffer() to have set up
+			 * esql_yytext, we can now set up
+			 * yy_c_buf_p so that if some total
+			 * hoser (like flex itself) wants to
+			 * call the scanner after we return the
+			 * YY_NULL, it'll still work - another
+			 * YY_NULL will get returned.
+			 */
 			(yy_c_buf_p) = (yytext_ptr) + YY_MORE_ADJ;
 
 			yy_act = YY_STATE_EOF (YY_START);
@@ -1334,13 +1350,17 @@ yy_get_next_buffer (void)
     {				/* Don't try to fill the buffer, so this is an EOF. */
       if ((yy_c_buf_p) - (yytext_ptr) - YY_MORE_ADJ == 1)
 	{
-	  /* We matched a single character, the EOB, so treat this as a final EOF. */
+	  /* We matched a single character, the EOB, so
+	   * treat this as a final EOF.
+	   */
 	  return EOB_ACT_END_OF_FILE;
 	}
 
       else
 	{
-	  /* We matched some text prior to the EOB, first process it. */
+	  /* We matched some text prior to the EOB, first
+	   * process it.
+	   */
 	  return EOB_ACT_LAST_MATCH;
 	}
     }
@@ -1354,7 +1374,9 @@ yy_get_next_buffer (void)
     *(dest++) = *(source++);
 
   if (YY_CURRENT_BUFFER_LVALUE->yy_buffer_status == YY_BUFFER_EOF_PENDING)
-    /* don't do the read, it's not guaranteed to return an EOF, just force an EOF */
+    /* don't do the read, it's not guaranteed to return an EOF,
+     * just force an EOF
+     */
     YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars) = 0;
 
   else
@@ -1550,8 +1572,10 @@ input (void)
 
   if (*(yy_c_buf_p) == YY_END_OF_BUFFER_CHAR)
     {
-      /* yy_c_buf_p now points to the character we want to return. If this occurs *before* the EOB characters, then
-       * it's a valid NUL; if not, then we've hit the end of the buffer. */
+      /* yy_c_buf_p now points to the character we want to return.
+       * If this occurs *before* the EOB characters, then it's a
+       * valid NUL; if not, then we've hit the end of the buffer.
+       */
       if ((yy_c_buf_p) < &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)])
 	/* This was really a NUL. */
 	*(yy_c_buf_p) = '\0';
@@ -1564,9 +1588,15 @@ input (void)
 	  switch (yy_get_next_buffer ())
 	    {
 	    case EOB_ACT_LAST_MATCH:
-	      /* This happens because yy_g_n_b() sees that we've accumulated a token and flags that we need to try
-	       * matching the token before proceeding.  But for input(), there's no matching to consider. So convert
-	       * the EOB_ACT_LAST_MATCH to EOB_ACT_END_OF_FILE. */
+	      /* This happens because yy_g_n_b()
+	       * sees that we've accumulated a
+	       * token and flags that we need to
+	       * try matching the token before
+	       * proceeding.  But for input(),
+	       * there's no matching to consider.
+	       * So convert the EOB_ACT_LAST_MATCH
+	       * to EOB_ACT_END_OF_FILE.
+	       */
 
 	      /* Reset buffer status. */
 	      esql_yyrestart (esql_yyin);
@@ -1627,8 +1657,11 @@ void
 esql_yy_switch_to_buffer (YY_BUFFER_STATE new_buffer)
 {
 
-  /* TODO. We should be able to replace this entire function body with esql_yypop_buffer_state();
-   * esql_yypush_buffer_state(new_buffer); */
+  /* TODO. We should be able to replace this entire function body
+   * with
+   *              esql_yypop_buffer_state();
+   *              esql_yypush_buffer_state(new_buffer);
+   */
   esql_yyensure_buffer_stack ();
   if (YY_CURRENT_BUFFER == new_buffer)
     return;
@@ -1644,8 +1677,11 @@ esql_yy_switch_to_buffer (YY_BUFFER_STATE new_buffer)
   YY_CURRENT_BUFFER_LVALUE = new_buffer;
   esql_yy_load_buffer_state ();
 
-  /* We don't actually know whether we did this switch during EOF (esql_yywrap()) processing, but the only time this
-   * flag is looked at is after esql_yywrap() is called, so it's safe to go ahead and always set it. */
+  /* We don't actually know whether we did this switch during
+   * EOF (esql_yywrap()) processing, but the only time this flag
+   * is looked at is after esql_yywrap() is called, so it's safe
+   * to go ahead and always set it.
+   */
   (yy_did_buffer_switch_on_eof) = 1;
 }
 
@@ -1675,7 +1711,9 @@ esql_yy_create_buffer (FILE * file, int size)
 
   b->yy_buf_size = size;
 
-  /* yy_ch_buf has to be 2 characters longer than the size given because we need to put in 2 end-of-buffer characters. */
+  /* yy_ch_buf has to be 2 characters longer than the size given because
+   * we need to put in 2 end-of-buffer characters.
+   */
   b->yy_ch_buf = (char *) esql_yyalloc (b->yy_buf_size + 2);
   if (!b->yy_ch_buf)
     YY_FATAL_ERROR ("out of dynamic memory in esql_yy_create_buffer()");
@@ -1707,10 +1745,6 @@ esql_yy_delete_buffer (YY_BUFFER_STATE b)
   esql_yyfree ((void *) b);
 }
 
-#ifndef __cplusplus
-extern int isatty (int);
-#endif /* __cplusplus */
-
 /* Initializes or reinitializes a buffer.
  * This function is sometimes called more than once on the same buffer,
  * such as during a esql_yyrestart() or at EOF.
@@ -1725,15 +1759,17 @@ esql_yy_init_buffer (YY_BUFFER_STATE b, FILE * file)
   b->yy_input_file = file;
   b->yy_fill_buffer = 1;
 
-  /* If b is the current buffer, then esql_yy_init_buffer was _probably_ called from esql_yyrestart() or through
-   * yy_get_next_buffer. In that case, we don't want to reset the lineno or column. */
+  /* If b is the current buffer, then esql_yy_init_buffer was _probably_
+   * called from esql_yyrestart() or through yy_get_next_buffer.
+   * In that case, we don't want to reset the lineno or column.
+   */
   if (b != YY_CURRENT_BUFFER)
     {
       b->yy_bs_lineno = 1;
       b->yy_bs_column = 0;
     }
 
-  b->yy_is_interactive = file ? (isatty (fileno (file)) > 0) : 0;
+  b->yy_is_interactive = 0;
 
   errno = oerrno;
 }
@@ -1750,8 +1786,10 @@ esql_yy_flush_buffer (YY_BUFFER_STATE b)
 
   b->yy_n_chars = 0;
 
-  /* We always need two end-of-buffer characters.  The first causes a transition to the end-of-buffer state.  The
-   * second causes a jam in that state. */
+  /* We always need two end-of-buffer characters.  The first causes
+   * a transition to the end-of-buffer state.  The second causes
+   * a jam in that state.
+   */
   b->yy_ch_buf[0] = YY_END_OF_BUFFER_CHAR;
   b->yy_ch_buf[1] = YY_END_OF_BUFFER_CHAR;
 
@@ -1830,8 +1868,10 @@ esql_yyensure_buffer_stack (void)
   if (!(yy_buffer_stack))
     {
 
-      /* First allocation is just for 2 elements, since we don't know if this scanner will even need a stack. We use 2
-       * instead of 1 to avoid an immediate realloc on the next call. */
+      /* First allocation is just for 2 elements, since we don't know if this
+       * scanner will even need a stack. We use 2 instead of 1 to avoid an
+       * immediate realloc on the next call.
+       */
       num_to_alloc = 1;
       (yy_buffer_stack) = (struct yy_buffer_state **) esql_yyalloc (num_to_alloc * sizeof (struct yy_buffer_state *));
       if (!(yy_buffer_stack))
@@ -1851,9 +1891,8 @@ esql_yyensure_buffer_stack (void)
       int grow_size = 8 /* arbitrary grow size */ ;
 
       num_to_alloc = (yy_buffer_stack_max) + grow_size;
-      (yy_buffer_stack) =
-	(struct yy_buffer_state **) esql_yyrealloc ((yy_buffer_stack),
-						    num_to_alloc * sizeof (struct yy_buffer_state *));
+      (yy_buffer_stack) = (struct yy_buffer_state **) esql_yyrealloc
+	((yy_buffer_stack), num_to_alloc * sizeof (struct yy_buffer_state *));
       if (!(yy_buffer_stack))
 	YY_FATAL_ERROR ("out of dynamic memory in esql_yyensure_buffer_stack()");
 
@@ -1942,7 +1981,9 @@ esql_yy_scan_bytes (yyconst char *yybytes, int _yybytes_len)
   if (!b)
     YY_FATAL_ERROR ("bad buffer in esql_yy_scan_bytes()");
 
-  /* It's okay to grow etc. this buffer, and we should throw it away when we're done. */
+  /* It's okay to grow etc. this buffer, and we should throw it
+   * away when we're done.
+   */
   b->yy_is_our_buffer = 1;
 
   return b;
@@ -2069,8 +2110,9 @@ esql_yyset_debug (int bdebug)
 static int
 yy_init_globals (void)
 {
-  /* Initialization is the same as for the non-reentrant scanner. This function is called from esql_yylex_destroy(), so 
-   * don't allocate here. */
+  /* Initialization is the same as for the non-reentrant scanner.
+   * This function is called from esql_yylex_destroy(), so don't allocate here.
+   */
 
   (yy_buffer_stack) = 0;
   (yy_buffer_stack_top) = 0;
@@ -2088,7 +2130,9 @@ yy_init_globals (void)
   esql_yyout = (FILE *) 0;
 #endif
 
-  /* For future reference: Set errno on error, since we are called by esql_yylex_init() */
+  /* For future reference: Set errno on error, since we are called by
+   * esql_yylex_init()
+   */
   return 0;
 }
 
@@ -2109,8 +2153,8 @@ esql_yylex_destroy (void)
   esql_yyfree ((yy_buffer_stack));
   (yy_buffer_stack) = NULL;
 
-  /* Reset the globals. This is important in a non-reentrant scanner so the next time esql_yylex() is called,
-   * initialization will occur. */
+  /* Reset the globals. This is important in a non-reentrant scanner so the next time
+   * esql_yylex() is called, initialization will occur. */
   yy_init_globals ();
 
   return 0;
@@ -2151,9 +2195,13 @@ esql_yyalloc (yy_size_t size)
 void *
 esql_yyrealloc (void *ptr, yy_size_t size)
 {
-  /* The cast to (char *) in the following accommodates both implementations that use char* generic pointers, and those
-   * that use void* generic pointers.  It works with the latter because both ANSI C and C++ allow castless assignment
-   * from any pointer type to void*, and deal with argument conversions as though doing an assignment. */
+  /* The cast to (char *) in the following accommodates both
+   * implementations that use char* generic pointers, and those
+   * that use void* generic pointers.  It works with the latter
+   * because both ANSI C and C++ allow castless assignment from
+   * any pointer type to void*, and deal with argument conversions
+   * as though doing an assignment.
+   */
   return (void *) realloc ((char *) ptr, size);
 }
 
@@ -2164,15 +2212,6 @@ esql_yyfree (void *ptr)
 }
 
 #define YYTABLES_NAME "yytables"
-
-#line 444 "../../src/executables/esql_lexer.l"
-
-
-
-
-
-
-
 
 int
 esql_yywrap ()
@@ -2237,7 +2276,6 @@ parser_line_comment (void)
   esql_yylineno++;
 }
 
-
 static char *
 parser_quoted_string (char end)
 {
@@ -2284,8 +2322,6 @@ loop:
   bp[i] = 0;
   return (bp == buff) ? mm_strdup (bp) : bp;
 }
-
-
 
 int
 esql_yyinput (char *buff, int max_size)

@@ -6814,7 +6814,7 @@ locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, L
   reply_obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (reply_mobjs, reply_mobjs->num_objs);
 
   ptr = recdes->data;
-  ptr = or_pack_mem_value (ptr, key_value);
+  ptr = or_pack_mem_value (ptr, key_value, NULL);
   ptr = or_pack_int (ptr, err_code);
   ptr = or_pack_string (ptr, err_msg);
 

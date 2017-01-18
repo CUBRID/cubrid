@@ -348,6 +348,9 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
   /* make the common info for the data replication */
   if (log_type == LOG_REPLICATION_DATA)
     {
+      char *ptr_to_packed_key_value_size = NULL;
+      int packed_key_len = 0;
+
       if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR || class_name == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -358,7 +361,9 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	    }
 	  return error;
 	}
-      repl_rec->length = or_packed_string_length (class_name, &strlen);
+
+      repl_rec->length = OR_INT_SIZE;	/* packed_key_value_size */
+      repl_rec->length += or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
 
       ptr = (char *) malloc (repl_rec->length);
@@ -371,8 +376,16 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       repl_rec->repl_data = ptr;
 
+      /* first 4 bytes are for packed_key_len which will be filled after packing the value. */
+      ptr_to_packed_key_value_size = ptr;
+      ptr += OR_INT_SIZE;
+
       ptr = or_pack_string_with_length (ptr, class_name, strlen);
-      ptr = or_pack_mem_value (ptr, key_dbvalue);
+      ptr = or_pack_mem_value (ptr, key_dbvalue, &packed_key_len);
+
+      /* fill the length of disk image of pk */
+      or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
+
       free_and_init (class_name);
     }
   else

@@ -212,6 +212,9 @@ static void pt_resolve_group_having_alias_internal (PARSER_CONTEXT * parser, PT_
 static PT_NODE *pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent,
 					       int *continue_walk);
 
+static PT_NODE *pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
 static PT_NODE *pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from);
 static PT_NODE *pt_bind_reserved_name (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * spec);
 static PT_NODE *pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -848,7 +851,33 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
   PT_NODE *derived_table, *cols, *elt_type, *select_list, *col, *att;
   int col_cnt, attr_cnt;
 
-  if (!parser || !spec || spec->node_type != PT_SPEC || (derived_table = spec->info.spec.derived_table) == NULL)
+  if (!parser || !spec || spec->node_type != PT_SPEC)
+    {
+      return;
+    }
+
+  derived_table = spec->info.spec.derived_table;
+
+  /* check if spec contains a CTE pointer and not a derived table */
+  if (derived_table == NULL && spec->info.spec.cte_pointer != NULL
+      && spec->info.spec.cte_pointer->info.pointer.node != NULL)
+    {
+      PT_NODE *cte = spec->info.spec.cte_pointer->info.pointer.node;
+
+      assert (cte != NULL);
+      /* for recursive CTEs bind only the types from the recursive part; 
+       * it must contain references of the non-recursive part */
+      if (cte->info.cte.recursive_part)
+	{
+	  derived_table = cte->info.cte.recursive_part;
+	}
+      else
+	{
+	  derived_table = cte->info.cte.non_recursive_part;
+	}
+    }
+
+  if (!derived_table)
     {
       return;
     }
@@ -1037,6 +1066,11 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 		{
 		  col->data_type = parser_copy_tree_list (parser, att->data_type);
 		}
+	      else
+		{
+		  parser_free_tree (parser, col->data_type);
+		  col->data_type = NULL;
+		}
 
 	      /* tag it as resolved */
 	      col->info.name.spec_id = spec->info.spec.id;
@@ -1066,67 +1100,103 @@ static void
 pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 {
   SCOPES *scopes = bind_arg->scopes;
-  PT_NODE *spec;
+  PT_NODE *spec, *prev_spec = NULL;
   PT_NODE *table;
-  PT_NODE *next;
   bool save_donot_fold;
 
   spec = scopes->specs;
-  if (!spec)
+  scopes->specs = NULL;
+  while (spec)
     {
-      return;
-    }
-
-  table = spec->info.spec.derived_table;
-  if (table)
-    {
-      /* evaluate the names of the current table. The name scope of the first spec, is only the outer level scopes. The 
-       * outer scopes are pointed to by scopes->next. The null "scopes" spec is kept to maintain correlation level
-       * calculation. */
-      next = scopes->specs;
-      scopes->specs = NULL;
-      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-      spec->info.spec.derived_table = table;
-      scopes->specs = next;
-
-      /* must bind any expr types in table. pt_bind_types requires it. */
-      save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
-      bind_arg->sc_info->donot_fold = true;	/* skip folding */
-      table = pt_semantic_type (parser, table, bind_arg->sc_info);
-      bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
-      spec->info.spec.derived_table = table;
-
-      pt_bind_types (parser, spec);
-    }
-
-  while (spec->next)
-    {
-      next = spec->next;	/* save next spec pointer */
-      /* The scope of table is the current scope plus the previous tables. By temporarily nulling the previous next
-       * pointer, the scope is restricted at this level to the previous spec's. */
-      spec->next = NULL;
-      table = next->info.spec.derived_table;
+      table = spec->info.spec.derived_table;
       if (table)
 	{
+	  /* evaluate the names of the current table. The name scope of the first spec, is only the outer level scopes. The 
+	   * outer scopes are pointed to by scopes->next. The null "scopes" spec is kept to maintain correlation level
+	   * calculation. */
 	  table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	  if (table)
-	    {
-	      next->info.spec.derived_table = table;
-	    }
+	  spec->info.spec.derived_table = table;
 
 	  /* must bind any expr types in table. pt_bind_types requires it. */
 	  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
 	  bind_arg->sc_info->donot_fold = true;	/* skip folding */
 	  table = pt_semantic_type (parser, table, bind_arg->sc_info);
 	  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
-	  next->info.spec.derived_table = table;
+	  spec->info.spec.derived_table = table;
 
-	  pt_bind_types (parser, next);
+	  pt_bind_types (parser, spec);
 	}
-      spec->next = next;
-      spec = next;
-    }
 
+      /* Spec have a CTE pointer */
+      if (!table && spec->info.spec.cte_pointer)
+	{
+	  PT_NODE *cte_def = spec->info.spec.cte_pointer->info.pointer.node;
+	  PT_NODE *next_cte_def;
+	  PT_NODE *non_recursive_cte = cte_def->info.cte.non_recursive_part;
+	  PT_NODE *recursive_cte = cte_def->info.cte.recursive_part;
+
+	  /* evaluate the names from recursive part if exists; the non recursive part will be evaluated during walk */
+	  if (recursive_cte)
+	    {
+	      /* the rec part have pointers to the current CTE and because of that a cycle will appear if the rec part 
+	       * is not changed to NULL */
+	      cte_def->info.cte.recursive_part = NULL;
+
+	      recursive_cte =
+		parser_walk_tree (parser, recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+	      /* restore rec part */
+	      cte_def->info.cte.recursive_part = recursive_cte;
+	    }
+	  else if (non_recursive_cte)
+	    {
+	      non_recursive_cte =
+		parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	    }
+	  else
+	    {
+	      /* something went wrong, this shouldn't be possible */
+	      assert (0);
+	      return;
+	    }
+
+	  /* must bind any expr types in table. pt_bind_types requires it. */
+	  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
+	  bind_arg->sc_info->donot_fold = true;	/* skip folding */
+	  next_cte_def = cte_def->next;	/* skip next cte for the moment */
+	  cte_def->next = NULL;
+
+	  cte_def = pt_semantic_type (parser, cte_def, bind_arg->sc_info);
+	  if (!cte_def)
+	    {
+	      return;		/* error in pt_semantic_type */
+	    }
+
+	  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
+	  cte_def->next = next_cte_def;
+
+	  if (cte_def->info.cte.as_attr_list)
+	    {
+	      spec->info.spec.as_attr_list = parser_copy_tree_list (parser, cte_def->info.cte.as_attr_list);
+	    }
+
+	  pt_bind_types (parser, spec);
+
+	  cte_def->info.cte.as_attr_list = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
+	}
+
+      if (prev_spec)
+	{
+	  prev_spec->next = spec;
+	}
+      else
+	{
+	  scopes->specs = spec;
+	}
+      prev_spec = spec;
+      spec = prev_spec->next;
+      prev_spec->next = NULL;
+    }
 }
 
 
@@ -3495,7 +3565,7 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	}
     }
 
-  if (!spec->info.spec.derived_table)
+  if (!spec->info.spec.derived_table && !spec->info.spec.as_attr_list)
     {
       if (spec->info.spec.meta_class == PT_META_CLASS)
 	{
@@ -4064,7 +4134,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	{
 	  /* if a flat list has not been calculated, calculate it. */
 	  derived_table = node->info.spec.derived_table;
-	  if (!node->info.spec.flat_entity_list && !derived_table)
+	  if (!node->info.spec.flat_entity_list && !derived_table && node->info.spec.entity_name)
 	    {
 	      /* this sets the persistent entity_spec id. the address of the node may be changed through copying, but
 	       * this id won't. The number used is the address, just as an easy way to generate a unique number. */
@@ -4075,7 +4145,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      node->info.spec.flat_entity_list = q;
 	    }
 
-	  if (!derived_table)
+	  if (!derived_table && node->info.spec.entity_name)
 	    {
 	      /* entity_spec list are not allowed to have derived column names (for now) */
 	      if (node->info.spec.as_attr_list)
@@ -4084,7 +4154,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 			      pt_short_print_l (parser, node->info.spec.as_attr_list));
 		}
 	    }
-	  else
+	  else if (derived_table)
 	    {
 	      if (!node->info.spec.id)
 		{
@@ -4092,6 +4162,28 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		}
 
 	      parser_walk_tree (parser, derived_table, pt_flat_spec_pre, info, pt_continue_walk, NULL);
+	    }
+
+
+	  if (node->info.spec.cte_pointer)
+	    {
+	      PT_NODE *cte_def = NULL, *non_recursive_cte = NULL;
+
+	      cte_def = node->info.spec.cte_pointer->info.pointer.node;
+	      if (cte_def)
+		{
+		  non_recursive_cte = cte_def->info.cte.non_recursive_part;
+		}
+
+	      if (non_recursive_cte)
+		{
+		  if (!node->info.spec.id)
+		    {
+		      node->info.spec.id = (UINTPTR) node;
+		    }
+
+		  parser_walk_tree (parser, non_recursive_cte, pt_flat_spec_pre, info, pt_continue_walk, NULL);
+		}
 	    }
 
 	  node = node->next;	/* next item on spec list */
@@ -5923,6 +6015,11 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		  p->info.spec.range_var = parser_copy_tree (parser, q);
 		  p->info.spec.range_var->info.name.resolved = NULL;
 		}
+	      else if (p->info.spec.cte_name)
+		{
+		  /* The name of the spec should be the name of the CTE */
+		  p->info.spec.range_var = parser_copy_tree (parser, p->info.spec.cte_name);
+		}
 	      else
 		{
 		  const char *unique_exposed_name;
@@ -6080,7 +6177,7 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
 PT_NODE *
 pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 {
-  PT_NODE *flat_list, *derived_table;
+  PT_NODE *flat_list, *derived_table, *cte_pointer;
   PT_NODE *flat, *spec_att, *class_att, *attr_name, *range, *result = NULL;
   PT_NODE *spec = from;
 
@@ -6104,7 +6201,9 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
       /* spec_att := all attributes of this entity spec */
       spec_att = NULL;
       derived_table = spec->info.spec.derived_table;
-      if (derived_table)
+      cte_pointer = spec->info.spec.cte_pointer;
+
+      if (derived_table || cte_pointer)
 	{
 	  spec_att = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
 	}
@@ -6140,7 +6239,7 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 	    {
 	      DB_ATTRIBUTE *att = NULL;
 	      PT_NODE *entity_name = spec->info.spec.entity_name;
-	      if (entity_name && entity_name->info.name.db_object)
+	      if (entity_name && entity_name->node_type == PT_NAME && entity_name->info.name.db_object)
 		{
 		  att = db_get_attribute (entity_name->info.name.db_object, attr_name->info.name.original);
 		}
@@ -7849,6 +7948,239 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
     }
 
   return statement;
+}
+
+/* pt_resolve_spec_to_cte - search for matches of specs in each CTE from cte_defs
+ *
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in): cte_defs ( only the CTEs that can be referenced )
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *cte_defs = (PT_NODE *) arg;
+  PT_NODE *cte = NULL;
+  int match_count = 0;		/* init match counter from the beginning; it is important for pt_count_ctes_post */
+
+  if (node == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  /* etc will be deallocated in pt_count_ctes_post; must be initialized to NULL */
+  pt_null_etc (node);
+
+  if (cte_defs == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (node->node_type != PT_SPEC)
+    {
+      /* not interested in non-specs */
+      return node;
+    }
+
+  if (node->info.spec.entity_name == NULL)
+    {
+      /* only interested in specs without entity names */
+      return node;
+    }
+
+  for (cte = cte_defs; cte != NULL; cte = cte->next)
+    {
+      PT_NODE *cte_name = cte->info.cte.name;
+      assert (cte_name != NULL);
+
+      if (pt_name_equal (parser, cte_name, node->info.spec.entity_name))
+	{
+	  if (match_count > 0)
+	    {
+	      /* there are more CTEs with the same name */
+	      PT_INTERNAL_ERROR (parser, "CTE name ambiguity");
+	      return NULL;
+	    }
+	  node->info.spec.cte_name = node->info.spec.entity_name;
+	  node->info.spec.cte_pointer = pt_point (parser, cte);
+	  node->info.spec.cte_pointer->info.pointer.do_walk = false;
+	  node->info.spec.as_attr_list = cte->info.cte.as_attr_list;
+	  match_count++;
+	  *continue_walk = PT_LIST_WALK;
+	}
+    }
+
+  if (match_count > 0)
+    {
+      int *cte_count;
+      /* spec points to a cte; set node->etc to an integer with the number of cte occurences (one or zero) */
+      node->info.spec.entity_name = NULL;
+
+
+      cte_count = (int *) malloc (sizeof (int));
+      *cte_count = match_count;
+      node->etc = (void *) cte_count;
+      /* the integer will be deallocated in pt_count_ctes_post */
+    }
+
+  return node;
+}
+
+/* pt_count_ctes_post () - increase counter with current node cte occurrences
+*   return:
+*   parser(in):
+*   node(in): the node to check, leave node unchanged
+*   arg(out): count of CTEs
+*   continue_walk(in):
+*/
+static PT_NODE *
+pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *cnt = (int *) arg;
+  int *cte_matches = NULL;
+
+  if (node->node_type == PT_SPEC && node->info.spec.cte_pointer != NULL)
+    {
+      /* the node points to a CTE; check if node->etc holds the cte counter integer and clean etc */
+      cte_matches = (int *) pt_node_etc (node);
+      pt_null_etc (node);
+    }
+
+  if (cte_matches != NULL)
+    {
+      if (cnt != NULL)
+	{
+	  (*cnt)++;
+	}
+
+      /* cte_matches counter is no longer needed; pt_resolve_spec_to_cte expects to clean it here */
+      free (cte_matches);
+    }
+
+  return node;
+}
+
+/* pt_resolve_cte_specs () - resolves all CTEs involved in a query
+*   return:
+*   parser(in):
+*   node(in): 
+*   arg(out): 
+*   continue_walk(in):
+*/
+PT_NODE *
+pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *cte_defs = NULL, *with = NULL, *saved_with = NULL;
+  PT_NODE *curr_cte, *previous_cte;
+  PT_NODE *saved_curr_cte_next;
+
+  assert (parser != NULL);
+  assert (node != NULL);
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      with = node->info.query.with;
+      *continue_walk = PT_STOP_WALK;
+      break;
+
+    default:
+      return node;
+    }
+
+  if (with == NULL)
+    {
+      /* nothing to resolve to */
+      return node;
+    }
+
+  cte_defs = parser_create_node (parser);
+  cte_defs->next = with->info.with_clause.cte_definition_list;
+  if (cte_defs->next == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "expecting cte definitions");
+      return NULL;
+    }
+
+  /* For NON-recursive WITH CLAUSE forward referencing is not allowed */
+  for (previous_cte = cte_defs, curr_cte = previous_cte->next; curr_cte != NULL;
+       previous_cte = previous_cte->next, curr_cte = curr_cte->next)
+    {
+      /* For RECURSIVE WITH CLAUSE forward referencing is allowed,
+         but not mutual recursion -- forward referencing disabled for the moment */
+      if (0 && with->info.with_clause.recursive)
+	{
+	  previous_cte->next = curr_cte->next;	/* exclude only curr_cte from list */
+	}
+      else
+	{
+	  previous_cte->next = NULL;	/* keep in list only previous CTEs */
+	}
+
+      /* izolate curr_cte to avoid following next links in parser_walk_tree */
+      saved_curr_cte_next = curr_cte->next;
+      curr_cte->next = NULL;
+
+      /* curr_cte->next should be set to NULL; next CTEs will be resolved for each previous CTE */
+      curr_cte = parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
+      if (curr_cte == NULL)
+	{
+	  /* we expect error to be set */
+	  return NULL;
+	}
+
+      /* try to find out if curr_cte is recursive */
+      if ((curr_cte->info.cte.non_recursive_part->node_type == PT_UNION) && (!curr_cte->info.cte.recursive_part))
+	{
+	  PT_NODE *recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg2;
+	  int curr_cte_count = 0;
+
+	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte, curr_cte,
+					     pt_count_ctes_post, &curr_cte_count);
+	  if (!recursive_part)
+	    {
+	      /* error in walk */
+	      return NULL;
+	    }
+
+	  if (curr_cte_count > 0)
+	    {
+	      curr_cte->info.cte.recursive_part = recursive_part;
+	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_recursive_part->info.query.all_distinct;
+	      curr_cte->info.cte.non_recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg1;
+	    }
+
+	  curr_cte->next = saved_curr_cte_next;	/* restore next node */
+	}
+
+      curr_cte->info.cte.non_recursive_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
+      if (curr_cte->info.cte.recursive_part)
+	{
+	  curr_cte->info.cte.recursive_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
+	}
+
+      /* reconnect list, previous->next was curr_cte */
+      previous_cte->next = curr_cte;
+
+      /* restore next node */
+      curr_cte->next = saved_curr_cte_next;
+    }
+
+  saved_with = with;
+  node->info.query.with = NULL;	/* must be hidden from the parser */
+
+  node = parser_walk_tree (parser, node, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
+
+  node->info.query.with = saved_with;
+  /* all ok */
+  return node;
 }
 
 /*

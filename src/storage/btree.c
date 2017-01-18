@@ -5671,65 +5671,6 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
 }
 
 /*
- * xbtree_delete_with_unique_key -
- *   btid (in):
- *   class_oid (in):
- *   key_value (in):
- *   return:
- */
-int
-xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, DB_VALUE * key_value)
-{
-  int error = NO_ERROR;
-  OID unique_oid;
-  HEAP_SCANCACHE scan_cache;
-  BTREE_SEARCH r;
-
-  r = xbtree_find_unique (thread_p, btid, S_DELETE, key_value, class_oid, &unique_oid, true);
-
-  if (r == BTREE_KEY_FOUND)
-    {
-      HFID hfid;
-      int force_count;
-
-      error = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error = heap_scancache_start_modify (thread_p, &scan_cache, &hfid, class_oid, SINGLE_ROW_DELETE, NULL);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error =
-	locator_delete_force (thread_p, &hfid, &unique_oid, true, SINGLE_ROW_DELETE, &scan_cache, &force_count, NULL,
-			      false);
-      if (error == NO_ERROR)
-	{
-	  /* monitor */
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
-	}
-
-      heap_scancache_end_modify (thread_p, &scan_cache);
-    }
-  else if (r == BTREE_KEY_NOTFOUND)
-    {
-      btree_set_unknown_key_error (thread_p, btid, key_value, "xbtree_delete_with_unique_key: current key not found.");
-      error = ER_BTREE_UNKNOWN_KEY;
-    }
-  else
-    {
-      /* r == BTREE_ERROR_OCCURRED */
-      ASSERT_ERROR_AND_SET (error);
-    }
-
-  return error;
-}
-
-/*
  * xbtree_find_multi_uniques () - search a list of unique indexes for specified values
  * return : search return code
  * thread_p (in)  : handler thread
