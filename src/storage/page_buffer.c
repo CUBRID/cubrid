@@ -202,6 +202,14 @@ static int rv;
 typedef enum
 {
   /* zone values start after reserved values for lru indexes */
+  /* LRU zones explained:
+   * 1. This is hottest zone and this is where most fixed/unfixed bcb's are found. We'd like to keep the page unfix
+   *    complexity to a minimum, therefore no boost to top are done here. This zone's bcb's cannot be victimized.
+   * 2. This is a buffer between the hot lru 1 zone and the victimization lru 3 zone. The buffer zone gives bcb's that
+   *    fall from first zone to be boosted back to top (if they are still hot). Victimization is still not allowed.
+   * 3. Third zone is the victimization zone. BCB's can still be boosted if fixed/unfixed, but in aggressive victimizing
+   *    systems, non-dirty bcb's rarely survive here.
+   */
   PGBUF_LRU_1_ZONE = 1 << PGBUF_LRU_NBITS,
   PGBUF_LRU_2_ZONE = 2 << PGBUF_LRU_NBITS,
   PGBUF_LRU_3_ZONE = 3 << PGBUF_LRU_NBITS,
@@ -210,8 +218,10 @@ typedef enum
 
   /* other zone values must have a completely different mask than lru zone. so also skip the two bits used for
    * PGBUF_LRU_ZONE_MASK */
-  PGBUF_INVALID_ZONE = 1 << (PGBUF_LRU_NBITS + 2),
-  PGBUF_VOID_ZONE = 2 << (PGBUF_LRU_NBITS + 2),
+  PGBUF_INVALID_ZONE = 1 << (PGBUF_LRU_NBITS + 2),    /* invalid zone */
+  PGBUF_VOID_ZONE = 2 << (PGBUF_LRU_NBITS + 2),       /* void zone: temporary zone after reading bcb from disk until and
+                                                       * until adding to a lru list, or after removing from lru list and
+                                                       * until victimizing. */
   PGBUF_AIN_ZONE = 3 << (PGBUF_LRU_NBITS+ 2),		/* todo: do we keep ain? */
 
   /* zone mask should cover all zone values */
@@ -504,6 +514,9 @@ typedef enum
 	} \
     } \
 while (0)
+
+#define PGBUF_LRU_ZONE_MIN_RATIO 0.05f
+#define PGBUF_LRU_ZONE_MAX_RATIO 0.90f
 
 /* BCB zone */
 
@@ -914,8 +927,8 @@ struct pgbuf_buffer_pool
   PGBUF_BUFFER_LOCK *buf_lock_table;	/* buffer lock table */
   PGBUF_IOPAGE_BUFFER *iopage_table;	/* IO page table */
   int num_LRU_list;		/* number of shared LRU lists */
-  int num_LRU1_zone_threshold;	/* target number of pages in LRU1 zone (for shared LRUs) */
-  int num_LRU2_zone_threshold;	/* target number of pages in LRU2 zone (for shared LRUs) */
+  float ratio_lru1;             /* ratio for lru 1 zone */
+  float ratio_lru2;             /* ratio for lru 2 zone */
   int last_flushed_LRU_list_idx;	/* index of the last flushed LRU list */
   PGBUF_LRU_LIST *buf_LRU_list;	/* LRU lists. When Page quota is enabled, first 'num_LRU_list' store shared pages;
 				 * the next 'num_garbage_LRU_list' lists store shared garbage pages;
@@ -1569,6 +1582,17 @@ pgbuf_initialize (void)
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
+
+  /* set ratios for lru zones */
+  pgbuf_Pool.ratio_lru1 = prm_get_float_value (PRM_ID_PB_LRU_HOT_RATIO);
+  pgbuf_Pool.ratio_lru2 = prm_get_float_value (PRM_ID_PB_LRU_BUFFER_RATIO);
+  pgbuf_Pool.ratio_lru1 = MAX (pgbuf_Pool.ratio_lru1, PGBUF_LRU_ZONE_MIN_RATIO);
+  pgbuf_Pool.ratio_lru1 = MIN (pgbuf_Pool.ratio_lru1, PGBUF_LRU_ZONE_MAX_RATIO);
+  pgbuf_Pool.ratio_lru2 = MAX (pgbuf_Pool.ratio_lru2, PGBUF_LRU_ZONE_MIN_RATIO);
+  pgbuf_Pool.ratio_lru2 = MIN (pgbuf_Pool.ratio_lru2, 1.0f - PGBUF_LRU_ZONE_MIN_RATIO - pgbuf_Pool.ratio_lru1);
+  assert (pgbuf_Pool.ratio_lru2 >= PGBUF_LRU_ZONE_MIN_RATIO && pgbuf_Pool.ratio_lru2 <= PGBUF_LRU_ZONE_MAX_RATIO);
+  assert ((pgbuf_Pool.ratio_lru1 + pgbuf_Pool.ratio_lru2) >= 0.099f
+          && (pgbuf_Pool.ratio_lru1 + pgbuf_Pool.ratio_lru2) <= 0.949f);
 
   /* keep page quota parameter initializer first */
   if (pgbuf_initialize_page_quota_parameters () != NO_ERROR)
@@ -6210,7 +6234,11 @@ static int
 pgbuf_initialize_ain_list (void)
 {
   float ain_ratio = prm_get_float_value (PRM_ID_PB_AIN_RATIO);
-  float lru1_ratio = prm_get_float_value (PRM_ID_PB_LRU_HOT_RATIO);
+
+  if (true)
+    {
+      return;
+    }
 
   pgbuf_Pool.buf_AIN_list.max_count = (int) (pgbuf_Pool.num_buffers * ain_ratio);
   pgbuf_Pool.buf_AIN_list.ain_count = 0;
@@ -6230,16 +6258,6 @@ pgbuf_initialize_ain_list (void)
       pgbuf_Pool.buf_AIN_list.max_count = 0;
       ain_ratio = 0;
     }
-
-  pgbuf_Pool.num_LRU1_zone_threshold = (int) (PGBUF_LRU_SIZE * (1.0f - ain_ratio) * lru1_ratio);
-  pgbuf_Pool.num_LRU1_zone_threshold = MAX (pgbuf_Pool.num_LRU1_zone_threshold, (int) (PGBUF_LRU_SIZE * 0.05f));
-  pgbuf_Pool.num_LRU1_zone_threshold = MIN (pgbuf_Pool.num_LRU1_zone_threshold, (int) (PGBUF_LRU_SIZE * 0.95f));
-
-  pgbuf_Pool.num_LRU2_zone_threshold = (int) (PGBUF_LRU_SIZE * (1.0f - ain_ratio) * 0.1f); /* todo: sys param */
-  pgbuf_Pool.num_LRU2_zone_threshold = MAX (pgbuf_Pool.num_LRU2_zone_threshold, (int) (PGBUF_LRU_SIZE * 0.05f));
-  pgbuf_Pool.num_LRU2_zone_threshold = MIN (pgbuf_Pool.num_LRU2_zone_threshold, (int) (PGBUF_LRU_SIZE * 0.95f));
-
-  assert_release (pgbuf_Pool.num_LRU1_zone_threshold < (PGBUF_LRU_SIZE * (1.0f - ain_ratio)));
 
   return NO_ERROR;
 }
@@ -14433,8 +14451,6 @@ pgbuf_initialize_page_quota (void)
 
       if (PGBUF_IS_PRIVATE_LRU_INDEX (i))
 	{
-	  float lru1_ratio = prm_get_float_value (PRM_ID_PB_LRU_HOT_RATIO);
-
 	  quota->private_lru_session_cnt[PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (i)] = 0;
 	}
     }
@@ -14905,8 +14921,6 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
   PGBUF_PAGE_QUOTA *quota;
   PGBUF_PAGE_MONITOR *monitor;
   int i;
-  float lru1_ratio = prm_get_float_value (PRM_ID_PB_LRU_HOT_RATIO);
-  float lru2_ratio = 0.1f;  /* todo: system parameter */
   int all_private_quota;
   int sum_private_lru_activity_total = 0;
   struct timeval curr_time, diff_time;
@@ -14916,6 +14930,8 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
   int lru_private_hits = 0;
   float private_ratio;
   int avg_shared_lru_size;
+  int shared_threshold_lru1;
+  int shared_threshold_lru2;
   int new_quota;
   float new_lru_ratio;
   const INT64 onesec_usec = 1000000LL;
@@ -15099,8 +15115,8 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
 
           lru_list = PGBUF_GET_LRU_LIST (i);
           lru_list->quota = new_quota;
-          lru_list->threshold_lru1 = (int) (lru1_ratio * new_quota);
-          lru_list->threshold_lru2 = (int) (lru2_ratio * new_quota);
+          lru_list->threshold_lru1 = (int) (new_quota * pgbuf_Pool.ratio_lru1);
+          lru_list->threshold_lru2 = (int) (new_quota * pgbuf_Pool.ratio_lru2);
 
           if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list))
             {
@@ -15124,17 +15140,13 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
   /* set shared target size */
   avg_shared_lru_size = (pgbuf_Pool.num_buffers - all_private_quota) / pgbuf_Pool.num_LRU_list;
   avg_shared_lru_size = MAX (avg_shared_lru_size, 100);
-  pgbuf_Pool.num_LRU1_zone_threshold = (int) (avg_shared_lru_size * lru1_ratio);
-  pgbuf_Pool.num_LRU1_zone_threshold = MAX (pgbuf_Pool.num_LRU1_zone_threshold, (int) (avg_shared_lru_size * 0.05f));
-  pgbuf_Pool.num_LRU1_zone_threshold = MIN (pgbuf_Pool.num_LRU1_zone_threshold, (int) (avg_shared_lru_size * 0.95f));
-  pgbuf_Pool.num_LRU2_zone_threshold = (int) (avg_shared_lru_size * lru2_ratio);
-  pgbuf_Pool.num_LRU2_zone_threshold = MAX (pgbuf_Pool.num_LRU2_zone_threshold, (int) (avg_shared_lru_size * 0.05f));
-  pgbuf_Pool.num_LRU2_zone_threshold = MIN (pgbuf_Pool.num_LRU2_zone_threshold, (int) (avg_shared_lru_size * 0.95f));
+  shared_threshold_lru1 = (int) (avg_shared_lru_size * pgbuf_Pool.ratio_lru1);
+  shared_threshold_lru2 = (int) (avg_shared_lru_size * pgbuf_Pool.ratio_lru2);
   for (i = 0; i < PGBUF_SHARED_LRU; i++)
     {
       lru_list = PGBUF_GET_LRU_LIST (i);
-      lru_list->threshold_lru1 = pgbuf_Pool.num_LRU1_zone_threshold;
-      lru_list->threshold_lru2 = pgbuf_Pool.num_LRU2_zone_threshold;
+      lru_list->threshold_lru1 = shared_threshold_lru1;
+      lru_list->threshold_lru2 = shared_threshold_lru2;
 
       if (lru_list->count_vict_cand > 0)
         {

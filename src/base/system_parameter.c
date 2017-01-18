@@ -560,6 +560,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE "ha_repl_enable_server_side_update"
 #define PRM_NAME_PB_LRU_HOT_RATIO "lru_hot_ratio"
+#define PRM_NAME_PB_LRU_BUFFER_RATIO "lru_buffer_ratio"
 
 #define PRM_NAME_HA_PREFETCHLOGDB_ENABLE "ha_prefetchlogdb_enable"
 #define PRM_NAME_HA_PREFETCHLOGDB_MAX_THREAD_COUNT "ha_prefetchlogdb_max_thread_count"
@@ -1878,9 +1879,15 @@ static bool prm_ha_repl_enable_server_side_update_flag = 0;
 
 float PRM_PB_LRU_HOT_RATIO = 0.4f;
 static float prm_pb_lru_hot_ratio_default = 0.4f;
-static float prm_pb_lru_hot_ratio_upper = 0.95f;
+static float prm_pb_lru_hot_ratio_upper = 0.90f;
 static float prm_pb_lru_hot_ratio_lower = 0.05f;
 static unsigned int prm_pb_lru_hot_ratio_flag = 0;
+
+float PRM_PB_LRU_BUFFER_RATIO = 0.05f;
+static float prm_pb_lru_buffer_ratio_default = 0.05f;
+static float prm_pb_lru_buffer_ratio_upper = 0.90f;
+static float prm_pb_lru_buffer_ratio_lower = 0.05f;
+static unsigned int prm_pb_lru_buffer_ratio_flag = 0;
 
 bool PRM_HA_PREFETCHLOGDB_ENABLE = false;
 static unsigned int prm_ha_prefetchlogdb_enable_flag = 0;
@@ -4612,6 +4619,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_PB_LRU_HOT_RATIO,
    (void *) &prm_pb_lru_hot_ratio_upper,
    (void *) &prm_pb_lru_hot_ratio_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_PB_LRU_BUFFER_RATIO,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_FLOAT,
+   (void *) &prm_pb_lru_buffer_ratio_flag,
+   (void *) &prm_pb_lru_buffer_ratio_default,
+   (void *) &PRM_PB_LRU_BUFFER_RATIO,
+   (void *) &prm_pb_lru_buffer_ratio_upper,
+   (void *) &prm_pb_lru_buffer_ratio_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
