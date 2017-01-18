@@ -308,8 +308,8 @@ define pgbuf_lru_print_victim_status
   set $oq_with_vc = 0
   set $oq_with_vc_bcbs = 0
   
-  set $i = pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list
-  while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_garbage_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
+  set $i = pgbuf_Pool.num_LRU_list
+  while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
     set $lru_list = &pgbuf_Pool.buf_LRU_list[$i]
     set $private_1 = $private_1 + $lru_list->count_lru1
     set $private_2 = $private_2 + $lru_list->count_lru2
