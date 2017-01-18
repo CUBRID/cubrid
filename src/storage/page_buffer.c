@@ -9845,7 +9845,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
                   pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
                   perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
-                  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, search_cnt);
+                  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
 
                   return bufptr;
                 }
@@ -9873,8 +9873,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_ZONE_2);
   perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_FAIL_DIRTY_CNT, dirty_cnt);
-  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_FAIL_DIRTY_CNT, search_cnt);
-  /* perf search_cnt */
+  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_FAIL_SEARCH_CNT, search_cnt);
 
   if (bufptr_victimizable == NULL)
     {
@@ -16860,6 +16859,7 @@ pgbuf_flags_mask_sanity_check (void)
 static void
 pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
 {
+#if !defined (NDEBUG)
   if (lru->LRU_top == NULL)
     {
       /* empty list */
@@ -16965,4 +16965,5 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
             }
         }
     }
+#endif /* !NDEBUG */
 }
