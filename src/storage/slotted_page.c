@@ -1912,6 +1912,9 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
   assert (record_descriptor_p != NULL);
   assert (slot_p != NULL);
 
+#if defined (SERVER_MODE)
+  assert (pgbuf_is_modification_started (page_p));
+#endif
   if (record_descriptor_p->length < 0)
     {
       assert (false);
@@ -1933,8 +1936,7 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
   else
     {
       if (tmp_slot_p->offset_to_record + SSIZEOF (TRANID) > (unsigned int) SPAGE_DB_PAGESIZE)
-	{
-	  pgbuf_end_modification (page_p);
+	{	  
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert_release (false);
 	  return SP_ERROR;
