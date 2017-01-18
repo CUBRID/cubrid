@@ -9834,7 +9834,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
           if (found_victim_cnt >= lru_victim_cnt)
             {
               /* early out: probably we won't find others */
-              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_SKIPPED_NON_DIRTY);
+              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_SKIP_VICTIM);
               break;
             }
 	}
@@ -9899,7 +9899,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
               if (found_victim_cnt >= lru_victim_cnt)
                 {
                   /* early out: probably we won't find others */
-                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_SKIPPED_NON_DIRTY);
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_SKIP_VICTIM);
                   break;
                 }
               perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_TRYLOCK_FAILED);
@@ -16630,6 +16630,11 @@ pgbuf_bcb_set_dirty (PGBUF_BCB * bcb)
       /* increment global dirty counter */
       ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1);
       assert (pgbuf_Pool.monitor.dirties_cnt > 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
+
+      if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb))
+        {
+          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_INVALIDATE_CANDIDATE);
+        }
     }
 
   /* set dirty flag and clear none */
