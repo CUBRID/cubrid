@@ -22603,6 +22603,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
       /* Advance to child. */
       assert (!VPID_ISNULL (&child_vpid));
       *advance_to_page = NULL;
+#if defined(SERVER_MODE)
       if (bcb_area && node_header->node_level == 2)
 	{
 	try_again:
@@ -22629,6 +22630,9 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 		}
 	    }
 	}
+#else
+      assert (bcb_area == NULL);
+#endif
 
       if (*advance_to_page == NULL)
 	{
