@@ -15515,6 +15515,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	    }
 	}
 
+      /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
+       * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
+       */
+      qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true);
+
       if (save_recursive_list_id != NULL)
 	{
 	  /* restore recursive list_id */
