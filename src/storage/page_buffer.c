@@ -4190,7 +4190,9 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	  PGBUF_UNLOCK_BCB (bufptr);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL);
+#if defined (SERVER_MODE)
           thread_wakeup_log_flush_thread_if_not_requested ();
+#endif /* SERVER_MODE */
           pgbuf_Flush_eye.need_wal++;
 	  continue;
 	}
