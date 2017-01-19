@@ -14120,6 +14120,10 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
     }
 
   prv_quota = pgbuf_Pool.quota.private_pages_ratio;
+  if (pgbuf_Pool.monitor.lru_shared_pgs < 0 || pgbuf_Pool.monitor.lru_shared_pgs > pgbuf_Pool.num_buffers)
+    {
+      ABORT_RELEASE ();
+    }
   prv_real_ratio = 1.0f - ((float) pgbuf_Pool.monitor.lru_shared_pgs / pgbuf_Pool.num_buffers);
   diff = prv_quota - prv_real_ratio;
 
@@ -15851,7 +15855,7 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
     {
       lru_list = PGBUF_GET_LRU_LIST (new_lru_idx);
 
-      if (PGBUF_IS_SHARED_LRU_INDEX (PGBUF_GET_LRU_INDEX (old_flags)))
+      if (PGBUF_IS_SHARED_LRU_INDEX (PGBUF_GET_LRU_INDEX (new_flags)))
         {
           ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_shared_pgs, 1);
         }
