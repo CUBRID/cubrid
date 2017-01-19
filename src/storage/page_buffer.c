@@ -1186,6 +1186,8 @@ struct pgbuf_temp_stats
   INT64 fall_3_try_success;
   INT64 fall_3_try_fail;
 
+  INT64 lfcq_failed_push;
+
   INT64 flush_lru_skips[PGBUF_LRU_LIST_MAX_COUNT];
   INT64 flush_lru_cands[PGBUF_LRU_LIST_MAX_COUNT];
 };
@@ -16295,33 +16297,34 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
   if (lru_list->count_vict_cand > 0 && (!from_private || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list)))
     {
       /* add lru list back to queue */
-      if (!lf_circular_queue_produce (lfcq, &lru_idx))
+      if (lf_circular_queue_produce (lfcq, &lru_idx))
         {
-          ABORT_RELEASE ();
+          perfmon_inc_stat (thread_p, from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_READD : PSTAT_PB_LFCQ_LRU_SHR_GET_READD);
+          return victim;
         }
-      perfmon_inc_stat (thread_p, from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_READD : PSTAT_PB_LFCQ_LRU_SHR_GET_READD);
+      else
+        {
+          ATOMIC_INC_64 (&pgbuf_Temp_stats.lfcq_failed_push, 1);
+        }
     }
-  else
-    {
-      /* we're not adding the list back to the queue... so we need to reflect that in the list flags. next time when
-       * a new candidate is added, lru list should also be added to the queue.
-       *
-       * note: we can have a race here. candidates are 0 now and incremented before we manage to change the victim
-       *       counter. we should not worry that much, the list will be added by pgbuf_adjust_quotas eventually.
-       */
-      if ((lru_list->flags & PGBUF_LRU_VICTIM_LFCQ_FLAG) == 0)
-        {
-          /* should be set */
-          ABORT_RELEASE ();
-        }
-      /* note: we are not using an atomic operation here, because this is the only flag and we are certain no one else
-       *       changes it from set to cleared. however, if more flags are added, or more cases that should clear the
-       *       flag, then consider replacing with some atomic operation. */
-      lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
 
-      perfmon_inc_stat (thread_p,
-                        from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_DONT_ADD : PSTAT_PB_LFCQ_LRU_SHR_GET_DONT_ADD);
+  /* we're not adding the list back to the queue... so we need to reflect that in the list flags. next time when a new
+   * candidate is added, lru list should also be added to the queue.
+   *
+   * note: we can have a race here. candidates are 0 now and incremented before we manage to change the victim
+   *       counter. we should not worry that much, the list will be added by pgbuf_adjust_quotas eventually.
+   */
+  if ((lru_list->flags & PGBUF_LRU_VICTIM_LFCQ_FLAG) == 0)
+    {
+      /* should be set */
+      ABORT_RELEASE ();
     }
+  /* note: we are not using an atomic operation here, because this is the only flag and we are certain no one else
+   *       changes it from set to cleared. however, if more flags are added, or more cases that should clear the flag,
+   *       then consider replacing with some atomic operation. */
+  lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
+
+  perfmon_inc_stat (thread_p, from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_DONT_ADD : PSTAT_PB_LFCQ_LRU_SHR_GET_DONT_ADD);
 
   return victim;
 }
