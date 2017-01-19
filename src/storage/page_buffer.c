@@ -14846,10 +14846,14 @@ pgbuf_has_prevent_dealloc (PAGE_PTR pgptr)
 
 void
 pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UINT64 * lru2_cnt, UINT64 * lru3_cnt,
-		  UINT64 * avoid_dealloc_cnt, UINT64 * avoid_victim_cnt, UINT64 * private_quota, UINT64 * private_cnt)
+		  UINT64 * victim_candidates, UINT64 * avoid_dealloc_cnt, UINT64 * avoid_victim_cnt,
+                  UINT64 * private_quota, UINT64 * private_cnt, UINT64 * alloc_bcb_waiter_high,
+                  UINT64 * alloc_bcb_waiter_med, UINT64 * alloc_bcb_waiter_low, UINT64 * lfcq_prv_num,
+                  UINT64 * lfcq_shr_num)
 {
   PGBUF_BCB *bufptr;
   int i;
+  int lfcq_size;
 
   *fixed_cnt = 0;
   *dirty_cnt = 0;
@@ -14858,6 +14862,7 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
   *avoid_dealloc_cnt = 0;
   *avoid_victim_cnt = 0;
   *private_cnt = 0;
+  *victim_candidates = 0;
 
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
     {
@@ -14903,8 +14908,30 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
             }
         }
     }
+  for (i = 0; i < PGBUF_TOTAL_LRU; i++)
+    {
+      *victim_candidates = *victim_candidates + pgbuf_Pool.buf_LRU_list[i].count_vict_cand;
+    }
 
   *private_quota = (UINT64) (pgbuf_Pool.quota.private_pages_ratio * pgbuf_Pool.num_buffers);
+
+#if defined (SERVER_MODE)
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters);
+  *alloc_bcb_waiter_high = (lfcq_size >= 0) ? lfcq_size : 0;
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters);
+  *alloc_bcb_waiter_med = (lfcq_size >= 0) ? lfcq_size : 0;
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_latch_none);
+  *alloc_bcb_waiter_low = (lfcq_size >= 0) ? lfcq_size : 0;
+#else /* !SERVER_MODE */
+  *alloc_bcb_waiter_high = 0;
+  *alloc_bcb_waiter_med = 0;
+  *alloc_bcb_waiter_low = 0;
+#endif /* !SERVER_MODE */
+
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.private_lrus_with_victims);
+  *lfcq_prv_num = (lfcq_size >= 0) ? lfcq_size : 0;
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.shared_lrus_with_victims);
+  *lfcq_shr_num = (lfcq_size >= 0) ? lfcq_size : 0;
 }
 
 /*
