@@ -846,10 +846,7 @@ struct pgbuf_page_quota
   float private_pages_ratio;	/* Ratio of all private BCBs among total BCBs */
 
   /* todo: remove me --> */
-  unsigned int vict_shared_lru_idx;	/* circular index of shared LRU for victimization */
-  unsigned int vict_private_lru_idx;	/* circular index of private LRU for victimization */
   unsigned int add_shared_lru_idx;	/* circular index of shared LRU for relocating to shared */
-  unsigned int add_shared_lru_idx_for_destroyed;	/* circular index of garbage LRU for relocating destroyed pages */
   int avoid_shared_lru_idx;	/* index of shared LRU to avoid when relocating to shared;
 				 * this is ussually the index of shared LRU with maximum number of BCBs;
 				 * transaction will avoid this list when relocating to shared LRU (like when moving from
@@ -9079,120 +9076,6 @@ pgbuf_get_shared_lru_index_for_add ()
 }
 
 /*
- * pgbuf_get_shared_lru_index_for_victim () -
- *   return: the index of the LRU index
- *   vpid(in): VPID
- */
-STATIC_INLINE int
-pgbuf_get_shared_lru_index_for_victim (THREAD_ENTRY * thread_p)
-{
-  unsigned int lru_idx;
-
-  lru_idx = ATOMIC_INC_32 (&pgbuf_Pool.quota.vict_shared_lru_idx, 1);
-  lru_idx = lru_idx % PGBUF_SHARED_LRU;
-  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_IDX);
-  return (int) lru_idx;
-}
-
-STATIC_INLINE int
-pgbuf_get_shared_lru_index_with_victims (THREAD_ENTRY * thread_p)
-{
-  int start_lru_idx = pgbuf_get_shared_lru_index_for_victim (thread_p);
-  int lru_idx;
-  int prev_lru_idx;
-  int loops;
-  bool restarted = false;
-
-  for (loops = 0, lru_idx = start_lru_idx; lru_idx < start_lru_idx || !restarted; loops++)
-    {
-      if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_victim_hint != NULL)
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_SUCCESS);
-	  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_LOOPS, loops);
-	  return lru_idx;
-	}
-      else
-	{
-	  /* this is considered failed victim request */
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
-	}
-      prev_lru_idx = lru_idx;
-      lru_idx = pgbuf_get_shared_lru_index_for_victim (thread_p);
-      if (prev_lru_idx > lru_idx)
-	{
-	  restarted = true;
-	}
-    }
-
-  /* looped for one generation and did not find anything. return current lru_idx */
-  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_LOOPS, loops);
-  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_SHARED_FAIL);
-  return lru_idx;
-}
-
-/* todo: add declaration */
-STATIC_INLINE int
-pgbuf_get_private_lru_index_for_victim (THREAD_ENTRY * thread_p)
-{
-  unsigned int lru_idx;
-  lru_idx = ATOMIC_INC_32 (&pgbuf_Pool.quota.vict_private_lru_idx, 1);
-  lru_idx = PGBUF_SHARED_LRU + lru_idx % PGBUF_PRIVATE_LRU;
-
-  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_IDX);
-  return (int) lru_idx;
-}
-
-STATIC_INLINE int
-pgbuf_get_private_lru_index_with_victims (THREAD_ENTRY * thread_p)
-{
-  int start_lru_idx = pgbuf_get_private_lru_index_for_victim (thread_p);
-  int lru_idx;
-  int prev_lru_idx;
-  int loops;
-  bool restarted = false;
-
-  PGBUF_LRU_LIST *lru_list;
-
-  for (loops = 0, lru_idx = start_lru_idx; lru_idx < start_lru_idx || !restarted; loops++)
-    {
-      lru_list = PGBUF_GET_LRU_LIST (lru_idx);
-      if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list))
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_SUCCESS);
-	  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_LOOPS, loops);
-	  return lru_idx;
-	}
-      else if (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
-	{
-	  if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_victim_hint != NULL)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_SUCCESS);
-	      perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_LOOPS, loops);
-	      return lru_idx;
-	    }
-	  else
-	    {
-	      /* this is considered failed victim request */
-	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
-	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_per_lru[lru_idx], 1);
-	    }
-	}
-      prev_lru_idx = lru_idx;
-      lru_idx = pgbuf_get_private_lru_index_for_victim (thread_p);
-      if (prev_lru_idx > lru_idx)
-	{
-	  restarted = true;
-	}
-    }
-
-  /* looped for one generation and did not find anything. return current lru_idx */
-  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_FAIL);
-  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_INC_PRIVATE_LOOPS, loops);
-  return lru_idx;
-}
-
-/*
  * pgbuf_get_victim () - find a victim BCB
  * return : victim candidate or NULL if no candidate was found
  * thread_p (in) :
@@ -13905,10 +13788,7 @@ pgbuf_initialize_page_quota (void)
       quota->private_pages_ratio = 0;
     }
 
-  quota->vict_shared_lru_idx = 0;
-  quota->vict_private_lru_idx = 0;
   quota->add_shared_lru_idx = 0;
-  quota->add_shared_lru_idx_for_destroyed = 0;
   quota->avoid_shared_lru_idx = -1;
 
 exit:
