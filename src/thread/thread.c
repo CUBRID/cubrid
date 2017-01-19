@@ -3761,6 +3761,20 @@ thread_wakeup_log_flush_thread (void)
 }
 
 /*
+ * thread_wakeup_log_flush_thread_if_not_requested () - wakeup log flush thread only if it was not already requested
+ */
+void
+thread_wakeup_log_flush_thread_if_not_requested (void)
+{
+  if (thread_Log_flush_thread.nrequestors > 0)
+    {
+      /* already requested */
+      return;
+    }
+  thread_wakeup_log_flush_thread ();
+}
+
+/*
  * thread_reset_nrequestors_of_log_flush_thread() -
  *   return:
  */

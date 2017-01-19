@@ -112,10 +112,6 @@ static int rv;
 #define er_log_debug _er_log_debug
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
-/* threshold of accepted buffers in LRU1 zone for each chain */
-#define PGBUF_LRU_1_ZONE_THRESHOLD(lru_idx) \
-  (pgbuf_Pool.quota.lru1_threshold_per_lru[(lru_idx)])
-
 /* The victim candidate flusher (performed as a daemon) finds
    victim candidates(fcnt == 0) from the bottom of each LRU list.
    and flushes them if they are in dirty state. */
@@ -636,7 +632,6 @@ struct pgbuf_bcb
   volatile bool is_flush_candidate;	/* true if BCB was already added in LRU flush list */
 #endif
   bool async_flush_request;
-  volatile bool direct_victim;
 
   int hit_age;
 
@@ -1190,8 +1185,17 @@ struct pgbuf_temp_stats
   INT64 fall_3_count;
   INT64 fall_3_try_success;
   INT64 fall_3_try_fail;
+
+  INT64 flush_lru_skips[PGBUF_LRU_LIST_MAX_COUNT];
+  INT64 flush_lru_cands[PGBUF_LRU_LIST_MAX_COUNT];
 };
-static PGBUF_TEMP_STATS pgbuf_Temp_stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static PGBUF_TEMP_STATS pgbuf_Temp_stats;
+
+static void
+pgbuf_temp_stats_init (void)
+{
+  memset (&pgbuf_Temp_stats, 0, sizeof (pgbuf_Temp_stats));
+}
 
 static int pgbuf_Global_error = 0;
 #if defined (NDEBUG)
@@ -1715,6 +1719,8 @@ pgbuf_initialize (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PGBUF_PRIVATE_LRU * sizeof (int));
       goto error;
     }
+
+  pgbuf_temp_stats_init ();
 
   return NO_ERROR;
 
@@ -3904,6 +3910,8 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 	    }
 #endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
+          ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_skips[lru_idx], 1);
+
 	  pgbuf_Pool.last_flushed_LRU_list_idx = lru_idx;
 	  lru_idx = (lru_idx + 1) % PGBUF_TOTAL_LRU;
 
@@ -3932,6 +3940,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
               cand_found_in_this_lru++;
             }
         }
+      ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_cands[lru_idx], cand_found_in_this_lru);
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 #endif /* PGBUF_ENABLE_FLUSH_LIST */
 
@@ -3968,6 +3977,19 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   return victim_cand_count - victim_count;
 }
 
+/* todo: remove me */
+typedef struct pgbuf_flush_see_stuff PGBUF_FLUSH_SEE_STUFF;
+struct pgbuf_flush_see_stuff
+{
+  float lru_miss_rate;
+  float lru_dynamic_flush_adj;
+  int check_count_lru;
+  int victim_count;
+  int flushed;
+  int need_wal;
+};
+PGBUF_FLUSH_SEE_STUFF pgbuf_Flush_eye;
+
 /*
  * pgbuf_flush_victim_candidate () - Flush victim candidates
  *   return: NO_ERROR, or ER_code
@@ -3975,14 +3997,8 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
  * Note: This function flushes at most VictimCleanCount buffers that might
  *       become victim candidates in the near future.
  */
-#if !defined(NDEBUG)
-int
-pgbuf_flush_victim_candidate_debug (THREAD_ENTRY * thread_p, float flush_ratio, const char *caller_file,
-				    int caller_line)
-#else /* NDEBUG */
 int
 pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
-#endif				/* NDEBUG */
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
@@ -4065,6 +4081,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       lru_miss_rate = 0;
     }
 
+  pgbuf_Flush_eye.lru_miss_rate = lru_miss_rate;
+
   cfg_check_cnt = (int) (pgbuf_Pool.num_buffers * flush_ratio);
 
   /* Victims will only be flushed, not decached. */
@@ -4082,15 +4100,19 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
     {
       lru_dynamic_flush_adj = 1.0f;
     }
+  pgbuf_Flush_eye.lru_dynamic_flush_adj = lru_dynamic_flush_adj;
 
   check_count_lru = (int) (cfg_check_cnt * lru_dynamic_flush_adj);
   /* limit the checked BCBs to equivalent of 200 M */
   check_count_lru = MIN (check_count_lru, (200 * 1024 * 1024) / db_page_size ());
 
+  pgbuf_Flush_eye.check_count_lru = check_count_lru;
+  pgbuf_Flush_eye.flushed = 0;
+  pgbuf_Flush_eye.need_wal = 0;
+
   if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
-      victim_count_lru =
-	pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, 0, lru_sum_flush_priority);
+      victim_count_lru = pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, 0, lru_sum_flush_priority);
     }
 
   victim_count = victim_count_lru;
@@ -4100,6 +4122,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_collect_flush, PSTAT_PB_FLUSH_COLLECT);
       goto end;
     }
+
+  pgbuf_Flush_eye.victim_count = victim_count;
 
 #if defined (SERVER_MODE)
   /* wake up log flush thread. we need log up to date to be able to flush pages */
@@ -4166,6 +4190,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	  PGBUF_UNLOCK_BCB (bufptr);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL);
+          thread_wakeup_log_flush_thread_if_not_requested ();
+          pgbuf_Flush_eye.need_wal++;
 	  continue;
 	}
 

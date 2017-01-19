@@ -355,6 +355,7 @@ extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 #endif /* NDEBUG */
 extern PAGE_PTR pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio);
 #if !defined(NDEBUG)
 #define pgbuf_flush_all(thread_p, volid) \
 	pgbuf_flush_all_debug(thread_p, volid, __FILE__, __LINE__)
@@ -371,9 +372,6 @@ extern int pgbuf_flush_all_unfixed_debug (THREAD_ENTRY * thread_p, VOLID volid, 
 							  __LINE__)
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null_debug (THREAD_ENTRY * thread_p, VOLID volid,
 							      const char *caller_file, int caller_line);
-
-#define pgbuf_flush_victim_candidate(thread_p, flush_ratio) \
-	pgbuf_flush_victim_candidate_debug(thread_p, flush_ratio, __FILE__, __LINE__)
 extern int pgbuf_flush_victim_candidate_debug (THREAD_ENTRY * thread_p, float flush_ratio, const char *caller_file,
 					       int caller_line);
 
@@ -393,7 +391,6 @@ extern void pgbuf_replace_watcher_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER 
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY * thread_p, VOLID volid);
-extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio);
 extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 				   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
 
