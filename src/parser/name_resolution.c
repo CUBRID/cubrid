@@ -1986,7 +1986,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
 			{
 			  derived_table = spec->info.spec.derived_table;
-			  if (derived_table == NULL)
+			  if (derived_table == NULL && spec->info.spec.flat_entity_list)
 			    {
 			      flat = spec->info.spec.flat_entity_list;
 
@@ -2018,7 +2018,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      else
 			{
 			  /* STEP 2-2-2) recreate select_list */
-			  if (derived_table == NULL)
+			  if (derived_table == NULL && spec->info.spec.flat_entity_list)
 			    {
 			      resolved_attrs =
 				parser_append_node (attr->next,
