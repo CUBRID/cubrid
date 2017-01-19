@@ -1988,6 +1988,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			  if (PT_SPEC_IS_ENTITY (spec))
 			    {
 			      /* entity spec */
+			      assert (!PT_SPEC_IS_DERIVED (spec) || !PT_SPEC_IS_CTE (spec));
 			      flat = spec->info.spec.flat_entity_list;
 
 			      if (pt_str_compare (attr->info.name.original, flat->info.name.resolved, CASE_INSENSITIVE)
