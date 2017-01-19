@@ -4984,8 +4984,6 @@ heap_manager_finalize (void)
   return ret;
 }
 
-RECDES *ppp_recdes;
-char *ppp_page;
 /*
  * heap_create_internal () - Create a heap file
  *   return: HFID * (hfid on success and NULL on failure)
@@ -5176,10 +5174,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
   recdes.area_size = recdes.length = sizeof (HEAP_HDR_STATS);
   recdes.type = REC_HOME;
-  recdes.data = (char *) &heap_hdr;
-
-  ppp_recdes = &recdes;
-  ppp_page = addr_hdr.pgptr;
+  recdes.data = (char *) &heap_hdr;  
 
   sp_success = spage_insert (thread_p, addr_hdr.pgptr, &recdes, &slotid);
   if (sp_success != SP_SUCCESS || slotid != HEAP_HEADER_AND_CHAIN_SLOTID)
@@ -7246,11 +7241,13 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   int try_count = 0;
   int try_max = 1;
   int ret;
-  bool is_system_class = false;
-  int copy_retry_count = 1, copy_retry_max = 5;
+  bool is_system_class = false;  
   bool bcb_area_copied = false;
   VPID object_vpid;
   PAGE_PTR page_ptr;
+#if defined(SERVER_MODE)
+  int copy_retry_count = 1, copy_retry_max = 5;
+#endif
 
   assert (context->oid_p != NULL);
 
@@ -7549,7 +7546,6 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
   SCAN_CODE scan_code;
   PAGE_PTR home_page, forward_page;
   const OID *oid;
-  int num_slots;
 
   assert (context != NULL && context->oid_p != NULL);
 
@@ -7560,8 +7556,7 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
       home_page = context->bcb_area;
     }
   assert (home_page != NULL);
-
-  num_slots = spage_number_of_slots (home_page);
+  
   forward_page = context->fwd_page_watcher.pgptr;
 
   assert (context->record_type == REC_HOME || context->record_type == REC_RELOCATION
@@ -7645,8 +7640,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_SCANCACHE *scan_cache_p = context->scan_cache;
-  PAGE_PTR home_page_ptr;
-  int num_slots;
+  PAGE_PTR home_page_ptr;  
 
   /* We have everything set up to get record data. */
   assert (context != NULL);
@@ -7656,8 +7650,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
     {
       home_page_ptr = context->bcb_area;
     }
-  assert (home_page_ptr != NULL);
-  num_slots = spage_number_of_slots (home_page_ptr);
+  assert (home_page_ptr != NULL);  
 
   /* Assert ispeeking, scan_cache and recdes are compatible. If ispeeking is PEEK, it is the caller responsabilty to
    * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated

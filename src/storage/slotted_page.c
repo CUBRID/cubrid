@@ -212,7 +212,7 @@ static INLINE bool spage_is_unknown_slot (PGSLOTID slotid, SPAGE_HEADER * sphdr,
 static INLINE SPAGE_SLOT *spage_find_slot (PAGE_PTR pgptr, SPAGE_HEADER * sphdr, PGSLOTID slotid,
 					   bool is_unknown_slot_check) __attribute__ ((ALWAYS_INLINE));
 static INLINE int spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdes,
-					      PGSLOTID * slotid, void **slotptr, int *used_space)
+					      PGSLOTID * slotid, SPAGE_SLOT ** slotptr, int *used_space)
   __attribute__ ((ALWAYS_INLINE));
 static SCAN_CODE spage_get_record_data (PAGE_PTR pgptr, SPAGE_SLOT * sptr, RECDES * recdes, int ispeeking);
 static bool spage_has_enough_total_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, SPAGE_HEADER * sphdr, int space);
@@ -1437,10 +1437,6 @@ spage_set_slot (SPAGE_SLOT * slot_p, int offset, int length, INT16 type)
   slot_p->record_type = type;
 }
 
-int phnum_rec;
-int ph_offs_free_area;
-SPAGE_SLOT *sp_slot_p;
-PGSLOTID sp_slot_id;
 /*
  * spage_find_empty_slot () - Find a free area/slot where a record of
  *               the given length can be inserted onto the given slotted page
@@ -1538,10 +1534,6 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int record_leng
   page_header_p->total_free -= space;
   page_header_p->cont_free -= space;
   page_header_p->offset_to_free_area += (record_length + waste);
-  phnum_rec = page_header_p->num_records;
-  ph_offs_free_area = page_header_p->offset_to_free_area;
-  sp_slot_p = slot_p;
-  sp_slot_id = slot_id;
 
   ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area, page_header_p->alignment);
 
@@ -1840,10 +1832,6 @@ spage_check_record_for_insert (RECDES * record_descriptor_p)
   return SP_SUCCESS;
 }
 
-SPAGE_SLOT *spage_insert_slot_p;
-SPAGE_SLOT **spage_insert_slot_pp;
-int *used_space_p;
-PGSLOTID *out_slot_id_pp;
 /*
  * spage_insert () - Insert a record
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
@@ -1869,12 +1857,7 @@ spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descript
 #if defined (SERVER_MODE)
   pgbuf_start_modification (page_p, &modification_started);
 #endif /* SERVER_MODE */
-  status =
-    spage_find_slot_for_insert (thread_p, page_p, record_descriptor_p, out_slot_id_p, (void **) &slot_p, &used_space);
-  spage_insert_slot_p = slot_p;
-  spage_insert_slot_pp = &slot_p;
-  used_space_p = &used_space;
-  out_slot_id_pp = &out_slot_id_p;
+  status = spage_find_slot_for_insert (thread_p, page_p, record_descriptor_p, out_slot_id_p, &slot_p, &used_space);
   if (status == SP_SUCCESS)
     {
       status = spage_insert_data (thread_p, page_p, record_descriptor_p, slot_p);
@@ -1890,7 +1873,6 @@ spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descript
   return status;
 }
 
-SPAGE_SLOT *spage_find_slot_for_insert_slot_p;
 /*
  * spage_find_slot_for_insert () - Find a slot id and related information in the
  *                          given page
@@ -1904,7 +1886,7 @@ SPAGE_SLOT *spage_find_slot_for_insert_slot_p;
  */
 STATIC_INLINE int
 spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descriptor_p,
-			    PGSLOTID * out_slot_id_p, void **out_slot_p, int *out_used_space_p)
+			    PGSLOTID * out_slot_id_p, SPAGE_SLOT ** out_slot_p, int *out_used_space_p)
 {
   SPAGE_SLOT *slot_p;
   int status;
@@ -1925,8 +1907,7 @@ spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * r
   status =
     spage_find_empty_slot (thread_p, page_p, record_descriptor_p->length, record_descriptor_p->type, &slot_p,
 			   out_used_space_p, out_slot_id_p);
-  spage_find_slot_for_insert_slot_p = slot_p;
-  *out_slot_p = (void *) slot_p;
+  *out_slot_p = slot_p;
 
 #ifdef SPAGE_DEBUG
   spage_check (thread_p, page_p);
@@ -1935,10 +1916,6 @@ spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * r
   return status;
 }
 
-int tmp_slot_p_offs;
-int record_descriptor_length;
-char *ppp;
-SPAGE_SLOT *gl_tmp_slot_p;
 /*
  * spage_insert_data () - Copy the contents of a record into the given page/slot
  *   return: either of SP_ERROR, SP_SUCCESS
@@ -1966,7 +1943,6 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
     }
 
   tmp_slot_p = (SPAGE_SLOT *) slot_p;
-  gl_tmp_slot_p = slot_p;
   if (record_descriptor_p->type != REC_ASSIGN_ADDRESS)
     {
       if ((unsigned int) tmp_slot_p->offset_to_record + record_descriptor_p->length > (unsigned int) SPAGE_DB_PAGESIZE)
@@ -1975,10 +1951,6 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
 	  assert_release (false);
 	  return SP_ERROR;
 	}
-
-      tmp_slot_p_offs = tmp_slot_p->offset_to_record;
-      record_descriptor_length = record_descriptor_p->length;
-      ppp = (char *) page_p + tmp_slot_p->offset_to_record;
 
       memcpy (((char *) page_p + tmp_slot_p->offset_to_record), record_descriptor_p->data, record_descriptor_p->length);
     }
@@ -2132,7 +2104,6 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID sl
       assert (page_header_p->anchor_type == ANCHORED || page_header_p->anchor_type == ANCHORED_DONT_REUSE_SLOTS);
       assert (slot_p->offset_to_record == SPAGE_EMPTY_OFFSET);
 
-
       slot_p->record_type = REC_DELETED_WILL_REUSE;
     }
 
@@ -2156,7 +2127,6 @@ spage_insert_for_recovery (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID sl
 	      assert_release (false);
 	      return SP_ERROR;
 	    }
-
 	  memcpy (((char *) page_p + slot_p->offset_to_record), record_descriptor_p->data, record_descriptor_p->length);
 	}
 
