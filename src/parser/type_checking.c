@@ -4142,8 +4142,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads[num++] = sig;
 
       /* TIMESTAMP(DATETIME,NUMBER) */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_DATETIME;
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATE;
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
       sig.return_type.is_generic = false;

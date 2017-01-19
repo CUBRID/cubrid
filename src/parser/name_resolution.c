@@ -691,6 +691,11 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	      node = pt_expand_external_path (parser, node, &prev_entity);
 	      break;
 	    }
+	  if (is_pt_name_in_group_having (in_node))
+	    {
+	      /* give up; this kind of name should be in level 0 scopes */
+	      break;
+	    }
 	  level++;
 	}
     }
@@ -736,7 +741,7 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
   else
     {
       /* If pt_name in group by/ having, maybe it's alias. We will try to resolve it later. */
-      if (is_pt_name_in_group_having (in_node) == false)
+      if (!is_pt_name_in_group_having (in_node))
 	{
 	  /* it may be a naked parameter or a path expression anchored by a naked parameter. Try and resolve it as
 	   * such. */
