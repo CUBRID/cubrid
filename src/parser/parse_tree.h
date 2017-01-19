@@ -739,6 +739,19 @@
 #define PT_SHOULD_BIND_RESERVED_NAME(spec_)				\
   (PT_SPEC_GET_RESERVED_NAME_TYPE (spec_) != RESERVED_NAME_INVALID)
 
+/* PT_SPEC node contains a derived table */
+#define PT_SPEC_IS_DERIVED(spec_) \
+  (spec_->info.spec.derived_table != NULL)
+
+/* PT_SPEC node contains a CTE pointer */
+#define PT_SPEC_IS_CTE(spec_) \
+  (spec_->info.spec.cte_pointer != NULL)
+
+/* PT_SPEC node contains an entity spec */
+#define PT_SPEC_IS_ENTITY(spec_) \
+  (spec_->info.spec.entity_name != NULL)
+
+
 /*
  Enumerated types of parse tree statements
   WARNING ------ WARNING ----- WARNING

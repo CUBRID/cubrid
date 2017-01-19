@@ -1808,7 +1808,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   PT_EXTRA_SPECS_FRAME spec_frame;
   PT_NODE *prev_attr = NULL, *attr = NULL, *next_attr = NULL, *as_attr = NULL;
   PT_NODE *resolved_attrs = NULL, *spec = NULL;
-  PT_NODE *derived_table = NULL, *flat = NULL, *range_var = NULL;
+  PT_NODE *flat = NULL, *range_var = NULL;
   bool do_resolve = true;
   PT_NODE *seq = NULL;
   PT_NODE *cnf = NULL, *prev = NULL, *next = NULL, *last = NULL, *save = NULL;
@@ -1985,9 +1985,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      /* STEP 2-2-1) assign spec_id into PT_NAME */
 		      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
 			{
-			  derived_table = spec->info.spec.derived_table;
-			  if (derived_table == NULL && spec->info.spec.flat_entity_list)
+			  if (PT_SPEC_IS_ENTITY (spec))
 			    {
+			      /* entity spec */
 			      flat = spec->info.spec.flat_entity_list;
 
 			      if (pt_str_compare (attr->info.name.original, flat->info.name.resolved, CASE_INSENSITIVE)
@@ -1999,7 +1999,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 				}
 			    }
 			  else
-			    {	/* derived table */
+			    {
+			      /* derived table or cte */
+			      assert (PT_SPEC_IS_DERIVED (spec) || PT_SPEC_IS_CTE (spec));
 			      range_var = spec->info.spec.range_var;
 			      if (pt_str_compare (attr->info.name.original, range_var->info.name.original,
 						  CASE_INSENSITIVE) == 0)
@@ -2018,7 +2020,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      else
 			{
 			  /* STEP 2-2-2) recreate select_list */
-			  if (derived_table == NULL && spec->info.spec.flat_entity_list)
+			  if (PT_SPEC_IS_ENTITY (spec))
 			    {
 			      resolved_attrs =
 				parser_append_node (attr->next,
