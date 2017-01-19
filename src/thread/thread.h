@@ -450,7 +450,7 @@ extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern bool thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag);
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
-extern void void thread_wakeup_log_flush_thread_if_not_requested (void);
+extern void thread_wakeup_log_flush_thread_if_not_requested (void);
 extern void thread_wakeup_page_flush_thread (void);
 extern void thread_wakeup_flush_control_thread (void);
 extern void thread_wakeup_checkpoint_thread (void);
