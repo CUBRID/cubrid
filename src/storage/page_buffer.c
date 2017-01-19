@@ -167,6 +167,7 @@ static int rv;
 			+ offsetof(PGBUF_IOPAGE_BUFFER, iopage.page))); \
   } while (0)
 
+#if defined(SERVER_MODE)
 /* Macros for page modifications */
 #define PGBUF_BCB_START_MODIFICATION(bufptr)                        \
   do {                                                              \
@@ -187,6 +188,11 @@ static int rv;
   assert (bufptr != NULL);					    \
   ATOMIC_TAS_64 (&bufptr->count_modifications, 0LL);		    \
   } while (0)
+#else
+#define PGBUF_BCB_START_MODIFICATION(bufptr)
+#define PGBUF_BCB_END_MODIFICATION(bufptr)
+#define PGBUF_BCB_RESET_MODIFICATION(bufptr)
+#endif
 
 /* check whether the given volume is auxiliary volume */
 #define PGBUF_IS_AUXILIARY_VOLUME(volid)                                 \
@@ -391,7 +397,9 @@ struct pgbuf_bcb
   int ain_tick;			/* age of AIN when this BCB was inserted into AIN list */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
+#if defined(SERVER_MODE)
   UINT64 count_modifications;	/* Count modifications. The value is increased before and after page modification. */
+#endif
   volatile bool dirty;		/* Is page dirty ? */
   bool avoid_victim;
   bool async_flush_request;
@@ -1315,6 +1323,7 @@ pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid
 }
 #endif /* NDEBUG */
 
+#if defined(SERVER_MODE)
 #if !defined(NDEBUG)
 /*
  * pgbuf_copy_to_bcb_area_debug () - copy page to bcb area, debug version
@@ -1438,6 +1447,7 @@ exit_on_error:
 
   return ((err = er_errid ()) == NO_ERROR) ? ER_FAILED : err;
 }
+#endif
 
 /*
  * pgbuf_fix () -

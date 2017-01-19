@@ -4984,6 +4984,8 @@ heap_manager_finalize (void)
   return ret;
 }
 
+RECDES *ppp_recdes;
+char *ppp_page;
 /*
  * heap_create_internal () - Create a heap file
  *   return: HFID * (hfid on success and NULL on failure)
@@ -5175,6 +5177,9 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   recdes.area_size = recdes.length = sizeof (HEAP_HDR_STATS);
   recdes.type = REC_HOME;
   recdes.data = (char *) &heap_hdr;
+
+  ppp_recdes = &recdes;
+  ppp_page = addr_hdr.pgptr;
 
   sp_success = spage_insert (thread_p, addr_hdr.pgptr, &recdes, &slotid);
   if (sp_success != SP_SUCCESS || slotid != HEAP_HEADER_AND_CHAIN_SLOTID)

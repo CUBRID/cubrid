@@ -1841,6 +1841,9 @@ spage_check_record_for_insert (RECDES * record_descriptor_p)
 }
 
 SPAGE_SLOT *spage_insert_slot_p;
+SPAGE_SLOT **spage_insert_slot_pp;
+int *used_space_p;
+PGSLOTID *out_slot_id_pp;
 /*
  * spage_insert () - Insert a record
  *   return: either of SP_ERROR, SP_DOESNT_FIT, SP_SUCCESS
@@ -1869,6 +1872,9 @@ spage_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_descript
   status =
     spage_find_slot_for_insert (thread_p, page_p, record_descriptor_p, out_slot_id_p, (void **) &slot_p, &used_space);
   spage_insert_slot_p = slot_p;
+  spage_insert_slot_pp = &slot_p;
+  used_space_p = &used_space;
+  out_slot_id_pp = &out_slot_id_p;
   if (status == SP_SUCCESS)
     {
       status = spage_insert_data (thread_p, page_p, record_descriptor_p, slot_p);
@@ -1932,6 +1938,7 @@ spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * r
 int tmp_slot_p_offs;
 int record_descriptor_length;
 char *ppp;
+SPAGE_SLOT *gl_tmp_slot_p;
 /*
  * spage_insert_data () - Copy the contents of a record into the given page/slot
  *   return: either of SP_ERROR, SP_SUCCESS
@@ -1959,6 +1966,7 @@ spage_insert_data (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_des
     }
 
   tmp_slot_p = (SPAGE_SLOT *) slot_p;
+  gl_tmp_slot_p = slot_p;
   if (record_descriptor_p->type != REC_ASSIGN_ADDRESS)
     {
       if ((unsigned int) tmp_slot_p->offset_to_record + record_descriptor_p->length > (unsigned int) SPAGE_DB_PAGESIZE)
