@@ -1157,6 +1157,9 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	    {
 	      non_recursive_cte =
 		parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+	      /* restore non recursive part; pointer may be changed during walk */
+	      cte_def->info.cte.non_recursive_part = non_recursive_cte;
 	    }
 	  else
 	    {
