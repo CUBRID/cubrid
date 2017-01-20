@@ -7967,7 +7967,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
  *   parser(in):
  *   node(in/out):
  *   arg(in): cte_defs ( only the CTEs that can be referenced )
- *   continue_walk(in/out): *
+ *   continue_walk(in/out):
  */
 static PT_NODE *
 pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -8032,15 +8032,27 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 static PT_NODE *
 pt_resolve_spec_to_cte_and_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  node = pt_resolve_spec_to_cte (parser, node, arg, continue_walk);
-  if (node == NULL || node->node_type != PT_SPEC || !PT_SPEC_IS_CTE (node))
+  if (node == NULL)
     {
-      /* not spec | spec was not found | error occured */
+      assert (false);
+      return NULL;
+    }
+
+  /* we are interested only in entity-specs that are transformed into cte-specs after pt_resolve_spec_to_cte */
+  if (node->node_type != PT_SPEC || !PT_SPEC_IS_ENTITY (node))
+    {
+      return node;
+    }
+
+  node = pt_resolve_spec_to_cte (parser, node, arg, continue_walk);
+  if (node == NULL || !PT_SPEC_IS_CTE (node))
+    {
+      /* spec was not found | error occured */
       return node;
     }
 
   /* spec was transformed into a CTE pointer spec */
-  assert (PT_SPEC_IS_CTE (node));
+  assert (node->node_type == PT_SPEC && PT_SPEC_IS_CTE (node));
 
   /* set node->etc to the number of occurences (one) */
   node->etc = malloc (sizeof (char));
