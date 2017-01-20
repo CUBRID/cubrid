@@ -12091,6 +12091,9 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
     {
       /* The CTE xasl is null because the recursive part xasl has not been generated yet, but this is not a problem 
        * because the recursive part should have access only to the non recursive part.
+       * This may also happen with a CTE referenced by another one. If CTE1 is referenced by CTE2, the XASL of CTE1
+       * is not completed when reaching this function from CTE2. CTE2 is reached following *next* link of CTE1 before
+       * CTE1 post function of xasl generation is executed.
        */
       PT_NODE *non_recursive_part = cte_def->info.cte.non_recursive_part;
 
