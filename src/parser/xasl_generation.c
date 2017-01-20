@@ -12577,8 +12577,24 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
       if (xasl)
 	{
-	  /* append the CTE xasl at the beginning of the list */
-	  info->xasl = pt_append_xasl (xasl, info->xasl);
+	  /* The CTE correlation level is kept in the non_recursive_part query and it is handled here since 
+	   * the CTE subqueries are not accessed for correlation check;
+	   * After validation, the CTE XASL is added to the list */
+
+	  PT_NODE *non_recursive_part = node->info.cte.non_recursive_part;
+	  assert (PT_IS_QUERY (non_recursive_part));
+
+	  if (non_recursive_part->info.query.correlation_level == 0)
+	    {
+	      /* add non_recursive_part to this level */
+	      non_recursive_part->info.query.correlation_level = info->level;
+	    }
+
+	  if (non_recursive_part->info.query.correlation_level == info->level)
+	    {
+	      /* append the CTE xasl at the beginning of the list */
+	      info->xasl = pt_append_xasl (xasl, info->xasl);
+	    }
 	}
 
       break;
