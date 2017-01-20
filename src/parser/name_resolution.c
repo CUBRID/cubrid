@@ -7965,6 +7965,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
  *   node(in/out):
  *   arg(in): cte_defs ( only the CTEs that can be referenced )
  *   continue_walk(in/out):
+ *
+ *   Note: Must be paired with pt_count_ctes_post to ensure node->etc cleanup
  */
 static PT_NODE *
 pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -8096,7 +8098,6 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
       with = node->info.query.with;
-      *continue_walk = PT_STOP_WALK;
       break;
 
     default:
@@ -8117,7 +8118,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       return NULL;
     }
 
-  /* For NON-recursive WITH CLAUSE forward referencing is not allowed */
+  /* Resolve CTEs within CTEs; Note: For NON-recursive WITH CLAUSE forward referencing is not allowed */
   for (previous_cte = cte_defs, curr_cte = previous_cte->next; curr_cte != NULL;
        previous_cte = previous_cte->next, curr_cte = curr_cte->next)
     {
@@ -8137,7 +8138,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       curr_cte->next = NULL;
 
       /* curr_cte->next should be set to NULL; next CTEs will be resolved for each previous CTE */
-      curr_cte = parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
+      curr_cte = parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte, cte_defs->next, pt_count_ctes_post, NULL);
       if (curr_cte == NULL)
 	{
 	  /* we expect error to be set */
@@ -8184,9 +8185,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   saved_with = with;
   node->info.query.with = NULL;	/* must be hidden from the parser */
 
-  node = parser_walk_tree (parser, node, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
-
+  /* Resolve CTEs in the actual query */
+  node = parser_walk_tree (parser, node, pt_resolve_spec_to_cte, cte_defs->next, pt_count_ctes_post, NULL);
   node->info.query.with = saved_with;
+
   /* all ok */
   return node;
 }
