@@ -12555,9 +12555,8 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	    QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
 	    if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
-		&& buildlist->groupby_list == NULL && buildlist->a_eval_list == NULL && (xasl->orderby_list == NULL
-											 || XASL_IS_FLAGED (xasl,
-													    XASL_SKIP_ORDERBY_LIST))
+		&& buildlist->groupby_list == NULL && buildlist->a_eval_list == NULL
+		&& (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
 		&& xasl->option != Q_DISTINCT)
 	      {
 		QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
@@ -12669,9 +12668,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:	/* start SET block iterations */
-      {
-	break;
-      }
+      break;
 
     case CTE_PROC:
       break;
