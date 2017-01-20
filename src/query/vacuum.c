@@ -5454,6 +5454,8 @@ vacuum_update_oldest_unvacuumed_mvccid (THREAD_ENTRY * thread_p)
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Update oldest_unvacuumed_mvccid from %llu to %llu.\n",
 		     (unsigned long long int) vacuum_Data.oldest_unvacuumed_mvccid,
 		     (unsigned long long int) oldest_mvccid);
+
+      (void) vacuum_cleanup_dropped_files (thread_p);
     }
   /* Vacuum data oldest MVCCID cannot go backwards! */
   assert (vacuum_Data.oldest_unvacuumed_mvccid <= oldest_mvccid);
