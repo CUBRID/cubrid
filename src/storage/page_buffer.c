@@ -8490,6 +8490,19 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
         }
       pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_WAITERS;
     }
+#if 1
+  else
+    {
+      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &thread_p))
+        {
+          assert (false);
+          ABORT_RELEASE ();
+          thread_unlock_entry (thread_p);
+          return NULL;
+        }
+      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_LATCH;
+    }
+#else
   else if (has_fixed_pages)
     {
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &thread_p))
@@ -8512,6 +8525,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
         }
       pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_NO_LATCH;
     }
+#endif
 
   /* now that we added to queue, decrement count_get_victim_wait_in_progress */
   ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, -1);
@@ -9120,7 +9134,14 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p, bool penalize, PERF_UTIME_TRACKER * t
           perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
 
           /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim */
-          return NULL;
+          if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+            {
+              return NULL;
+            }
+          else
+            {
+              /* vacuum workers usually have empty private lists. let them search */
+            }
         }
     }
   
