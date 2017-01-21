@@ -23701,38 +23701,47 @@ parser_remove_dummy_select (PT_NODE ** ent_inout)
        * case 2 (nested spec):
        *              FROM (SELECT * FROM (SELECT a, b FROM bas) y(p, q)) x
        * -> FROM (SELECT a, b FROM bas) x(p, q)
+       *
+       * Note: Subqueries with CTEs are not removed
        */
       if ((subq = ent->info.spec.derived_table)
-	  && subq->node_type == PT_SELECT
-	  && PT_SELECT_INFO_IS_FLAGED (subq, PT_SELECT_INFO_DUMMY)
-	  && subq->info.query.q.select.from)
-	{
-	  if (PT_SELECT_INFO_IS_FLAGED (subq, PT_SELECT_INFO_FOR_UPDATE))
-  	    {
-  	      /* the FOR UPDATE clause cannot be used in subqueries */
-  	      PT_ERRORm (this_parser, subq, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_INVALID_USE_FOR_UPDATE_CLAUSE);
-	    }
-	  else
-	    {
-	      new_ent = subq->info.query.q.select.from;
-	      subq->info.query.q.select.from = NULL;
+	        && subq->node_type == PT_SELECT
+	        && PT_SELECT_INFO_IS_FLAGED (subq, PT_SELECT_INFO_DUMMY))
+        {
+          if (subq->info.query.q.select.from && subq->info.query.with == NULL)
+      	   {
+          	  if (PT_SELECT_INFO_IS_FLAGED (subq, PT_SELECT_INFO_FOR_UPDATE))
+            	    {
+            	      /* the FOR UPDATE clause cannot be used in subqueries */
+            	      PT_ERRORm (this_parser, subq, MSGCAT_SET_PARSER_SEMANTIC,
+          			 MSGCAT_SEMANTIC_INVALID_USE_FOR_UPDATE_CLAUSE);
+          	      }
+          	  else
+          	      {
+          	        new_ent = subq->info.query.q.select.from;
+          	        subq->info.query.q.select.from = NULL;
 
-	      /* free, reset new_spec's range_var, as_attr_list */
-	      if (new_ent->info.spec.range_var)
-		{
-		  parser_free_node (this_parser, new_ent->info.spec.range_var);
-		  new_ent->info.spec.range_var = NULL;
-		}
+          	        /* free, reset new_spec's range_var, as_attr_list */
+          	        if (new_ent->info.spec.range_var)
+              		    {
+              		    parser_free_node (this_parser, new_ent->info.spec.range_var);
+              		    new_ent->info.spec.range_var = NULL;
+              		    }
 
-	      new_ent->info.spec.range_var = ent->info.spec.range_var;
-	      ent->info.spec.range_var = NULL;
+            	      new_ent->info.spec.range_var = ent->info.spec.range_var;
+            	      ent->info.spec.range_var = NULL;
 
-	      /* free old ent, reset to new_ent */
-	      parser_free_node (this_parser, ent);
-	      *ent_inout = new_ent;
-	    }
-	}
+            	      /* free old ent, reset to new_ent */
+            	      parser_free_node (this_parser, ent);
+            	      *ent_inout = new_ent;
+            	    }
+	          }
+          else 
+            {
+              /* not dummy */
+              PT_SELECT_INFO_CLEAR_FLAG (subq, PT_SELECT_INFO_DUMMY);
+            }
+        }
     }
 }
 
