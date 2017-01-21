@@ -773,7 +773,6 @@ struct cte_proc_node
 {
   XASL_NODE *non_recursive_part;	/* non recursive part of the CTE */
   XASL_NODE *recursive_part;	/* recursive part of the CTE */
-  QFILE_LIST_ID *list_id;	/* list file identifier for results */
 };
 
 typedef enum

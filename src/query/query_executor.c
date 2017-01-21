@@ -15523,8 +15523,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  recursive_part->list_id = save_recursive_list_id;
 	}
     }
-  else if (non_recursive_part->list_id->tuple_cnt > 0
-	   && qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true) != NO_ERROR)
+  /* copy list id from non-recursive part to CTE XASL (even if no tuples are in non recursive part) to get domain types
+   * into CTE xasl's main list (this also executes if we have a recursive part but no tuples in non recursive part
+   * (no results at all)
+   */
+  else if (qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true) != NO_ERROR)
     {
       QFILE_FREE_AND_INIT_LIST_ID (xasl->list_id);
       GOTO_EXIT_ON_ERROR;
