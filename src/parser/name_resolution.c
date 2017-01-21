@@ -7961,7 +7961,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
   return statement;
 }
 
-/* pt_resolve_spec_to_cte - search for matches of specs in each CTE from cte_defs
+/* pt_resolve_spec_to_cte - search for matches of node spec in each CTE from cte_defs list
  *
  *   return:
  *   parser(in):
@@ -7974,7 +7974,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   PT_NODE *cte_defs = (PT_NODE *) arg;
   PT_NODE *cte = NULL;
-  int match_count = 0;		/* init match counter from the beginning; it is important for pt_count_ctes_post */
+  int match_count = 0;
 
   if (node == NULL)
     {
@@ -7982,24 +7982,9 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       return NULL;
     }
 
-  /* etc will be deallocated in pt_count_ctes_post; must be initialized to NULL */
-  pt_null_etc (node);
-
-  if (cte_defs == NULL)
+  if (node->node_type != PT_SPEC || !PT_SPEC_IS_ENTITY (node))
     {
-      *continue_walk = PT_STOP_WALK;
-      return node;
-    }
-
-  if (node->node_type != PT_SPEC)
-    {
-      /* not interested in non-specs */
-      return node;
-    }
-
-  if (node->info.spec.entity_name == NULL)
-    {
-      /* only interested in specs without entity names */
+      /* not interested in non-entity-specs */
       return node;
     }
 
@@ -8012,7 +7997,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{
 	  if (match_count > 0)
 	    {
-	      /* there are more CTEs with the same name */
+	      /* there are more CTEs with the same name; should return real error and should be moved from here */
 	      PT_INTERNAL_ERROR (parser, "CTE name ambiguity");
 	      return NULL;
 	    }
@@ -8027,16 +8012,51 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
   if (match_count > 0)
     {
-      int *cte_count;
-      /* spec points to a cte; set node->etc to an integer with the number of cte occurences (one or zero) */
       node->info.spec.entity_name = NULL;
-
-
-      cte_count = (int *) malloc (sizeof (int));
-      *cte_count = match_count;
-      node->etc = (void *) cte_count;
-      /* the integer will be deallocated in pt_count_ctes_post */
     }
+
+  return node;
+}
+
+/* pt_resolve_spec_to_cte_and_count - search for matches of spec in each CTE from cte_defs list 
+ *                                    and sets node->etc as counter if found
+ *
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in): cte_defs ( only the CTEs that can be referenced )
+ *   continue_walk(in/out):
+ *
+ *   Note: Must be paired with pt_count_ctes_post to ensure node->etc cleanup
+ */
+static PT_NODE *
+pt_resolve_spec_to_cte_and_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  /* we are interested only in entity-specs that are transformed into cte-specs after pt_resolve_spec_to_cte */
+  if (node->node_type != PT_SPEC || !PT_SPEC_IS_ENTITY (node))
+    {
+      return node;
+    }
+
+  node = pt_resolve_spec_to_cte (parser, node, arg, continue_walk);
+  if (node == NULL || !PT_SPEC_IS_CTE (node))
+    {
+      /* spec was not found | error occured */
+      return node;
+    }
+
+  /* spec was transformed into a CTE pointer spec */
+  assert (node->node_type == PT_SPEC && PT_SPEC_IS_CTE (node));
+
+  /* set node->etc to the number of occurences (one) */
+  node->etc = malloc (sizeof (char));
+  *((char *) node->etc) = 1;
 
   return node;
 }
@@ -8044,7 +8064,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 /* pt_count_ctes_post () - increase counter with current node cte occurrences
 *   return:
 *   parser(in):
-*   node(in): the node to check, leave node unchanged
+*   node(in): the node to check, leave node unchanged except of node->etc
 *   arg(out): count of CTEs
 *   continue_walk(in):
 */
@@ -8052,24 +8072,17 @@ static PT_NODE *
 pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   int *cnt = (int *) arg;
-  int *cte_matches = NULL;
 
-  if (node->node_type == PT_SPEC && node->info.spec.cte_pointer != NULL)
+  /* check if node is a CTE SPEC with node->etc set */
+  if (node != NULL && node->node_type == PT_SPEC && PT_SPEC_IS_CTE (node) && pt_node_etc (node) != NULL)
     {
-      /* the node points to a CTE; check if node->etc holds the cte counter integer and clean etc */
-      cte_matches = (int *) pt_node_etc (node);
-      pt_null_etc (node);
-    }
-
-  if (cte_matches != NULL)
-    {
-      if (cnt != NULL)
-	{
-	  (*cnt)++;
-	}
+      /* increment cnt argument and free etc */
+      assert (*((char *) pt_node_etc (node)) == 1);
+      (*cnt)++;
 
       /* cte_matches counter is no longer needed; pt_resolve_spec_to_cte expects to clean it here */
-      free (cte_matches);
+      free (pt_node_etc (node));
+      pt_null_etc (node);
     }
 
   return node;
@@ -8099,7 +8112,6 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
       with = node->info.query.with;
-      *continue_walk = PT_STOP_WALK;
       break;
 
     default:
@@ -8120,7 +8132,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       return NULL;
     }
 
-  /* For NON-recursive WITH CLAUSE forward referencing is not allowed */
+  /* Resolve CTEs within CTEs; Note: For NON-recursive WITH CLAUSE forward referencing is not allowed */
   for (previous_cte = cte_defs, curr_cte = previous_cte->next; curr_cte != NULL;
        previous_cte = previous_cte->next, curr_cte = curr_cte->next)
     {
@@ -8153,7 +8165,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	  PT_NODE *recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg2;
 	  int curr_cte_count = 0;
 
-	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte, curr_cte,
+	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte_and_count, curr_cte,
 					     pt_count_ctes_post, &curr_cte_count);
 	  if (!recursive_part)
 	    {
@@ -8187,9 +8199,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   saved_with = with;
   node->info.query.with = NULL;	/* must be hidden from the parser */
 
+  /* Resolve CTEs in the actual query */
   node = parser_walk_tree (parser, node, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
-
   node->info.query.with = saved_with;
+
   /* all ok */
   return node;
 }
