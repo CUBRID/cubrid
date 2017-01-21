@@ -3495,8 +3495,9 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid, int prune_lev
 
       /* Get the object to find out its direct references */
       OID_SET_NULL (&class_oid);
-      scan = heap_get_visible_version (thread_p, &lockset->objects[ref_num].oid, &class_oid, &peek_recdes, &scan_cache,
-				       PEEK, NULL_CHN);
+      scan =
+	heap_get_visible_version (thread_p, &lockset->objects[ref_num].oid, &class_oid, &peek_recdes, false,
+				  &scan_cache, PEEK, NULL_CHN);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_EXIST && (quit_on_errors == true || er_errid () == ER_INTERRUPTED))
@@ -5710,8 +5711,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 	      else
 		{
-		  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY,
-						   NULL_CHN);
+		  scan =
+		    heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, false, local_scan_cache, COPY,
+					      NULL_CHN);
 		}
 
 
@@ -5853,7 +5855,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 
 	      scan =
-		heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
+		heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, false, local_scan_cache, COPY,
+					  NULL_CHN);
 	      if (scan == S_SUCCESS)
 		{
 		  oldrecdes = &copy_recdes;
@@ -6468,7 +6471,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 	    }
 	  scan_cache_inited = true;
 	  copy_recdes.data = NULL;
-	  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN);
+	  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, false, &scan_cache, COPY, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
@@ -6902,7 +6905,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       assert (OID_ISNULL (&obj->oid) != true);
 
       scan =
-	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, PEEK, NULL_CHN);
+	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, false, force_scancache, PEEK,
+				  NULL_CHN);
 
       if (scan != S_SUCCESS)
 	{
@@ -7530,7 +7534,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  HEAP_GET_CONTEXT context;
 
 	  /* don't consider visiblity, just get the last version of the object */
-	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, false, scan_cache, COPY, NULL_CHN);
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
@@ -11943,7 +11947,8 @@ xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, O
 	  return ER_FAILED;
 	}
 
-      if (heap_get_visible_version (thread_p, &unique_oid, class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_visible_version (thread_p, &unique_oid, class_oid, &recdes, false, &scan, PEEK, NULL_CHN) !=
+	  S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan);
 	  return ER_FAILED;
@@ -12096,7 +12101,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		  continue;
 		}
 
-	      scan = heap_get_visible_version (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN);
+	      scan = heap_get_visible_version (thread_p, &oid, class_oid, &recdes, false, &scan_cache, COPY, NULL_CHN);
 	      if (scan != S_SUCCESS)
 		{
 		  (*nfailed_instance_locks)++;
@@ -13005,8 +13010,8 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
 	      recdes.data = NULL;
 
-	      if (heap_get_visible_version (thread_p, &inst_oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN) !=
-		  S_SUCCESS)
+	      if (heap_get_visible_version (thread_p, &inst_oid, class_oid, &recdes, false, &scan_cache, COPY, NULL_CHN)
+		  != S_SUCCESS)
 		{
 		  error = ER_FAILED;
 		  goto exit;
@@ -13288,7 +13293,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  return S_ERROR;
 	}
     }
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, false, scan_cache, ispeeking, old_chn);
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
@@ -13421,7 +13426,7 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
 	}
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, false, scan_cache, ispeeking, chn);
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
@@ -13521,7 +13526,7 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
 	}
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, false, scan_cache, ispeeking, old_chn);
   scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
   heap_clean_get_context (thread_p, &context);
   return scan_code;
@@ -13755,7 +13760,8 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	  goto end;
 	}
       scan_cache_inited = true;
-      scan_code = heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN);
+      scan_code =
+	heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, false, &local_scan_cache, PEEK, NULL_CHN);
       if (scan_code != S_SUCCESS)
 	{
 	  ev_res = V_ERROR;

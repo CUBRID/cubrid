@@ -498,7 +498,7 @@ static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 static int qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
 			    bool force_select_lock, int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
 			    QUERY_ID query_id, SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
-			    bool * p_mvcc_select_lock_needed);
+			    bool copy_page_without_latch_allowed, bool * p_mvcc_select_lock_needed);
 static void qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec);
 static void qexec_end_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec);
 static SCAN_CODE qexec_next_merge_block (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE ** spec);
@@ -6264,14 +6264,14 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       assert (xasl->scan_op_type == S_SELECT);
       if (qexec_open_scan (thread_p, outer_spec, xasl->proc.mergelist.outer_val_list, &xasl_state->vd, false,
 			   outer_spec->fixed_scan, outer_spec->grouped_scan, true, &outer_spec->s_id,
-			   xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+			   xasl_state->query_id, S_SELECT, false, false, NULL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
 
       if (qexec_open_scan (thread_p, inner_spec, xasl->proc.mergelist.inner_val_list, &xasl_state->vd, false,
 			   inner_spec->fixed_scan, inner_spec->grouped_scan, true, &inner_spec->s_id,
-			   xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+			   xasl_state->query_id, S_SELECT, false, false, NULL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -6328,6 +6328,10 @@ exit_on_error:
  *   grouped(in)        : Grouped scan flag
  *   iscan_oid_order(in)       :
  *   s_id(out)   : Set to the scan identifier
+ *   query_id(in): Query id
+ *   scan_op_type(in): Scan operation type
+ *   scan_immediately_stop(in): true, if stop scan immediately
+ *   copy_page_without_latch_allowed(in): true, if copy page without latch is allowed, currently used for index scan
  *   p_mvcc_select_lock_needed(out): true, whether instance lock needed at select 
  *
  * Note: This routine is used to open a scan on an access specification
@@ -6337,7 +6341,7 @@ static int
 qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
 		 bool force_select_lock, int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
 		 QUERY_ID query_id, SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
-		 bool * p_mvcc_select_lock_needed)
+		 bool copy_page_without_latch_allowed, bool * p_mvcc_select_lock_needed)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
@@ -6481,7 +6485,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 				    curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 				    curr_spec->s.cls_node.cache_rest, curr_spec->s.cls_node.num_attrs_range,
 				    curr_spec->s.cls_node.attrids_range, curr_spec->s.cls_node.cache_range,
-				    iscan_oid_order, query_id) != NO_ERROR)
+				    iscan_oid_order, query_id, copy_page_without_latch_allowed) != NO_ERROR)
 
 	    {
 	      goto exit_on_error;
@@ -7544,7 +7548,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			      spec->s.cls_node.cache_pred, spec->s.cls_node.num_attrs_rest,
 			      spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
 			      spec->s.cls_node.num_attrs_range, spec->s.cls_node.attrids_range,
-			      spec->s.cls_node.cache_range, iscan_oid_order, query_id);
+			      spec->s.cls_node.cache_range, iscan_oid_order, query_id, false);
 
     }
   else if (spec->type == TARGET_CLASS_ATTR)
@@ -8610,7 +8614,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   /* force_select_lock = false */
   assert (xasl->scan_op_type == S_SELECT);
   if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
-		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, false, NULL) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -8819,8 +8823,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 		      /* read lob attributes */
 		      scan_code =
-			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
-						  NULL_CHN);
+			heap_get_visible_version (thread_p, oid, class_oid, &recdes, false, internal_class->scan_cache,
+						  PEEK, NULL_CHN);
 		      if (scan_code == S_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -9545,7 +9549,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   assert (xasl->scan_op_type == S_SELECT);
   /* force_select_lock = false */
   if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
-		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, false, NULL) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -9700,8 +9704,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
 		  /* read lob attributes */
 		  scan_code =
-		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
-					      NULL_CHN);
+		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, false, internal_class->scan_cache,
+					      PEEK, NULL_CHN);
 		  if (scan_code == S_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -10517,7 +10521,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
   scan_code =
-    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
+    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, false, local_scan_cache, ispeeking,
+			      NULL_CHN);
   if (scan_code != S_SUCCESS)
     {
       assert (er_errid () == ER_INTERRUPTED);
@@ -10957,7 +10962,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
       /* force_select_lock = false */
       if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
-			   specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
+			   specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false, false,
 			   NULL) != NO_ERROR)
 	{
 	  if (savepoint_used)
@@ -13147,6 +13152,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool scan_immediately_stop = false;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool instant_lock_mode_started = false;
+  bool copy_page_without_latch_allowed = prm_get_bool_value (PRM_ID_PAGE_READ_WITHOUT_LATCH);
   bool mvcc_select_lock_needed;
 
   /* 
@@ -13643,7 +13649,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (qexec_open_scan (thread_p, specp, xptr->merge_val_list, &xasl_state->vd,
 					       force_select_lock, specp->fixed_scan, specp->grouped_scan,
 					       iscan_oid_order, &specp->s_id, xasl_state->query_id, xasl->scan_op_type,
-					       scan_immediately_stop, &mvcc_select_lock_needed) != NO_ERROR)
+					       scan_immediately_stop, copy_page_without_latch_allowed,
+					       &mvcc_select_lock_needed) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
@@ -13676,7 +13683,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (qexec_open_scan (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock,
 					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
 					       xasl_state->query_id, xptr->scan_op_type, scan_immediately_stop,
-					       &mvcc_select_lock_needed) != NO_ERROR)
+					       copy_page_without_latch_allowed, &mvcc_select_lock_needed) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
@@ -13690,8 +13697,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
+		      /* currently, allow copy leaf page without latch only for one spec */
+		      copy_page_without_latch_allowed = false;
 		    }
 		}
+
+	      /* currently, allow copy leaf page without latch only for one scan block, one access spec */
+	      copy_page_without_latch_allowed = false;
 	    }
 
 	  /* allocate xasl scan function vector */
@@ -14806,7 +14818,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	      assert (xasl->scan_op_type == S_SELECT);
 	      /* heap/index scan for single table query optimization */
 	      if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
-				   false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false,
+				   false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, false,
 				   NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;

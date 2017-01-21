@@ -1174,6 +1174,9 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   fi_thread_init (entry_p);
 #endif
 
+  entry_p->tran_bcb = NULL;
+  entry_p->tran_bcb_used = false;
+
   return NO_ERROR;
 }
 
@@ -1258,7 +1261,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   fi_thread_final (entry_p);
 #endif
 
-  /* transaction entries */
+  pgbuf_finalize_tran_bcb (entry_p);
   if (thread_return_transaction_entry (entry_p) != NO_ERROR)
     {
       return ER_FAILED;

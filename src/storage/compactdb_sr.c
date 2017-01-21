@@ -105,7 +105,7 @@ process_value (DB_VALUE * value)
 
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
-	scan_code = heap_get_visible_version (NULL, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
+	scan_code = heap_get_visible_version (NULL, ref_oid, &ref_class_oid, NULL, false, &scan_cache, PEEK, NULL_CHN);
 	heap_scancache_end (NULL, &scan_cache);
 
 	if (scan_code == S_ERROR)
