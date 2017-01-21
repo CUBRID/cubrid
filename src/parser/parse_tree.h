@@ -3620,6 +3620,8 @@ struct parser_context
   int num_plan_trace;
   PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
 
+  int max_print_len;		/* for pt_short_print */
+
   unsigned has_internal_error:1;	/* 0 or 1 */
   unsigned abort:1;		/* this flag is for aborting a transaction */
   /* if deadlock occurs during query execution */

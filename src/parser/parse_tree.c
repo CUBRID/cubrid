@@ -675,6 +675,11 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
   PARSER_STRING_BLOCK *string;
   char *s;
 
+  if (parser->max_print_len > 0 && parser->max_print_len < old_string->length)
+    {
+      return old_string;
+    }
+
   /* here, you know you have two non-NULL pointers */
   string = pt_find_string_block (parser, (char *) old_string);
 
@@ -1191,6 +1196,7 @@ parser_create_parser (void)
   parser->return_generated_keys = 0;
   parser->is_system_generated_stmt = 0;
   parser->has_internal_error = 0;
+  parser->max_print_len = 0;
 
   return parser;
 }
