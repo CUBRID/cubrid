@@ -8006,7 +8006,6 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	  node->info.spec.cte_pointer->info.pointer.do_walk = false;
 	  node->info.spec.as_attr_list = cte->info.cte.as_attr_list;
 	  match_count++;
-	  *continue_walk = PT_LIST_WALK;
 	}
     }
 
