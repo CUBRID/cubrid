@@ -4034,19 +4034,6 @@ stx_build_cte_proc (THREAD_ENTRY * thread_p, char *ptr, CTE_PROC_NODE * cte_info
 	}
     }
 
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      cte_info->list_id = NULL;
-    }
-  else
-    {
-      cte_info->list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (cte_info->list_id == NULL)
-	{
-	  goto error;
-	}
-    }
   return ptr;
 
 error:
