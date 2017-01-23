@@ -1170,7 +1170,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   if (HFID_IS_NULL (hfid))
     {
       /* file has changed and we must get HFID and file type */
-      error_code = vacuum_heap_get_hfid_and_file_type (thread_p, &helper, &heap_objects[i].vfid);
+      error_code = vacuum_heap_get_hfid_and_file_type (thread_p, &helper, &heap_objects[0].vfid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
