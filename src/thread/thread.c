@@ -3377,6 +3377,40 @@ thread_page_flush_thread (void *arg_p)
 }
 
 /*
+ * thread_wakeup_page_flush_thread() -
+ *   return:
+ */
+void
+thread_wakeup_page_flush_thread (void)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
+  if (!thread_Page_flush_thread.is_running)
+    {
+      pthread_cond_signal (&thread_Page_flush_thread.cond);
+    }
+  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
+}
+
+/*
+ * thread_is_page_flush_thread_available() -
+ *   return:
+ */
+bool
+thread_is_page_flush_thread_available (void)
+{
+  int rv;
+  bool is_available;
+
+  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
+  is_available = thread_Page_flush_thread.is_available;
+  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
+
+  return is_available;
+}
+
+/*
  * thread_page_buffer_maintenance_thread() -
  *   return:
  *   arg_p(in):
@@ -3419,7 +3453,10 @@ thread_page_buffer_maintenance_thread (void *arg_p)
 
       gettimeofday (&cur_time, NULL);
 
-      pgbuf_adjust_quotas (&cur_time);
+      (void) ATOMIC_TAS_32 (&thread_Page_maintenance_thread.nrequestors, 0);
+      pgbuf_assign_flushed_pages (tsd_ptr);
+      pgbuf_adjust_quotas (tsd_ptr, &cur_time);
+      
 
       /* 500 mili-second */
       wakeup_interval = 500;
@@ -3433,15 +3470,19 @@ thread_page_buffer_maintenance_thread (void *arg_p)
 	}
       wakeup_time.tv_nsec = tmp_usec * 1000;
 
-      rv = pthread_mutex_lock (&thread_Page_maintenance_thread.lock);
-      thread_Page_maintenance_thread.is_running = false;
+      if (thread_Page_maintenance_thread.nrequestors <= 0)
+        {
+          rv = pthread_mutex_lock (&thread_Page_maintenance_thread.lock);
+      
+          thread_Page_maintenance_thread.is_running = false;
 
-      rv = pthread_cond_timedwait (&thread_Page_maintenance_thread.cond,
-				   &thread_Page_maintenance_thread.lock, &wakeup_time);
+          rv = pthread_cond_timedwait (&thread_Page_maintenance_thread.cond,
+				       &thread_Page_maintenance_thread.lock, &wakeup_time);
 
-      thread_Page_maintenance_thread.is_running = true;
+          thread_Page_maintenance_thread.is_running = true;
 
-      pthread_mutex_unlock (&thread_Page_maintenance_thread.lock);
+          pthread_mutex_unlock (&thread_Page_maintenance_thread.lock);
+        }
 
       if (tsd_ptr->shutdown)
 	{
@@ -3463,38 +3504,24 @@ thread_page_buffer_maintenance_thread (void *arg_p)
   return (THREAD_RET_T) 0;
 }
 
-/*
- * thread_wakeup_page_flush_thread() -
- *   return:
- */
 void
-thread_wakeup_page_flush_thread (void)
+thread_wakeup_page_buffer_maintenance_thread (void)
 {
   int rv;
 
-  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
-  if (!thread_Page_flush_thread.is_running)
+  if (thread_Page_maintenance_thread.nrequestors > 0)
     {
-      pthread_cond_signal (&thread_Page_flush_thread.cond);
+      /* already running or wakeup was already requested*/
+      return;
     }
-  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
-}
+  ++thread_Page_maintenance_thread.nrequestors;
 
-/*
- * thread_is_page_flush_thread_available() -
- *   return:
- */
-bool
-thread_is_page_flush_thread_available (void)
-{
-  int rv;
-  bool is_available;
-
-  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
-  is_available = thread_Page_flush_thread.is_available;
-  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
-
-  return is_available;
+  rv = pthread_mutex_lock (&thread_Page_maintenance_thread.lock);
+  if (!thread_Page_maintenance_thread.is_running)
+    {
+      pthread_cond_signal (&thread_Page_maintenance_thread.cond);
+    }
+  pthread_mutex_unlock (&thread_Page_maintenance_thread.lock);
 }
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION

@@ -862,10 +862,11 @@ typedef struct pgbuf_direct_victim PGBUF_DIRECT_VICTIM;
 struct pgbuf_direct_victim
 {
   PGBUF_BCB **bcb_victims;
-  LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_latch_with_waiters;
-  LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_latch_without_waiters;
-  LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_latch_none;
+  LOCK_FREE_CIRCULAR_QUEUE *flushed_bcbs;
+  LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_high_priority;
+  LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_low_priority;
 };
+#define PGBUF_FLUSHED_BCBS_BUFFER_SIZE (8 * 1024)     /* 8k */
 #endif /* SERVER_MODE */
 
 /* The buffer Pool */
@@ -1292,7 +1293,8 @@ static void pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB 
 static void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 static void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
 
-static int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+static int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is_bcb_locked);
+static int pgbuf_flush_page_with_wal_keep_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_exist_blocked_reader_writer_victim (PGBUF_BCB * bufptr);
 #if !defined(NDEBUG)
@@ -1678,28 +1680,28 @@ pgbuf_initialize (void)
     }
   memset (pgbuf_Pool.direct_victims.bcb_victims, 0, thread_num_total_threads () * sizeof (PGBUF_BCB *));
 
-  pgbuf_Pool.direct_victims.waiter_threads_latch_none =
+  pgbuf_Pool.direct_victims.waiter_threads_high_priority =
     lf_circular_queue_create (thread_num_total_threads (), sizeof (THREAD_ENTRY *));
-  if (pgbuf_Pool.direct_victims.waiter_threads_latch_none == NULL)
+  if (pgbuf_Pool.direct_victims.waiter_threads_high_priority == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
               thread_num_total_threads () * sizeof (THREAD_ENTRY *));
       goto error;
     }
-  pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters =
+  pgbuf_Pool.direct_victims.waiter_threads_low_priority =
     lf_circular_queue_create (thread_num_total_threads (), sizeof (THREAD_ENTRY *));
-  if (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters == NULL)
+  if (pgbuf_Pool.direct_victims.waiter_threads_low_priority == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
               thread_num_total_threads () * sizeof (THREAD_ENTRY *));
       goto error;
     }
-  pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters =
-    lf_circular_queue_create (thread_num_total_threads (), sizeof (THREAD_ENTRY *));
-  if (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters == NULL)
+  pgbuf_Pool.direct_victims.flushed_bcbs =
+    lf_circular_queue_create (PGBUF_FLUSHED_BCBS_BUFFER_SIZE, sizeof (PGBUF_BCB *));
+  if (pgbuf_Pool.direct_victims.flushed_bcbs == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-              thread_num_total_threads () * sizeof (THREAD_ENTRY *));
+              PGBUF_FLUSHED_BCBS_BUFFER_SIZE * sizeof (PGBUF_BCB *));
       goto error;
     }
 #endif /* SERVER_MODE */
@@ -1939,20 +1941,20 @@ pgbuf_finalize (void)
     {
       free_and_init (pgbuf_Pool.direct_victims.bcb_victims);
     }
-  if (pgbuf_Pool.direct_victims.waiter_threads_latch_none != NULL)
+  if (pgbuf_Pool.direct_victims.waiter_threads_high_priority != NULL)
     {
-      lf_circular_queue_destroy (pgbuf_Pool.direct_victims.waiter_threads_latch_none);
-      pgbuf_Pool.direct_victims.waiter_threads_latch_none = NULL;
+      lf_circular_queue_destroy (pgbuf_Pool.direct_victims.waiter_threads_high_priority);
+      pgbuf_Pool.direct_victims.waiter_threads_high_priority = NULL;
     }
-  if (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters != NULL)
+  if (pgbuf_Pool.direct_victims.waiter_threads_low_priority != NULL)
     {
-      lf_circular_queue_destroy (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters);
-      pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters = NULL;
+      lf_circular_queue_destroy (pgbuf_Pool.direct_victims.waiter_threads_low_priority);
+      pgbuf_Pool.direct_victims.waiter_threads_low_priority = NULL;
     }
-  if (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters != NULL)
+  if (pgbuf_Pool.direct_victims.flushed_bcbs != NULL)
     {
-      lf_circular_queue_destroy (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters);
-      pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters = NULL;
+      lf_circular_queue_destroy (pgbuf_Pool.direct_victims.flushed_bcbs);
+      pgbuf_Pool.direct_victims.waiter_threads_low_priority = NULL;
     }
 #endif /* SERVER_MODE */
 
@@ -3259,7 +3261,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
        * the page image should be flushed to disk space.
        * What is the reason ? reference the document.
        */
-      if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
+      if (pgbuf_flush_page_with_wal_keep_bcb_lock (thread_p, bufptr) != NO_ERROR)
 	{
 	  PGBUF_UNLOCK_BCB (bufptr);
 
@@ -3565,7 +3567,7 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 
   if (pgbuf_bcb_is_dirty (bufptr))
     {
-      if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
+      if (pgbuf_flush_page_with_wal_keep_bcb_lock (thread_p, bufptr) != NO_ERROR)
 	{
 	  PGBUF_UNLOCK_BCB (bufptr);
 
@@ -3610,6 +3612,7 @@ PAGE_PTR
 pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
+  bool is_bcb_locked = false;
 
   if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
@@ -3626,18 +3629,25 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   /* In CUBRID, the caller is holding WRITE page latch */
   PGBUF_LOCK_BCB (bufptr);
+  is_bcb_locked = true;
 
   /* Flush the page only when it is dirty */
   if (pgbuf_bcb_is_dirty (bufptr))
     {
-      if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
+      if (pgbuf_flush_page_with_wal (thread_p, bufptr, &is_bcb_locked) != NO_ERROR)
 	{
-	  PGBUF_UNLOCK_BCB (bufptr);
+          if (is_bcb_locked)
+            {
+	      PGBUF_UNLOCK_BCB (bufptr);
+            }
 
 	  return NULL;
 	}
     }
-  PGBUF_UNLOCK_BCB (bufptr);
+  if (is_bcb_locked)
+    {
+      PGBUF_UNLOCK_BCB (bufptr);
+    }
 
   return pgptr;
 }
@@ -4003,7 +4013,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
   int i, victim_count, victim_count_lru;
   int check_count_lru;
-  int cfg_check_cnt, lru_min_check_cnt;
+  int cfg_check_cnt;
   int total_flushed_count;
   int lru_idx, start_lru_idx;
   int error = NO_ERROR;
@@ -4016,6 +4026,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 #endif /* SERVER_MODE */
   static PERF_UTIME_TRACKER time_tracker_run_sleep = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_collect_flush = PERF_UTIME_TRACKER_INITIALIZER;
+  bool is_bcb_locked = false;
 
   if (time_tracker_run_sleep.is_perf_tracking)
     {
@@ -4203,8 +4214,11 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	}
       else
 	{
-	  error = pgbuf_flush_page_with_wal (thread_p, bufptr);
-	  PGBUF_UNLOCK_BCB (bufptr);
+	  error = pgbuf_flush_page_with_wal (thread_p, bufptr, &is_bcb_locked);
+          if (is_bcb_locked)
+            {
+	      PGBUF_UNLOCK_BCB (bufptr);
+            }
 	  flushed_pages = (error == NO_ERROR) ? 1 : 0;
 	}
 
@@ -4641,7 +4655,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	  && (bufptr->latch_mode == PGBUF_NO_LATCH
 	      || (is_ckpt && (bufptr->latch_mode == PGBUF_LATCH_READ || bufptr->latch_mode == PGBUF_LATCH_FLUSH))))
 	{
-	  error = pgbuf_flush_page_with_wal (thread_p, bufptr);
+	  error = pgbuf_flush_page_with_wal_keep_bcb_lock (thread_p, bufptr);
 	  if (error != NO_ERROR)
 	    {
 	      if (is_ckpt == false)
@@ -7008,7 +7022,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 #endif				/* NDEBUG */
 {
   PAGE_PTR pgptr;
-  int age_in_list;
   int bcb_lru_idx, shared_lru_idx, th_lru_idx;
   int aout_list_id;
   PGBUF_ZONE zone;
@@ -7232,7 +7245,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
       /* Note that bufptr->async_flush_request is set only when an asynchronous flusher has requested the BCB while the 
        * latch_mode is PGBUF_LATCH_WRITE. At this point, bufptr->latch_mode is PGBUF_NO_LATCH */
       bufptr->latch_mode = PGBUF_LATCH_FLUSH;
-      if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
+      if (pgbuf_flush_page_with_wal_keep_bcb_lock (thread_p, bufptr) != NO_ERROR)
 	{
 	  PGBUF_UNLOCK_BCB (bufptr);
 
@@ -8375,16 +8388,15 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 #define PGBUF_ALLOC_BCB_PENALIZE_DIRTY_RATIO 0.8f
 #define PGBUF_ALLOC_BCB_PENALIZE_SEARCH_THRESHOLD 10
   PGBUF_BCB *bufptr;
-  int check_count;
 
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER time_tracker_alloc_search_and_wait = PERF_UTIME_TRACKER_INITIALIZER;
   bool penalize = false;
 
 #if defined (SERVER_MODE)
   bool has_waiters_on_fixed = false;
   bool has_fixed_pages = true;
   bool prioritize_vacuum = false;
-  PERF_UTIME_TRACKER time_tracker_alloc_bcb_wait_time = PERF_UTIME_TRACKER_INITIALIZER;
   struct timespec to;
   int r = 0;
   PERF_STAT_ID pstat;
@@ -8399,14 +8411,18 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       goto end;
     }
 
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_search_and_wait);
+
 #if defined (SERVER_MODE)
   /* ok, we need to consider here that vacuum threads have an unfair chance against active workers. usually this is
    * not an issue, because vacuum workers are not blocked. however, here they can be. if 1k active workers battle with
    * 50 vacuum workers for victims, vacuum workers may stay here quite a while. we cannot allow that, because if
    * vacuum lags behind, the overall system is doomed. check if we need to prioritize vacuum worker threads. */
-  prioritize_vacuum =
+  prioritize_vacuum = VACUUM_IS_THREAD_VACUUM (thread_p);
+#if 0
     VACUUM_IS_THREAD_VACUUM_MASTER (thread_p)     /* master always has priority */
     || (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && vacuum_has_lag ()) /* check vacuum lag */;
+#endif
 
   if (!prioritize_vacuum)
     {
@@ -8434,6 +8450,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 #endif /* SERVER_MODE */
 
   bufptr = pgbuf_get_victim (thread_p, penalize, NULL);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
   if (bufptr != NULL)
     {
       /* the caller is holding bufptr->BCB_mutex. */
@@ -8454,11 +8471,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     }
 
 #if defined (SERVER_MODE)
-
   pgbuf_Pool.monitor.count_thread_get_victim_waits[thread_get_current_entry_index ()]++;
   ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_waits, 1);
-
-  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb_wait_time);
 
   /* make sure at least flush will feed us with bcb's */
   /* increment count_get_victim_wait_in_progress to let flush thread know there will be someone needing victims. */
@@ -8481,51 +8495,26 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
         {
           perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM);
         }
-      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, &thread_p))
+      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_high_priority, &thread_p))
         {
           assert (false);
           ABORT_RELEASE ();
           thread_unlock_entry (thread_p);
           return NULL;
         }
-      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_WAITERS;
-    }
-#if 1
-  else
-    {
-      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &thread_p))
-        {
-          assert (false);
-          ABORT_RELEASE ();
-          thread_unlock_entry (thread_p);
-          return NULL;
-        }
-      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_LATCH;
-    }
-#else
-  else if (has_fixed_pages)
-    {
-      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, &thread_p))
-        {
-          assert (false);
-          ABORT_RELEASE ();
-          thread_unlock_entry (thread_p);
-          return NULL;
-        }
-      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_LATCH;
+      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
     }
   else
     {
-      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_latch_none, &thread_p))
+      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_low_priority, &thread_p))
         {
           assert (false);
           ABORT_RELEASE ();
           thread_unlock_entry (thread_p);
           return NULL;
         }
-      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_NO_LATCH;
+      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
     }
-#endif
 
   /* now that we added to queue, decrement count_get_victim_wait_in_progress */
   ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, -1);
@@ -8533,7 +8522,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   thread_p->resume_status = THREAD_ALLOC_BCB_SUSPENDED;
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, &to);
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_bcb_wait_time, pstat);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat);
 
   if (r == 0)
     {
@@ -8770,7 +8759,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
       saved_latch_mode = bufptr->latch_mode;
       bufptr->latch_mode = PGBUF_LATCH_FLUSH;
 
-      if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
+      if (pgbuf_flush_page_with_wal_keep_bcb_lock (thread_p, bufptr) != NO_ERROR)
 	{
 	  bufptr->latch_mode = saved_latch_mode;
 	  PGBUF_UNLOCK_BCB (bufptr);
@@ -8868,7 +8857,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 	  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
 	  if (holder != NULL)
 	    {
-	      if (pgbuf_flush_page_with_wal (thread_p, bufptr) != NO_ERROR)
+	      if (pgbuf_flush_page_with_wal_keep_bcb_lock (thread_p, bufptr) != NO_ERROR)
 		{
 		  PGBUF_UNLOCK_BCB (bufptr);
 
@@ -10470,6 +10459,18 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
   return cnt_removed;
 }
 
+static int
+pgbuf_flush_page_with_wal_keep_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  bool is_bcb_locked = false;
+  int error = pgbuf_flush_page_with_wal (thread_p, bufptr, &is_bcb_locked);
+  if (!is_bcb_locked)
+    {
+      PGBUF_LOCK_BCB (bufptr);
+    }
+  return error;
+}
+
 /*
  * pgbuf_flush_page_with_wal () - Writes the buffer image into the disk
  *   return: NO_ERROR, or ER_code
@@ -10480,7 +10481,7 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
  *       After flushing, remove the page from the dirty pages table.
  */
 static int
-pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is_bcb_locked)
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *thrd_entry;
@@ -10495,6 +10496,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #endif /* ENABLE_SYSTEMTAP */
 
   /* the caller is holding bufptr->BCB_mutex */
+  *is_bcb_locked = true;
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
@@ -10543,6 +10545,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   PGBUF_UNLOCK_BCB (bufptr);
+  *is_bcb_locked = false;
 
   /* confirm WAL protocol */
   /* force log record to disk */
@@ -10565,6 +10568,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 		    IO_PAGESIZE) == NULL)
     {
       PGBUF_LOCK_BCB (bufptr);
+      *is_bcb_locked = true;
       pgbuf_bcb_mark_was_not_flushed (bufptr);
       LSA_COPY (&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
       error = ER_FAILED;
@@ -10584,43 +10588,33 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 
-  PGBUF_LOCK_BCB (bufptr);
-
-  if (pgbuf_bcb_is_direct_victim (bufptr))
-    {
-      /* this was not a valid victim candidate. how was it assigned directly? */
-      ABORT_RELEASE ();
-    }
-
 #if defined (SERVER_MODE)
-  /* assign victim directly if:
-   * 1. bcb is not dirty already
-   * 2. bcb is not fixed and has no waiters
-   * 3. bcb does not belong to under quota private list
-   * 4. there are threads waiting for victims */
-  if (!pgbuf_bcb_is_dirty (bufptr) && bufptr->fcnt == 0 && bufptr->next_wait_thrd == NULL
-      && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr)
-      && (!PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bufptr))
-          || PGBUF_LRU_LIST_IS_OVER_QUOTA (pgbuf_lru_list_from_bcb (bufptr)))
-      && pgbuf_assign_direct_victim (thread_p, bufptr))
+  /* todo: compute the delay between flush and direct assignment */
+  if (pgbuf_is_any_thread_waiting_for_direct_victim ()
+      && lf_circular_queue_produce (pgbuf_Pool.direct_victims.flushed_bcbs, &bufptr))
     {
-      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
+      /* page buffer maintenance thread will try to assign this bcb directly as victim. */
+      thread_wakeup_page_buffer_maintenance_thread ();
+      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_FOR_DIRECT_VICTIM);
     }
   else
 #endif /* SERVER_MODE */
     {
+      PGBUF_LOCK_BCB (bufptr);
+      *is_bcb_locked = true;
       pgbuf_bcb_mark_was_flushed (bufptr);
-    }
+      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_MARK_FLUSHED);
 
 #if defined(SERVER_MODE)
-  /* wakeup blocked flushers */
-  while (((thrd_entry = bufptr->next_wait_thrd) != NULL) && (thrd_entry->request_latch_mode == PGBUF_LATCH_FLUSH))
-    {
-      bufptr->next_wait_thrd = thrd_entry->next_wait_thrd;
-      thrd_entry->next_wait_thrd = NULL;
-      pgbuf_wakeup_uncond (thrd_entry);
-    }
+      /* wakeup blocked flushers */
+      while (((thrd_entry = bufptr->next_wait_thrd) != NULL) && (thrd_entry->request_latch_mode == PGBUF_LATCH_FLUSH))
+        {
+          bufptr->next_wait_thrd = thrd_entry->next_wait_thrd;
+          thrd_entry->next_wait_thrd = NULL;
+          pgbuf_wakeup_uncond (thrd_entry);
+        }
 #endif /* SERVER_MODE */
+    }
 
   return NO_ERROR;
 }
@@ -12214,8 +12208,12 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 
   if (pgbuf_bcb_is_dirty (bufptr))
     {
-      error = pgbuf_flush_page_with_wal (thread_p, bufptr);
-      PGBUF_UNLOCK_BCB (bufptr);
+      bool is_bcb_locked = true;
+      error = pgbuf_flush_page_with_wal (thread_p, bufptr, &is_bcb_locked);
+      if (is_bcb_locked)
+        {
+          PGBUF_UNLOCK_BCB (bufptr);
+        }
       if (error == NO_ERROR)
 	{
 	  *flushed = true;
@@ -14252,7 +14250,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
  * return : void
  */
 void
-pgbuf_adjust_quotas (struct timeval *curr_time_p)
+pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
 {
 #define NEW_AVG_H(curr,avg,alpha) ((float)(avg) - ((float)(avg) - (float)(curr)) * (float)(alpha))
 #define MAX_PRIVATE_RATIO 0.998f
@@ -14278,7 +14276,9 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
   const INT64 tensec_usec = 10 * onesec_usec;
 
   PGBUF_LRU_LIST *lru_list;
-  THREAD_ENTRY * thread_p = thread_get_thread_entry_info ();
+  
+  
+  thread_p = thread_p == NULL ? thread_get_thread_entry_info () : thread_p;
 
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
   int cnt;
@@ -14307,6 +14307,12 @@ pgbuf_adjust_quotas (struct timeval *curr_time_p)
     }
 
   diff_usec = diff_time.tv_sec * 1000000LL + diff_time.tv_usec;
+
+  if (diff_usec < 1000LL)
+    {
+      /* less than 1 msec. stop */
+      return;
+    }
 
   /* quota adjust if :
    * - force mode (curr_time_p == NULL)
@@ -14595,7 +14601,7 @@ retry:
       ATOMIC_INC_32 (&quota->private_lru_session_cnt[private_idx], 1);
     }
 
-  pgbuf_adjust_quotas (NULL);
+  pgbuf_adjust_quotas (NULL, NULL);
 
   return private_idx;
 }
@@ -14629,7 +14635,7 @@ pgbuf_release_private_lru (const int private_idx)
 	  pgbuf_relocate_chain_private_lru_to_shared (PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
 #endif
 
-	  pgbuf_adjust_quotas (NULL);
+	  pgbuf_adjust_quotas (NULL, NULL);
 	}
     }
   return NO_ERROR;
@@ -14755,8 +14761,8 @@ void
 pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UINT64 * lru2_cnt, UINT64 * lru3_cnt,
 		  UINT64 * victim_candidates, UINT64 * avoid_dealloc_cnt, UINT64 * avoid_victim_cnt,
                   UINT64 * private_quota, UINT64 * private_cnt, UINT64 * alloc_bcb_waiter_high,
-                  UINT64 * alloc_bcb_waiter_med, UINT64 * alloc_bcb_waiter_low, UINT64 * lfcq_prv_num,
-                  UINT64 * lfcq_shr_num)
+                  UINT64 * alloc_bcb_waiter_med, UINT64 * flushed_bcbs_waiting_direct_assign,
+                  UINT64 * lfcq_prv_num, UINT64 * lfcq_shr_num)
 {
   PGBUF_BCB *bufptr;
   int i;
@@ -14766,6 +14772,7 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
   *dirty_cnt = 0;
   *lru1_cnt = 0;
   *lru2_cnt = 0;
+  *lru3_cnt = 0;
   *avoid_dealloc_cnt = 0;
   *avoid_victim_cnt = 0;
   *private_cnt = 0;
@@ -14792,7 +14799,7 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
 	{
 	  *lru2_cnt = *lru2_cnt + 1;
 	}
-      else if (pgbuf_bcb_get_zone (bufptr) == PGBUF_LRU_2_ZONE)
+      else if (pgbuf_bcb_get_zone (bufptr) == PGBUF_LRU_3_ZONE)
         {
           *lru3_cnt = *lru3_cnt + 1;
         }
@@ -14823,16 +14830,16 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
   *private_quota = (UINT64) (pgbuf_Pool.quota.private_pages_ratio * pgbuf_Pool.num_buffers);
 
 #if defined (SERVER_MODE)
-  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters);
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_high_priority);
   *alloc_bcb_waiter_high = (lfcq_size >= 0) ? lfcq_size : 0;
-  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters);
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority);
   *alloc_bcb_waiter_med = (lfcq_size >= 0) ? lfcq_size : 0;
-  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_latch_none);
-  *alloc_bcb_waiter_low = (lfcq_size >= 0) ? lfcq_size : 0;
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.flushed_bcbs);
+  *flushed_bcbs_waiting_direct_assign = (lfcq_size >= 0) ? lfcq_size : 0;
 #else /* !SERVER_MODE */
   *alloc_bcb_waiter_high = 0;
   *alloc_bcb_waiter_med = 0;
-  *alloc_bcb_waiter_low = 0;
+  *flushed_bcbs_waiting_direct_assign = 0;
 #endif /* !SERVER_MODE */
 
   lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.private_lrus_with_victims);
@@ -15471,6 +15478,75 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 }
 
 #if defined (SERVER_MODE)
+
+/*
+ * pgbuf_assign_flushed_pages () - assign flushed pages directly. or just mark them as flushed if it cannot be assigned.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ */
+void
+pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
+{
+  PGBUF_BCB *bcb_flushed = NULL;
+  THREAD_ENTRY *thrd_blocked = NULL;
+
+  /* consume all flushed bcbs queue */
+  while (lf_circular_queue_consume (pgbuf_Pool.direct_victims.flushed_bcbs, &bcb_flushed))
+    {
+      /* we need to lock mutex */
+      PGBUF_LOCK_BCB (bcb_flushed);
+      if (pgbuf_bcb_is_dirty (bcb_flushed))
+        {
+          /* dirty bcb is not a valid victim */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY);
+        }
+      else if (bcb_flushed->fcnt > 0 || bcb_flushed->next_wait_thrd != NULL)
+        {
+          /* bcb is fixed. we cannot assign it as victim */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED);
+        }
+      else if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_flushed))
+        {
+          /* bcb is hot. don't assign it as victim */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_WRONG_ZONE);
+        }
+      else if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bcb_flushed))
+               && !PGBUF_LRU_LIST_IS_OVER_QUOTA (pgbuf_lru_list_from_bcb (bcb_flushed)))
+        {
+          /* bcb belongs to a private list under quota. give it a chance. */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA);
+        }
+      else if (pgbuf_assign_direct_victim (thread_p, bcb_flushed))
+        {
+          /* assigned directly */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
+          continue;
+        }
+      else
+        {
+          /* could not assign it directly. there must be no waiters */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER);
+        }
+      /* not assigned directly */
+      if (pgbuf_bcb_is_direct_victim (bcb_flushed))
+        {
+          ABORT_RELEASE ();
+        }
+      pgbuf_bcb_mark_was_flushed (bcb_flushed);
+
+      /* wakeup blocked flushers */
+      while (((thrd_blocked = bcb_flushed->next_wait_thrd) != NULL)
+             && (thrd_blocked->request_latch_mode == PGBUF_LATCH_FLUSH))
+        {
+          bcb_flushed->next_wait_thrd = thrd_blocked->next_wait_thrd;
+          thrd_blocked->next_wait_thrd = NULL;
+          pgbuf_wakeup_uncond (thrd_blocked);
+        }
+      PGBUF_UNLOCK_BCB (bcb_flushed);
+    }
+}
+
 /*
  * pgbuf_get_thread_waiting_for_direct_victim () - get one of the threads waiting
  *
@@ -15481,35 +15557,23 @@ STATIC_INLINE bool
 pgbuf_get_thread_waiting_for_direct_victim (THREAD_ENTRY ** waiting_thread_out)
 {
   static INT64 count = 0;
-  int my_count = ATOMIC_INC_64 (&count, 1);
+  INT64 my_count = ATOMIC_INC_64 (&count, 1);
 
   /* every now and then, force getting waiting threads from queues with lesser priority */
   if (my_count % 4 == 0)
     {
-      if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters,
+      if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_low_priority,
                                      waiting_thread_out))
         {
           return true;
         }
     }
-  else if (my_count % 16 == 1)
-    {
-      if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, waiting_thread_out))
-        {
-          return true;
-        }
-    }
-
   /* try queue in their priority order */
-  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters, waiting_thread_out))
+  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_high_priority, waiting_thread_out))
     {
       return true;
     }
-  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters, waiting_thread_out))
-    {
-      return true;
-    }
-  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_latch_none, waiting_thread_out))
+  if (lf_circular_queue_consume (pgbuf_Pool.direct_victims.waiter_threads_low_priority, waiting_thread_out))
     {
       return true;
     }
@@ -15594,9 +15658,8 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
 STATIC_INLINE bool
 pgbuf_is_any_thread_waiting_for_direct_victim (void)
 {
-  return !lf_circular_queue_is_empty (pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters)
-         || !lf_circular_queue_is_empty (pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters)
-         || !lf_circular_queue_is_empty (pgbuf_Pool.direct_victims.waiter_threads_latch_none);
+  return !lf_circular_queue_is_empty (pgbuf_Pool.direct_victims.waiter_threads_high_priority)
+         || !lf_circular_queue_is_empty (pgbuf_Pool.direct_victims.waiter_threads_low_priority);
 }
 #endif /* SERVER_MODE */
 

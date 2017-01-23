@@ -184,9 +184,9 @@ PSTAT_METADATA pstat_Metadata[] = {
 
   /* allocate and victim assignments */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB, "alloc_bcb"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_WAITERS, "alloc_bcb_cond_wait_has_waiters"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB_COND_WAIT_HAS_LATCH, "alloc_bcb_cond_wait_has_latch"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB_COND_WAIT_NO_LATCH, "alloc_bcb_cond_wait_no_latch"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM, "alloc_bcb_search_victim"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO, "alloc_bcb_cond_wait_high_prio"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO, "alloc_bcb_cond_wait_low_prio"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM, "Num_alloc_bcb_prioritize_vacuum"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_ALLOC_BCB_PENALIZE, "Num_alloc_bcb_penalize"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_USE_INVALID_BCB, "Num_victim_use_invalid_bcb"),
@@ -194,6 +194,17 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM, "Num_victim_assign_direct_vacuum"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH, "Num_victim_assign_direct_flush"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST, "Num_victim_assign_direct_adjust_lru"),
+  /* flushed direct assignments failures */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY, "Num_flush_direct_victim_dirty_failed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED, "Num_flush_direct_victim_fixed_failed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_WRONG_ZONE,
+                                  "Num_flush_direct_victim_wrong zone_failed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA,
+                                  "Num_flush_direct_victim_prv_under_quota_failed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER,
+                                  "Num_flush_direct_victim_no_waiter_failed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_SEND_FOR_DIRECT_VICTIM, "Num_flushed_page_send_for_direct_victim"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_MARK_FLUSHED, "Num_flashed_page_marked_as_flushed"),
   /* successful searches */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS, "Num_victim_shared_lru_success"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS, "Num_victim_own_private_lru_success"),
@@ -285,8 +296,8 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_EMPTY, "Num_lfcq_shr_get_empty"),
 
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_WAIT_THREADS_HIGH_PRIO, "Num_alloc_bcb_wait_threads_high_priority"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_WAIT_THREADS_MED_PRIO, "Num_alloc_bcb_wait_threads_medium_priority"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_WAIT_THREADS_LOW_PRIO, "Num_alloc_bcb_wait_threads_low_priority"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN, "Num_flushed_bcbs_wait_for_direct_victim"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LFCQ_PRV_NUM, "Num_lfcq_private_lists"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LFCQ_SHR_NUM, "Num_lfcq_shared_lists"),
 
@@ -2738,8 +2749,8 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]),
                     &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_COUNT].start_offset]),
                     &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_HIGH_PRIO].start_offset]),
-                    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_MED_PRIO].start_offset]),
                     &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_LOW_PRIO].start_offset]),
+                    &(stats[pstat_Metadata[PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN].start_offset]),
                     &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
                     &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
 #endif
