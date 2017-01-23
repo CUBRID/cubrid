@@ -1689,11 +1689,11 @@ pgbuf_initialize (void)
       goto error;
     }
   pgbuf_Pool.direct_victims.waiter_threads_low_priority =
-    lf_circular_queue_create (thread_num_total_threads (), sizeof (THREAD_ENTRY *));
+    lf_circular_queue_create (2 * thread_num_total_threads (), sizeof (THREAD_ENTRY *));
   if (pgbuf_Pool.direct_victims.waiter_threads_low_priority == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-              thread_num_total_threads () * sizeof (THREAD_ENTRY *));
+              2 * thread_num_total_threads () * sizeof (THREAD_ENTRY *));
       goto error;
     }
   pgbuf_Pool.direct_victims.flushed_bcbs =
@@ -8404,6 +8404,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
 
+retry:
   /* allocate a BCB from invalid BCB list */
   bufptr = pgbuf_get_bcb_from_invalid_list (thread_p);
   if (bufptr != NULL)
@@ -8508,10 +8509,16 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     {
       if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_low_priority, &thread_p))
         {
+          /* ok, we have this very weird case when a consumer can be preempted for a very long time (which prevents
+           * producers from being able to push to queue). I don't know how is this even possible, I just know I found a
+           * case. I cannot tell exactly how long the consumer is preempted, but I know the time difference between the
+           * producer still waiting to be waken by that consumer and the producer failing to add was 93 milliseconds.
+           * Which is huge if you ask me.
+           * I doubled the size of the queue, but theoretically, this is still possible. I also removed the
+           * ABORT_RELEASE, but we may have to think of a way to handle this preempted consumer case. */
           assert (false);
-          ABORT_RELEASE ();
           thread_unlock_entry (thread_p);
-          return NULL;
+          goto retry;
         }
       pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
     }
