@@ -232,6 +232,8 @@ typedef enum
  * to sleep then and waits to be awaken by another thread, which also assigns it a bcb directly. there can be multiple
  * providers of such bcb's. this bcb is no longer valid! (it cannot be fixed anymore) */
 #define PGBUF_BCB_VICTIM_DIRECT_FLAG        ((int) 0x20000000)
+/* flag for unlatch bcb to move it to the bottom of lru when fix count is 0. usually set when page is deallocated */
+#define PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG   ((int) 0x10000000)
 
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK     \
@@ -1432,6 +1434,7 @@ STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__ ((AL
 STATIC_INLINE void pgbuf_bcb_mark_is_flushing (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_avoid_victim (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_set_dirty (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_clear_dirty (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
@@ -7077,7 +7080,15 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
       /* there could be some synchronous flushers on the BCB queue */
       /* When the page buffer in LRU_1_Zone, do not move the page buffer into the top of LRU. This is an intention for
        * performance. */
-      if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
+      if (pgbuf_bcb_should_be_moved_to_bottom_lru (bufptr))
+        {
+          if (pgbuf_is_exist_blocked_reader_writer (bufptr))
+            {
+              ABORT_RELEASE ();
+            }
+
+        }
+      else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
 	{
 	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_unfix, 1);
 
@@ -8404,7 +8415,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
 
+#if defined (SERVER_MODE)
 retry:
+#endif /* SERVER_MDOE */
   /* allocate a BCB from invalid BCB list */
   bufptr = pgbuf_get_bcb_from_invalid_list (thread_p);
   if (bufptr != NULL)
@@ -10198,6 +10211,55 @@ pgbuf_remove_from_lru_list (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
         }
     }
   pgbuf_bcb_change_zone (bufptr, 0, PGBUF_VOID_ZONE);
+}
+
+/*
+ * pgbuf_move_bcb_to_bottom_lru () - move a bcb to the bottom of its lru (or other lru if it is in the void zone).
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * bcb (in)      : bcb
+ */
+void
+pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+{
+  PGBUF_ZONE zone = pgbuf_bcb_get_zone (bcb);
+  int lru_idx;
+  PGBUF_LRU_LIST *lru_list;
+
+  pgbuf_bcb_update_flags (bcb, 0, PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG);
+
+  if (zone == PGBUF_VOID_ZONE)
+    {
+      /* move to the bottom of a lru list so it can be found by flush thread */
+      if (PGBUF_PAGE_QUOTA_IS_ENABLED && PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+        {
+          lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+        }
+      else
+        {
+          lru_idx = pgbuf_get_shared_lru_index_for_add ();
+        }
+      pgbuf_lru_add_new_bcb_to_bottom (thread_p, bcb, lru_idx);
+    }
+  else if (zone & PGBUF_LRU_ZONE_MASK)
+    {
+      lru_idx = pgbuf_bcb_get_lru_index (bcb);
+      lru_list = PGBUF_GET_LRU_LIST (lru_idx);
+      if (bcb == lru_list->LRU_bottom)
+        {
+          /* early out */
+          return;
+        }
+      pthread_mutex_lock (&lru_list->LRU_mutex);
+      pgbuf_remove_from_lru_list (bcb, lru_list);
+      pgbuf_lru_add_bcb_to_bottom (thread_p, bcb, lru_list, lru_idx);
+      pthread_mutex_unlock (&lru_list->LRU_mutex);
+    }
+  else
+    {
+      ABORT_RELEASE ();
+    }
 }
 
 /*
@@ -15189,32 +15251,46 @@ pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * thread_p (in) : thread entry
  * page (in)     : page to deallocate
  */
-int
-pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR * page_dealloc)
+void
+pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 {
   PGBUF_BUFFER_HASH *hash_anchor = NULL;
-  PGBUF_BCB *bufptr = NULL;
+  PGBUF_BCB *bcb = NULL;
   PAGE_TYPE ptype;
+  int holder_status;
 
-  int error_code = NO_ERROR;
+  /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also prepare bcb for victimization.
+   *
+   * note: the bcb used to be invalidated. but that means flushing page to disk and waiting for IO write. that may be
+   *       too slow. if we add the bcb to the bottom of a lru list, it will be eventually flushed by flush thread and
+   *       victimized. */
 
-  /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also invalidate the entry in page
-   *               buffer. */
-
-  ptype = pgbuf_get_page_ptype (thread_p, *page_dealloc);
-  assert (ptype != PAGE_UNKNOWN);
-  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, *page_dealloc, (PGLENGTH) ptype, sizeof (VPID), 0,
-			     pgbuf_get_vpid_ptr (*page_dealloc), NULL);
-  pgbuf_set_page_ptype (thread_p, *page_dealloc, PAGE_UNKNOWN);
-  pgbuf_set_dirty (thread_p, *page_dealloc, DONT_FREE);
-  error_code = pgbuf_invalidate (thread_p, *page_dealloc);
-  if (error_code != NO_ERROR)
+  CAST_PGPTR_TO_BFPTR (bcb, page_dealloc);
+  if (bcb->fcnt != 1)
     {
-      ASSERT_ERROR ();
-      return error_code;
+      ABORT_RELEASE ();
     }
-  *page_dealloc = NULL;
-  return NO_ERROR;
+
+  ptype = (PAGE_TYPE) (bcb->iopage_buffer->iopage.prv.ptype);
+  assert (ptype != PAGE_UNKNOWN);
+  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, (PGLENGTH) ptype, sizeof (VPID), 0,
+			     pgbuf_get_vpid_ptr (page_dealloc), NULL);
+
+  PGBUF_LOCK_BCB (bcb);
+  /* set unknown type */
+  bcb->iopage_buffer->iopage.prv.ptype = (char) PAGE_UNKNOWN;
+
+  /* set dirty and mark to move to the bottom of lru */
+  pgbuf_bcb_update_flags (bcb, PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
+
+  holder_status = pgbuf_unlatch_thrd_holder (thread_p, bcb, NULL);
+
+#if !defined(NDEBUG)
+  (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bcb, holder_status, ARG_FILE_LINE);
+#else /* NDEBUG */
+  (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bcb, holder_status);
+#endif /* NDEBUG */
+  /* bufptr->BCB_mutex has been released in above function. */
 }
 
 /*
@@ -16140,6 +16216,18 @@ STATIC_INLINE bool
 pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb)
 {
   return (bcb->flags & PGBUF_BCB_VICTIM_DIRECT_FLAG) != 0;
+}
+
+/*
+ * pgbuf_bcb_should_be_moved_to_bottom_lru () - is bcb supposed to be moved to the bottom of lru?
+ *
+ * return   : true/false
+ * bcb (in) : bcb
+ */
+STATIC_INLINE bool
+pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb)
+{
+  return (bcb->flags & PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG) != 0;
 }
 
 /*

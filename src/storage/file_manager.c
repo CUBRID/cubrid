@@ -3853,15 +3853,8 @@ file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, b
 	  pgbuf_unfix_and_init (thread_p, page);
 	  continue;
 	}
-
-      error_code = pgbuf_dealloc_page (thread_p, &page);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  pgbuf_unfix (thread_p, page);
-	  return error_code;
-	}
-      assert (page == NULL);
+      pgbuf_dealloc_page (thread_p, page);
+      page = NULL;
     }
 
   return NO_ERROR;
@@ -3976,25 +3969,14 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		      ASSERT_ERROR_AND_SET (error_code);
 		      goto exit;
 		    }
-		  error_code = pgbuf_dealloc_page (thread_p, &page_ftab);
-		  if (error_code != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      pgbuf_unfix_and_init (thread_p, page_ftab);
-		      goto exit;
-		    }
-		  assert (page_ftab == NULL);
+                  pgbuf_dealloc_page (thread_p, page_ftab);
+		  page_ftab = NULL;
 		}
 	    }
 	}
       /* deallocate header page */
-      error_code = pgbuf_dealloc_page (thread_p, &page_fhead);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
-      assert (page_fhead == NULL);
+      pgbuf_dealloc_page (thread_p, page_fhead);
+      page_fhead = NULL;
     }
   else
     {
@@ -5845,14 +5827,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       goto exit;
     }
 
-  error_code = pgbuf_dealloc_page (thread_p, &page_dealloc);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      pgbuf_unfix_and_init (thread_p, page_dealloc);
-      goto exit;
-    }
-  assert (page_dealloc == NULL);
+  pgbuf_dealloc_page (thread_p, page_dealloc);
 
   /* done */
   assert (error_code == NO_ERROR);
