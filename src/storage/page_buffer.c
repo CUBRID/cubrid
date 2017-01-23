@@ -15520,6 +15520,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
       else if (pgbuf_assign_direct_victim (thread_p, bcb_flushed))
         {
           /* assigned directly */
+          PGBUF_UNLOCK_BCB (bcb_flushed);
           perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
           continue;
         }
