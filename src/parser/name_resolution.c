@@ -218,6 +218,8 @@ static PT_NODE *pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, voi
 static PT_NODE *pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from);
 static PT_NODE *pt_bind_reserved_name (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * spec);
 static PT_NODE *pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
+static void pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -861,17 +863,17 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
       return;
     }
 
-  derived_table = spec->info.spec.derived_table;
-
-  /* check if spec contains a CTE pointer and not a derived table */
-  if (derived_table == NULL && spec->info.spec.cte_pointer != NULL
-      && spec->info.spec.cte_pointer->info.pointer.node != NULL)
+  if (PT_SPEC_IS_DERIVED (spec))
+    {
+      derived_table = spec->info.spec.derived_table;
+    }
+  else if (PT_SPEC_IS_CTE (spec))
     {
       PT_NODE *cte = spec->info.spec.cte_pointer->info.pointer.node;
 
       assert (cte != NULL);
       /* for recursive CTEs bind only the types from the recursive part; 
-       * it must contain references of the non-recursive part */
+       * it should contain references of the non-recursive part */
       if (cte->info.cte.recursive_part)
 	{
 	  derived_table = cte->info.cte.recursive_part;
@@ -1106,19 +1108,23 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 {
   SCOPES *scopes = bind_arg->scopes;
   PT_NODE *spec, *prev_spec = NULL;
-  PT_NODE *table;
   bool save_donot_fold;
 
   spec = scopes->specs;
   scopes->specs = NULL;
   while (spec)
     {
-      table = spec->info.spec.derived_table;
-      if (table)
+
+      if (PT_SPEC_IS_DERIVED (spec))
 	{
 	  /* evaluate the names of the current table. The name scope of the first spec, is only the outer level scopes. The 
 	   * outer scopes are pointed to by scopes->next. The null "scopes" spec is kept to maintain correlation level
-	   * calculation. */
+	   * calculation.
+	   */
+	  PT_NODE *table;
+
+	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_DERIVED (spec));
+	  table = spec->info.spec.derived_table;
 	  table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	  spec->info.spec.derived_table = table;
 
@@ -1131,57 +1137,12 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
 	  pt_bind_types (parser, spec);
 	}
-
-      /* Spec have a CTE pointer */
-      if (!table && spec->info.spec.cte_pointer)
+      else if (PT_SPEC_IS_CTE (spec))
 	{
+	  /* Spec has a CTE pointer */
 	  PT_NODE *cte_def = spec->info.spec.cte_pointer->info.pointer.node;
-	  PT_NODE *next_cte_def;
-	  PT_NODE *non_recursive_cte = cte_def->info.cte.non_recursive_part;
-	  PT_NODE *recursive_cte = cte_def->info.cte.recursive_part;
 
-	  /* evaluate the names from recursive part if exists; the non recursive part will be evaluated during walk */
-	  if (recursive_cte)
-	    {
-	      /* the rec part have pointers to the current CTE and because of that a cycle will appear if the rec part 
-	       * is not changed to NULL */
-	      cte_def->info.cte.recursive_part = NULL;
-
-	      recursive_cte =
-		parser_walk_tree (parser, recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-
-	      /* restore rec part */
-	      cte_def->info.cte.recursive_part = recursive_cte;
-	    }
-	  else if (non_recursive_cte)
-	    {
-	      non_recursive_cte =
-		parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-
-	      /* restore non recursive part; pointer may be changed during walk */
-	      cte_def->info.cte.non_recursive_part = non_recursive_cte;
-	    }
-	  else
-	    {
-	      /* something went wrong, this shouldn't be possible */
-	      assert (0);
-	      return;
-	    }
-
-	  /* must bind any expr types in table. pt_bind_types requires it. */
-	  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
-	  bind_arg->sc_info->donot_fold = true;	/* skip folding */
-	  next_cte_def = cte_def->next;	/* skip next cte for the moment */
-	  cte_def->next = NULL;
-
-	  cte_def = pt_semantic_type (parser, cte_def, bind_arg->sc_info);
-	  if (!cte_def)
-	    {
-	      return;		/* error in pt_semantic_type */
-	    }
-
-	  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
-	  cte_def->next = next_cte_def;
+	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_DERIVED (spec));
 
 	  if (cte_def->info.cte.as_attr_list)
 	    {
@@ -1844,11 +1805,27 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   switch (node->node_type)
     {
     case PT_SELECT:
+
       scopestack.specs = node->info.query.q.select.from;
-      bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
       spec_frame.extra_specs = NULL;
+
+      /* break links to current scopes to bind_names in the WITH_CLAUSE */
+      bind_arg->scopes = NULL;
+      bind_arg->spec_frames = NULL;
+      pt_bind_names_in_with_clause (parser, node, bind_arg);
+
+      /* restore links to current scopes */
+      bind_arg->scopes = &scopestack;
       bind_arg->spec_frames = &spec_frame;
+
+      if (pt_has_error (parser))
+	{
+	  /* name binding in WITH_CLAUSE have failed; this node will be registered to orphan list and freed later */
+	  node = NULL;
+	  goto select_end;
+	}
+
       pt_bind_scope (parser, bind_arg);
 
       if (pt_has_error (parser))
@@ -2630,6 +2607,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	/* treat this just like a select with no from, so that we can properly get correlation level of sub-queries. */
 	bind_arg->scopes = &scopestack;
 
+	pt_bind_names_in_with_clause (parser, node, bind_arg);
+
 	/* change order by link in UNION/INTERSECTION/DIFFERENCE query into the tail of first select query's order by
 	 * list for bind names (It will be restored after bind names.) */
 
@@ -3239,6 +3218,25 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
     case PT_EXPR:
       if (node->info.expr.op == PT_NEXT_VALUE || node->info.expr.op == PT_CURRENT_VALUE)
+	{
+	  /* don't walk leaves */
+	  *continue_walk = PT_LIST_WALK;
+	}
+      break;
+
+    case PT_WITH_CLAUSE:
+      /* WITH clause should be resolved from SELECT; don't walk leaves(cte_list) */
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_CTE:
+      pt_bind_names_in_cte (parser, node, bind_arg);
+      if (pt_has_error (parser))
+	{
+	  node = NULL;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      else
 	{
 	  /* don't walk leaves */
 	  *continue_walk = PT_LIST_WALK;
@@ -9404,4 +9402,109 @@ pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
       node->type_enum = key_type->type_enum;
     }
   return node;
+}
+
+/* 
+ * pt_bind_names_in_with_clause () - resolve names in with clause of node
+ *
+ * return             : void
+ * parser (in)	      : Parser context.
+ * node (in)	      : Parse tree node.
+ * bind_arg (in)      : Bind names arg.
+ *
+ * Note: The names from the with clause should be resolved before resolving the actual query.
+ */
+static void
+pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
+{
+  PT_NODE *with;
+  PT_NODE *curr_cte;
+
+  assert (PT_IS_QUERY_NODE_TYPE (node->node_type));
+
+  with = node->info.query.with;
+  if (with == NULL)
+    {
+      /* nothing to do */
+      return;
+    }
+
+  for (curr_cte = with->info.with_clause.cte_definition_list; curr_cte != NULL; curr_cte = curr_cte->next)
+    {
+      /* isolate curr_cte and apply resolve names */
+      PT_NODE *save_next_cte = curr_cte->next;
+
+      pt_bind_names_in_cte (parser, curr_cte, bind_arg);
+
+      curr_cte->next = save_next_cte;
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+    }
+}
+
+
+/* 
+ * pt_resolve_names_in_cte - resolve names in cte definition
+ *
+ * return             : void
+ * parser (in)	      : Parser context.
+ * node (in)	      : Parse tree node.
+ * bind_arg (in)      : Bind names arg.
+ */
+static void
+pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_ARG * bind_arg)
+{
+  PT_NODE *save_next_cte_def;
+  PT_NODE *non_recursive_cte = cte_def->info.cte.non_recursive_part;
+  PT_NODE *recursive_cte = cte_def->info.cte.recursive_part;
+  bool save_donot_fold;
+
+  assert (cte_def->node_type == PT_CTE);
+
+  /* evaluate the names from recursive part if exists; the non recursive part will be evaluated during walk */
+  if (recursive_cte)
+    {
+      /* the rec part have pointers to the current CTE and because of that a cycle will appear if the rec part
+       * is not changed to NULL */
+      cte_def->info.cte.recursive_part = NULL;
+
+      recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+      /* restore rec part */
+      cte_def->info.cte.recursive_part = recursive_cte;
+    }
+  else if (non_recursive_cte)
+    {
+      non_recursive_cte =
+	parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+      /* restore non recursive part; pointer may be changed during walk */
+      cte_def->info.cte.non_recursive_part = non_recursive_cte;
+    }
+  else
+    {
+      /* something went wrong, this shouldn't be possible */
+      assert (0);
+      return;
+    }
+
+  /* must bind any expr types in table. pt_bind_types requires it. */
+
+  /* skip folding and next_cte expansion */
+  save_donot_fold = bind_arg->sc_info->donot_fold;
+  bind_arg->sc_info->donot_fold = true;
+  save_next_cte_def = cte_def->next;
+  cte_def->next = NULL;
+
+  cte_def = pt_semantic_type (parser, cte_def, bind_arg->sc_info);
+  if (!cte_def)
+    {
+      return;			/* error in pt_semantic_type */
+    }
+
+  /* restore donot_fold and next_cte */
+  bind_arg->sc_info->donot_fold = save_donot_fold;
+  cte_def->next = save_next_cte_def;
 }
