@@ -2767,7 +2767,7 @@ pt_short_print (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
 
 end:
-  parser->max_print_len = 0;
+  parser->max_print_len = 0;	/* restore */
   return str;
 }
 
