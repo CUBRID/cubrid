@@ -675,7 +675,7 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
   PARSER_STRING_BLOCK *string;
   char *s;
 
-  if (parser->max_print_len > 0 && parser->max_print_len < old_string->length)
+  if (0 < parser->max_print_len && parser->max_print_len < old_string->length)
     {
       return old_string;
     }
