@@ -239,7 +239,8 @@ typedef enum
 #define PGBUF_BCB_FLAGS_MASK     \
   (PGBUF_BCB_DIRTY_FLAG \
    | PGBUF_BCB_FLUSHING_TO_DISK_FLAG \
-   | PGBUF_BCB_VICTIM_DIRECT_FLAG)
+   | PGBUF_BCB_VICTIM_DIRECT_FLAG \
+   | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG)
 
 /* add flags that invalidate a victim candidate here */
 /* 1. dirty bcb's cannot be victimized.
