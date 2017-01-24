@@ -198,7 +198,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY, "Num_flush_direct_victim_dirty_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED, "Num_flush_direct_victim_fixed_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_WRONG_ZONE,
-                                  "Num_flush_direct_victim_wrong zone_failed"),
+                                  "Num_flush_direct_victim_wrong_zone_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA,
                                   "Num_flush_direct_victim_prv_under_quota_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER,

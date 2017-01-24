@@ -453,6 +453,7 @@ extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_log_flush_thread_if_not_requested (void);
 extern void thread_wakeup_page_flush_thread (void);
 extern void thread_wakeup_page_buffer_maintenance_thread (void);
+extern void thread_wakeup_page_post_flush_thread (void);
 extern void thread_wakeup_flush_control_thread (void);
 extern void thread_wakeup_checkpoint_thread (void);
 extern void thread_wakeup_purge_archive_logs_thread (void);
@@ -462,6 +463,7 @@ extern void thread_wakeup_vacuum_master_thread (void);
 extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 
 extern bool thread_is_page_flush_thread_available (void);
+extern bool thread_is_page_post_flush_thread_available (void);
 
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 

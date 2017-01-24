@@ -10661,11 +10661,11 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * i
 
 #if defined (SERVER_MODE)
   /* todo: compute the delay between flush and direct assignment */
-  if (pgbuf_is_any_thread_waiting_for_direct_victim ()
+  if (thread_is_page_post_flush_thread_available ()
       && lf_circular_queue_produce (pgbuf_Pool.direct_victims.flushed_bcbs, &bufptr))
     {
       /* page buffer maintenance thread will try to assign this bcb directly as victim. */
-      thread_wakeup_page_buffer_maintenance_thread ();
+      thread_wakeup_page_post_flush_thread ();
       perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_FOR_DIRECT_VICTIM);
     }
   else
