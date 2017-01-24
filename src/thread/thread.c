@@ -494,7 +494,7 @@ thread_initialize_manager (void)
       thread_Daemons[daemon_index++].daemon_function = thread_page_flush_thread;
 
       /* Initialize page post flush daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_POST_FLUSH,;
+      thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_POST_FLUSH;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Page_post_flush_thread;
       thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 2;
       thread_Daemons[daemon_index++].daemon_function = thread_page_post_flush_thread;
