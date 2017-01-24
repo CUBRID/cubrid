@@ -166,6 +166,7 @@ typedef enum
   THREAD_DAEMON_FLUSH_CONTROL,
   THREAD_DAEMON_LOG_FLUSH,
   THREAD_DAEMON_PAGE_MAINTENANCE,
+  THREAD_DAEMON_PAGE_POST_FLUSH,
 
   THREAD_DAEMON_NUM_SINGLE_THREADS,
 
@@ -493,7 +494,7 @@ thread_initialize_manager (void)
       thread_Daemons[daemon_index++].daemon_function = thread_page_flush_thread;
 
       /* Initialize page post flush daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_MAINTENANCE;
+      thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_POST_FLUSH,;
       thread_Daemons[daemon_index].daemon_monitor = &thread_Page_post_flush_thread;
       thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 2;
       thread_Daemons[daemon_index++].daemon_function = thread_page_post_flush_thread;
@@ -511,6 +512,11 @@ thread_initialize_manager (void)
       thread_Daemons[daemon_index++].daemon_function = thread_log_flush_thread;
 
       /* Add new daemons before page flush daemon */
+
+      if (daemon_index != thread_Manager.num_daemons)
+        {
+          abort ();
+        }
 
 #if defined(WINDOWS)
       r = pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
