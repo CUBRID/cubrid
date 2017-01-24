@@ -82,6 +82,7 @@ typedef struct file_heap_des FILE_HEAP_DES;
 struct file_heap_des
 {
   OID class_oid;
+  HFID hfid;
 };
 
 /* Overflow heap file descriptor */
@@ -123,6 +124,8 @@ struct file_tablespace
   int expand_max_size;
 };
 
+/* note: if you change file descriptors size, make sure to change disk compatibility version too! */
+#define FILE_DESCRIPTORS_SIZE 64
 typedef union file_descriptors FILE_DESCRIPTORS;
 union file_descriptors
 {
@@ -131,6 +134,7 @@ union file_descriptors
   FILE_BTREE_DES btree;
   FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
   FILE_EHASH_DES ehash;
+  char dummy_align[FILE_DESCRIPTORS_SIZE];
 };
 
 typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
