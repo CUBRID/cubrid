@@ -116,6 +116,7 @@ static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tr
 static PT_NODE *pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg, int *continue_walk);
 static PT_NODE *pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
 static PT_NODE *copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk);
+static PT_NODE *copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, int *continue_walk);
 static PT_NODE *free_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *free_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg);
@@ -730,7 +731,7 @@ pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *c
 
 
 /*
- * pt_copy_node () - copies exactly a node passed to it, and returns
+ * copy_node_in_tree_pre () - copies exactly a node passed to it, and returns
  * 	a pointer to the copy. It is eligible for a walk "pre" function
  *   return:
  *   parser(in):
@@ -805,7 +806,25 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
       curr_cte_copy_info->next = tree_copy_info->cte_structures_list;
       tree_copy_info->cte_structures_list = curr_cte_copy_info;
     }
-  else if (new_node->node_type == PT_SPEC && PT_SPEC_IS_CTE (new_node))
+
+  return new_node;
+}
+
+/*
+* copy_node_in_tree_post () - post function of copy tree
+*
+*   return:
+*   parser(in):
+*   new_node(in):
+*   arg(in):
+*   continue_walk(in):
+*/
+static PT_NODE *
+copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, int *continue_walk)
+{
+  PT_TREE_COPY_INFO *tree_copy_info = (PT_TREE_COPY_INFO *) arg;
+
+  if (new_node->node_type == PT_SPEC && PT_SPEC_IS_CTE (new_node))
     {
       /* the new cte_pointer must point to the new_cte; new_cte address should be found in tree_copy_info->cte_structures_list */
       PT_NODE *cte_pointer = new_node->info.spec.cte_pointer;
@@ -821,9 +840,9 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 	}
       cte_pointer->info.pointer.node = cte_info_it->new_cte_node;
     }
+
   return new_node;
 }
-
 
 /*
  * pt_walk_private () - implements the higher order tree walk routine parser_walk_tree
@@ -1121,7 +1140,9 @@ parser_copy_tree (PARSER_CONTEXT * parser, const PT_NODE * tree)
       temp = (PT_NODE *) tree;
       save = temp->next;
       temp->next = NULL;
-      copy = parser_walk_tree (parser, temp, copy_node_in_tree_pre, &tree_copy_info, NULL, NULL);
+      copy =
+	parser_walk_tree (parser, temp, copy_node_in_tree_pre, &tree_copy_info, copy_node_in_tree_post,
+			  &tree_copy_info);
       temp->next = save;
       pt_clean_tree_copy_info (&tree_copy_info);
     }
@@ -1144,7 +1165,9 @@ parser_copy_tree_list (PARSER_CONTEXT * parser, PT_NODE * tree)
     {
       PT_TREE_COPY_INFO tree_copy_info = {.cte_structures_list = NULL };
 
-      tree = parser_walk_tree (parser, tree, copy_node_in_tree_pre, &tree_copy_info, NULL, NULL);
+      tree =
+	parser_walk_tree (parser, tree, copy_node_in_tree_pre, &tree_copy_info, copy_node_in_tree_post,
+			  &tree_copy_info);
       pt_clean_tree_copy_info (&tree_copy_info);
     }
 
