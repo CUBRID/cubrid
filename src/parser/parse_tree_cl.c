@@ -838,7 +838,7 @@ copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, 
 	      break;
 	    }
 	}
-      if (cte_info_it != NULL)
+      if (cte_info_it == NULL)
 	{
 	  assert (false);
 	  PT_INTERNAL_ERROR (parser, "incorrect CTE pointer");
