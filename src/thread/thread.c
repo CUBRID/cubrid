@@ -2383,42 +2383,6 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
 }
 
 /*
- * thread_set_check_page_validation() -
- *   return:
- *   flag(in):
- */
-bool
-thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag)
-{
-  bool old_val = true;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  old_val = thread_p->check_page_validation;
-  thread_p->check_page_validation = flag;
-
-  return old_val;
-}
-
-/*
- * thread_get_check_page_validation() -
- *   return:
- */
-bool
-thread_get_check_page_validation (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  return thread_p->check_page_validation;
-}
-
-/*
  * thread_worker() - Dequeue request from job queue and then call handler
  *                       function
  *   return:
