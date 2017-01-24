@@ -2277,6 +2277,11 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	  strcat_with_realloc (&sb, r->bytes);
 	  prev = r;
 	}
+      if (0 < parser->max_print_len && parser->max_print_len < sb.length)
+	{
+	  /* to help early break */
+	  break;
+	}
     }
 
   if (sb.length > 0)
@@ -2746,17 +2751,23 @@ char *
 pt_short_print (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
   char *str;
+  const int max_print_len = 64;
+
+  parser->max_print_len = max_print_len;
+
   str = parser_print_tree (parser, node);
   if (str == NULL)
     {
-      return NULL;
+      goto end;
     }
 
-  if (strlen (str) > 64)
+  if (strlen (str) > max_print_len)
     {
       strcpy (str + 60, "...");
     }
 
+end:
+  parser->max_print_len = 0;	/* restore */
   return str;
 }
 
@@ -2771,17 +2782,23 @@ char *
 pt_short_print_l (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
   char *str;
+  const int max_print_len = 64;
+
+  parser->max_print_len = max_print_len;
+
   str = parser_print_tree_list (parser, node);
   if (str == NULL)
     {
-      return NULL;
+      goto end;
     }
 
-  if (strlen (str) > 64)
+  if (strlen (str) > max_print_len)
     {
       strcpy (str + 60, "...");
     }
 
+end:
+  parser->max_print_len = 0;	/* restore */
   return str;
 }
 
