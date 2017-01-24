@@ -1721,8 +1721,9 @@ try_again:
     }
   else
     {
-      /* this cannot be a new page or a deallocated page */
-      assert (fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_DEALLOCATED);
+      /* this cannot be a new page or a deallocated page.
+       * note: temporary pages are not strictly handled in regard with their deallocation status. */
+      assert ((fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_DEALLOCATED) || pgbuf_is_lsa_temporary (pgptr));
     }
 
 #if !defined (NDEBUG)
