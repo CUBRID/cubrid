@@ -769,21 +769,6 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 
   new_node->parser_id = parser->id;
 
-  /* handle CTE copy so that the CTE pointers will be updated to point to new_node */
-  if (old_node->node_type == PT_CTE)
-    {
-      /* the address of the new CTE node is kept in old_node->etc */
-      old_node->etc = new_node;
-    }
-  else if (new_node->node_type == PT_SPEC && PT_SPEC_IS_CTE (new_node))
-    {
-      /* the new cte_pointer must point to the new_cte; new_cte address was previously set in old_node->etc */
-      PT_NODE *cte_pointer = new_node->info.spec.cte_pointer;
-
-      assert (cte_pointer->info.pointer.node->node_type == PT_CTE && cte_pointer->info.pointer.node->etc != NULL);
-      cte_pointer->info.pointer.node = (PT_NODE *) cte_pointer->info.pointer.node->etc;
-    }
-
   return new_node;
 }
 
