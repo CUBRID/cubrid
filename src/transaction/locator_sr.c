@@ -4018,6 +4018,11 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
 
 
 /*
+ * Following function, locator_check_primary_key_upddel(), is not referenced from anywhere.
+ */
+
+#if 0
+/*
  * locator_check_primary_key_upddel () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4123,6 +4128,7 @@ error:
   heap_attrinfo_end (thread_p, &index_attrinfo);
   return error_code;
 }
+#endif
 
 /*
  * locator_check_foreign_key () -
