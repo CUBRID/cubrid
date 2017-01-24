@@ -679,7 +679,6 @@ metadata_of_threads (void)
     {"Interrupted", "int"},
     {"Shutdown", "int"},
     {"Check_interrupt", "int"},
-    {"Check_page_validation", "int"},
     {"Wait_for_latch_promote", "int"},
     {"Lockwait_blocked_mode", "varchar(24)"},
     {"Lockwait_start_time", "datetime"},
