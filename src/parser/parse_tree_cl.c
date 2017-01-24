@@ -91,6 +91,20 @@ struct pt_string_block
   int size;
 };
 
+typedef struct pt_copy_cte_info PT_CTE_COPY_INFO;
+struct pt_copy_cte_info
+{
+  PT_NODE *old_cte_node;
+  PT_NODE *new_cte_node;
+  PT_CTE_COPY_INFO *next;
+};
+
+typedef struct pt_tree_copy_info PT_TREE_COPY_INFO;
+struct pt_tree_copy_info
+{
+  PT_CTE_COPY_INFO *cte_structures_list;
+};
+
 PARSER_INIT_NODE_FUNC *pt_init_f = NULL;
 PARSER_PRINT_NODE_FUNC *pt_print_f = NULL;
 PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
@@ -439,6 +453,8 @@ static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 
 static int parser_print_user (char *user_text, int len);
 
+static void pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info);
+
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
 extern char *g_query_string;
@@ -726,6 +742,7 @@ static PT_NODE *
 copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk)
 {
   PT_NODE *new_node;
+  PT_TREE_COPY_INFO *tree_copy_info = (PT_TREE_COPY_INFO *) arg;
 
   new_node = parser_new_node (parser, old_node->node_type);
   if (new_node == NULL)
@@ -769,6 +786,41 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 
   new_node->parser_id = parser->id;
 
+  /* handle CTE copy so that the CTE pointers will be updated to point to new_node */
+  if (old_node->node_type == PT_CTE)
+    {
+      /* the pair old_node and new_node addresses is added to copy_tree_info */
+      PT_CTE_COPY_INFO *curr_cte_copy_info;
+
+      curr_cte_copy_info = malloc (sizeof (PT_CTE_COPY_INFO));
+      if (curr_cte_copy_info == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+      curr_cte_copy_info->old_cte_node = old_node;
+      curr_cte_copy_info->new_cte_node = new_node;
+
+      /* pair is added conveniently at the beginning of the list */
+      curr_cte_copy_info->next = tree_copy_info->cte_structures_list;
+      tree_copy_info->cte_structures_list = curr_cte_copy_info;
+    }
+  else if (new_node->node_type == PT_SPEC && PT_SPEC_IS_CTE (new_node))
+    {
+      /* the new cte_pointer must point to the new_cte; new_cte address should be found in tree_copy_info->cte_structures_list */
+      PT_NODE *cte_pointer = new_node->info.spec.cte_pointer;
+      PT_CTE_COPY_INFO *cte_info_it;
+
+      assert (cte_pointer->info.pointer.node->node_type == PT_CTE);
+      for (cte_info_it = tree_copy_info->cte_structures_list; cte_info_it != NULL; cte_info_it = cte_info_it->next)
+	{
+	  if (cte_info_it->old_cte_node == cte_pointer->info.pointer.node)
+	    {
+	      break;
+	    }
+	}
+      cte_pointer->info.pointer.node = cte_info_it->new_cte_node;
+    }
   return new_node;
 }
 
@@ -1064,11 +1116,14 @@ parser_copy_tree (PARSER_CONTEXT * parser, const PT_NODE * tree)
   if (tree)
     {
       PT_NODE *temp, *save;
+      PT_TREE_COPY_INFO tree_copy_info = {.cte_structures_list = NULL };
+
       temp = (PT_NODE *) tree;
       save = temp->next;
       temp->next = NULL;
-      copy = parser_walk_tree (parser, temp, copy_node_in_tree_pre, NULL, NULL, NULL);
+      copy = parser_walk_tree (parser, temp, copy_node_in_tree_pre, &tree_copy_info, NULL, NULL);
       temp->next = save;
+      pt_clean_tree_copy_info (&tree_copy_info);
     }
   return copy;
 }
@@ -1087,7 +1142,10 @@ parser_copy_tree_list (PARSER_CONTEXT * parser, PT_NODE * tree)
 {
   if (tree)
     {
-      tree = parser_walk_tree (parser, tree, copy_node_in_tree_pre, NULL, NULL, NULL);
+      PT_TREE_COPY_INFO tree_copy_info = {.cte_structures_list = NULL };
+
+      tree = parser_walk_tree (parser, tree, copy_node_in_tree_pre, &tree_copy_info, NULL, NULL);
+      pt_clean_tree_copy_info (&tree_copy_info);
     }
 
   return tree;
@@ -18654,4 +18712,21 @@ pt_print_query_trace (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   return b;
+}
+
+/* pt_clean_tree_copy_info - deallocate memory used by a PT_TREE_COPY_INFO
+ *
+ *
+ */
+static void
+pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
+{
+  PT_CTE_COPY_INFO *cte_info_it, *save_next;
+
+  /* deallocate CTE list */
+  for (cte_info_it = tree_copy_info->cte_structures_list; cte_info_it != NULL; cte_info_it = save_next)
+    {
+      save_next = cte_info_it->next;
+      free (cte_info_it);
+    }
 }
