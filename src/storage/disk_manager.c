@@ -1919,7 +1919,14 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
     }
 
   log_sysop_start (thread_p);
-  pgbuf_refresh_max_permanent_volume_id (volid);
+  if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+    {
+      pgbuf_refresh_max_permanent_volume_id (volid);
+    }
+  else
+    {
+      pgbuf_refresh_max_permanent_volume_id (volid - 1);
+    }
 
   error_code = disk_format (thread_p, boot_db_full_name (), volid, extinfo, nsects_free_out);
   if (error_code != NO_ERROR)
