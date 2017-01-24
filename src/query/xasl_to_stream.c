@@ -3542,20 +3542,6 @@ xts_process_cte_proc (char *ptr, const CTE_PROC_NODE * cte_proc)
     }
   ptr = or_pack_int (ptr, offset);
 
-  if (cte_proc->list_id == NULL)
-    {
-      ptr = or_pack_int (ptr, 0);
-    }
-  else
-    {
-      offset = xts_save_list_id (cte_proc->list_id);
-      if (offset == ER_FAILED)
-	{
-	  return NULL;
-	}
-      ptr = or_pack_int (ptr, offset);
-    }
-
   return ptr;
 }
 
