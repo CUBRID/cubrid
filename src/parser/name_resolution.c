@@ -1123,7 +1123,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	   */
 	  PT_NODE *table;
 
-	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_DERIVED (spec));
+	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_CTE (spec));
 	  table = spec->info.spec.derived_table;
 	  table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	  spec->info.spec.derived_table = table;
