@@ -1731,7 +1731,7 @@ try_again:
 	case OLD_PAGE:
 	case OLD_PAGE_PREVENT_DEALLOC:
 	default:
-	  /* if caller does not disable page validation explicitly, we do not expect this case. */
+	  /* caller does not expect any deallocated pages. this is an invalid page. */
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label (vpid->volid, PEEK));
