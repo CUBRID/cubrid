@@ -1295,6 +1295,7 @@ static void pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB 
 static void pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
 static void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 static void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
+static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 
 static int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is_bcb_locked);
 static int pgbuf_flush_page_with_wal_keep_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
@@ -7087,7 +7088,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
             {
               ABORT_RELEASE ();
             }
-
+          pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
         }
       else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
 	{
@@ -10221,7 +10222,7 @@ pgbuf_remove_from_lru_list (PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
  * thread_p (in) : thread entry
  * bcb (in)      : bcb
  */
-void
+static void
 pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   PGBUF_ZONE zone = pgbuf_bcb_get_zone (bcb);
