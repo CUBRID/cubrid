@@ -1249,41 +1249,6 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fet
 #endif
 #endif
 
-#if !defined(NDEBUG)
-PAGE_PTR
-pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-				    PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition,
-				    const char *caller_file, int caller_line)
-{
-  PAGE_PTR pgptr;
-  bool old_check_page_validation, rv;
-
-  old_check_page_validation = pgbuf_set_check_page_validation (thread_p, false);
-
-  pgptr = pgbuf_fix_debug (thread_p, vpid, fetch_mode, request_mode, condition, caller_file, caller_line);
-
-  rv = pgbuf_set_check_page_validation (thread_p, old_check_page_validation);
-
-  return pgptr;
-}
-#else /* NDEBUG */
-PAGE_PTR
-pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-				      PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition)
-{
-  PAGE_PTR pgptr;
-  bool old_check_page_validation, rv;
-
-  old_check_page_validation = pgbuf_set_check_page_validation (thread_p, false);
-
-  pgptr = pgbuf_fix_release (thread_p, vpid, fetch_mode, request_mode, condition);
-
-  rv = pgbuf_set_check_page_validation (thread_p, old_check_page_validation);
-
-  return pgptr;
-}
-#endif /* NDEBUG */
-
 /*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
@@ -12443,10 +12408,11 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
   assert (isvalid == DISK_VALID);
 
   /* is reserved */
-#if !defined (NDEBUG)
+#if defined (NDEBUG)
   *page = pgbuf_fix_release (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition);
 #else /* !NDEBUG */
-  *page = pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition);
+  *page =
+    pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition, caller_file, caller_line);
 #endif /* !NDEBUG */
   if (*page == NULL)
     {

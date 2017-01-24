@@ -295,15 +295,6 @@ extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vp
 extern int pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 					   PGBUF_PROMOTE_CONDITION condition, const char *caller_file, int caller_line);
 
-#define pgbuf_fix_without_validation(thread_p, vpid, fetch_mode, \
-				     requestmode, condition) \
-	pgbuf_fix_without_validation_debug(thread_p, vpid, fetch_mode, \
-					   requestmode, condition, \
-					   __FILE__, __LINE__)
-extern PAGE_PTR pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
-						    PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
-						    PGBUF_LATCH_CONDITION condition, const char *caller_file,
-						    int caller_line);
 #define pgbuf_unfix(thread_p, pgptr) \
 	pgbuf_unfix_debug(thread_p, pgptr, __FILE__, __LINE__)
 extern void pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line);
