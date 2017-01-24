@@ -838,6 +838,12 @@ copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, 
 	      break;
 	    }
 	}
+      if (cte_info_it != NULL)
+      {
+	  assert (false);
+	  PT_INTERNAL_ERROR (parser, "incorrect CTE pointer");
+	  return NULL;
+      }
       cte_pointer->info.pointer.node = cte_info_it->new_cte_node;
     }
 
