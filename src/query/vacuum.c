@@ -4662,6 +4662,9 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	  return;
 	}
 
+      /* save vpid of first page */
+      pgbuf_get_vpid ((PAGE_PTR) save_first_page, &save_first_vpid);
+
       log_sysop_start (thread_p);
 
       /* update file descriptor for persistence */
