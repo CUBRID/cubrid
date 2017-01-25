@@ -751,6 +751,12 @@
 #define PT_SPEC_IS_ENTITY(spec_) \
   (spec_->info.spec.entity_name != NULL)
 
+#define PT_IS_FALSE_WHERE_VALUE(node) \
+ (((node) != NULL && (node)->node_type == PT_VALUE \
+  && ((node)->type_enum == PT_TYPE_NULL \
+       || ((node)->type_enum == PT_TYPE_SET \
+           && ((node)->info.value.data_value.set == NULL)))) ? true : false)
+
 
 /*
  Enumerated types of parse tree statements
@@ -3619,6 +3625,8 @@ struct parser_context
   bool query_trace;
   int num_plan_trace;
   PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
+
+  int max_print_len;		/* for pt_short_print */
 
   unsigned has_internal_error:1;	/* 0 or 1 */
   unsigned abort:1;		/* this flag is for aborting a transaction */

@@ -815,6 +815,8 @@ file_manager_init (void)
 {
   file_Logging = prm_get_bool_value (PRM_ID_FILE_LOGGING);
 
+  assert (FILE_DESCRIPTORS_SIZE == sizeof (FILE_DESCRIPTORS));
+
   return file_tempcache_init ();
 }
 
