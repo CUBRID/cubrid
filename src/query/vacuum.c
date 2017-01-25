@@ -3989,10 +3989,6 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 
   assert_release (!VFID_ISNULL (&vacuum_Data.vacuum_data_file));
 
-  /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
-  assert_release (!VPID_ISNULL (&log_Gl.hdr.vacuum_data_first_vpid));
-  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
-
   error_code = file_descriptor_get (thread_p, &vacuum_Data.vacuum_data_file, &fdes);
   if (error_code != NO_ERROR)
     {
@@ -4002,6 +3998,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
   if (fdes.vacuum_data.vpid_first.pageid == 0)
     {
+      assert_release (!VPID_ISNULL (&log_Gl.hdr.vacuum_data_first_vpid));
       fdes.vacuum_data.vpid_first = log_Gl.hdr.vacuum_data_first_vpid;
     }
   /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
