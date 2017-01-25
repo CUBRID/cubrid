@@ -220,6 +220,8 @@ static PT_NODE *pt_bind_reserved_name (PARSER_CONTEXT * parser, PT_NODE * in_nod
 static PT_NODE *pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 static void pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
+static PT_NODE *pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						   int *continue_walk);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -9463,7 +9465,18 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 
   assert (cte_def->node_type == PT_CTE);
 
-  /* evaluate the names from recursive part if exists; the non recursive part will be evaluated during walk */
+  if (non_recursive_cte == NULL)
+    {
+      /* something went wrong, this shouldn't be possible */
+      assert (0);
+      return;
+    }
+
+  /* evaluate non recursive part types; it should be a usual select with no references to this CTE */
+  cte_def->info.cte.non_recursive_part =
+    parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+  /* evaluate the names from recursive part if it exists */
   if (recursive_cte)
     {
       /* the rec part have pointers to the current CTE and because of that a cycle will appear if the rec part
@@ -9474,20 +9487,6 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 
       /* restore rec part */
       cte_def->info.cte.recursive_part = recursive_cte;
-    }
-  else if (non_recursive_cte)
-    {
-      non_recursive_cte =
-	parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-
-      /* restore non recursive part; pointer may be changed during walk */
-      cte_def->info.cte.non_recursive_part = non_recursive_cte;
-    }
-  else
-    {
-      /* something went wrong, this shouldn't be possible */
-      assert (0);
-      return;
     }
 
   /* must bind any expr types in table. pt_bind_types requires it. */
@@ -9504,7 +9503,40 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       return;			/* error in pt_semantic_type */
     }
 
+  /* the attributes of cte self references specs can now be computed correctly */
+  if (recursive_cte)
+    {
+      recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, NULL, NULL, NULL);
+
+      /* restore rec part */
+      cte_def->info.cte.recursive_part = recursive_cte;
+    }
+
   /* restore donot_fold and next_cte */
   bind_arg->sc_info->donot_fold = save_donot_fold;
   cte_def->next = save_next_cte_def;
+}
+
+/*
+* pt_bind_cte_self_references_types () - used to bind types of self reference specs in recursive cte part; 
+*					 this can be done only bind_names is complete and cte attributes types are set
+*   return:
+*   parser(in):
+*   node(in):
+*   arg(in/out):
+*   continue_walk(in/out):
+*/
+static PT_NODE *
+pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node == NULL || node->node_type != PT_SPEC || !PT_SPEC_IS_CTE (node))
+    {
+      return node;
+    }
+
+  /* interested only in CTE specs */
+  pt_bind_types (parser, node);
+  *continue_walk = PT_LIST_WALK;
+
+  return node;
 }
