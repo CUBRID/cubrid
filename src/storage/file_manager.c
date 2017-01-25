@@ -4715,8 +4715,8 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
 	  goto exit;
 	}
 
-      /* fix new table page */
-      page_ftab = pgbuf_fix (thread_p, &vpid_ftab_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      /* fix newly allocated table page. note that this is an old page, file_perm_alloc already initialized it. */
+      page_ftab = pgbuf_fix (thread_p, &vpid_ftab_new, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
