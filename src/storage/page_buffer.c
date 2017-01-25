@@ -8413,6 +8413,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   struct timespec to;
   int r = 0;
   PERF_STAT_ID pstat;
+  int loop_count;
 #endif /* SERVER_MODE */
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
@@ -8499,7 +8500,7 @@ retry:
     }
 
   /* add to waiters thread list to be assigned victim directly */
-  to.tv_sec = (int) time (NULL) + 60 /* todo: use PGBUF_TIMEOUT */;
+  to.tv_sec = (int) time (NULL) + 10 /* todo: use PGBUF_TIMEOUT */;
   to.tv_nsec = 0;
 
   thread_lock_entry (thread_p);
@@ -8541,6 +8542,7 @@ retry:
   /* now that we added to queue, decrement count_get_victim_wait_in_progress */
   ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, -1);
 
+#if 0
   thread_p->resume_status = THREAD_ALLOC_BCB_SUSPENDED;
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, &to);
 
@@ -8591,6 +8593,50 @@ retry:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
               r == ETIMEDOUT ? ER_CSS_PTHREAD_COND_TIMEDOUT : ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
     }
+#else
+  /* spin until a bcb is received */
+  if (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] != NULL)
+    {
+      /* logic error */
+      ABORT_RELEASE ();
+    }
+  for (loop_count = 0; loop_count < INT_MAX; loop_count++)
+    {
+      bufptr = pgbuf_get_direct_victim (thread_p);
+      if (bufptr != NULL)
+        {
+          perfmon_add_stat (thread_p, PSTAT_PB_ALLOC_BCB_LOOPS, loop_count);
+          if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
+	    {
+	      assert (false);
+              bufptr = NULL;
+              goto end;
+	    }
+          else
+            {
+              /* Above function holds bufptr->BCB_mutex at first operation.
+	        * If the above function returns failure,
+	        * the caller does not hold bufptr->BCB_mutex.
+	        * Otherwise, the caller is still holding bufptr->BCB_mutex.
+	        */
+              goto end;
+            }
+        }
+      thread_sleep (1);
+      if (loop_count % 1000 == 1)
+        {
+          if ((int) time (NULL) >= to.tv_sec)
+            {
+              /* took too long */
+              ABORT_RELEASE ();
+            }
+        }
+    }
+  ABORT_RELEASE ();
+
+  /* todo: need a way to make the bcb assignment safe. if thread gives up after it was assigned a bcb, that bcb remains
+   * forever unvictimized! */
+#endif
 
 #endif /* SERVER_MODE */
 
@@ -15519,6 +15565,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
     {
       assert (waiter_thread != NULL);
       
+#if 0
       (void) thread_lock_entry (waiter_thread);
 
       if (waiter_thread->resume_status != THREAD_ALLOC_BCB_SUSPENDED)
@@ -15542,6 +15589,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
           thread_unlock_entry (waiter_thread);
           continue;
         }
+#endif /* 0 */
 
       /* assign bcb to thread */
       pgbuf_bcb_update_flags (bcb, PGBUF_BCB_VICTIM_DIRECT_FLAG, PGBUF_BCB_FLUSHING_TO_DISK_FLAG);
@@ -15549,9 +15597,15 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
         {
           ABORT_RELEASE ();
         }
-      pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index] = bcb;
 
+      if (ATOMIC_TAS_ADDR (&pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index], bcb) != NULL)
+        {
+          ABORT_RELEASE ();
+        }
+
+#if 0
       thread_unlock_entry (waiter_thread);
+#endif
 
       /* bcb was assigned */
       return true;
@@ -15675,16 +15729,11 @@ pgbuf_get_thread_waiting_for_direct_victim (THREAD_ENTRY ** waiting_thread_out)
 STATIC_INLINE PGBUF_BCB *
 pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
 {
-  PGBUF_BCB *bcb = pgbuf_Pool.direct_victims.bcb_victims[thread_p->index];
+  PGBUF_BCB *bcb = (PGBUF_BCB *) ATOMIC_TAS_ADDR (&pgbuf_Pool.direct_victims.bcb_victims[thread_p->index], NULL);
   int lru_idx;
-
-  pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] = NULL;
 
   if (bcb == NULL)
     {
-      /* should not happen */
-      assert (false);
-      ABORT_RELEASE ();
       return NULL;
     }
 
