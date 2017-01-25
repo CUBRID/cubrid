@@ -19975,7 +19975,6 @@ end:
 
       if (result != expr)
 	{
-#if 0
 	  if (alias_print == NULL || (PT_IS_VALUE_NODE (result) && !result->info.value.text))
 	    {
 	      /* print expr to alias_print */
@@ -19998,7 +19997,6 @@ end:
 	    {
 	      result->info.value.is_collate_allowed = true;
 	    }
-#endif
 	  parser_free_tree (parser, expr);
 	}
 
