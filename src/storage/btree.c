@@ -22618,6 +22618,14 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
       if (bcb_area && node_header->node_level == 2)
 	{
 	try_again:
+	  /*
+	   * Currently we want to use the optimization only for leaf pages, where bottlenecks are expected.
+	   * We want to avoid S-latch acquisition on the leaf page in order to avoid that page writers (concurrent
+	   * transaction that modify the page) to wait for page readers and conversely. In case of non leaf pages, the
+	   * X-latch is acquired rare (split, merge) so we do not expect bottlenecks on such pages. However, if we
+	   * decide to introduce the optimization for non-leafs, we need additional processing. For instance, sometimes,
+	   * we have to start searching of the same key from root several times.
+	   */
 	  if (pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, DB_PAGESIZE, &bcb_area_copied) != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
@@ -24088,6 +24096,14 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 #if defined (SERVER_MODE)
       if (bts->copy_leaf_page_without_latch_allowed && bts->bcb_area == NULL && bts->key_range.range == GE_LE)
 	{
+	  /*
+	   * Currently, the transaction uses only one transaction BCB area - the area where the page is copied.
+	   * So, if we have scans on two tables, only one scan can copy the page in transaction BCB area.
+	   * When the copied page is no longer needed, the BCB area is released. For now, we want to optimize a common
+	   * case - index scan followed or not by heap get. The transaction BCB area is used to copy the leaf page,
+	   * then released, then used to copy the heap page. In future, we can add more BCB area, if we want to use page
+	   * copy when there are at least two tables involved.
+	   */
 	  error_code = pgbuf_acquire_tran_bcb_area (thread_p, &bts->bcb_area);
 	  if (error_code != NO_ERROR)
 	    {
@@ -24099,12 +24115,12 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	    {
 	      vpid_ovf_p = &vpid_ovf;
 	      perfmon_inc_stat (thread_p, PSTAT_BT_LEAF_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
-	      pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired bcb area for B-tree leaf page\n");
+	      pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area for B-tree leaf page\n");
 	    }
 	  else
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_BT_LEAF_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
-	      pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire bcb area for B-tree leaf page\n");
+	      pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area for B-tree leaf page\n");
 	    }
 	}
 #endif
@@ -24124,7 +24140,10 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 #if defined (SERVER_MODE)
       if (found && bts->C_page == bts->bcb_area && vpid_ovf_p != NULL && !VPID_ISNULL (vpid_ovf_p))
 	{
-	  /* Currently do not use copy leaf page in case that we need to access more than one page. */
+	  /* 
+	   * Currently do not use copy leaf page in case that we need to access more than one page.
+	   * Extending the optimization for multi page object, requires additional processing.
+	   */
 
 	  pgbuf_release_tran_bcb_area (thread_p);
 	  bts->bcb_area = NULL;
@@ -33315,6 +33334,7 @@ btree_unfix_and_init_current_page (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 #if defined (SERVER_MODE)
   if (bts->bcb_area)
     {
+      /* Release the transaction BCB area, in order to allow to copy another page. */
       pgbuf_release_tran_bcb_area (thread_p);
       bts->bcb_area = NULL;
     }

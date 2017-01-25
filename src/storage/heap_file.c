@@ -7259,6 +7259,10 @@ try_again:
   if (context->copy_page_without_latch_allowed && latch_mode == PGBUF_LATCH_READ
       && context->ispeeking == COPY && context->bcb_area == NULL && context->home_page_watcher.pgptr == NULL)
     {
+      /*
+       * Acquires the transaction BCB area to copy the page, if the BCB area does not keep a copy of another page
+       * that is still used by current transaction.
+       */
       ret = pgbuf_acquire_tran_bcb_area (thread_p, &context->bcb_area);
       if (ret != NO_ERROR)
 	{
@@ -7269,10 +7273,11 @@ try_again:
       if (context->bcb_area != NULL)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
-	  pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired bcb area to copy heap page (%d, %d)\n",
+	  pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area to copy heap page (%d, %d)\n",
 			  object_vpid.volid, object_vpid.pageid);
 
 	try_copy_area_again:
+	  /* Copy the heap page to BCB area. */
 	  if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->bcb_area, DB_PAGESIZE,
 				      &bcb_area_copied) != NO_ERROR)
 	    {
@@ -7308,7 +7313,7 @@ try_again:
       else
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
-	  pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire bcb area to copy heap page (%d, %d)\n",
+	  pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area to copy heap page (%d, %d)\n",
 			  object_vpid.volid, object_vpid.pageid);
 	}
     }
@@ -7364,7 +7369,9 @@ prepare_object_page:
     {
       if (slot_p->record_type == REC_BIGONE || slot_p->record_type == REC_RELOCATION)
 	{
-	  /* Quick fix to avoid NULL group id issue and multi page object issue. */
+	  /* Quick fix to avoid NULL group id issue and multi page object issue. Extending the optimization
+	   * for multi page object, requires additional processing.
+	   */
 	  pgbuf_release_tran_bcb_area (thread_p);
 	  context->bcb_area = NULL;
 	  page_ptr = NULL;
@@ -24640,6 +24647,7 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 #if defined (SERVER_MODE)
   if (context->bcb_area)
     {
+      /* Release the transaction BCB area, in order to allow to copy another page. */
       pgbuf_release_tran_bcb_area (thread_p);
       context->bcb_area = NULL;
     }
