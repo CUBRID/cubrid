@@ -8625,7 +8625,7 @@ retry:
               goto end;
             }
         }
-      thread_sleep (1);
+      thread_sleep (0.001);
       if (loop_count % 1000 == 1)
         {
           if ((int) time (NULL) >= to.tv_sec)
