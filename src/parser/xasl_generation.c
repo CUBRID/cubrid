@@ -12091,6 +12091,9 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
     {
       /* The CTE xasl is null because the recursive part xasl has not been generated yet, but this is not a problem 
        * because the recursive part should have access only to the non recursive part.
+       * This may also happen with a CTE referenced by another one. If CTE1 is referenced by CTE2, the XASL of CTE1
+       * is not completed when reaching this function from CTE2. CTE2 is reached following *next* link of CTE1 before
+       * CTE1 post function of xasl generation is executed.
        */
       PT_NODE *non_recursive_part = cte_def->info.cte.non_recursive_part;
 
@@ -12574,8 +12577,24 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
       if (xasl)
 	{
-	  /* append the CTE xasl at the beginning of the list */
-	  info->xasl = pt_append_xasl (xasl, info->xasl);
+	  /* The CTE correlation level is kept in the non_recursive_part query and it is handled here since 
+	   * the CTE subqueries are not accessed for correlation check;
+	   * After validation, the CTE XASL is added to the list */
+
+	  PT_NODE *non_recursive_part = node->info.cte.non_recursive_part;
+	  assert (PT_IS_QUERY (non_recursive_part));
+
+	  if (non_recursive_part->info.query.correlation_level == 0)
+	    {
+	      /* add non_recursive_part to this level */
+	      non_recursive_part->info.query.correlation_level = info->level;
+	    }
+
+	  if (non_recursive_part->info.query.correlation_level == info->level)
+	    {
+	      /* append the CTE xasl at the beginning of the list */
+	      info->xasl = pt_append_xasl (xasl, info->xasl);
+	    }
 	}
 
       break;

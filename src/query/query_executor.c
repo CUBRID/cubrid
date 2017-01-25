@@ -12560,9 +12560,8 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	    QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
 	    if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
-		&& buildlist->groupby_list == NULL && buildlist->a_eval_list == NULL && (xasl->orderby_list == NULL
-											 || XASL_IS_FLAGED (xasl,
-													    XASL_SKIP_ORDERBY_LIST))
+		&& buildlist->groupby_list == NULL && buildlist->a_eval_list == NULL
+		&& (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
 		&& xasl->option != Q_DISTINCT)
 	      {
 		QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
@@ -12674,9 +12673,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:	/* start SET block iterations */
-      {
-	break;
-      }
+      break;
 
     case CTE_PROC:
       break;
@@ -15455,8 +15452,6 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      save_recursive_list_id = recursive_part->list_id;
-
       /* the recursive part XASL is executed totally (all iterations) 
        * and the results will be inserted in non_recursive_part->list_id 
        */
@@ -15529,11 +15524,22 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	    }
 	}
 
+      /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
+       * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
+       */
       qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true);
-      recursive_part->list_id = save_recursive_list_id;
+
+      if (save_recursive_list_id != NULL)
+	{
+	  /* restore recursive list_id */
+	  recursive_part->list_id = save_recursive_list_id;
+	}
     }
-  else if (non_recursive_part->list_id->tuple_cnt > 0
-	   && qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true) != NO_ERROR)
+  /* copy list id from non-recursive part to CTE XASL (even if no tuples are in non recursive part) to get domain types
+   * into CTE xasl's main list (this also executes if we have a recursive part but no tuples in non recursive part
+   * (no results at all)
+   */
+  else if (qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true) != NO_ERROR)
     {
       QFILE_FREE_AND_INIT_LIST_ID (xasl->list_id);
       GOTO_EXIT_ON_ERROR;
@@ -15544,6 +15550,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
   return NO_ERROR;
 
 exit_on_error:
+  if (save_recursive_list_id != NULL)
+    {
+      /* restore recursive list_id */
+      recursive_part->list_id = save_recursive_list_id;
+    }
   xasl->status = XASL_FAILURE;
   return ER_FAILED;
 }
