@@ -1261,7 +1261,8 @@ $ LOADDB
 1192 值 %1$zu 的精度超过了允许的最大值 %2$d.
 1193 处理的分区表达式的长度超过了允许的最大值(%1$d).
 1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 Last Error
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

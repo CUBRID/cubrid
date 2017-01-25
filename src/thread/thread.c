@@ -3333,7 +3333,7 @@ thread_page_flush_thread (void *arg_p)
     {
       er_clear ();
 
-      wakeup_interval = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSEC);
+      wakeup_interval = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
 
       if (wakeup_interval > 0)
 	{

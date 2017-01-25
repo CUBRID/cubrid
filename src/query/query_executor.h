@@ -768,6 +768,13 @@ struct merge_proc_node
   bool has_delete;		/* MERGE statement has DELETE */
 };
 
+typedef struct cte_proc_node CTE_PROC_NODE;
+struct cte_proc_node
+{
+  XASL_NODE *non_recursive_part;	/* non recursive part of the CTE */
+  XASL_NODE *recursive_part;	/* recursive part of the CTE */
+};
+
 typedef enum
 {
   UNION_PROC,
@@ -784,7 +791,8 @@ typedef enum
   CONNECTBY_PROC,
   DO_PROC,
   MERGE_PROC,
-  BUILD_SCHEMA_PROC
+  BUILD_SCHEMA_PROC,
+  CTE_PROC
 } PROC_TYPE;
 
 typedef enum
@@ -940,6 +948,7 @@ struct xasl_node
     DELETE_PROC_NODE delete_;	/* DELETE_PROC */
     CONNECTBY_PROC_NODE connect_by;	/* CONNECTBY_PROC */
     MERGE_PROC_NODE merge;	/* MERGE_PROC */
+    CTE_PROC_NODE cte;		/* CTE_PROC */
   } proc;
 
   double cardinality;		/* estimated cardinality of result */

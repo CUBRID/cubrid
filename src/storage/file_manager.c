@@ -816,6 +816,8 @@ file_manager_init (void)
 {
   file_Logging = prm_get_bool_value (PRM_ID_FILE_LOGGING);
 
+  assert (FILE_DESCRIPTORS_SIZE == sizeof (FILE_DESCRIPTORS));
+
   return file_tempcache_init ();
 }
 
@@ -2324,6 +2326,9 @@ file_log_extdata_set_next (THREAD_ENTRY * thread_p,
 
   addr.pgptr = page;
   addr.offset = (PGLENGTH) (((char *) extdata) - page);
+  /* extdata should belong to page */
+  assert (addr.offset >= 0 && addr.offset < DB_PAGESIZE);
+
   save_lsa = *pgbuf_get_lsa (page);
   log_append_undoredo_data (thread_p, RVFL_EXTDATA_SET_NEXT, &addr,
 			    sizeof (VPID), sizeof (VPID), &extdata->vpid_next, vpid_next);
@@ -4924,7 +4929,7 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       /* init new table extensible data */
       extdata_new_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
       file_extdata_init (sizeof (VSID), DB_PAGESIZE, extdata_new_ftab);
-      file_log_extdata_set_next (thread_p, extdata_new_ftab, page_fhead, &extdata_full_ftab->vpid_next);
+      file_log_extdata_set_next (thread_p, extdata_new_ftab, page_ftab, &extdata_full_ftab->vpid_next);
       VPID_COPY (&extdata_new_ftab->vpid_next, &extdata_full_ftab->vpid_next);
 
       pgbuf_log_new_page (thread_p, page_ftab, file_extdata_size (extdata_new_ftab), PAGE_FTAB);

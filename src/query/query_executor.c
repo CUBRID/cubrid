@@ -563,6 +563,7 @@ static void qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_IN
 static const char *qexec_schema_get_type_name_from_id (DB_TYPE id);
 static int qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result);
 static int qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 
 #if defined(SERVER_MODE)
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -2447,6 +2448,30 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 		  pg_cnt += qexec_clear_regu_var (xasl, &regu_list->value, final);
 		}
 	    }
+	}
+      break;
+
+    case CTE_PROC:
+      if (xasl->proc.cte.non_recursive_part)
+	{
+	  if (xasl->proc.cte.non_recursive_part->list_id)
+	    {
+	      qfile_clear_list_id (xasl->proc.cte.non_recursive_part->list_id);
+	    }
+
+	  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, final);
+	}
+      if (xasl->proc.cte.recursive_part)
+	{
+	  if (xasl->proc.cte.recursive_part->list_id)
+	    {
+	      qfile_clear_list_id (xasl->proc.cte.recursive_part->list_id);
+	    }
+	  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, final);
+	}
+      if (xasl->list_id)
+	{
+	  qfile_clear_list_id (xasl->list_id);
 	}
       break;
 
@@ -12530,9 +12555,8 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	    QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
 	    if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
-		&& buildlist->groupby_list == NULL && buildlist->a_eval_list == NULL && (xasl->orderby_list == NULL
-											 || XASL_IS_FLAGED (xasl,
-													    XASL_SKIP_ORDERBY_LIST))
+		&& buildlist->groupby_list == NULL && buildlist->a_eval_list == NULL
+		&& (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
 		&& xasl->option != Q_DISTINCT)
 	      {
 		QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
@@ -12644,9 +12668,10 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:	/* start SET block iterations */
-      {
-	break;
-      }
+      break;
+
+    case CTE_PROC:
+      break;
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -12958,6 +12983,11 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
       QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
       break;
 
+    case CTE_PROC:
+      /* close the list file */
+      qfile_close_list (thread_p, xasl->list_id);
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       GOTO_EXIT_ON_ERROR;
@@ -13022,6 +13052,7 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     case DO_PROC:
     case MERGE_PROC:
     case BUILD_SCHEMA_PROC:
+    case CTE_PROC:
       break;
 
     default:
@@ -13809,6 +13840,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  xasl_stats->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
 		  xasl_stats->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
 		}
+	    }
+	}
+
+      if (xasl->type == CTE_PROC)
+	{
+	  if (qexec_execute_cte (thread_p, xasl, xasl_state) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
 
@@ -15340,6 +15379,171 @@ exit_on_error:
 
   xasl->status = XASL_FAILURE;
 
+  return ER_FAILED;
+}
+
+/*
+ * qexec_execute_cte () - CTE execution
+ *  return:
+ *  xasl(in):
+ *  xasl_state(in):
+ */
+static int
+qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  XASL_NODE *non_recursive_part = xasl->proc.cte.non_recursive_part;
+  XASL_NODE *recursive_part = xasl->proc.cte.recursive_part;
+  QFILE_LIST_ID *save_recursive_list_id = NULL;
+  QFILE_LIST_ID *t_list_id = NULL;
+  int ls_flag = 0;
+  bool first_iteration = true;
+
+  QFILE_SET_FLAG (ls_flag, QFILE_FLAG_UNION);
+  QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
+
+  if (non_recursive_part == NULL)
+    {
+      /* non_recursive_part may have false where, so it is null */
+      return NO_ERROR;
+    }
+
+  if (non_recursive_part->list_id == NULL)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  if (xasl->status == XASL_SUCCESS)
+    {
+      return NO_ERROR;
+    }
+
+  /* first the non recursive part from the CTE shall be executed */
+  if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
+    {
+      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+  else
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  if (recursive_part && non_recursive_part->list_id->tuple_cnt > 0)
+    {
+      if (recursive_part->type == BUILDVALUE_PROC)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BUILDVALUE_IN_REC_CTE, 0);
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* the recursive part XASL is executed totally (all iterations) 
+       * and the results will be inserted in non_recursive_part->list_id 
+       */
+      while (non_recursive_part->list_id->tuple_cnt > 0)
+	{
+	  /* TODO - detect too many iterations and abort execution */
+	  if (qexec_execute_mainblock (thread_p, recursive_part, xasl_state, NULL) != NO_ERROR)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (first_iteration)
+	    {
+	      /* unify list_id types after the first execution of the recursive part */
+	      if (qfile_unify_types (non_recursive_part->list_id, recursive_part->list_id) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      qfile_clear_list_id (xasl->list_id);
+	      if (qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	  else
+	    {
+	      /* copy non_rec_part->list_id to xasl->list_id (final results) */
+	      t_list_id = qfile_combine_two_list (thread_p, xasl->list_id, non_recursive_part->list_id, ls_flag);
+	      if (t_list_id == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      /* what's the purpose of t_list_id?? */
+	      qfile_clear_list_id (xasl->list_id);
+	      if (qfile_copy_list_id (xasl->list_id, t_list_id, true) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
+	    }
+
+	  qfile_clear_list_id (non_recursive_part->list_id);
+	  if (recursive_part->list_id->tuple_cnt > 0
+	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true) != NO_ERROR)
+	    {
+	      QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  qfile_clear_list_id (recursive_part->list_id);
+
+	  if (first_iteration && non_recursive_part->list_id->tuple_cnt > 0)
+	    {
+	      first_iteration = false;
+	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list)
+		{
+		  /* future specific optimizations, changes, etc */
+		}
+	      else
+		{
+		  /* optimization: use non-recursive list id for both reading and writing
+		   * the recursive xasl will iterate through this list id while appending new results at its end 
+		   */
+		  save_recursive_list_id = recursive_part->list_id;
+		  recursive_part->list_id = non_recursive_part->list_id;
+		  qfile_reopen_list_as_append_mode (thread_p, recursive_part->list_id);
+		}
+	    }
+	}
+
+      /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
+       * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
+       */
+      qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true);
+
+      if (save_recursive_list_id != NULL)
+	{
+	  /* restore recursive list_id */
+	  recursive_part->list_id = save_recursive_list_id;
+	}
+    }
+  /* copy list id from non-recursive part to CTE XASL (even if no tuples are in non recursive part) to get domain types
+   * into CTE xasl's main list (this also executes if we have a recursive part but no tuples in non recursive part
+   * (no results at all)
+   */
+  else if (qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true) != NO_ERROR)
+    {
+      QFILE_FREE_AND_INIT_LIST_ID (xasl->list_id);
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  xasl->status = XASL_SUCCESS;
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (save_recursive_list_id != NULL)
+    {
+      /* restore recursive list_id */
+      recursive_part->list_id = save_recursive_list_id;
+    }
+  xasl->status = XASL_FAILURE;
   return ER_FAILED;
 }
 
