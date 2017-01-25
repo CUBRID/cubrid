@@ -231,7 +231,12 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_SPLITS, "Num_btree_splits"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_MERGES, "Num_btree_merges"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_GET_STATS, "Num_btree_get_stats"),
-
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_COPY_LEAF_NOLATCH_SUCCESS, "Num_btree_copy_leaf_nolatch_success"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_COPY_LEAF_NOLATCH_FAILED, "Num_btree_copy_leaf_nolatch_fails"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_LEAF_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS,
+				  "Num_btree_acquire_tran_bcb_area_success"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_LEAF_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED,
+				  "Num_btree_acquire_tran_bcb_area_fails"),
   /* Execution statistics for the heap manager */
   /* TODO: Move this to heap section. TODO: count and timer. */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE, "Num_heap_stats_sync_bestspace"),
@@ -320,6 +325,11 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_REL_VACUUMS, "Num_heap_rel_vacuums"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_INSID_VACUUMS, "Num_heap_insid_vacuums"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_REMOVE_VACUUMS, "Num_heap_remove_vacuums"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS, "Num_heap_copy_nolatch_success"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED, "Num_heap_copy_nolatch_fails"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS,
+				  "Num_heap_acquire_tran_bcb_area_success"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED, "Num_heap_acquire_tran_bcb_area_fails"),
 
   /* Track heap modify timers. */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_INSERT_PREPARE, "Time_heap_insert_prepare"),

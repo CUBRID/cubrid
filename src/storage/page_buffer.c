@@ -678,6 +678,7 @@ static PGBUF_BUFFER_POOL pgbuf_Pool;	/* The buffer Pool */
 static PGBUF_BATCH_FLUSH_HELPER pgbuf_Flush_helper;
 
 HFID *pgbuf_ordered_null_hfid = NULL;
+bool pgbuf_copy_logging = false;
 
 #if defined(CUBRID_DEBUG)
 /* A buffer guard to detect over runs .. */
@@ -1072,6 +1073,7 @@ pgbuf_initialize (void)
 
   pgbuf_Pool.dirties_cnt = 0;
 
+  pgbuf_copy_logging = prm_get_bool_value (PRM_ID_PAGE_COPY_LOGGING);
   return NO_ERROR;
 
 error:
@@ -1440,12 +1442,20 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   return NO_ERROR;
 
 exit_on_error:
+
+  err = er_errid ();
+  if (err == NO_ERROR)
+    {
+      err = ER_FAILED;
+    }
+
+  pgbuf_copy_log ("pgbuf_copy_page: error %d, can't copy the page (%d, %d) \n", err, vpid->volid, vpid->pageid);
   if (src_bufptr)
     {
       pthread_mutex_unlock (&src_bufptr->BCB_mutex);
     }
 
-  return ((err = er_errid ()) == NO_ERROR) ? ER_FAILED : err;
+  return err;
 }
 #endif
 

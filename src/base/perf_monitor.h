@@ -343,6 +343,16 @@ typedef enum
   PSTAT_BT_NUM_MERGES,
   PSTAT_BT_NUM_GET_STATS,
 
+  /* B-tree copy page without latch. */
+  /* total successfully copied btree leaf pages without latch */
+  PSTAT_BT_NUM_COPY_LEAF_NOLATCH_SUCCESS,
+  /* total failed to copy btree leaf page without latch */
+  PSTAT_BT_NUM_COPY_LEAF_NOLATCH_FAILED,
+  /* total successfully acquired bcb area to copy btree leaf page */
+  PSTAT_BT_LEAF_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS,
+  /* total failed to acquire bcb area to copy btree leaf page */
+  PSTAT_BT_LEAF_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED,
+
   /* Execution statistics for the heap manager */
   PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE,
 
@@ -428,6 +438,15 @@ typedef enum
   PSTAT_HEAP_REL_VACUUMS,
   PSTAT_HEAP_INSID_VACUUMS,
   PSTAT_HEAP_REMOVE_VACUUMS,
+  /* Heap copy page without latch. */
+  /* total successfully copied heap pages without latch */
+  PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS,
+  /* total failed to copy heap page without latch */
+  PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED,
+  /* total successfully acquired bcb area to copy heap page */
+  PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS,
+  /* total failed to acquire bcb area to copy heap page */
+  PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED,
 
   /* Track heap modify timers. */
   PSTAT_HEAP_INSERT_PREPARE,

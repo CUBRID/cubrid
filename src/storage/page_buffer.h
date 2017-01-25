@@ -179,6 +179,8 @@ extern const VPID vpid_Null_vpid;
 #define PGBUF_IS_ORDERED_PAGETYPE(ptype) \
   ((ptype) == PAGE_HEAP || (ptype) == PAGE_OVERFLOW)
 
+extern bool pgbuf_copy_logging;
+#define pgbuf_copy_log(...) if (pgbuf_copy_logging) _er_log_debug (ARG_FILE_LINE, "PGBUF_COPY: " __VA_ARGS__)
 
 typedef enum
 {

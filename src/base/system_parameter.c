@@ -127,6 +127,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_READ_WITHOUT_LATCH "page_read_without_latch"
 
+#define  PRM_NAME_PAGE_COPY_LOGGING "page_copy_logging"
+
 #define PRM_NAME_PB_BUFFER_FLUSH_RATIO "data_buffer_flush_ratio"
 
 #define PRM_NAME_HF_UNFILL_FACTOR "unfill_factor"
@@ -897,7 +899,11 @@ static unsigned int prm_pb_nbuffers_flag = 0;
 
 bool PRM_PAGE_READ_WITHOUT_LATCH = true;
 static bool prm_page_read_without_latch_default = true;
-static bool prm_page_read_without_latch = 0;
+static bool prm_page_read_without_latch_flag = 0;
+
+bool PRM_PAGE_COPY_LOGGING = false;
+static bool prm_page_copy_logging_default = false;
+static bool prm_page_copy_logging_flag = 0;
 
 float PRM_PB_BUFFER_FLUSH_RATIO = 0.01f;
 static float prm_pb_buffer_flush_ratio_default = 0.01f;
@@ -2270,9 +2276,20 @@ static SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_PAGE_READ_WITHOUT_LATCH,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
-   (void *) &prm_page_read_without_latch,
+   (void *) &prm_page_read_without_latch_flag,
    (void *) &prm_page_read_without_latch_default,
    (void *) &PRM_PAGE_READ_WITHOUT_LATCH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PAGE_COPY_LOGGING,
+   PRM_NAME_PAGE_COPY_LOGGING,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   (void *) &prm_page_copy_logging_flag,
+   (void *) &prm_page_copy_logging_default,
+   (void *) &PRM_PAGE_COPY_LOGGING,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
