@@ -8609,6 +8609,7 @@ retry:
       if (bufptr != NULL)
         {
           perfmon_add_stat (thread_p, PSTAT_PB_ALLOC_BCB_LOOPS, loop_count);
+          PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat);
           if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
 	    {
 	      assert (false);

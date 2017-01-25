@@ -338,7 +338,9 @@ define pgbuf_lru_print_victim_status
   end
   
 define pgbuf_print_alloc_bcb_waits
+
   set $i = 0
+  
   printf "Direct victim array: \n"
   while $i < thread_Manager.num_total
     if pgbuf_Pool.direct_victims.bcb_victims[$i] != 0
@@ -347,8 +349,9 @@ define pgbuf_print_alloc_bcb_waits
     set $i = $i + 1
     end
   printf "\n"
-  printf "waiter_threads_latch_with_waiters: "
-  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters
+
+  printf "waiter_threads_high_priority: "
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
   set $i = $lfcq->consume_cursor
   set $thrar = (THREAD_ENTRY **) $lfcq->data
   printf "%d \n", $lfcq->produce_cursor - $i
@@ -357,18 +360,9 @@ define pgbuf_print_alloc_bcb_waits
     set $i = $i + 1
     end
   printf "\n"
-  printf "waiter_threads_latch_without_waiters: "
-  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters
-  set $i = $lfcq->consume_cursor
-  set $thrar = (THREAD_ENTRY **) $lfcq->data
-  printf "%d \n", $lfcq->produce_cursor - $i
-  while $i < $lfcq->produce_cursor
-    printf "%d ", $thrar[$i % $lfcq->capacity]->index
-    set $i = $i + 1
-    end
-  printf "\n"
-  printf "waiter_threads_latch_none: "
-  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_latch_none
+
+  printf "waiter_threads_low_priority: "
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
   set $i = $lfcq->consume_cursor
   set $thrar = (THREAD_ENTRY **) $lfcq->data
   printf "%d \n", $lfcq->produce_cursor - $i
@@ -382,46 +376,37 @@ define pgbuf_print_alloc_bcb_waits
 define pgbuf_find_alloc_bcb_wait_thread
   printf "bcb = %p \n", pgbuf_Pool.direct_victims.bcb_victims[$arg0]
   
-  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_latch_with_waiters
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
   set $i = $lfcq->consume_cursor
   set $thrar = (THREAD_ENTRY **) $lfcq->data
   set $found = 0
+  set $dist = 0
   while $i < $lfcq->produce_cursor
     if $thrar[$i % $lfcq->capacity]->index == $arg0
-      printf "waiter_threads_latch_with_waiters, cursor = %d, thread_p = %p \n", $i, $thrar[$i % $lfcq->capacity]
+      printf "waiter_threads_high_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
       set $found = 1
       loop_break
       end
     set $i = $i + 1
+    set $dist = $dist + 1
     end
+
   if !$found
-    set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_latch_without_waiters
+    set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
     set $i = $lfcq->consume_cursor
     set $thrar = (THREAD_ENTRY **) $lfcq->data
     set $found = 0
     while $i < $lfcq->produce_cursor
       if $thrar[$i % $lfcq->capacity]->index == $arg0
-        printf "waiter_threads_latch_without_waiters, cursor = %d, thread_p = %p \n", $i, $thrar[$i % $lfcq->capacity]
+        printf "waiter_threads_low_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
         set $found = 1
         loop_break
         end
       set $i = $i + 1
+      set $dist = $dist + 1
       end
     end
-  if !$found
-    set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_latch_none
-    set $i = $lfcq->consume_cursor
-    set $thrar = (THREAD_ENTRY **) $lfcq->data
-    set $found = 0
-    while $i < $lfcq->produce_cursor
-      if $thrar[$i % $lfcq->capacity]->index == $arg0
-        printf "waiter_threads_latch_none, cursor = %d, thread_p = %p \n", $i, $thrar[$i % $lfcq->capacity]
-        set $found = 1
-        loop_break
-        end
-      set $i = $i + 1
-      end
-    end
+
   if !$found
     printf "not found \n"
     end
