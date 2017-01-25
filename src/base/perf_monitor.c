@@ -204,7 +204,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER,
                                   "Num_flush_direct_victim_no_waiter_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_SEND_FOR_DIRECT_VICTIM, "Num_flushed_page_send_for_direct_victim"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_MARK_FLUSHED, "Num_flashed_page_marked_as_flushed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_MARK_FLUSHED, "Num_flushed_page_marked_as_flushed"),
   /* successful searches */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS, "Num_victim_shared_lru_success"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS, "Num_victim_own_private_lru_success"),

@@ -3468,7 +3468,6 @@ thread_page_buffer_maintenance_thread (void *arg_p)
       gettimeofday (&cur_time, NULL);
 
       (void) ATOMIC_TAS_32 (&thread_Page_maintenance_thread.nrequestors, 0);
-      pgbuf_assign_flushed_pages (tsd_ptr);
       pgbuf_adjust_quotas (tsd_ptr, &cur_time);
       
 
@@ -3585,6 +3584,7 @@ thread_page_post_flush_thread (void *arg_p)
 
       thread_sleep (0);
       
+#if 0
       if (thread_Page_post_flush_thread.nrequestors == 0)
         {
           rv = pthread_mutex_lock (&thread_Page_post_flush_thread.lock);
@@ -3595,6 +3595,7 @@ thread_page_post_flush_thread (void *arg_p)
 
           pthread_mutex_unlock (&thread_Page_post_flush_thread.lock);
         }
+#endif
 
       if (tsd_ptr->shutdown)
 	{
