@@ -1141,17 +1141,19 @@ parser_copy_tree (PARSER_CONTEXT * parser, const PT_NODE * tree)
   if (tree)
     {
       PT_NODE *temp, *save;
-      PT_TREE_COPY_INFO tree_copy_info = {.cte_structures_list = NULL };
+      PT_TREE_COPY_INFO tree_copy_info;
+
+      tree_copy_info.cte_structures_list = NULL;
 
       temp = (PT_NODE *) tree;
       save = temp->next;
       temp->next = NULL;
-      copy =
-	parser_walk_tree (parser, temp, copy_node_in_tree_pre, &tree_copy_info, copy_node_in_tree_post,
-			  &tree_copy_info);
+      copy = parser_walk_tree (parser, temp, copy_node_in_tree_pre, &tree_copy_info, copy_node_in_tree_post,
+			       &tree_copy_info);
       temp->next = save;
       pt_clean_tree_copy_info (&tree_copy_info);
     }
+
   return copy;
 }
 
@@ -1163,17 +1165,16 @@ parser_copy_tree (PARSER_CONTEXT * parser, const PT_NODE * tree)
  *   parser(in):
  *   tree(in):
  */
-
 PT_NODE *
 parser_copy_tree_list (PARSER_CONTEXT * parser, PT_NODE * tree)
 {
   if (tree)
     {
-      PT_TREE_COPY_INFO tree_copy_info = {.cte_structures_list = NULL };
+      PT_TREE_COPY_INFO tree_copy_info;
 
-      tree =
-	parser_walk_tree (parser, tree, copy_node_in_tree_pre, &tree_copy_info, copy_node_in_tree_post,
-			  &tree_copy_info);
+      tree_copy_info.cte_structures_list = NULL;
+      tree = parser_walk_tree (parser, tree, copy_node_in_tree_pre, &tree_copy_info, copy_node_in_tree_post,
+			       &tree_copy_info);
       pt_clean_tree_copy_info (&tree_copy_info);
     }
 
