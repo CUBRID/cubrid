@@ -8503,7 +8503,9 @@ retry:
   to.tv_sec = (int) time (NULL) + 10 /* todo: use PGBUF_TIMEOUT */;
   to.tv_nsec = 0;
 
+#if 0
   thread_lock_entry (thread_p);
+#endif
   
   /* push to waiter thread list */
   if (prioritize_vacuum || has_waiters_on_fixed)
