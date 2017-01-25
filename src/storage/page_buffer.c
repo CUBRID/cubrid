@@ -8506,6 +8506,12 @@ retry:
 #if 0
   thread_lock_entry (thread_p);
 #endif
+
+  if (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] != NULL)
+    {
+      /* logic error */
+      ABORT_RELEASE ();
+    }
   
   /* push to waiter thread list */
   if (prioritize_vacuum || has_waiters_on_fixed)
@@ -8597,11 +8603,6 @@ retry:
     }
 #else
   /* spin until a bcb is received */
-  if (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] != NULL)
-    {
-      /* logic error */
-      ABORT_RELEASE ();
-    }
   for (loop_count = 0; loop_count < INT_MAX; loop_count++)
     {
       bufptr = pgbuf_get_direct_victim (thread_p);
