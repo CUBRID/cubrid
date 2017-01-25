@@ -3891,7 +3891,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       log_recovery_finish_postpone (thread_p, tdes);
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
     }
-  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID; trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
+  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID; trid <= LOG_VACUUM_MASTER_TRANID; trid++)
     {
       /* Convert thread to vacuum worker */
       worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
