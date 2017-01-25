@@ -14432,6 +14432,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
   if (diff_usec < 1000LL)
     {
       /* less than 1 msec. stop */
+      quota->is_adjusting = 0;
       return;
     }
 
@@ -14614,6 +14615,13 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
       lru_list = PGBUF_GET_LRU_LIST (i);
       lru_list->threshold_lru1 = shared_threshold_lru1;
       lru_list->threshold_lru2 = shared_threshold_lru2;
+
+      if (PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD (lru_list))
+        {
+          pthread_mutex_lock (&lru_list->LRU_mutex);
+          pgbuf_lru_adjust_zones (thread_p, lru_list, i, false);
+          pthread_mutex_unlock (&lru_list->LRU_mutex);
+        }
 
       if (lru_list->count_vict_cand > 0)
         {
