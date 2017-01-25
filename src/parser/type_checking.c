@@ -7336,13 +7336,24 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_NODE *derived_table;
 
 	      derived_table = from->info.spec.derived_table;
-	      if (derived_table && derived_table->node_type == PT_VALUE)
+	      if (PT_IS_FALSE_WHERE_VALUE (derived_table))
 		{
-		  if (derived_table->type_enum == PT_TYPE_NULL
-		      || (derived_table->type_enum == PT_TYPE_SET
-			  && (derived_table->info.value.data_value.set == NULL)))
+		  return true;
+		}
+	    }
+	  else if (PT_SPEC_IS_CTE (from))
+	    {
+	      PT_NODE *cte = from->info.spec.cte_pointer;
+	      PT_NODE *cte_non_recursive;
+
+	      CAST_POINTER_TO_NODE (cte);
+
+	      if (cte)
+		{
+		  cte_non_recursive = cte->info.cte.non_recursive_part;
+
+		  if (PT_IS_FALSE_WHERE_VALUE (cte_non_recursive))
 		    {
-		      /* derived table is '(null)' or 'table(set{})' */
 		      return true;
 		    }
 		}
@@ -19964,7 +19975,6 @@ end:
 
       if (result != expr)
 	{
-#if 0
 	  if (alias_print == NULL || (PT_IS_VALUE_NODE (result) && !result->info.value.text))
 	    {
 	      /* print expr to alias_print */
@@ -19987,7 +19997,6 @@ end:
 	    {
 	      result->info.value.is_collate_allowed = true;
 	    }
-#endif
 	  parser_free_tree (parser, expr);
 	}
 
