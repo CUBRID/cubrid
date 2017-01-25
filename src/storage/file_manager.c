@@ -631,6 +631,9 @@ STATIC_INLINE void file_log_extdata_set_next (THREAD_ENTRY * thread_p,
 STATIC_INLINE void file_extdata_update_item (THREAD_ENTRY * thread_p, PAGE_PTR page_extdata, const void *item_newval,
 					     int index_item, FILE_EXTENSIBLE_DATA * extdata)
   __attribute__ ((ALWAYS_INLINE));
+static int file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count);
+static int file_extdata_add_item_count (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+					void *args);
 
 /************************************************************************/
 /* Partially allocated sectors section                                  */
@@ -791,10 +794,6 @@ static int file_tracker_item_dump_btree_capacity (THREAD_ENTRY * thread_p, PAGE_
 static int file_tracker_item_check (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 				    int index_item, bool * stop, void *args);
 #endif /* SA_MODE */
-
-static int file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count);
-static int file_extdata_add_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, bool * stop,
-					void *args);
 
 /************************************************************************/
 /* End of static functions                                              */
@@ -2623,6 +2622,40 @@ exit:
       pgbuf_unfix (thread_p, page_crt);
     }
   return error_code;
+}
+
+/*
+ * file_extdata_all_item_count () - count items in all extensible data pages.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * extdata (in)  : extensible data
+ * count (out)   : output total count of items
+ */
+static int
+file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count)
+{
+
+  return file_extdata_apply_funcs (thread_p, extdata, file_extdata_add_item_count, count, NULL, NULL, false, NULL,
+				   NULL);
+
+}
+
+/*
+ * file_extdata_add_item_count () - FILE_EXTDATA_FUNC to count extensible data items.
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * extdata (in)  : extensible data
+ * stop (in)     : ignored
+ * args (in)     : pointer to total count of items
+ */
+static int
+file_extdata_add_item_count (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
+{
+  (*((int *) args)) += file_extdata_item_count (extdata);
+
+  return NO_ERROR;
 }
 
 /************************************************************************/
@@ -10629,27 +10662,6 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp)
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
-
-static int
-file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count)
-{
-
-  return file_extdata_apply_funcs (thread_p, extdata, file_extdata_add_item_count, count, NULL, NULL, false, NULL,
-				   NULL);
-
-}
-
-
-static int
-file_extdata_add_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
-{
-
-  (*((int *) args)) += file_extdata_item_count (extdata);
-
-  return NO_ERROR;
-
-}
-
 
 /************************************************************************/
 /* End of file                                                          */
