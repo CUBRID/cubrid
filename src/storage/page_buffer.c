@@ -1376,7 +1376,7 @@ static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
 static bool pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error);
 #if defined (SERVER_MODE)
-static bool pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p, bool * has_fixed_pages);
+static bool pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
 static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int *flushed_pages);
 static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
@@ -12015,7 +12015,6 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
  * return	       : true if the threads has any fixed pages and other
  *			 threads are waiting on any of them.
  * thread_p (in)       : Thread entry.
- *
  */
 static bool
 pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p)
