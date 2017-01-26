@@ -499,7 +499,10 @@ extern void pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_t
 extern bool pgbuf_keep_victim_flush_thread_active (void);
 
 #if defined (SERVER_MODE)
-void pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
+extern void pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
 #endif /* !SERVER_MODE */
+
+extern void pgbuf_set_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page);
+extern void pgbuf_clear_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
 #endif /* _PAGE_BUFFER_H_ */

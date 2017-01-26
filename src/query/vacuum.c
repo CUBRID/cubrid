@@ -6247,6 +6247,9 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
       return false;
     }
 
+  /* todo: vacuum never boosts pages. if we ever have dropped files, these pages will always be victimized and loaded
+   *       back. if aout is disabled, there is no way around it. think about a solution. */
+
   assert_release (!VPID_ISNULL (&vacuum_Dropped_files_vpid));
 
   /* Search for dropped file in all pages. */

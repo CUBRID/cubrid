@@ -26257,6 +26257,15 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   assert (restart != NULL);
   assert (insert_helper != NULL);
 
+#if defined (SERVER_MODE)
+  if (LOG_ISRESTARTED ()
+      && (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT || insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID))
+    {
+      /* vacuum will probably follow same path */
+      pgbuf_set_to_vacuum (thread_p, *crt_page);
+    }
+#endif /* SERVER_MODE */
+
   /* Get informations on current node. */
   /* Node header. */
   node_header = btree_get_node_header (*crt_page);

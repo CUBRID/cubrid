@@ -234,13 +234,16 @@ typedef enum
 #define PGBUF_BCB_VICTIM_DIRECT_FLAG        ((int) 0x20000000)
 /* flag for unlatch bcb to move it to the bottom of lru when fix count is 0. usually set when page is deallocated */
 #define PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG   ((int) 0x10000000)
+/* flag for pages that should be vacuumed. */
+#define PGBUF_BCB_TO_VACUUM_FLAG            ((int) 0x08000000)
 
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK     \
   (PGBUF_BCB_DIRTY_FLAG \
    | PGBUF_BCB_FLUSHING_TO_DISK_FLAG \
    | PGBUF_BCB_VICTIM_DIRECT_FLAG \
-   | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG)
+   | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG \
+   | PGBUF_BCB_TO_VACUUM_FLAG)
 
 /* add flags that invalidate a victim candidate here */
 /* 1. dirty bcb's cannot be victimized.
@@ -828,6 +831,11 @@ struct pgbuf_page_monitor
 
   PGBUF_MONITOR_BCB_MUTEX *thread_bcb_mutex;
 #endif /* SERVER_MODE */
+
+  int count_victims;
+  int count_victims_to_vacuum;
+  int count_lru3;
+  int count_lru3_to_vacuum;
 
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
   int *lru_relocated_destroyed_pages;	/* Count of BCBs relocated after file destroy of each LRU */
@@ -2613,6 +2621,11 @@ try_again:
 	}
     }
 
+  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+    {
+      pgbuf_bcb_update_flags (bufptr, 0, PGBUF_BCB_TO_VACUUM_FLAG);
+    }
+
 #if defined(PAGE_STATISTICS)
 #if !defined(NDEBUG)
   pgbuf_add_fixed_source_stat (thread_p, caller_file, caller_line, perf_page_found, pgptr);
@@ -3800,6 +3813,8 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
   node1 = (PGBUF_VICTIM_CANDIDATE_LIST *) p1;
   node2 = (PGBUF_VICTIM_CANDIDATE_LIST *) p2;
 
+  /* order by vpid only */
+#if 0
   if (node1 == node2)
     {
       return 0;
@@ -3810,6 +3825,7 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
     {
       return diff;
     }
+#endif
 
   diff = node1->vpid.volid - node2->vpid.volid;
   if (diff != 0)
@@ -3843,6 +3859,8 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   int cand_found_in_this_lru;
   int check_count_this_lru;
   float victim_flush_priority_this_lru;
+  
+  bool skip_to_vacuum = pgbuf_Pool.monitor.count_lru3 - pgbuf_Pool.monitor.count_lru3_to_vacuum > check_count;
 
   PERF_UTIME_TRACKER time_tracker_all_lru = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_one_lru;
@@ -3945,6 +3963,11 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
         {
           if (bufptr->fcnt == 0 && pgbuf_bcb_is_dirty (bufptr))
             {
+              if (skip_to_vacuum && pgbuf_bcb_is_to_vacuum (bufptr))
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_SKIP_TO_VACUUM);
+                  continue;
+                }
               /* save victim candidate information temporarily. */
               victim_cand_list[victim_cand_count].bufptr = bufptr;
               victim_cand_list[victim_cand_count].vpid = bufptr->vpid;
@@ -8441,6 +8464,7 @@ retry:
     || (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && vacuum_has_lag ()) /* check vacuum lag */;
 #endif
 
+#if 0
   if (!prioritize_vacuum)
     {
       has_waiters_on_fixed = pgbuf_has_waiters_on_fixed (thread_p, &has_fixed_pages);
@@ -8464,6 +8488,8 @@ retry:
           penalize = thread_waits * overall_searches < thread_searches * overall_waits;
         }
     }
+  /* we should penalize transactions not threads. this is not going to work */
+#endif
 #endif /* SERVER_MODE */
 
   bufptr = pgbuf_get_victim (thread_p, penalize, NULL);
@@ -9303,6 +9329,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   PGBUF_LRU_LIST *lru_list;
   PGBUF_BCB *bufptr_victimizable = NULL;
   PGBUF_BCB *bufptr_start = NULL;
+  int rv;
 
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
 
@@ -9353,41 +9380,109 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_HINT_BOTTOM);
     }
 
-  for (bufptr = bufptr_start; bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr); bufptr = bufptr->prev_BCB)
+  for (bufptr = bufptr_start; bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr);
+       bufptr = bufptr->prev_BCB, search_cnt++)
     {
+      /* must not be dirty */
       if (pgbuf_bcb_is_dirty (bufptr))
 	{
 	  dirty_cnt++;
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-	  if (bufptr->is_flush_candidate == false)
-	    {
-	      int pos_in_lru;
-
-	      pos_in_lru = pgbuf_Pool.victim_candidates_count_lru[lru_idx];
-
-	      if (pos_in_lru < MAX_FLUSH_BCBS_LRU)
-		{
-		  pgbuf_Pool.victim_candidates_bcbs_per_lru[FLUSH_ARRAY_POSITION (lru_idx, pos_in_lru)] = bufptr;
-		  /* the flush thread may reset the actual position to zero, we hold the mutex and we are the only ones
-		   * which increments the position; if actual position is zero, the current BCB pointer is simply lost
-		   * by flush list */
-		  ATOMIC_CAS_32 (&pgbuf_Pool.victim_candidates_count_lru[lru_idx], pos_in_lru, pos_in_lru + 1);
-		  if (pgbuf_Pool.victim_candidates_count_lru[lru_idx] == pos_in_lru + 1)
-		    {
-		      bufptr->is_flush_candidate = true;
-		    }
-		}
-	    }
-#endif
+          continue;
 	}
-      else if (pgbuf_bcb_avoid_victim (bufptr))
+
+      /* must not be any other case that invalidates a victim: is flushing, direct victim */
+      if (pgbuf_bcb_avoid_victim (bufptr))
         {
           /* this bcb is not valid for victimization */
+          continue;
         }
-      else if (bufptr->fcnt != 0 || bufptr->latch_mode != PGBUF_NO_LATCH
-                || pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
+
+      /* must not be fixed */
+      if (bufptr->fcnt != 0 || bufptr->latch_mode != PGBUF_NO_LATCH
+          || pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
 	{
-	  /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
+          /* this bcb cannot be used now, but it is a valid victim candidate. maybe we should update victim hint */
+	  if (bufptr_victimizable == NULL)
+	    {
+	      bufptr_victimizable = bufptr;
+
+              /* update hint if this is not bufptr_start and hint has not changed in the meantime. */
+              if (bufptr != bufptr_start
+                  && ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable))
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
+                }
+	    }
+
+          /* todo: remove it. statistics show it does not help */
+          found_victim_cnt++;
+          if (found_victim_cnt >= lru_victim_cnt)
+            {
+              /* early out: probably we won't find others */
+              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_SKIP_VICTIM);
+              break;
+            }
+          continue;
+	}
+
+      /* avoid victimizing bcb's that are probably going to be vacuumed. due to the MVCC system (active workers leave
+       * their markings all over the place and vacuum has to come and clean after them), we may have to reload same cold
+       * pages from disk to be vacuumed. as long as we have enough victim candidates, try to avoid these bcb's. */
+      if (pgbuf_bcb_is_to_vacuum (bufptr)
+          && ((pgbuf_Pool.monitor.count_victims - pgbuf_Pool.monitor.count_victims_to_vacuum)
+              > thread_num_worker_threads ()))
+        {
+          /* don't victimize bcb's that will be vacuumed. */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INVALIDATE_CANDIDATE);
+          continue;
+        }
+      
+      /* a victim candidate. we need to lock its BCB, but since we have LRU mutex, we can only do it conditionally.
+       * chances are we'll get the mutex. */
+      PGBUF_TRYLOCK_BCB (bufptr, rv);
+      if (rv == 0)
+        {
+          if (pgbuf_is_bcb_victimizable (bufptr, true))
+            {
+              PGBUF_BCB *bcb_prev = bufptr->prev_BCB;
+              PGBUF_BCB *victim_hint = NULL;
+
+              if (bufptr_victimizable == NULL)
+                {
+                  /* try to update hint on next */
+                  victim_hint = bcb_prev != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_prev) ? bcb_prev : NULL;
+                  if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, victim_hint))
+                    {
+                      if (victim_hint == NULL)
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_NULL_HINT_WITH_VICTIM);
+                        }
+                      else
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT_WITH_VICTIM);
+                        }
+                    }
+                }
+
+              pgbuf_remove_from_lru_list (bufptr, lru_list);
+              pthread_mutex_unlock (&lru_list->LRU_mutex);
+
+              pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
+
+              perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
+              perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
+
+              return bufptr;
+            }
+          else
+            {
+              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_TRYLOCK_SUCCESS_NOT_VICT);
+              PGBUF_UNLOCK_BCB (bufptr);
+            }
+        }
+      else
+        {
+          /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
 	  if (bufptr_victimizable == NULL)
 	    {
 	      bufptr_victimizable = bufptr;
@@ -9405,77 +9500,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
               perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_SKIP_VICTIM);
               break;
             }
-	}
-      else
-	{
-          /* a victim candidate. we need to lock its BCB, but since we have LRU mutex, we can only do it
-            * conditionally. chances are we'll get the mutex. */
-          int rv;
-          PGBUF_TRYLOCK_BCB (bufptr, rv);
-          if (rv == 0)
-            {
-              if (pgbuf_is_bcb_victimizable (bufptr, true))
-                {
-                  PGBUF_BCB *bcb_prev = bufptr->prev_BCB;
-                  PGBUF_BCB *victim_hint = NULL;
-
-                  if (bufptr_victimizable == NULL)
-                    {
-                      /* try to update hint on next */
-                      victim_hint = bcb_prev != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_prev) ? bcb_prev : NULL;
-                      if (ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, victim_hint))
-                        {
-                          if (victim_hint == NULL)
-                            {
-                              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_NULL_HINT_WITH_VICTIM);
-                            }
-                          else
-                            {
-                              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT_WITH_VICTIM);
-                            }
-                        }
-                    }
-
-                  pgbuf_remove_from_lru_list (bufptr, lru_list);
-                  pthread_mutex_unlock (&lru_list->LRU_mutex);
-
-                  pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
-
-                  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
-                  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
-
-                  return bufptr;
-                }
-              else
-                {
-                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_TRYLOCK_SUCCESS_NOT_VICT);
-                  PGBUF_UNLOCK_BCB (bufptr);
-                }
-            }
-          else
-            {
-              /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
-	      if (bufptr_victimizable == NULL)
-	        {
-	          bufptr_victimizable = bufptr;
-                  /* try to replace victim if it was not already changed. */
-                  if (bufptr != bufptr_start
-                      && ATOMIC_CAS_ADDR (&lru_list->LRU_victim_hint, bufptr_start, bufptr_victimizable))
-                    {
-                      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
-                    }
-	        }
-              found_victim_cnt++;
-              if (found_victim_cnt >= lru_victim_cnt)
-                {
-                  /* early out: probably we won't find others */
-                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_SKIP_VICTIM);
-                  break;
-                }
-              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_TRYLOCK_FAILED);
-            }
-	}
-      search_cnt++;
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_TRYLOCK_FAILED);
+        }
     }
 
   perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_ZONE_2);
@@ -9903,7 +9929,8 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 #if defined (SERVER_MODE)
   /* can we assign this directly as victim? */
 
-  if (pgbuf_is_bcb_victimizable (bcb, false) && pgbuf_is_any_thread_waiting_for_direct_victim ())
+  if (pgbuf_is_bcb_victimizable (bcb, false) && !pgbuf_bcb_is_to_vacuum (bcb)
+      && pgbuf_is_any_thread_waiting_for_direct_victim ())
     {
       /* we first need mutex on bcb. however, we'd normally first get mutex on bcb and then on list. since we don't want
        * to over complicate things, just try a conditional lock on mutex. if it fails, we'll just give up assigning the
@@ -15876,6 +15903,8 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
             }
         }
     }
+
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims, 1);
 }
 
 /*
@@ -15895,6 +15924,7 @@ pgbuf_lru_remove_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
       /* we cannot remove an entry from lock-free circular queue easily. we just hope that this does not happen too
        * often. do nothing here. */
     }
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims, -1);
 
   /* now update the hint if it was same as this bcb. */
   if (bcb != lru_list->LRU_victim_hint)
@@ -15967,6 +15997,8 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
        * therefore we need to check if the bcb status regarding victimization is changed. */
       bool is_old_invalid_victim_candidate = old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK;
       bool is_new_invalid_victim_candidate = new_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK;
+      bool was_to_vacuum = old_flags & PGBUF_BCB_TO_VACUUM_FLAG;
+      bool is_to_vacuum = new_flags & PGBUF_BCB_TO_VACUUM_FLAG;
       PGBUF_LRU_LIST *lru_list;
 
       lru_list = pgbuf_lru_list_from_bcb (bcb);
@@ -15975,15 +16007,34 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
         {
           /* bcb has become a victim candidate */
           pgbuf_lru_add_victim_candidate (lru_list, bcb);
+
+          if (is_to_vacuum)
+            {
+              ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, 1);
+            }
         }
       else if (!is_old_invalid_victim_candidate && is_new_invalid_victim_candidate)
         {
           /* bcb is no longer a victim candidate */
           pgbuf_lru_remove_victim_candidate (lru_list, bcb);
+
+          if (was_to_vacuum)
+            {
+              ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, -1);
+            }
         }
       else
         {
           /* bcb status remains the same */
+        }
+
+      if (was_to_vacuum && !is_to_vacuum)
+        {
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, -1);
+        }
+      else if (is_to_vacuum && !was_to_vacuum)
+        {
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, 1);
         }
     }
 }
@@ -16071,11 +16122,19 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
           break;
         case PGBUF_LRU_3_ZONE:
           lru_list->count_lru3--;
-
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3, -1);
           if (is_valid_victim_candidate)
             {
               /* bcb was a valid victim and in the zone that could be victimized. update victim counter & hint */
               pgbuf_lru_remove_victim_candidate (lru_list, bcb);
+              if (old_flags & PGBUF_BCB_TO_VACUUM_FLAG)
+                {
+                  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, -1);
+                }
+            }
+          if (old_flags & PGBUF_BCB_TO_VACUUM_FLAG)
+            {
+              ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, -1);
             }
           break;
         default:
@@ -16101,9 +16160,18 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
           break;
         case PGBUF_LRU_3_ZONE:
           lru_list->count_lru3++;
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3, 1);
           if (is_valid_victim_candidate)
             {
               pgbuf_lru_add_victim_candidate (lru_list, bcb);
+              if (new_flags & PGBUF_BCB_TO_VACUUM_FLAG)
+                {
+                  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, 1);
+                }
+            }
+          if (new_flags & PGBUF_BCB_TO_VACUUM_FLAG)
+            {
+              ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, 1);
             }
           break;
         default:
@@ -16291,6 +16359,30 @@ STATIC_INLINE bool
 pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb)
 {
   return (bcb->flags & PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG) != 0;
+}
+
+void
+pgbuf_set_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page)
+{
+  PGBUF_BCB *bcb;
+
+  CAST_PGPTR_TO_BFPTR (bcb, page);
+  pgbuf_bcb_update_flags (bcb, PGBUF_BCB_TO_VACUUM_FLAG, 0);
+}
+
+void
+pgbuf_clear_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page)
+{
+  PGBUF_BCB *bcb;
+
+  CAST_PGPTR_TO_BFPTR (bcb, page);
+  pgbuf_bcb_update_flags (bcb, 0, PGBUF_BCB_TO_VACUUM_FLAG);
+}
+
+STATIC_INLINE bool
+pgbuf_bcb_is_to_vacuum (PGBUF_BCB * bcb)
+{
+  return (bcb->flags & PGBUF_BCB_TO_VACUUM_FLAG) != 0;
 }
 
 /*
