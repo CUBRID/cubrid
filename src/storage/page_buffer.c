@@ -9499,10 +9499,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
               perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
               perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
 
+#if defined (SERVER_MODE)
               if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority) >= 50)
                 {
                   pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bcb_prev);
                 }
+#endif /* SERVER_MODE */
 
               return bufptr;
             }
