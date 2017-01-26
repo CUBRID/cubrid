@@ -1278,6 +1278,8 @@ static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int ch
 						 float lru_sum_flush_priority);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p, bool penalize, PERF_UTIME_TRACKER * time_tracker);
 static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
+static void pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
+                                                        PGBUF_BCB * bcb_start)
 static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx);
 static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
 static int pgbuf_remove_private_from_aout_list (const int lru_idx);
@@ -1374,7 +1376,7 @@ static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
 static bool pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error);
 #if defined (SERVER_MODE)
-static bool pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool * has_fixed_pages);
+static bool pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p, bool * has_fixed_pages);
 #endif /* SERVER_MODE */
 static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int *flushed_pages);
 static void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx);
@@ -7156,7 +7158,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
                   if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
                     {
                       /* assigned victim directly */
-                      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM);
+                      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID);
 
                       /* add to AOUT */
                       pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, aout_list_id);
@@ -7220,19 +7222,30 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
               if (VACUUM_IS_THREAD_VACUUM (thread_p))
 		{
-                  /* do nothing */
-                  /* ... except collecting statistics */
                   if (zone == PGBUF_LRU_1_ZONE)
                     {
+                      /* do nothing */
+                      /* ... except collecting statistics */
                       perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_KEEP_VAC);
                     }
                   else if (zone == PGBUF_LRU_2_ZONE)
                     {
+                      /* do nothing */
+                      /* ... except collecting statistics */
                       perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_KEEP_VAC);
                     }
                   else
                     {
-                      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_THREE_KEEP_VAC);
+                      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr));
+                      if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
+                        {
+                          /* assigned victim directly */
+                          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU);
+                        }
+                      else
+                        {
+                          perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_THREE_KEEP_VAC);
+                        }
                     }
 		  break;
 		}
@@ -8438,8 +8451,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   bool penalize = false;
 
 #if defined (SERVER_MODE)
-  bool has_waiters_on_fixed = false;
-  bool has_fixed_pages = true;
+  bool has_priority = false;
   bool prioritize_vacuum = false;
   struct timespec to;
   int r = 0;
@@ -8548,7 +8560,8 @@ retry:
     }
   
   /* push to waiter thread list */
-  if (prioritize_vacuum || has_waiters_on_fixed)
+  has_priority = prioritize_vacuum || pgbuf_is_thread_high_priority (thread_p);
+  if (has_priority)
     {
       if (prioritize_vacuum)
         {
@@ -9486,6 +9499,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
               perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
               perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
 
+              if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority) >= 50)
+                {
+                  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bcb_prev);
+                }
+
               return bufptr;
             }
           else
@@ -9534,6 +9552,52 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   pthread_mutex_unlock (&lru_list->LRU_mutex);
   return NULL;
+}
+
+static void
+pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start)
+{
+  PGBUF_BCB *bcb;
+  int rv;
+
+  if (bcb_start == NULL)
+    {
+      return;
+    }
+
+  if (pgbuf_bcb_get_lru_index (bcb) != lru_list->index)
+    {
+      ABORT_RELEASE ();
+    }
+
+  /* panic victimization function */
+
+  for (bcb = bcb_start; bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0;
+       bcb = bcb->prev_BCB)
+    {
+      if (!pgbuf_is_bcb_victimizable (bcb, false))
+        {
+          continue;
+        }
+      PGBUF_TRYLOCK_BCB (bcb, rv);
+      if (rv != 0)
+        {
+          continue;
+        }
+      if (!pgbuf_is_bcb_victimizable (bcb, true))
+        {
+          PGBUF_UNLOCK_BCB (bcb);
+          continue;
+        }
+      if (pgbuf_assign_direct_victim (thread_p, bcb))
+        {
+          PGBUF_UNLOCK_BCB (bcb);
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
+          continue;
+        }
+      /* not assigned */
+      PGBUF_UNLOCK_BCB (bcb);
+    }
 }
 
 /*
@@ -11946,7 +12010,7 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
 
 #if defined (SERVER_MODE)
 /*
- * pgbuf_has_waiters_on_fixed () - 
+ * pgbuf_is_thread_high_priority () - 
  *
  * return	       : true if the threads has any fixed pages and other
  *			 threads are waiting on any of them.
@@ -11954,20 +12018,16 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
  *
  */
 static bool
-pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool * has_fixed_pages)
+pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p)
 {
   int thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
   int count = 0;
   PGBUF_HOLDER *holder = NULL;
 
-  *has_fixed_pages = false;
-
   if (pgbuf_Pool.thrd_holder_info[thrd_idx].num_hold_cnt == 0)
     {
       return false;
     }
-
-  *has_fixed_pages = true;
 
   for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
     {
@@ -11975,6 +12035,31 @@ pgbuf_has_waiters_on_fixed (THREAD_ENTRY * thread_p, bool * has_fixed_pages)
 	{
 	  return true;
 	}
+      if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_VOLHEADER)
+        {
+          /* has volume header */
+          return true;
+        }
+      if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_FTAB)
+        {
+          /* holds a file header page */
+          return true;
+        }
+      if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_BTREE
+          && btree_get_perf_btree_page_type (holder->bufptr->iopage_buffer->iopage.page) == PERF_PAGE_BTREE_ROOT)
+        {
+          /* holds b-tree root */
+          return true;
+        }
+      if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_HEAP)
+        {
+          PAGE_PTR page = holder->bufptr->iopage_buffer->iopage.page;
+          if (heap_is_page_file_header (page))
+            {
+              /* heap file header */
+              return true;
+            }
+        }
     }
   return false;
 }
