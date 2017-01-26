@@ -107,7 +107,7 @@ struct file_ovf_btree_des
   BTID btid;
 };
 
-/* Extendible Hash file descriptor */
+/* Extensible Hash file descriptor */
 typedef struct file_ehash_des FILE_EHASH_DES;
 struct file_ehash_des
 {
@@ -115,13 +115,11 @@ struct file_ehash_des
   int attr_id;
 };
 
-typedef struct file_tablespace FILE_TABLESPACE;
-struct file_tablespace
+/* Vacuum data file descriptor */
+typedef struct file_vacuum_data_des FILE_VACUUM_DATA_DES;
+struct file_vacuum_data_des
 {
-  INT64 initial_size;
-  float expand_ratio;
-  int expand_min_size;
-  int expand_max_size;
+  VPID vpid_first;
 };
 
 /* note: if you change file descriptors size, make sure to change disk compatibility version too! */
@@ -134,7 +132,18 @@ union file_descriptors
   FILE_BTREE_DES btree;
   FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
   FILE_EHASH_DES ehash;
+  FILE_VACUUM_DATA_DES vacuum_data;
   char dummy_align[FILE_DESCRIPTORS_SIZE];
+};
+
+/* FILE_TABLESPACE: defines the space usage and extensions for files */
+typedef struct file_tablespace FILE_TABLESPACE;
+struct file_tablespace
+{
+  INT64 initial_size;
+  float expand_ratio;
+  int expand_min_size;
+  int expand_max_size;
 };
 
 typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
