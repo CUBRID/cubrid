@@ -9492,12 +9492,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
                 }
 
               pgbuf_remove_from_lru_list (bufptr, lru_list);
-              pthread_mutex_unlock (&lru_list->LRU_mutex);
-
-              pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
-
-              perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
-              perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
 
 #if defined (SERVER_MODE)
               if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority) >= 50)
@@ -9505,6 +9499,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
                   pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bcb_prev);
                 }
 #endif /* SERVER_MODE */
+              pthread_mutex_unlock (&lru_list->LRU_mutex);
+
+              pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
+
+              perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
+              perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
 
               return bufptr;
             }
@@ -9559,7 +9559,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 static void
 pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start)
 {
-  PGBUF_BCB *bcb;
+  PGBUF_BCB *bcb = NULL;
   int rv;
 
   if (bcb_start == NULL)
@@ -9567,7 +9567,7 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
       return;
     }
 
-  if (pgbuf_bcb_get_lru_index (bcb) != lru_list->index)
+  if (pgbuf_bcb_get_lru_index (bcb_start) != lru_list->index)
     {
       ABORT_RELEASE ();
     }
@@ -9577,6 +9577,10 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
   for (bcb = bcb_start; bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0;
        bcb = bcb->prev_BCB)
     {
+      if (pgbuf_bcb_get_lru_index (bcb) != lru_list->index)
+        {
+          ABORT_RELEASE ();
+        }
       if (!pgbuf_is_bcb_victimizable (bcb, false))
         {
           continue;
