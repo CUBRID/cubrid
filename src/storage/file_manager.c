@@ -658,7 +658,6 @@ static int file_compare_vpids (const void *first, const void *second);
 static int file_compare_vfids (const void *first, const void *second);
 static int file_compare_track_items (const void *first, const void *second);
 
-static const char *file_type_to_string (FILE_TYPE fstruct_type);
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p);
 
 /************************************************************************/
@@ -2933,7 +2932,7 @@ file_compare_track_items (const void *first, const void *second)
  *   return: string of the file type
  *   fstruct_type(in): The type of the structure
  */
-static const char *
+const char *
 file_type_to_string (FILE_TYPE fstruct_type)
 {
   switch (fstruct_type)

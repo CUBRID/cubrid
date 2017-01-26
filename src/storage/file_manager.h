@@ -208,6 +208,8 @@ extern int file_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE
 extern int file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
 extern int file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 
+extern const char *file_type_to_string (FILE_TYPE fstruct_type);
+
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
