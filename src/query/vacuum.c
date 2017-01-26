@@ -1996,63 +1996,65 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
   error_code = heap_get_class_oid_from_page (thread_p, helper->home_page, &class_oid);
   if (error_code != NO_ERROR)
     {
-      /* we can have a problem with class being dropped (but not yet committed). */
-      ASSERT_ERROR ();
-      if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
+		     "VACUUM WARNING: Failed to obtain class_oid from heap page %d|%d.\n",
+		     pgbuf_get_volume_id (helper->home_page), pgbuf_get_page_id (helper->home_page));
+
+      assert_release (false);
+      return error_code;
+    }
+  assert (!OID_ISNULL (&class_oid));
+
+  /* Get HFID for class OID. */
+  error_code = heap_get_hfid_and_file_type_from_class_oid (thread_p, &class_oid, &helper->hfid, &ftype);
+  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+    {
+      FILE_DESCRIPTORS file_descriptor;
+
+      /* clear expected error */
+      er_clear ();
+      error_code = NO_ERROR;
+
+      error_code = file_descriptor_get (thread_p, vfid, &file_descriptor);
+      if (error_code != NO_ERROR)
 	{
-	  FILE_DESCRIPTORS file_descriptor;
-
-	  /* clear expected error */
-	  er_clear ();
-	  error_code = NO_ERROR;
-
-	  error_code = file_descriptor_get (thread_p, vfid, &file_descriptor);
+	  assert_release (false);
+	}
+      else
+	{
+	  helper->hfid = file_descriptor.heap.hfid;
+	  error_code = file_get_type (thread_p, vfid, &ftype);
 	  if (error_code != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
 	  else
 	    {
-	      helper->hfid = file_descriptor.heap.hfid;
-	      error_code = file_get_type (thread_p, vfid, &ftype);
-	      if (error_code != NO_ERROR)
-		{
-		  assert_release (false);
-		}
-	      else
-		{
-		  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_DROPPED_FILES,
-				 "VACUUM WARNING: vacuuming heap found deleted class oid, however hfid and file type "
-				 "have been successfully loaded from file header. \n");
-		}
+	      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_DROPPED_FILES,
+			     "VACUUM WARNING: vacuuming heap found deleted class oid, however hfid and file type "
+			     "have been successfully loaded from file header. \n");
 	    }
 	}
-      if (error_code != NO_ERROR)
-	{
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Failed to obtain class_oid from heap page %d|%d.\n",
-			 pgbuf_get_volume_id (helper->home_page), pgbuf_get_page_id (helper->home_page));
-
-	  assert_release (false);
-	  return error_code;
-	}
     }
-  else
+  if (error_code != NO_ERROR)
     {
-      assert (!OID_ISNULL (&class_oid));
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
+		     "VACUUM ERROR: Failed to obtain heap file identifier for class (%d, %d, %d)", class_oid.volid,
+		     class_oid.pageid, class_oid.slotid);
 
-      /* Get HFID for class OID. */
-      error_code = heap_get_hfid_and_file_type_from_class_oid (thread_p, &class_oid, &helper->hfid, &ftype);
-      if (error_code != NO_ERROR)
-	{
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "VACUUM ERROR: Failed to obtain heap file identifier for class (%d, %d, %d)", class_oid.volid,
-			 class_oid.pageid, class_oid.slotid);
-
-	  assert_release (false);
-	  return error_code;
-	}
+      assert_release (false);
+      return error_code;
     }
+  if (HFID_IS_NULL (&helper->hfid) || (ftype != FILE_HEAP && ftype != FILE_HEAP_REUSE_SLOTS))
+    {
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
+		     "VACUUM ERROR: Invalid hfid (%d, %d|%d) or ftype = %s \n", HFID_AS_ARGS (&helper->hfid),
+		     file_type_to_string (ftype));
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  /* reusable */
   helper->reusable = ftype == FILE_HEAP_REUSE_SLOTS;
 
   /* Success. */
