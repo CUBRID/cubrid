@@ -9559,8 +9559,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 static void
 pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start)
 {
+#if 0
   PGBUF_BCB *bcb = NULL;
   int rv;
+
+  /* statistics shows not useful */
+
 
   if (bcb_start == NULL)
     {
@@ -9585,26 +9589,27 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
         {
           continue;
         }
-      PGBUF_TRYLOCK_BCB (bcb, rv);
+      rv = pthread_mutex_trylock (&bcb->BCB_mutex);
       if (rv != 0)
         {
           continue;
         }
       if (!pgbuf_is_bcb_victimizable (bcb, true))
         {
-          PGBUF_UNLOCK_BCB (bcb);
+          pthread_mutex_unlock (&bcb->BCB_mutex);
           continue;
         }
       if (!pgbuf_assign_direct_victim (thread_p, bcb))
         {
           /* no more waiting threads */
-          PGBUF_UNLOCK_BCB (bcb);
+          pthread_mutex_unlock (&bcb->BCB_mutex);
           break;
         }
       /* assigned directly */
-      PGBUF_UNLOCK_BCB (bcb);
+      pthread_mutex_unlock (&bcb->BCB_mutex);
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
     }
+#endif
 }
 
 /*
