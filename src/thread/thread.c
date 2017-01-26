@@ -1129,7 +1129,6 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_next_wait = NULL;
 
   entry_p->check_interrupt = true;
-  entry_p->check_page_validation = true;
   entry_p->type = TT_WORKER;	/* init */
 
   entry_p->private_heap_id = db_create_private_heap ();
@@ -2380,42 +2379,6 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
     }
 
   return ret_val;
-}
-
-/*
- * thread_set_check_page_validation() -
- *   return:
- *   flag(in):
- */
-bool
-thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag)
-{
-  bool old_val = true;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  old_val = thread_p->check_page_validation;
-  thread_p->check_page_validation = flag;
-
-  return old_val;
-}
-
-/*
- * thread_get_check_page_validation() -
- *   return:
- */
-bool
-thread_get_check_page_validation (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  return thread_p->check_page_validation;
 }
 
 /*
@@ -5914,7 +5877,7 @@ extern int
 thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
-  const int num_cols = 27;
+  const int num_cols = 26;
   THREAD_ENTRY *thrd, *next_thrd;
   int i, idx, error = NO_ERROR;
   DB_VALUE *vals = NULL;
@@ -6110,10 +6073,6 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
 
       /* Check_interrupt */
       db_make_int (&vals[idx], thrd->check_interrupt);
-      idx++;
-
-      /* Check_page_validation */
-      db_make_int (&vals[idx], thrd->check_page_validation);
       idx++;
 
       /* Wait_for_latch_promote */

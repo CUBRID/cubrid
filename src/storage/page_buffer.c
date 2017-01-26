@@ -686,10 +686,6 @@ static PGBUF_PS_INFO ps_info;
     } \
   while (false)
 
-#if defined (SA_MODE)
-static bool pgbuf_SA_check_page_validation = true;
-#endif /* SA_MODE */
-
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
 static INLINE bool pgbuf_is_temporary_volume (VOLID volid) __attribute__ ((ALWAYS_INLINE));
@@ -856,10 +852,6 @@ static int pgbuf_initialize_seq_flusher (PGBUF_SEQ_FLUSHER * seq_flusher, PGBUF_
 static const char *pgbuf_latch_mode_str (PGBUF_LATCH_MODE latch_mode);
 static const char *pgbuf_zone_str (PGBUF_ZONE zone);
 static const char *pgbuf_consistent_str (int consistent);
-
-STATIC_INLINE bool pgbuf_set_check_page_validation (THREAD_ENTRY * thread_p, bool check)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -1257,41 +1249,6 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fet
 #endif
 #endif
 
-#if !defined(NDEBUG)
-PAGE_PTR
-pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-				    PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition,
-				    const char *caller_file, int caller_line)
-{
-  PAGE_PTR pgptr;
-  bool old_check_page_validation, rv;
-
-  old_check_page_validation = pgbuf_set_check_page_validation (thread_p, false);
-
-  pgptr = pgbuf_fix_debug (thread_p, vpid, fetch_mode, request_mode, condition, caller_file, caller_line);
-
-  rv = pgbuf_set_check_page_validation (thread_p, old_check_page_validation);
-
-  return pgptr;
-}
-#else /* NDEBUG */
-PAGE_PTR
-pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-				      PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition)
-{
-  PAGE_PTR pgptr;
-  bool old_check_page_validation, rv;
-
-  old_check_page_validation = pgbuf_set_check_page_validation (thread_p, false);
-
-  pgptr = pgbuf_fix_release (thread_p, vpid, fetch_mode, request_mode, condition);
-
-  rv = pgbuf_set_check_page_validation (thread_p, old_check_page_validation);
-
-  return pgptr;
-}
-#endif /* NDEBUG */
-
 /*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
@@ -1635,27 +1592,6 @@ try_again:
       return NULL;
     }
 
-  if ((fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_DEALLOCATED)
-      && bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
-    {
-      /* this page is not allocated. we allow it if the caller wants to initialize new page or if it specifies it wants
-       * to fix the deallocated page */
-      int severity = pgbuf_get_check_page_validation (thread_p) ? ER_ERROR_SEVERITY : ER_WARNING_SEVERITY;
-      assert (!pgbuf_get_check_page_validation (thread_p));
-      er_set (severity, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid, fileio_get_volume_label (vpid->volid, PEEK));
-
-      if (buf_lock_acquired)
-	{
-	  pgbuf_put_bcb_into_invalid_list (bufptr);
-	  (void) pgbuf_unlock_page (hash_anchor, vpid, true);
-	}
-      else
-	{
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
-	}
-      return NULL;
-    }
-
   if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
     {
       ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, 1);
@@ -1745,6 +1681,49 @@ try_again:
     {
       /* latch is obtained, no need for avoidance of dealloc */
       ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+    }
+
+  if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
+    {
+      /* deallocated page */
+      switch (fetch_mode)
+	{
+	case NEW_PAGE:
+	case OLD_PAGE_DEALLOCATED:
+	case OLD_PAGE_IF_EXISTS:
+	  /* fixing deallocated page is expected. fall through to return it. */
+	  break;
+	case OLD_PAGE:
+	case OLD_PAGE_PREVENT_DEALLOC:
+	default:
+	  /* caller does not expect any deallocated pages. this is an invalid page. */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+		  fileio_get_volume_label (vpid->volid, PEEK));
+	  /* fall through to unfix */
+	  pgbuf_unfix (thread_p, pgptr);
+	  return NULL;
+	case OLD_PAGE_MAYBE_DEALLOCATED:
+	  /* OLD_PAGE_MAYBE_DEALLOCATED is called when deallocated page may be fixed. The caller wants the page only if
+	   * it is not deallocated. However, if it is deallocated, no error is required. */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+		  fileio_get_volume_label (vpid->volid, PEEK));
+	  /* fall through to unfix */
+	  pgbuf_unfix (thread_p, pgptr);
+	  return NULL;
+	}
+
+      /* note: maybe we could check this in an earlier stage, but would have been a lot more complicated. the only
+       *       interesting case here is OLD_PAGE_MAYBE_DEALLOCATED. However, even this is used in cases where the vast
+       *       majority of pages will not be deallocated! So in terms of performance, the loss is insignificant.
+       *       However, it is safer and easier to treat the case here, where we have latch to prevent concurrent
+       *       deallocations. */
+    }
+  else
+    {
+      /* this cannot be a new page or a deallocated page.
+       * note: temporary pages are not strictly handled in regard with their deallocation status. */
+      assert ((fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_DEALLOCATED) || pgbuf_is_lsa_temporary (pgptr));
     }
 
 #if !defined (NDEBUG)
@@ -8951,13 +8930,7 @@ STATIC_INLINE bool
 pgbuf_get_check_page_validation_level (THREAD_ENTRY * thread_p, int page_validation_level)
 {
 #if !defined(NDEBUG)
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >= page_validation_level)
-    {
-      if (pgbuf_get_check_page_validation (thread_p) == true)
-	{
-	  return true;
-	}
-    }
+  return prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >= page_validation_level;
 #endif
 
   return false;
@@ -12045,7 +12018,7 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   VPID_COPY (&vpid_to_flush, (VPID *) rcv->data);
   page_to_flush =
-    pgbuf_fix_without_validation (thread_p, &vpid_to_flush, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+    pgbuf_fix (thread_p, &vpid_to_flush, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_to_flush == NULL)
     {
       /* Page no longer exist. */
@@ -12397,47 +12370,12 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * pgbuf_set_check_page_validation () - set check page validation
- *
- * return        : old check validation value
- * thread_p (in) : thread entry
- * check (in)    : new check validation value
- */
-STATIC_INLINE bool
-pgbuf_set_check_page_validation (THREAD_ENTRY * thread_p, bool check)
-{
-#if defined (SERVER_MODE)
-  return thread_set_check_page_validation (thread_p, check);
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-  bool save_check = pgbuf_SA_check_page_validation;
-  pgbuf_SA_check_page_validation = check;
-  return save_check;
-#endif /* SA_MODE */
-}
-
-/*
- * pgbuf_get_check_page_validation () - return check page validation
- *
- * return        : true/false
- * thread_p (in) : thread entry
- */
-STATIC_INLINE bool
-pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p)
-{
-#if defined (SERVER_MODE)
-  return thread_get_check_page_validation (thread_p);
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-  return pgbuf_SA_check_page_validation;
-#endif /* SA_MODE */
-}
-
-/*
  * pgbuf_fix_if_not_deallocated () - fix a page if it is not deallocated. the difference compared to regulat page fix
  *                                   finding deallocated pages is expected. if the page is indeed deallocated, it will
  *                                   not fix it
  *
  * return               : error code
- * thead_p (in)         : thread entry
+ * thread_p (in)        : thread entry
  * vpid (in)            : page identifier
  * latch_mode (in)      : latch mode
  * latch_condition (in) : latch condition
@@ -12446,7 +12384,7 @@ pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p)
  * caller_line (in)     : caller line
  */
 int
-pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid, PGBUF_LATCH_MODE latch_mode,
+pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * vpid, PGBUF_LATCH_MODE latch_mode,
 					  PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
 					  const char *caller_file, int caller_line)
 {
@@ -12457,7 +12395,7 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
   assert (page != NULL);
   *page = NULL;
 
-  isvalid = disk_is_page_sector_reserved (thead_p, vpid->volid, vpid->pageid);
+  isvalid = disk_is_page_sector_reserved (thread_p, vpid->volid, vpid->pageid);
   if (isvalid == DISK_INVALID)
     {
       /* deallocated */
@@ -12470,12 +12408,13 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * v
     }
   assert (isvalid == DISK_VALID);
 
-#if !defined (NDEBUG)
+  /* is reserved */
+#if defined (NDEBUG)
+  *page = pgbuf_fix_release (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition);
+#else /* !NDEBUG */
   *page =
-    pgbuf_fix_without_validation_debug (thead_p, vpid, OLD_PAGE, latch_mode, latch_condition, caller_file, caller_line);
-#else /* NDEBUG */
-  *page = pgbuf_fix_without_validation (thead_p, vpid, OLD_PAGE, latch_mode, latch_condition);
-#endif /* NDEBUG */
+    pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition, caller_file, caller_line);
+#endif /* !NDEBUG */
   if (*page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
