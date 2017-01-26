@@ -1279,7 +1279,7 @@ static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int ch
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p, bool penalize, PERF_UTIME_TRACKER * time_tracker);
 static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
 static void pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
-                                                        PGBUF_BCB * bcb_start)
+                                                        PGBUF_BCB * bcb_start);
 static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx);
 static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
 static int pgbuf_remove_private_from_aout_list (const int lru_idx);
