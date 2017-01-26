@@ -9595,14 +9595,15 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
           PGBUF_UNLOCK_BCB (bcb);
           continue;
         }
-      if (pgbuf_assign_direct_victim (thread_p, bcb))
+      if (!pgbuf_assign_direct_victim (thread_p, bcb))
         {
+          /* no more waiting threads */
           PGBUF_UNLOCK_BCB (bcb);
-          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
-          continue;
+          break;
         }
-      /* not assigned */
+      /* assigned directly */
       PGBUF_UNLOCK_BCB (bcb);
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
     }
 }
 
