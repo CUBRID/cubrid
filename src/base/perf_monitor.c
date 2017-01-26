@@ -182,7 +182,8 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_FLUSH_FLUSH_PER_PAGE, "flush_flush_per_page"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_FLUSH_COLLECT_ALL_LRU, "flush_collect_all_lru"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_FLUSH_COLLECT_ONE_LRU, "flush_collect_one_lru"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_COLLECT_SKIP_TO_VACUUM, "Num_flush_collect_skip_to_vacuum"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_COLLECT_TO_VACUUM_SKIP, "Num_flush_collect_skip_to_vacuum"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_COLLECT_TO_VACUUM_DONT_SKIP, "Num_flush_collect_dont_skip_to_vacuum"),
 
   /* allocate and victim assignments */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB, "alloc_bcb"),
@@ -197,11 +198,15 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM, "Num_victim_assign_direct_vacuum"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH, "Num_victim_assign_direct_flush"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST, "Num_victim_assign_direct_adjust_lru"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST_TO_VACUUM,
+                                  "Num_victim_assign_direct_adjust_lru_to_vacuum"),
   /* flushed direct assignments failures */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY, "Num_flush_direct_victim_dirty_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED, "Num_flush_direct_victim_fixed_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_WRONG_ZONE,
                                   "Num_flush_direct_victim_wrong_zone_failed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_TO_VACUUM,
+                                  "Num_flush_direct_victim_to_vacuum_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA,
                                   "Num_flush_direct_victim_prv_under_quota_failed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER,
@@ -251,6 +256,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_SKIP_TO_VACUUM, "Num_victim_lru_skip_to_vacuum"),
 
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_LRU_INVALIDATE_CANDIDATE, "Num_victim_lru_invalidate_candidate"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIMIZE_TO_VACUUM, "Num_victim_to_vacuum");
 
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_FLUSHED, "Num_data_page_flushed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_SKIPPED_FLUSH, "Num_data_page_skipped_flush"),

@@ -217,6 +217,9 @@ define pgbuf_lru_print
   set $dist_vh = -1
   set $dist_fv = -1
   set $dist = 0
+  set $cnt_tovac = 0
+  set $cnt_tovac_lru3 = 0
+  set $cnt_tovac_vc = 0
   
   while $bcb != 0
     if ($bcb->flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
@@ -227,12 +230,18 @@ define pgbuf_lru_print
       end
     if ($bcb->flags & PGBUF_ZONE_MASK) == PGBUF_LRU_3_ZONE
       set $cnt3 = $cnt3 + 1
-      if ($bcb->flags & 0xF0000000) == 0
+      if ($bcb->flags & 0xE0000000) == 0
         set $cntv = $cntv + 1
         if $first_victim == 0
           set $first_victim = $bcb
           set $dist_fv = $dist
           end
+        if ($bcb->flags & 0x08000000) != 0
+          set $cnt_tovac_vc = $cnt_tovac_vc + 1
+          end
+        end
+      if ($bcb->flags & 0x08000000) != 0
+        set $cnt_tovac_lru3 = $cnt_tovac_lru3 + 1
         end
       end
     if ($bcb->flags & 0x80000000) != 0
@@ -250,6 +259,9 @@ define pgbuf_lru_print
     if $bcb == $lru_list->LRU_victim_hint
       set $dist_vh = $dist
       end
+    if ($bcb->flags & 0x08000000) != 0
+      set $cnt_tovac = $cnt_tovac + 1
+    end
       
     set $bcb = $bcb->prev_BCB
     set $dist = $dist + 1
@@ -262,13 +274,14 @@ define pgbuf_lru_print
     printf "LRU private list %d: \n", $lru_idx
     printf "Total count:  %d; quota = %d \n", $cnt1 + $cnt2 + $cnt3, $lru_list->quota
     end
-  printf "Zone 1: %d (%d); threshold = %d \n", $cnt1, $lru_list->count_lru1, $lru_list->threshold_lru1
-  printf "Zone 2: %d (%d); threshold = %d \n", $cnt2, $lru_list->count_lru2, $lru_list->threshold_lru2
-  printf "Zone 3: %d (%d) \n", $cnt3, $lru_list->count_lru3
+  printf "Zone 1: %d (%d) - %d%%; threshold = %d \n", $cnt1, $lru_list->count_lru1, $cnt1 * 100 / ($cnt1 + $cnt2 + $cnt3), $lru_list->threshold_lru1
+  printf "Zone 2: %d (%d) - %d%%; threshold = %d \n", $cnt2, $lru_list->count_lru2, $cnt2 * 100 / ($cnt1 + $cnt2 + $cnt3), $lru_list->threshold_lru2
+  printf "Zone 3: %d (%d) - %d%% \n", $cnt3, $lru_list->count_lru3, $cnt3 * 100 / ($cnt1 + $cnt2 + $cnt3)
   printf "Victim count: %d (%d) \n", $cntv, $lru_list->count_vict_cand
   printf "First victim: %p, distance: %d \n", $first_victim, $dist_fv
   printf "Victim hint: %p, distance: %d \n", pgbuf_Pool.buf_LRU_list[$lru_idx]->LRU_victim_hint, $dist_vh
   printf "Dirties = %d, Flushing = %d, Direct victims = %d, Fixed = %d \n", $cntdrt, $cntisflsh, $cntdirv, $cntfix
+  printf "To vacuum = %d, in lru3 = %d, victim candidates = %d \n", $cnt_tovac, $cnt_tovac_lru3, $cnt_tovac_vc
   end
 
 define pgbuf_lru_print_victim_status

@@ -3964,10 +3964,17 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
         {
           if (bufptr->fcnt == 0 && pgbuf_bcb_is_dirty (bufptr))
             {
-              if (skip_to_vacuum && pgbuf_bcb_is_to_vacuum (bufptr))
+              if (pgbuf_bcb_is_to_vacuum (bufptr))
                 {
-                  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_SKIP_TO_VACUUM);
-                  continue;
+                  if (skip_to_vacuum)
+                    {
+                      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_TO_VACUUM_SKIP);
+                      continue;
+                    }
+                  else
+                    {
+                      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_TO_VACUUM_DONT_SKIP);
+                    }
                 }
               /* save victim candidate information temporarily. */
               victim_cand_list[victim_cand_count].bufptr = bufptr;
@@ -8721,6 +8728,12 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       return ER_FAILED;
     }
 
+  if (pgbuf_bcb_is_to_vacuum (bufptr))
+    {
+      pgbuf_bcb_update_flags (bufptr, 0, PGBUF_BCB_TO_VACUUM_FLAG);
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_TO_VACUUM);
+    }
+
   /* grant the request */
   bufptr->latch_mode = PGBUF_LATCH_VICTIM;
 
@@ -9930,36 +9943,43 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 #if defined (SERVER_MODE)
   /* can we assign this directly as victim? */
 
-  if (pgbuf_is_bcb_victimizable (bcb, false) && !pgbuf_bcb_is_to_vacuum (bcb)
-      && pgbuf_is_any_thread_waiting_for_direct_victim ())
+  if (pgbuf_is_bcb_victimizable (bcb, false) && pgbuf_is_any_thread_waiting_for_direct_victim ())
     {
-      /* we first need mutex on bcb. however, we'd normally first get mutex on bcb and then on list. since we don't want
-       * to over complicate things, just try a conditional lock on mutex. if it fails, we'll just give up assigning the
-       * bcb directly as victim */
-      int rv;
-      PGBUF_TRYLOCK_BCB (bcb, rv);
-      if (rv == 0)
+      if (pgbuf_bcb_is_to_vacuum (bcb))
         {
-          ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_success, 1);
-
-          if (pgbuf_is_bcb_victimizable (bcb, true) && pgbuf_assign_direct_victim (thread_p, bcb))
-            {
-              perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
-
-              /* since bcb is going to be removed from list and I have both lru and bcb mutex, why not do it now. */
-              pgbuf_remove_from_lru_list (bcb, lru_list);
-
-              PGBUF_UNLOCK_BCB (bcb);
-
-              pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
-              return;
-            }
-          /* not assigned. unlock bcb mutex and fall through */
-          PGBUF_UNLOCK_BCB (bcb);
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST_TO_VACUUM);
+          /* fall through */
         }
       else
         {
-          ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_fail, 1);
+          /* we first need mutex on bcb. however, we'd normally first get mutex on bcb and then on list. since we don't
+           * want to over complicate things, just try a conditional lock on mutex. if it fails, we'll just give up
+           * assigning the bcb directly as victim */
+          int rv;
+          PGBUF_TRYLOCK_BCB (bcb, rv);
+          if (rv == 0)
+            {
+              ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_success, 1);
+
+              if (pgbuf_is_bcb_victimizable (bcb, true) && pgbuf_assign_direct_victim (thread_p, bcb))
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
+
+                  /* since bcb is going to be removed from list and I have both lru and bcb mutex, why not do it now. */
+                  pgbuf_remove_from_lru_list (bcb, lru_list);
+
+                  PGBUF_UNLOCK_BCB (bcb);
+
+                  pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
+                  return;
+                }
+              /* not assigned. unlock bcb mutex and fall through */
+              PGBUF_UNLOCK_BCB (bcb);
+            }
+          else
+            {
+              ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_fail, 1);
+            }
         }
     }
   /* not assigned directly */
@@ -15690,6 +15710,11 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
           /* bcb is hot. don't assign it as victim */
           perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_WRONG_ZONE);
         }
+      else if (pgbuf_bcb_is_to_vacuum (bcb_flushed))
+        {
+          /* bcb will be accessed by vacuum */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_TO_VACUUM);
+        }
       else if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bcb_flushed))
                && !PGBUF_LRU_LIST_IS_OVER_QUOTA (pgbuf_lru_list_from_bcb (bcb_flushed)))
         {
@@ -16027,6 +16052,17 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
       else
         {
           /* bcb status remains the same */
+          if (!is_old_invalid_victim_candidate)
+            {
+              if (was_to_vacuum && !is_to_vacuum)
+                {
+                  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, -1);
+                }
+              else if (is_to_vacuum && !was_to_vacuum)
+                {
+                  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, 1);
+                }
+            }
         }
 
       if (was_to_vacuum && !is_to_vacuum)
@@ -16074,6 +16110,7 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
   int new_flags;
   int new_zone_idx = PGBUF_MAKE_ZONE (new_lru_idx, new_zone);
   bool is_valid_victim_candidate;
+  bool is_to_vacuum;
   PGBUF_LRU_LIST *lru_list;
 
   /* note: make sure the zones from and to are changing are blocked */
@@ -16101,6 +16138,7 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
   /* was bcb a valid victim candidate (we only consider flags, not fix counters or zone)? note that this is still true
    * after the change of zone. */
   is_valid_victim_candidate = (old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) == 0;
+  is_to_vacuum = (old_flags & PGBUF_BCB_TO_VACUUM_FLAG) != 0;
 
   if (old_flags & PGBUF_LRU_ZONE_MASK)
     {
@@ -16128,12 +16166,12 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
             {
               /* bcb was a valid victim and in the zone that could be victimized. update victim counter & hint */
               pgbuf_lru_remove_victim_candidate (lru_list, bcb);
-              if (old_flags & PGBUF_BCB_TO_VACUUM_FLAG)
+              if (is_to_vacuum)
                 {
                   ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, -1);
                 }
             }
-          if (old_flags & PGBUF_BCB_TO_VACUUM_FLAG)
+          if (is_to_vacuum)
             {
               ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, -1);
             }
@@ -16165,12 +16203,12 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
           if (is_valid_victim_candidate)
             {
               pgbuf_lru_add_victim_candidate (lru_list, bcb);
-              if (new_flags & PGBUF_BCB_TO_VACUUM_FLAG)
+              if (is_to_vacuum)
                 {
                   ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, 1);
                 }
             }
-          if (new_flags & PGBUF_BCB_TO_VACUUM_FLAG)
+          if (is_to_vacuum)
             {
               ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, 1);
             }
