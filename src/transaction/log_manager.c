@@ -2092,7 +2092,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
     }
   if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
     {
-      pgbuf_set_to_vacuum (thread_p, addr->pgptr);
+      pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
@@ -2216,7 +2216,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     }
   if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
     {
-      pgbuf_set_to_vacuum (thread_p, addr->pgptr);
+      pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
 }
 

@@ -502,7 +502,6 @@ extern bool pgbuf_keep_victim_flush_thread_active (void);
 extern void pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
 #endif /* !SERVER_MODE */
 
-extern void pgbuf_set_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page);
-extern void pgbuf_clear_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page);
+extern void pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
 #endif /* _PAGE_BUFFER_H_ */

@@ -1444,6 +1444,7 @@ STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__ ((AL
 STATIC_INLINE void pgbuf_bcb_mark_is_flushing (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_to_vacuum (PGBUF_BCB * bcb);
 STATIC_INLINE bool pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_avoid_victim (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_set_dirty (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
@@ -16361,8 +16362,15 @@ pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb)
   return (bcb->flags & PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG) != 0;
 }
 
+/*
+ * pgbuf_set_to_vacuum () - notify that page will likely be accessed by vacuum
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * page (in)     : page
+ */
 void
-pgbuf_set_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page)
+pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page)
 {
   PGBUF_BCB *bcb;
 
@@ -16370,15 +16378,12 @@ pgbuf_set_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page)
   pgbuf_bcb_update_flags (bcb, PGBUF_BCB_TO_VACUUM_FLAG, 0);
 }
 
-void
-pgbuf_clear_to_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR page)
-{
-  PGBUF_BCB *bcb;
-
-  CAST_PGPTR_TO_BFPTR (bcb, page);
-  pgbuf_bcb_update_flags (bcb, 0, PGBUF_BCB_TO_VACUUM_FLAG);
-}
-
+/*
+ * pgbuf_bcb_is_flushing () - is page going to be accessed by vacuum?
+ *
+ * return   : true/false
+ * bcb (in) : bcb
+ */
 STATIC_INLINE bool
 pgbuf_bcb_is_to_vacuum (PGBUF_BCB * bcb)
 {
