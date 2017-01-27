@@ -13834,11 +13834,6 @@ pgbuf_initialize_page_quota (void)
     {
       quota->lru_victim_flush_priority_per_lru[i] = 0;
 
-      if (PGBUF_PRIVATE_LRU > 0)
-	{
-	  quota->private_lru_distr[i] = (float) 1 / (float) (PGBUF_PRIVATE_LRU);
-	}
-
       if (PGBUF_IS_PRIVATE_LRU_INDEX (i))
 	{
 	  quota->private_lru_session_cnt[PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (i)] = 0;
