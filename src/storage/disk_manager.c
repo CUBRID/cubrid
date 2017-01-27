@@ -1642,8 +1642,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       disk_cache_lock_reserve (extend_info);
       /* add new volume */
       disk_Cache->vols[volid_new].nsect_free = nsect_free_new;
-      disk_Cache->vols[volid_new].purpose =
-	voltype == DB_PERMANENT_VOLTYPE ? DB_PERMANENT_DATA_PURPOSE : DB_TEMPORARY_DATA_PURPOSE;
+      assert (disk_Cache->vols[volid_new].purpose == volext.purpose);
       extend_info->nsect_free += nsect_free_new;
 
       if (reserve_context && reserve_context->n_cache_reserve_remaining > 0)
@@ -2032,11 +2031,8 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
     }
   assert (volid_new == disk_Cache->nvols_perm);
 
-  /* update cache */
-  disk_Cache->nvols_perm++;
-
   disk_cache_lock_reserve_for_purpose (ext_info.purpose);
-  disk_Cache->vols[volid_new].purpose = ext_info.purpose;
+  assert (disk_Cache->vols[volid_new].purpose == ext_info.purpose);
   assert (disk_Cache->vols[volid_new].nsect_free == 0);
 
   disk_cache_update_vol_free (volid_new, nsect_free);
