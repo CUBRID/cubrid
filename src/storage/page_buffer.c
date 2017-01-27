@@ -1661,6 +1661,14 @@ try_again:
       ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
     }
 
+#if !defined (NDEBUG)
+  thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF, MGR_DEF);
+  if (pgbuf_is_lsa_temporary (pgptr))
+    {
+      thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF_TEMP, MGR_DEF);
+    }
+#endif /* NDEBUG */
+
   if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
     {
       /* deallocated page */
@@ -1703,14 +1711,6 @@ try_again:
        * note: temporary pages are not strictly handled in regard with their deallocation status. */
       assert ((fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_DEALLOCATED) || pgbuf_is_lsa_temporary (pgptr));
     }
-
-#if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF, MGR_DEF);
-  if (pgbuf_is_lsa_temporary (pgptr))
-    {
-      thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF_TEMP, MGR_DEF);
-    }
-#endif /* NDEBUG */
 
   /* Record number of fetches in statistics */
   if (is_perf_tracking)
