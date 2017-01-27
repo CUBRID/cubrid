@@ -1949,17 +1949,17 @@ exit:
   else
     {
       log_sysop_abort (thread_p);
-    }
 
-  if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
-    {
-      /* undo format does not update cache on temporary volumes */
-      disk_Cache->nvols_temp--;
-    }
-  else if (error_code == ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG || error_code == ER_DISK_UNKNOWN_PURPOSE)
-    {
-      /* undo format is not logged, and number of volumes will not be updated. */
-      disk_Cache->nvols_perm--;
+      if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
+	{
+	  /* undo format does not update cache on temporary volumes */
+	  disk_Cache->nvols_temp--;
+	}
+      else if (error_code == ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG || error_code == ER_DISK_UNKNOWN_PURPOSE)
+	{
+	  /* undo format is not logged, and number of volumes will not be updated. */
+	  disk_Cache->nvols_perm--;
+	}
     }
 
   return error_code;
