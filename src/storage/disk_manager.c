@@ -4509,20 +4509,22 @@ disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_dbname, cons
   ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
   ext_info.voltype = DB_PERMANENT_VOLTYPE;
 
+  disk_Cache->nvols_perm = 1;
+  disk_Cache->vols[LOG_DBFIRST_VOLID].purpose = DB_PERMANENT_DATA_PURPOSE;
+
   error_code = disk_format (thread_p, full_dbname, LOG_DBFIRST_VOLID, &ext_info, &nsect_free);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      disk_Cache->nvols_perm = 0;
       return error_code;
     }
 
-  disk_Cache->vols[LOG_DBFIRST_VOLID].purpose = DB_PERMANENT_DATA_PURPOSE;
   disk_Cache->vols[LOG_DBFIRST_VOLID].nsect_free = nsect_free;
   disk_Cache->perm_purpose_info.extend_info.nsect_free = nsect_free;
   disk_Cache->perm_purpose_info.extend_info.nsect_total = ext_info.nsect_total;
   disk_Cache->perm_purpose_info.extend_info.nsect_max = ext_info.nsect_max;
 
-  disk_Cache->nvols_perm = 1;
   return NO_ERROR;
 }
 
