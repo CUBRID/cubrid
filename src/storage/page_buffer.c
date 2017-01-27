@@ -4676,6 +4676,12 @@ pgbuf_is_lsa_temporary (PAGE_PTR pgptr)
 STATIC_INLINE bool
 pgbuf_is_temporary_volume (VOLID volid)
 {
+  /* todo: I don't know why page buffer should care about temporary files and what this does, but it is really annoying.
+   * until database is loaded and restarted, I will return false always. */
+  if (!LOG_ISRESTARTED ())
+    {
+      return false;
+    }
   return (xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
 }
 
