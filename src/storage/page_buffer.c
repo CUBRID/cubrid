@@ -9561,7 +9561,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 static void
 pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start)
 {
-#if 0
   PGBUF_BCB *bcb = NULL;
   int rv;
 
@@ -9591,6 +9590,10 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
         {
           continue;
         }
+
+      /* lock mutex. just try.
+       * note: we do try after we already did try to lock victim during search. we need to update the pgbuf lock
+       * macros for this case. */
       rv = pthread_mutex_trylock (&bcb->BCB_mutex);
       if (rv != 0)
         {
@@ -9611,7 +9614,6 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
       pthread_mutex_unlock (&bcb->BCB_mutex);
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
     }
-#endif
 }
 
 /*
