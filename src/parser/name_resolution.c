@@ -8097,7 +8097,7 @@ pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 PT_NODE *
 pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *cte_defs = NULL, *with = NULL, *saved_with = NULL;
+  PT_NODE cte_defs_dummy, *with = NULL, *saved_with = NULL;
   PT_NODE *curr_cte, *previous_cte;
   PT_NODE *saved_curr_cte_next;
 
@@ -8123,16 +8123,67 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       return node;
     }
 
-  cte_defs = parser_create_node (parser);
-  cte_defs->next = with->info.with_clause.cte_definition_list;
-  if (cte_defs->next == NULL)
+  cte_defs_dummy.next = with->info.with_clause.cte_definition_list;
+  if (cte_defs_dummy.next == NULL)
     {
       PT_INTERNAL_ERROR (parser, "expecting cte definitions");
       return NULL;
     }
 
-  /* Resolve CTEs within CTEs; Note: For NON-recursive WITH CLAUSE forward referencing is not allowed */
-  for (previous_cte = cte_defs, curr_cte = previous_cte->next; curr_cte != NULL;
+  /* STEP 1: Check if CTE is recursive - find if CTE definition contains self references and resolve them */
+  for (curr_cte = cte_defs_dummy.next; curr_cte != NULL; curr_cte = curr_cte->next)
+    {
+      if ((curr_cte->info.cte.non_recursive_part->node_type == PT_UNION) && (!curr_cte->info.cte.recursive_part))
+	{
+	  PT_NODE *recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg2;
+	  PT_NODE *non_recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg1;
+	  int curr_cte_count = 0;
+
+	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte_and_count, curr_cte,
+					     pt_count_ctes_post, &curr_cte_count);
+	  if (!recursive_part)
+	    {
+	      /* error in walk */
+	      return NULL;
+	    }
+
+	  if (curr_cte_count == 0)
+	    {
+	      /* no self references were found in arg2 from union; search in arg1 also, syntax allows this case */
+	      non_recursive_part =
+		parser_walk_tree (parser, non_recursive_part, pt_resolve_spec_to_cte_and_count, curr_cte,
+				  pt_count_ctes_post, &curr_cte_count);
+	      if (!non_recursive_part)
+		{
+		  /* error in walk */
+		  return NULL;
+		}
+	      if (curr_cte_count > 0)
+		{
+		  /* curr_cte is recursive but it was found in non-recursive part; swap non-recursive, recursive */
+		  PT_NODE *tmp = non_recursive_part;
+		  non_recursive_part = recursive_part;
+		  recursive_part = tmp;
+		}
+	    }
+
+	  if (curr_cte_count > 0)
+	    {
+	      curr_cte->info.cte.non_recursive_part = non_recursive_part;
+	      curr_cte->info.cte.recursive_part = recursive_part;
+	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_recursive_part->info.query.all_distinct;
+	    }
+	}
+
+      curr_cte->info.cte.non_recursive_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
+      if (curr_cte->info.cte.recursive_part)
+	{
+	  curr_cte->info.cte.recursive_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
+	}
+    }
+
+  /* STEP 2: Resolve CTEs references within CTEs; Note: For NON-recursive WITH CLAUSE forward referencing is not allowed */
+  for (previous_cte = &cte_defs_dummy, curr_cte = previous_cte->next; curr_cte != NULL;
        previous_cte = previous_cte->next, curr_cte = curr_cte->next)
     {
       /* For RECURSIVE WITH CLAUSE forward referencing is allowed,
@@ -8151,41 +8202,11 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       curr_cte->next = NULL;
 
       /* curr_cte->next should be set to NULL; next CTEs will be resolved for each previous CTE */
-      curr_cte = parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
+      curr_cte = parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte, cte_defs_dummy.next, NULL, NULL);
       if (curr_cte == NULL)
 	{
 	  /* we expect error to be set */
 	  return NULL;
-	}
-
-      /* try to find out if curr_cte is recursive */
-      if ((curr_cte->info.cte.non_recursive_part->node_type == PT_UNION) && (!curr_cte->info.cte.recursive_part))
-	{
-	  PT_NODE *recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg2;
-	  int curr_cte_count = 0;
-
-	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte_and_count, curr_cte,
-					     pt_count_ctes_post, &curr_cte_count);
-	  if (!recursive_part)
-	    {
-	      /* error in walk */
-	      return NULL;
-	    }
-
-	  if (curr_cte_count > 0)
-	    {
-	      curr_cte->info.cte.recursive_part = recursive_part;
-	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_recursive_part->info.query.all_distinct;
-	      curr_cte->info.cte.non_recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg1;
-	    }
-
-	  curr_cte->next = saved_curr_cte_next;	/* restore next node */
-	}
-
-      curr_cte->info.cte.non_recursive_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
-      if (curr_cte->info.cte.recursive_part)
-	{
-	  curr_cte->info.cte.recursive_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
 	}
 
       /* reconnect list, previous->next was curr_cte */
@@ -8198,8 +8219,8 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   saved_with = with;
   node->info.query.with = NULL;	/* must be hidden from the parser */
 
-  /* Resolve CTEs in the actual query */
-  node = parser_walk_tree (parser, node, pt_resolve_spec_to_cte, cte_defs->next, NULL, NULL);
+  /* STEP 3: Resolve CTEs in the actual query */
+  node = parser_walk_tree (parser, node, pt_resolve_spec_to_cte, cte_defs_dummy.next, NULL, NULL);
   node->info.query.with = saved_with;
 
   /* all ok */
