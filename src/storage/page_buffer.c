@@ -16574,18 +16574,12 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
       if (PGBUF_IS_PRIVATE_LRU_INDEX (lru_list->index))
         {
           /* private list */
-          if (!lf_circular_queue_produce (pgbuf_Pool.private_lrus_with_victims, &lru_list->index))
-            {
-              ABORT_RELEASE ();
-            }
+          return lf_circular_queue_produce (pgbuf_Pool.private_lrus_with_victims, &lru_list->index);
         }
       else
         {
           /* shared list */
-          if (!lf_circular_queue_produce (pgbuf_Pool.shared_lrus_with_victims, &lru_list->index))
-            {
-              ABORT_RELEASE ();
-            }
+          return lf_circular_queue_produce (pgbuf_Pool.shared_lrus_with_victims, &lru_list->index);
         }
       return true;
     }
