@@ -98,16 +98,7 @@ static int rv;
 #define PGBUF_TRAN_QUOTA_DEBUG
 #endif
 
-#if 0
-#define PGBUF_ENABLE_FLUSH_LIST
-#endif
-
 #define PGBUF_ALLOC_BCB_COND_WAIT
-
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-#define MAX_FLUSH_BCBS_LRU	200
-#define FLUSH_ARRAY_POSITION(lru_index,pos_in_lru) ((lru_index) * MAX_FLUSH_BCBS_LRU + pos_in_lru)
-#endif
 
 #if defined (PGBUF_TRAN_QUOTA_DEBUG)
 #undef er_log_debug
@@ -636,9 +627,6 @@ struct pgbuf_bcb
   int tick_lru3;                /* position in lru zone 3. small numbers are at the bottom */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-  volatile bool is_flush_candidate;	/* true if BCB was already added in LRU flush list */
-#endif
   bool async_flush_request;
 
   int hit_age;
@@ -904,26 +892,6 @@ struct pgbuf_buffer_pool
   PGBUF_INVALID_LIST buf_invalid_list;	/* buffer invalid BCB list */
 
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
-
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-  /* This implements on-the-fly gathering of victim candidates (to flush) when searching for victims in each LRU:
-   * each LRU has an array of pointers to BCBs to be flushed and the current count in this array.
-   * The array is not mutex protected by itself, it uses the same mutex of its associated LRU to add BCBs while the LRU
-   * is scanned for victims.
-   * A BCB is added to this list if dirty and if the flag 'bcb->is_flush_candidate' is not set; since we hold the mutex
-   * while geting a victim, only one thread can add a BCB in an array at one time.
-   * The flush thread iterates through all flush arrays, and adds to global victim candidates all BCB in the array which
-   * still met the flush conditions; the rest of BCBs in array are cleared the 'is_flush_candidate' flag and the count
-   * of elements in the array is reset.
-   * The flag 'is_flush_candidate' is reset after flushing or when unfixed (since it may change position in LRU or even
-   * the LRU)
-   * A victimizer thread can add BCBs while flushing thread is running (except for the duration a sinle flush array is
-   * scanned - this is done without mutex on LRU), and cannot add BCBs which were in flush array and now in victim
-   * candidates list until this BCB is flushed*/
-  PGBUF_BCB **victim_candidates_bcbs_per_lru;	/* array of lists (array) of pointers to flush candidates BCBs */
-  int *victim_candidates_count_lru;	/* current count of BCBs in LRU x */
-#endif
-
   PGBUF_SEQ_FLUSHER seq_chkpt_flusher;
 
   PGBUF_PAGE_MONITOR monitor;
@@ -1640,26 +1608,6 @@ pgbuf_initialize (void)
       goto error;
     }
 
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-  pgbuf_Pool.victim_candidates_bcbs_per_lru =
-    ((PGBUF_BCB **) malloc (PGBUF_TOTAL_LRU * MAX_FLUSH_BCBS_LRU * sizeof (PGBUF_BCB *)));
-  if (pgbuf_Pool.victim_candidates_bcbs_per_lru == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (PGBUF_TOTAL_LRU * MAX_FLUSH_BCBS_LRU * sizeof (PGBUF_BCB *)));
-      goto error;
-    }
-
-  pgbuf_Pool.victim_candidates_count_lru = ((int *) malloc (PGBUF_TOTAL_LRU * sizeof (int)));
-  if (pgbuf_Pool.victim_candidates_count_lru == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (PGBUF_TOTAL_LRU * sizeof (int)));
-      goto error;
-    }
-  memset (pgbuf_Pool.victim_candidates_count_lru, 0, PGBUF_TOTAL_LRU * sizeof (int));
-  memset (pgbuf_Pool.victim_candidates_bcbs_per_lru, 0, PGBUF_TOTAL_LRU * MAX_FLUSH_BCBS_LRU * sizeof (PGBUF_BCB *));
-#endif
-
 
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = false;
@@ -2284,9 +2232,6 @@ try_again:
         {
           ABORT_RELEASE ();
         }
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-      bufptr->is_flush_candidate = false;
-#endif
       bufptr->latch_mode = PGBUF_NO_LATCH;
       bufptr->async_flush_request = false;
       bufptr->avoid_dealloc_cnt = 0;
@@ -3399,9 +3344,6 @@ pgbuf_invalidate_temporary_file (THREAD_ENTRY * thread_p, VOLID volid, PAGEID fi
       /* Even though pgbuf_invalidate_bcb() will reset dirty and oldest_unflush_lsa field, the function may fail before 
        * reset these. */
       pgbuf_bcb_clear_dirty (bufptr);
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-      bufptr->is_flush_candidate = false;
-#endif
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
       if (PGBUF_PAGE_QUOTA_IS_ENABLED)
@@ -3888,48 +3830,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 
   do
     {
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-      int cand_to_flush_this_lru;
-      victim_flush_priority_this_lru = pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx];
-      check_count_this_lru = (int) (victim_flush_priority_this_lru * (float) check_count / lru_sum_flush_priority);
-
-      i = 0;
-      cand_found_in_this_lru = 0;
-
-      cand_to_flush_this_lru = pgbuf_Pool.victim_candidates_count_lru[lru_idx];
-      /* temporary set count flush LRU to max to avoid adding new elements */
-      pgbuf_Pool.victim_candidates_count_lru[lru_idx] = MAX_FLUSH_BCBS_LRU;
-      while (i < cand_to_flush_this_lru)
-	{
-	  bufptr = pgbuf_Pool.victim_candidates_bcbs_per_lru[FLUSH_ARRAY_POSITION (lru_idx, i)];
-
-	  if (bufptr != NULL && bufptr->is_flush_candidate == true)
-	    {
-	      if (cand_found_in_this_lru < check_count_this_lru
-		  && bufptr->fcnt == 0 && pgbuf_bcb_is_dirty (bufptr) && bufptr->latch_mode != PGBUF_LATCH_FLUSH
-		  && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr))
-		{
-		  /* save victim candidate information temporarily. */
-		  victim_cand_list[victim_cand_count].bufptr = bufptr;
-		  victim_cand_list[victim_cand_count].vpid = bufptr->vpid;
-		  LSA_COPY (&victim_cand_list[victim_cand_count].recLSA, &bufptr->oldest_unflush_lsa);
-		  PGBUG_GET_FLUSH_ORDER (lru_idx, check_count_this_lru - i, victim_cand_list[victim_count].flush_order);
-		  victim_cand_count++;
-		  cand_found_in_this_lru++;
-		}
-	      else
-		{
-		  bufptr->is_flush_candidate = false;
-		}
-	    }
-
-	  i++;
-	}
-      /* new elements can be added to flush LRU */
-      pgbuf_Pool.victim_candidates_count_lru[lru_idx] = 0;
-
-#else /* PGBUF_ENABLE_FLUSH_LIST */
-
       victim_flush_priority_this_lru = pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx];
 
       /* do not flush from this LRU when there are no victim requests, or no pages in list or all victim requests were
@@ -3977,7 +3877,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
         }
       ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_cands[lru_idx], cand_found_in_this_lru);
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
-#endif /* PGBUF_ENABLE_FLUSH_LIST */
 
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
       if (pos < sizeof (msg) - 100)
@@ -5910,9 +5809,6 @@ pgbuf_initialize_bcb_table (void)
 
       bufptr->flags = PGBUF_BCB_INIT_FLAGS;
       bufptr->avoid_dealloc_cnt = 0;
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-      bufptr->is_flush_candidate = false;
-#endif
       bufptr->async_flush_request = false;
       bufptr->hit_age = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
@@ -7276,9 +7172,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	{
 	  bufptr->latch_mode = PGBUF_NO_LATCH;
 	}
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-      bufptr->is_flush_candidate = false;
-#endif
     }
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
@@ -8780,9 +8673,6 @@ pgbuf_invalidate_bcb (PGBUF_BCB * bufptr)
     }
 
   pgbuf_bcb_clear_dirty (bufptr);
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-  bufptr->is_flush_candidate = false;
-#endif
 
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -10771,10 +10661,6 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * i
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
   memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
-
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-  bufptr->is_flush_candidate = false;
-#endif
 
   LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
@@ -15651,19 +15537,11 @@ pgbuf_keep_victim_flush_thread_active (void)
 
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
-#if defined (PGBUF_ENABLE_FLUSH_LIST)
-      dirty_pages += pgbuf_Pool.victim_candidates_count_lru[i];
-      if (dirty_pages > MIN_DIRTY_PAGES_TO_KEEP_FLUSH_ALIVE)
-	{
-	  return true;
-	}
-#else
       /* TODO : this for test only ; consider refining this function */
       if (monitor->lru_victim_req_per_lru[i] > 0)
 	{
 	  return true;
 	}
-#endif
     }
 
   return false;
