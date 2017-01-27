@@ -1912,6 +1912,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
     {
       disk_Cache->nvols_temp++;
     }
+  disk_Cache->vols[volid].purpose = extinfo->purpose;
 
   error_code = disk_format (thread_p, boot_db_full_name (), volid, extinfo, nsects_free_out);
   if (error_code != NO_ERROR)
