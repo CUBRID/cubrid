@@ -94,16 +94,8 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 /* activate to enable debug for transaction quota */
-#if 0
-#define PGBUF_TRAN_QUOTA_DEBUG
-#endif
 
 #define PGBUF_ALLOC_BCB_COND_WAIT
-
-#if defined (PGBUF_TRAN_QUOTA_DEBUG)
-#undef er_log_debug
-#define er_log_debug _er_log_debug
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
 /* The victim candidate flusher (performed as a daemon) finds
    victim candidates(fcnt == 0) from the bottom of each LRU list.
@@ -367,16 +359,6 @@ typedef enum
 #define PGBUF_TRAN_MAX_ACTIVITY (10 * PGBUF_TRAN_THRESHOLD_ACTIVITY)
 
 #define PGBUF_AOUT_NOT_FOUND  -2
-
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-/* for debug print a new line character */
-#define PGBUF_QUOTA_MARKER_STRING(i) \
-   (((i) == PGBUF_SHARED_LRU - 1) ? "\n\n" : \
-   ((((i) == (PGBUF_SHARED_LRU - 1)) ? "\n\n" : \
-   ((PGBUF_IS_SHARED_LRU_INDEX (i) && ((i) % 10) == 9) \
-     || (PGBUF_IS_PRIVATE_LRU_INDEX (i) && (((i) - PGBUF_SHARED_LRU) % 10) == 9) \
-     ? "\n" : " "))))
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
 #define HASH_SIZE_BITS 20
 #define PGBUF_HASH_SIZE (1 << HASH_SIZE_BITS)
@@ -824,11 +806,6 @@ struct pgbuf_page_monitor
 
   int count_victims;
   int count_lru3;
-
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  int *lru_relocated_destroyed_pages;	/* Count of BCBs relocated after file destroy of each LRU */
-  int pg_destroyed_pages;	/* count of all destroyed pages since last update */
-#endif				/* PGBUF_TRAN_QUOTA_DEBUG */
 };
 
 typedef struct pgbuf_page_quota PGBUF_PAGE_QUOTA;
@@ -1380,11 +1357,6 @@ STATIC_INLINE bool pgbuf_set_check_page_validation (THREAD_ENTRY * thread_p, boo
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-static void pgbuf_print_lru_distribution (void);
-static void pgbuf_print_lru_destroyed_pg_distribution (void);
-static void pgbuf_print_lru_pending_vict_req (void);
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 
 STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
@@ -1886,12 +1858,6 @@ pgbuf_finalize (void)
     {
       free_and_init (pgbuf_Pool.monitor.lru_activity);
     }
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  if (pgbuf_Pool.monitor.lru_relocated_destroyed_pages != NULL)
-    {
-      free_and_init (pgbuf_Pool.monitor.lru_relocated_destroyed_pages);
-    }
-#endif
 
 #if defined (SERVER_MODE)
   if (pgbuf_Pool.monitor.count_thread_get_victim_extended_search != NULL)
@@ -3381,14 +3347,8 @@ pgbuf_invalidate_temporary_file (THREAD_ENTRY * thread_p, VOLID volid, PAGEID fi
 	  if (dest_lru_idx != -1)
 	    {
               pgbuf_lru_add_new_bcb_to_bottom (thread_p, bufptr, dest_lru_idx);
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_relocated_destroyed_pages[dest_lru_idx], 1);
-#endif
 	    }
 	}
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_destroyed_pages, 1);
-#endif
 
 #if 0				/* BTS CUBRIDSUS-3627 */
       if (need_invalidate == true)
@@ -3810,15 +3770,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   PERF_UTIME_TRACKER time_tracker_all_lru = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_one_lru;
 
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  static char msg[16384];
-  int pos = 0;
-  int cnt;
-
-  pos = 0;
-  msg[0] = '\0';
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
-
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_all_lru);
   time_tracker_one_lru = time_tracker_all_lru;
 
@@ -3836,15 +3787,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
        * quickly served from bottom LRU (vict_searches_this_lru == 0) */
       if (victim_flush_priority_this_lru <= 0)
 	{
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-	  if (pos < sizeof (msg) - 100)
-	    {
-	      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1,
-			      "%4d/%4d/%3d,%s", 0, 0, 0, PGBUF_QUOTA_MARKER_STRING (lru_idx));
-	      pos += cnt;
-	    }
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
-
           ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_skips[lru_idx], 1);
 
 	  pgbuf_Pool.last_flushed_LRU_list_idx = lru_idx;
@@ -3878,16 +3820,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_cands[lru_idx], cand_found_in_this_lru);
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-      if (pos < sizeof (msg) - 100)
-	{
-	  cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%4d/%4d/%3d,%s",
-			  check_count_this_lru, check_count_this_lru - i, cand_found_in_this_lru,
-			  PGBUF_QUOTA_MARKER_STRING (lru_idx));
-	  pos += cnt;
-	}
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
-
       /* Note that we don't hold the mutex, however it will not be an issue.
        * Also note that we are updating the last_flushed_LRU_list_idx whether the list has flushed or not.
        */
@@ -3897,12 +3829,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_one_lru, PSTAT_PB_FLUSH_COLLECT_ONE_LRU);
     }
   while (lru_idx != start_lru_idx);	/* check if we've visited all of the lists */
-
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  msg[pos] = '\0';
-  er_log_debug (ARG_FILE_LINE, "pgbuf_get_victim_candidates_from_lru:\n"
-		"check_count_this_lru/actually_checked_this_lru/" "cand_found_this_lru\n" "%s", msg);
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: pgbuf_get_victim_candidates_from_lru %d \n",
 		victim_cand_count - victim_count);
@@ -3982,12 +3908,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       /* This should be fixed */
       assert (page_flush_thread == thread_p);
     }
-#endif
-
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  pgbuf_print_lru_distribution ();
-  pgbuf_print_lru_destroyed_pg_distribution ();
-  pgbuf_print_lru_pending_vict_req ();
 #endif
 
   pgbuf_compute_lru_vict_target (&lru_sum_flush_priority);
@@ -14029,18 +13949,6 @@ pgbuf_initialize_page_monitor (void)
       goto exit;
     }
 
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  monitor->lru_relocated_destroyed_pages =
-    (int *) malloc (PGBUF_TOTAL_LRU * sizeof (monitor->lru_relocated_destroyed_pages[0]));
-  if (monitor->lru_relocated_destroyed_pages == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (monitor->lru_relocated_destroyed_pages[0])));
-      goto exit;
-    }
-#endif
-
   /* initialize the monitor data for each LRU */
   for (i = 0; i < PGBUF_TOTAL_LRU; i++)
     {
@@ -14050,9 +13958,6 @@ pgbuf_initialize_page_monitor (void)
       monitor->lru_victim_pressure_per_lru[i] = 0;
       monitor->lru_hits[i] = 0;
       monitor->lru_activity[i] = 0;
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-      monitor->lru_relocated_destroyed_pages[i] = 0;
-#endif
     }
 
   monitor->lru_victim_req_cnt = 0;
@@ -14063,9 +13968,6 @@ pgbuf_initialize_page_monitor (void)
 
   monitor->pg_lru_vict_req_failed = 0;
   monitor->pg_unfix = 0;
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  monitor->pg_destroyed_pages = 0;
-#endif
 
   monitor->lru_shared_pgs = 0;
   monitor->lru_garbage_pgs = 0;
@@ -14103,137 +14005,6 @@ exit:
   return error_status;
 }
 
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-/*
- * pgbuf_print_lru_distribution () -
- * return : void
- */
-static void
-pgbuf_print_lru_distribution (void)
-{
-  static char msg[16384];
-  int pos = 0;
-  int cnt, i;
-  PGBUF_LRU_LIST *lru_list;
-  int sum_private_bcbs, sum_shared_bcbs, sum_garbage_bcbs;
-  int check_lru_idx = -1;
-
-  sum_private_bcbs = 0;
-  sum_shared_bcbs = 0;
-  sum_garbage_bcbs = 0;
-  msg[0] = '\0';
-  for (i = 0; i < PGBUF_TOTAL_LRU && pos < sizeof (msg) - 100; i++)
-    {
-      lru_list = &pgbuf_Pool.buf_LRU_list[i];
-      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%5d/%4d/%4d,%s",
-		      PGBUF_LRU_LIST_COUNT (PGBUF_GET_LRU_LIST (i)),
-		      lru_list->count_lru1, PGBUF_LRU_1_ZONE_THRESHOLD (i), PGBUF_QUOTA_MARKER_STRING (i));;
-      if (PGBUF_IS_SHARED_LRU_INDEX (i))
-	{
-	  sum_shared_bcbs += PGBUF_LRU_LIST_COUNT (PGBUF_GET_LRU_LIST (i));
-	}
-      else
-	{
-	  sum_private_bcbs += PGBUF_LRU_LIST_COUNT (PGBUF_GET_LRU_LIST (i));
-	}
-
-      if (cnt <= 0)
-	{
-	  break;
-	}
-      pos += cnt;
-    }
-
-  msg[pos] = '\0';
-  er_log_debug (ARG_FILE_LINE, "pgbuf_print_lru_distribution : "
-		"sum_shared_bcbs:%d(%d), sum_garbage_bcbs :%d(%d), "
-		"sum_private_bcbs: %d, diff:%d\n"
-		"dirty_cnt:%d\n"
-		"bcbs_in_lru/zone1_bcb/zone1_threshold\n"
-		"%s\n",
-		sum_shared_bcbs, pgbuf_Pool.monitor.lru_shared_pgs,
-		sum_garbage_bcbs, pgbuf_Pool.monitor.lru_garbage_pgs,
-		sum_private_bcbs, sum_private_bcbs + sum_shared_bcbs + sum_garbage_bcbs - pgbuf_Pool.num_buffers,
-		pgbuf_Pool.monitor.dirties_cnt, msg);
-}
-
-
-/*
- * pgbuf_print_lru_destroyed_pg_distribution () -
- * return : void
- */
-static void
-pgbuf_print_lru_destroyed_pg_distribution (void)
-{
-  static char msg[16384];
-  int pos;
-  int cnt, i;
-  int total_relocated_destroyed_pages = 0;
-  int relocated_destroyed_pages;
-
-  if (pgbuf_Pool.monitor.pg_destroyed_pages <= 0)
-    {
-      return;
-    }
-
-  pos = 0;
-  msg[0] = '\0';
-  for (i = 0; i < PGBUF_TOTAL_LRU && pos < sizeof (msg) - 100; i++)
-    {
-      relocated_destroyed_pages = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_relocated_destroyed_pages[i], 0);
-      total_relocated_destroyed_pages += relocated_destroyed_pages;
-      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%5d,%s",
-		      relocated_destroyed_pages, PGBUF_QUOTA_MARKER_STRING (i));
-      if (cnt <= 0)
-	{
-	  break;
-	}
-      pos += cnt;
-
-    }
-
-  msg[pos] = '\0';
-  er_log_debug (ARG_FILE_LINE, "pgbuf_print_lru_destroyed_pg_distribution : "
-		"total_destroyed_pg:%d, relocated_destroyed_pages:%d\n%s\n",
-		pgbuf_Pool.monitor.pg_destroyed_pages, total_relocated_destroyed_pages, msg);
-
-  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.pg_destroyed_pages, 0);
-}
-
-/*
- * pgbuf_print_lru_pending_vict_req () -
- * return : void
- */
-static void
-pgbuf_print_lru_pending_vict_req (void)
-{
-  static char msg[16384];
-  int pos;
-  int cnt, i;
-  int total_pending_vict_req = 0;
-  int pending_vict_req;
-
-  pos = 0;
-  msg[0] = '\0';
-  for (i = 0; i < PGBUF_TOTAL_LRU && pos < sizeof (msg) - 100; i++)
-    {
-      pending_vict_req = pgbuf_Pool.monitor.lru_pending_victim_req_per_lru[i];
-      total_pending_vict_req += pending_vict_req;
-      cnt = snprintf (&msg[pos], sizeof (msg) - pos - 1, "%2d,%s", pending_vict_req, PGBUF_QUOTA_MARKER_STRING (i));
-      if (cnt <= 0)
-	{
-	  break;
-	}
-      pos += cnt;
-    }
-
-  msg[pos] = '\0';
-  er_log_debug (ARG_FILE_LINE, "pgbuf_print_lru_pending_vict_req : "
-		"total_pending_vict_req:%d\n%s\n", total_pending_vict_req, msg);
-}
-
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
-
 /*
  * pgbuf_compute_lru_vict_target () -
  *
@@ -14243,11 +14014,6 @@ pgbuf_print_lru_pending_vict_req (void)
 static void
 pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 {
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  static char msg[16384];
-  int pos = 0;
-  int cnt;
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
   int i;
   int total_lru_vict_req;
   int vict_req_this_lru;
@@ -14348,34 +14114,8 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
       /* victim pressure sum of not served victimization requests and level of search for victim */
       vict_pressure_this_lru = (vict_req_this_lru - vict_found_this_lru);
 
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-      if (pos < sizeof (msg) - 100)
-	{
-	  cnt =
-	    snprintf (&msg[pos], sizeof (msg) - pos - 1,
-		      "%5d/%5d/%4d/%4d/%.4f,%s", vict_req_this_lru,
-		      vict_found_this_lru, vict_search_depth_this_lru,
-		      vict_dirty_this_lru, flush_priority_this_lru, PGBUF_QUOTA_MARKER_STRING (i));
-	  if (cnt > 0)
-	    {
-	      pos += cnt;
-	    }
-	}
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
-
       ATOMIC_INC_32 (&monitor->lru_victim_pressure_per_lru[i], vict_pressure_this_lru);
     }
-
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  msg[pos] = '\0';
-  er_log_debug (ARG_FILE_LINE, "pgbuf_compute_lru_vict_target : "
-		"total_fix_cnt:%d, total_lru_vict_req:%d, total_lru_vict_req_fails:%d,\n"
-		"lru_sum_flush_priority:%.f\n"
-		"vict_req/vict_found/vict_search_depth/dirty_found/flush_priority\n%s\n",
-		pgbuf_Pool.monitor.fix_req_cnt,
-		total_lru_vict_req, monitor->pg_lru_vict_req_failed,
-		*lru_sum_flush_priority, msg);
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 }
 
 /*
@@ -14418,14 +14158,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
 
   PGBUF_LRU_LIST *lru_list;
   
-  
   thread_p = thread_p == NULL ? thread_get_thread_entry_info () : thread_p;
-
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  int cnt;
-  int pos;
-  static char msg[16384];
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
   quota = &(pgbuf_Pool.quota);
   monitor = &(pgbuf_Pool.monitor);
@@ -14481,15 +14214,6 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
     {
       quota->last_adjust_time = *curr_time_p;
     }
-
-#if defined(PGBUF_TRAN_QUOTA_DEBUG)
-  if (curr_time_p == NULL || diff_usec > 300 * 1000000LL)
-    {
-      pgbuf_print_lru_distribution ();
-      pgbuf_print_lru_destroyed_pg_distribution ();
-      pgbuf_print_lru_pending_vict_req ();
-    }
-#endif /* PGBUF_TRAN_QUOTA_DEBUG */
 
   (void) ATOMIC_INC_32 (&quota->adjust_age, 1);
 
