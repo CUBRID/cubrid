@@ -1280,8 +1280,10 @@ static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int ch
 						 float lru_sum_flush_priority);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p, bool penalize, PERF_UTIME_TRACKER * time_tracker);
 static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
+#if defined (SERVER_MODE)
 static void pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
                                                         PGBUF_BCB * bcb_start);
+#endif /* SERVER_MODE */
 static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx);
 static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
 static int pgbuf_remove_private_from_aout_list (const int lru_idx);
@@ -9558,6 +9560,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   return NULL;
 }
 
+#if defined (SERVER_MODE)
 static void
 pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start)
 {
@@ -9615,6 +9618,7 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
     }
 }
+#endif /* SERVER_MODE */
 
 /*
  * pgbuf_lru_add_bcb_to_top () - add a bcb to lru list top
