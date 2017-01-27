@@ -715,12 +715,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   (void) pgbuf_flush_all (thread_p, volid);
   (void) fileio_synchronize (thread_p, vdes, vol_fullname);
 
-  /* If this is a permanent volume for temporary storage purposes, indicate so to page buffer manager, so that fetches
-   * of new pages can be initialized with temporary lsa..which will avoid logging. */
-  if (ext_info->voltype == DB_PERMANENT_VOLTYPE && vol_purpose == DB_TEMPORARY_DATA_PURPOSE)
-    {
-      pgbuf_cache_permanent_volume_for_temporary (volid);
-    }
   /* todo: temporary is not logged because code should avoid it. this complicated system that uses page buffer should
    * not be necessary. with the exception of file manager and disk manager, who already manage to skip logging on
    * temporary files, all other changes on temporary pages are really not logged. so why bother? */
@@ -1634,22 +1628,12 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+      assert (disk_Cache->nvols_perm + disk_Cache->nvols_temp <= LOG_MAX_DBVOLID);
 
       disk_log ("disk_extend", "added new volume %d with %d free sectors for %s.", volid_new, nsect_free_new,
 		disk_type_to_string (extend_info->voltype));
 
       nsect_extend -= nsect_free_new;
-
-      /* update volume count */
-      if (voltype == DB_PERMANENT_VOLTYPE)
-	{
-	  disk_Cache->nvols_perm++;
-	}
-      else
-	{
-	  disk_Cache->nvols_temp++;
-	}
-      assert (disk_Cache->nvols_perm + disk_Cache->nvols_temp <= LOG_MAX_DBVOLID);
 
       /* update total and max */
       extend_info->nsect_total += volext.nsect_total;
@@ -1915,17 +1899,20 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   if (!extinfo->overwrite && fileio_is_volume_exist (extinfo->name))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
-      return ER_BO_VOLUME_EXISTS;
+      error_code = ER_BO_VOLUME_EXISTS;
+      goto exit;
     }
 
   log_sysop_start (thread_p);
+
+  /* with disk_format, we start fixing pages. page fixing may depend on */
   if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
     {
-      pgbuf_refresh_max_permanent_volume_id (volid);
+      disk_Cache->nvols_perm++;
     }
   else
     {
-      pgbuf_refresh_max_permanent_volume_id (volid - 1);
+      disk_Cache->nvols_temp++;
     }
 
   error_code = disk_format (thread_p, boot_db_full_name (), volid, extinfo, nsects_free_out);
@@ -1963,6 +1950,17 @@ exit:
   else
     {
       log_sysop_abort (thread_p);
+    }
+
+  if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
+    {
+      /* undo format does not update cache on temporary volumes */
+      disk_Cache->nvols_temp--;
+    }
+  else if (error_code == ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG || error_code == ER_DISK_UNKNOWN_PURPOSE)
+    {
+      /* undo format is not logged, and number of volumes will not be updated. */
+      disk_Cache->nvols_perm--;
     }
 
   return error_code;
@@ -2016,7 +2014,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
   ext_info.overwrite = overwrite;
 
   /* compute total/max sectors. we always keep a rounded number of sectors. */
-  ext_info.nsect_total = disk_sectors_to_extend_npages ((const) npages);
+  ext_info.nsect_total = disk_sectors_to_extend_npages (npages);
   ext_info.nsect_max = ext_info.nsect_total;
   ext_info.max_npages = npages;	/* this is obsolete. I set it just to see it if a crash occurs. */
 

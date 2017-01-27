@@ -638,8 +638,6 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
       log_sysop_started = false;
     }
 
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
-
 end:
 
   if (log_sysop_started == true && error_code != NO_ERROR)
@@ -2687,8 +2685,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    */
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
-
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
 
   /* If there is an existing query area, delete it. */
   if (boot_Db_parm->query_vfid.volid != NULL_VOLID)
@@ -5018,7 +5014,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   (void) fileio_synchronize_all (thread_p, false);
 
   (void) logpb_checkpoint (thread_p);
-  pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
   boot_server_status (BOOT_SERVER_UP);
 
   return tran_index;
