@@ -954,8 +954,8 @@ struct log_header
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
   char prefix_name[MAXLOGNAME];	/* Log prefix name */
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
-  int reserved_int_1;		/* for backward compitablity - previously used for lowest_arv_num_for_backup */
-  int reserved_int_2;		/* for backward compitablity - previously used for highest_arv_num_for_backup */
+  int reserved_int_1;		/* for backward compatibility - previously used for lowest_arv_num_for_backup */
+  int reserved_int_2;		/* for backward compatibility - previously used for highest_arv_num_for_backup */
   int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
 				 * RESTORE_IN_PROGRESS */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
@@ -970,7 +970,10 @@ struct log_header
   LOG_LSA mvcc_op_log_lsa;	/* Used to link log entries for mvcc operations. Vacuum will then process these entries */
   MVCCID last_block_oldest_mvccid;	/* Used to find the oldest MVCCID in a block of log data. */
   MVCCID last_block_newest_mvccid;	/* Used to find the newest MVCCID in a block of log data. */
+
+  /* TODO VACUUM_DATA_COMPATIBILITY: remove vacuum_data_first_vpid and all its references ==> */
   VPID vacuum_data_first_vpid;	/* First vacuum data page VPID. */
+  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
 
   INT64 ha_promotion_time;
   INT64 db_restore_time;

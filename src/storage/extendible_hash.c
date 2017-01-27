@@ -709,12 +709,14 @@ static int
 ehash_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
 {
   bool is_temp = *(bool *) args;
+
   pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
   if (!is_temp)
     {
       log_append_redo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, NULL, page_p, -1, 0, NULL);
     }
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+
   return NO_ERROR;
 }
 
@@ -2029,8 +2031,11 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_
       /* Copy (the assoc-value, key) pair from the bucket record */
       memcpy (log_record_p, bucket_recdes.data, bucket_recdes.length);
 
-      log_append_redo_data2 (thread_p, RVEH_INSERT, &ehid_p->vfid, bucket_page_p, slot_no, log_recdes.length,
-			     log_recdes.data);
+      if (!is_temp)
+	{
+	  log_append_redo_data2 (thread_p, RVEH_INSERT, &ehid_p->vfid, bucket_page_p, slot_no, log_recdes.length,
+				 log_recdes.data);
+	}
     }
 
   if (bucket_recdes.data)

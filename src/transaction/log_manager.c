@@ -3960,7 +3960,7 @@ void
 log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
 				 const char *data)
 {
-  return log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
+  log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
 }
 
 /*

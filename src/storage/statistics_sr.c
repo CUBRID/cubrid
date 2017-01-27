@@ -131,11 +131,10 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
 
   OID_SET_NULL (&dir_oid);
 
-  class_name = heap_get_class_name (thread_p, class_id_p);
-  if (class_name == NULL)
+  if (heap_get_class_name (thread_p, class_id_p, &class_name) != NO_ERROR || class_name == NULL)
     {
       /* something wrong. give up. */
-      assert (error_code == NO_ERROR);
+      ASSERT_ERROR_AND_SET (error_code);
 #if !defined(NDEBUG)
       if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
 	{
@@ -495,7 +494,11 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
     {
       char *class_name = NULL;
 
-      class_name = heap_get_class_name (thread_p, class_id_p);
+      if (heap_get_class_name (thread_p, class_id_p, &class_name) != NO_ERROR)
+	{
+	  /* ignore */
+	  er_clear ();
+	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UPDATE_STAT_CANNOT_GET_LOCK, 1,
 	      class_name ? class_name : "*UNKNOWN-CLASS*");

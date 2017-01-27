@@ -768,6 +768,13 @@ struct merge_proc_node
   bool has_delete;		/* MERGE statement has DELETE */
 };
 
+typedef struct cte_proc_node CTE_PROC_NODE;
+struct cte_proc_node
+{
+  XASL_NODE *non_recursive_part;	/* non recursive part of the CTE */
+  XASL_NODE *recursive_part;	/* recursive part of the CTE */
+};
+
 typedef enum
 {
   UNION_PROC,
@@ -784,7 +791,8 @@ typedef enum
   CONNECTBY_PROC,
   DO_PROC,
   MERGE_PROC,
-  BUILD_SCHEMA_PROC
+  BUILD_SCHEMA_PROC,
+  CTE_PROC
 } PROC_TYPE;
 
 typedef enum
@@ -940,6 +948,7 @@ struct xasl_node
     DELETE_PROC_NODE delete_;	/* DELETE_PROC */
     CONNECTBY_PROC_NODE connect_by;	/* CONNECTBY_PROC */
     MERGE_PROC_NODE merge;	/* MERGE_PROC */
+    CTE_PROC_NODE cte;		/* CTE_PROC */
   } proc;
 
   double cardinality;		/* estimated cardinality of result */
@@ -997,24 +1006,27 @@ struct func_pred
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
-#define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v)                            \
-do {                                                                          \
-    XASL_NODE *_x = REGU_VARIABLE_XASL(r);                                    \
-                                                                              \
-    /* check for xasl node                                               */   \
-    if (_x) {                                                                 \
-        if (XASL_IS_FLAGED(_x, XASL_LINK_TO_REGU_VARIABLE)) {                 \
-            /* clear correlated subquery list files                      */   \
-            if ((_x)->status == XASL_CLEARED				      \
-		|| (_x)->status == XASL_INITIALIZED) {                        \
-                /* execute xasl query                                    */   \
-                qexec_execute_mainblock((thread_p), _x, (v)->xasl_state, NULL);     \
-            } /* else: already evaluated. success or failure */               \
-        } else {                                                              \
-            /* currently, not-supported unknown case                     */   \
-            (_x)->status = XASL_FAILURE; /* return error              */      \
-        }                                                                     \
-    }                                                                         \
+#define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v)						    \
+do {												    \
+    XASL_NODE *_x = REGU_VARIABLE_XASL(r);							    \
+												    \
+    /* check for xasl node                                               */			    \
+    if (_x) {											    \
+        if (XASL_IS_FLAGED(_x, XASL_LINK_TO_REGU_VARIABLE)) {					    \
+            /* clear correlated subquery list files                      */			    \
+            if ((_x)->status == XASL_CLEARED							    \
+		|| (_x)->status == XASL_INITIALIZED) {						    \
+                /* execute xasl query                                    */			    \
+                if (qexec_execute_mainblock((thread_p), _x, (v)->xasl_state, NULL) != NO_ERROR)     \
+		  {										    \
+		    (_x)->status = XASL_FAILURE;						    \
+		  }										    \
+            } /* else: already evaluated. success or failure */					    \
+        } else {										    \
+            /* currently, not-supported unknown case                     */			    \
+            (_x)->status = XASL_FAILURE; /* return error              */			    \
+        }											    \
+    }												    \
 } while (0)
 
 #define CHECK_REGU_VARIABLE_XASL_STATUS(r)                                    \
@@ -1076,6 +1088,7 @@ extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NOD
 					       char *xasl_stream);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
 extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
+extern void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 
 extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DOMAIN * domain);
 #if defined (ENABLE_UNUSED_FUNCTION)

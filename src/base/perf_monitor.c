@@ -59,6 +59,7 @@
 
 #include "thread.h"
 #include "log_impl.h"
+#include "session.h"
 
 #if !defined(CS_MODE)
 #include <string.h>
@@ -67,7 +68,6 @@
 #include "log_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
-#include "session.h"
 #include "heap_file.h"
 #include "xasl_cache.h"
 
@@ -3996,16 +3996,16 @@ perfmon_initialize (int num_trans)
   memset (pstat_Global.is_watching, 0, memsize);
 
   pstat_Global.n_watchers = 0;
-  goto exit;
+  pstat_Global.initialized = true;
+  return NO_ERROR;
 
 error:
   perfmon_finalize ();
   return ER_OUT_OF_VIRTUAL_MEMORY;
-#endif /* SERVER_MODE || SA_MODE */
-
-exit:
+#else
   pstat_Global.initialized = true;
   return NO_ERROR;
+#endif /* SERVER_MODE || SA_MODE */
 }
 
 /*

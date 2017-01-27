@@ -165,6 +165,9 @@ qdump_print_xasl_type (XASL_NODE * xasl_p)
     case MERGE_PROC:
       type_string_p = "merge_proc";
       break;
+    case CTE_PROC:
+      type_string_p = "cte_proc";
+      break;
     default:
       return false;
     }
@@ -2765,6 +2768,12 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 	}
       break;
 
+    case CTE_PROC:
+      fprintf (foutput, "non_recursive_part xasl:%p\n", xasl_p->proc.cte.non_recursive_part);
+      fprintf (foutput, "recursive_part xasl:%p\n", xasl_p->proc.cte.recursive_part);
+      /* TODO - dump anchor and recursive part of CTE when we need */
+      break;
+
     default:
       return false;
     }
@@ -2848,6 +2857,8 @@ qdump_xasl_type_string (XASL_NODE * xasl_p)
       return "SCHEMA";
     case DO_PROC:
       return "DO";
+    case CTE_PROC:
+      return "CTE";
     default:
       assert (false);
       return "";
@@ -2889,7 +2900,12 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
       if (type == TARGET_CLASS)
 	{
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
-	  class_name = heap_get_class_name (NULL, &(cls_node->cls_oid));
+	  if (heap_get_class_name (NULL, &(cls_node->cls_oid), &class_name) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
+
 	  spec_name[0] = '\0';
 
 	  if (spec->access == SEQUENTIAL)
@@ -2983,6 +2999,7 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
   json_t *proc, *scan = NULL;
   json_t *subquery, *groupby, *orderby;
   json_t *left, *right, *outer, *inner;
+  json_t *cte_non_recursive_part, *cte_recursive_part;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -3024,7 +3041,6 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
 
       json_object_set_new (proc, "left", left);
       json_object_set_new (proc, "right", right);
-
       break;
 
     case MERGELIST_PROC:
@@ -3036,7 +3052,6 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
 
       json_object_set_new (proc, "outer", outer);
       json_object_set_new (proc, "inner", inner);
-
       break;
 
     case MERGE_PROC:
@@ -3048,7 +3063,19 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
 
       json_object_set_new (proc, "update", inner);
       json_object_set_new (proc, "insert", outer);
+      break;
 
+    case CTE_PROC:
+      cte_non_recursive_part = json_object ();
+      qdump_print_stats_json (xasl_p->proc.cte.non_recursive_part, cte_non_recursive_part);
+      json_object_set_new (proc, "non_recursive_part", cte_non_recursive_part);
+
+      if (xasl_p->proc.cte.recursive_part != NULL)
+	{
+	  cte_recursive_part = json_object ();
+	  qdump_print_stats_json (xasl_p->proc.cte.recursive_part, cte_recursive_part);
+	  json_object_set_new (proc, "recursive_part", cte_recursive_part);
+	}
       break;
 
     case SCAN_PROC:
@@ -3196,7 +3223,11 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
       if (type == TARGET_CLASS)
 	{
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
-	  class_name = heap_get_class_name (thread_p, &(cls_node->cls_oid));
+	  if (heap_get_class_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 
 	  if (spec->access == SEQUENTIAL)
 	    {
@@ -3317,6 +3348,17 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
       fprintf (fp, "MERGE\n");
       qdump_print_stats_text (fp, xasl_p->proc.merge.update_xasl, indent);
       qdump_print_stats_text (fp, xasl_p->proc.merge.insert_xasl, indent);
+      break;
+
+    case CTE_PROC:
+      fprintf (fp, "CTE (non_recursive_part)\n");
+      qdump_print_stats_text (fp, xasl_p->proc.cte.non_recursive_part, indent);
+      if (xasl_p->proc.cte.recursive_part != NULL)
+	{
+	  fprintf (fp, "%*c", indent, ' ');
+	  fprintf (fp, "CTE (recursive_part)\n");
+	  qdump_print_stats_text (fp, xasl_p->proc.cte.recursive_part, indent);
+	}
       break;
 
     case SCAN_PROC:

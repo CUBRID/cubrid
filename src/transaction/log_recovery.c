@@ -3751,7 +3751,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  return;
 	}
       /* check this is not a system op postpone during system op postpone */
-      assert (sysop_start_postpone.sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+      assert (sysop_start_postpone.sysop_end.type != LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
 	      || !sysop_start_postpone.sysop_end.run_postpone.is_sysop_postpone);
 
       log_sysop_end_recovery_postpone (thread_p, &sysop_start_postpone.sysop_end, undo_data_size, undo_data);
@@ -3891,7 +3891,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       log_recovery_finish_postpone (thread_p, tdes);
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
     }
-  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID; trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
+  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID; trid <= LOG_VACUUM_MASTER_TRANID; trid++)
     {
       /* Convert thread to vacuum worker */
       worker = vacuum_rv_get_worker_by_trid (thread_p, trid);

@@ -5861,8 +5861,13 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
       assert (lk_grant_code == LK_NOTGRANTED_DUE_ABORTED || lk_grant_code == LK_NOTGRANTED_DUE_TIMEOUT);
       if (catalog_access_info->class_name == NULL)
 	{
-	  catalog_access_info->class_name = heap_get_class_name (thread_p, catalog_access_info->class_oid);
-	  if (catalog_access_info->class_name != NULL)
+	  if (heap_get_class_name (thread_p, catalog_access_info->class_oid, &catalog_access_info->class_name) !=
+	      NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
+	  else if (catalog_access_info->class_name != NULL)
 	    {
 	      catalog_access_info->need_free_class_name = true;
 	    }

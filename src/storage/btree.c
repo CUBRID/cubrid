@@ -5666,65 +5666,6 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
 }
 
 /*
- * xbtree_delete_with_unique_key -
- *   btid (in):
- *   class_oid (in):
- *   key_value (in):
- *   return:
- */
-int
-xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, DB_VALUE * key_value)
-{
-  int error = NO_ERROR;
-  OID unique_oid;
-  HEAP_SCANCACHE scan_cache;
-  BTREE_SEARCH r;
-
-  r = xbtree_find_unique (thread_p, btid, S_DELETE, key_value, class_oid, &unique_oid, true);
-
-  if (r == BTREE_KEY_FOUND)
-    {
-      HFID hfid;
-      int force_count;
-
-      error = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error = heap_scancache_start_modify (thread_p, &scan_cache, &hfid, class_oid, SINGLE_ROW_DELETE, NULL);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error =
-	locator_delete_force (thread_p, &hfid, &unique_oid, true, SINGLE_ROW_DELETE, &scan_cache, &force_count, NULL,
-			      false);
-      if (error == NO_ERROR)
-	{
-	  /* monitor */
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
-	}
-
-      heap_scancache_end_modify (thread_p, &scan_cache);
-    }
-  else if (r == BTREE_KEY_NOTFOUND)
-    {
-      btree_set_unknown_key_error (thread_p, btid, key_value, "xbtree_delete_with_unique_key: current key not found.");
-      error = ER_BTREE_UNKNOWN_KEY;
-    }
-  else
-    {
-      /* r == BTREE_ERROR_OCCURRED */
-      ASSERT_ERROR_AND_SET (error);
-    }
-
-  return error;
-}
-
-/*
  * xbtree_find_multi_uniques () - search a list of unique indexes for specified values
  * return : search return code
  * thread_p (in)  : handler thread
@@ -8609,7 +8550,11 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
       goto exit;
     }
 
-  class_name = heap_get_class_name (thread_p, &fdes.btree.class_oid);
+  if (heap_get_class_name (thread_p, &fdes.btree.class_oid, &class_name) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      goto exit;
+    }
 
   /* get index name */
   ret = heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &index_name, NULL);
@@ -8727,7 +8672,11 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, BT
   if (class_oid_p && !OID_ISNULL (class_oid_p))
     {
       char *class_name_p = NULL;
-      class_name_p = heap_get_class_name (thread_p, class_oid_p);
+      if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return;
+	}
 
       btree_print_space (fp, depth * 4);
       fprintf (fp, "INDEX %s ON CLASS %s (CLASS_OID:%2d|%4d|%2d) \n\n", (btname) ? btname : "*UNKNOWN-INDEX*",
@@ -18223,7 +18172,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
   char class_oid_msg_buf[OID_MSG_BUF_SIZE];
   char oid_msg_buf[OID_MSG_BUF_SIZE];
   char *index_name;
-  char *class_name;
+  char *class_name = NULL;
   char *keyval;
 
   assert (btid != NULL);
@@ -18250,11 +18199,15 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 
   if (class_oid != NULL && !OID_ISNULL (class_oid))
     {
-      class_name = heap_get_class_name (thread_p, class_oid);
-      if (class_name)
+      if (heap_get_class_name (thread_p, class_oid, &class_name) == NO_ERROR)
 	{
 	  snprintf (class_oid_msg_buf, OID_MSG_BUF_SIZE, "(CLASS_OID: %d|%d|%d)", class_oid->volid, class_oid->pageid,
 		    class_oid->slotid);
+	}
+      else
+	{
+	  /* ignore */
+	  er_clear ();
 	}
     }
 
@@ -20446,8 +20399,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   class_oid_p = &ctx->class_oids[oid_idx];
 
-  class_name = heap_get_class_name (thread_p, class_oid_p);
-  if (class_name == NULL)
+  if (heap_get_class_name (thread_p, class_oid_p, &class_name) != NO_ERROR || class_name == NULL)
     {
       ret = S_ERROR;
       goto cleanup;
@@ -27951,7 +27903,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
-	  return ER_FAILED;
+	  goto exit;
 	}
     }
 
@@ -30824,7 +30776,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
       log_sysop_start (thread_p);
       delete_helper->is_system_op_started = true;
-
 
       error_code =
 	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,

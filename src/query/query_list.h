@@ -548,6 +548,7 @@ struct qfile_tuple_descriptor
   int tpl_size;			/* tuple size */
   int f_cnt;			/* number of field */
   DB_VALUE **f_valp;		/* pointer of field value pointer array */
+  bool *clear_f_val_at_clone_decache;	/* true, if need to clear value at clone decache */
 
   /* T_SORTKEY */
   void *sortkey_info;		/* casted pointer of (SORTKEY_INFO *) */
@@ -643,6 +644,7 @@ struct qfile_list_id
       (list_id)->tpl_descr.tpl_size = 0; \
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
+      (list_id)->tpl_descr.clear_f_val_at_clone_decache = NULL; \
       (list_id)->tpl_descr.sortkey_info = NULL; \
       (list_id)->tpl_descr.sort_rec = NULL; \
       (list_id)->tpl_descr.tplrec1 = NULL; \

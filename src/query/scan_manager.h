@@ -339,7 +339,7 @@ struct scan_id_struct
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
   } s;
 
-  SCAN_STATS stats;
+  SCAN_STATS scan_stats;
   bool scan_immediately_stop;
 };				/* Scan Identifier */
 

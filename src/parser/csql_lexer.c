@@ -2576,7 +2576,8 @@ YY_DECL
       if (!YY_CURRENT_BUFFER)
 	{
 	  csql_yyensure_buffer_stack ();
-	  YY_CURRENT_BUFFER_LVALUE = csql_yy_create_buffer (csql_yyin, YY_BUF_SIZE);
+	  YY_CURRENT_BUFFER_LVALUE =
+	    csql_yy_create_buffer (csql_yyin, YY_BUF_SIZE);
 	}
 
       csql_yy_load_buffer_state ();
@@ -2610,13 +2611,15 @@ YY_DECL
 		(yy_last_accepting_state) = yy_current_state;
 		(yy_last_accepting_cpos) = yy_cp;
 	      }
-	    while (yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state)
+	    while (yy_chk[yy_base[yy_current_state] + yy_c] !=
+		   yy_current_state)
 	      {
 		yy_current_state = (int) yy_def[yy_current_state];
 		if (yy_current_state >= 2315)
 		  yy_c = yy_meta[(unsigned int) yy_c];
 	      }
-	    yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
+	    yy_current_state =
+	      yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
 	    ++yy_cp;
 	  }
 	while (yy_base[yy_current_state] != 4669);
@@ -6031,7 +6034,8 @@ YY_DECL
 		      csql_yytext[254] = 0;
 		    }
 
-		  for (i = 1; i < len - 1 && IS_BLANK_CHAR (csql_yytext[i]); i++)
+		  for (i = 1; i < len - 1 && IS_BLANK_CHAR (csql_yytext[i]);
+		       i++)
 		    ;
 
 		  csql_yylval.cptr = pt_makename (&csql_yytext[i]);
@@ -6080,7 +6084,8 @@ YY_DECL
 		      csql_yytext[254] = 0;
 		    }
 
-		  for (i = 2; i < len - 1 && IS_BLANK_CHAR (csql_yytext[i]); i++)
+		  for (i = 2; i < len - 1 && IS_BLANK_CHAR (csql_yytext[i]);
+		       i++)
 		    ;
 
 		  csql_yylval.cptr = pt_makename (&csql_yytext[i]);
@@ -6108,13 +6113,15 @@ YY_DECL
 	    YY_BREAK case 535:YY_RULE_SETUP
 #line 1065 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, NULL, csql_yytext + 2);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, NULL, csql_yytext + 2);
 	      return BIT_STRING;
 	    }
 	    YY_BREAK case 536:YY_RULE_SETUP
 #line 1070 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, NULL, csql_yytext + 2);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, NULL, csql_yytext + 2);
 	      return HEX_STRING;
 	    }
 	    YY_BREAK case 537:YY_RULE_SETUP
@@ -6257,12 +6264,17 @@ YY_DECL
 	    {
 	      this_parser->line = yyline++;
 	      this_parser->column = yycolumn = yycolumn_end = 0;
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\n");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "\n");
 	    }
-	    YY_BREAK case YY_STATE_EOF (QUOTED_NCHAR_STRING):case YY_STATE_EOF (QUOTED_BIT_STRING):case
-	      YY_STATE_EOF (QUOTED_HEX_STRING):case YY_STATE_EOF (QUOTED_CHAR_STRING):case
-	      YY_STATE_EOF (DOUBLY_QUOTED_CHAR_STRING):case YY_STATE_EOF (QUOTED_EUCKR_STRING):case
-	      YY_STATE_EOF (QUOTED_ISO_STRING):case YY_STATE_EOF (QUOTED_BINARY_STRING):case
+	    YY_BREAK case YY_STATE_EOF (QUOTED_NCHAR_STRING):case
+	      YY_STATE_EOF (QUOTED_BIT_STRING):case
+	      YY_STATE_EOF (QUOTED_HEX_STRING):case
+	      YY_STATE_EOF (QUOTED_CHAR_STRING):case
+	      YY_STATE_EOF (DOUBLY_QUOTED_CHAR_STRING):case
+	      YY_STATE_EOF (QUOTED_EUCKR_STRING):case
+	      YY_STATE_EOF (QUOTED_ISO_STRING):case
+	      YY_STATE_EOF (QUOTED_BINARY_STRING):case
 	      YY_STATE_EOF (QUOTED_UTF8_STRING):
 #line 1195 "../../src/parser/csql_lexer.l"
 	    {
@@ -6270,7 +6282,8 @@ YY_DECL
 	      csql_yyerror ("unterminated string");
 	      return UNTERMINATED_STRING;
 	    }
-	    YY_BREAK case YY_STATE_EOF (DELIMITED_ID_NAME):case YY_STATE_EOF (BRACKET_ID_NAME):case
+	    YY_BREAK case YY_STATE_EOF (DELIMITED_ID_NAME):case
+	      YY_STATE_EOF (BRACKET_ID_NAME):case
 	      YY_STATE_EOF (BACKTICK_ID_NAME):
 #line 1201 "../../src/parser/csql_lexer.l"
 	    {
@@ -6281,100 +6294,127 @@ YY_DECL
 	    YY_BREAK case 557:YY_RULE_SETUP
 #line 1207 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
 	    YY_BREAK case 558:YY_RULE_SETUP
 #line 1211 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
 	    YY_BREAK case 559:YY_RULE_SETUP
 #line 1215 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
 	    YY_BREAK case 560:YY_RULE_SETUP
 #line 1219 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
 	    YY_BREAK case 561:YY_RULE_SETUP
 #line 1223 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
 	    YY_BREAK case 562:YY_RULE_SETUP
 #line 1227 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, csql_yytext);
 	    }
 	    YY_BREAK case 563:YY_RULE_SETUP
 #line 1231 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "'");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "'");
 	    }
 	    YY_BREAK case 564:YY_RULE_SETUP
 #line 1235 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\"");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "\"");
 	    }
 	    YY_BREAK case 565:YY_RULE_SETUP
 #line 1239 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "`");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "`");
 	    }
 	    YY_BREAK case 566:YY_RULE_SETUP
 #line 1245 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr,
-						   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
-						    || this_parser->strings_have_no_escapes) ? "\\n" : "\n");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr,
+				  (prm_get_bool_value
+				   (PRM_ID_NO_BACKSLASH_ESCAPES)
+				   || this_parser->
+				   strings_have_no_escapes) ? "\\n" : "\n");
 	    }
 	    YY_BREAK case 567:YY_RULE_SETUP
 #line 1250 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr,
-						   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
-						    || this_parser->strings_have_no_escapes) ? "\\r" : "\r");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr,
+				  (prm_get_bool_value
+				   (PRM_ID_NO_BACKSLASH_ESCAPES)
+				   || this_parser->
+				   strings_have_no_escapes) ? "\\r" : "\r");
 	    }
 	    YY_BREAK case 568:YY_RULE_SETUP
 #line 1255 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr,
-						   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
-						    || this_parser->strings_have_no_escapes) ? "\\t" : "\t");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr,
+				  (prm_get_bool_value
+				   (PRM_ID_NO_BACKSLASH_ESCAPES)
+				   || this_parser->
+				   strings_have_no_escapes) ? "\\t" : "\t");
 	    }
 	    YY_BREAK case 569:YY_RULE_SETUP
 #line 1260 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\\%");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "\\%");
 	    }
 	    YY_BREAK case 570:YY_RULE_SETUP
 #line 1264 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\\_");
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr, "\\_");
 	    }
 	    YY_BREAK case 571:YY_RULE_SETUP
 #line 1268 "../../src/parser/csql_lexer.l"
 	    {
-	      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes)
+	      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
+		  || this_parser->strings_have_no_escapes)
 		{
-		  csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\\");
+		  csql_yylval.cptr =
+		    pt_append_string (this_parser, csql_yylval.cptr, "\\");
 		  unput (*(csql_yytext + 1));
 		  yybuffer_pos--;
 		}
 	      else
 		{
-		  csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, csql_yytext + 1);
+		  csql_yylval.cptr =
+		    pt_append_string (this_parser, csql_yylval.cptr,
+				      csql_yytext + 1);
 		}
 	    }
 	    YY_BREAK case 572:YY_RULE_SETUP
 #line 1281 "../../src/parser/csql_lexer.l"
 	    {
-	      csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr,
-						   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
-						    || this_parser->
-						    strings_have_no_escapes) ? csql_yytext : csql_yytext + 1);
+	      csql_yylval.cptr =
+		pt_append_string (this_parser, csql_yylval.cptr,
+				  (prm_get_bool_value
+				   (PRM_ID_NO_BACKSLASH_ESCAPES)
+				   || this_parser->
+				   strings_have_no_escapes) ? csql_yytext :
+				  csql_yytext + 1);
 	    }
 	    YY_BREAK case 573:
 /* rule 573 can match eol */
@@ -6384,13 +6424,16 @@ YY_DECL
 	      this_parser->line = yyline++;
 	      this_parser->column = yycolumn = yycolumn_end = 0;
 
-	      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes)
+	      if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES)
+		  || this_parser->strings_have_no_escapes)
 		{
-		  csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\\\n");
+		  csql_yylval.cptr =
+		    pt_append_string (this_parser, csql_yylval.cptr, "\\\n");
 		}
 	      else
 		{
-		  csql_yylval.cptr = pt_append_string (this_parser, csql_yylval.cptr, "\n");
+		  csql_yylval.cptr =
+		    pt_append_string (this_parser, csql_yylval.cptr, "\n");
 		}
 	    }
 	    YY_BREAK case 574:YY_RULE_SETUP
@@ -6608,11 +6651,14 @@ YY_DECL
 	  case YY_END_OF_BUFFER:
 	    {
 	      /* Amount of text matched not including the EOB char. */
-	      int yy_amount_of_matched_text = (int) (yy_cp - (yytext_ptr)) - 1;
+	      int yy_amount_of_matched_text =
+		(int) (yy_cp - (yytext_ptr)) - 1;
 
 	      /* Undo the effects of YY_DO_BEFORE_ACTION. */
 	      *yy_cp = (yy_hold_char);
-	      YY_RESTORE_YY_MORE_OFFSET if (YY_CURRENT_BUFFER_LVALUE->yy_buffer_status == YY_BUFFER_NEW)
+	      YY_RESTORE_YY_MORE_OFFSET
+		if (YY_CURRENT_BUFFER_LVALUE->yy_buffer_status ==
+		    YY_BUFFER_NEW)
 		{
 		  /* We're scanning a new file or input source.  It's
 		   * possible that this happened because the user
@@ -6625,7 +6671,8 @@ YY_DECL
 		   */
 		  (yy_n_chars) = YY_CURRENT_BUFFER_LVALUE->yy_n_chars;
 		  YY_CURRENT_BUFFER_LVALUE->yy_input_file = csql_yyin;
-		  YY_CURRENT_BUFFER_LVALUE->yy_buffer_status = YY_BUFFER_NORMAL;
+		  YY_CURRENT_BUFFER_LVALUE->yy_buffer_status =
+		    YY_BUFFER_NORMAL;
 		}
 
 	      /* Note that here we test for yy_c_buf_p "<=" to the position
@@ -6635,7 +6682,8 @@ YY_DECL
 	       * end-of-buffer state).  Contrast this with the test
 	       * in input().
 	       */
-	      if ((yy_c_buf_p) <= &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)])
+	      if ((yy_c_buf_p) <=
+		  &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)])
 		{		/* This was really a NUL. */
 		  yy_state_type yy_next_state;
 
@@ -6713,7 +6761,8 @@ YY_DECL
 		    goto yy_match;
 
 		  case EOB_ACT_LAST_MATCH:
-		    (yy_c_buf_p) = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)];
+		    (yy_c_buf_p) =
+		      &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)];
 
 		    yy_current_state = yy_get_previous_state ();
 
@@ -6725,7 +6774,8 @@ YY_DECL
 	    }
 
 	  default:
-	    YY_FATAL_ERROR ("fatal flex scanner internal error--no action found");
+	    YY_FATAL_ERROR
+	      ("fatal flex scanner internal error--no action found");
 	  }			/* end of action switch */
       }				/* end of scanning one token */
   }				/* end of user's declarations */
@@ -6747,7 +6797,8 @@ yy_get_next_buffer (void)
   int ret_val;
 
   if ((yy_c_buf_p) > &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars) + 1])
-    YY_FATAL_ERROR ("fatal flex scanner internal error--end of buffer missed");
+    YY_FATAL_ERROR
+      ("fatal flex scanner internal error--end of buffer missed");
 
   if (YY_CURRENT_BUFFER_LVALUE->yy_fill_buffer == 0)
     {				/* Don't try to fill the buffer, so this is an EOF. */
@@ -6784,7 +6835,8 @@ yy_get_next_buffer (void)
 
   else
     {
-      int num_to_read = YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
+      int num_to_read =
+	YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
 
       while (num_to_read <= 0)
 	{			/* Not enough room in the buffer - grow it. */
@@ -6816,7 +6868,8 @@ yy_get_next_buffer (void)
 
 	  (yy_c_buf_p) = &b->yy_ch_buf[yy_c_buf_p_offset];
 
-	  num_to_read = YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
+	  num_to_read = YY_CURRENT_BUFFER_LVALUE->yy_buf_size -
+	    number_to_move - 1;
 
 	}
 
@@ -6824,7 +6877,8 @@ yy_get_next_buffer (void)
 	num_to_read = YY_READ_BUF_SIZE;
 
       /* Read in more data. */
-      YY_INPUT ((&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move]), (yy_n_chars), num_to_read);
+      YY_INPUT ((&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move]),
+		(yy_n_chars), num_to_read);
 
       YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars);
     }
@@ -6847,19 +6901,22 @@ yy_get_next_buffer (void)
   else
     ret_val = EOB_ACT_CONTINUE_SCAN;
 
-  if ((int) ((yy_n_chars) + number_to_move) > YY_CURRENT_BUFFER_LVALUE->yy_buf_size)
+  if ((int) ((yy_n_chars) + number_to_move) >
+      YY_CURRENT_BUFFER_LVALUE->yy_buf_size)
     {
       /* Extend the array by 50%, plus the number we really need. */
       int new_size = (yy_n_chars) + number_to_move + ((yy_n_chars) >> 1);
       YY_CURRENT_BUFFER_LVALUE->yy_ch_buf =
-	(char *) csql_yyrealloc ((void *) YY_CURRENT_BUFFER_LVALUE->yy_ch_buf, new_size);
+	(char *) csql_yyrealloc ((void *) YY_CURRENT_BUFFER_LVALUE->yy_ch_buf,
+				 new_size);
       if (!YY_CURRENT_BUFFER_LVALUE->yy_ch_buf)
 	YY_FATAL_ERROR ("out of dynamic memory in yy_get_next_buffer()");
     }
 
   (yy_n_chars) += number_to_move;
   YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)] = YY_END_OF_BUFFER_CHAR;
-  YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars) + 1] = YY_END_OF_BUFFER_CHAR;
+  YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars) + 1] =
+    YY_END_OF_BUFFER_CHAR;
 
   (yytext_ptr) = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[0];
 
@@ -6890,7 +6947,8 @@ yy_get_previous_state (void)
 	  if (yy_current_state >= 2315)
 	    yy_c = yy_meta[(unsigned int) yy_c];
 	}
-      yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
+      yy_current_state =
+	yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
     }
 
   return yy_current_state;
@@ -6941,7 +6999,9 @@ yyunput (int c, char *yy_bp)
     {				/* need to shift things up to make room */
       /* +2 for EOB chars. */
       int number_to_move = (yy_n_chars) + 2;
-      char *dest = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[YY_CURRENT_BUFFER_LVALUE->yy_buf_size + 2];
+      char *dest =
+	&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[YY_CURRENT_BUFFER_LVALUE->
+					     yy_buf_size + 2];
       char *source = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move];
 
       while (source > YY_CURRENT_BUFFER_LVALUE->yy_ch_buf)
@@ -6949,7 +7009,8 @@ yyunput (int c, char *yy_bp)
 
       yy_cp += (int) (dest - source);
       yy_bp += (int) (dest - source);
-      YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars) = (int) YY_CURRENT_BUFFER_LVALUE->yy_buf_size;
+      YY_CURRENT_BUFFER_LVALUE->yy_n_chars =
+	(yy_n_chars) = (int) YY_CURRENT_BUFFER_LVALUE->yy_buf_size;
 
       if (yy_cp < YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + 2)
 	YY_FATAL_ERROR ("flex scanner push-back overflow");
@@ -7049,7 +7110,8 @@ csql_yyrestart (FILE * input_file)
   if (!YY_CURRENT_BUFFER)
     {
       csql_yyensure_buffer_stack ();
-      YY_CURRENT_BUFFER_LVALUE = csql_yy_create_buffer (csql_yyin, YY_BUF_SIZE);
+      YY_CURRENT_BUFFER_LVALUE =
+	csql_yy_create_buffer (csql_yyin, YY_BUF_SIZE);
     }
 
   csql_yy_init_buffer (YY_CURRENT_BUFFER, input_file);
@@ -7280,11 +7342,14 @@ csql_yyensure_buffer_stack (void)
        * immediate realloc on the next call.
        */
       num_to_alloc = 1;		/* After all that talk, this was set to 1 anyways... */
-      (yy_buffer_stack) = (struct yy_buffer_state **) csql_yyalloc (num_to_alloc * sizeof (struct yy_buffer_state *));
+      (yy_buffer_stack) = (struct yy_buffer_state **) csql_yyalloc
+	(num_to_alloc * sizeof (struct yy_buffer_state *));
       if (!(yy_buffer_stack))
-	YY_FATAL_ERROR ("out of dynamic memory in csql_yyensure_buffer_stack()");
+	YY_FATAL_ERROR
+	  ("out of dynamic memory in csql_yyensure_buffer_stack()");
 
-      memset ((yy_buffer_stack), 0, num_to_alloc * sizeof (struct yy_buffer_state *));
+      memset ((yy_buffer_stack), 0,
+	      num_to_alloc * sizeof (struct yy_buffer_state *));
 
       (yy_buffer_stack_max) = num_to_alloc;
       (yy_buffer_stack_top) = 0;
@@ -7301,10 +7366,12 @@ csql_yyensure_buffer_stack (void)
       (yy_buffer_stack) = (struct yy_buffer_state **) csql_yyrealloc
 	((yy_buffer_stack), num_to_alloc * sizeof (struct yy_buffer_state *));
       if (!(yy_buffer_stack))
-	YY_FATAL_ERROR ("out of dynamic memory in csql_yyensure_buffer_stack()");
+	YY_FATAL_ERROR
+	  ("out of dynamic memory in csql_yyensure_buffer_stack()");
 
       /* zero only the new slots. */
-      memset ((yy_buffer_stack) + (yy_buffer_stack_max), 0, grow_size * sizeof (struct yy_buffer_state *));
+      memset ((yy_buffer_stack) + (yy_buffer_stack_max), 0,
+	      grow_size * sizeof (struct yy_buffer_state *));
       (yy_buffer_stack_max) = num_to_alloc;
     }
 }
@@ -7320,7 +7387,9 @@ csql_yy_scan_buffer (char *base, yy_size_t size)
 {
   YY_BUFFER_STATE b;
 
-  if (size < 2 || base[size - 2] != YY_END_OF_BUFFER_CHAR || base[size - 1] != YY_END_OF_BUFFER_CHAR)
+  if (size < 2 ||
+      base[size - 2] != YY_END_OF_BUFFER_CHAR ||
+      base[size - 1] != YY_END_OF_BUFFER_CHAR)
     /* They forgot to leave room for the EOB's. */
     return NULL;
 
@@ -7663,9 +7732,12 @@ csql_yyerror (const char *s)
     }
   snprintf (token_val, token_len, "%s", csql_yyget_text ());
 
-  end_of_stmt_str = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_END_OF_STMT);
+  end_of_stmt_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
+				    MSGCAT_SET_PARSER_SYNTAX,
+				    MSGCAT_SYNTAX_END_OF_STMT);
   context_saved_char_str = msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_CONTEXT_SAVED_CHAR);
+					   MSGCAT_SET_PARSER_SYNTAX,
+					   MSGCAT_SYNTAX_CONTEXT_SAVED_CHAR);
 
   next_ptr_len = strlen (next_ptr);
   if (next_ptr_len == 0)
@@ -7688,7 +7760,8 @@ csql_yyerror (const char *s)
   if (msg_ptr)
     {
       PT_NODE *dummy = parser_new_node (this_parser, PT_EXPR);
-      PT_ERRORm (this_parser, dummy, MSGCAT_SET_PARSER_SYNTAX, g_msg[msg_ptr - 1]);
+      PT_ERRORm (this_parser, dummy, MSGCAT_SET_PARSER_SYNTAX,
+		 g_msg[msg_ptr - 1]);
       parser_free_tree (this_parser, dummy);
     }
   else
@@ -7704,20 +7777,24 @@ csql_yyerror (const char *s)
       const char *before_token = msgcat_message (MSGCAT_CATALOG_CUBRID,
 						 MSGCAT_SET_PARSER_SYNTAX,
 						 MSGCAT_SYNTAX_YYERROR);
-      const char *after_token = strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
-							   MSGCAT_SET_PARSER_SYNTAX,
-							   MSGCAT_SYNTAX_EXPECTING));
-      const char *token_type = strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
-							  MSGCAT_SET_PARSER_SYNTAX,
-							  MSGCAT_SYNTAX_UNEXPECTED));
+      const char *after_token =
+	strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_PARSER_SYNTAX,
+				   MSGCAT_SYNTAX_EXPECTING));
+      const char *token_type =
+	strstr (s, msgcat_message (MSGCAT_CATALOG_CUBRID,
+				   MSGCAT_SET_PARSER_SYNTAX,
+				   MSGCAT_SYNTAX_UNEXPECTED));
       int len = 0;
       PT_NODE *dummy;
 
-      if ((strlen (s) > strlen (cmp_str)) && (strcmp (&s[strlen (s) - strlen (cmp_str)], cmp_str) == 0))
+      if ((strlen (s) > strlen (cmp_str)) &&
+	  (strcmp (&s[strlen (s) - strlen (cmp_str)], cmp_str) == 0))
 	{
 	  *(char *) &s[strlen (s) - strlen (cmp_str)] = 0;
 	}
-      else if ((strlen (s) > strlen (cmp_str2)) && (strcmp (&s[strlen (s) - strlen (cmp_str2)], cmp_str2) == 0))
+      else if ((strlen (s) > strlen (cmp_str2)) &&
+	       (strcmp (&s[strlen (s) - strlen (cmp_str2)], cmp_str2) == 0))
 	{
 	  *(char *) &s[strlen (s) - strlen (cmp_str2)] = 0;
 	}
@@ -7731,7 +7808,8 @@ csql_yyerror (const char *s)
 	  char *msg_context = NULL;
 	  int fixed_len = 11 * 2;	/* maximum size of printed line number and
 					   column number */
-	  int msg_size = fixed_len + next_ptr_len + strlen (before_token) + strlen (token_val) + 4;
+	  int msg_size = fixed_len + next_ptr_len + strlen (before_token)
+	    + strlen (token_val) + 4;
 	  /* 4 = 3 more characters when printing before_token
 	   * and 'token_val' + the string terminator */
 
@@ -7742,7 +7820,9 @@ csql_yyerror (const char *s)
 	    }
 	  else
 	    {
-	      msg_context = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_CONTEXT);
+	      msg_context = msgcat_message (MSGCAT_CATALOG_CUBRID,
+					    MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_CONTEXT);
 	      msg_size += strlen (msg_context);
 	    }
 
@@ -7761,12 +7841,15 @@ csql_yyerror (const char *s)
 	  if (end_statement == 0)
 	    {
 	      snprintf (msg, msg_size, context_saved_char_str,
-			csql_yylloc.first_line, csql_yylloc.first_column, (saved_char ? saved_char : ' '), next_ptr);
+			csql_yylloc.first_line, csql_yylloc.first_column,
+			(saved_char ? saved_char : ' '), next_ptr);
 	    }
 	  else
 	    {
 	      assert (msg_context != NULL);
-	      snprintf (msg, msg_size, msg_context, csql_yylloc.first_line, csql_yylloc.first_column, next_ptr);
+	      snprintf (msg, msg_size, msg_context,
+			csql_yylloc.first_line, csql_yylloc.first_column,
+			next_ptr);
 	    }
 
 	  len = strlen (msg);
@@ -7887,7 +7970,9 @@ parser_yyinput_single_line (char *buff, int max_size)
 		  return i;
 		}
 
-	      if (c == '\\' && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
+	      if (c == '\\'
+		  && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) ==
+		      false))
 		{
 		  /* if escape character */
 		  c = pt_nextchar ();	/* read one more */
@@ -8080,7 +8165,8 @@ loop:
   if (i < (CSQL_MAXNAME - 1) && (c = input_internal ()) == '+')
     {				/* hint */
       buff[i++] = '+';
-      while ((c = input_internal ()) != '\r' && c != '\n' && c != 0 && c != -1)
+      while ((c = input_internal ()) != '\r' && c != '\n' && c != 0
+	     && c != -1)
 	{
 	  if (i >= (CSQL_MAXNAME - 1))
 	    goto loop;
@@ -8101,7 +8187,8 @@ loop:
     {				/* comment */
       yybuffer_pos += i;
       unput (c);
-      while ((c = input_internal ()) != '\r' && c != '\n' && c != 0 && c != -1)
+      while ((c = input_internal ()) != '\r' && c != '\n' && c != 0
+	     && c != -1)
 	{
 	  yybuffer_pos++;
 	}

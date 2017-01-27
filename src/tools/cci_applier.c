@@ -1013,6 +1013,7 @@ main (int argc, char *argv[])
   int conn;
   int opt, opt_index = 0;
   int error = ER_CA_NO_ERROR;
+  int res;
   bool ignore_serial = false;
   bool retain_log = false;
   char tmp_repl_log_path[PATH_MAX];
@@ -1037,7 +1038,10 @@ main (int argc, char *argv[])
 	  con_info.db_name = optarg;
 	  break;
 	case 'p':
-	  con_info.password = optarg;
+	  con_info.password = strdup (optarg);
+#if defined (LINUX)
+	  memset (optarg, '*', strlen (optarg));
+#endif
 	  break;
 	case 'c':
 	  ca_Info.commit_interval = atoi (optarg);
@@ -1069,7 +1073,8 @@ main (int argc, char *argv[])
     {
       fprintf (stderr, "Failed to open up a connection with %s:%d for %s.(%d)\n", con_info.hostname, con_info.port,
 	       con_info.db_name, conn);
-      return ER_CA_FAILED;
+      res = ER_CA_FAILED;
+      goto end;
     }
 
   cci_set_autocommit (conn, CCI_AUTOCOMMIT_FALSE);
@@ -1079,10 +1084,19 @@ main (int argc, char *argv[])
   if ((error = apply_sql_logs (conn)) != ER_CA_NO_ERROR)
     {
       fprintf (stderr, "Apply SQL log: FAILED\n");
-      return ER_CA_FAILED;
+      res = ER_CA_FAILED;
+      goto end;
     }
 
   fprintf (stdout, "Apply SQL log: FINISHED\n");
 
-  return ER_CA_NO_ERROR;
+  res = ER_CA_NO_ERROR;
+
+end:
+  if (con_info.password != NULL)
+    {
+      free (con_info.password);
+    }
+
+  return res;
 }

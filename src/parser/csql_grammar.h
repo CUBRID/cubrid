@@ -995,7 +995,9 @@ typedef enum
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
-static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
+static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser,
+					    FUNC_TYPE func_code,
+					    PT_NODE * args_list);
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
 static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
 
@@ -1085,22 +1087,32 @@ static int parser_count_prefix_columns (PT_NODE * list, int *arg_count);
 
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
-static char *pt_check_identifier (PARSER_CONTEXT * parser, PT_NODE * p, const char *str, const int str_size);
+static char *pt_check_identifier (PARSER_CONTEXT * parser, PT_NODE * p,
+				  const char *str, const int str_size);
 static PT_NODE *pt_create_char_string_literal (PARSER_CONTEXT * parser,
 					       const PT_TYPE_ENUM char_type,
-					       const char *str, const INTL_CODESET codeset);
-static PT_NODE *pt_create_date_value (PARSER_CONTEXT * parser, const PT_TYPE_ENUM type, const char *str);
+					       const char *str,
+					       const INTL_CODESET codeset);
+static PT_NODE *pt_create_date_value (PARSER_CONTEXT * parser,
+				      const PT_TYPE_ENUM type,
+				      const char *str);
 static void pt_value_set_charset_coll (PARSER_CONTEXT * parser,
-				       PT_NODE * node, const int codeset_id, const int collation_id, bool force);
-static void pt_value_set_collation_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * coll_node);
+				       PT_NODE * node,
+				       const int codeset_id,
+				       const int collation_id, bool force);
+static void pt_value_set_collation_info (PARSER_CONTEXT * parser,
+					 PT_NODE * node, PT_NODE * coll_node);
 static void pt_value_set_monetary (PARSER_CONTEXT * parser, PT_NODE * node,
-				   const char *str, const char *txt, DB_CURRENCY type);
+				   const char *str, const char *txt,
+				   DB_CURRENCY type);
 static PT_MISC_TYPE parser_attr_type;
 
 static bool allow_attribute_ordering;
 
 int parse_one_statement (int state);
-static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * coll_node);
+static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT * parser,
+					   PT_NODE * node,
+					   PT_NODE * coll_node);
 
 
 #define push_msg(a) _push_msg(a, __LINE__)

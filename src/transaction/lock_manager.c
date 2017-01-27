@@ -1960,8 +1960,15 @@ set_error:
 	    {
 	      COPY_OID (&real_class_oid, &entry_ptr->res_head->key.oid);
 	    }
-	  classname = heap_get_class_name (thread_p, &real_class_oid);
-	  is_classname_alloced = true;
+	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
+	  else if (classname != NULL)
+	    {
+	      is_classname_alloced = true;
+	    }
 	}
 
       if (classname != NULL)
@@ -2001,7 +2008,11 @@ set_error:
 	    {
 	      COPY_OID (&real_class_oid, &entry_ptr->res_head->key.class_oid);
 	    }
-	  classname = heap_get_class_name (thread_p, &real_class_oid);
+	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       if (classname != NULL)
@@ -5268,14 +5279,16 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	      COPY_OID (&real_class_oid, &res_ptr->key.oid);
 	    }
 	  /* Don't get class names for temporary class objects. */
-	  classname = heap_get_class_name (thread_p, &real_class_oid);
-	  if (classname == NULL)
+	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR || classname == NULL)
 	    {
 	      /* We must stop processing if an interrupt occurs */
 	      if (er_errid () == ER_INTERRUPTED)
 		{
 		  return;
 		}
+
+	      /* Otherwise continue */
+	      er_clear ();
 	    }
 	  else
 	    {
@@ -5302,14 +5315,16 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
 	    }
 
-	  classname = heap_get_class_name (thread_p, &real_class_oid);
-	  if (classname == NULL)
+	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR || classname == NULL)
 	    {
 	      /* We must stop processing if an interrupt occurs */
 	      if (er_errid () == ER_INTERRUPTED)
 		{
 		  return;
 		}
+
+	      /* Otherwise continue */
+	      er_clear ();
 	    }
 	  else
 	    {
@@ -9755,7 +9770,11 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 	    {
 	      COPY_OID (&real_class_oid, &res_ptr->key.oid);
 	    }
-	  classname = heap_get_class_name (thread_p, &real_class_oid);
+	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 
 	  if (classname != NULL)
 	    {
@@ -9778,7 +9797,12 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 	    {
 	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
 	    }
-	  classname = heap_get_class_name (thread_p, &real_class_oid);
+	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+
+	    }
 
 	  if (classname != NULL)
 	    {
