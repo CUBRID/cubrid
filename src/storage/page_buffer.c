@@ -835,9 +835,7 @@ struct pgbuf_page_monitor
 #endif /* SERVER_MODE */
 
   int count_victims;
-  int count_victims_to_vacuum;
   int count_lru3;
-  int count_lru3_to_vacuum;
 
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
   int *lru_relocated_destroyed_pages;	/* Count of BCBs relocated after file destroy of each LRU */
@@ -3866,8 +3864,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   int cand_found_in_this_lru;
   int check_count_this_lru;
   float victim_flush_priority_this_lru;
-  
-  bool skip_to_vacuum = pgbuf_Pool.monitor.count_lru3 - pgbuf_Pool.monitor.count_lru3_to_vacuum > check_count;
 
   PERF_UTIME_TRACKER time_tracker_all_lru = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_one_lru;
@@ -3966,22 +3962,10 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       rv = pthread_mutex_lock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 
       for (bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom;
-           bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && i > 0; bufptr = bufptr->prev_BCB)
+           bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && i > 0; bufptr = bufptr->prev_BCB, i--)
         {
-          if (bufptr->fcnt == 0 && pgbuf_bcb_is_dirty (bufptr))
+          if (pgbuf_bcb_is_dirty (bufptr))
             {
-              if (pgbuf_bcb_is_to_vacuum (bufptr))
-                {
-                  if (skip_to_vacuum)
-                    {
-                      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_TO_VACUUM_SKIP);
-                      continue;
-                    }
-                  else
-                    {
-                      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_TO_VACUUM_DONT_SKIP);
-                    }
-                }
               /* save victim candidate information temporarily. */
               victim_cand_list[victim_cand_count].bufptr = bufptr;
               victim_cand_list[victim_cand_count].vpid = bufptr->vpid;
@@ -3989,7 +3973,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
               PGBUG_GET_FLUSH_ORDER (lru_idx, check_count_this_lru - i, victim_cand_list[victim_count].flush_order);
               victim_cand_count++;
               cand_found_in_this_lru++;
-              i--;
             }
         }
       ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_cands[lru_idx], cand_found_in_this_lru);
@@ -9813,9 +9796,6 @@ pgbuf_lru_add_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
     {
       bcb->tick_lru3 += DB_INT32_MAX;
     }
-
-  /* update zone 3 count */
-  lru_list->count_lru3++;
 
   pgbuf_bcb_change_zone (bcb, lru_idx, PGBUF_LRU_3_ZONE);
 }
@@ -16131,8 +16111,6 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
        * therefore we need to check if the bcb status regarding victimization is changed. */
       bool is_old_invalid_victim_candidate = old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK;
       bool is_new_invalid_victim_candidate = new_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK;
-      bool was_to_vacuum = old_flags & PGBUF_BCB_TO_VACUUM_FLAG;
-      bool is_to_vacuum = new_flags & PGBUF_BCB_TO_VACUUM_FLAG;
       PGBUF_LRU_LIST *lru_list;
 
       lru_list = pgbuf_lru_list_from_bcb (bcb);
@@ -16141,45 +16119,15 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
         {
           /* bcb has become a victim candidate */
           pgbuf_lru_add_victim_candidate (lru_list, bcb);
-
-          if (is_to_vacuum)
-            {
-              ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, 1);
-            }
         }
       else if (!is_old_invalid_victim_candidate && is_new_invalid_victim_candidate)
         {
           /* bcb is no longer a victim candidate */
           pgbuf_lru_remove_victim_candidate (lru_list, bcb);
-
-          if (was_to_vacuum)
-            {
-              ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, -1);
-            }
         }
       else
         {
           /* bcb status remains the same */
-          if (!is_old_invalid_victim_candidate)
-            {
-              if (was_to_vacuum && !is_to_vacuum)
-                {
-                  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, -1);
-                }
-              else if (is_to_vacuum && !was_to_vacuum)
-                {
-                  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, 1);
-                }
-            }
-        }
-
-      if (was_to_vacuum && !is_to_vacuum)
-        {
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, -1);
-        }
-      else if (is_to_vacuum && !was_to_vacuum)
-        {
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, 1);
         }
     }
 }
@@ -16218,7 +16166,6 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
   int new_flags;
   int new_zone_idx = PGBUF_MAKE_ZONE (new_lru_idx, new_zone);
   bool is_valid_victim_candidate;
-  bool is_to_vacuum;
   PGBUF_LRU_LIST *lru_list;
 
   /* note: make sure the zones from and to are changing are blocked */
@@ -16246,7 +16193,6 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
   /* was bcb a valid victim candidate (we only consider flags, not fix counters or zone)? note that this is still true
    * after the change of zone. */
   is_valid_victim_candidate = (old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) == 0;
-  is_to_vacuum = (old_flags & PGBUF_BCB_TO_VACUUM_FLAG) != 0;
 
   if (old_flags & PGBUF_LRU_ZONE_MASK)
     {
@@ -16274,14 +16220,6 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
             {
               /* bcb was a valid victim and in the zone that could be victimized. update victim counter & hint */
               pgbuf_lru_remove_victim_candidate (lru_list, bcb);
-              if (is_to_vacuum)
-                {
-                  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, -1);
-                }
-            }
-          if (is_to_vacuum)
-            {
-              ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, -1);
             }
           break;
         default:
@@ -16311,14 +16249,6 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
           if (is_valid_victim_candidate)
             {
               pgbuf_lru_add_victim_candidate (lru_list, bcb);
-              if (is_to_vacuum)
-                {
-                  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_to_vacuum, 1);
-                }
-            }
-          if (is_to_vacuum)
-            {
-              ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3_to_vacuum, 1);
             }
           break;
         default:
