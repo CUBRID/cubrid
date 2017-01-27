@@ -14420,7 +14420,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
   diff = prv_quota - prv_real_ratio;
 
   prv_flush_ratio = prv_real_ratio * (1.0f - diff);
-  prv_flush_ratio = MIN (1.0f, prv_flush_ratio);
+  prv_flush_ratio = MIN (0.05f, prv_flush_ratio);
 
   for (i = PGBUF_LRU_INDEX_FROM_PRIVATE (0); i < PGBUF_TOTAL_LRU; i++)
     {
