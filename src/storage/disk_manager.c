@@ -5003,7 +5003,12 @@ disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creatio
 DISK_VOLPURPOSE
 xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
 {
-  assert (disk_Cache != NULL);
+  if (disk_Cache == NULL)
+    {
+      /* manager not initialized. only allow fetches from first volume. */
+      assert (volid == LOG_DBFIRST_VOLID);
+      return DB_PERMANENT_DATA_PURPOSE;
+    }
 
   if (!disk_is_valid_volid (volid))
     {
