@@ -3966,7 +3966,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       rv = pthread_mutex_lock (&pgbuf_Pool.buf_LRU_list[lru_idx].LRU_mutex);
 
       for (bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom;
-           bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && i > 0; bufptr = bufptr->prev_BCB, i--)
+           bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && i > 0; bufptr = bufptr->prev_BCB)
         {
           if (bufptr->fcnt == 0 && pgbuf_bcb_is_dirty (bufptr))
             {
@@ -3989,6 +3989,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
               PGBUG_GET_FLUSH_ORDER (lru_idx, check_count_this_lru - i, victim_cand_list[victim_count].flush_order);
               victim_cand_count++;
               cand_found_in_this_lru++;
+              i--;
             }
         }
       ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_cands[lru_idx], cand_found_in_this_lru);
@@ -4167,6 +4168,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       victim_count_lru = pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, 0, lru_sum_flush_priority);
     }
 
+  pgbuf_Flush_eye.victim_count = victim_count;
   victim_count = victim_count_lru;
   if (victim_count == 0)
     {
@@ -4174,8 +4176,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_collect_flush, PSTAT_PB_FLUSH_COLLECT);
       goto end;
     }
-
-  pgbuf_Flush_eye.victim_count = victim_count;
 
 #if defined (SERVER_MODE)
   /* wake up log flush thread. we need log up to date to be able to flush pages */
@@ -9456,6 +9456,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
           continue;
 	}
 
+#if 0
       /* avoid victimizing bcb's that are probably going to be vacuumed. due to the MVCC system (active workers leave
        * their markings all over the place and vacuum has to come and clean after them), we may have to reload same cold
        * pages from disk to be vacuumed. as long as we have enough victim candidates, try to avoid these bcb's. */
@@ -9467,6 +9468,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
           perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_INVALIDATE_CANDIDATE);
           continue;
         }
+#endif
       
       /* a victim candidate. we need to lock its BCB, but since we have LRU mutex, we can only do it conditionally.
        * chances are we'll get the mutex. */
@@ -14420,7 +14422,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
   diff = prv_quota - prv_real_ratio;
 
   prv_flush_ratio = prv_real_ratio * (1.0f - diff);
-  prv_flush_ratio = MIN (0.05f, prv_flush_ratio);
+  prv_flush_ratio = MIN (1.0f, prv_flush_ratio);
 
   for (i = PGBUF_LRU_INDEX_FROM_PRIVATE (0); i < PGBUF_TOTAL_LRU; i++)
     {
