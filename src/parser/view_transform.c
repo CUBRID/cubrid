@@ -4593,6 +4593,8 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   PT_NODE *from;
   int is_union_translation = 0;
 
+  assert (!PT_SELECT_INFO_IS_FLAGED (select_statement, PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA));
+
   /* Convert to cnf and tag taggable terms */
   select_statement->info.query.q.select.where = pt_cnf (parser, select_statement->info.query.q.select.where);
   if (select_statement->info.query.q.select.having)
@@ -4696,21 +4698,24 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int
   switch (statement->node_type)
     {
     case PT_SELECT:
-      tmp_node = mq_check_rewrite_select (parser, statement);
-      if (tmp_node == NULL)
+      if (!PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA))
 	{
-	  if (!pt_has_error (parser) && er_has_error ())
+	  tmp_node = mq_check_rewrite_select (parser, statement);
+	  if (tmp_node == NULL)
 	    {
-	      /* Some unexpected errors (like ER_INTERRUPTED due to timeout) should be handled. */
-	      PT_ERROR (parser, statement, er_msg ());
+	      if (!pt_has_error (parser) && er_has_error ())
+		{
+		  /* Some unexpected errors (like ER_INTERRUPTED due to timeout) should be handled. */
+		  PT_ERROR (parser, statement, er_msg ());
+		}
+
+	      statement = tmp_node;
+
+	      break;
 	    }
 
 	  statement = tmp_node;
-
-	  break;
 	}
-
-      statement = tmp_node;
 
       if (!PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
 	{
