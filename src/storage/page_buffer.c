@@ -102,6 +102,8 @@ static int rv;
 #define PGBUF_ENABLE_FLUSH_LIST
 #endif
 
+#define PGBUF_ALLOC_BCB_COND_WAIT
+
 #if defined (PGBUF_ENABLE_FLUSH_LIST)
 #define MAX_FLUSH_BCBS_LRU	200
 #define FLUSH_ARRAY_POSITION(lru_index,pos_in_lru) ((lru_index) * MAX_FLUSH_BCBS_LRU + pos_in_lru)
@@ -8546,12 +8548,12 @@ retry:
     }
 
   /* add to waiters thread list to be assigned victim directly */
-  to.tv_sec = (int) time (NULL) + 10 /* todo: use PGBUF_TIMEOUT */;
+  to.tv_sec = (int) time (NULL) + 60 /* todo: use PGBUF_TIMEOUT */;
   to.tv_nsec = 0;
 
-#if 0
+#if defined (PGBUF_ALLOC_BCB_COND_WAIT)
   thread_lock_entry (thread_p);
-#endif
+#endif /* PGBUF_ALLOC_BCB_COND_WAIT */
 
   if (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] != NULL)
     {
@@ -8597,7 +8599,7 @@ retry:
   /* now that we added to queue, decrement count_get_victim_wait_in_progress */
   ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, -1);
 
-#if 0
+#if defined (PGBUF_ALLOC_BCB_COND_WAIT)
   thread_p->resume_status = THREAD_ALLOC_BCB_SUSPENDED;
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, &to);
 
@@ -8648,7 +8650,7 @@ retry:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
               r == ETIMEDOUT ? ER_CSS_PTHREAD_COND_TIMEDOUT : ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
     }
-#else
+#else /* !PGBUF_ALLOC_BCB_COND_WAIT */
   /* spin until a bcb is received */
   for (loop_count = 0; loop_count < INT_MAX; loop_count++)
     {
@@ -8687,7 +8689,7 @@ retry:
 
   /* todo: need a way to make the bcb assignment safe. if thread gives up after it was assigned a bcb, that bcb remains
    * forever unvictimized! */
-#endif
+#endif /* PGBUF_ALLOC_BCB_COND_WAIT */
 
 #endif /* SERVER_MODE */
 
@@ -15721,7 +15723,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
     {
       assert (waiter_thread != NULL);
       
-#if 0
+#if defined (PGBUF_ALLOC_BCB_COND_WAIT)
       (void) thread_lock_entry (waiter_thread);
 
       if (waiter_thread->resume_status != THREAD_ALLOC_BCB_SUSPENDED)
@@ -15745,7 +15747,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
           thread_unlock_entry (waiter_thread);
           continue;
         }
-#endif /* 0 */
+#endif /* PGBUF_ALLOC_BCB_COND_WAIT */
 
       /* assign bcb to thread */
       pgbuf_bcb_update_flags (bcb, PGBUF_BCB_VICTIM_DIRECT_FLAG, PGBUF_BCB_FLUSHING_TO_DISK_FLAG);
@@ -15754,14 +15756,16 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
           ABORT_RELEASE ();
         }
 
+#if defined (PGBUF_ALLOC_BCB_COND_WAIT)
+      pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index] = bcb;
+
+      thread_unlock_entry (waiter_thread);
+#else /* !PGBUF_ALLOC_BCB_COND_WAIT */
       if (ATOMIC_TAS_ADDR (&pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index], bcb) != NULL)
         {
           ABORT_RELEASE ();
         }
-
-#if 0
-      thread_unlock_entry (waiter_thread);
-#endif
+#endif /* !PGBUF_ALLOC_BCB_COND_WAIT */
 
       /* bcb was assigned */
       return true;
