@@ -97,7 +97,6 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_rc_track_enter(thread_p) (-1)
 #define thread_rc_track_exit(thread_p, idx) (NO_ERROR)
 #define thread_rc_track_amount_pgbuf(thread_p) (0)
-#define thread_rc_track_amount_pgbuf_temp(thread_p) (0)
 #define thread_rc_track_amount_qlist(thread_p) (0)
 #define thread_rc_track_dump_all(thread_p, outfp)
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
@@ -178,7 +177,7 @@ enum
 
 /* resource track meters */
 enum
-{ RC_VMEM = 0, RC_PGBUF, RC_PGBUF_TEMP, RC_QLIST, RC_CS, RC_LAST };
+{ RC_VMEM = 0, RC_PGBUF, RC_QLIST, RC_CS, RC_LAST };
 
 /* resource track managers */
 enum
@@ -483,7 +482,6 @@ extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_exit (THREAD_ENTRY * thread_p, int id);
 extern int thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p);
-extern int thread_rc_track_amount_pgbuf_temp (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int line_no, int amount,

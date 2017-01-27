@@ -183,7 +183,6 @@ static THREAD_DAEMON *thread_Daemons = NULL;
 
 #define THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT	      32767
 #define THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT	      1024
-#define THREAD_RC_TRACK_PGBUF_TEMP_THRESHOLD_AMOUNT   1024
 #define THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT	      1024
 #define THREAD_RC_TRACK_CS_THRESHOLD_AMOUNT	      1024
 
@@ -4303,12 +4302,6 @@ thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 
       for (i = 0; i < RC_LAST; i++)
 	{
-	  /* skip out pgbuf_temp check; is included with pgbuf check */
-	  if (i == RC_PGBUF_TEMP)
-	    {
-	      continue;
-	    }
-
 #if 1				/* TODO - */
 	  /* skip out qlist check; is checked separately */
 	  if (i == RC_QLIST)
@@ -4440,9 +4433,6 @@ thread_rc_track_rcname (int rc_idx)
     case RC_PGBUF:
       name = "Page Buffer";
       break;
-    case RC_PGBUF_TEMP:
-      name = "Page Buffer (Temporary)";
-      break;
     case RC_QLIST:
       name = "List File";
       break;
@@ -4511,8 +4501,6 @@ thread_rc_track_threshold_amount (int rc_idx)
       return THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT;
     case RC_PGBUF:
       return THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT;
-    case RC_PGBUF_TEMP:
-      return THREAD_RC_TRACK_PGBUF_TEMP_THRESHOLD_AMOUNT;
     case RC_QLIST:
       return THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT;
     case RC_CS:
@@ -4868,17 +4856,6 @@ int
 thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p)
 {
   return thread_rc_track_amount_helper (thread_p, RC_PGBUF);
-}
-
-/*
- * thread_rc_track_amount_pgbuf_temp () -
- *   return:
- *   thread_p(in):
- */
-int
-thread_rc_track_amount_pgbuf_temp (THREAD_ENTRY * thread_p)
-{
-  return thread_rc_track_amount_helper (thread_p, RC_PGBUF_TEMP);
 }
 
 /*

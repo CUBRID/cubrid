@@ -715,12 +715,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   (void) pgbuf_flush_all (thread_p, volid);
   (void) fileio_synchronize (thread_p, vdes, vol_fullname);
 
-  /* If this is a permanent volume for temporary storage purposes, indicate so to page buffer manager, so that fetches
-   * of new pages can be initialized with temporary lsa..which will avoid logging. */
-  if (ext_info->voltype == DB_PERMANENT_VOLTYPE && vol_purpose == DB_TEMPORARY_DATA_PURPOSE)
-    {
-      pgbuf_cache_permanent_volume_for_temporary (volid);
-    }
   /* todo: temporary is not logged because code should avoid it. this complicated system that uses page buffer should
    * not be necessary. with the exception of file manager and disk manager, who already manage to skip logging on
    * temporary files, all other changes on temporary pages are really not logged. so why bother? */
@@ -1634,22 +1628,12 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+      assert (disk_Cache->nvols_perm + disk_Cache->nvols_temp <= LOG_MAX_DBVOLID);
 
       disk_log ("disk_extend", "added new volume %d with %d free sectors for %s.", volid_new, nsect_free_new,
 		disk_type_to_string (extend_info->voltype));
 
       nsect_extend -= nsect_free_new;
-
-      /* update volume count */
-      if (voltype == DB_PERMANENT_VOLTYPE)
-	{
-	  disk_Cache->nvols_perm++;
-	}
-      else
-	{
-	  disk_Cache->nvols_temp++;
-	}
-      assert (disk_Cache->nvols_perm + disk_Cache->nvols_temp <= LOG_MAX_DBVOLID);
 
       /* update total and max */
       extend_info->nsect_total += volext.nsect_total;
@@ -1658,8 +1642,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       disk_cache_lock_reserve (extend_info);
       /* add new volume */
       disk_Cache->vols[volid_new].nsect_free = nsect_free_new;
-      disk_Cache->vols[volid_new].purpose =
-	voltype == DB_PERMANENT_VOLTYPE ? DB_PERMANENT_DATA_PURPOSE : DB_TEMPORARY_DATA_PURPOSE;
+      assert (disk_Cache->vols[volid_new].purpose == volext.purpose);
       extend_info->nsect_free += nsect_free_new;
 
       if (reserve_context && reserve_context->n_cache_reserve_remaining > 0)
@@ -1919,14 +1902,17 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
     }
 
   log_sysop_start (thread_p);
+
+  /* with disk_format, we start fixing pages. page fixing may depend on */
   if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
     {
-      pgbuf_refresh_max_permanent_volume_id (volid);
+      disk_Cache->nvols_perm++;
     }
   else
     {
-      pgbuf_refresh_max_permanent_volume_id (volid - 1);
+      disk_Cache->nvols_temp++;
     }
+  disk_Cache->vols[volid].purpose = extinfo->purpose;
 
   error_code = disk_format (thread_p, boot_db_full_name (), volid, extinfo, nsects_free_out);
   if (error_code != NO_ERROR)
@@ -1963,6 +1949,17 @@ exit:
   else
     {
       log_sysop_abort (thread_p);
+
+      if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
+	{
+	  /* undo format does not update cache on temporary volumes */
+	  disk_Cache->nvols_temp--;
+	}
+      else if (error_code == ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG || error_code == ER_DISK_UNKNOWN_PURPOSE)
+	{
+	  /* undo format is not logged, and number of volumes will not be updated. */
+	  disk_Cache->nvols_perm--;
+	}
     }
 
   return error_code;
@@ -2016,7 +2013,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
   ext_info.overwrite = overwrite;
 
   /* compute total/max sectors. we always keep a rounded number of sectors. */
-  ext_info.nsect_total = disk_sectors_to_extend_npages ((const) npages);
+  ext_info.nsect_total = disk_sectors_to_extend_npages (npages);
   ext_info.nsect_max = ext_info.nsect_total;
   ext_info.max_npages = npages;	/* this is obsolete. I set it just to see it if a crash occurs. */
 
@@ -2034,11 +2031,8 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
     }
   assert (volid_new == disk_Cache->nvols_perm);
 
-  /* update cache */
-  disk_Cache->nvols_perm++;
-
   disk_cache_lock_reserve_for_purpose (ext_info.purpose);
-  disk_Cache->vols[volid_new].purpose = ext_info.purpose;
+  assert (disk_Cache->vols[volid_new].purpose == ext_info.purpose);
   assert (disk_Cache->vols[volid_new].nsect_free == 0);
 
   disk_cache_update_vol_free (volid_new, nsect_free);
@@ -4515,20 +4509,22 @@ disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_dbname, cons
   ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
   ext_info.voltype = DB_PERMANENT_VOLTYPE;
 
+  disk_Cache->nvols_perm = 1;
+  disk_Cache->vols[LOG_DBFIRST_VOLID].purpose = DB_PERMANENT_DATA_PURPOSE;
+
   error_code = disk_format (thread_p, full_dbname, LOG_DBFIRST_VOLID, &ext_info, &nsect_free);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      disk_Cache->nvols_perm = 0;
       return error_code;
     }
 
-  disk_Cache->vols[LOG_DBFIRST_VOLID].purpose = DB_PERMANENT_DATA_PURPOSE;
   disk_Cache->vols[LOG_DBFIRST_VOLID].nsect_free = nsect_free;
   disk_Cache->perm_purpose_info.extend_info.nsect_free = nsect_free;
   disk_Cache->perm_purpose_info.extend_info.nsect_total = ext_info.nsect_total;
   disk_Cache->perm_purpose_info.extend_info.nsect_max = ext_info.nsect_max;
 
-  disk_Cache->nvols_perm = 1;
   return NO_ERROR;
 }
 
@@ -5007,7 +5003,12 @@ disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid, INT64 * db_creatio
 DISK_VOLPURPOSE
 xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
 {
-  assert (disk_Cache != NULL);
+  if (disk_Cache == NULL)
+    {
+      /* manager not initialized. only allow fetches from first volume. */
+      assert (volid == LOG_DBFIRST_VOLID);
+      return DB_PERMANENT_DATA_PURPOSE;
+    }
 
   if (!disk_is_valid_volid (volid))
     {

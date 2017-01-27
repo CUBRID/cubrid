@@ -573,12 +573,7 @@ struct pgbuf_buffer_pool
 
 #if defined(SERVER_MODE)
   bool is_flushing_victims;	/* flag set true when pgbuf flush thread is flushing victim candidates */
-  pthread_mutex_t volinfo_mutex;
 #endif				/* SERVER_MODE */
-  VOLID last_perm_volid;	/* last perm. volume id */
-  int num_permvols_tmparea;	/* # of perm. vols for temp */
-  int size_permvols_tmparea_volids;	/* size of the array */
-  VOLID *permvols_tmparea_volids;	/* the volids array */
 
   int lru_victim_req_cnt;	/* number of victim request from this queue */
   int ain_victim_req_cnt;
@@ -989,11 +984,6 @@ pgbuf_initialize (void)
     }
 
   pgbuf_Pool.check_for_interrupts = false;
-  pthread_mutex_init (&pgbuf_Pool.volinfo_mutex, NULL);
-  pgbuf_Pool.last_perm_volid = LOG_MAX_DBVOLID;
-  pgbuf_Pool.num_permvols_tmparea = 0;
-  pgbuf_Pool.size_permvols_tmparea_volids = 0;
-  pgbuf_Pool.permvols_tmparea_volids = NULL;
 
   pgbuf_Pool.victim_cand_list =
     ((PGBUF_VICTIM_CANDIDATE_LIST *) malloc (pgbuf_Pool.num_buffers * sizeof (PGBUF_VICTIM_CANDIDATE_LIST)));
@@ -1052,7 +1042,6 @@ void
 pgbuf_finalize (void)
 {
   PGBUF_BCB *bufptr;
-  void *area;
   PGBUF_HOLDER_SET *holder_set;
   int i;
   size_t hash_size, j;
@@ -1133,17 +1122,6 @@ pgbuf_finalize (void)
       holder_set = pgbuf_Pool.free_holder_set;
       pgbuf_Pool.free_holder_set = holder_set->next_set;
       free_and_init (holder_set);
-    }
-
-  /* final task for volume info */
-  pthread_mutex_destroy (&pgbuf_Pool.volinfo_mutex);
-  area = pgbuf_Pool.permvols_tmparea_volids;
-  if (area != NULL)
-    {
-      pgbuf_Pool.num_permvols_tmparea = 0;
-      pgbuf_Pool.size_permvols_tmparea_volids = 0;
-      pgbuf_Pool.permvols_tmparea_volids = NULL;
-      free_and_init (area);
     }
 
   if (pgbuf_Pool.victim_cand_list != NULL)
@@ -1685,10 +1663,6 @@ try_again:
 
 #if !defined (NDEBUG)
   thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF, MGR_DEF);
-  if (pgbuf_is_lsa_temporary (pgptr))
-    {
-      thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF_TEMP, MGR_DEF);
-    }
 #endif /* NDEBUG */
 
   if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
@@ -4491,97 +4465,6 @@ pgbuf_get_volume_label (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_refresh_max_permanent_volume_id () - Refresh the maxmim permanent
- *                             volume identifier cached by the page buffer pool
- *   return: void
- *   volid(in): Volume identifier of last allocated permanent volume
- *
- * Note: This is needed to initialize the lsa of a page that it is fetched as
- *       new. The lsa need to be initialized according to the storage purpose
- *       of the page.
- */
-void
-pgbuf_refresh_max_permanent_volume_id (VOLID volid)
-{
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  rv = pthread_mutex_lock (&pgbuf_Pool.volinfo_mutex);
-  pgbuf_Pool.last_perm_volid = volid;
-  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-}
-
-/*
- * pgbuf_get_max_permanent_volume_id () - Return the maxmim permanent
- *                             volume identifier cached by the page buffer pool
- *   return: VOLID
- *
- */
-VOLID
-pgbuf_get_max_permanent_volume_id (void)
-{
-  return pgbuf_Pool.last_perm_volid;
-}
-
-/*
- * pgbuf_cache_permanent_volume_for_temporary () - The given permanent volume
- *                                  is remembered for temporary storage purposes
- *   return: void
- *   volid(in): Volume identifier of last allocated permanent volume
- *
- * Note: This declaration is needed since newly allocated pages can be fetched
- *       as "new". That is, the page buffer manager will not read the page
- *       from disk.
- */
-void
-pgbuf_cache_permanent_volume_for_temporary (VOLID volid)
-{
-  void *area;
-  int num_entries, nbytes;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  rv = pthread_mutex_lock (&pgbuf_Pool.volinfo_mutex);
-  if (pgbuf_Pool.permvols_tmparea_volids == NULL)
-    {
-      num_entries = 10;
-      nbytes = num_entries * sizeof (pgbuf_Pool.permvols_tmparea_volids);
-
-      area = malloc (nbytes);
-      if (area == NULL)
-	{
-	  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) nbytes);
-	  return;
-	}
-      pgbuf_Pool.permvols_tmparea_volids = (VOLID *) area;
-      pgbuf_Pool.size_permvols_tmparea_volids = num_entries;
-      /* pgbuf_Pool.num_permvols_tmparea is initialized to 0 in pgbuf_initialize(). */
-    }
-  else if (pgbuf_Pool.size_permvols_tmparea_volids == pgbuf_Pool.num_permvols_tmparea)
-    {
-      /* We need to expand the array */
-      num_entries = pgbuf_Pool.size_permvols_tmparea_volids + 10;
-      nbytes = num_entries * sizeof (pgbuf_Pool.permvols_tmparea_volids);
-
-      area = realloc (pgbuf_Pool.permvols_tmparea_volids, nbytes);
-      if (area == NULL)
-	{
-	  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-	  return;
-	}
-      pgbuf_Pool.permvols_tmparea_volids = (VOLID *) area;
-      pgbuf_Pool.size_permvols_tmparea_volids = num_entries;
-    }
-
-  pgbuf_Pool.permvols_tmparea_volids[pgbuf_Pool.num_permvols_tmparea] = volid;
-  pgbuf_Pool.num_permvols_tmparea++;
-  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-}
-
-/*
  * pgbuf_force_to_check_for_interrupts () - Force the page buffer manager
  *      to check for possible interrupts when pages are fetched
  *   return: void
@@ -4793,31 +4676,13 @@ pgbuf_is_lsa_temporary (PAGE_PTR pgptr)
 STATIC_INLINE bool
 pgbuf_is_temporary_volume (VOLID volid)
 {
-  int i;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  rv = pthread_mutex_lock (&pgbuf_Pool.volinfo_mutex);
-  if (volid > pgbuf_Pool.last_perm_volid)
+  /* todo: I don't know why page buffer should care about temporary files and what this does, but it is really annoying.
+   * until database is loaded and restarted, I will return false always. */
+  if (!LOG_ISRESTARTED ())
     {
-      /* it means temporary volumes */
-      pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-      return true;
+      return false;
     }
-
-  /* find the given volid from the volid set of permanent volumes with temporary purpose. */
-  for (i = 0; i < pgbuf_Pool.num_permvols_tmparea; i++)
-    {
-      if (volid == pgbuf_Pool.permvols_tmparea_volids[i])
-	{
-	  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-	  return true;
-	}
-    }
-
-  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-  return false;
+  return (xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
 }
 
 /*
@@ -6067,14 +5932,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
 #if !defined(NDEBUG)
   thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF, MGR_DEF);
-  if (pgbuf_is_lsa_temporary (pgptr))
-    {
-      /* for the defense of add vol */
-      if (thread_rc_track_amount_pgbuf_temp (thread_p) > 0)
-	{
-	  thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF_TEMP, MGR_DEF);
-	}
-    }
 #endif /* NDEBUG */
 
   if (holder_status != NO_ERROR)
