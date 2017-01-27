@@ -818,7 +818,6 @@ struct pgbuf_page_quota
   float *lru_victim_flush_priority_per_lru;	/* priority to flush from this LRU */
 
   int *private_lru_session_cnt;	/* Number of active session for each private LRU:  Contains only private lists ! */
-  float *private_lru_distr;	/* How quota is destributed among private lists */
   float private_pages_ratio;	/* Ratio of all private BCBs among total BCBs */
 
   /* todo: remove me --> */
@@ -1817,10 +1816,6 @@ pgbuf_finalize (void)
   if (pgbuf_Pool.quota.private_lru_session_cnt != NULL)
     {
       free_and_init (pgbuf_Pool.quota.private_lru_session_cnt);
-    }
-  if (pgbuf_Pool.quota.private_lru_distr != NULL)
-    {
-      free_and_init (pgbuf_Pool.quota.private_lru_distr);
     }
 
   /* Free monitor structure data */
@@ -13822,15 +13817,6 @@ pgbuf_initialize_page_quota (void)
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, (PGBUF_TOTAL_LRU * sizeof (quota->lru_victim_flush_priority_per_lru[0])));
-      goto exit;
-    }
-
-  quota->private_lru_distr = (float *) malloc (PGBUF_TOTAL_LRU * sizeof (quota->private_lru_distr[0]));
-  if (quota->private_lru_distr == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU * sizeof (quota->private_lru_distr[0])));
       goto exit;
     }
 
