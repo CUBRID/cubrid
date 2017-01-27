@@ -1663,10 +1663,6 @@ try_again:
 
 #if !defined (NDEBUG)
   thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF, MGR_DEF);
-  if (pgbuf_is_lsa_temporary (pgptr))
-    {
-      thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF_TEMP, MGR_DEF);
-    }
 #endif /* NDEBUG */
 
   if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
@@ -5930,14 +5926,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
 #if !defined(NDEBUG)
   thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF, MGR_DEF);
-  if (pgbuf_is_lsa_temporary (pgptr))
-    {
-      /* for the defense of add vol */
-      if (thread_rc_track_amount_pgbuf_temp (thread_p) > 0)
-	{
-	  thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF_TEMP, MGR_DEF);
-	}
-    }
 #endif /* NDEBUG */
 
   if (holder_status != NO_ERROR)

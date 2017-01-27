@@ -1898,8 +1898,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   if (!extinfo->overwrite && fileio_is_volume_exist (extinfo->name))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
-      error_code = ER_BO_VOLUME_EXISTS;
-      goto exit;
+      return ER_BO_VOLUME_EXISTS;
     }
 
   log_sysop_start (thread_p);
