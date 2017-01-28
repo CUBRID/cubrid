@@ -2029,7 +2029,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
       csect_exit (thread_p, CSECT_DISK_CHECK);
       return error_code;
     }
-  assert (volid_new == disk_Cache->nvols_perm);
+  assert (volid_new == disk_Cache->nvols_perm - 1);
 
   disk_cache_lock_reserve_for_purpose (ext_info.purpose);
   assert (disk_Cache->vols[volid_new].purpose == ext_info.purpose);
