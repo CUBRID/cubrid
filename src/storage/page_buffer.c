@@ -275,7 +275,9 @@ typedef enum
 #define PGBUF_MAX_SOFT_QUOTA 1500
 /* Maximum (configurable) number of pages which a private chain may hold 
  * When this is zero, page quota is disabled */
+#if defined (MAX_PRIVATE_QUOTA)
 #define PGBUF_MAX_QUOTA (pgbuf_Pool.quota.max_pages_private_quota)
+#endif
 
 #define PGBUF_PAGE_QUOTA_IS_ENABLED (PGBUF_MAX_QUOTA > 0)
 
@@ -811,7 +813,9 @@ struct pgbuf_page_monitor
 typedef struct pgbuf_page_quota PGBUF_PAGE_QUOTA;
 struct pgbuf_page_quota
 {
+#if defined (MAX_PRIVATE_QUOTA)
   int max_pages_private_quota;	/* number of pages per private list, is 0 if page quota is disabled */
+#endif
   int num_private_LRU_list;	/* number of private LRU lists */
 
   /* Real-time tunning: */
@@ -13545,6 +13549,7 @@ pgbuf_initialize_page_quota_parameters (void)
   quota->adjust_age = 0;
   quota->is_adjusting = 0;
 
+#if defined (MAX_PRIVATE_QUOTA)
   quota->max_pages_private_quota = prm_get_integer_value (PRM_ID_PB_TRAN_PAGES_QUOTA);
   if (quota->max_pages_private_quota > 0 && quota->max_pages_private_quota < PGBUF_PRIVATE_MIN_QUOTA)
     {
@@ -13565,6 +13570,7 @@ pgbuf_initialize_page_quota_parameters (void)
 #endif /* CUBRID_DEBUG */
       quota->max_pages_private_quota = PGBUF_MAX_HARD_QUOTA;
     }
+#endif
 
   quota->num_private_LRU_list = prm_get_integer_value (PRM_ID_PB_NUM_PRIVATE_CHAINS);
   auto_num_private_chains = (quota->num_private_LRU_list == -1) ? true : false;
@@ -13607,6 +13613,7 @@ pgbuf_initialize_page_quota_parameters (void)
 	}
     }
 
+#if defined (MAX_PRIVATE_QUOTA)
   if (quota->num_private_LRU_list == 0)
     {
       /* transaction quota is disabled */
@@ -13624,6 +13631,8 @@ pgbuf_initialize_page_quota_parameters (void)
 
       quota->max_pages_private_quota = MIN (quota->max_pages_private_quota, PGBUF_MAX_HARD_QUOTA);
     }
+#endif
+
   return NO_ERROR;
 }
 
@@ -14134,7 +14143,9 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
 	    }
 
 	  new_quota = (int) (new_lru_ratio * all_private_quota);
+#if defined (MAX_PRIVATE_QUOTA)
 	  new_quota = MIN (new_quota, PGBUF_MAX_QUOTA);
+#endif
 
           lru_list = PGBUF_GET_LRU_LIST (i);
           lru_list->quota = new_quota;
