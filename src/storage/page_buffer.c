@@ -837,11 +837,12 @@ struct pgbuf_page_quota
 };
 
 #if defined (SERVER_MODE)
+/* PGBUF_DIRECT_VICTIM - system used to optimize the victim assignment without searching and burning CPU uselessly.
+ * threads are waiting to be assigned a victim directly and woken up. */
 typedef struct pgbuf_direct_victim PGBUF_DIRECT_VICTIM;
 struct pgbuf_direct_victim
 {
   PGBUF_BCB **bcb_victims;
-  LOCK_FREE_CIRCULAR_QUEUE *flushed_bcbs;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_high_priority;
   LOCK_FREE_CIRCULAR_QUEUE *waiter_threads_low_priority;
 };
@@ -912,7 +913,8 @@ struct pgbuf_buffer_pool
 #endif				/* SERVER_MODE */
 
 #if defined (SERVER_MODE)
-  PGBUF_DIRECT_VICTIM direct_victims;
+  PGBUF_DIRECT_VICTIM direct_victims;         /* direct victim assignment */
+  LOCK_FREE_CIRCULAR_QUEUE *flushed_bcbs;     /* post-flush processing */
 #endif /* SERVER_MODE */
   LOCK_FREE_CIRCULAR_QUEUE *private_lrus_with_victims;
   LOCK_FREE_CIRCULAR_QUEUE *shared_lrus_with_victims;
@@ -1620,9 +1622,8 @@ pgbuf_initialize (void)
               2 * thread_num_total_threads () * sizeof (THREAD_ENTRY *));
       goto error;
     }
-  pgbuf_Pool.direct_victims.flushed_bcbs =
-    lf_circular_queue_create (PGBUF_FLUSHED_BCBS_BUFFER_SIZE, sizeof (PGBUF_BCB *));
-  if (pgbuf_Pool.direct_victims.flushed_bcbs == NULL)
+  pgbuf_Pool.flushed_bcbs = lf_circular_queue_create (PGBUF_FLUSHED_BCBS_BUFFER_SIZE, sizeof (PGBUF_BCB *));
+  if (pgbuf_Pool.flushed_bcbs == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
               PGBUF_FLUSHED_BCBS_BUFFER_SIZE * sizeof (PGBUF_BCB *));
@@ -1853,10 +1854,10 @@ pgbuf_finalize (void)
       lf_circular_queue_destroy (pgbuf_Pool.direct_victims.waiter_threads_low_priority);
       pgbuf_Pool.direct_victims.waiter_threads_low_priority = NULL;
     }
-  if (pgbuf_Pool.direct_victims.flushed_bcbs != NULL)
+  if (pgbuf_Pool.flushed_bcbs != NULL)
     {
-      lf_circular_queue_destroy (pgbuf_Pool.direct_victims.flushed_bcbs);
-      pgbuf_Pool.direct_victims.waiter_threads_low_priority = NULL;
+      lf_circular_queue_destroy (pgbuf_Pool.flushed_bcbs);
+      pgbuf_Pool.flushed_bcbs = NULL;
     }
 #endif /* SERVER_MODE */
 
@@ -10466,8 +10467,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * i
 
 #if defined (SERVER_MODE)
   /* todo: compute the delay between flush and direct assignment */
-  if (thread_is_page_post_flush_thread_available ()
-      && lf_circular_queue_produce (pgbuf_Pool.direct_victims.flushed_bcbs, &bufptr))
+  if (thread_is_page_post_flush_thread_available () && lf_circular_queue_produce (pgbuf_Pool.flushed_bcbs, &bufptr))
     {
       /* page buffer maintenance thread will try to assign this bcb directly as victim. */
       thread_wakeup_page_post_flush_thread ();
@@ -14529,7 +14529,7 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
   *alloc_bcb_waiter_high = (lfcq_size >= 0) ? lfcq_size : 0;
   lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority);
   *alloc_bcb_waiter_med = (lfcq_size >= 0) ? lfcq_size : 0;
-  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.flushed_bcbs);
+  lfcq_size = lf_circular_queue_approx_size (pgbuf_Pool.flushed_bcbs);
   *flushed_bcbs_waiting_direct_assign = (lfcq_size >= 0) ? lfcq_size : 0;
 #else /* !SERVER_MODE */
   *alloc_bcb_waiter_high = 0;
@@ -15169,7 +15169,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
   THREAD_ENTRY *thrd_blocked = NULL;
 
   /* consume all flushed bcbs queue */
-  while (lf_circular_queue_consume (pgbuf_Pool.direct_victims.flushed_bcbs, &bcb_flushed))
+  while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcbs, &bcb_flushed))
     {
       /* we need to lock mutex */
       PGBUF_LOCK_BCB (bcb_flushed);
