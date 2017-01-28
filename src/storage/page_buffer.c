@@ -16162,3 +16162,19 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
     }
 #endif /* !NDEBUG */
 }
+
+/*
+ * pgbuf_is_io_stressful () - is io stressful (are pages waiting for victims?)
+ *
+ * return    : true/false
+ */
+bool
+pgbuf_is_io_stressful (void)
+{
+#if defined (SERVER_MODE)
+  /* we consider the IO stressful if threads end up waiting for victims */
+  return !lf_circular_queue_is_empty (pgbuf_Pool.direct_victims.waiter_threads_low_priority);
+#else /* !SERVER_MODE */
+  return false;
+#endif /* !SERVER_MODE */
+}
