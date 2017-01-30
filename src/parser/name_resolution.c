@@ -982,7 +982,11 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
 	  spec->info.spec.derived_table = table;
 
-	  pt_bind_spec_types (parser, spec);
+	  if (table != NULL)
+	    {
+	      /* table spec passed bind_names and semantic_type */
+	      pt_bind_spec_types (parser, spec);
+	    }
 	}
       else if (PT_SPEC_IS_CTE (spec))
 	{
