@@ -776,8 +776,6 @@ struct pgbuf_page_monitor
   int fix_req_cnt;		/* number of fix requests */
 
 #if defined (SERVER_MODE)
-  INT64 count_get_victim_wait_in_progress;      /* this is a temporary counter used by threads preparing to wait for
-                                                 * direct victim assignments. */
   PGBUF_MONITOR_BCB_MUTEX *bcb_locks;           /* track bcb mutex usage. */
 #endif /* SERVER_MODE */
 
@@ -7954,27 +7952,32 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
 static PGBUF_BCB *
 pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 {
-#define PGBUF_ALLOC_BCB_PENALIZE_DIRTY_RATIO 0.8f
-#define PGBUF_ALLOC_BCB_PENALIZE_SEARCH_THRESHOLD 10
   PGBUF_BCB *bufptr;
-
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_search_and_wait = PERF_UTIME_TRACKER_INITIALIZER;
-  bool penalize = false;
 
 #if defined (SERVER_MODE)
-  bool has_priority = false;
-  bool prioritize_vacuum = false;
   struct timespec to;
   int r = 0;
-  PERF_STAT_ID pstat;
+  PERF_STAT_ID pstat_cond_wait;
 #endif /* SERVER_MODE */
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
 
-#if defined (SERVER_MODE)
-retry:
-#endif /* SERVER_MDOE */
+  /* how it works: we need to a bcb for new VPID.
+   * 1. first source should be invalid list. initially, all bcb's will be in this list. sometimes, bcb's can be added to
+   *    this list during runtime. in any case, these bcb's are not used by anyone, do not need any flush or other
+   *    actions and are the best option for allocating a bcb.
+   * 2. search the bcb in lru lists by calling pgbuf_get_victim.
+   * 3. if search failed then:
+   *    SERVER_MODE: thread is added to one of two queues: high priority waiting threads queue or low priority waiting
+   *                 threads queue. high priority is usually populated by vacuum threads or by threads holding latch
+   *                 on very hot pages (b-tree roots, heap headers, volume header or file headers).
+   *                 thread will then be assigned a victim directly (there are multiple ways this can happen) and woken
+   *                 up.
+   *    SA_MODE: pages are flushed and victim is searched again (and we expect this time to find a victim).
+   */
+
   /* allocate a BCB from invalid BCB list */
   bufptr = pgbuf_get_bcb_from_invalid_list (thread_p);
   if (bufptr != NULL)
@@ -7983,47 +7986,22 @@ retry:
     }
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_search_and_wait);
-
-#if defined (SERVER_MODE)
-  /* ok, we need to consider here that vacuum threads have an unfair chance against active workers. usually this is
-   * not an issue, because vacuum workers are not blocked. however, here they can be. if 1k active workers battle with
-   * 50 vacuum workers for victims, vacuum workers may stay here quite a while. we cannot allow that, because if
-   * vacuum lags behind, the overall system is doomed. check if we need to prioritize vacuum worker threads. */
-  prioritize_vacuum = VACUUM_IS_THREAD_VACUUM (thread_p);
-#endif /* SERVER_MODE */
-
   bufptr = pgbuf_get_victim (thread_p);
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
   if (bufptr != NULL)
     {
-      /* the caller is holding bufptr->BCB_mutex. */
-      if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
-	{
-	  assert (false);
-          bufptr = NULL;
-	}
-      else
-        {
-          /* Above function holds bufptr->BCB_mutex at first operation.
-	    * If the above function returns failure,
-	    * the caller does not hold bufptr->BCB_mutex.
-	    * Otherwise, the caller is still holding bufptr->BCB_mutex.
-	    */
-          goto end;
-        }
+      goto end;
     }
 
 #if defined (SERVER_MODE)
   /* make sure at least flush will feed us with bcb's */
-  /* increment count_get_victim_wait_in_progress to let flush thread know there will be someone needing victims. */
-  ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, 1);
   if (!pgbuf_Pool.is_flushing_victims)
     {
       pgbuf_wakeup_flush_thread (thread_p);
     }
 
   /* add to waiters thread list to be assigned victim directly */
-  to.tv_sec = (int) time (NULL) + 60 /* todo: use PGBUF_TIMEOUT */;
+  to.tv_sec = (int) time (NULL) + PGBUF_TIMEOUT;
   to.tv_nsec = 0;
 
   thread_lock_entry (thread_p);
@@ -8031,10 +8009,9 @@ retry:
   assert (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] == NULL);
   
   /* push to waiter thread list */
-  has_priority = prioritize_vacuum || pgbuf_is_thread_high_priority (thread_p);
-  if (has_priority)
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p))
     {
-      if (prioritize_vacuum)
+      if (VACUUM_IS_THREAD_VACUUM (thread_p))
         {
           perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM);
         }
@@ -8044,7 +8021,7 @@ retry:
           thread_unlock_entry (thread_p);
           return NULL;
         }
-      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
+      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
     }
   else
     {
@@ -8057,20 +8034,27 @@ retry:
            * Which is huge if you ask me.
            * I doubled the size of the queue, but theoretically, this is still possible. I also removed the
            * ABORT_RELEASE, but we may have to think of a way to handle this preempted consumer case. */
-          assert (false);
-          thread_unlock_entry (thread_p);
-          goto retry;
+        
+          /* we do a hack for this case. we add the thread to high-priority instead, which is usually less used and the
+           * same case is (almost) impossible to happen. */
+          if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_high_priority, &thread_p))
+            {
+              assert (false);
+              thread_unlock_entry (thread_p);
+              goto end;
+            }
+          pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
         }
-      pstat = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
+      else
+        {
+          pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
+        }
     }
-
-  /* now that we added to queue, decrement count_get_victim_wait_in_progress */
-  ATOMIC_INC_64 (&pgbuf_Pool.monitor.count_get_victim_wait_in_progress, -1);
 
   thread_p->resume_status = THREAD_ALLOC_BCB_SUSPENDED;
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, &to);
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat_cond_wait);
 
   if (r == 0)
     {
@@ -8079,26 +8063,8 @@ retry:
           thread_unlock_entry (thread_p);
 
           bufptr = pgbuf_get_direct_victim (thread_p);
-          if (bufptr == NULL)
-            {
-              assert (false);
-              goto end;
-            }
-          if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
-	    {
-	      assert (false);
-              bufptr = NULL;
-              goto end;
-	    }
-          else
-            {
-              /* Above function holds bufptr->BCB_mutex at first operation.
-	        * If the above function returns failure,
-	        * the caller does not hold bufptr->BCB_mutex.
-	        * Otherwise, the caller is still holding bufptr->BCB_mutex.
-	        */
-              goto end;
-            }
+          assert (bufptr != NULL);
+          goto end;
         }
 
       /* interrupted */
@@ -8109,22 +8075,44 @@ retry:
     }
   else
     {
-      assert (false);
+      /* should not timeout! */
+      assert (r != ETIMEDOUT);
       thread_p->resume_status = THREAD_ALLOC_BCB_RESUMED;
       thread_unlock_entry (thread_p);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
               r == ETIMEDOUT ? ER_CSS_PTHREAD_COND_TIMEDOUT : ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
     }
-#endif /* SERVER_MODE */
+#else /* !SERVER_MODE */
+  /* we need to flush something */
+  pgbuf_wakeup_flush_thread ();
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
+  bufptr = pgbuf_get_victim (thread_p);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
+  assert (bufptr != NULL);
+#endif /* !SERVER_MODE */
 
 end:
+  if (bufptr != NULL)
+    {
+      /* victimize the buffer */
+      if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
+        {
+          assert (false);
+          bufptr = NULL;
+        }
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_ALL_BUFFERS_DIRTY, 1, 0);
+        }
+    }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_bcb, PSTAT_PB_ALLOC_BCB);
 
   return bufptr;
-
-#undef PGBUF_ALLOC_BCB_PENALIZE_DIRTY_RATIO
-#undef PGBUF_ALLOC_BCB_PENALIZE_SEARCH_THRESHOLD
 }
 
 /*
@@ -13521,8 +13509,6 @@ pgbuf_initialize_page_monitor (void)
   monitor->lru_shared_pgs = 0;
 
 #if defined (SERVER_MODE)
-  monitor->count_get_victim_wait_in_progress = 0;
-
   if (pgbuf_Monitor_locks)
     {
       monitor->bcb_locks = (PGBUF_MONITOR_BCB_MUTEX *) calloc (count_threads, sizeof (PGBUF_MONITOR_BCB_MUTEX));
@@ -14718,18 +14704,18 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
   return error_code;
 }
 
-bool
-pgbuf_keep_victim_flush_thread_active (void)
-{
 #if defined (SERVER_MODE)
-  if (pgbuf_Pool.monitor.count_get_victim_wait_in_progress > 0 || pgbuf_is_any_thread_waiting_for_direct_victim ())
-    {
-      return true;
-    }
-#endif /* SERVER_MDOE */
-
-  return pgbuf_is_hit_ratio_low ();
+/*
+ * pgbuf_keep_victim_flush_thread_running () - keep flush thread running
+ *
+ * return    : true to keep flush thread running, false otherwise
+ */
+bool
+pgbuf_keep_victim_flush_thread_running (void)
+{
+  return pgbuf_is_any_thread_waiting_for_direct_victim () || pgbuf_is_hit_ratio_low ();
 }
+#endif /* SERVER_MDOE */
 
 /*
  * pgbuf_assign_direct_victim () - try to assign bcb directly to a thread waiting for victim. bcb must be a valid victim
@@ -15021,22 +15007,18 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
     }
 
   /* update victim counter. */
-  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 1) == 1)
+  /* add to lock-free circular queue so victimizers can find it... if this is not a private list under quota. */
+  if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index) || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
     {
-      /* this is the first victim candidate. add to lock-free circular queue so victimizers can find it...
-       * ... if this is not a private list under quota. */
-      if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index) || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
+      if (pgbuf_lfcq_add_lru_with_victims (lru_list))
         {
-          if (pgbuf_lfcq_add_lru_with_victims (lru_list))
+          if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
             {
-              if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
-                {
-                  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_LFCQ_LRU_PRV_ADD_ADD_VICTIM);
-                }
-              else
-                {
-                  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_LFCQ_LRU_SHR_ADD_ADD_VICTIM);
-                }
+              perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_LFCQ_LRU_PRV_ADD_ADD_VICTIM);
+            }
+          else
+            {
+              perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_LFCQ_LRU_SHR_ADD_ADD_VICTIM);
             }
         }
     }
