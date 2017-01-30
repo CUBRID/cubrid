@@ -628,7 +628,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PB_TRAN_PAGES_QUOTA "tran_pages_quota"
 #define PRM_NAME_PB_NUM_PRIVATE_CHAINS "num_private_chains"
-#define PRM_NAME_PB_BCB_ALLOC_SLEEP "bcb_alloc_sleep"
+#define PRM_NAME_PB_MONITOR_LOCKS "pgbuf_monitor_locks"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2081,11 +2081,9 @@ static int prm_pb_num_private_chains_lower = -1;
 static unsigned int prm_pb_num_private_chains_flag = 0;
 
 
-int PRM_PB_BCB_ALLOC_SLEEP = 150;
-static int prm_pb_bcb_alloc_sleep_default = 150;
-static int prm_pb_bcb_alloc_sleep_upper = 1000000;
-static int prm_pb_bcb_alloc_sleep_lower = 1;
-static unsigned int prm_pb_bcb_alloc_sleep_flag = 0;
+int PRM_PB_MONITOR_LOCKS = false;
+static bool prm_pb_monitor_locks_default = false;
+static unsigned int prm_pb_monitor_locks_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5344,15 +5342,15 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PB_BCB_ALLOC_SLEEP,
-   PRM_NAME_PB_BCB_ALLOC_SLEEP,
-   (PRM_FOR_SERVER | PRM_RELOADABLE),
+  {PRM_ID_PB_MONITOR_LOCKS,
+   PRM_NAME_PB_MONITOR_LOCKS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
-   (void *) &prm_pb_bcb_alloc_sleep_flag,
-   (void *) &prm_pb_bcb_alloc_sleep_default,
-   (void *) &PRM_PB_BCB_ALLOC_SLEEP,
-   (void *) &prm_pb_bcb_alloc_sleep_upper,
-   (void *) &prm_pb_bcb_alloc_sleep_lower,
+   (void *) &prm_pb_monitor_locks_flag,
+   (void *) &prm_pb_monitor_locks_default,
+   (void *) &PRM_PB_MONITOR_LOCKS,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

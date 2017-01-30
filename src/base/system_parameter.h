@@ -406,10 +406,10 @@ enum param_id
   PRM_ID_PB_TRAN_PAGES_QUOTA,       /* do we keep this? */
 #endif /* MAX_PRIVATE_QUOTA */
   PRM_ID_PB_NUM_PRIVATE_CHAINS,
-  PRM_ID_PB_BCB_ALLOC_SLEEP,
+  PRM_ID_PB_MONITOR_LOCKS,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PB_BCB_ALLOC_SLEEP
+  PRM_LAST_ID = PRM_ID_PB_MONITOR_LOCKS
 };
 
 /*
