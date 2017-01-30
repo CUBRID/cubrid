@@ -110,7 +110,7 @@ static PT_NODE *pt_bind_parameter_path (PARSER_CONTEXT * parser, PT_NODE * path)
 static PT_NODE *pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg,
 					       PT_NODE * in_node);
 static void pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv);
-static void pt_bind_spec_types (PARSER_CONTEXT * parser, PT_NODE * spec);
+static void pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec);
 static void pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg);
 static FUNC_TYPE pt_find_function_type (const char *name);
 static PT_NODE *pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -222,8 +222,8 @@ static void pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * nod
 static void pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 static PT_NODE *pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						   int *continue_walk);
-static PT_NODE *pt_get_as_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type,
-						      PT_NODE * derived_table, PT_NODE * derived_name);
+static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type,
+						   PT_NODE * derived_table, PT_NODE * derived_name);
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 
@@ -844,7 +844,7 @@ pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv)
 }
 
 /*
- * pt_bind_spec_types() -  bind name types for a derived table.
+ * pt_bind_spec_attrs() -  bind name types for a derived table.
  *   return:  void
  *   parser(in/out): the parser context
  *   spec(in/out): an entity spec describing a derived table
@@ -859,7 +859,7 @@ pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv)
  * tag it with spec's id
  */
 static void
-pt_bind_spec_types (PARSER_CONTEXT * parser, PT_NODE * spec)
+pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   PT_NODE *derived_table = NULL, *col, *attr, *cte = NULL;
   PT_SPEC_INFO *spec_info;
@@ -878,8 +878,8 @@ pt_bind_spec_types (PARSER_CONTEXT * parser, PT_NODE * spec)
       if (spec_info->as_attr_list == NULL)
 	{
 	  spec_info->as_attr_list =
-	    pt_get_as_attr_list_of_derived_table (parser, spec_info->derived_table_type, derived_table,
-						  spec_info->range_var);
+	    pt_get_attr_list_of_derived_table (parser, spec_info->derived_table_type, derived_table,
+					       spec_info->range_var);
 	}
 
       /* get types from derived table; */
@@ -930,9 +930,9 @@ pt_bind_spec_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 	}
     }
 
-  /* tag it as resolved */
   for (col = spec->info.spec.as_attr_list; col != NULL; col = col->next)
     {
+      /* tag it as resolved */
       col->info.name.spec_id = spec->info.spec.id;
       col->info.name.meta_class = PT_NORMAL;
     }
@@ -985,13 +985,13 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  if (table != NULL)
 	    {
 	      /* table spec passed bind_names and semantic_type */
-	      pt_bind_spec_types (parser, spec);
+	      pt_bind_spec_attrs (parser, spec);
 	    }
 	}
       else if (PT_SPEC_IS_CTE (spec))
 	{
 	  //cte
-	  pt_bind_spec_types (parser, spec);
+	  pt_bind_spec_attrs (parser, spec);
 	}
 
       if (prev_spec)
@@ -9277,73 +9277,79 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       return;
     }
 
-  /* evaluate non recursive part types; it should be a usual select with no references to this CTE */
+  /* Evaluate the non-recursive part: 
+   *    bind the names and the types from the non-recursive part and set cte->as_attr_list accordingly;
+   *    the recursive part(if it exists) will use the as_attr_list to bind its own names and types;
+   */
   non_recursive_cte = parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg,
 					pt_bind_names_post, bind_arg);
 
-  /* must bind any expr types in table. pt_bind_types requires it. */
+  /* must bind any expr types in non recursive part; required for types binding */
   save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
   bind_arg->sc_info->donot_fold = true;	/* skip folding */
   non_recursive_cte = pt_semantic_type (parser, non_recursive_cte, bind_arg->sc_info);
   bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
+  if (non_recursive_cte == NULL)
+    {
+      goto end;
+    }
 
-  cte_def->info.cte.non_recursive_part = non_recursive_cte;
-
+  /* build the cte as_attr_list according to the non_recursive part */
   if (cte_def->info.cte.as_attr_list == NULL)
     {
       cte_def->info.cte.as_attr_list =
-	pt_get_as_attr_list_of_derived_table (parser, PT_IS_SUBQUERY, non_recursive_cte, cte_def->info.cte.name);
+	pt_get_attr_list_of_derived_table (parser, PT_IS_SUBQUERY, non_recursive_cte, cte_def->info.cte.name);
     }
+  pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, non_recursive_cte, cte_def);
 
-  pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, non_recursive_cte, NULL);
+  /* done with the non_recursive_part */
+  cte_def->info.cte.non_recursive_part = non_recursive_cte;
 
-  /* evaluate the names from recursive part if it exists */
-  if (recursive_cte)
+  /* Evaluate the recursive part:
+   *    bind the names and the types of the recursive part, and unify them with the ones of the non-recursive part
+   *    pt_semantic_type will unify the types of the two parts considering that there is a UNION between them
+   *    cte->as_attr_list will be overwritten with the unified types
+   */
+  if (recursive_cte != NULL)
     {
-      /* the rec part have pointers to the current CTE and because of that a cycle will appear if the rec part
-       * is not changed to NULL */
-      cte_def->info.cte.recursive_part = NULL;
-
       recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+      if (recursive_cte == NULL)
+	{
+	  goto end;
+	}
 
-      /* restore rec part */
       cte_def->info.cte.recursive_part = recursive_cte;
-    }
 
-  /* must bind any expr types in table. pt_bind_types requires it. */
+      /* must bind any expr types in cte; required for types binding */
+      save_donot_fold = bind_arg->sc_info->donot_fold;
+      bind_arg->sc_info->donot_fold = true;
+      save_next_cte_def = cte_def->next;
+      cte_def->next = NULL;
+      cte_def = pt_semantic_type (parser, cte_def, bind_arg->sc_info);
+      if (!cte_def)
+	{
+	  return;		/* error in pt_semantic_type */
+	}
 
-  /* skip folding and next_cte expansion */
-  save_donot_fold = bind_arg->sc_info->donot_fold;
-  bind_arg->sc_info->donot_fold = true;
-  save_next_cte_def = cte_def->next;
-  cte_def->next = NULL;
+      bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
+      cte_def->next = save_next_cte_def;
 
-  cte_def = pt_semantic_type (parser, cte_def, bind_arg->sc_info);
-  if (!cte_def)
-    {
-      return;			/* error in pt_semantic_type */
-    }
+      /* set final CTE attributes types */
+      pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, recursive_cte, cte_def);
 
-  /* set final CTE attributes types */
-  pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, recursive_cte, NULL);
-
-  /* restore donot_fold and next_cte */
-  bind_arg->sc_info->donot_fold = save_donot_fold;
-  cte_def->next = save_next_cte_def;
-
-  /* the attributes of cte self references specs can now be computed correctly */
-  if (recursive_cte)
-    {
+      /* the attributes of cte self references specs can now be computed correctly */
       recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, NULL, NULL, NULL);
-
-      /* restore rec part */
-      cte_def->info.cte.recursive_part = recursive_cte;
     }
+
+end:
+  cte_def->info.cte.non_recursive_part = non_recursive_cte;
+  cte_def->info.cte.recursive_part = recursive_cte;
 }
 
 /*
  * pt_bind_cte_self_references_types () - used to bind types of self reference specs in recursive cte part; 
- *					 this can be done only bind_names is complete and cte attributes types are set
+ *					  this can be done only after bind_names is complete and 
+ *					  final cte attributes types are set
  *   return:
  *   parser(in):
  *   node(in):
@@ -9355,23 +9361,11 @@ pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void
 {
   if (node == NULL || node->node_type != PT_SPEC || !PT_SPEC_IS_CTE (node))
     {
+      /* interested only in CTE specs */
       return node;
     }
 
-  /* interested only in CTE specs */
-  pt_bind_spec_types (parser, node);
-
-  // if (node->info.spec.as_attr_list != NULL)
-  //   {
-  //     /* spec attributes were binded; copy them to CTE also */
-  //     PT_NODE *cte = node->info.spec.cte_pointer->info.pointer.node;
-
-  //     if (cte->info.cte.as_attr_list != NULL)
-  //{
-  //  parser_free_tree (parser, cte->info.cte.as_attr_list);
-  //}
-  //     cte->info.cte.as_attr_list = parser_copy_tree_list (parser, node->info.spec.as_attr_list);
-  //   }
+  pt_bind_spec_attrs (parser, node);
 
   *continue_walk = PT_LIST_WALK;
 
@@ -9382,15 +9376,15 @@ pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void
 /*
  * pt_get_attr_list_of_derived_table - determine the list of aliases of a derived table
  *
- * return             : Computed as_attr_list
- * parser (in) : Parser context.
- * derived_table_type (in) : Provided by the spec that contains the derived table.
- * derived_table (in) : Derived table to be processed.
- * derived_alias (in) : The alias of the derived table (also comes from the spec).
+ *  return : Computed as_attr_list
+ *  parser (in) : Parser context.
+ *  derived_table_type (in) : Provided by the spec that contains the derived table.
+ *  derived_table (in) : Derived table to be processed.
+ *  derived_alias (in) : The alias of the derived table (also comes from the spec).
  */
 static PT_NODE *
-pt_get_as_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type, PT_NODE * derived_table,
-				      PT_NODE * derived_alias)
+pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type, PT_NODE * derived_table,
+				   PT_NODE * derived_alias)
 {
   PT_NODE *as_attr_list = NULL, *select_list;
   int i, id;
@@ -9451,7 +9445,7 @@ pt_get_as_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE deri
 		else
 		  {		/* generate column name */
 		    id = i;
-		    col = pt_name (parser, mq_generate_name (parser, derived_alias, &id));
+		    col = pt_name (parser, mq_generate_name (parser, derived_alias->info.name.original, &id));
 		  }
 	      }
 
@@ -9476,6 +9470,16 @@ pt_get_as_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE deri
   return as_attr_list;
 }
 
+/*
+* pt_set_attr_list_types - identify and set the types of attributes
+*
+*  return : void
+*  parser (in) : Parser context.
+*  as_attr_list(in/out) : attr list to be processed.
+*  derived_table_type (in) : Provided by the spec that contains the derived table.
+*  derived_table (in) : Derived table to be processed.
+*  parent_spec (in) : The spec where derived table resides.
+*/
 static void
 pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
 			PT_NODE * derived_table, PT_NODE * parent_spec)
@@ -9552,7 +9556,7 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 
     case PT_IS_SHOWSTMT:
       {
-	/* types already set in pt_get_all_showstmt_attributes_and_types; */
+	/* types are already set in pt_get_all_showstmt_attributes_and_types; */
 	PT_NODE *col = as_attr_list;
 	while (col)
 	  {
