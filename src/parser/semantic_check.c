@@ -2816,25 +2816,9 @@ pt_check_union_type_compatibility_of_values_query (PARSER_CONTEXT * parser, PT_N
 
   assert (parser != NULL);
 
-  if (!node
-      || !(node->node_type == PT_UNION || node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE
-	   || node->node_type == PT_CTE))
-    {
-      return NULL;
-    }
-
-  if (node->node_type == PT_CTE)
-    {
-      arg1 = node->info.cte.non_recursive_part;
-      arg2 = node->info.cte.recursive_part;
-    }
-  else
-    {
-      arg1 = node->info.query.q.union_.arg1;
-      arg2 = node->info.query.q.union_.arg2;
-    }
-
-  if (!arg1 || !arg2 || !(attrs1 = pt_get_select_list (parser, arg1)) || !(attrs2 = pt_get_select_list (parser, arg2)))
+  if (!node || !(node->node_type == PT_UNION || node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE)
+      || !(arg1 = node->info.query.q.union_.arg1) || !(arg2 = node->info.query.q.union_.arg2)
+      || !(attrs1 = pt_get_select_list (parser, arg1)) || !(attrs2 = pt_get_select_list (parser, arg2)))
     {
       return NULL;
     }
