@@ -110,7 +110,7 @@ static PT_NODE *pt_bind_parameter_path (PARSER_CONTEXT * parser, PT_NODE * path)
 static PT_NODE *pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg,
 					       PT_NODE * in_node);
 static void pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv);
-static void pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec);
+static void pt_bind_spec_types (PARSER_CONTEXT * parser, PT_NODE * spec);
 static void pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg);
 static FUNC_TYPE pt_find_function_type (const char *name);
 static PT_NODE *pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -126,7 +126,7 @@ static int pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
 static int pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p);
 static PT_NODE *pt_common_attribute (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
 static PT_NODE *pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * from);
-static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * from);
+static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec);
 static PT_NODE *pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * scope,
@@ -222,6 +222,10 @@ static void pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * nod
 static void pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 static PT_NODE *pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						   int *continue_walk);
+static PT_NODE *pt_get_as_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type,
+						      PT_NODE * derived_table, PT_NODE * derived_name);
+static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
+				    PT_NODE * derived_table, PT_NODE * parent_spec);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -840,7 +844,7 @@ pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv)
 }
 
 /*
- * pt_bind_types() -  bind name types for a derived table.
+ * pt_bind_spec_types() -  bind name types for a derived table.
  *   return:  void
  *   parser(in/out): the parser context
  *   spec(in/out): an entity spec describing a derived table
@@ -855,241 +859,82 @@ pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv)
  * tag it with spec's id
  */
 static void
-pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
+pt_bind_spec_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
-  PT_NODE *derived_table, *cols, *elt_type, *select_list, *col, *att;
-  int col_cnt, attr_cnt;
+  PT_NODE *derived_table = NULL, *col, *attr, *cte = NULL;
+  PT_SPEC_INFO *spec_info;
 
-  if (!parser || !spec || spec->node_type != PT_SPEC)
+  if (!parser || !spec || spec->node_type != PT_SPEC || PT_SPEC_IS_ENTITY (spec))
     {
       return;
     }
 
+  spec_info = &spec->info.spec;
+
+  /* get aliases if they are not present */
   if (PT_SPEC_IS_DERIVED (spec))
     {
-      derived_table = spec->info.spec.derived_table;
-    }
-  else if (PT_SPEC_IS_CTE (spec))
-    {
-      PT_NODE *cte = spec->info.spec.cte_pointer->info.pointer.node;
-
-      assert (cte != NULL);
-      /* for recursive CTEs bind only the types from the recursive part; 
-       * it should contain references of the non-recursive part */
-      if (cte->info.cte.recursive_part)
+      derived_table = spec_info->derived_table;
+      if (spec_info->as_attr_list == NULL)
 	{
-	  derived_table = cte->info.cte.recursive_part;
+	  spec_info->as_attr_list =
+	    pt_get_as_attr_list_of_derived_table (parser, spec_info->derived_table_type, derived_table,
+						  spec_info->range_var);
+	}
+
+      /* get types from derived table; */
+      pt_set_attr_list_types (parser, spec_info->as_attr_list, spec_info->derived_table_type, derived_table, spec);
+    }
+  else
+    {
+      assert (PT_SPEC_IS_CTE (spec));
+      cte = spec_info->cte_pointer->info.pointer.node;
+
+      /* copy cte as_attr_list to spec, to be used for binding */
+      if (spec_info->as_attr_list == NULL)
+	{
+	  if (cte->info.cte.as_attr_list == NULL)
+	    {
+	      /* as_attr_list of cte should be previously computed in pt_bind_names_in_cte */
+	      PT_INTERNAL_ERROR (parser, "cte definition error");
+	      return;
+	    }
+	  spec_info->as_attr_list = parser_copy_tree_list (parser, cte->info.cte.as_attr_list);
 	}
       else
 	{
-	  derived_table = cte->info.cte.non_recursive_part;
-	}
-    }
-
-  if (!derived_table)
-    {
-      return;
-    }
-
-
-  if (spec->info.spec.as_attr_list == NULL)
-    {
-      PT_NODE *range_var;
-      int i, id;
-
-      /* if derived from a set expression, it better have a set type */
-      if (spec->info.spec.derived_table_type == PT_IS_SET_EXPR)
-	{
-	  if (derived_table->node_type == PT_NAME && derived_table->info.name.original != NULL
-	      && derived_table->info.name.original[0] != '\0')
+	  /* copy cte types from its as_attr_list */
+	  if (pt_length_of_list (spec_info->as_attr_list) != pt_length_of_list (cte->info.cte.as_attr_list))
 	    {
-	      spec->info.spec.as_attr_list = pt_name (parser, derived_table->info.name.original);
-	    }
-	  else
-	    {			/* generate column name */
-	      range_var = spec->info.spec.range_var;
-	      id = 0;
-	      spec->info.spec.as_attr_list =
-		pt_name (parser, mq_generate_name (parser, range_var->info.name.original, &id));
-	    }
-	}
-      else if (spec->info.spec.derived_table_type == PT_IS_CSELECT)
-	{
-	  /* this can't happen since we removed MERGE/CSELECT from grammar */
-	  PT_INTERNAL_ERROR (parser, "resolution");
-	  return;
-	}
-      else if (spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
-	{
-	  spec->info.spec.as_attr_list = pt_get_all_showstmt_attributes_and_types (parser, spec);
-	  if (spec->info.spec.as_attr_list == NULL)
-	    {
-	      PT_INTERNAL_ERROR (parser, "resolution");
-	      return;
-	    }
-	}
-      else
-	{			/* must be a subquery derived table */
-	  /* select_list must have passed star expansion */
-	  select_list = pt_get_select_list (parser, derived_table);
-	  if (!select_list)
-	    {
-	      return;
+	      PT_ERRORmf3 (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_DERIVED_C,
+			   pt_short_print (parser, spec), pt_length_of_list (cte->info.cte.as_attr_list),
+			   pt_length_of_list (spec_info->as_attr_list));
 	    }
 
-	  range_var = spec->info.spec.range_var;
-	  for (att = select_list, i = 0; att; att = att->next, i++)
+	  col = spec_info->as_attr_list;
+	  attr = cte->info.cte.as_attr_list;
+	  for (; col != NULL && attr != NULL; col = col->next, attr = attr->next)
 	    {
-	      if (att->alias_print)
+	      col->type_enum = attr->type_enum;
+	      if (attr->data_type)
 		{
-		  col = pt_name (parser, att->alias_print);
-		}
-	      else
-		{
-		  if (att->node_type == PT_NAME && att->info.name.original != NULL
-		      && att->info.name.original[0] != '\0')
-		    {
-		      col = pt_name (parser, att->info.name.original);
-		    }
-		  else if (att->node_type == PT_VALUE && att->info.value.text != NULL
-			   && att->info.value.text[0] != '\0')
-		    {
-		      col = pt_name (parser, att->info.value.text);
-		    }
-		  else
-		    {		/* generate column name */
-		      id = i;
-		      col = pt_name (parser, mq_generate_name (parser, range_var->info.name.original, &id));
-		    }
-		}
-
-	      spec->info.spec.as_attr_list = parser_append_node (col, spec->info.spec.as_attr_list);
-	    }
-	}
-    }				/* if (spec->info.spec.as_attr_list == NULL) */
-
-  cols = spec->info.spec.as_attr_list;
-  col_cnt = pt_length_of_list (cols);
-
-  /* if derived from a set expression, it better have a set type */
-  if (spec->info.spec.derived_table_type == PT_IS_SET_EXPR)
-    {
-      if (!pt_is_set_type (derived_table))
-	{
-	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MUST_BE_SET_MSET_SEQ,
-		      pt_short_print (parser, derived_table));
-	  return;
-	}
-
-      elt_type = derived_table->data_type;
-
-      /* Handle a derived table query on an empty set stored in a host variable (elt_type==NULL) the same way as a NULL 
-       * value.  Note that derived table queries on sets of anything will also result in a null elt_type here */
-      if (PT_IS_NULL_NODE (derived_table) || !elt_type)
-	{
-	  /* this is to accept a NULL literal value consistently with NULL column values. Unfortunaltely, no type
-	   * information for the column may be deduced. */
-	  cols->type_enum = PT_TYPE_NULL;
-	  cols->data_type = NULL;
-	}
-      else
-	{
-	  /* 
-	   * Make sure that all elements on the data type list have the
-	   * same type_enum, e.g., that they all represent classes.
-	   */
-	  PT_TYPE_ENUM t = elt_type->type_enum;
-	  PT_NODE *p;
-	  for (p = elt_type->next; p; p = p->next)
-	    {
-	      if (p->type_enum != t)
-		{
-		  elt_type = NULL;
-		  break;
-		}
-	    }
-	  if (!elt_type)
-	    {
-	      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_GT_1_SET_ELEM_TYPE,
-			  pt_short_print (parser, derived_table));
-	      return;
-	    }
-
-	  /* it should have exactly one derived column */
-	  if (col_cnt > 1)
-	    {
-	      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_GT_1_DERIVED_COL_NAM,
-			  pt_short_print_l (parser, cols));
-	      return;
-	    }
-	  if (col_cnt < 1)
-	    {
-	      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_DERIVED_COL_NAM,
-			  pt_short_print (parser, derived_table));
-	      return;
-	    }
-
-	  /* derived column assumes the set's element type */
-	  cols->type_enum = elt_type->type_enum;
-	  cols->data_type = parser_copy_tree_list (parser, elt_type);
-	}
-
-      /* tag it as resolved */
-      cols->info.name.spec_id = spec->info.spec.id;
-      cols->info.name.meta_class = PT_NORMAL;
-    }
-  else if (spec->info.spec.derived_table_type == PT_IS_CSELECT)
-    {
-      /* this can't happen since we removed MERGE/CSELECT from grammar */
-      PT_INTERNAL_ERROR (parser, "resolution");
-      return;
-    }
-  else if (spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
-    {
-      /* just skip it, since we have resolved as_attr_list */
-      return;
-    }
-  else				/* must be a subquery derived table */
-    {
-      /* select_list must have passed star expansion */
-      select_list = pt_get_select_list (parser, derived_table);
-      if (!select_list)
-	{
-	  return;
-	}
-
-      /* select_list attributes must match derived columns in number */
-      attr_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
-      if (col_cnt != attr_cnt)
-	{
-	  PT_ERRORmf3 (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_DERIVED_C,
-		       pt_short_print (parser, spec), attr_cnt, col_cnt);
-	}
-      else
-	{
-	  /* derived columns assume the type of their matching attributes */
-	  for (col = cols, att = select_list; col && att; col = col->next, att = att->next)
-	    {
-	      col->type_enum = att->type_enum;
-	      if (att->data_type)
-		{
-		  col->data_type = parser_copy_tree_list (parser, att->data_type);
+		  col->data_type = parser_copy_tree_list (parser, attr->data_type);
 		}
 	      else
 		{
 		  parser_free_tree (parser, col->data_type);
 		  col->data_type = NULL;
 		}
-
-	      /* tag it as resolved */
-	      col->info.name.spec_id = spec->info.spec.id;
-	      if (col->info.name.meta_class == 0)
-		{
-		  /* only set it to PT_NORMAL if it wasn't set before */
-		  col->info.name.meta_class = PT_NORMAL;
-		}
 	    }
+	  assert (col == NULL && attr == NULL);
 	}
+    }
+
+  /* tag it as resolved */
+  for (col = spec->info.spec.as_attr_list; col != NULL; col = col->next)
+    {
+      col->info.name.spec_id = spec->info.spec.id;
+      col->info.name.meta_class = PT_NORMAL;
     }
 }
 
@@ -1137,23 +982,12 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
 	  spec->info.spec.derived_table = table;
 
-	  pt_bind_types (parser, spec);
+	  pt_bind_spec_types (parser, spec);
 	}
       else if (PT_SPEC_IS_CTE (spec))
 	{
-	  /* Spec has a CTE pointer */
-	  PT_NODE *cte_def = spec->info.spec.cte_pointer->info.pointer.node;
-
-	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_DERIVED (spec));
-
-	  if (cte_def->info.cte.as_attr_list)
-	    {
-	      spec->info.spec.as_attr_list = parser_copy_tree_list (parser, cte_def->info.cte.as_attr_list);
-	    }
-
-	  pt_bind_types (parser, spec);
-
-	  cte_def->info.cte.as_attr_list = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
+	  //cte
+	  pt_bind_spec_types (parser, spec);
 	}
 
       if (prev_spec)
@@ -4328,71 +4162,37 @@ on_error:
  * pt_get_all_showstmt_attributes_and_types () -
  *   return:  show list attributes list if all OK, NULL otherwise.
  *   parser(in): handle to parser context
- *   from(in): the entity_spec from which cls was derived
+ *   derived_table(in): the entity_spec from which cls was derived
  *             as a flat_entity_list item
  */
 static PT_NODE *
-pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * from)
+pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table)
 {
-  PT_NODE *result = NULL, *tail, *node;
+  PT_NODE *result = NULL, *node;
   DB_ATTRIBUTE *att;
-  PT_NODE *derived_table;
 
-  if (from == NULL || from->node_type != PT_SPEC)
-    {
-      return NULL;
-    }
-
-  if (from->info.spec.derived_table_type != PT_IS_SHOWSTMT || (derived_table = from->info.spec.derived_table) == NULL
-      || derived_table->node_type != PT_SHOWSTMT)
+  if (derived_table == NULL || derived_table->node_type != PT_SHOWSTMT)
     {
       return NULL;
     }
 
   att = (DB_ATTRIBUTE *) showstmt_get_attributes (derived_table->info.showstmt.show_type);
-  if (att != NULL)
+  while (att != NULL)
     {
       /* make result anchor the list */
-      result = tail = pt_name (parser, db_attribute_name (att));
-      if (result == NULL)
+      node = pt_name (parser, db_attribute_name (att));
+      if (node == NULL)
 	{
-	  return NULL;
+	  goto on_error;
 	}
-      result->line_number = from->line_number;
-      result->column_number = from->column_number;
 
       /* set its type */
-      pt_get_attr_data_type (parser, att, result);
-      result->info.name.spec_id = from->info.spec.id;
+      pt_get_attr_data_type (parser, att, node);
+
+      result = parser_append_node (node, result);
 
       /* advance to next attribute */
       att = db_attribute_next (att);
-
-      /* for the rest of the attributes do */
-      while (att != NULL)
-	{
-	  /* make new node & copy attribute name into it */
-	  node = pt_name (parser, db_attribute_name (att));
-	  if (node == NULL)
-	    {
-	      goto on_error;
-	    }
-
-	  node->line_number = from->line_number;
-	  node->column_number = from->column_number;
-
-	  /* set its type */
-	  pt_get_attr_data_type (parser, att, node);
-
-	  node->info.name.spec_id = from->info.spec.id;
-
-	  /* append to list */
-	  tail->next = node;
-	  tail = node;
-
-	  /* advance to next attribute */
-	  att = db_attribute_next (att);
-	}
     }
 
   return result;
@@ -6188,7 +5988,7 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
 PT_NODE *
 pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 {
-  PT_NODE *flat_list, *derived_table, *cte_pointer;
+  PT_NODE *flat_list;
   PT_NODE *flat, *spec_att, *class_att, *attr_name, *range, *result = NULL;
   PT_NODE *spec = from;
 
@@ -6208,19 +6008,18 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 	    }
 	}
 
-      flat_list = spec->info.spec.flat_entity_list;
       /* spec_att := all attributes of this entity spec */
       spec_att = NULL;
-      derived_table = spec->info.spec.derived_table;
-      cte_pointer = spec->info.spec.cte_pointer;
 
-      if (derived_table || cte_pointer)
+      if (PT_SPEC_IS_DERIVED (spec) || PT_SPEC_IS_CTE (spec))
 	{
 	  spec_att = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
 	}
       else
 	{
 	  /* spec_att := intersection of all attributes of spec's subclasses */
+	  assert (PT_SPEC_IS_ENTITY (spec));
+	  flat_list = spec->info.spec.flat_entity_list;
 	  for (flat = flat_list; flat; flat = flat->next)
 	    {
 	      /* get attribute list for this class flat */
@@ -8004,7 +7803,6 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.cte_pointer = pt_point (parser, cte);
 	  node->info.spec.cte_pointer->info.pointer.do_walk = false;
-	  node->info.spec.as_attr_list = cte->info.cte.as_attr_list;
 	  match_count++;
 	}
     }
@@ -9414,7 +9212,9 @@ pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  * node (in)	      : Parse tree node.
  * bind_arg (in)      : Bind names arg.
  *
- * Note: The names from the with clause should be resolved before resolving the actual query.
+ * Note: The names from the with clause should be resolved before resolving the actual query;
+ *       Since CTEs may be referenced multiple times in a query, better resolve them separately 
+ *       instead of resolving each occurence
  */
 static void
 pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
@@ -9435,6 +9235,7 @@ pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_N
     {
       /* isolate curr_cte and apply resolve names */
       PT_NODE *save_next_cte = curr_cte->next;
+      curr_cte->next = NULL;
 
       pt_bind_names_in_cte (parser, curr_cte, bind_arg);
 
@@ -9473,8 +9274,24 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
     }
 
   /* evaluate non recursive part types; it should be a usual select with no references to this CTE */
-  cte_def->info.cte.non_recursive_part =
-    parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+  non_recursive_cte = parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg,
+					pt_bind_names_post, bind_arg);
+
+  /* must bind any expr types in table. pt_bind_types requires it. */
+  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
+  bind_arg->sc_info->donot_fold = true;	/* skip folding */
+  non_recursive_cte = pt_semantic_type (parser, non_recursive_cte, bind_arg->sc_info);
+  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
+
+  cte_def->info.cte.non_recursive_part = non_recursive_cte;
+
+  if (cte_def->info.cte.as_attr_list == NULL)
+    {
+      cte_def->info.cte.as_attr_list =
+	pt_get_as_attr_list_of_derived_table (parser, PT_IS_SUBQUERY, non_recursive_cte, cte_def->info.cte.name);
+    }
+
+  pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, non_recursive_cte, NULL);
 
   /* evaluate the names from recursive part if it exists */
   if (recursive_cte)
@@ -9503,6 +9320,13 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       return;			/* error in pt_semantic_type */
     }
 
+  /* set final CTE attributes types */
+  pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, recursive_cte, NULL);
+
+  /* restore donot_fold and next_cte */
+  bind_arg->sc_info->donot_fold = save_donot_fold;
+  cte_def->next = save_next_cte_def;
+
   /* the attributes of cte self references specs can now be computed correctly */
   if (recursive_cte)
     {
@@ -9511,21 +9335,17 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       /* restore rec part */
       cte_def->info.cte.recursive_part = recursive_cte;
     }
-
-  /* restore donot_fold and next_cte */
-  bind_arg->sc_info->donot_fold = save_donot_fold;
-  cte_def->next = save_next_cte_def;
 }
 
 /*
-* pt_bind_cte_self_references_types () - used to bind types of self reference specs in recursive cte part; 
-*					 this can be done only bind_names is complete and cte attributes types are set
-*   return:
-*   parser(in):
-*   node(in):
-*   arg(in/out):
-*   continue_walk(in/out):
-*/
+ * pt_bind_cte_self_references_types () - used to bind types of self reference specs in recursive cte part; 
+ *					 this can be done only bind_names is complete and cte attributes types are set
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
 static PT_NODE *
 pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -9535,8 +9355,251 @@ pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void
     }
 
   /* interested only in CTE specs */
-  pt_bind_types (parser, node);
+  pt_bind_spec_types (parser, node);
+
+  // if (node->info.spec.as_attr_list != NULL)
+  //   {
+  //     /* spec attributes were binded; copy them to CTE also */
+  //     PT_NODE *cte = node->info.spec.cte_pointer->info.pointer.node;
+
+  //     if (cte->info.cte.as_attr_list != NULL)
+  //{
+  //  parser_free_tree (parser, cte->info.cte.as_attr_list);
+  //}
+  //     cte->info.cte.as_attr_list = parser_copy_tree_list (parser, node->info.spec.as_attr_list);
+  //   }
+
   *continue_walk = PT_LIST_WALK;
 
   return node;
+}
+
+
+/*
+ * pt_get_attr_list_of_derived_table - determine the list of aliases of a derived table
+ *
+ * return             : Computed as_attr_list
+ * parser (in) : Parser context.
+ * derived_table_type (in) : Provided by the spec that contains the derived table.
+ * derived_table (in) : Derived table to be processed.
+ * derived_alias (in) : The alias of the derived table (also comes from the spec).
+ */
+static PT_NODE *
+pt_get_as_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type, PT_NODE * derived_table,
+				      PT_NODE * derived_alias)
+{
+  PT_NODE *as_attr_list = NULL, *select_list;
+  int i, id;
+
+  switch (derived_table_type)
+    {
+    case PT_IS_SET_EXPR:
+      /* if derived from a set expression, it better have a set type */
+      if (derived_table->node_type == PT_NAME && derived_table->info.name.original != NULL
+	  && derived_table->info.name.original[0] != '\0')
+	{
+	  as_attr_list = pt_name (parser, derived_table->info.name.original);
+	}
+      else
+	{			/* generate column name */
+	  id = 0;
+	  as_attr_list = pt_name (parser, mq_generate_name (parser, derived_alias->info.name.original, &id));
+	}
+      break;
+
+    case PT_IS_SHOWSTMT:
+      as_attr_list = pt_get_all_showstmt_attributes_and_types (parser, derived_table);
+      if (as_attr_list == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "resolution");
+	  return NULL;
+	}
+      break;
+
+    case PT_IS_SUBQUERY:
+      {
+	/* must be a subquery derived table */
+	/* select_list must have passed star expansion */
+	PT_NODE *att, *col;
+
+	select_list = pt_get_select_list (parser, derived_table);
+	if (!select_list)
+	  {
+	    return NULL;
+	  }
+
+	for (att = select_list, i = 0; att; att = att->next, i++)
+	  {
+	    if (att->alias_print)
+	      {
+		col = pt_name (parser, att->alias_print);
+	      }
+	    else
+	      {
+		if (att->node_type == PT_NAME && att->info.name.original != NULL && att->info.name.original[0] != '\0')
+		  {
+		    col = pt_name (parser, att->info.name.original);
+		  }
+		else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
+		  {
+		    col = pt_name (parser, att->info.value.text);
+		  }
+		else
+		  {		/* generate column name */
+		    id = i;
+		    col = pt_name (parser, mq_generate_name (parser, derived_alias, &id));
+		  }
+	      }
+
+	    col->type_enum = att->type_enum;
+	    if (att->data_type)
+	      {
+		col->data_type = parser_copy_tree_list (parser, att->data_type);
+	      }
+
+	    as_attr_list = parser_append_node (col, as_attr_list);
+	  }
+	break;
+      }
+
+    default:
+      /* this can't happen since we removed MERGE/CSELECT from grammar */
+      assert (derived_table_type == PT_IS_CSELECT);
+      PT_INTERNAL_ERROR (parser, "resolution");
+      return NULL;
+    }
+
+  return as_attr_list;
+}
+
+static void
+pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
+			PT_NODE * derived_table, PT_NODE * parent_spec)
+{
+  PT_NODE *elt_type, *select_list;
+  int col_cnt = pt_length_of_list (as_attr_list), attr_cnt;
+
+  switch (derived_table_type)
+    {
+    case PT_IS_SET_EXPR:
+      /* if derived from a set expression, it better have a set type */
+      if (!pt_is_set_type (derived_table))
+	{
+	  PT_ERRORmf (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MUST_BE_SET_MSET_SEQ,
+		      pt_short_print (parser, derived_table));
+	  return;
+	}
+
+      elt_type = derived_table->data_type;
+
+      /* Handle a derived table query on an empty set stored in a host variable (elt_type==NULL) the same way as a NULL
+       * value.  Note that derived table queries on sets of anything will also result in a null elt_type here */
+      if (PT_IS_NULL_NODE (derived_table) || !elt_type)
+	{
+	  /* this is to accept a NULL literal value consistently with NULL column values. Unfortunaltely, no type
+	   * information for the column may be deduced. */
+	  as_attr_list->type_enum = PT_TYPE_NULL;
+	  as_attr_list->data_type = NULL;
+	}
+      else
+	{
+	  /*
+	   * Make sure that all elements on the data type list have the
+	   * same type_enum, e.g., that they all represent classes.
+	   */
+	  PT_TYPE_ENUM t = elt_type->type_enum;
+	  PT_NODE *p;
+	  for (p = elt_type->next; p; p = p->next)
+	    {
+	      if (p->type_enum != t)
+		{
+		  elt_type = NULL;
+		  break;
+		}
+	    }
+	  if (!elt_type)
+	    {
+	      PT_ERRORmf (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_GT_1_SET_ELEM_TYPE,
+			  pt_short_print (parser, derived_table));
+	      return;
+	    }
+
+	  /* it should have exactly one derived column */
+	  if (col_cnt > 1)
+	    {
+	      PT_ERRORmf (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_GT_1_DERIVED_COL_NAM,
+			  pt_short_print_l (parser, as_attr_list));
+	      return;
+	    }
+	  if (col_cnt < 1)
+	    {
+	      PT_ERRORmf (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_DERIVED_COL_NAM,
+			  pt_short_print (parser, derived_table));
+	      return;
+	    }
+
+	  /* derived column assumes the set's element type */
+	  as_attr_list->type_enum = elt_type->type_enum;
+	  as_attr_list->data_type = parser_copy_tree_list (parser, elt_type);
+	}
+
+      break;
+
+
+    case PT_IS_SHOWSTMT:
+      {
+	/* types already set in pt_get_all_showstmt_attributes_and_types; */
+	PT_NODE *col = as_attr_list;
+	while (col)
+	  {
+	    col->line_number = parent_spec->line_number;
+	    col->column_number = parent_spec->column_number;
+	    col = col->next;
+	  }
+	return;
+      }
+
+    case PT_IS_SUBQUERY:
+      /* must be a subquery derived table */
+      /* select_list must have passed star expansion */
+      select_list = pt_get_select_list (parser, derived_table);
+      if (!select_list)
+	{
+	  return;
+	}
+
+      /* select_list attributes must match derived columns in number */
+      attr_cnt = pt_length_of_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+      if (col_cnt != attr_cnt)
+	{
+	  PT_ERRORmf3 (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_DERIVED_C,
+		       pt_short_print (parser, parent_spec), attr_cnt, col_cnt);
+	  return;
+	}
+      else
+	{
+	  PT_NODE *col, *att;
+	  /* derived columns assume the type of their matching attributes */
+	  for (col = as_attr_list, att = select_list; col && att; col = col->next, att = att->next)
+	    {
+	      col->type_enum = att->type_enum;
+	      if (att->data_type)
+		{
+		  col->data_type = parser_copy_tree_list (parser, att->data_type);
+		}
+	      else
+		{
+		  parser_free_tree (parser, col->data_type);
+		  col->data_type = NULL;
+		}
+	    }
+	}
+      break;
+
+    default:
+      /* this can't happen since we removed MERGE/CSELECT from grammar */
+      assert (derived_table_type == PT_IS_CSELECT);
+      PT_INTERNAL_ERROR (parser, "resolution");
+      return;
+    }
 }
