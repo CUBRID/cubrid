@@ -183,7 +183,6 @@ static THREAD_DAEMON *thread_Daemons = NULL;
 
 #define THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT	      32767
 #define THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT	      1024
-#define THREAD_RC_TRACK_PGBUF_TEMP_THRESHOLD_AMOUNT   1024
 #define THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT	      1024
 #define THREAD_RC_TRACK_CS_THRESHOLD_AMOUNT	      1024
 
@@ -1129,7 +1128,6 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_next_wait = NULL;
 
   entry_p->check_interrupt = true;
-  entry_p->check_page_validation = true;
   entry_p->type = TT_WORKER;	/* init */
 
   entry_p->private_heap_id = db_create_private_heap ();
@@ -2380,42 +2378,6 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
     }
 
   return ret_val;
-}
-
-/*
- * thread_set_check_page_validation() -
- *   return:
- *   flag(in):
- */
-bool
-thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag)
-{
-  bool old_val = true;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  old_val = thread_p->check_page_validation;
-  thread_p->check_page_validation = flag;
-
-  return old_val;
-}
-
-/*
- * thread_get_check_page_validation() -
- *   return:
- */
-bool
-thread_get_check_page_validation (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  return thread_p->check_page_validation;
 }
 
 /*
@@ -4340,12 +4302,6 @@ thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
 
       for (i = 0; i < RC_LAST; i++)
 	{
-	  /* skip out pgbuf_temp check; is included with pgbuf check */
-	  if (i == RC_PGBUF_TEMP)
-	    {
-	      continue;
-	    }
-
 #if 1				/* TODO - */
 	  /* skip out qlist check; is checked separately */
 	  if (i == RC_QLIST)
@@ -4477,9 +4433,6 @@ thread_rc_track_rcname (int rc_idx)
     case RC_PGBUF:
       name = "Page Buffer";
       break;
-    case RC_PGBUF_TEMP:
-      name = "Page Buffer (Temporary)";
-      break;
     case RC_QLIST:
       name = "List File";
       break;
@@ -4548,8 +4501,6 @@ thread_rc_track_threshold_amount (int rc_idx)
       return THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT;
     case RC_PGBUF:
       return THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT;
-    case RC_PGBUF_TEMP:
-      return THREAD_RC_TRACK_PGBUF_TEMP_THRESHOLD_AMOUNT;
     case RC_QLIST:
       return THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT;
     case RC_CS:
@@ -4905,17 +4856,6 @@ int
 thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p)
 {
   return thread_rc_track_amount_helper (thread_p, RC_PGBUF);
-}
-
-/*
- * thread_rc_track_amount_pgbuf_temp () -
- *   return:
- *   thread_p(in):
- */
-int
-thread_rc_track_amount_pgbuf_temp (THREAD_ENTRY * thread_p)
-{
-  return thread_rc_track_amount_helper (thread_p, RC_PGBUF_TEMP);
 }
 
 /*
@@ -5914,7 +5854,7 @@ extern int
 thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
-  const int num_cols = 27;
+  const int num_cols = 26;
   THREAD_ENTRY *thrd, *next_thrd;
   int i, idx, error = NO_ERROR;
   DB_VALUE *vals = NULL;
@@ -6110,10 +6050,6 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
 
       /* Check_interrupt */
       db_make_int (&vals[idx], thrd->check_interrupt);
-      idx++;
-
-      /* Check_page_validation */
-      db_make_int (&vals[idx], thrd->check_page_validation);
       idx++;
 
       /* Wait_for_latch_promote */

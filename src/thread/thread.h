@@ -73,8 +73,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #define thread_get_current_session_id() (db_Session_id)
 #define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
 #define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
-#define thread_set_check_page_validation(thread_p, flag) (true)
-#define thread_get_check_page_validation(thread_p) (true)
 
 #define thread_trace_on(thread_p)
 #define thread_set_trace_format(thread_p, format)
@@ -99,7 +97,6 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_rc_track_enter(thread_p) (-1)
 #define thread_rc_track_exit(thread_p, idx) (NO_ERROR)
 #define thread_rc_track_amount_pgbuf(thread_p) (0)
-#define thread_rc_track_amount_pgbuf_temp(thread_p) (0)
 #define thread_rc_track_amount_qlist(thread_p) (0)
 #define thread_rc_track_dump_all(thread_p, outfp)
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
@@ -180,7 +177,7 @@ enum
 
 /* resource track meters */
 enum
-{ RC_VMEM = 0, RC_PGBUF, RC_PGBUF_TEMP, RC_QLIST, RC_CS, RC_LAST };
+{ RC_VMEM = 0, RC_PGBUF, RC_QLIST, RC_CS, RC_LAST };
 
 /* resource track managers */
 enum
@@ -314,8 +311,6 @@ struct thread_entry
   bool interrupted;		/* is this request/transaction interrupted ? */
   bool shutdown;		/* is server going down? */
   bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
-  bool check_page_validation;	/* check_page_validation == false, during btree_handle_prev_leaf_after_locking() or
-				 * btree_handle_curr_leaf_after_locking() function call. */
   bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
   struct thread_entry *next_wait_thrd;
 
@@ -444,7 +439,6 @@ extern void thread_wakeup_check_ha_delay_info_thread (void);
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
-extern bool thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag);
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
@@ -473,7 +467,6 @@ extern void thread_print_entry_info (THREAD_ENTRY * p);
 extern int thread_return_all_transactions_entries (void);
 extern void thread_dump_threads (void);
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
-extern bool thread_get_check_page_validation (THREAD_ENTRY * thread_p);
 
 extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
 				    int kill_pid);
@@ -489,7 +482,6 @@ extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_exit (THREAD_ENTRY * thread_p, int id);
 extern int thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p);
-extern int thread_rc_track_amount_pgbuf_temp (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int line_no, int amount,

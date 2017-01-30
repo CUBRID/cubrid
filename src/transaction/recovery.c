@@ -691,12 +691,14 @@ struct rvfun RV_fun[] = {
    vacuum_rv_redo_append_data,
    NULL,
    vacuum_rv_redo_append_data_dump},
+  /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
   {RVVAC_DATA_MODIFY_FIRST_PAGE,
    "RVVAC_DATA_MODIFY_FIRST_PAGE",
    vacuum_rv_undoredo_first_data_page,
    vacuum_rv_undoredo_first_data_page,
    vacuum_rv_undoredo_first_data_page_dump,
    vacuum_rv_undoredo_first_data_page_dump},
+  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
   {RVVAC_DATA_INIT_NEW_PAGE,
    "RVVAC_DATA_INIT_NEW_PAGE",
    NULL,

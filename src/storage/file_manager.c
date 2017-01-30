@@ -631,6 +631,9 @@ STATIC_INLINE void file_log_extdata_set_next (THREAD_ENTRY * thread_p,
 STATIC_INLINE void file_extdata_update_item (THREAD_ENTRY * thread_p, PAGE_PTR page_extdata, const void *item_newval,
 					     int index_item, FILE_EXTENSIBLE_DATA * extdata)
   __attribute__ ((ALWAYS_INLINE));
+static int file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count);
+static int file_extdata_add_item_count (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
+					void *args);
 
 /************************************************************************/
 /* Partially allocated sectors section                                  */
@@ -658,7 +661,6 @@ static int file_compare_vpids (const void *first, const void *second);
 static int file_compare_vfids (const void *first, const void *second);
 static int file_compare_track_items (const void *first, const void *second);
 
-static const char *file_type_to_string (FILE_TYPE fstruct_type);
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p);
 
 /************************************************************************/
@@ -791,10 +793,6 @@ static int file_tracker_item_dump_btree_capacity (THREAD_ENTRY * thread_p, PAGE_
 static int file_tracker_item_check (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 				    int index_item, bool * stop, void *args);
 #endif /* SA_MODE */
-
-static int file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count);
-static int file_extdata_add_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, bool * stop,
-					void *args);
 
 /************************************************************************/
 /* End of static functions                                              */
@@ -2627,6 +2625,40 @@ exit:
   return error_code;
 }
 
+/*
+ * file_extdata_all_item_count () - count items in all extensible data pages.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * extdata (in)  : extensible data
+ * count (out)   : output total count of items
+ */
+static int
+file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count)
+{
+
+  return file_extdata_apply_funcs (thread_p, extdata, file_extdata_add_item_count, count, NULL, NULL, false, NULL,
+				   NULL);
+
+}
+
+/*
+ * file_extdata_add_item_count () - FILE_EXTDATA_FUNC to count extensible data items.
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * extdata (in)  : extensible data
+ * stop (in)     : ignored
+ * args (in)     : pointer to total count of items
+ */
+static int
+file_extdata_add_item_count (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
+{
+  (*((int *) args)) += file_extdata_item_count (extdata);
+
+  return NO_ERROR;
+}
+
 /************************************************************************/
 /* Partially allocated sectors section                                  */
 /************************************************************************/
@@ -2933,7 +2965,7 @@ file_compare_track_items (const void *first, const void *second)
  *   return: string of the file type
  *   fstruct_type(in): The type of the structure
  */
-static const char *
+const char *
 file_type_to_string (FILE_TYPE fstruct_type)
 {
   switch (fstruct_type)
@@ -4717,8 +4749,8 @@ file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const 
 	  goto exit;
 	}
 
-      /* fix new table page */
-      page_ftab = pgbuf_fix (thread_p, &vpid_ftab_new, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      /* fix newly allocated table page. note that this is an old page, file_perm_alloc already initialized it. */
+      page_ftab = pgbuf_fix (thread_p, &vpid_ftab_new, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -10631,27 +10663,6 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp)
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
-
-static int
-file_extdata_all_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, int *count)
-{
-
-  return file_extdata_apply_funcs (thread_p, extdata, file_extdata_add_item_count, count, NULL, NULL, false, NULL,
-				   NULL);
-
-}
-
-
-static int
-file_extdata_add_item_count (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA * extdata, bool * stop, void *args)
-{
-
-  (*((int *) args)) += file_extdata_item_count (extdata);
-
-  return NO_ERROR;
-
-}
-
 
 /************************************************************************/
 /* End of file                                                          */
