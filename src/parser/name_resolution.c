@@ -990,7 +990,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	}
       else if (PT_SPEC_IS_CTE (spec))
 	{
-	  //cte
+	  /* types and names of CTE should be already evaluated by pt_bind_names_in_cte; bind them to spec */
 	  pt_bind_spec_attrs (parser, spec);
 	}
 
