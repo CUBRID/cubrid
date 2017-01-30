@@ -9569,7 +9569,7 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 	}
 
       /* select_list attributes must match derived columns in number */
-      attr_cnt = pt_length_of_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+      attr_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
       if (col_cnt != attr_cnt)
 	{
 	  PT_ERRORmf3 (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_NE_DERIVED_C,
