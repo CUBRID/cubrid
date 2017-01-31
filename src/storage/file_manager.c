@@ -4066,6 +4066,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
   else
     {
+      /* todo: invalidate pages in page buffer. actually move them to the bottom of LRU lists. */
       pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
