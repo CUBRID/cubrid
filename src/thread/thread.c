@@ -226,7 +226,6 @@ static THREAD_DAEMON *thread_Daemons = NULL;
 
 static int thread_initialize_sync_object (void);
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
-static void thread_reset_nrequestors_of_log_flush_thread (void);
 static void thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor);
 
 static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
@@ -247,6 +246,15 @@ static bool thread_rc_track_is_enabled (THREAD_ENTRY * thread_p);
 static const char *thread_type_to_string (int type);
 static const char *thread_status_to_string (int status);
 static const char *thread_resume_status_to_string (int resume_status);
+
+STATIC_INLINE void thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p,
+                                        THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
 
 #if !defined(NDEBUG)
 static void thread_rc_track_meter_at (THREAD_RC_METER * meter, const char *caller_file, int caller_line, int amount,
@@ -513,10 +521,7 @@ thread_initialize_manager (void)
 
       /* Add new daemons before page flush daemon */
 
-      if (daemon_index != thread_Manager.num_daemons)
-        {
-          abort ();
-        }
+      assert (daemon_index == thread_Manager.num_daemons);
 
 #if defined(WINDOWS)
       r = pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
@@ -3301,93 +3306,30 @@ thread_page_flush_thread (void *arg_p)
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int rv;
-  struct timeval cur_time = {
-    0, 0
-  };
-
-  struct timespec wakeup_time = {
-    0, 0
-  };
-  int tmp_usec;
   int wakeup_interval;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Page_flush_thread.is_running = true;
-  thread_Page_flush_thread.is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
+  thread_daemon_start (&thread_Page_flush_thread, tsd_ptr, TT_DAEMON);
   while (!tsd_ptr->shutdown)
     {
-      er_clear ();
+      /* flush pages as long as necessary */
+      while (!tsd_ptr->shutdown && pgbuf_keep_victim_flush_thread_running ())
+        {
+          pgbuf_flush_victim_candidate (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
+        }
 
+      /* wait */
       wakeup_interval = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
-
       if (wakeup_interval > 0)
-	{
-	  gettimeofday (&cur_time, NULL);
-
-	  wakeup_time.tv_sec = cur_time.tv_sec + (wakeup_interval / 1000);
-	  tmp_usec = cur_time.tv_usec + (wakeup_interval % 1000) * 1000;
-	  if (tmp_usec >= 1000000)
-	    {
-	      wakeup_time.tv_sec += 1;
-	      tmp_usec -= 1000000;
-	    }
-	  wakeup_time.tv_nsec = tmp_usec * 1000;
-	}
-
-      rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
-      thread_Page_flush_thread.is_running = false;
-
-      if (wakeup_interval > 0)
-	{
-	  do
-	    {
-	      rv =
-		pthread_cond_timedwait (&thread_Page_flush_thread.cond, &thread_Page_flush_thread.lock, &wakeup_time);
-	    }
-	  while (rv == 0);
-	}
+        {
+          thread_daemon_timedwait (&thread_Page_flush_thread, wakeup_interval);
+        }
       else
-	{
-	  pthread_cond_wait (&thread_Page_flush_thread.cond, &thread_Page_flush_thread.lock);
-	}
-
-      thread_Page_flush_thread.is_running = true;
-
-      pthread_mutex_unlock (&thread_Page_flush_thread.lock);
-
-      if (tsd_ptr->shutdown)
-	{
-	  break;
-	}
-
-      do
-	{
-	  pgbuf_flush_victim_candidate (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
-	}
-      while (pgbuf_keep_victim_flush_thread_active ());
+        {
+          thread_daemon_wait (&thread_Page_flush_thread);
+        }
     }
-
-  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
-  thread_Page_flush_thread.is_running = false;
-  thread_Page_flush_thread.is_available = false;
-  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-
-  thread_Page_flush_thread.is_running = false;
+  thread_daemon_stop (&thread_Page_flush_thread, tsd_ptr);
 
   return (THREAD_RET_T) 0;
 }
@@ -3427,122 +3369,55 @@ thread_is_page_flush_thread_available (void)
 }
 
 /*
- * thread_page_buffer_maintenance_thread() -
- *   return:
- *   arg_p(in):
+ * thread_page_buffer_maintenance_thread () - page buffer maintenance thread loop. wakes up regularly and adjust private
+ *                                            lists quota's.
+ *
+ * return     : THREAD_RET_T
+ * arg_p (in) : thread entry
  */
-
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_page_buffer_maintenance_thread (void *arg_p)
 {
+#define THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC 100
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int rv;
-  struct timeval cur_time = {
-    0, 0
-  };
-
-  struct timespec wakeup_time = {
-    0, 0
-  };
-  int tmp_usec;
-  int wakeup_interval;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Page_maintenance_thread.is_running = true;
-  thread_Page_maintenance_thread.is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
+  thread_daemon_start (&thread_Page_maintenance_thread, tsd_ptr, TT_DAEMON);
   while (!tsd_ptr->shutdown)
     {
-      er_clear ();
-
-      gettimeofday (&cur_time, NULL);
-
+      /* reset request count */
       (void) ATOMIC_TAS_32 (&thread_Page_maintenance_thread.nrequestors, 0);
-      pgbuf_adjust_quotas (tsd_ptr, &cur_time);
-      
 
-      /* 500 mili-second */
-      wakeup_interval = 500;
+      /* page buffer maintenance thread adjust quota's based on thread activity. */
+      pgbuf_adjust_quotas (tsd_ptr);
 
-      wakeup_time.tv_sec = cur_time.tv_sec + (wakeup_interval / 1000);
-      tmp_usec = cur_time.tv_usec + (wakeup_interval % 1000) * 1000;
-      if (tmp_usec >= 1000000)
-	{
-	  wakeup_time.tv_sec += 1;
-	  tmp_usec -= 1000000;
-	}
-      wakeup_time.tv_nsec = tmp_usec * 1000;
-
-      if (thread_Page_maintenance_thread.nrequestors <= 0)
-        {
-          rv = pthread_mutex_lock (&thread_Page_maintenance_thread.lock);
-      
-          thread_Page_maintenance_thread.is_running = false;
-
-          rv = pthread_cond_timedwait (&thread_Page_maintenance_thread.cond,
-				       &thread_Page_maintenance_thread.lock, &wakeup_time);
-
-          thread_Page_maintenance_thread.is_running = true;
-
-          pthread_mutex_unlock (&thread_Page_maintenance_thread.lock);
-        }
-
-      if (tsd_ptr->shutdown)
-	{
-	  break;
-	}
-
+      /* wait THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC */
+      thread_daemon_timedwait (&thread_Page_maintenance_thread, THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC);
     }
-
-  rv = pthread_mutex_lock (&thread_Page_maintenance_thread.lock);
-  thread_Page_maintenance_thread.is_running = false;
-  thread_Page_maintenance_thread.is_available = false;
-  pthread_mutex_unlock (&thread_Page_maintenance_thread.lock);
-
-  er_final (false);
-  tsd_ptr->status = TS_DEAD;
-
-  thread_Page_maintenance_thread.is_running = false;
+  thread_daemon_stop (&thread_Page_maintenance_thread, tsd_ptr);
 
   return (THREAD_RET_T) 0;
-}
 
-void
-thread_wakeup_page_buffer_maintenance_thread (void)
-{
-  int rv;
-
-  if (thread_Page_maintenance_thread.nrequestors > 0)
-    {
-      /* already running or wakeup was already requested*/
-      return;
-    }
-  ++thread_Page_maintenance_thread.nrequestors;
-
-  rv = pthread_mutex_lock (&thread_Page_maintenance_thread.lock);
-  if (!thread_Page_maintenance_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Page_maintenance_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Page_maintenance_thread.lock);
+#undef THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC
 }
 
 /*
- * thread_page_post_flush_thread () -
- *   return:
- *   arg_p(in):
+ * thread_wakeup_page_buffer_maintenance_thread () - wakeup page maintenance thread
+ */
+void
+thread_wakeup_page_buffer_maintenance_thread (void)
+{
+  thread_daemon_wakeup_onereq (&thread_Page_maintenance_thread);
+}
+
+/*
+ * thread_page_post_flush_thread () - post-flush thread. process bcb's for pages flushed by page flush thread and assign
+ *                                    them as victims or mark them as flushed.
+ *
+ * return     : THREAD_RET_T
+ * arg_p (in) : thread entry
  */
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_page_post_flush_thread (void *arg_p)
@@ -3550,96 +3425,41 @@ thread_page_post_flush_thread (void *arg_p)
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
-  int rv;
-  struct timeval cur_time = {
-    0, 0
-  };
-
-  struct timespec wakeup_time = {
-    0, 0
-  };
-  int tmp_usec;
-  int wakeup_interval;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-
-  thread_Page_post_flush_thread.is_running = true;
-  thread_Page_post_flush_thread.is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
+  /* start */
+  thread_daemon_start (&thread_Page_post_flush_thread, tsd_ptr, TT_DAEMON);
   while (!tsd_ptr->shutdown)
     {
-      er_clear ();
-
-      gettimeofday (&cur_time, NULL);
-
+      /* reset requesters */
       (void) ATOMIC_TAS_32 (&thread_Page_post_flush_thread.nrequestors, 0);
+      /* assign flushed pages */
       pgbuf_assign_flushed_pages (tsd_ptr);
-
+      /* must be on guard, so we sleep as little as possible. */
       thread_sleep (0);
-      
-#if 0
-      if (thread_Page_post_flush_thread.nrequestors == 0)
-        {
-          rv = pthread_mutex_lock (&thread_Page_post_flush_thread.lock);
-          thread_Page_post_flush_thread.is_running = false;
-
-          rv = pthread_cond_wait (&thread_Page_post_flush_thread.cond, &thread_Page_post_flush_thread.lock);
-          thread_Page_post_flush_thread.is_running = true;
-
-          pthread_mutex_unlock (&thread_Page_post_flush_thread.lock);
-        }
-#endif
-
-      if (tsd_ptr->shutdown)
-	{
-          /* make sure all remaining are handled. */
-          pgbuf_assign_flushed_pages (tsd_ptr);
-	  break;
-	}
     }
-
-  rv = pthread_mutex_lock (&thread_Page_post_flush_thread.lock);
-  thread_Page_post_flush_thread.is_running = false;
-  thread_Page_post_flush_thread.is_available = false;
-  pthread_mutex_unlock (&thread_Page_post_flush_thread.lock);
-
-  er_final (false);
-  tsd_ptr->status = TS_DEAD;
-
-  thread_Page_post_flush_thread.is_running = false;
+  /* make sure all remaining are handled. */
+  pgbuf_assign_flushed_pages (tsd_ptr);
+  /* stop */
+  thread_daemon_stop (&thread_Page_post_flush_thread, tsd_ptr);
 
   return (THREAD_RET_T) 0;
 }
 
+/*
+ * thread_wakeup_page_post_flush_thread () - wakeup post-flush thread
+ */
 void
 thread_wakeup_page_post_flush_thread (void)
 {
-  int rv;
-
-  if (thread_Page_post_flush_thread.nrequestors > 0)
-    {
-      /* already running or wakeup was already requested*/
-      return;
-    }
-  ++thread_Page_post_flush_thread.nrequestors;
-
-  rv = pthread_mutex_lock (&thread_Page_post_flush_thread.lock);
-  if (!thread_Page_post_flush_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Page_post_flush_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Page_post_flush_thread.lock);
+  thread_daemon_wakeup_onereq (&thread_Page_post_flush_thread);
 }
 
+/*
+ * thread_is_page_post_flush_thread_available () - is post-flush thread available?
+ *
+ * return : true/false
+ */
 bool
 thread_is_page_post_flush_thread_available (void)
 {
@@ -3870,7 +3690,7 @@ thread_log_flush_thread (void *arg_p)
 
       rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
       pthread_cond_broadcast (&group_commit_info->gc_cond);
-      thread_reset_nrequestors_of_log_flush_thread ();
+      (void) ATOMIC_TAS_32 (&thread_Log_flush_thread.nrequestors, 0);
       pthread_mutex_unlock (&group_commit_info->gc_mutex);
 
 #if defined(CUBRID_DEBUG)
@@ -3895,46 +3715,23 @@ thread_log_flush_thread (void *arg_p)
 
 
 /*
- * thread_wakeup_log_flush_thread() -
- *   return:
+ * thread_wakeup_log_flush_thread() - wakeup log flush thread.
  */
 void
 thread_wakeup_log_flush_thread (void)
 {
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
-  pthread_cond_signal (&thread_Log_flush_thread.cond);
-  thread_Log_flush_thread.nrequestors++;
-  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
+  thread_daemon_wakeup_onereq (&thread_Log_flush_thread);
 }
 
 /*
- * thread_wakeup_log_flush_thread_if_not_requested () - wakeup log flush thread only if it was not already requested
+ * thread_is_log_flush_thread_available () - is log flush thread available?
+ *
+ * return : true/false
  */
-void
-thread_wakeup_log_flush_thread_if_not_requested (void)
+bool
+thread_is_log_flush_thread_available (void)
 {
-  if (thread_Log_flush_thread.nrequestors > 0)
-    {
-      /* already requested */
-      return;
-    }
-  thread_wakeup_log_flush_thread ();
-}
-
-/*
- * thread_reset_nrequestors_of_log_flush_thread() -
- *   return:
- */
-static void
-thread_reset_nrequestors_of_log_flush_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
-  thread_Log_flush_thread.nrequestors = 0;
-  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
+  return thread_Log_flush_thread.is_available;
 }
 
 INT64
@@ -6441,3 +6238,121 @@ thread_first_vacuum_worker_thread_index (void)
   return thread_First_vacuum_worker_thread_index;
 }
 #endif
+
+/*
+ * thread_daemon_wait () - wait until woken
+ *
+ * return      : void
+ * daemon (in) : daemon thread monitor
+ */
+STATIC_INLINE void
+thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon)
+{
+  (void) pthread_mutex_lock (&daemon->lock);
+  daemon->is_running = false;
+  (void) pthread_cond_wait (&daemon->cond, &daemon->lock);
+  daemon->is_running = true;
+  pthread_mutex_unlock (&daemon->lock);
+}
+
+/*
+ * thread_daemon_timedwait () - wait until woken or up to given milliseconds
+ *
+ * return         : void
+ * daemon (in)    : daemon thread monitor
+ * wait_msec (in) : maximum wait time
+ */
+STATIC_INLINE void
+thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
+{
+  struct timeval timeval_crt;
+  struct timespec timespec_wakeup;
+  long usec_tmp;
+  const int usec_onesec = 1000 * 1000;   /* nano-seconds in one second */
+
+  gettimeofday (&timeval_crt, NULL);
+
+  timespec_wakeup.tv_sec = timeval_crt.tv_sec + (wait_msec / 1000);
+  usec_tmp = timeval_crt.tv_usec + (wait_msec * 1000);
+  if (usec_tmp >= usec_onesec)
+    {
+      timespec_wakeup.tv_sec++;
+      usec_tmp -= usec_onesec;
+    }
+  timespec_wakeup.tv_nsec = usec_tmp * 1000;
+
+  (void) pthread_mutex_lock (&daemon->lock);
+  daemon->is_running = false;
+  (void) pthread_cond_timedwait (&daemon->cond, &daemon->lock, &timespec_wakeup);
+  daemon->is_running = true;
+  pthread_mutex_unlock (&daemon->lock);
+}
+
+/*
+ * thread_daemon_start () - start daemon thread
+ *
+ * return           : void
+ * daemon (in)      : daemon thread monitor
+ * thread_p (in)    : thread entry
+ * thread_type (in) : thread type
+ */
+STATIC_INLINE void
+thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p, THREAD_TYPE thread_type)
+{
+  /* wait until THREAD_CREATE() finishes */
+  pthread_mutex_lock (&thread_p->th_entry_lock);
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
+
+  thread_set_thread_entry_info (thread_p);	/* save TSD */
+  thread_p->type = thread_type;	/* daemon thread */
+  thread_p->status = TS_RUN;	/* set thread stat as RUN */
+
+  daemon->is_running = true;
+  daemon->is_available = true;
+
+  thread_set_current_tran_index (thread_p, LOG_SYSTEM_TRAN_INDEX);
+}
+
+/*
+ * thread_daemon_stop () - stop daemon thread
+ *
+ * return        : void
+ * daemon (in)   : daemon thread monitor
+ * thread_p (in) : thread entry
+ */
+STATIC_INLINE void
+thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
+{
+  (void) pthread_mutex_lock (&daemon->lock);
+  daemon->is_running = false;
+  daemon->is_available = false;
+  pthread_mutex_unlock (&daemon->lock);
+
+  er_final (ER_THREAD_FINAL);
+  thread_p->status = TS_DEAD;
+}
+
+/*
+ * thread_daemon_wakeup_onereq () - request daemon thread wakeup if not already requested
+ *
+ * return      : void
+ * daemon (in) : daemon thread monitor
+ */
+STATIC_INLINE void
+thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon)
+{
+  if (daemon->nrequestors > 0)
+    {
+      /* we register only one request per wakeup */
+      return;
+    }
+  /* increment requesters */
+  ++daemon->nrequestors;
+  pthread_mutex_lock (&daemon->lock);
+  if (!daemon->is_running)
+    {
+      /* signal wakeup */
+      pthread_cond_signal (&daemon->cond);
+    }
+  pthread_mutex_unlock (&daemon->lock);
+}

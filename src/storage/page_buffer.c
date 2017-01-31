@@ -3875,7 +3875,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_NEED_WAL);
 #if defined (SERVER_MODE)
-          thread_wakeup_log_flush_thread_if_not_requested ();
+          thread_wakeup_log_flush_thread ();
 #endif /* SERVER_MODE */
           pgbuf_Flush_eye.need_wal++;
 	  continue;
@@ -8084,7 +8084,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     }
 #else /* !SERVER_MODE */
   /* we need to flush something */
-  pgbuf_wakeup_flush_thread ();
+  pgbuf_wakeup_flush_thread (thread_p);
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
   bufptr = pgbuf_get_victim (thread_p);
@@ -13628,10 +13628,17 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
  * curr_time_p (in) : current time argument (can be NULL, in such case quota adjustment is forced)
  * return : void
  */
+/*
+ * pgbuf_adjust_quotas () - Adjusts the quotas for private LRU's. The quota's are decided based on thread activities on
+ *                          private and shared lists. Activity is counted as number of accessed pages.
+ *                          Based on quota's, the thread also sets zone thresholds for each LRU.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ */
 void
-pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
+pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 {
-#define NEW_AVG_H(curr,avg,alpha) ((float)(avg) - ((float)(avg) - (float)(curr)) * (float)(alpha))
 #define MAX_PRIVATE_RATIO 0.998f
 #define MIN_PRIVATE_RATIO 0.01f
 
@@ -13668,18 +13675,9 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
 
   quota->is_adjusting = 1;
 
-  if (curr_time_p == NULL)
-    {
-      (void) gettimeofday (&curr_time, NULL);
-      DIFF_TIMEVAL (quota->last_adjust_time, curr_time, diff_time);
-    }
-  else
-    {
-      DIFF_TIMEVAL (quota->last_adjust_time, *curr_time_p, diff_time);
-    }
-
+  (void) gettimeofday (&curr_time, NULL);
+  DIFF_TIMEVAL (quota->last_adjust_time, curr_time, diff_time);
   diff_usec = diff_time.tv_sec * 1000000LL + diff_time.tv_usec;
-
   if (diff_usec < 1000LL)
     {
       /* less than 1 msec. stop */
@@ -13688,15 +13686,12 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
     }
 
   /* quota adjust if :
-   * - force mode (curr_time_p == NULL)
    * - or more than 500 msec since last adjustment and activity is more than threshold
    * - or more than 5 min since last adjustment and activity is more 1% of threshold
    * Activity of page buffer is measured in number of page unfixes
    */
-  if (curr_time_p != NULL
-      && ((pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY
-	   && diff_usec < 500000LL)
-	  || (pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100 && diff_usec < 300 * 1000000LL)))
+  if ((pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY && diff_usec < 500000LL)
+       || (pgbuf_Pool.monitor.pg_unfix < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100 && diff_usec < 300 * 1000000LL))
     {
       quota->is_adjusting = 0;
       return;
@@ -13704,14 +13699,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
 
   ATOMIC_TAS_32 (&monitor->pg_unfix, 0);
 
-  if (curr_time_p == NULL)
-    {
-      quota->last_adjust_time = curr_time;
-    }
-  else
-    {
-      quota->last_adjust_time = *curr_time_p;
-    }
+  quota->last_adjust_time = curr_time;
 
   (void) ATOMIC_INC_32 (&quota->adjust_age, 1);
 
@@ -13878,7 +13866,6 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p, struct timeval *curr_time_p)
     }
 
   quota->is_adjusting = 0;
-#undef NEW_AVG_H
 }
 
 /*
@@ -13974,7 +13961,8 @@ retry:
       ATOMIC_INC_32 (&quota->private_lru_session_cnt[private_idx], 1);
     }
 
-  pgbuf_adjust_quotas (NULL, NULL);
+  /* todo: is this necessary? */
+  pgbuf_adjust_quotas (NULL);
 
   return private_idx;
 }
@@ -14001,14 +13989,9 @@ pgbuf_release_private_lru (const int private_idx)
 			"private_LRU %d (LRU_idx:%d) - no active sessions\n",
 			private_idx, PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
 
-	  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_activity[PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx)], -1);
-
-#if 0
-	  /* todo: remove me */
-	  pgbuf_relocate_chain_private_lru_to_shared (PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
-#endif
-
-	  pgbuf_adjust_quotas (NULL, NULL);
+	  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_activity[PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx)], 0);
+          /* todo: is this necessary? */
+	  pgbuf_adjust_quotas (NULL);
 	}
     }
   return NO_ERROR;
@@ -14831,19 +14814,16 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
       else if (pgbuf_assign_direct_victim (thread_p, bcb_flushed))
         {
           /* assigned directly */
-          PGBUF_BCB_UNLOCK (bcb_flushed);
           perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
-          continue;
         }
       else
         {
+          /* not assigned directly */
+          assert (!pgbuf_bcb_is_direct_victim (bcb_flushed));
+          pgbuf_bcb_mark_was_flushed (bcb_flushed);
           /* could not assign it directly. there must be no waiters */
           perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER);
         }
-      /* not assigned directly */
-      assert (!pgbuf_bcb_is_direct_victim (bcb_flushed));
-      pgbuf_bcb_mark_was_flushed (bcb_flushed);
-
       /* wakeup blocked flushers */
       while (((thrd_blocked = bcb_flushed->next_wait_thrd) != NULL)
              && (thrd_blocked->request_latch_mode == PGBUF_LATCH_FLUSH))

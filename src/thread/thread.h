@@ -379,8 +379,6 @@ typedef void *CSS_THREAD_ARG;
 
 typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
-extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
-
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
@@ -444,7 +442,6 @@ extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
-extern void thread_wakeup_log_flush_thread_if_not_requested (void);
 extern void thread_wakeup_page_flush_thread (void);
 extern void thread_wakeup_page_buffer_maintenance_thread (void);
 extern void thread_wakeup_page_post_flush_thread (void);
@@ -458,6 +455,7 @@ extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 
 extern bool thread_is_page_flush_thread_available (void);
 extern bool thread_is_page_post_flush_thread_available (void);
+extern bool thread_is_log_flush_thread_available (void);
 
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 
