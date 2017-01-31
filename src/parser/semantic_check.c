@@ -2816,9 +2816,25 @@ pt_check_union_type_compatibility_of_values_query (PARSER_CONTEXT * parser, PT_N
 
   assert (parser != NULL);
 
-  if (!node || !(node->node_type == PT_UNION || node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE)
-      || !(arg1 = node->info.query.q.union_.arg1) || !(arg2 = node->info.query.q.union_.arg2)
-      || !(attrs1 = pt_get_select_list (parser, arg1)) || !(attrs2 = pt_get_select_list (parser, arg2)))
+  if (!node
+      || !(node->node_type == PT_UNION || node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE
+	   || node->node_type == PT_CTE))
+    {
+      return NULL;
+    }
+
+  if (node->node_type == PT_CTE)
+    {
+      arg1 = node->info.cte.non_recursive_part;
+      arg2 = node->info.cte.recursive_part;
+    }
+  else
+    {
+      arg1 = node->info.query.q.union_.arg1;
+      arg2 = node->info.query.q.union_.arg2;
+    }
+
+  if (!arg1 || !arg2 || !(attrs1 = pt_get_select_list (parser, arg1)) || !(attrs2 = pt_get_select_list (parser, arg2)))
     {
       return NULL;
     }
@@ -15780,4 +15796,49 @@ pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * val
     }
 
   return error;
+}
+
+/*
+ * pt_try_remove_order_by - verify and remove order_by clause after it has been decided it is unnecessary
+ *  return: void
+ *  parser(in): Parser context
+ *  query(in/out): Processed query
+ */
+void
+pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
+
+  /* if select list has orderby_num(), can not remove ORDER BY clause for example:
+   * (i, j) = (select i, orderby_num() from t order by i) 
+   */
+  if (query->info.query.orderby_for == NULL && query->info.query.order_by)
+    {
+      PT_NODE *col, *next;
+      for (col = pt_get_select_list (parser, query); col; col = col->next)
+	{
+	  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
+	    {
+	      break;		/* can not remove ORDER BY clause */
+	    }
+	}
+
+      if (!col)
+	{
+	  parser_free_tree (parser, query->info.query.order_by);
+	  query->info.query.order_by = NULL;
+	  query->info.query.order_siblings = 0;
+
+	  for (col = pt_get_select_list (parser, query); col && col->next; col = next)
+	    {
+	      next = col->next;
+	      if (next->is_hidden_column)
+		{
+		  parser_free_tree (parser, next);
+		  col->next = NULL;
+		  break;
+		}
+	    }
+	}
+    }
 }

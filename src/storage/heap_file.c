@@ -5050,6 +5050,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       if (!VFID_ISNULL (&hfid->vfid))
 	{
 	  VPID vpid_heap_header;
+	  hfdes.hfid = *hfid;
 	  error_code = file_descriptor_update (thread_p, &hfid->vfid, &hfdes);
 	  if (error_code != NO_ERROR)
 	    {
@@ -5117,6 +5118,14 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     }
 
   hfid->hpgid = vpid.pageid;
+
+  hfdes.hfid = *hfid;
+  error_code = file_descriptor_update (thread_p, &hfid->vfid, &hfdes);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   if (heap_insert_hfid_for_class_oid (thread_p, class_oid, hfid, file_type) != NO_ERROR)
     {
