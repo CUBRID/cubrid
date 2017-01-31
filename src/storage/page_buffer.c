@@ -51,10 +51,6 @@
 #include "btree_load.h"
 #include "boot_sr.h"
 
-#if defined(CUBRID_DEBUG)
-#include "disk_manager.h"
-#endif /* CUBRID_DEBUG */
-
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #else	/* !SERVER_MODE */		   /* SA_MODE */
@@ -62,7 +58,6 @@
 #endif /* SERVER_MODE */
 
 #if defined(PAGE_STATISTICS)
-#include "disk_manager.h"
 #include "boot_sr.h"
 #endif /* PAGE_STATISTICS */
 
