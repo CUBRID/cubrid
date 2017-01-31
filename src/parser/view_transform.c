@@ -8191,36 +8191,8 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquer
 {
   PT_NODE *range, *spec, *as_attr_list, *col, *next, *tmp;
 
-  /* remove unnecessary ORDER BY clause. if select list has orderby_num(), can not remove ORDER BY clause for example:
-   * (i, j) = (select i, orderby_num() from t order by i) */
-  if (subquery->info.query.orderby_for == NULL && subquery->info.query.order_by)
-    {
-      for (col = pt_get_select_list (parser, subquery); col; col = col->next)
-	{
-	  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
-	    {
-	      break;		/* can not remove ORDER BY clause */
-	    }
-	}
-
-      if (!col)
-	{
-	  parser_free_tree (parser, subquery->info.query.order_by);
-	  subquery->info.query.order_by = NULL;
-	  subquery->info.query.order_siblings = 0;
-
-	  for (col = pt_get_select_list (parser, subquery); col && col->next; col = next)
-	    {
-	      next = col->next;
-	      if (next->is_hidden_column)
-		{
-		  parser_free_tree (parser, next);
-		  col->next = NULL;
-		  break;
-		}
-	    }
-	}
-    }
+  /* remove unnecessary ORDER BY clause. */
+  pt_try_remove_order_by (parser, subquery);
 
   /* set line number to range name */
   range = pt_name (parser, "av1861");
