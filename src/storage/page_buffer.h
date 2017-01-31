@@ -192,6 +192,7 @@ typedef enum
 				 * necessary. */
   OLD_PAGE_PREVENT_DEALLOC,	/* Fetch existing page and mark its memory buffer, to prevent deallocation. */
   OLD_PAGE_DEALLOCATED,		/* Fetch page that has been deallocated. */
+  OLD_PAGE_MAYBE_DEALLOCATED,	/* Fetch page that maybe was deallocated. */
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */
@@ -294,15 +295,6 @@ extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vp
 extern int pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
 					   PGBUF_PROMOTE_CONDITION condition, const char *caller_file, int caller_line);
 
-#define pgbuf_fix_without_validation(thread_p, vpid, fetch_mode, \
-				     requestmode, condition) \
-	pgbuf_fix_without_validation_debug(thread_p, vpid, fetch_mode, \
-					   requestmode, condition, \
-					   __FILE__, __LINE__)
-extern PAGE_PTR pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p, const VPID * vpid,
-						    PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
-						    PGBUF_LATCH_CONDITION condition, const char *caller_file,
-						    int caller_line);
 #define pgbuf_unfix(thread_p, pgptr) \
 	pgbuf_unfix_debug(thread_p, pgptr, __FILE__, __LINE__)
 extern void pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line);
@@ -418,9 +410,6 @@ extern PAGEID pgbuf_get_page_id (PAGE_PTR pgptr);
 extern PAGE_TYPE pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
 extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);
-extern void pgbuf_refresh_max_permanent_volume_id (VOLID volid);
-extern VOLID pgbuf_get_max_permanent_volume_id (void);
-extern void pgbuf_cache_permanent_volume_for_temporary (VOLID volid);
 extern void pgbuf_force_to_check_for_interrupts (void);
 extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);
 extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
