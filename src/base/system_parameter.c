@@ -127,7 +127,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_READ_WITHOUT_LATCH "page_read_without_latch"
 
-#define  PRM_NAME_PAGE_COPY_LOGGING "page_copy_logging"
+#define  PRM_NAME_PAGE_COPY_LOGGING "page_copy_logging_debug"
 
 #define PRM_NAME_PB_BUFFER_FLUSH_RATIO "data_buffer_flush_ratio"
 

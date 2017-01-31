@@ -348,9 +348,11 @@ typedef enum
   PSTAT_BT_NUM_COPY_LEAF_NOLATCH_SUCCESS,
   /* total failed to copy btree leaf page without latch */
   PSTAT_BT_NUM_COPY_LEAF_NOLATCH_FAILED,
-  /* total successfully acquired bcb area to copy btree leaf page */
+  /* total retries to copy btree leaf page without latch */
+  PSTAT_BT_NUM_COPY_LEAF_NOLATCH_RETRIES,
+  /* total successfully acquired BCB area to copy btree leaf page */
   PSTAT_BT_LEAF_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS,
-  /* total failed to acquire bcb area to copy btree leaf page */
+  /* total failed to acquire BCB area to copy btree leaf page */
   PSTAT_BT_LEAF_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED,
 
   /* Execution statistics for the heap manager */
@@ -443,6 +445,8 @@ typedef enum
   PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS,
   /* total failed to copy heap page without latch */
   PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED,
+  /* total retries to copy heap page without latch */
+  PSTAT_HEAP_NUM_COPY_NOLATCH_RETRIES,
   /* total successfully acquired bcb area to copy heap page */
   PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS,
   /* total failed to acquire bcb area to copy heap page */

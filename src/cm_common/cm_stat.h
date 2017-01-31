@@ -328,6 +328,7 @@ extern "C"
     unsigned int bt_num_get_stats;
     unsigned int bt_copy_leaf_nolatch_success_cnt;
     unsigned int bt_copy_leaf_nolatch_fails_cnt;
+    unsigned int bt_copy_leaf_nolatch_retries_cnt;
     unsigned int bt_acquire_tran_bcb_area_success_cnt;
     unsigned int bt_acquire_tran_bcb_area_fails_cnt;
 
@@ -419,6 +420,7 @@ extern "C"
     unsigned int heap_remove_vacuums;
     unsigned int heap_copy_nolatch_success_cnt;
     unsigned int heap_copy_nolatch_fails_cnt;
+    unsigned int heap_copy_nolatch_retries_cnt;
     unsigned int heap_acquire_tran_bcb_area_success_cnt;
     unsigned int heap_acquire_tran_bcb_area_success_fails_cnt;
     unsigned int heap_next_ver_vacuums;

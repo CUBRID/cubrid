@@ -7303,17 +7303,18 @@ try_again:
 	    }
 	  else
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED);
 	      if (copy_retry_count < copy_retry_max)
 		{
 		  /* try again */
 		  copy_retry_count++;
+		  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_RETRIES);
 		  pgbuf_copy_log ("pgbuf_copy_page: Retry %d to copy the heap page (%d,%d) without latch\n",
 				  copy_retry_count, object_vpid.volid, object_vpid.pageid);
 		  goto try_copy_area_again;
 		}
 	      else
 		{
+		  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED);
 		  pgbuf_copy_log ("pgbuf_copy_page: Can't copy the heap page (%d,%d) without latch after %d tries\n",
 				  object_vpid.volid, object_vpid.pageid, copy_retry_count);
 		}

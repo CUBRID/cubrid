@@ -1148,17 +1148,6 @@ enum btree_rv_debug_id
   BTREE_RV_DEBUG_ID_INS_REM_LEAF_LAST
 };
 
-/* Btree leaf page copy logging statistics */
-typedef struct btree_leaf_page_copy_logging_stats BTREE_LEAF_PAGE_COPY_LOGGING_STATS;
-struct btree_leaf_page_copy_logging_stats
-{
-  UINT64 copy_success_count;
-  UINT64 copy_fail_count;
-  UINT64 acquired_tran_bcb_success_count;
-  UINT64 acquired_tran_bcb_fail_count;
-};
-BTREE_LEAF_PAGE_COPY_LOGGING_STATS btree_leaf_page_copy_log_stats = { 0, 0, 0, 0 };
-
 /* b-tree debug logging */
 #define btree_log(prefix, msg, ...) \
   _er_log_debug (ARG_FILE_LINE, prefix " (thread=%d tran=%d): " msg "\n", \
@@ -22645,16 +22634,18 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 	    }
 	  else
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_BT_NUM_COPY_LEAF_NOLATCH_FAILED);
+
 	      if (retry_count < retry_max)
 		{
 		  retry_count++;
+		  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_COPY_LEAF_NOLATCH_RETRIES);
 		  pgbuf_copy_log ("pgbuf_copy_page: Retry %d to copy the B-tree page (%d,%d) without latch\n",
 				  retry_count, child_vpid.volid, child_vpid.pageid);
 		  goto try_again;
 		}
 	      else
 		{
+		  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_COPY_LEAF_NOLATCH_FAILED);
 		  pgbuf_copy_log ("pgbuf_copy_page: Can't copy the B-tree page (%d,%d) without latch after %d tries\n",
 				  child_vpid.volid, child_vpid.pageid, retry_count);
 		}
