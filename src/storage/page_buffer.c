@@ -832,31 +832,6 @@ struct pgbuf_buffer_pool
   LOCK_FREE_CIRCULAR_QUEUE *shared_lrus_with_victims;
 };
 
-/* flush priority within a list : 
- * before applying the VPID order, this flush order applies 
- * garbage LRUs, shared LRUs and private LRUs have all two levels of priority */
-enum
-{
-  PGBUG_FLUSH_PRIORITY_GARBAGE = 0,
-  PGBUG_FLUSH_PRIORITY_SHARED = 1,
-  PGBUG_FLUSH_PRIORITY_PRIVATE = 2,
-  PGBUG_FLUSH_PRIORITY_PRIVATE_P2 = 3,
-
-  PGBUG_FLUSH_PRIORITY_AIN = PGBUG_FLUSH_PRIORITY_GARBAGE,
-  PGBUG_FLUSH_PRIORITY_CHKPT = PGBUG_FLUSH_PRIORITY_GARBAGE,
-  PGBUG_FLUSH_PRIORITY_GARBAGE_P2 = PGBUG_FLUSH_PRIORITY_SHARED,
-  PGBUG_FLUSH_PRIORITY_SHARED_P2 = PGBUG_FLUSH_PRIORITY_PRIVATE
-};
-
-/* flush priority thresholds : the distance from bottom LRU (in BCBs) where
- * the first level of priority applies */
-enum
-{
-  PGBUG_FLUSH_PRIORITY_THRESHOLD_GARBAGE = 15,
-  PGBUG_FLUSH_PRIORITY_THRESHOLD_SHARED = 15,
-  PGBUG_FLUSH_PRIORITY_THRESHOLD_PRIVATE = 10
-};
-
 /* victim candidate list */
 /* One daemon thread performs flush task for victim candidates.
  * The daemon find and saves victim candidates using following list.
@@ -866,8 +841,6 @@ struct pgbuf_victim_candidate_list
 {
   PGBUF_BCB *bufptr;		/* selected BCB as victim candidate */
   VPID vpid;			/* page id of the page managed by the BCB */
-  short flush_order;		/* primary flush order (applies before VPID) */
-  LOG_LSA recLSA;		/* oldest_unflush_lsa of the page */
 };
 
 #if defined(PAGE_STATISTICS)
@@ -3369,20 +3342,6 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
   node1 = (PGBUF_VICTIM_CANDIDATE_LIST *) p1;
   node2 = (PGBUF_VICTIM_CANDIDATE_LIST *) p2;
 
-  /* order by vpid only */
-#if 0
-  if (node1 == node2)
-    {
-      return 0;
-    }
-
-  diff = node1->flush_order - node2->flush_order;
-  if (diff != 0)
-    {
-      return diff;
-    }
-#endif
-
   diff = node1->vpid.volid - node2->vpid.volid;
   if (diff != 0)
     {
@@ -3460,8 +3419,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
               /* save victim candidate information temporarily. */
               victim_cand_list[victim_cand_count].bufptr = bufptr;
               victim_cand_list[victim_cand_count].vpid = bufptr->vpid;
-              LSA_COPY (&victim_cand_list[victim_cand_count].recLSA, &bufptr->oldest_unflush_lsa);
-              PGBUG_GET_FLUSH_ORDER (lru_idx, check_count_this_lru - i, victim_cand_list[victim_count].flush_order);
               victim_cand_count++;
               cand_found_in_this_lru++;
             }
@@ -3665,9 +3622,9 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       /* check flush conditions */
 
       if (!VPID_EQ (&bufptr->vpid, &victim_cand_list[i].vpid) || !pgbuf_bcb_is_dirty (bufptr)
-	  || !LSA_EQ (&bufptr->oldest_unflush_lsa, &victim_cand_list[i].recLSA))
+          || pgbuf_bcb_is_flushing (bufptr))
 	{
-	  /* must be already flushed */
+	  /* must be already flushed or currently flushing */
 	  PGBUF_BCB_UNLOCK (bufptr);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED);
@@ -3675,8 +3632,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	}
 
 
-      if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) || bufptr->latch_mode != PGBUF_NO_LATCH
-          || pgbuf_bcb_is_flushing (bufptr))
+      if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) || bufptr->latch_mode != PGBUF_NO_LATCH)
 	{
 	  /* page was fixed or became hot after selected as victim. do not flush it. */
 	  PGBUF_BCB_UNLOCK (bufptr);
@@ -3870,7 +3826,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
       /* add to flush list */
       f_list[collected_bcbs].bufptr = bufptr;
       VPID_COPY (&f_list[collected_bcbs].vpid, &bufptr->vpid);
-      f_list[collected_bcbs].flush_order = PGBUG_FLUSH_PRIORITY_CHKPT;
       PGBUF_BCB_UNLOCK (bufptr);
 
       collected_bcbs++;
