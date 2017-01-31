@@ -2076,10 +2076,9 @@ static unsigned int prm_pb_tran_pages_quota_flag = 0;
 
 int PRM_PB_NUM_PRIVATE_CHAINS = -1;
 static int prm_pb_num_private_chains_default = -1;
-static int prm_pb_num_private_chains_upper = 1000;
+static int prm_pb_num_private_chains_upper = prm_css_max_clients_upper + VACUUM_MAX_WORKER_COUNT;
 static int prm_pb_num_private_chains_lower = -1;
 static unsigned int prm_pb_num_private_chains_flag = 0;
-
 
 int PRM_PB_MONITOR_LOCKS = false;
 static bool prm_pb_monitor_locks_default = false;
@@ -5316,20 +5315,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#if defined (MAX_PRIVATE_QUOTA)
-  {PRM_ID_PB_TRAN_PAGES_QUOTA,
-   PRM_NAME_PB_TRAN_PAGES_QUOTA,
-   (PRM_FOR_SERVER | PRM_RELOADABLE),
-   PRM_INTEGER,
-   (void *) &prm_pb_tran_pages_quota_flag,
-   (void *) &prm_pb_tran_pages_quota_default,
-   (void *) &PRM_PB_TRAN_PAGES_QUOTA,
-   (void *) &prm_pb_tran_pages_quota_upper,
-   (void *) &prm_pb_tran_pages_quota_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-#endif
   {PRM_ID_PB_NUM_PRIVATE_CHAINS,
    PRM_NAME_PB_NUM_PRIVATE_CHAINS,
    (PRM_FOR_SERVER | PRM_RELOADABLE),

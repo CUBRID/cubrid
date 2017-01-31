@@ -402,9 +402,6 @@ enum param_id
   PRM_ID_DISK_LOGGING,
   PRM_ID_FILE_LOGGING,
 
-#if defined (MAX_PRIVATE_QUOTA)
-  PRM_ID_PB_TRAN_PAGES_QUOTA,       /* do we keep this? */
-#endif /* MAX_PRIVATE_QUOTA */
   PRM_ID_PB_NUM_PRIVATE_CHAINS,
   PRM_ID_PB_MONITOR_LOCKS,
 

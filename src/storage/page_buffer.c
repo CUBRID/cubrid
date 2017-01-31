@@ -81,20 +81,13 @@ const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 #define PGBUF_NUM_ALLOC_HOLDER     10
 
 #if !defined(SERVER_MODE)
+/* todo: do we need to do this? */
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
 static int rv;
 #endif /* !SERVER_MODE */
-
-/* activate to enable debug for transaction quota */
-
-/* The victim candidate flusher (performed as a daemon) finds
-   victim candidates(fcnt == 0) from the bottom of each LRU list.
-   and flushes them if they are in dirty state. */
-#define PGBUF_LRU_SIZE \
-  ((int) (prm_get_integer_value (PRM_ID_PB_NBUFFERS)/pgbuf_Pool.num_LRU_list))
 
 /* default timeout seconds for infinite wait */
 #define PGBUF_TIMEOUT                      300	/* timeout seconds */
@@ -107,26 +100,26 @@ static int rv;
 #endif /* CUBRID_DEBUG */
 
 /* size of one buffer page <BCB, page> */
-#define PGBUF_BCB_SIZE       (sizeof(PGBUF_BCB))
+#define PGBUF_BCB_SIZEOF       (sizeof(PGBUF_BCB))
 #define PGBUF_IOPAGE_BUFFER_SIZE \
   ((size_t)(offsetof(PGBUF_IOPAGE_BUFFER, iopage) + \
   SIZEOF_IOPAGE_PAGESIZE_AND_GUARD()))
 /* size of buffer hash entry */
-#define PGBUF_BUFFER_HASH_SIZE       (sizeof(PGBUF_BUFFER_HASH))
+#define PGBUF_BUFFER_HASH_SIZEOF       (sizeof(PGBUF_BUFFER_HASH))
 /* size of buffer lock record */
-#define PGBUF_BUFFER_LOCK_SIZE       (sizeof(PGBUF_BUFFER_LOCK))
+#define PGBUF_BUFFER_LOCK_SIZEOF       (sizeof(PGBUF_BUFFER_LOCK))
 /* size of one LRU list structure */
-#define PGBUF_LRU_LIST_SIZE       (sizeof(PGBUF_LRU_LIST))
+#define PGBUF_LRU_LIST_SIZEOF       (sizeof(PGBUF_LRU_LIST))
 /* size of BCB holder entry */
-#define PGBUF_HOLDER_SIZE        (sizeof(PGBUF_HOLDER))
+#define PGBUF_HOLDER_SIZEOF        (sizeof(PGBUF_HOLDER))
 /* size of BCB holder array that is allocated in one time */
-#define PGBUF_HOLDER_SET_SIZE    (sizeof(PGBUF_HOLDER_SET))
+#define PGBUF_HOLDER_SET_SIZEOF    (sizeof(PGBUF_HOLDER_SET))
 /* size of BCB holder anchor */
-#define PGBUF_HOLDER_ANCHOR_SIZE (sizeof(PGBUF_HOLDER_ANCHOR))
+#define PGBUF_HOLDER_ANCHOR_SIZEOF (sizeof(PGBUF_HOLDER_ANCHOR))
 
 /* get memory address(pointer) */
 #define PGBUF_FIND_BCB_PTR(i) \
-  ((PGBUF_BCB *)((char *)&(pgbuf_Pool.BCB_table[0])+(PGBUF_BCB_SIZE*(i))))
+  ((PGBUF_BCB *)((char *)&(pgbuf_Pool.BCB_table[0])+(PGBUF_BCB_SIZEOF*(i))))
 
 #define PGBUF_FIND_IOPAGE_PTR(i) \
   ((PGBUF_IOPAGE_BUFFER *)((char *)&(pgbuf_Pool.iopage_table[0]) \
@@ -161,13 +154,17 @@ static int rv;
 #define PGBUF_IS_AUXILIARY_VOLUME(volid)                                 \
   ((volid) < LOG_DBFIRST_VOLID ? true : false)
 
+/************************************************************************/
+/* Page buffer zones section                                            */
+/************************************************************************/
+
 /* (bcb flags + zone = 2 bytes) + (lru index = 2 bytes); lru index values start from 0. */
 /* if that changes, make the right updates here. */
 #define PGBUF_LRU_NBITS 16
 #define PGBUF_LRU_LIST_MAX_COUNT ((int) 1 << PGBUF_LRU_NBITS)      /* 64k */
 #define PGBUF_LRU_INDEX_MASK (PGBUF_LRU_LIST_MAX_COUNT - 1)   /* 0x0000FFFF */
 
-#define PGBUF_LRU_INDEX_SHIFT_BITS 3
+/* PGBUF_ZONE - enumeration with all page buffer zones */
 typedef enum
 {
   /* zone values start after reserved values for lru indexes */
@@ -200,6 +197,10 @@ typedef enum
 #define PGBUF_GET_ZONE(flags) ((PGBUF_ZONE) ((flags) & PGBUF_ZONE_MASK))
 #define PGBUF_GET_LRU_INDEX(flags) ((flags) & PGBUF_LRU_INDEX_MASK)
 
+/************************************************************************/
+/* Page buffer BCB section                                              */
+/************************************************************************/
+
 /* bcb flags */
 /* dirty: false initially, is set to true when page is modified. set to false again when flushed to disk. */
 #define PGBUF_BCB_DIRTY_FLAG                ((int) 0x80000000)
@@ -226,51 +227,32 @@ typedef enum
 /* add flags that invalidate a victim candidate here */
 /* 1. dirty bcb's cannot be victimized.
  * 2. bcb's that are in the process of being flushed cannot be victimized. flush must succeed!
- * 3. bcb's that are already reserved as victims are not valid victim candidates.
- * 4. bcb's that are already assigned as victims are not valid victim candidates.
+ * 3. bcb's that are already assigned as victims are not valid victim candidates.
  */
 #define PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK \
   (PGBUF_BCB_DIRTY_FLAG \
    | PGBUF_BCB_FLUSHING_TO_DISK_FLAG \
    | PGBUF_BCB_VICTIM_DIRECT_FLAG)
 
+/* bcb has no flag initially and is in invalid zone */
 #define PGBUF_BCB_INIT_FLAGS PGBUF_INVALID_ZONE
 
+/************************************************************************/
+/* Page buffer LRU section                                              */
+/************************************************************************/
 #define PGBUF_GET_LRU_LIST(lru_idx) (&pgbuf_Pool.buf_LRU_list[lru_idx])
 
 #define PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE(bcb) (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_3_ZONE)
 #define PGBUF_IS_BCB_IN_LRU(bcb) ((pgbuf_bcb_get_zone (bcb) & PGBUF_LRU_ZONE_MASK) != 0)
 
-/* Minimum pages a private LRU should be imposed : 50 pages or 2% of
- * corresponding equal share from all pages :
- * - the number should be large enough to give pages of private LRU the chance
- *   of becoming hot (or shared) and to allow accumulation of dirty pages
- *   (to avoid frequent flushes of small bursts) 
- * - small enough so that victims can be found in any private LRU in limit cases
- *   (all buffers are distributed equally among private LRUs) */
-#define PGBUF_PRIVATE_MIN_QUOTA \
-  MAX(((pgbuf_Pool.num_buffers / NUM_NON_SYSTEM_TRANS) / 50), 50)
-
 /* Limits for private chains */
-#define PGBUF_MAX_PRIVATE_CHAINS 1500
-#define PGBUF_MIN_PRIVATE_CHAINS 4
+#define PGBUF_PRIVATE_LRU_MIN_COUNT 4
+#define PGBUF_PRIVATE_LRU_MAX_QUOTA 5000
 
 /* Lower limits for number of pages in private LRUs and shared LRUs: used when 
  * computing number of private lists and number of shared lists */
 #define PGBUF_MIN_PAGES_IN_PRIVATE_CHAIN 300
 #define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
-
-/* Maximum (hard) number of pages which a private chain may hold
- * (used for automatic values) */
-#define PGBUF_MAX_HARD_QUOTA (pgbuf_Pool.num_buffers / 2)
-/* Maximum (soft) number of pages which a private chain may hold 
- * (used for automatic values)*/
-#define PGBUF_MAX_SOFT_QUOTA 1500
-/* Maximum (configurable) number of pages which a private chain may hold 
- * When this is zero, page quota is disabled */
-#if defined (MAX_PRIVATE_QUOTA)
-#define PGBUF_MAX_QUOTA (pgbuf_Pool.quota.max_pages_private_quota)
-#endif
 
 #define PGBUF_PAGE_QUOTA_IS_ENABLED (pgbuf_Pool.quota.num_private_LRU_list > 0)
 
@@ -781,9 +763,6 @@ struct pgbuf_page_monitor
 typedef struct pgbuf_page_quota PGBUF_PAGE_QUOTA;
 struct pgbuf_page_quota
 {
-#if defined (MAX_PRIVATE_QUOTA)
-  int max_pages_private_quota;	/* number of pages per private list, is 0 if page quota is disabled */
-#endif
   int num_private_LRU_list;	/* number of private LRU lists */
 
   /* Real-time tunning: */
@@ -5257,7 +5236,7 @@ pgbuf_initialize_bcb_table (void)
   long long unsigned alloc_size;
 
   /* allocate space for page buffer BCB table */
-  alloc_size = (long long unsigned) pgbuf_Pool.num_buffers * PGBUF_BCB_SIZE;
+  alloc_size = (long long unsigned) pgbuf_Pool.num_buffers * PGBUF_BCB_SIZEOF;
   if (!MEM_SIZE_IS_VALID (alloc_size))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, "data_buffer_pages");
@@ -5367,10 +5346,10 @@ pgbuf_initialize_hash_table (void)
 
   /* allocate space for the buffer hash table */
   hashsize = PGBUF_HASH_SIZE;
-  pgbuf_Pool.buf_hash_table = (PGBUF_BUFFER_HASH *) malloc (hashsize * PGBUF_BUFFER_HASH_SIZE);
+  pgbuf_Pool.buf_hash_table = (PGBUF_BUFFER_HASH *) malloc (hashsize * PGBUF_BUFFER_HASH_SIZEOF);
   if (pgbuf_Pool.buf_hash_table == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (hashsize * PGBUF_BUFFER_HASH_SIZE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (hashsize * PGBUF_BUFFER_HASH_SIZEOF));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -5404,7 +5383,7 @@ pgbuf_initialize_lock_table (void)
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
 
-  alloc_size = thrd_num_total * PGBUF_BUFFER_LOCK_SIZE;
+  alloc_size = thrd_num_total * PGBUF_BUFFER_LOCK_SIZEOF;
   pgbuf_Pool.buf_lock_table = (PGBUF_BUFFER_LOCK *) malloc (alloc_size);
   if (pgbuf_Pool.buf_lock_table == NULL)
     {
@@ -5453,10 +5432,10 @@ pgbuf_initialize_lru_list (void)
     }
 
   /* allocate memory space for the page buffer LRU lists */
-  pgbuf_Pool.buf_LRU_list = (PGBUF_LRU_LIST *) malloc (PGBUF_TOTAL_LRU * PGBUF_LRU_LIST_SIZE);
+  pgbuf_Pool.buf_LRU_list = (PGBUF_LRU_LIST *) malloc (PGBUF_TOTAL_LRU * PGBUF_LRU_LIST_SIZEOF);
   if (pgbuf_Pool.buf_LRU_list == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (PGBUF_TOTAL_LRU * PGBUF_LRU_LIST_SIZE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (PGBUF_TOTAL_LRU * PGBUF_LRU_LIST_SIZEOF));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -5625,15 +5604,15 @@ pgbuf_initialize_thrd_holder (void)
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
 
-  pgbuf_Pool.thrd_holder_info = (PGBUF_HOLDER_ANCHOR *) malloc (thrd_num_total * PGBUF_HOLDER_ANCHOR_SIZE);
+  pgbuf_Pool.thrd_holder_info = (PGBUF_HOLDER_ANCHOR *) malloc (thrd_num_total * PGBUF_HOLDER_ANCHOR_SIZEOF);
   if (pgbuf_Pool.thrd_holder_info == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, thrd_num_total * PGBUF_HOLDER_ANCHOR_SIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, thrd_num_total * PGBUF_HOLDER_ANCHOR_SIZEOF);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* phase 1: allocate memory space that is used for BCB holder entries */
-  alloc_size = thrd_num_total * PGBUF_DEFAULT_FIX_COUNT * PGBUF_HOLDER_SIZE;
+  alloc_size = thrd_num_total * PGBUF_DEFAULT_FIX_COUNT * PGBUF_HOLDER_SIZEOF;
   pgbuf_Pool.thrd_reserved_holder = (PGBUF_HOLDER *) malloc (alloc_size);
   if (pgbuf_Pool.thrd_reserved_holder == NULL)
     {
@@ -5727,13 +5706,13 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
 	{
 	  /* no usable free holder entry */
 	  /* expand the free BCB holder list shared by threads */
-	  holder_set = (PGBUF_HOLDER_SET *) malloc (PGBUF_HOLDER_SET_SIZE);
+	  holder_set = (PGBUF_HOLDER_SET *) malloc (PGBUF_HOLDER_SET_SIZEOF);
 	  if (holder_set == NULL)
 	    {
 	      /* This situation must not be occurred. */
 	      assert (false);
 	      pthread_mutex_unlock (&pgbuf_Pool.free_holder_set_mutex);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PGBUF_HOLDER_SET_SIZE);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PGBUF_HOLDER_SET_SIZEOF);
 	      return NULL;
 	    }
 
@@ -13179,97 +13158,26 @@ pgbuf_initialize_page_quota_parameters (void)
   quota->adjust_age = 0;
   quota->is_adjusting = 0;
 
-#if defined (MAX_PRIVATE_QUOTA)
-  quota->max_pages_private_quota = prm_get_integer_value (PRM_ID_PB_TRAN_PAGES_QUOTA);
-  if (quota->max_pages_private_quota > 0 && quota->max_pages_private_quota < PGBUF_PRIVATE_MIN_QUOTA)
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING "
-		    "Pages_tran_quota = %d is too small. %d was assumed",
-		    quota->max_pages_tran_quota, PGBUF_PRIVATE_MIN_QUOTA_USERS);
-#endif /* CUBRID_DEBUG */
-      quota->max_pages_private_quota = PGBUF_PRIVATE_MIN_QUOTA;
-    }
-
-  if (quota->max_pages_private_quota > PGBUF_MAX_HARD_QUOTA)
-    {
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING "
-		    "Pages_tran_quota = %d is too large. %d was assumed",
-		    quota->max_pages_private_quota, PGBUF_MAX_HARD_QUOTA);
-#endif /* CUBRID_DEBUG */
-      quota->max_pages_private_quota = PGBUF_MAX_HARD_QUOTA;
-    }
-#endif
-
   quota->num_private_LRU_list = prm_get_integer_value (PRM_ID_PB_NUM_PRIVATE_CHAINS);
-  auto_num_private_chains = (quota->num_private_LRU_list == -1) ? true : false;
-  if (auto_num_private_chains)
+  auto_num_private_chains = () ? true : false;
+  if (quota->num_private_LRU_list == -1)
     {
-      /* automatic value set */
-      quota->num_private_LRU_list =
-#if defined (MAX_PRIVATE_QUOTA)
-        (quota->max_pages_private_quota != 0) ?
-#endif
-        (MAX_NTRANS + VACUUM_MAX_WORKER_COUNT)
-#if defined (MAX_PRIVATE_QUOTA)
-        : 0
-#endif
-        ;
-      /* count of pages per private LRU should be large enough to allow
-       * victimization */
-      if (quota->num_private_LRU_list > 0)
-	{
-	  if ((pgbuf_Pool.num_buffers / quota->num_private_LRU_list) < PGBUF_MIN_PAGES_IN_PRIVATE_CHAIN)
-	    {
-	      quota->num_private_LRU_list = pgbuf_Pool.num_buffers / PGBUF_MIN_PAGES_IN_PRIVATE_CHAIN;
-	    }
-	  quota->num_private_LRU_list = MAX (quota->num_private_LRU_list, PGBUF_MIN_PRIVATE_CHAINS);
-	  quota->num_private_LRU_list = MIN (quota->num_private_LRU_list, PGBUF_MAX_PRIVATE_CHAINS);
-	}
+      /* set value automatically to maximum number of workers (active and vacuum). */
+      quota->num_private_LRU_list = MAX_NTRANS + VACUUM_MAX_WORKER_COUNT;
+    }
+  else if (quota->num_private_LRU_list == 0)
+    {
+      /* disabled */
     }
   else
     {
-      if (quota->num_private_LRU_list > PGBUF_MAX_PRIVATE_CHAINS)
+      /* set number of workers to the number desired by user (or to minimum accepted) */
+      if (quota->num_private_LRU_list < PGBUF_PRIVATE_LRU_MIN_COUNT)
 	{
-#if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING "
-			"num_private_chains = %d is too large. %d was assumed",
-			quota->num_private_LRU_list, PGBUF_MAX_PRIVATE_CHAINS);
-#endif /* CUBRID_DEBUG */
-	  quota->num_private_LRU_list = PGBUF_MAX_PRIVATE_CHAINS;
-	}
-
-      if (quota->num_private_LRU_list > 0 && quota->num_private_LRU_list < PGBUF_MIN_PRIVATE_CHAINS)
-	{
-#if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING "
-			"num_private_chains = %d is low large. %d was assumed",
-			quota->num_private_LRU_list, PGBUF_MIN_PRIVATE_CHAINS);
-#endif /* CUBRID_DEBUG */
-	  quota->num_private_LRU_list = PGBUF_MIN_PRIVATE_CHAINS;
+          /* set to minimum count */
+	  quota->num_private_LRU_list = PGBUF_PRIVATE_LRU_MIN_COUNT;
 	}
     }
-
-#if defined (MAX_PRIVATE_QUOTA)
-  if (quota->num_private_LRU_list == 0)
-    {
-      /* transaction quota is disabled */
-      quota->max_pages_private_quota = 0;
-    }
-
-  if (quota->max_pages_private_quota == 0)
-    {
-      quota->num_private_LRU_list = 0;
-    }
-  else if (quota->max_pages_private_quota == -1)
-    {
-      /* automatic value set */
-      quota->max_pages_private_quota = MAX (pgbuf_Pool.num_buffers / quota->num_private_LRU_list, PGBUF_MAX_SOFT_QUOTA);
-
-      quota->max_pages_private_quota = MIN (quota->max_pages_private_quota, PGBUF_MAX_HARD_QUOTA);
-    }
-#endif
 
   return NO_ERROR;
 }
@@ -13490,18 +13398,6 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 }
 
 /*
- * pgbuf_adjust_quotas () - Adjusts the quotas of LRUs. Each LRU list has a target of number of BCBs
- *			    (target_bcbs_per_lru); when the number of BCBs drops bellow this level, victimization from
- *			    such list is skipped. Also, each LRU list has a threshold (a maximum number) of BCBs 
- *			    which may hold with LRU1 state (lru1_threshold_per_lru). The purpose of this function is to
- *			    dynamically adjust these two sets of values.
- *			    The adjustment is performed based on other sets of collected data such as activity
- *			    (formula based on individual LRU speed, victimization pressure, LRU hit count).
- *
- * curr_time_p (in) : current time argument (can be NULL, in such case quota adjustment is forced)
- * return : void
- */
-/*
  * pgbuf_adjust_quotas () - Adjusts the quotas for private LRU's. The quota's are decided based on thread activities on
  *                          private and shared lists. Activity is counted as number of accessed pages.
  *                          Based on quota's, the thread also sets zone thresholds for each LRU.
@@ -13682,9 +13578,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	    }
 
 	  new_quota = (int) (new_lru_ratio * all_private_quota);
-#if defined (MAX_PRIVATE_QUOTA)
-	  new_quota = MIN (new_quota, PGBUF_MAX_QUOTA);
-#endif
+          new_quota = MIN (new_quota, PGBUF_PRIVATE_LRU_MAX_QUOTA);
 
           lru_list = PGBUF_GET_LRU_LIST (i);
           lru_list->quota = new_quota;
