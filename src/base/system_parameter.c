@@ -2255,7 +2255,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) prm_io_pages_to_size},
   {PRM_ID_PB_BUFFER_FLUSH_RATIO,
    PRM_NAME_PB_BUFFER_FLUSH_RATIO,
-   (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),   /* todo: why user change? */
+   (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),	/* todo: why user change? */
    PRM_FLOAT,
    (void *) &prm_pb_buffer_flush_ratio_flag,
    (void *) &prm_pb_buffer_flush_ratio_default,

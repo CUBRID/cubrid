@@ -251,7 +251,7 @@ STATIC_INLINE void thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon) __attribu
 STATIC_INLINE void thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p,
-                                        THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
+					THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
@@ -3314,20 +3314,20 @@ thread_page_flush_thread (void *arg_p)
     {
       /* flush pages as long as necessary */
       while (!tsd_ptr->shutdown && pgbuf_keep_victim_flush_thread_running ())
-        {
-          pgbuf_flush_victim_candidate (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
-        }
+	{
+	  pgbuf_flush_victim_candidate (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
+	}
 
       /* wait */
       wakeup_interval = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
       if (wakeup_interval > 0)
-        {
-          thread_daemon_timedwait (&thread_Page_flush_thread, wakeup_interval);
-        }
+	{
+	  thread_daemon_timedwait (&thread_Page_flush_thread, wakeup_interval);
+	}
       else
-        {
-          thread_daemon_wait (&thread_Page_flush_thread);
-        }
+	{
+	  thread_daemon_wait (&thread_Page_flush_thread);
+	}
     }
   thread_daemon_stop (&thread_Page_flush_thread, tsd_ptr);
 
@@ -6268,7 +6268,7 @@ thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
   struct timeval timeval_crt;
   struct timespec timespec_wakeup;
   long usec_tmp;
-  const int usec_onesec = 1000 * 1000;   /* nano-seconds in one second */
+  const int usec_onesec = 1000 * 1000;	/* nano-seconds in one second */
 
   gettimeofday (&timeval_crt, NULL);
 
