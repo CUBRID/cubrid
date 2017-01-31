@@ -215,6 +215,8 @@ typedef enum
 #define PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG   ((int) 0x10000000)
 /* flag for pages that should be vacuumed. */
 #define PGBUF_BCB_TO_VACUUM_FLAG            ((int) 0x08000000)
+/* flag for asynchronous flush request */
+#define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x04000000)
 
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK     \
@@ -222,7 +224,8 @@ typedef enum
    | PGBUF_BCB_FLUSHING_TO_DISK_FLAG \
    | PGBUF_BCB_VICTIM_DIRECT_FLAG \
    | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG \
-   | PGBUF_BCB_TO_VACUUM_FLAG)
+   | PGBUF_BCB_TO_VACUUM_FLAG \
+   | PGBUF_BCB_ASYNC_FLUSH_REQ)
 
 /* add flags that invalidate a victim candidate here */
 /* 1. dirty bcb's cannot be victimized.
@@ -421,8 +424,6 @@ while (0)
 #define PGBUF_LRU_ZONE_MIN_RATIO 0.05f
 #define PGBUF_LRU_ZONE_MAX_RATIO 0.90f
 
-/* BCB zone */
-
 /* buffer lock return value */
 enum
 {
@@ -536,7 +537,6 @@ struct pgbuf_bcb
   int owner_mutex;              /* mutex owner */
 #endif				/* SERVER_MODE */
   VPID vpid;			/* Volume and page identifier of resident page */
-  int ipool;			/* Buffer pool index */
   int fcnt;			/* Fix count */
   PGBUF_LATCH_MODE latch_mode;	/* page latch mode */
   volatile int flags;
@@ -546,14 +546,13 @@ struct pgbuf_bcb
   PGBUF_BCB *hash_next;		/* next hash chain */
   PGBUF_BCB *prev_BCB;		/* prev LRU chain */
   PGBUF_BCB *next_BCB;		/* next LRU or Invalid(Free) chain */
-  /* todo: consider making 8-byte ticks. overflowing may mess up our checks */
-  int tick_lru_list;		/* age of lru list when this BCB was inserted into */
-  int tick_lru3;                /* position in lru zone 3. small numbers are at the bottom */
+  int tick_lru_list;		/* age of lru list when this BCB was inserted into. used to decide when bcb has aged
+                                 * enough to boost to top. */
+  int tick_lru3;                /* position in lru zone 3. small numbers are at the bottom. used to update LRU victim
+                                 * hint. */
   int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
 				 * obtained */
-  bool async_flush_request;
-
-  int hit_age;
+  int hit_age;                  /* age of last hit (used to compute activities and quotas) */
 
   volatile LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
   PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
@@ -1193,13 +1192,15 @@ STATIC_INLINE void pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int lru_idx, PGBUF_ZO
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_ZONE pgbuf_bcb_get_zone (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_bcb_get_lru_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_mark_is_flushing (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_is_to_vacuum (PGBUF_BCB * bcb);
+STATIC_INLINE bool pgbuf_bcb_is_async_flush_request (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_to_vacuum (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_avoid_victim (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_avoid_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_set_dirty (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_clear_dirty (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_mark_was_flushed (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
@@ -1929,7 +1930,7 @@ try_again:
       bufptr->vpid = *vpid;
       assert (!pgbuf_bcb_avoid_victim (bufptr));
       bufptr->latch_mode = PGBUF_NO_LATCH;
-      bufptr->async_flush_request = false;
+      pgbuf_bcb_update_flags (bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);
       bufptr->avoid_dealloc_cnt = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -2841,10 +2842,10 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 	  er_log_debug (ARG_FILE_LINE,
 			"pgbuf_unfix_all: WARNING %4d %5d %6d %4d %9s %1d %1d %1d %11s %6d|%4d %10s %p %p-%p\n",
-			bufptr->ipool, bufptr->vpid.volid, bufptr->vpid.pageid, bufptr->fcnt, latch_mode_str,
-			(int) pgbuf_bcb_is_dirty (bufptr), (int) pgbuf_bcb_is_flushing (bufptr),
-                        (int) bufptr->async_flush_request, zone_str, bufptr->iopage_buffer->iopage.prv.lsa.pageid,
-                        bufptr->iopage_buffer->iopage.prv.lsa.offset, consistent_str, (void *) bufptr,
+			pgbuf_bcb_get_pool_index (bufptr), bufptr->vpid.volid, bufptr->vpid.pageid, bufptr->fcnt,
+                        latch_mode_str, (int) pgbuf_bcb_is_dirty (bufptr), (int) pgbuf_bcb_is_flushing (bufptr),
+                        (int) pgbuf_bcb_is_async_flush_request (bufptr), zone_str,
+                        LSA_AS_ARGS (&bufptr->iopage_buffer->iopage.prv.lsa), consistent_str, (void *) bufptr,
                         (void *) (&bufptr->iopage_buffer->iopage.page[0]),
 			(void *) (&bufptr->iopage_buffer->iopage.page[DB_PAGESIZE - 1]));
 
@@ -5200,7 +5201,6 @@ pgbuf_initialize_bcb_table (void)
 #if defined (SERVER_MODE)
       bufptr->owner_mutex = -1;
 #endif /* SERVER_MODE */
-      bufptr->ipool = i;
       VPID_SET_NULL (&bufptr->vpid);
       bufptr->fcnt = 0;
       bufptr->latch_mode = PGBUF_LATCH_INVALID;
@@ -5223,7 +5223,6 @@ pgbuf_initialize_bcb_table (void)
 
       bufptr->flags = PGBUF_BCB_INIT_FLAGS;
       bufptr->avoid_dealloc_cnt = 0;
-      bufptr->async_flush_request = false;
       bufptr->hit_age = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -6580,9 +6579,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
   /* bufptr->latch_mode == PGBUF_NO_LATCH, PGBUF_LATCH_READ, PGBUF_LATCH_FLUSH, PGBUF_LATCH_VICTIM */
-  if (bufptr->async_flush_request == true)
+  if (pgbuf_bcb_is_async_flush_request (bufptr))
     {
-      /* Note that bufptr->async_flush_request is set only when an asynchronous flusher has requested the BCB while the 
+      /* Note that async flush request flag is set only when an asynchronous flusher has requested the BCB while the 
        * latch_mode is PGBUF_LATCH_WRITE. At this point, bufptr->latch_mode is PGBUF_NO_LATCH */
       bufptr->latch_mode = PGBUF_LATCH_FLUSH;
       if (pgbuf_flush_page_with_wal_keep_bcb_lock (thread_p, bufptr) != NO_ERROR)
@@ -8034,8 +8033,7 @@ pgbuf_invalidate_bcb (PGBUF_BCB * bufptr)
  *   bufptr(in): pointer to buffer page
  *   synchronous(in): synchronous flush or asynchronous flush
  *
- * Note: If there is a writer, just set async_flush_request = true.
- *       else if sharp is true, block the BCB.
+ * Note: If there is a writer, just set async flush request flag, otherwise, if sharp(?) is true, block the BCB.
  *
  *       Before return, it releases BCB mutex.
  */
@@ -8180,7 +8178,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 	    }
 	  else
 	    {
-	      bufptr->async_flush_request = true;
+              pgbuf_bcb_update_flags (bufptr, PGBUF_BCB_ASYNC_FLUSH_REQ, 0);
 	    }
 	}
 
@@ -9942,8 +9940,6 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * i
 
   pgbuf_bcb_mark_is_flushing (bufptr);
 
-  bufptr->async_flush_request = false;
-
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
   memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
@@ -10541,11 +10537,11 @@ pgbuf_dump (void)
 	  zone_str = pgbuf_latch_mode_str (bufptr->zone);
 	  consistenet_str = pgbuf_consistent_str (consistent);
 
-	  fprintf (stdout, "%4d %5d %6d %4d %9s %1d %1d %1d %11s %lld|%4d %10s %p %p-%p\n", bufptr->ipool,
-		   bufptr->vpid.volid, bufptr->vpid.pageid, bufptr->fcnt, latch_mode_str, pgbuf_bcb_is_dirty (bufptr),
-		   pgbuf_bcb_is_flushing (bufptr), bufptr->async_flush_request, zone_str,
-		   (long long) bufptr->iopage_buffer->iopage.prv.lsa.pageid,
-		   bufptr->iopage_buffer->iopage.prv.lsa.offset, consistent_str, (void *) bufptr,
+	  fprintf (stdout, "%4d %5d %6d %4d %9s %1d %1d %1d %11s %lld|%4d %10s %p %p-%p\n",
+                   pgbuf_bcb_get_pool_index (bufptr), VPID_AS_ARGS (&bufptr->vpid), bufptr->fcnt, latch_mode_str,
+                   pgbuf_bcb_is_dirty (bufptr), (int) pgbuf_bcb_is_flushing (bufptr),
+                   (int) pgbuf_bcb_is_async_flush_request (bufptr), zone_str,
+                   LSA_AS_ARGS (&bufptr->iopage_buffer->iopage.prv.lsa), consistent_str, (void *) bufptr,
 		   (void *) (&bufptr->iopage_buffer->iopage.page[0]),
 		   (void *) (&bufptr->iopage_buffer->iopage.page[DB_PAGESIZE - 1]));
 	}
@@ -15027,7 +15023,7 @@ pgbuf_bcb_mark_is_flushing (PGBUF_BCB * bcb)
   assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt < pgbuf_Pool.num_buffers);
 
   /* set flushing flag and clear dirty */
-  pgbuf_bcb_update_flags (bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG, PGBUF_BCB_DIRTY_FLAG);
+  pgbuf_bcb_update_flags (bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG, PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_ASYNC_FLUSH_REQ);
 }
 
 /*
@@ -15087,6 +15083,18 @@ pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb)
 }
 
 /*
+ * pgbuf_bcb_is_async_flush_request () - is bcb async flush requested?
+ *
+ * return   : true/false
+ * bcb (in) : bcb
+ */
+STATIC_INLINE bool
+pgbuf_bcb_is_async_flush_request (const PGBUF_BCB * bcb)
+{
+  return (bcb->flags & PGBUF_BCB_ASYNC_FLUSH_REQ) != 0;
+}
+
+/*
  * pgbuf_bcb_should_be_moved_to_bottom_lru () - is bcb supposed to be moved to the bottom of lru?
  *
  * return   : true/false
@@ -15121,7 +15129,7 @@ pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page)
  * bcb (in) : bcb
  */
 STATIC_INLINE bool
-pgbuf_bcb_is_to_vacuum (PGBUF_BCB * bcb)
+pgbuf_bcb_is_to_vacuum (const PGBUF_BCB * bcb)
 {
   return (bcb->flags & PGBUF_BCB_TO_VACUUM_FLAG) != 0;
 }
@@ -15135,9 +15143,21 @@ pgbuf_bcb_is_to_vacuum (PGBUF_BCB * bcb)
  * note: no flag that invalidates a bcb victim candidacy
  */
 STATIC_INLINE bool
-pgbuf_bcb_avoid_victim (PGBUF_BCB * bcb)
+pgbuf_bcb_avoid_victim (const PGBUF_BCB * bcb)
 {
   return (bcb->flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) != 0;
+}
+
+/*
+ * pgbuf_bcb_get_pool_index () - get bcb pool index
+ *
+ * return   : pool index
+ * bcb (in) : BCB
+ */
+STATIC_INLINE int
+pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb)
+{
+  return bcb - pgbuf_Pool.BCB_table;
 }
 
 /*
