@@ -1040,7 +1040,7 @@ static unsigned int prm_qo_dump_flag = 0;
 int PRM_CSS_MAX_CLIENTS = 100;
 static int prm_css_max_clients_default = 100;
 static int prm_css_max_clients_lower = 10;
-static int prm_css_max_clients_upper = 2000;
+static int prm_css_max_clients_upper = CSS_MAX_CLIENT_COUNT;
 static unsigned int prm_css_max_clients_flag = 0;
 
 UINT64 PRM_THREAD_STACKSIZE = (1024 * 1024);
@@ -2076,7 +2076,7 @@ static unsigned int prm_pb_tran_pages_quota_flag = 0;
 
 int PRM_PB_NUM_PRIVATE_CHAINS = -1;
 static int prm_pb_num_private_chains_default = -1;
-static int prm_pb_num_private_chains_upper = prm_css_max_clients_upper + VACUUM_MAX_WORKER_COUNT;
+static int prm_pb_num_private_chains_upper = CSS_MAX_CLIENT_COUNT + VACUUM_MAX_WORKER_COUNT;
 static int prm_pb_num_private_chains_lower = -1;
 static unsigned int prm_pb_num_private_chains_flag = 0;
 

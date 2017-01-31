@@ -13149,7 +13149,6 @@ static int
 pgbuf_initialize_page_quota_parameters (void)
 {
   PGBUF_PAGE_QUOTA *quota;
-  bool auto_num_private_chains = false;
 
   quota = &(pgbuf_Pool.quota);
   memset (quota, 0, sizeof (PGBUF_PAGE_QUOTA));
@@ -13159,7 +13158,6 @@ pgbuf_initialize_page_quota_parameters (void)
   quota->is_adjusting = 0;
 
   quota->num_private_LRU_list = prm_get_integer_value (PRM_ID_PB_NUM_PRIVATE_CHAINS);
-  auto_num_private_chains = () ? true : false;
   if (quota->num_private_LRU_list == -1)
     {
       /* set value automatically to maximum number of workers (active and vacuum). */
