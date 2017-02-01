@@ -172,7 +172,8 @@ typedef enum
    * 1. This is hottest zone and this is where most fixed/unfixed bcb's are found. We'd like to keep the page unfix
    *    complexity to a minimum, therefore no boost to top are done here. This zone's bcb's cannot be victimized.
    * 2. This is a buffer between the hot lru 1 zone and the victimization lru 3 zone. The buffer zone gives bcb's that
-   *    fall from first zone to be boosted back to top (if they are still hot). Victimization is still not allowed.
+   *    fall from first zone a chance to be boosted back to top (if they are still hot). Victimization is still not
+   *    allowed.
    * 3. Third zone is the victimization zone. BCB's can still be boosted if fixed/unfixed, but in aggressive victimizing
    *    systems, non-dirty bcb's rarely survive here.
    */
