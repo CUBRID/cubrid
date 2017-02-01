@@ -14982,7 +14982,9 @@ pgbuf_initialize_page_monitor (void)
 #endif
       monitor->lru_victim_found_per_lru[i] = 0;
       monitor->lru_victim_pressure_per_lru[i] = 0;
+#if 0
       monitor->lru_tick[i] = 0;
+#endif
       monitor->lru_hits[i] = 0;
       monitor->lru_activity[i] = 0;
 #if defined(PGBUF_TRAN_QUOTA_DEBUG)
