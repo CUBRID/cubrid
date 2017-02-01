@@ -581,6 +581,7 @@ EXPORTS
     db_put
     db_query_column_count
     db_query_end
+    db_query_end_ex
     db_query_end_internal
     db_query_execute
     db_query_execute_immediate

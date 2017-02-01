@@ -543,7 +543,7 @@ uci_end (void)
 
   if (curr_result != NULL)
     {
-      status = db_query_end (curr_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      status = db_query_end (curr_result);
       curr_result = (DB_QUERY_RESULT *) NULL;
     }
 
@@ -1524,7 +1524,7 @@ uci_execute_immediate (const char *stmt, int length)
 
   if (dummy_result != NULL)	/* throw away the results */
     {
-      e = db_query_end (dummy_result, query_execution_ending_type);
+      e = db_query_end_ex (dummy_result, query_execution_ending_type);
       CHECK_DBI (e < 0, return);
     }
 
@@ -2477,7 +2477,7 @@ free_cursor (int no)
 	       * here, and we need to make sure that we continue on to clean up
 	       * the various structures.
 	       */
-	      (void) db_query_end (cs->result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	      (void) db_query_end (cs->result);
 	    }
 
 #if defined(UCI_TEMPORARY)

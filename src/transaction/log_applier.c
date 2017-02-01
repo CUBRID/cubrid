@@ -1672,7 +1672,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	}
     }
 
-  db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_query_end (result);
   for (i = 0; i < in_value_idx; i++)
     {
       db_value_clear (&in_value[i]);
@@ -5397,7 +5397,7 @@ la_update_query_execute (const char *sql, bool au_disable)
     {
       int error;
 
-      error = db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      error = db_query_end (result);
       if (error != NO_ERROR)
 	{
 	  res = error;
@@ -5439,7 +5439,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
     {
       int error;
 
-      error = db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      error = db_query_end (result);
       if (error != NO_ERROR)
 	{
 	  res = error;

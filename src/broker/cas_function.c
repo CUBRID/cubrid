@@ -2032,7 +2032,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 	}
       if (result != NULL)
 	{
-	  db_query_end (result, query_execution_ending_type);
+	  db_query_end_ex (result, query_execution_ending_type);
 	}
 
       db_close_session (session);

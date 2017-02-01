@@ -797,7 +797,7 @@ export_serial (FILE * outfp)
   while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
 
 err:
-  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_query_end (query_result);
   return error;
 }
 

@@ -3617,7 +3617,7 @@ db_validate (DB_OBJECT * vc)
       retval = db_compile_and_execute_local (bufp, &result, NULL);
       if (result)
 	{
-	  db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_query_end (result);
 	}
       if (bufp != buffer)
 	{

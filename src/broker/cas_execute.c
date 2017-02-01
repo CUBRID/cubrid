@@ -1596,7 +1596,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	(T_QUERY_RESULT *) REALLOC (srv_handle->q_result, sizeof (T_QUERY_RESULT) * (q_res_idx + 1));
       if (srv_handle->q_result == NULL)
 	{
-	  db_query_end (result, query_execution_ending_type);
+	  db_query_end_ex (result, query_execution_ending_type);
 	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
 	  goto execute_all_error;
 	}
@@ -1946,7 +1946,7 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
       prev_result = &(srv_handle->q_result[srv_handle->cur_result_index - 1]);
       if (prev_result->result && flag != CCI_KEEP_CURRENT_RESULT)
 	{
-	  db_query_end ((DB_QUERY_RESULT *) (prev_result->result), prev_result->query_execution_ending_type);
+	  db_query_end_ex ((DB_QUERY_RESULT *) (prev_result->result), prev_result->query_execution_ending_type);
 	  prev_result->result = NULL;
 	}
     }
@@ -2077,7 +2077,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	}
       net_buf_cp_object (net_buf, &ins_oid);
 
-      db_query_end (result, query_execution_ending_type);
+      db_query_end_ex (result, query_execution_ending_type);
       db_close_session (session);
 
       if (auto_commit_mode == TRUE)
@@ -2311,7 +2311,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	  db_value_clear (&val);
 	}
 
-      db_query_end (result, query_execution_ending_type);
+      db_query_end_ex (result, query_execution_ending_type);
       if (is_prepared == FALSE)
 	{
 	  db_close_session (session);
@@ -3412,7 +3412,7 @@ ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf)
 void
 ux_free_result (void *res, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type)
 {
-  db_query_end ((DB_QUERY_RESULT *) res, query_execution_ending_type);
+  db_query_end_ex ((DB_QUERY_RESULT *) res, query_execution_ending_type);
 }
 
 char
@@ -8391,7 +8391,7 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_bu
   q_result = (T_QUERY_RESULT *) malloc (sizeof (T_QUERY_RESULT));
   if (q_result == NULL)
     {
-      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_query_end (result);
       db_close_session (session);
       return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
     }

@@ -1350,7 +1350,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
     }
 
   /* recycle query results */
-  error = db_query_end (qres, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  error = db_query_end (qres);
 
   /* convert purpose into a lock */
   switch (purpose)

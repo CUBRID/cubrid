@@ -1215,7 +1215,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  break;
 	}
       executed_cnt++;
-      error = db_query_end (res, query_execution_ending_type);
+      error = db_query_end_ex (res, query_execution_ending_type);
       if (error < 0)
 	{
 	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));

@@ -3842,6 +3842,7 @@ extern int db_query_prefetch_columns (DB_QUERY_RESULT * result, int *columns, in
 extern int db_query_format_size (DB_QUERY_TYPE * query_type);
 
 extern int db_query_end (DB_QUERY_RESULT * result);
+extern int db_query_end_ex (DB_QUERY_RESULT * result, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type);
 
 /* query post-processing functions */
 extern int db_query_plan_dump_file (char *filename);

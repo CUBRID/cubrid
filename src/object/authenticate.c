@@ -1252,7 +1252,7 @@ au_find_user (const char *user_name)
 	    }
 	  if (error >= 0)
 	    {
-	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	      db_query_end (query_result);
 	    }
 	  free_and_init (query);
 	}
@@ -1716,7 +1716,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
 release:
   if (result != NULL)
     {
-      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_query_end (result);
     }
   if (session != NULL)
     {
@@ -2066,7 +2066,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
       goto release;
     }
 
-  error = db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  error = db_query_end (result);
 
 release:
   if (session != NULL)
@@ -2997,7 +2997,7 @@ au_compute_groups (MOP member, char *name)
 ret:
   if (result)
     {
-      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_query_end (result);
     }
   if (session)
     {
@@ -3455,7 +3455,7 @@ au_drop_user (MOP user)
       error = db_query_first_tuple (result);
       if (error < 0)
 	{
-	  db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_query_end (result);
 	  db_close_session (session);
 	  goto error;
 	}
@@ -3464,7 +3464,7 @@ au_drop_user (MOP user)
       error = db_query_get_tuple_value (result, 0, &value);
       if (error != NO_ERROR)
 	{
-	  db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_query_end (result);
 	  db_close_session (session);
 	  goto error;
 	}
@@ -3472,13 +3472,13 @@ au_drop_user (MOP user)
       if (db_get_int (&value) > 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_USER_HAS_DATABASE_OBJECTS, 0);
-	  db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_query_end (result);
 	  db_close_session (session);
 	  error = ER_AU_USER_HAS_DATABASE_OBJECTS;
 	  goto error;
 	}
 
-      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_query_end (result);
       db_close_session (session);
       pr_clear_value (&val[0]);
     }
@@ -3509,7 +3509,7 @@ au_drop_user (MOP user)
 	  if (stmt_id == 1)
 	    {
 	      error = db_execute_statement_local (session, stmt_id, &result, NULL);
-	      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	      db_query_end (result);
 	    }
 	  else
 	    {
@@ -3599,7 +3599,7 @@ au_drop_user (MOP user)
 		}
 	    }
 	}
-      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_query_end (result);
     }
   else
     {
@@ -4745,7 +4745,7 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked
 	}
     }
 
-  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_query_end (query_result);
   free_and_init (query);
 
   if (error != NO_ERROR && grant_list != NULL)
@@ -7167,7 +7167,7 @@ au_export_users (FILE * outfp)
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
     }
 
-  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_query_end (query_result);
   free_and_init (query);
 
   return (error);
@@ -7448,7 +7448,7 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
 	}			/* if */
     }				/* while */
 
-  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_query_end (query_result);
   free_and_init (query);
 
   return (error);
@@ -7832,7 +7832,7 @@ au_dump_auth (FILE * fp)
 	}
       if (error >= 0)
 	{
-	  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_query_end (query_result);
 	}
       free_and_init (query);
     }
@@ -7984,7 +7984,7 @@ au_print_class_auth (MOP class_mop)
 	}
       if (error >= 0)
 	{
-	  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_query_end (query_result);
 	}
       free_and_init (query);
     }
@@ -8061,7 +8061,7 @@ au_dump_to_file (FILE * fp)
     }
   if (error >= 0 && query)
     {
-      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_query_end (query_result);
     }
   if (query)
     {

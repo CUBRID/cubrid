@@ -381,7 +381,7 @@ get_codeset_from_db_root (void)
       db_status = db_query_get_tuple_value (query_result, 0, &value);
       if (db_status != NO_ERROR)
 	{
-	  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_query_end (query_result);
 	  return db_status;
 	}
     }
@@ -394,7 +394,7 @@ get_codeset_from_db_root (void)
       return db_status;
     }
 
-  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_query_end (query_result);
   return db_get_int (&value);
 }
 

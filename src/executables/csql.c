@@ -1982,7 +1982,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       if (result != NULL)
 	{
-	  db_query_end (result, query_execution_ending_type);
+	  db_query_end_ex (result, query_execution_ending_type);
 	  result = NULL;
 	}
       else
@@ -3096,7 +3096,7 @@ end:
 
   if (result != NULL)
     {
-      db_query_end (result, query_execution_ending_type);
+      db_query_end_ex (result, query_execution_ending_type);
     }
 
   if (session != NULL)

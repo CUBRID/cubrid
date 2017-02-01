@@ -4372,7 +4372,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
       if (error >= 0)
 	{
 	  error = NO_ERROR;
-	  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_query_end (query_result);
 	}
       free_and_init (query_buf);
       if (error < 0)
@@ -13329,7 +13329,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
 end:
   if (result != NULL)
     {
-      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_query_end (result);
     }
   if (session != NULL)
     {

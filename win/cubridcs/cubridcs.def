@@ -269,6 +269,7 @@ EXPORTS
     db_enum_put_cs_and_collation
     db_query_column_count
     db_query_end
+    db_query_end_ex
     db_query_first_tuple
     db_query_format_attr_name
     db_query_format_class_name
