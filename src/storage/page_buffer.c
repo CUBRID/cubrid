@@ -252,9 +252,7 @@ typedef enum
 #define PGBUF_PRIVATE_LRU_MIN_COUNT 4
 #define PGBUF_PRIVATE_LRU_MAX_QUOTA 5000
 
-/* Lower limits for number of pages in private LRUs and shared LRUs: used when 
- * computing number of private lists and number of shared lists */
-#define PGBUF_MIN_PAGES_IN_PRIVATE_CHAIN 300
+/* Lower limit for number of pages in shared LRUs: used to compute number of private lists and number of shared lists */
 #define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
 
 #define PGBUF_PAGE_QUOTA_IS_ENABLED (pgbuf_Pool.quota.num_private_LRU_list > 0)
@@ -308,10 +306,10 @@ typedef enum
 /* LRU flags */
 #define PGBUF_LRU_VICTIM_LFCQ_FLAG ((int) 0x80000000)
 
-/* Activity on each LRU is probed and cumulated, to avoid long history
- * cumulation effect, the activity indicator is limited;
- * Inactivity threshold is defined : private LRU dropping beneath this
- * threshold are destroyed and its BCB relocated to a garbage LRU */
+/* Activity on each LRU is probed and cumulated;
+ * to avoid long history cumulation effect, the activity indicator is limited (PGBUF_TRAN_MAX_ACTIVITY);
+ * Inactivity threshold is defined : private LRU dropping beneath this threshold are destroyed and its BCBs will be
+ * victimized */
 #define PGBUF_TRAN_THRESHOLD_ACTIVITY (pgbuf_Pool.num_buffers / 4)
 #define PGBUF_TRAN_MAX_ACTIVITY (10 * PGBUF_TRAN_THRESHOLD_ACTIVITY)
 
@@ -392,34 +390,6 @@ typedef enum
 	  } \
 	while (0)
 #endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
-
-#define PGBUG_GET_FLUSH_ORDER(lru_idx,pos,order) \
-  do \
-    { \
-      if (PGBUF_IS_SHARED_LRU_INDEX (lru_idx)) \
-	{ \
-	  if ((pos) > PGBUG_FLUSH_PRIORITY_THRESHOLD_SHARED) \
-	    { \
-	      order = PGBUG_FLUSH_PRIORITY_SHARED_P2; \
-	    } \
-	  else \
-	    { \
-	      order = PGBUG_FLUSH_PRIORITY_SHARED; \
-	    } \
-	} \
-      else \
-	{ \
-	  if ((pos) > PGBUG_FLUSH_PRIORITY_THRESHOLD_PRIVATE) \
-	    { \
-	      order = PGBUG_FLUSH_PRIORITY_PRIVATE_P2; \
-	    } \
-	  else \
-	    { \
-	      order = PGBUG_FLUSH_PRIORITY_PRIVATE; \
-	    } \
-	} \
-    } \
-while (0)
 
 #define PGBUF_LRU_ZONE_MIN_RATIO 0.05f
 #define PGBUF_LRU_ZONE_MAX_RATIO 0.90f
@@ -7749,7 +7719,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
 
-  /* how it works: we need to a bcb for new VPID.
+  /* how it works: we need to free a bcb for new VPID.
    * 1. first source should be invalid list. initially, all bcb's will be in this list. sometimes, bcb's can be added to
    *    this list during runtime. in any case, these bcb's are not used by anyone, do not need any flush or other
    *    actions and are the best option for allocating a bcb.
