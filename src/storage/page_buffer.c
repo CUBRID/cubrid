@@ -652,7 +652,6 @@ struct pgbuf_invalid_list
 /* The page replacement algorithm is 2Q. This algorithm uses three linked
  * lists as follows:
  *  * LRU list : this is a list of BCBs managed as a Least Recently Used queue
- *  * Ain list : this is a list of BCBs managed as a FIFO queue
  *  * Aout list : this is a list on VPIDs managed as a FIFO queue
  * The LRU list manages the "hot" pages, Aout list holds a short term history
  * of pages which have been victimized and the Ain list manages pages (already
@@ -933,39 +932,6 @@ static bool pgbuf_Monitor_locks = true;
 #define PGBUF_BCB_LOCK(bcb) pgbuf_bcb_lock (bcb, __LINE__)
 #define PGBUF_BCB_TRYLOCK(bcb) pgbuf_bcb_trylock (bcb, __LINE__)
 #define PGBUF_BCB_UNLOCK(bcb) pgbuf_bcb_unlock (bcb)
-
-/* todo: remove me */
-typedef struct pgbuf_temp_stats PGBUF_TEMP_STATS;
-struct pgbuf_temp_stats
-{
-  INT64 set_no_victim;
-  INT64 fail_set_no_victim;
-  INT64 clear_no_victim;
-  INT64 flush_count_increment;
-  INT64 failed_unexpected_maybe;	/* this is too small to explain it (25 in a run) */
-  INT64 invalidated_after_mutex;
-
-  INT64 skip_dirty;
-  INT64 skip_avoid_victims;
-  INT64 skip_other_victims;
-  INT64 skip_fixed;
-
-  INT64 fall_3_count;
-  INT64 fall_3_try_success;
-  INT64 fall_3_try_fail;
-
-  INT64 lfcq_failed_push;
-
-  INT64 flush_lru_skips[PGBUF_LRU_LIST_MAX_COUNT];
-  INT64 flush_lru_cands[PGBUF_LRU_LIST_MAX_COUNT];
-};
-static PGBUF_TEMP_STATS pgbuf_Temp_stats;
-
-static void
-pgbuf_temp_stats_init (void)
-{
-  memset (&pgbuf_Temp_stats, 0, sizeof (pgbuf_Temp_stats));
-}
 
 #if defined (NDEBUG)
 /* note: release bugs can be hard to debug due to compile optimization. the crash call-stack may point to a completely
@@ -1484,8 +1450,6 @@ pgbuf_initialize (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PGBUF_PRIVATE_LRU_COUNT * sizeof (int));
       goto error;
     }
-
-  pgbuf_temp_stats_init ();
 
   return NO_ERROR;
 
@@ -3407,11 +3371,8 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
        * quickly served from bottom LRU (vict_searches_this_lru == 0) */
       if (victim_flush_priority_this_lru <= 0)
 	{
-	  ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_skips[lru_idx], 1);
-
 	  pgbuf_Pool.last_flushed_LRU_list_idx = lru_idx;
 	  lru_idx = (lru_idx + 1) % PGBUF_TOTAL_LRU_COUNT;
-
 	  continue;
 	}
 
@@ -3435,7 +3396,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 	      cand_found_in_this_lru++;
 	    }
 	}
-      ATOMIC_INC_64 (&pgbuf_Temp_stats.flush_lru_cands[lru_idx], cand_found_in_this_lru);
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
 
       /* Note that we don't hold the mutex, however it will not be an issue.
@@ -9192,8 +9152,6 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 {
   assert (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_1_ZONE || pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_2_ZONE);
 
-  ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_count, 1);
-
 #if defined (SERVER_MODE)
   /* can we assign this directly as victim? */
 
@@ -9211,8 +9169,6 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 	   * assigning the bcb directly as victim */
 	  if (PGBUF_BCB_TRYLOCK (bcb) == 0)
 	    {
-	      ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_success, 1);
-
 	      if (pgbuf_is_bcb_victimizable (bcb, true) && pgbuf_assign_direct_victim (thread_p, bcb))
 		{
 		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
@@ -9227,11 +9183,12 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 		}
 	      /* not assigned. unlock bcb mutex and fall through */
 	      PGBUF_BCB_UNLOCK (bcb);
-	    }
-	  else
-	    {
-	      ATOMIC_INC_64 (&pgbuf_Temp_stats.fall_3_try_fail, 1);
-	    }
+            }
+          else
+            {
+              /* don't try too hard. it will be victimized eventually. */
+              /* fall through */
+            }
 	}
     }
   /* not assigned directly */
@@ -15170,7 +15127,7 @@ pgbuf_bcb_avoid_victim (const PGBUF_BCB * bcb)
 STATIC_INLINE int
 pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb)
 {
-  return bcb - pgbuf_Pool.BCB_table;
+  return (int) (bcb - pgbuf_Pool.BCB_table);
 }
 
 /*
@@ -15285,9 +15242,12 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
 	  return victim;
 	}
       else
-	{
-	  ATOMIC_INC_64 (&pgbuf_Temp_stats.lfcq_failed_push, 1);
-	}
+        {
+          /* we couldn't add to queue. it usually does not happen, but a consumer can be preempted for a long time,
+           * temporarily creating the impression that queue is full. it will be added later, when a new victim
+           * candidate shows up or when adjust quota checks it. */
+          /* fall through */
+        }
     }
 
   /* we're not adding the list back to the queue... so we need to reflect that in the list flags. next time when a new
