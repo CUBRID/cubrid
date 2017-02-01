@@ -5666,65 +5666,6 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
 }
 
 /*
- * xbtree_delete_with_unique_key -
- *   btid (in):
- *   class_oid (in):
- *   key_value (in):
- *   return:
- */
-int
-xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, DB_VALUE * key_value)
-{
-  int error = NO_ERROR;
-  OID unique_oid;
-  HEAP_SCANCACHE scan_cache;
-  BTREE_SEARCH r;
-
-  r = xbtree_find_unique (thread_p, btid, S_DELETE, key_value, class_oid, &unique_oid, true);
-
-  if (r == BTREE_KEY_FOUND)
-    {
-      HFID hfid;
-      int force_count;
-
-      error = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error = heap_scancache_start_modify (thread_p, &scan_cache, &hfid, class_oid, SINGLE_ROW_DELETE, NULL);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      error =
-	locator_delete_force (thread_p, &hfid, &unique_oid, true, SINGLE_ROW_DELETE, &scan_cache, &force_count, NULL,
-			      false);
-      if (error == NO_ERROR)
-	{
-	  /* monitor */
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
-	}
-
-      heap_scancache_end_modify (thread_p, &scan_cache);
-    }
-  else if (r == BTREE_KEY_NOTFOUND)
-    {
-      btree_set_unknown_key_error (thread_p, btid, key_value, "xbtree_delete_with_unique_key: current key not found.");
-      error = ER_BTREE_UNKNOWN_KEY;
-    }
-  else
-    {
-      /* r == BTREE_ERROR_OCCURRED */
-      ASSERT_ERROR_AND_SET (error);
-    }
-
-  return error;
-}
-
-/*
  * xbtree_find_multi_uniques () - search a list of unique indexes for specified values
  * return : search return code
  * thread_p (in)  : handler thread
@@ -8609,7 +8550,11 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
       goto exit;
     }
 
-  class_name = heap_get_class_name (thread_p, &fdes.btree.class_oid);
+  if (heap_get_class_name (thread_p, &fdes.btree.class_oid, &class_name) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      goto exit;
+    }
 
   /* get index name */
   ret = heap_get_indexinfo_of_btid (thread_p, &fdes.btree.class_oid, btid, NULL, NULL, NULL, NULL, &index_name, NULL);
@@ -8727,7 +8672,11 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, BT
   if (class_oid_p && !OID_ISNULL (class_oid_p))
     {
       char *class_name_p = NULL;
-      class_name_p = heap_get_class_name (thread_p, class_oid_p);
+      if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return;
+	}
 
       btree_print_space (fp, depth * 4);
       fprintf (fp, "INDEX %s ON CLASS %s (CLASS_OID:%2d|%4d|%2d) \n\n", (btname) ? btname : "*UNKNOWN-INDEX*",
@@ -18223,7 +18172,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
   char class_oid_msg_buf[OID_MSG_BUF_SIZE];
   char oid_msg_buf[OID_MSG_BUF_SIZE];
   char *index_name;
-  char *class_name;
+  char *class_name = NULL;
   char *keyval;
 
   assert (btid != NULL);
@@ -18250,11 +18199,15 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 
   if (class_oid != NULL && !OID_ISNULL (class_oid))
     {
-      class_name = heap_get_class_name (thread_p, class_oid);
-      if (class_name)
+      if (heap_get_class_name (thread_p, class_oid, &class_name) == NO_ERROR)
 	{
 	  snprintf (class_oid_msg_buf, OID_MSG_BUF_SIZE, "(CLASS_OID: %d|%d|%d)", class_oid->volid, class_oid->pageid,
 		    class_oid->slotid);
+	}
+      else
+	{
+	  /* ignore */
+	  er_clear ();
 	}
     }
 
@@ -20446,8 +20399,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   class_oid_p = &ctx->class_oids[oid_idx];
 
-  class_name = heap_get_class_name (thread_p, class_oid_p);
-  if (class_name == NULL)
+  if (heap_get_class_name (thread_p, class_oid_p, &class_name) != NO_ERROR || class_name == NULL)
     {
       ret = S_ERROR;
       goto cleanup;
@@ -26257,6 +26209,15 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   assert (restart != NULL);
   assert (insert_helper != NULL);
 
+#if defined (SERVER_MODE)
+  if (LOG_ISRESTARTED ()
+      && (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT || insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID))
+    {
+      /* vacuum will probably follow same path */
+      pgbuf_notify_vacuum_follows (thread_p, *crt_page);
+    }
+#endif /* SERVER_MODE */
+
   /* Get informations on current node. */
   /* Node header. */
   node_header = btree_get_node_header (*crt_page);
@@ -27942,7 +27903,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
-	  return ER_FAILED;
+	  goto exit;
 	}
     }
 
@@ -29975,9 +29936,26 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       error_code = ER_FAILED;
       goto error;
     }
-  /* Check merges. */
-  if (search_key->slotid < key_count)
+
+  /* todo: do another cleanup of this code!! */
+
+  /* let's try merge with right node..
+   * note: we will try to avoid checking merges uselessly. The whole check can be very expensive if we also have to load
+   *       the node from disk. I am talking from (bad) experience here. The merges are usually done by vacuum, following
+   *       the path of active workers. In huge indexes, that can be several levels in height, the lower levels
+   *       neighboring nodes can be cold. The problem is not really reading the page from disk (which is relatively
+   *       fast), but finding a viable bcb to victimize and replace with this cold page. Usually writes are slower, and
+   *       if the IO write does not keep up, bcb allocation becomes the main bottleneck. And this expensive check makes
+   *       vacuum fall behind, which is usually followed by constantly degrading overall performance.
+   *       So, in such systems, it might be better to rather give up the merge. */
+  if (search_key->slotid < key_count && spage_get_free_space (thread_p, child_page) > DB_PAGESIZE / 2)
     {
+      /* this can cause a lot of problems. but we need it to know that page was not fixed because not in buffer and not
+       * because some error occurred. */
+      ASSERT_NO_ERROR ();
+      er_clear ();
+
+      /* Check merges. */
       /* Check right merge. */
 
       /* Get link to right page. */
@@ -29990,297 +29968,142 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       btree_read_fixed_portion_of_non_leaf_record (&right_recdes, &non_leaf_rec_info);
       /* Fix right page. */
       VPID_COPY (&right_vpid, &non_leaf_rec_info.pnt);
-      right_page = pgbuf_fix (thread_p, &right_vpid, OLD_PAGE, child_latch, PGBUF_UNCONDITIONAL_LATCH);
+      right_page = pgbuf_fix (thread_p, &right_vpid, pgbuf_is_io_stressful ()? OLD_PAGE_IF_EXISTS : OLD_PAGE,
+			      child_latch, PGBUF_UNCONDITIONAL_LATCH);
       if (right_page == NULL)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto error;
+	  error_code = er_errid ();
+
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  /* page not in buffer */
+	  /* fall through */
 	}
+      else
+	{
 #if !defined (NDEBUG)
-      (void) pgbuf_check_page_ptype (thread_p, right_page, PAGE_BTREE);
+	  (void) pgbuf_check_page_ptype (thread_p, right_page, PAGE_BTREE);
 #endif /* !NDEBUG */
 
-      /* Can child page be merged with its right page? */
-      merge_status = btree_node_mergeable (thread_p, btid_int, child_page, right_page);
-      if (merge_status != BTREE_MERGE_NO)
-	{
-	  /* Try to merge. */
-
-	  /* Exclusive latch is required on all nodes. */
-	  if (delete_helper->nonleaf_latch_mode != PGBUF_LATCH_WRITE)
+	  /* Can child page be merged with its right page? */
+	  merge_status = btree_node_mergeable (thread_p, btid_int, child_page, right_page);
+	  if (merge_status != BTREE_MERGE_NO)
 	    {
-	      /* Promote latch on current node. */
-	      error_code = pgbuf_promote_read_latch (thread_p, crt_page, PGBUF_PROMOTE_ONLY_READER);
-	      if (error_code == NO_ERROR && *crt_page != NULL && child_latch != PGBUF_LATCH_WRITE)
-		{
-		  /* Promote latches on children. */
+	      /* Try to merge. */
 
-		  /* Promote latch on child. */
-		  error_code = pgbuf_promote_read_latch (thread_p, &child_page, promote_cond);
-		  if (error_code == NO_ERROR && child_page != NULL)
+	      /* Exclusive latch is required on all nodes. */
+	      if (delete_helper->nonleaf_latch_mode != PGBUF_LATCH_WRITE)
+		{
+		  /* Promote latch on current node. */
+		  error_code = pgbuf_promote_read_latch (thread_p, crt_page, PGBUF_PROMOTE_ONLY_READER);
+		  if (error_code == NO_ERROR && *crt_page != NULL && child_latch != PGBUF_LATCH_WRITE)
 		    {
-		      /* Promote latch on right page. */
-		      error_code = pgbuf_promote_read_latch (thread_p, &right_page, promote_cond);
+		      /* Promote latches on children. */
+
+		      /* Promote latch on child. */
+		      error_code = pgbuf_promote_read_latch (thread_p, &child_page, promote_cond);
+		      if (error_code == NO_ERROR && child_page != NULL)
+			{
+			  /* Promote latch on right page. */
+			  error_code = pgbuf_promote_read_latch (thread_p, &right_page, promote_cond);
+			}
 		    }
 		}
-	    }
-	  /* Are all pages successfully write latched? */
-	  if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
-	    {
-	      /* Failed to promote all latches to exclusive. */
-	      if (merge_status != BTREE_MERGE_TRY)
+	      /* Are all pages successfully write latched? */
+	      if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
 		{
-		  /* Merge must be executed. Restart using exclusive access. */
-		  delete_helper->nonleaf_latch_mode = PGBUF_LATCH_WRITE;
-		  *restart = true;
-		  if (right_page != NULL)
+		  /* Failed to promote all latches to exclusive. */
+		  if (merge_status != BTREE_MERGE_TRY)
 		    {
-		      pgbuf_unfix_and_init (thread_p, right_page);
+		      /* Merge must be executed. Restart using exclusive access. */
+		      delete_helper->nonleaf_latch_mode = PGBUF_LATCH_WRITE;
+		      *restart = true;
+		      if (right_page != NULL)
+			{
+			  pgbuf_unfix_and_init (thread_p, right_page);
+			}
+		      if (child_page != NULL)
+			{
+			  pgbuf_unfix_and_init (thread_p, child_page);
+			}
+		      return NO_ERROR;
 		    }
-		  if (child_page != NULL)
-		    {
-		      pgbuf_unfix_and_init (thread_p, child_page);
-		    }
-		  return NO_ERROR;
+		  /* Merge can be skipped. Fall through. */
 		}
-	      /* Merge can be skipped. Fall through. */
-	    }
-	  else if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto error;
-	    }
-	  else if (*crt_page == NULL || child_page == NULL || right_page == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto error;
-	    }
-	  else
-	    {
-	      /* All pages are write latched. */
-	      assert ((pgbuf_get_latch_mode (*crt_page) >= PGBUF_LATCH_WRITE)
-		      && (pgbuf_get_latch_mode (child_page) >= PGBUF_LATCH_WRITE)
-		      && (pgbuf_get_latch_mode (right_page) >= PGBUF_LATCH_WRITE));
-
-	      /* Start system operation. */
-	      log_sysop_start (thread_p);
-	      is_system_op_started = true;
-
-	      save_lsa = *pgbuf_get_lsa (*crt_page);
-	      save_child_lsa = *pgbuf_get_lsa (child_page);
-
-	      /* Merge children and update parent. */
-	      error_code =
-		btree_merge_node (thread_p, btid_int, *crt_page, child_page, right_page, search_key->slotid + 1,
-				  &child_vpid_after_merge, merge_status);
-	      if (error_code != NO_ERROR)
+	      else if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
 		  goto error;
 		}
+	      else if (*crt_page == NULL || child_page == NULL || right_page == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto error;
+		}
+	      else
+		{
+		  /* All pages are write latched. */
+		  assert ((pgbuf_get_latch_mode (*crt_page) >= PGBUF_LATCH_WRITE)
+			  && (pgbuf_get_latch_mode (child_page) >= PGBUF_LATCH_WRITE)
+			  && (pgbuf_get_latch_mode (right_page) >= PGBUF_LATCH_WRITE));
 
-	      btree_delete_log (delete_helper, "Merged nodes into left. \n"
-				"\t" PGBUF_PAGE_MODIFY_MSG ("parent node page") "\n"
-				"\t" PGBUF_PAGE_MODIFY_MSG ("left node page") "\n"
-				"\t" "right node vpid = %d|%d",
-				PGBUF_PAGE_MODIFY_ARGS (*crt_page, &save_lsa),
-				PGBUF_PAGE_MODIFY_ARGS (child_page, &save_child_lsa), VPID_AS_ARGS (&right_vpid));
+		  /* Start system operation. */
+		  log_sysop_start (thread_p);
+		  is_system_op_started = true;
 
-	      /* Children are merged to the "left" node which is our case is the child page. */
-	      assert (!VPID_ISNULL (&child_vpid_after_merge));
-	      assert (VPID_EQ (&child_vpid_after_merge, &child_vpid));
+		  save_lsa = *pgbuf_get_lsa (*crt_page);
+		  save_child_lsa = *pgbuf_get_lsa (child_page);
+
+		  /* Merge children and update parent. */
+		  error_code =
+		    btree_merge_node (thread_p, btid_int, *crt_page, child_page, right_page, search_key->slotid + 1,
+				      &child_vpid_after_merge, merge_status);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      goto error;
+		    }
+
+		  btree_delete_log (delete_helper, "Merged nodes into left. \n"
+				    "\t" PGBUF_PAGE_MODIFY_MSG ("parent node page") "\n"
+				    "\t" PGBUF_PAGE_MODIFY_MSG ("left node page") "\n"
+				    "\t" "right node vpid = %d|%d",
+				    PGBUF_PAGE_MODIFY_ARGS (*crt_page, &save_lsa),
+				    PGBUF_PAGE_MODIFY_ARGS (child_page, &save_child_lsa), VPID_AS_ARGS (&right_vpid));
+
+		  /* Children are merged to the "left" node which is our case is the child page. */
+		  assert (!VPID_ISNULL (&child_vpid_after_merge));
+		  assert (VPID_EQ (&child_vpid_after_merge, &child_vpid));
 
 #if !defined(NDEBUG)
-	      (void) spage_check_num_slots (thread_p, *crt_page);
-	      (void) spage_check_num_slots (thread_p, child_page);
+		  (void) spage_check_num_slots (thread_p, *crt_page);
+		  (void) spage_check_num_slots (thread_p, child_page);
 #endif
 
-	      /* Deallocate right page. */
-	      pgbuf_unfix_and_init (thread_p, right_page);
-	      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto error;
-		}
-
-	      log_sysop_commit (thread_p);
-	      is_system_op_started = false;
-
-	      /* Advance to child page. */
-	      *advance_to_page = child_page;
-	      pgbuf_unfix_and_init (thread_p, *crt_page);
-	      delete_helper->is_root = false;
-	      return NO_ERROR;
-	    }
-	}
-      /* Merge not executed. Unfix right page. */
-      pgbuf_unfix_and_init (thread_p, right_page);
-    }
-  if (search_key->slotid > 1)
-    {
-      /* Check merge with left node. */
-
-      /* Get link to left page. */
-      if (spage_get_record (*crt_page, search_key->slotid - 1, &left_recdes, PEEK) != S_SUCCESS)
-	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto error;
-	}
-      btree_read_fixed_portion_of_non_leaf_record (&left_recdes, &non_leaf_rec_info);
-      /* Get left page. */
-      VPID_COPY (&left_vpid, &non_leaf_rec_info.pnt);
-      assert (!VPID_ISNULL (&left_vpid));
-      /* Try conditional latch on left page to avoid dead latches. */
-      left_page = pgbuf_fix (thread_p, &left_vpid, OLD_PAGE, child_latch, PGBUF_CONDITIONAL_LATCH);
-      if (left_page == NULL)
-	{
-	  /* Failed conditional latch. */
-	  /* Fix left, then child. */
-
-	  /* Unfix child. */
-	  pgbuf_unfix_and_init (thread_p, child_page);
-
-	  /* Fix left. */
-	  left_page = pgbuf_fix (thread_p, &left_vpid, OLD_PAGE, child_latch, PGBUF_UNCONDITIONAL_LATCH);
-	  if (left_page == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto error;
-	    }
-
-	  /* Fix child. */
-	  child_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, child_latch, PGBUF_UNCONDITIONAL_LATCH);
-	  if (child_page == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto error;
-	    }
-	}
-      /* Both left and child pages are fixed. */
-      assert (left_page != NULL && child_page != NULL);
-
-#if !defined (NDEBUG)
-      (void) pgbuf_check_page_ptype (thread_p, left_page, PAGE_BTREE);
-#endif /* !NDEBUG */
-
-      merge_status = btree_node_mergeable (thread_p, btid_int, left_page, child_page);
-      if (merge_status != BTREE_MERGE_NO)
-	{
-	  /* All pages must be write latched. */
-	  if (delete_helper->nonleaf_latch_mode != PGBUF_LATCH_WRITE)
-	    {
-	      /* Promote latches. */
-	      error_code = pgbuf_promote_read_latch (thread_p, crt_page, PGBUF_PROMOTE_ONLY_READER);
-	      if (error_code == NO_ERROR && *crt_page != NULL && child_latch != PGBUF_LATCH_WRITE)
-		{
-		  /* Promote children latches. */
-		  error_code = pgbuf_promote_read_latch (thread_p, &left_page, promote_cond);
-		  if (error_code == NO_ERROR && left_page != NULL)
+		  /* Deallocate right page. */
+		  pgbuf_unfix_and_init (thread_p, right_page);
+		  error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
+		  if (error_code != NO_ERROR)
 		    {
-		      error_code = pgbuf_promote_read_latch (thread_p, &child_page, promote_cond);
+		      ASSERT_ERROR ();
+		      goto error;
 		    }
-		}
-	    }
-	  /* Check write latches were successfully obtained. */
-	  if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
-	    {
-	      if (merge_status != BTREE_MERGE_TRY)
-		{
-		  /* Merge has to be done. Restart using exclusive access. */
-		  delete_helper->nonleaf_latch_mode = PGBUF_LATCH_WRITE;
-		  *restart = true;
-		  if (left_page != NULL)
-		    {
-		      pgbuf_unfix_and_init (thread_p, left_page);
-		    }
-		  if (child_page != NULL)
-		    {
-		      pgbuf_unfix_and_init (thread_p, child_page);
-		    }
+
+		  log_sysop_commit (thread_p);
+		  is_system_op_started = false;
+
+		  /* Advance to child page. */
+		  *advance_to_page = child_page;
+		  pgbuf_unfix_and_init (thread_p, *crt_page);
+		  delete_helper->is_root = false;
 		  return NO_ERROR;
 		}
-	      /* Merge can be skipped. Fall through. */
 	    }
-	  else if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto error;
-	    }
-	  else if (*crt_page == NULL || left_page == NULL || child_page == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto error;
-	    }
-	  else
-	    {
-	      /* All pages are write latched. */
-	      assert ((pgbuf_get_latch_mode (*crt_page) >= PGBUF_LATCH_WRITE)
-		      && (pgbuf_get_latch_mode (child_page) >= PGBUF_LATCH_WRITE)
-		      && (pgbuf_get_latch_mode (left_page) >= PGBUF_LATCH_WRITE));
-
-	      /* Start system operation. */
-	      log_sysop_start (thread_p);
-	      is_system_op_started = true;
-
-	      save_lsa = *pgbuf_get_lsa (*crt_page);
-	      save_child_lsa = *pgbuf_get_lsa (left_page);
-
-	      /* Merge left page and child page and update parent. */
-	      error_code =
-		btree_merge_node (thread_p, btid_int, *crt_page, left_page, child_page, search_key->slotid,
-				  &child_vpid_after_merge, merge_status);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto error;
-		}
-
-	      btree_delete_log (delete_helper, "Merged nodes into left. \n"
-				"\t" PGBUF_PAGE_MODIFY_MSG ("parent node page") "\n"
-				"\t" PGBUF_PAGE_MODIFY_MSG ("left node page") "\n"
-				"\t" "right node vpid = %d|%d",
-				PGBUF_PAGE_MODIFY_ARGS (*crt_page, &save_lsa),
-				PGBUF_PAGE_MODIFY_ARGS (left_page, &save_child_lsa), VPID_AS_ARGS (&child_vpid));
-
-	      if (delete_helper->log_operations)
-		{
-		  _er_log_debug (ARG_FILE_LINE, "BTREE_DELETE: Merged nodes %d|%d and %d|%d into left node.\n",
-				 left_vpid.volid, left_vpid.pageid, child_vpid.volid, child_vpid.pageid);
-		}
-
-#if !defined(NDEBUG)
-	      (void) spage_check_num_slots (thread_p, *crt_page);
-	      (void) spage_check_num_slots (thread_p, left_page);
-#endif /* !NDEBUG */
-
-	      /* Pages have been merged into left page. */
-	      assert (!VPID_ISNULL (&child_vpid_after_merge));
-	      assert (VPID_EQ (&child_vpid_after_merge, &left_vpid));
-
-	      /* Deallocate child page. */
-	      pgbuf_unfix_and_init (thread_p, child_page);
-	      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &child_vpid, FILE_BTREE);
-	      if (error_code != NO_ERROR)
-		{
-		  /* Is this acceptable? Pages are "leaked" if it happens. */
-		  ASSERT_ERROR ();
-		  goto error;
-		}
-
-	      log_sysop_commit (thread_p);
-	      is_system_op_started = false;
-
-	      /* Choose to advance to left page. */
-	      *advance_to_page = left_page;
-	      pgbuf_unfix_and_init (thread_p, *crt_page);
-	      delete_helper->is_root = false;
-	      return NO_ERROR;
-	    }
+	  /* Merge not executed. Unfix right page. */
+	  pgbuf_unfix_and_init (thread_p, right_page);
 	}
-      /* Not merged. Unfix left page. */
-      pgbuf_unfix_and_init (thread_p, left_page);
     }
   /* No merge has been executed. */
   assert (left_page == NULL);
@@ -30792,7 +30615,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
       log_sysop_start (thread_p);
       delete_helper->is_system_op_started = true;
-
 
       error_code =
 	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,

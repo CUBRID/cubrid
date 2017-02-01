@@ -1417,7 +1417,9 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_H
   assert (from_hdr != NULL);
 
   to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
+  /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
   VPID_COPY (&to_hdr->vacuum_data_first_vpid, &from_hdr->vacuum_data_first_vpid);
+  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
 
   /* Add other attributes that need to be copied */
 
@@ -4687,7 +4689,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     }
   assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  if (thread_Log_flush_thread.is_available == false)
+  if (!thread_is_log_flush_thread_available ())
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);

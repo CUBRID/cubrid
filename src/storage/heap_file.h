@@ -452,9 +452,9 @@ extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int
 extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
 extern int heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid);
 
-extern char *heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid);
-extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname);
-extern char *heap_get_class_name_of_instance (THREAD_ENTRY * thread_p, const OID * inst_oid);
+extern int heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name);
+extern int heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname,
+					      char **class_name_out);
 extern int heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PARTITION ** parts,
 				      int *parts_count);
 extern void heap_clear_partition_info (THREAD_ENTRY * thread_p, OR_PARTITION * parts, int parts_count);
@@ -674,4 +674,6 @@ extern int heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_get_best_space_num_stats_entries (void);
 
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
+extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
+extern int heap_is_page_file_header (PAGE_PTR page);
 #endif /* _HEAP_FILE_H_ */

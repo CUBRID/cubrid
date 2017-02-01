@@ -2659,9 +2659,9 @@ end:
 
   if (thread_is_on_trace (thread_p))
     {
-      s_id->stats.read_keys += iscan_id->bt_scan.read_keys;
+      s_id->scan_stats.read_keys += iscan_id->bt_scan.read_keys;
       iscan_id->bt_scan.read_keys = 0;
-      s_id->stats.qualified_keys += iscan_id->bt_scan.qualified_keys;
+      s_id->scan_stats.qualified_keys += iscan_id->bt_scan.qualified_keys;
       iscan_id->bt_scan.qualified_keys = 0;
     }
 
@@ -3082,7 +3082,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* indicator whether covering index is used or not */
   coverage_enabled = (indx_info->coverage != 0) && (scan_op_type == S_SELECT) && !mvcc_select_lock_needed;
-  scan_id->stats.loose_index_scan = indx_info->ils_prefix_len > 0;
+  scan_id->scan_stats.loose_index_scan = indx_info->ils_prefix_len > 0;
 
   /* is a single range? */
   isidp->one_range = false;
@@ -3095,7 +3095,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (coverage_enabled)
     {
       /* Covering index do not use an oid buffer. */
-      scan_id->stats.covered_index = true;
+      scan_id->scan_stats.covered_index = true;
     }
   else
     {
@@ -3237,7 +3237,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	goto exit_on_error;
       }
 
-    scan_id->stats.multi_range_opt = isidp->multi_range_opt.use;
+    scan_id->scan_stats.multi_range_opt = isidp->multi_range_opt.use;
   }
 
   return ret;
@@ -4842,10 +4842,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (scan_id->stats.elapsed_scan, tv_diff);
+      TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_scan, tv_diff);
 
-      scan_id->stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-      scan_id->stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      scan_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      scan_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
     }
 
   return status;
@@ -4965,7 +4965,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       /* evaluate the predicates to see if the object qualifies */
-      scan_id->stats.read_rows++;
+      scan_id->scan_stats.read_rows++;
 
       ev_res = eval_data_filter (thread_p, p_current_oid, &recdes, &hsidp->scan_cache, &data_filter);
       if (ev_res == V_ERROR)
@@ -5159,7 +5159,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
 
-      scan_id->stats.qualified_rows++;
+      scan_id->scan_stats.qualified_rows++;
 
       if (hsidp->rest_regu_list)
 	{
@@ -5418,7 +5418,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   if (isidp->multi_range_opt.use && (isidp->multi_range_opt.sort_att_idx == NULL || scan_id->grouped))
     {
       isidp->multi_range_opt.use = false;
-      scan_id->stats.multi_range_opt = false;
+      scan_id->scan_stats.multi_range_opt = false;
     }
 
   /* set data filter information */
@@ -5646,7 +5646,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       assert (scan_id->position == S_ON);
 
-      scan_id->stats.key_qualified_rows++;
+      scan_id->scan_stats.key_qualified_rows++;
 
       /* get pages for read */
       if (!SCAN_IS_INDEX_COVERED (isidp))
@@ -5668,12 +5668,12 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      tsc_getticks (&end_tick);
 	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	      TSC_ADD_TIMEVAL (scan_id->stats.elapsed_lookup, tv_diff);
+	      TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_lookup, tv_diff);
 	    }
 
 	  if (lookup_status == S_SUCCESS)
 	    {
-	      scan_id->stats.data_qualified_rows++;
+	      scan_id->scan_stats.data_qualified_rows++;
 	    }
 	  else if (lookup_status == S_DOESNT_EXIST)
 	    {
@@ -5877,7 +5877,11 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 	  (void) heap_get_indexinfo_of_btid (thread_p, &isidp->cls_oid, btid, NULL, NULL, NULL, NULL, &indx_name_p,
 					     NULL);
 
-	  class_name_p = heap_get_class_name (thread_p, &isidp->cls_oid);
+	  if (heap_get_class_name (thread_p, &isidp->cls_oid, &class_name_p) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
 		  (indx_name_p) ? indx_name_p : "*UNKNOWN-INDEX*", (class_name_p) ? class_name_p : "*UNKNOWN-CLASS*",
@@ -6130,7 +6134,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
-      scan_id->stats.read_rows++;
+      scan_id->scan_stats.read_rows++;
 
       /* evaluate the predicate to see if the tuple qualifies */
       ev_res = V_TRUE;
@@ -6181,7 +6185,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
-      scan_id->stats.qualified_rows++;
+      scan_id->scan_stats.qualified_rows++;
 
       /* fetch the rest of the values from the tuple */
       if (scan_id->val_list)
@@ -7328,87 +7332,87 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
  * scan_id(in):
  */
 void
-scan_print_stats_json (SCAN_ID * scan_id, json_t * stats)
+scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 {
   json_t *scan, *lookup;
 
-  if (scan_id == NULL || stats == NULL)
+  if (scan_id == NULL || scan_stats == NULL)
     {
       return;
     }
 
   scan =
-    json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->stats.elapsed_scan), "fetch", scan_id->stats.num_fetches,
-	       "ioread", scan_id->stats.num_ioreads);
+    json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
+	       scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
 
   if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_LIST_SCAN)
     {
-      json_object_set_new (scan, "readrows", json_integer (scan_id->stats.read_rows));
-      json_object_set_new (scan, "rows", json_integer (scan_id->stats.qualified_rows));
+      json_object_set_new (scan, "readrows", json_integer (scan_id->scan_stats.read_rows));
+      json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.qualified_rows));
 
       if (scan_id->type == S_HEAP_SCAN)
 	{
-	  json_object_set_new (stats, "heap", scan);
+	  json_object_set_new (scan_stats, "heap", scan);
 	}
       else
 	{
-	  json_object_set_new (stats, "temp", scan);
+	  json_object_set_new (scan_stats, "temp", scan);
 	}
     }
   else if (scan_id->type == S_INDX_SCAN)
     {
-      json_object_set_new (scan, "readkeys", json_integer (scan_id->stats.read_keys));
-      json_object_set_new (scan, "filteredkeys", json_integer (scan_id->stats.qualified_keys));
-      json_object_set_new (scan, "rows", json_integer (scan_id->stats.key_qualified_rows));
-      json_object_set_new (stats, "btree", scan);
+      json_object_set_new (scan, "readkeys", json_integer (scan_id->scan_stats.read_keys));
+      json_object_set_new (scan, "filteredkeys", json_integer (scan_id->scan_stats.qualified_keys));
+      json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.key_qualified_rows));
+      json_object_set_new (scan_stats, "btree", scan);
 
-      if (scan_id->stats.covered_index == true)
+      if (scan_id->scan_stats.covered_index == true)
 	{
-	  json_object_set_new (stats, "covered", json_true ());
+	  json_object_set_new (scan_stats, "covered", json_true ());
 	}
       else
 	{
 	  lookup =
-	    json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->stats.elapsed_lookup), "rows",
-		       scan_id->stats.data_qualified_rows);
+	    json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
+		       scan_id->scan_stats.data_qualified_rows);
 
-	  json_object_set_new (stats, "lookup", lookup);
+	  json_object_set_new (scan_stats, "lookup", lookup);
 	}
 
-      if (scan_id->stats.multi_range_opt == true)
+      if (scan_id->scan_stats.multi_range_opt == true)
 	{
-	  json_object_set_new (stats, "mro", json_true ());
+	  json_object_set_new (scan_stats, "mro", json_true ());
 	}
 
-      if (scan_id->stats.index_skip_scan == true)
+      if (scan_id->scan_stats.index_skip_scan == true)
 	{
-	  json_object_set_new (stats, "iss", json_true ());
+	  json_object_set_new (scan_stats, "iss", json_true ());
 	}
 
-      if (scan_id->stats.loose_index_scan == true)
+      if (scan_id->scan_stats.loose_index_scan == true)
 	{
-	  json_object_set_new (stats, "loose", json_true ());
+	  json_object_set_new (scan_stats, "loose", json_true ());
 	}
     }
   else if (scan_id->type == S_SHOWSTMT_SCAN)
     {
-      json_object_set_new (stats, "show", scan);
+      json_object_set_new (scan_stats, "show", scan);
     }
   else if (scan_id->type == S_SET_SCAN)
     {
-      json_object_set_new (stats, "set", scan);
+      json_object_set_new (scan_stats, "set", scan);
     }
   else if (scan_id->type == S_METHOD_SCAN)
     {
-      json_object_set_new (stats, "method", scan);
+      json_object_set_new (scan_stats, "method", scan);
     }
   else if (scan_id->type == S_CLASS_ATTR_SCAN)
     {
-      json_object_set_new (stats, "class_attr", scan);
+      json_object_set_new (scan_stats, "class_attr", scan);
     }
   else
     {
-      json_object_set_new (stats, "noscan", scan);
+      json_object_set_new (scan_stats, "noscan", scan);
     }
 }
 
@@ -7458,43 +7462,43 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       fprintf (fp, "(noscan");
     }
 
-  fprintf (fp, " time: %d, fetch: %lld, ioread: %lld", TO_MSEC (scan_id->stats.elapsed_scan),
-	   (long long int) scan_id->stats.num_fetches, (long long int) scan_id->stats.num_ioreads);
+  fprintf (fp, " time: %d, fetch: %lld, ioread: %lld", TO_MSEC (scan_id->scan_stats.elapsed_scan),
+	   (long long int) scan_id->scan_stats.num_fetches, (long long int) scan_id->scan_stats.num_ioreads);
 
   if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_LIST_SCAN)
     {
-      fprintf (fp, ", readrows: %d, rows: %d)", scan_id->stats.read_rows, scan_id->stats.qualified_rows);
+      fprintf (fp, ", readrows: %d, rows: %d)", scan_id->scan_stats.read_rows, scan_id->scan_stats.qualified_rows);
     }
   else if (scan_id->type == S_INDX_SCAN)
     {
-      fprintf (fp, ", readkeys: %d, filteredkeys: %d, rows: %d", scan_id->stats.read_keys,
-	       scan_id->stats.qualified_keys, scan_id->stats.key_qualified_rows);
+      fprintf (fp, ", readkeys: %d, filteredkeys: %d, rows: %d", scan_id->scan_stats.read_keys,
+	       scan_id->scan_stats.qualified_keys, scan_id->scan_stats.key_qualified_rows);
 
-      if (scan_id->stats.covered_index == true)
+      if (scan_id->scan_stats.covered_index == true)
 	{
 	  fprintf (fp, ", covered: true");
 	}
 
-      if (scan_id->stats.multi_range_opt == true)
+      if (scan_id->scan_stats.multi_range_opt == true)
 	{
 	  fprintf (fp, ", mro: true");
 	}
 
-      if (scan_id->stats.index_skip_scan == true)
+      if (scan_id->scan_stats.index_skip_scan == true)
 	{
 	  fprintf (fp, ", iss: true");
 	}
 
-      if (scan_id->stats.loose_index_scan == true)
+      if (scan_id->scan_stats.loose_index_scan == true)
 	{
 	  fprintf (fp, ", loose: true");
 	}
       fprintf (fp, ")");
 
-      if (scan_id->stats.covered_index == false)
+      if (scan_id->scan_stats.covered_index == false)
 	{
-	  fprintf (fp, " (lookup time: %d, rows: %d)", TO_MSEC (scan_id->stats.elapsed_lookup),
-		   scan_id->stats.data_qualified_rows);
+	  fprintf (fp, " (lookup time: %d, rows: %d)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
+		   scan_id->scan_stats.data_qualified_rows);
 	}
     }
   else

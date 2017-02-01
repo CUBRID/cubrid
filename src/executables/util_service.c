@@ -204,16 +204,14 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
   {STOP, COMMAND_TYPE_STOP, MASK_ALL},
-  {RESTART, COMMAND_TYPE_RESTART,
-   MASK_SERVICE | MASK_SERVER | MASK_BROKER},
+  {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
   {LIST, COMMAND_TYPE_LIST, MASK_HEARTBEAT},
   {RELOAD, COMMAND_TYPE_RELOAD, MASK_HEARTBEAT},
   {ON, COMMAND_TYPE_ON, MASK_BROKER},
   {OFF, COMMAND_TYPE_OFF, MASK_BROKER},
-  {ACCESS_CONTROL, COMMAND_TYPE_ACL,
-   MASK_SERVER | MASK_BROKER},
+  {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER},
   {RESET, COMMAND_TYPE_RESET, MASK_BROKER},
   {INFO, COMMAND_TYPE_INFO, MASK_BROKER},
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
@@ -260,8 +258,13 @@ static int process_heartbeat_reload (int argc, const char **argv);
 static int process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const char **argv);
 static int process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv);
 
+static int proc_execute_internal (const char *file, const char *args[], bool wait_child, bool close_output,
+				  bool close_err, bool hide_cmd_args, int *pid);
 static int proc_execute (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err,
 			 int *pid);
+static int proc_execute_hide_cmd_args (const char *file, const char *args[], bool wait_child, bool close_output,
+				       bool close_err, int *pid);
+static void hide_cmd_line_args (char **args);
 static int process_master (int command_type);
 static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status, int command_type);
@@ -437,6 +440,7 @@ process_admin (int argc, char **argv)
   char **copy_argv;
   int status;
 
+  /* execv expects NULL terminated arguments vector */
   copy_argv = (char **) malloc (sizeof (char *) * (argc + 1));
   if (copy_argv == NULL)
     {
@@ -444,9 +448,10 @@ process_admin (int argc, char **argv)
     }
 
   memcpy (copy_argv, argv, sizeof (char *) * argc);
-  copy_argv[0] = argv[0];
-  copy_argv[argc] = 0;
-  status = proc_execute (UTIL_ADMIN_NAME, (const char **) copy_argv, true, false, false, NULL);
+  copy_argv[argc] = NULL;
+
+  status = proc_execute_hide_cmd_args (UTIL_ADMIN_NAME, (const char **) copy_argv, true, false, false, NULL);
+
   free (copy_argv);
 
   return status;
@@ -723,10 +728,31 @@ util_service_version (const char *argv0)
   print_message (stdout, MSGCAT_UTIL_GENERIC_VERSION, exec_name, buf);
 }
 
+/*
+ * proc_execute - to fork/exec internal service exes
+ */
+static int
+proc_execute (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err, int *out_pid)
+{
+  return proc_execute_internal (file, args, wait_child, close_output, close_err, false, out_pid);
+}
+
+/*
+ * proc_execute_hide_cmd_args - to fork/exec cub_admin for command line
+ *
+ * It will hide commandline arguments.
+ */
+static int
+proc_execute_hide_cmd_args (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err,
+			    int *out_pid)
+{
+  return proc_execute_internal (file, args, wait_child, close_output, close_err, true, out_pid);
+}
 
 #if defined(WINDOWS)
 static int
-proc_execute (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err, int *out_pid)
+proc_execute_internal (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err,
+		       bool hide_cmd_args, int *out_pid)
 {
   STARTUPINFO si;
   PROCESS_INFORMATION pi;
@@ -811,7 +837,8 @@ proc_execute (const char *file, const char *args[], bool wait_child, bool close_
 
 #else
 static int
-proc_execute (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err, int *out_pid)
+proc_execute_internal (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err,
+		       bool hide_cmd_args, int *out_pid)
 {
   pid_t pid, tmp;
   char executable_path[PATH_MAX];
@@ -863,6 +890,12 @@ proc_execute (const char *file, const char *args[], bool wait_child, bool close_
     {
       int status = 0;
 
+      if (hide_cmd_args == true)
+	{
+	  /* for hide password */
+	  hide_cmd_line_args ((char **) args);
+	}
+
       /* sleep (0); */
       if (wait_child)
 	{
@@ -895,6 +928,27 @@ proc_execute (const char *file, const char *args[], bool wait_child, bool close_
   return ER_GENERIC_ERROR;
 }
 #endif
+
+/*
+ * hide_cmd_line_args -
+ *
+ * return:
+ *
+ */
+static void
+hide_cmd_line_args (char **args)
+{
+#if defined (LINUX)
+  int i;
+
+  assert (args[0] != NULL && args[1] != NULL);
+
+  for (i = 2; args[i] != NULL; i++)
+    {
+      memset (args[i], '\0', strlen (args[i]));
+    }
+#endif /* LINUX */
+}
 
 /*
  * process_master -

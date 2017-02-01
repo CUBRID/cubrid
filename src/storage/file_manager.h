@@ -82,6 +82,7 @@ typedef struct file_heap_des FILE_HEAP_DES;
 struct file_heap_des
 {
   OID class_oid;
+  HFID hfid;
 };
 
 /* Overflow heap file descriptor */
@@ -106,7 +107,7 @@ struct file_ovf_btree_des
   BTID btid;
 };
 
-/* Extendible Hash file descriptor */
+/* Extensible Hash file descriptor */
 typedef struct file_ehash_des FILE_EHASH_DES;
 struct file_ehash_des
 {
@@ -114,15 +115,15 @@ struct file_ehash_des
   int attr_id;
 };
 
-typedef struct file_tablespace FILE_TABLESPACE;
-struct file_tablespace
+/* Vacuum data file descriptor */
+typedef struct file_vacuum_data_des FILE_VACUUM_DATA_DES;
+struct file_vacuum_data_des
 {
-  INT64 initial_size;
-  float expand_ratio;
-  int expand_min_size;
-  int expand_max_size;
+  VPID vpid_first;
 };
 
+/* note: if you change file descriptors size, make sure to change disk compatibility version too! */
+#define FILE_DESCRIPTORS_SIZE 64
 typedef union file_descriptors FILE_DESCRIPTORS;
 union file_descriptors
 {
@@ -131,6 +132,18 @@ union file_descriptors
   FILE_BTREE_DES btree;
   FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
   FILE_EHASH_DES ehash;
+  FILE_VACUUM_DATA_DES vacuum_data;
+  char dummy_align[FILE_DESCRIPTORS_SIZE];
+};
+
+/* FILE_TABLESPACE: defines the space usage and extensions for files */
+typedef struct file_tablespace FILE_TABLESPACE;
+struct file_tablespace
+{
+  INT64 initial_size;
+  float expand_ratio;
+  int expand_min_size;
+  int expand_max_size;
 };
 
 typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
@@ -183,7 +196,6 @@ extern int file_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern void file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);
 
 extern void file_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_temp_save_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE file_type);
 extern int file_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
 
 extern int file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);
@@ -204,6 +216,8 @@ extern int file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p);
 extern int file_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_DESCRIPTORS * desc_out);
 extern int file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
 extern int file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
+
+extern const char *file_type_to_string (FILE_TYPE fstruct_type);
 
 /* Recovery stuff */
 extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -40,6 +40,7 @@
 #include "environment_variable.h"
 #include "set_object.h"
 #include "cci_applier.h"
+#include "schema_manager.h"
 
 #define SL_LOG_FILE_MAX_SIZE   \
   (prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_SIZE_IN_MB) * 1024 * 1024)
@@ -78,9 +79,11 @@ static PARSER_VARCHAR *sl_print_insert_att_names (PARSER_CONTEXT * parser, OBJ_T
 						  int num_assignments);
 static PARSER_VARCHAR *sl_print_update_att_set (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments,
 						int num_assignments);
+static DB_VALUE *sl_find_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments,
+				    int num_assignments);
 static PARSER_VARCHAR *sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments,
 					   int num_assignments);
-static PARSER_VARCHAR *sl_print_select (const PARSER_CONTEXT * parser, char *class_name, PARSER_VARCHAR * key);
+static PARSER_VARCHAR *sl_print_select (const PARSER_CONTEXT * parser, const char *class_name, PARSER_VARCHAR * key);
 
 static int
 sl_write_catalog ()
@@ -136,12 +139,15 @@ int
 sl_init (const char *db_name, const char *repl_log_path)
 {
   char tmp_log_path[PATH_MAX];
+  char basename_buf[PATH_MAX];
+
   memset (&sl_Info, 0, sizeof (sl_Info));
 
   snprintf (tmp_log_path, PATH_MAX, "%s/sql_log/", repl_log_path);
   create_dir (tmp_log_path);
 
-  snprintf (sql_log_base_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (repl_log_path));
+  strcpy (basename_buf, repl_log_path);
+  snprintf (sql_log_base_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (basename_buf));
   snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, db_name);
 
   sl_Info.curr_file_id = 0;
@@ -242,7 +248,7 @@ sl_print_insert_att_values (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignmen
 }
 
 static PARSER_VARCHAR *
-sl_print_select (const PARSER_CONTEXT * parser, char *class_name, PARSER_VARCHAR * key)
+sl_print_select (const PARSER_CONTEXT * parser, const char *class_name, PARSER_VARCHAR * key)
 {
   PARSER_VARCHAR *buffer = NULL;
   buffer = pt_append_nulstring (parser, buffer, "SELECT * FROM [");
@@ -290,8 +296,8 @@ sl_print_midxkey (const PARSER_CONTEXT * parser, SM_ATTRIBUTE ** attributes, con
   return buffer;
 }
 
-static PARSER_VARCHAR *
-sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+static DB_VALUE *
+sl_find_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   int i;
 
@@ -299,12 +305,24 @@ sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIG
     {
       if (!strcmp (att_name, assignments[i]->att->header.name))
 	{
-	  return describe_value (parser, NULL, assignments[i]->variable);
+	  return assignments[i]->variable;
 	}
     }
   return NULL;
 }
 
+static PARSER_VARCHAR *
+sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+{
+  DB_VALUE *val;
+
+  val = sl_find_att_value (parser, att_name, assignments, num_assignments);
+  if (val != NULL)
+    {
+      return describe_value (parser, NULL, val);
+    }
+  return NULL;
+}
 
 static PARSER_VARCHAR *
 sl_print_update_att_set (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments, int num_assignments)
@@ -378,19 +396,23 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
   PARSER_VARCHAR *buffer = NULL, *select = NULL;
   PARSER_VARCHAR *att_set, *pkey;
   PARSER_VARCHAR *serial_name, *serial_value;
+  DB_VALUE *cur_value, *incr_value;
+  DB_VALUE next_value;
+  char str_next_value[NUMERIC_MAX_STRING_SIZE];
   bool is_db_serial = false;
   int result;
 
   parser = parser_create_parser ();
 
-  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial"))
+  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
     {
+      /* ordinary tables */
       att_set = sl_print_update_att_set (parser, inst_tp->assignments, inst_tp->nassigns);
       pkey = sl_print_pk (parser, inst_tp->class_, key);
       if (pkey == NULL)
 	{
-	  parser_free_parser (parser);
-	  return ER_FAILED;
+	  result = ER_FAILED;
+	  goto end;
 	}
 
       buffer = pt_append_nulstring (parser, buffer, "UPDATE [");
@@ -407,18 +429,35 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
     }
   else
     {
+      /* db_serial */
       serial_name = sl_print_att_value (parser, "name", inst_tp->assignments, inst_tp->nassigns);
       trim_single_quote (serial_name);
 
-      serial_value = sl_print_att_value (parser, "current_val", inst_tp->assignments, inst_tp->nassigns);
+      cur_value = sl_find_att_value (parser, "current_val", inst_tp->assignments, inst_tp->nassigns);
+      incr_value = sl_find_att_value (parser, "increment_val", inst_tp->assignments, inst_tp->nassigns);
+      if (cur_value == NULL || incr_value == NULL)
+	{
+	  result = ER_FAILED;
+	  goto end;
+	}
 
-      buffer = pt_append_nulstring (parser, buffer, "ALTER SERIAL ");
+      result = numeric_db_value_add (cur_value, incr_value, &next_value);
+      if (result != NO_ERROR)
+	{
+	  goto end;
+	}
+      numeric_db_value_print (&next_value, str_next_value);
+
+      buffer = pt_append_nulstring (parser, buffer, "ALTER SERIAL [");
       buffer = pt_append_varchar (parser, buffer, serial_name);
-      buffer = pt_append_nulstring (parser, buffer, " START WITH ");
-      buffer = pt_append_varchar (parser, buffer, serial_value);
+      buffer = pt_append_nulstring (parser, buffer, "] START WITH ");
+      buffer = pt_append_nulstring (parser, buffer, str_next_value);
+      buffer = pt_append_nulstring (parser, buffer, ";");
 
       result = sl_write_sql (buffer, NULL);
     }
+
+end:
   parser_free_parser (parser);
 
   if (result != NO_ERROR)

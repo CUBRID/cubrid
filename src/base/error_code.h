@@ -61,7 +61,7 @@
 #define ER_IO_RENAME_FAIL                            -16
 
 #define ER_PB_BAD_PAGEID                             -17
-#define ER_PB_ALL_BUFFERS_FIXED                      -18
+#define ER_PB_ALL_BUFFERS_FIXED                      -18	/* obsolete, I think */
 #define ER_PB_UNFIXED_PAGEPTR                        -19
 #define ER_PB_UNKNOWN_PAGEPTR                        -20
 
@@ -1536,7 +1536,9 @@
 
 #define ER_CANNOT_CHECK_FILE                        -1194
 
-#define ER_LAST_ERROR                               -1195
+#define ER_BUILDVALUE_IN_REC_CTE		    -1195
+
+#define ER_LAST_ERROR                               -1196
 
 /*
  * CAUTION!

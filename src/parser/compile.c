@@ -492,6 +492,10 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       return statement;
     }
 
+  /* specs referring a CTE will have an entity name, just like a normal class;
+   * in order to not try and prefetch (and possibly fail) such classes, we must first resolve such specs */
+  (void) parser_walk_tree (parser, statement, pt_resolve_cte_specs, NULL, NULL, NULL);
+
   lcks.num_classes = 0;
 
   /* pt_count_entities() will give us too large a count if a class is mentioned more than once, but this will not hurt

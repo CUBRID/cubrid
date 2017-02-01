@@ -803,10 +803,6 @@ net_server_init (void)
   req_p->processing_function = sacl_reload;
   req_p->name = "NET_SERVER_ACL_RELOAD";
 
-  req_p = &net_Requests[NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY];
-  req_p->processing_function = sbtree_delete_with_unique_key;
-  req_p->name = "NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY";
-
   req_p = &net_Requests[NET_SERVER_AU_LOGIN_USER];
   req_p->processing_function = slogin_user;
   req_p->name = "NET_SERVER_SET_USERNAME";
@@ -814,11 +810,6 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_BTREE_FIND_MULTI_UNIQUES];
   req_p->processing_function = sbtree_find_multi_uniques;
   req_p->name = "NET_SERVER_FIND_MULTI_UNIQUES";
-
-  req_p = &net_Requests[NET_SERVER_LC_FORCE_REPL_UPDATE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = slocator_force_repl_update;
-  req_p->name = "NET_SERVER_LC_FORCE_REPL_UPDATE";
 
   req_p = &net_Requests[NET_SERVER_LC_PREFETCH_REPL_INSERT];
   req_p->processing_function = slocator_prefetch_repl_insert;

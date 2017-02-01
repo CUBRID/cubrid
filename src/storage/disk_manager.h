@@ -145,6 +145,7 @@ struct vol_space_info
 
 #define DISK_SECTS_SIZE(nsects)  ((INT64) nsects * IO_SECTORSIZE)
 #define DISK_SECTS_NPAGES(nsects) (nsects * DISK_SECTOR_NPAGES)
+#define DISK_PAGES_TO_SECTS(npages) (CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES))
 
 /* structure used to clone disk sector bitmaps to cross check against file tables */
 typedef struct disk_volmap_clone DISK_VOLMAP_CLONE;
@@ -231,5 +232,7 @@ extern int disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if !defined (NDEBUG)
 extern void disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR page_volheader);
 #endif /* !NDEBUG */
+
+extern int disk_sectors_to_extend_npages (const int num_pages);
 
 #endif /* _DISK_MANAGER_H_ */
