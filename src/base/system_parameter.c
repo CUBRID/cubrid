@@ -560,6 +560,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE "ha_repl_enable_server_side_update"
 #define PRM_NAME_PB_LRU_HOT_RATIO "lru_hot_ratio"
+#define PRM_NAME_PB_LRU_BUFFER_RATIO "lru_buffer_ratio"
 
 #define PRM_NAME_HA_PREFETCHLOGDB_ENABLE "ha_prefetchlogdb_enable"
 #define PRM_NAME_HA_PREFETCHLOGDB_MAX_THREAD_COUNT "ha_prefetchlogdb_max_thread_count"
@@ -624,6 +625,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DISK_LOGGING "disk_logging_debug"
 #define PRM_NAME_FILE_LOGGING "file_logging_debug"
+
+#define PRM_NAME_PB_TRAN_PAGES_QUOTA "tran_pages_quota"
+#define PRM_NAME_PB_NUM_PRIVATE_CHAINS "num_private_chains"
+#define PRM_NAME_PB_MONITOR_LOCKS "pgbuf_monitor_locks"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -1035,7 +1040,7 @@ static unsigned int prm_qo_dump_flag = 0;
 int PRM_CSS_MAX_CLIENTS = 100;
 static int prm_css_max_clients_default = 100;
 static int prm_css_max_clients_lower = 10;
-static int prm_css_max_clients_upper = 2000;
+static int prm_css_max_clients_upper = CSS_MAX_CLIENT_COUNT;
 static unsigned int prm_css_max_clients_flag = 0;
 
 UINT64 PRM_THREAD_STACKSIZE = (1024 * 1024);
@@ -1780,8 +1785,8 @@ static float prm_pb_ain_ratio_upper = 0.8f;
 static float prm_pb_ain_ratio_lower = 0.0f;
 static unsigned int prm_pb_ain_ratio_flag = 0;
 
-float PRM_PB_AOUT_RATIO = 0.5f;
-static float prm_pb_aout_ratio_default = 0.5f;
+float PRM_PB_AOUT_RATIO = 0.0f;
+static float prm_pb_aout_ratio_default = 0.0f;
 static float prm_pb_aout_ratio_upper = 3.0;
 static float prm_pb_aout_ratio_lower = 0;
 static unsigned int prm_pb_aout_ratio_flag = 0;
@@ -1876,9 +1881,15 @@ static bool prm_ha_repl_enable_server_side_update_flag = 0;
 
 float PRM_PB_LRU_HOT_RATIO = 0.4f;
 static float prm_pb_lru_hot_ratio_default = 0.4f;
-static float prm_pb_lru_hot_ratio_upper = 0.95f;
+static float prm_pb_lru_hot_ratio_upper = 0.90f;
 static float prm_pb_lru_hot_ratio_lower = 0.05f;
 static unsigned int prm_pb_lru_hot_ratio_flag = 0;
+
+float PRM_PB_LRU_BUFFER_RATIO = 0.05f;
+static float prm_pb_lru_buffer_ratio_default = 0.05f;
+static float prm_pb_lru_buffer_ratio_upper = 0.90f;
+static float prm_pb_lru_buffer_ratio_lower = 0.05f;
+static unsigned int prm_pb_lru_buffer_ratio_flag = 0;
 
 bool PRM_HA_PREFETCHLOGDB_ENABLE = false;
 static unsigned int prm_ha_prefetchlogdb_enable_flag = 0;
@@ -2017,8 +2028,8 @@ bool PRM_EXAMINE_CLIENT_CACHED_LOCKS = false;
 static bool prm_examine_client_cached_locks_default = false;
 static bool prm_examine_client_cached_locks_flag = 0;
 
-bool PRM_PB_SEQUENTIAL_VICTIM_FLUSH = false;
-static bool prm_pb_sequential_victim_flush_default = false;
+bool PRM_PB_SEQUENTIAL_VICTIM_FLUSH = true;
+static bool prm_pb_sequential_victim_flush_default = true;
 static unsigned int prm_pb_sequential_victim_flush_flag = 0;
 
 bool PRM_LOG_UNIQUE_STATS = false;
@@ -2056,6 +2067,22 @@ static unsigned int prm_disk_logging_flag = 0;
 bool PRM_FILE_LOGGING = false;
 static bool prm_file_logging_default = false;
 static unsigned int prm_file_logging_flag = 0;
+
+int PRM_PB_TRAN_PAGES_QUOTA = 5000;
+static int prm_pb_tran_pages_quota_default = 5000;
+static int prm_pb_tran_pages_quota_upper = 50000;
+static int prm_pb_tran_pages_quota_lower = -1;
+static unsigned int prm_pb_tran_pages_quota_flag = 0;
+
+int PRM_PB_NUM_PRIVATE_CHAINS = -1;
+static int prm_pb_num_private_chains_default = -1;
+static int prm_pb_num_private_chains_upper = CSS_MAX_CLIENT_COUNT + VACUUM_MAX_WORKER_COUNT;
+static int prm_pb_num_private_chains_lower = -1;
+static unsigned int prm_pb_num_private_chains_flag = 0;
+
+int PRM_PB_MONITOR_LOCKS = false;
+static bool prm_pb_monitor_locks_default = false;
+static unsigned int prm_pb_monitor_locks_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -2228,7 +2255,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) prm_io_pages_to_size},
   {PRM_ID_PB_BUFFER_FLUSH_RATIO,
    PRM_NAME_PB_BUFFER_FLUSH_RATIO,
-   (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),	/* todo: why user change? */
    PRM_FLOAT,
    (void *) &prm_pb_buffer_flush_ratio_flag,
    (void *) &prm_pb_buffer_flush_ratio_default,
@@ -4838,6 +4865,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PB_LRU_BUFFER_RATIO,
+   PRM_NAME_PB_LRU_BUFFER_RATIO,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_FLOAT,
+   (void *) &prm_pb_lru_buffer_ratio_flag,
+   (void *) &prm_pb_lru_buffer_ratio_default,
+   (void *) &PRM_PB_LRU_BUFFER_RATIO,
+   (void *) &prm_pb_lru_buffer_ratio_upper,
+   (void *) &prm_pb_lru_buffer_ratio_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_PREFETCHLOGDB_ENABLE,
    PRM_NAME_HA_PREFETCHLOGDB_ENABLE,
    (PRM_FOR_HA | PRM_FOR_CLIENT),
@@ -5276,6 +5315,30 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PB_NUM_PRIVATE_CHAINS,
+   PRM_NAME_PB_NUM_PRIVATE_CHAINS,
+   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   PRM_INTEGER,
+   (void *) &prm_pb_num_private_chains_flag,
+   (void *) &prm_pb_num_private_chains_default,
+   (void *) &PRM_PB_NUM_PRIVATE_CHAINS,
+   (void *) &prm_pb_num_private_chains_upper,
+   (void *) &prm_pb_num_private_chains_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PB_MONITOR_LOCKS,
+   PRM_NAME_PB_MONITOR_LOCKS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   (void *) &prm_pb_monitor_locks_flag,
+   (void *) &prm_pb_monitor_locks_default,
+   (void *) &PRM_PB_MONITOR_LOCKS,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

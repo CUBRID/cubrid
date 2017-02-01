@@ -747,8 +747,12 @@ extern "C"
 	(InterlockedCompareExchange64(ptr, swap_val, cmp_val) == cmp_val)
 #define ATOMIC_INC_64(ptr, amount) \
 	(InterlockedExchangeAdd64(ptr, amount) + amount)
+
+#define ATOMIC_TAS_ADDR(ptr, new_val) ATOMIC_TAS_64 ((long long volatile *) ptr, (long long) new_val)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
-	(InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val)
+	(InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) \
+         == (long long) cmp_val)
+
 #define ATOMIC_LOAD_64(ptr) (*(ptr))
 #define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
 #else				/* _WIN64 */
@@ -769,8 +773,12 @@ extern "C"
 	(win32_compare_exchange64(ptr, swap_val, cmp_val) == cmp_val)
 #define ATOMIC_INC_64(ptr, amount) \
 	(win32_exchange_add64(ptr, amount) + amount)
+
+#define ATOMIC_TAS_ADDR(ptr, new_val) ATOMIC_TAS_32 ((long volatile *) ptr, (long long) new_val)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
-	(InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val)
+	(InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) \
+         == (long long) cmp_val)
+
 #define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64 (ptr, 0)
 #define ATOMIC_STORE_64(ptr, val) ATOMIC_TAS_64 (ptr, val)
 #endif				/* _WIN64 */
@@ -795,6 +803,8 @@ extern "C"
 #define ATOMIC_INC_64(ptr, amount) \
 	__sync_add_and_fetch(ptr, amount)
 
+#define ATOMIC_TAS_ADDR(ptr, new_val) \
+        __sync_lock_test_and_set(ptr, new_val)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
 
@@ -827,6 +837,23 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+/* Compare and if greater then value, swap */
+#define ATOMIC_CGTAS_32(ptr, cmp_val, swap_val) \
+  do \
+   { \
+      volatile int current_val; \
+      do \
+	{ \
+	  current_val = *((volatile int *)ptr); \
+	  if ((cmp_val) <= current_val) \
+	    { \
+	      break; \
+	    } \
+	} \
+      while (!(ATOMIC_CAS_32 ((ptr), current_val, (swap_val)))); \
+    } \
+  while (0)
 
 #if defined (WINDOWS)
 extern double strtod_win (const char *str, char **end_ptr);

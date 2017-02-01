@@ -194,3 +194,271 @@ define pgbuf_cast_btop
 define pgbuf_cast_ptob
   set $arg1 = ((PGBUF_IOPAGE_BUFFER *) (((PAGE_PTR) $arg0) - sizeof (FILEIO_PAGE_RESERVED) - sizeof (PGBUF_BCB *)))->bcb
   end
+
+# pgbuf_lru_print
+# arg0  - lru index
+#
+# Prints info on lru
+#  
+define pgbuf_lru_print
+  set $lru_idx = $arg0
+  set $lru_list = &pgbuf_Pool.buf_LRU_list[$lru_idx]
+  set $bcb = $lru_list->LRU_bottom
+  
+  set $cnt3 = 0
+  set $cnt2 = 0
+  set $cnt1 = 0
+  set $first_victim = 0
+  set $cntv = 0
+  set $cntdrt = 0
+  set $cntisflsh = 0
+  set $cntdirv = 0
+  set $cntfix = 0
+  set $dist_vh = -1
+  set $dist_fv = -1
+  set $dist = 0
+  set $cnt_tovac = 0
+  set $cnt_tovac_lru3 = 0
+  set $cnt_tovac_vc = 0
+  
+  while $bcb != 0
+    if ($bcb->flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
+      set $cnt1 = $cnt1 + 1
+      end
+    if ($bcb->flags & PGBUF_ZONE_MASK) == PGBUF_LRU_2_ZONE
+      set $cnt2 = $cnt2 + 1
+      end
+    if ($bcb->flags & PGBUF_ZONE_MASK) == PGBUF_LRU_3_ZONE
+      set $cnt3 = $cnt3 + 1
+      if ($bcb->flags & 0xE0000000) == 0
+        set $cntv = $cntv + 1
+        if $first_victim == 0
+          set $first_victim = $bcb
+          set $dist_fv = $dist
+          end
+        if ($bcb->flags & 0x08000000) != 0
+          set $cnt_tovac_vc = $cnt_tovac_vc + 1
+          end
+        end
+      if ($bcb->flags & 0x08000000) != 0
+        set $cnt_tovac_lru3 = $cnt_tovac_lru3 + 1
+        end
+      end
+    if ($bcb->flags & 0x80000000) != 0
+      set $cntdrt = $cntdrt + 1
+      end
+    if ($bcb->flags & 0x40000000) != 0
+      set $cntisflsh = $cntisflsh + 1
+      end
+    if ($bcb->flags & 0x20000000) != 0
+      set $cntdirv = $cntdirv + 1
+      end
+    if $bcb->fcnt > 0 || $bcb->latch_mode != PGBUF_NO_LATCH || $bcb->next_wait_thrd != 0
+      set $cntfix = $cntfix + 1
+      end
+    if $bcb == $lru_list->LRU_victim_hint
+      set $dist_vh = $dist
+      end
+    if ($bcb->flags & 0x08000000) != 0
+      set $cnt_tovac = $cnt_tovac + 1
+    end
+      
+    set $bcb = $bcb->prev_BCB
+    set $dist = $dist + 1
+    end
+  
+  if $lru_idx < pgbuf_Pool.num_LRU_list
+    printf "LRU shared list %d: \n", $lru_idx
+    printf "Total count:  %d \n", $cnt1 + $cnt2 + $cnt3
+  else
+    printf "LRU private list %d: \n", $lru_idx
+    printf "Total count:  %d; quota = %d \n", $cnt1 + $cnt2 + $cnt3, $lru_list->quota
+    end
+  printf "Zone 1: %d (%d) - %d%%; threshold = %d \n", $cnt1, $lru_list->count_lru1, $cnt1 * 100 / ($cnt1 + $cnt2 + $cnt3), $lru_list->threshold_lru1
+  printf "Zone 2: %d (%d) - %d%%; threshold = %d \n", $cnt2, $lru_list->count_lru2, $cnt2 * 100 / ($cnt1 + $cnt2 + $cnt3), $lru_list->threshold_lru2
+  printf "Zone 3: %d (%d) - %d%% \n", $cnt3, $lru_list->count_lru3, $cnt3 * 100 / ($cnt1 + $cnt2 + $cnt3)
+  printf "Victim count: %d (%d) \n", $cntv, $lru_list->count_vict_cand
+  printf "First victim: %p, distance: %d \n", $first_victim, $dist_fv
+  printf "Victim hint: %p, distance: %d \n", pgbuf_Pool.buf_LRU_list[$lru_idx]->LRU_victim_hint, $dist_vh
+  printf "Dirties = %d, Flushing = %d, Direct victims = %d, Fixed = %d \n", $cntdrt, $cntisflsh, $cntdirv, $cntfix
+  printf "To vacuum = %d, in lru3 = %d, victim candidates = %d \n", $cnt_tovac, $cnt_tovac_lru3, $cnt_tovac_vc
+  end
+
+define pgbuf_lru_print_victim_status
+  set $i = 0
+  
+  set $shared_1 = 0
+  set $shared_2 = 0
+  set $shared_3 = 0
+  set $shared_vc = 0
+  
+  while $i < pgbuf_Pool.num_LRU_list
+    set $lru_list = &pgbuf_Pool.buf_LRU_list[$i]
+    set $shared_1 = $shared_1 + $lru_list->count_lru1
+    set $shared_2 = $shared_2 + $lru_list->count_lru2
+    set $shared_3 = $shared_3 + $lru_list->count_lru3
+    set $shared_vc = $shared_vc + $lru_list->count_vict_cand
+    set $i = $i + 1
+    end
+    
+  set $private_1 = 0
+  set $private_2 = 0
+  set $private_3 = 0
+  set $private_vc = 0
+  set $private_quota = 0
+  set $oq_lists = 0
+  set $oq_bcbs = 0
+  set $oq_with_vc = 0
+  set $oq_with_vc_bcbs = 0
+  
+  set $i = pgbuf_Pool.num_LRU_list
+  while $i < pgbuf_Pool.num_LRU_list + pgbuf_Pool.quota.num_private_LRU_list
+    set $lru_list = &pgbuf_Pool.buf_LRU_list[$i]
+    set $private_1 = $private_1 + $lru_list->count_lru1
+    set $private_2 = $private_2 + $lru_list->count_lru2
+    set $private_3 = $private_3 + $lru_list->count_lru3
+    set $private_vc = $private_vc + $lru_list->count_vict_cand
+    set $private_quota = $private_quota + $lru_list->quota
+    set $diff = $lru_list->count_lru1 + $lru_list->count_lru2 + $lru_list->count_lru3 - $lru_list->quota
+    if $diff > 0
+      set $oq_lists = $oq_lists + 1
+      set $oq_bcbs = $oq_bcbs + $diff
+      if $lru_list->count_vict_cand > 0
+        set $oq_with_vc = $oq_with_vc + 1
+        set $oq_with_vc_bcbs = $oq_with_vc_bcbs + $lru_list->count_vict_cand
+        end
+      end
+    set $i = $i + 1
+    end
+  
+  printf "\n"
+  printf "Shared lists: \n"
+  printf "Total bcbs: %d \n", $shared_1 + $shared_2 + $shared_3
+  printf "Zone 1: %d \n", $shared_1
+  printf "Zone 2: %d \n", $shared_2
+  printf "Zone 3: %d \n", $shared_3
+  printf "Victim candidates: %d \n", $shared_vc
+  printf "\n"
+  printf "Private lists: \n"
+  printf "Total bcbs: %d \n", $private_1 + $private_2 + $private_3
+  printf "Zone 1: %d \n", $private_1
+  printf "Zone 2: %d \n", $private_2
+  printf "Zone 3: %d \n", $private_3
+  printf "Victim candidates: %d \n", $private_vc
+  printf "Over quota: lists = %d, bcb's = %d \n", $oq_lists, $oq_bcbs
+  printf "Candidates in over quota: lists = %d, bcb's = %d \n", $oq_with_vc, $oq_with_vc_bcbs
+  printf "\n"
+  end
+  
+define pgbuf_print_alloc_bcb_waits
+
+  set $i = 0
+  
+  printf "Direct victim array: \n"
+  while $i < thread_Manager.num_total
+    if pgbuf_Pool.direct_victims.bcb_victims[$i] != 0
+      printf "(thr = %d, bcb = %p) \n", $i, pgbuf_Pool.direct_victims.bcb_victims[$i]
+      end
+    set $i = $i + 1
+    end
+  printf "\n"
+
+  printf "waiter_threads_high_priority: "
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
+  set $i = $lfcq->consume_cursor
+  set $thrar = (THREAD_ENTRY **) $lfcq->data
+  printf "%d \n", $lfcq->produce_cursor - $i
+  while $i < $lfcq->produce_cursor
+    printf "%d ", $thrar[$i % $lfcq->capacity]->index
+    set $i = $i + 1
+    end
+  printf "\n"
+
+  printf "waiter_threads_low_priority: "
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
+  set $i = $lfcq->consume_cursor
+  set $thrar = (THREAD_ENTRY **) $lfcq->data
+  printf "%d \n", $lfcq->produce_cursor - $i
+  while $i < $lfcq->produce_cursor
+    printf "%d ", $thrar[$i % $lfcq->capacity]->index
+    set $i = $i + 1
+    end
+  printf "\n"
+  end
+  
+define pgbuf_find_alloc_bcb_wait_thread
+  printf "bcb = %p \n", pgbuf_Pool.direct_victims.bcb_victims[$arg0]
+  
+  set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_high_priority
+  set $i = $lfcq->consume_cursor
+  set $thrar = (THREAD_ENTRY **) $lfcq->data
+  set $found = 0
+  set $dist = 0
+  while $i < $lfcq->produce_cursor
+    if $thrar[$i % $lfcq->capacity]->index == $arg0
+      printf "waiter_threads_high_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
+      set $found = 1
+      loop_break
+      end
+    set $i = $i + 1
+    set $dist = $dist + 1
+    end
+
+  if !$found
+    set $lfcq = pgbuf_Pool.direct_victims.waiter_threads_low_priority
+    set $i = $lfcq->consume_cursor
+    set $thrar = (THREAD_ENTRY **) $lfcq->data
+    set $found = 0
+    while $i < $lfcq->produce_cursor
+      if $thrar[$i % $lfcq->capacity]->index == $arg0
+        printf "waiter_threads_low_priority, cursor = %d, distance = %d, thread_p = %p \n", $i, $dist, $thrar[$i % $lfcq->capacity]
+        set $found = 1
+        loop_break
+        end
+      set $i = $i + 1
+      set $dist = $dist + 1
+      end
+    end
+
+  if !$found
+    printf "not found \n"
+    end
+  end
+  
+define pgbuf_read_bcb_flags
+  set $flags = $arg0
+  
+  printf "Flags: %x \n", ($flags & 0xF0000000)
+  if $flags & 0x80000000
+    printf "BCB is dirty \n"
+    end
+  if $flags & 0x40000000
+    printf "BCB is being flushed to disk \n"
+    end
+  if $flags & 0x20000000
+    printf "BCB is direct victim \n"
+    end
+  
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
+    printf "BCB is in lru 1 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_2_ZONE
+    printf "BCB is in lru 2 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_3_ZONE
+    printf "BCB is in lru 3 \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_VOID_ZONE
+    printf "BCB is in void zone \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_INVALID_ZONE
+    printf "BCB is in invalid zone \n"
+    end
+  if ($flags & PGBUF_ZONE_MASK) == PGBUF_AIN_ZONE
+    printf "BCB is in ain \n"
+    end
+  
+  if $flags & PGBUF_LRU_ZONE_MASK
+    printf "BCB is in lru list with index %d \n", $flags & 0xFFFF
+    end
+  end

@@ -24729,3 +24729,28 @@ heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid
   hfid->hpgid = vpid_header.pageid;
   return NO_ERROR;
 }
+
+int
+heap_is_page_file_header (PAGE_PTR page)
+{
+  SPAGE_HEADER *spage_header;
+  SPAGE_SLOT *slotp;
+
+  assert (page != NULL && pgbuf_get_page_ptype (NULL, page) == PAGE_HEAP);
+
+  spage_header = (SPAGE_HEADER *) page;
+  if (spage_header->num_records <= 0)
+    {
+      return false;
+    }
+  slotp = spage_get_slot (page, HEAP_HEADER_AND_CHAIN_SLOTID);
+  if (slotp == NULL)
+    {
+      return false;
+    }
+  if (slotp->record_length == sizeof (HEAP_HDR_STATS))
+    {
+      return true;
+    }
+  return false;
+}

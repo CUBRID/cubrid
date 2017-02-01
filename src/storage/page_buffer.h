@@ -347,6 +347,7 @@ extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 #endif /* NDEBUG */
 extern PAGE_PTR pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio);
 #if !defined(NDEBUG)
 #define pgbuf_flush_all(thread_p, volid) \
 	pgbuf_flush_all_debug(thread_p, volid, __FILE__, __LINE__)
@@ -363,9 +364,6 @@ extern int pgbuf_flush_all_unfixed_debug (THREAD_ENTRY * thread_p, VOLID volid, 
 							  __LINE__)
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null_debug (THREAD_ENTRY * thread_p, VOLID volid,
 							      const char *caller_file, int caller_line);
-
-#define pgbuf_flush_victim_candidate(thread_p, flush_ratio) \
-	pgbuf_flush_victim_candidate_debug(thread_p, flush_ratio, __FILE__, __LINE__)
 extern int pgbuf_flush_victim_candidate_debug (THREAD_ENTRY * thread_p, float flush_ratio, const char *caller_file,
 					       int caller_line);
 
@@ -385,7 +383,6 @@ extern void pgbuf_replace_watcher_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER 
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY * thread_p, VOLID volid);
-extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio);
 extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 				   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
 
@@ -417,7 +414,6 @@ extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 extern void pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
-extern void pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid, DKNPAGES npages, bool need_invalidate);
 extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_check_page_type_no_error (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern DISK_ISVALID pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
@@ -452,8 +448,10 @@ extern bool pgbuf_has_any_waiters (PAGE_PTR pgptr);
 extern bool pgbuf_has_any_non_vacuum_waiters (PAGE_PTR pgptr);
 extern bool pgbuf_has_prevent_dealloc (PAGE_PTR pgptr);
 extern void pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UINT64 * lru2_cnt,
-			      UINT64 * aint_cnt, UINT64 * avoid_dealloc_cnt, UINT64 * avoid_victim_cnt,
-			      UINT64 * victim_cand_cnt);
+			      UINT64 * lru3_cnt, UINT64 * vict_candidates, UINT64 * avoid_dealloc_cnt,
+			      UINT64 * avoid_victim_cnt, UINT64 * private_quota, UINT64 * private_cnt,
+			      UINT64 * alloc_bcb_waiter_high, UINT64 * alloc_bcb_waiter_med,
+			      UINT64 * alloc_bcb_waiter_low, UINT64 * lfcq_prv_num, UINT64 * lfcq_shr_num);
 
 extern int pgbuf_flush_control_from_dirty_ratio (void);
 
@@ -468,7 +466,7 @@ extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (PAGE_PTR pgptr);
 extern void pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
 extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR * page_dealloc);
+extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc);
 extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
@@ -482,5 +480,15 @@ extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, con
 #define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
   pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)
 #endif /* !NDEBUG */
+extern int pgbuf_release_private_lru (const int private_idx);
+extern int pgbuf_assign_private_lru (bool is_vacuum, const int id);
+extern void pgbuf_adjust_quotas (THREAD_ENTRY * thread_p);
 
+#if defined (SERVER_MODE)
+extern bool pgbuf_keep_victim_flush_thread_running (void);
+extern void pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
+#endif /* !SERVER_MODE */
+
+extern void pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page);
+extern bool pgbuf_is_io_stressful (void);
 #endif /* _PAGE_BUFFER_H_ */
