@@ -116,7 +116,7 @@ main (int argc, char *argv[])
       db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
 
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
   db_shutdown ();
 
   return 0;

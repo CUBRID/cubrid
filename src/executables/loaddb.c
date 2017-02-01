@@ -833,7 +833,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	    }
 	}
 
-      db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_commit_transaction ();
       fclose (schema_file);
       schema_file = NULL;
     }
@@ -975,7 +975,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 						     LOADDB_MSG_COMMITTING));
 
 		      /* commit the transaction and then update statistics */
-		      if (!db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED))
+		      if (!db_commit_transaction ())
 			{
 			  if (!Disable_statistics)
 			    {
@@ -995,7 +995,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 				  print_log_msg ((int) Verbose,
 						 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 								 LOADDB_MSG_COMMITTING));
-				  (void) db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+				  (void) db_commit_transaction ();
 				}
 			    }
 			}
@@ -1035,7 +1035,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       AU_ENABLE (au_save);
 
       print_log_msg (1, "Index loading from %s finished.\n", Index_file);
-      db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_commit_transaction ();
     }
 
   print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
@@ -1225,7 +1225,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
       if (stmt_type == CUBRID_STMT_COMMIT_WORK || (commit_period && (executed_cnt % commit_period == 0)))
 	{
-	  db_commit_transaction (query_execution_ending_type);
+	  db_commit_transaction_ex (query_execution_ending_type);
 	  print_log_msg (Verbose_commit, "%8d statements executed. Commit transaction at line %d\n", executed_cnt,
 			 parser_end_line_no);
 	  *start_line = parser_end_line_no + 1;
@@ -1244,7 +1244,7 @@ end:
       *start_line = parser_end_line_no + 1;
       print_log_msg (1, "Total %8d statements executed.\n", executed_cnt);
       fflush (stdout);
-      db_commit_transaction (query_execution_ending_type);
+      db_commit_transaction_ex (query_execution_ending_type);
     }
   return error;
 }

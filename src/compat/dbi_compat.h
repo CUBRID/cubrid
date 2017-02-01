@@ -3342,6 +3342,7 @@ extern int db_ping_server (int client_val, int *server_val);
 extern int db_disable_modification (void);
 extern int db_enable_modification (void);
 extern int db_commit_transaction (void);
+extern int db_commit_transaction_ex (DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execution_ending_type);
 extern int db_abort_transaction (void);
 extern int db_commit_is_needed (void);
 extern int db_savepoint_transaction (const char *savepoint_name);

@@ -990,7 +990,7 @@ ux_end_tran (int tran_type, bool reset_con_status, DB_QUERY_EXECUTION_ENDING_TYP
 
   if (tran_type == CCI_TRAN_COMMIT)
     {
-      err_code = db_commit_transaction (latest_query_execution_ending_type);
+      err_code = db_commit_transaction_ex (latest_query_execution_ending_type);
       cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_commit_transaction() = %d", err_code);
       if (err_code < 0)
 	{
@@ -2082,7 +2082,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
       if (auto_commit_mode == TRUE)
 	{
-	  db_commit_transaction (query_execution_ending_type);
+	  db_commit_transaction_ex (query_execution_ending_type);
 	}
       continue;
 
@@ -2326,7 +2326,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
       if (srv_handle->auto_commit_mode == TRUE)
 	{
-	  db_commit_transaction (query_execution_ending_type);
+	  db_commit_transaction_ex (query_execution_ending_type);
 	}
       continue;
 

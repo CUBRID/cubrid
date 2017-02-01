@@ -711,7 +711,7 @@ chksum_drop_and_create_checksum_table (void)
   if (res >= 0)
     {
       db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
-      error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      error = db_commit_transaction ();
     }
   else
     {
@@ -1815,7 +1815,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
   tbl_list = db_fetch_all_classes (DB_FETCH_READ);
 
   /* commit here to invalidate snapshot captured by db_fetch_all_classes */
-  error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  error = db_commit_transaction ();
   if (error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, "Failed to get the list of tables", error);
@@ -1888,7 +1888,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 		  error = chksum_insert_schema_definition (table_name, repid);
 		  if (error == NO_ERROR)
 		    {
-		      error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+		      error = db_commit_transaction ();
 		    }
 
 		  if (error != NO_ERROR)
@@ -1999,7 +1999,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 
 	  lower_bound = next_lower_bound;
 
-	  error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  error = db_commit_transaction ();
 	  if (error != NO_ERROR)
 	    {
 	      break;

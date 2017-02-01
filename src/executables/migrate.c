@@ -547,7 +547,7 @@ main (int argc, char *argv[])
       db_abort_transaction ();
       goto error_undo_vol_header;
     }
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
 
   au_disable ();
 

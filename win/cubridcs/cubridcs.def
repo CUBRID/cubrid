@@ -90,6 +90,7 @@ EXPORTS
     db_col_get
     db_col_size
     db_commit_transaction
+    db_commit_transaction_ex
     db_compile_statement
     db_constrain_non_null
     db_constrain_unique

@@ -902,7 +902,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_COMMIT:
-      if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
+      if (db_commit_transaction () < 0)
 	{
 	  csql_display_csql_err (0, 0);
 	  csql_check_server_down ();
@@ -1037,7 +1037,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       csql_help_schema ((argument[0] == '\0') ? NULL : argument);
       if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
 	{
-	  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
+	  if (db_commit_transaction () < 0)
 	    {
 	      csql_display_csql_err (0, 0);
 	      csql_check_server_down ();
@@ -1053,7 +1053,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       csql_help_trigger ((argument[0] == '\0') ? NULL : argument);
       if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
 	{
-	  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
+	  if (db_commit_transaction () < 0)
 	    {
 	      csql_display_csql_err (0, 0);
 	      csql_check_server_down ();
@@ -2009,7 +2009,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) && stmt_type != CUBRID_STMT_COMMIT_WORK
 	  && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	{
-	  db_error = db_commit_transaction (query_execution_ending_type);
+	  db_error = db_commit_transaction_ex (query_execution_ending_type);
 	  if (db_error < 0)
 	    {
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -2441,7 +2441,7 @@ csql_exit_session (int error)
 	  fflush (tf);
 	}
 
-      if (commit_on_shutdown && db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
+      if (commit_on_shutdown && db_commit_transaction () < 0)
 	{
 	  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
 	  error = 1;

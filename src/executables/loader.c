@@ -4303,7 +4303,7 @@ check_commit (LDR_CONTEXT * context)
 	  if (context->cls != NULL)
 	    {
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
-	      CHECK_ERR (err, db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED));
+	      CHECK_ERR (err, db_commit_transaction ());
 	      Last_committed_line = loader_yylineno - 1;
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
@@ -4338,7 +4338,7 @@ check_commit (LDR_CONTEXT * context)
 	      print_log_msg (context->verbose,
 			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
-	      CHECK_ERR (err, db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED));
+	      CHECK_ERR (err, db_commit_transaction ());
 	      Last_committed_line = loader_yylineno - 1;
 	      context->commit_counter = context->periodic_commit;
 

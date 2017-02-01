@@ -2026,7 +2026,7 @@ la_get_last_ha_applied_info (void)
       return res;
     }
 
-  (void) db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  (void) db_commit_transaction ();
 
   LSA_COPY (&la_Info.last_committed_lsa, &la_Info.committed_lsa);
   LSA_COPY (&la_Info.last_committed_rep_lsa, &la_Info.committed_rep_lsa);
@@ -2217,7 +2217,7 @@ la_delete_ha_apply_info (void)
       db_value_clear (&in_value[i]);
     }
 
-  (void) db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  (void) db_commit_transaction ();
 
   return res;
 
@@ -6608,7 +6608,7 @@ la_commit_transaction (void)
 	la_Info.insert_counter + la_Info.update_counter + la_Info.delete_counter + la_Info.fail_counter;
     }
 
-  error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  error = db_commit_transaction ();
   if (error != NO_ERROR)
     {
       return error;

@@ -642,7 +642,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
 
   if (user_define_file != NULL)
     {
@@ -656,7 +656,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
       fclose (user_define_file);
     }
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
   db_shutdown ();
 
   if (output_file != stdout)
@@ -1072,7 +1072,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_commit_transaction ();
 	  db_shutdown ();
 	}
     }
@@ -1181,7 +1181,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
   db_shutdown ();
 
   cfg_free_directory (dir);
@@ -1388,7 +1388,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
     }
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
   db_shutdown ();
 
   return EXIT_SUCCESS;
@@ -2661,7 +2661,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  db_commit_transaction ();
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_SYNC_OK),
 		   CT_COLLATION_NAME);
 	}
@@ -3863,7 +3863,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	}
 
     }
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
   db_shutdown ();
 
   return EXIT_SUCCESS;
@@ -4020,7 +4020,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 	  else
 	    {
 	      /* write the new checksum in the database */
-	      db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	      db_commit_transaction ();
 	    }
 	  db_shutdown ();
 	}

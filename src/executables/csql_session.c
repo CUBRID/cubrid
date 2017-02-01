@@ -679,7 +679,7 @@ csql_help_info (const char *command, int aucommit_flag)
       help_print_info (command, p_stream);
       if (aucommit_flag)
 	{
-	  result = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+	  result = db_commit_transaction ();
 	}
       csql_pclose (p_stream, csql_Output_fp);
       if (aucommit_flag)

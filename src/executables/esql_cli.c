@@ -681,7 +681,7 @@ uci_commit (void)
   free_pointers ((CURSOR *) NULL);
   free_dynamic ();
 
-  error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  error = db_commit_transaction ();
   CHECK_DBI (error < 0, return);
 }
 

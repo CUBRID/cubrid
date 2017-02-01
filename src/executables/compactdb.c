@@ -190,7 +190,7 @@ compactdb_start (bool verbose_flag)
     }
   disk_final ();
 
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
 
   if (failed_objects != 0)
     {
@@ -244,7 +244,7 @@ phase2:
 
 phase3:
   catalog_reclaim_space (NULL);
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
 
   if (file_tracker_reclaim_marked_deleted (NULL) != NO_ERROR)
     {
@@ -252,7 +252,7 @@ phase3:
       ASSERT_ERROR ();
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
     }
-  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  db_commit_transaction ();
 
   /* 
    * Cleanup
