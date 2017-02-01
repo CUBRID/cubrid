@@ -272,7 +272,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	  (backup_path, (FILEIO_BACKUP_LEVEL) backup_level, remove_log_archives, backup_verbose_file,
 	   backup_num_threads, backup_zip_method, backup_zip_level, skip_activelog, sleep_msecs) == NO_ERROR)
 	{
-	  if (db_commit_transaction () != NO_ERROR)
+	  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) != NO_ERROR)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	    }
@@ -457,7 +457,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
       if (db_add_volume_ex (&ext_info) == NO_ERROR)
 	{
-	  db_commit_transaction ();
+	  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	}
       else
 	{
@@ -745,7 +745,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 
 	  if (repair_plink || repair)
 	    {
-	      db_commit_transaction ();
+	      db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	    }
 	  util_log_write_errstr ("%s\n", db_error_string (3));
 	  db_shutdown ();
@@ -753,7 +753,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	}
       if (repair_plink || repair)
 	{
-	  db_commit_transaction ();
+	  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	}
       db_shutdown ();
     }

@@ -361,7 +361,7 @@ cm_ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error)
     {
       goto error_return;
     }
-  if (db_commit_transaction () < 0)
+  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
     {
       goto error_return;
     }
@@ -541,9 +541,9 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
 	{
 	  goto error_return;
 	}
-      db_query_end (result);
+      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
-      if (db_commit_transaction () < 0)
+      if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
 	{
 	  goto error_return;
 	}
@@ -603,7 +603,7 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
 	  return ERR_WITH_MSG;
 	}
 
-      if (db_commit_transaction () < 0)
+      if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
 	{
 	  CUBRID_ERR_MSG_SET (_dbmt_error);
 	  db_shutdown ();
@@ -654,7 +654,7 @@ cm_ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_WITH_MSG;
     }
 
-  if (db_commit_transaction () < 0)
+  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
     {
       goto error_return;
     }
@@ -912,7 +912,7 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 	  goto error_return;
 	}
       lang_set_parser_use_client_charset (true);
-      db_query_end (result);
+      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
 
   if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
@@ -921,7 +921,7 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_WITH_MSG;
     }
 
-  if (db_commit_transaction () < 0)
+  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
     {
       goto error_return;
     }
@@ -1148,7 +1148,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
     }
 
-  if (db_commit_transaction () < 0)
+  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
     {
       goto error_return;
     }
@@ -1278,7 +1278,7 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
     }
 
-  if (db_commit_transaction () < 0)
+  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
     {
       goto error_return;
     }
@@ -1352,7 +1352,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
       temp = temp->next;
     }
   db_objlist_free (user_list);
-  if (db_commit_transaction () < 0)
+  if (db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
     {
       goto error_return;
     }
@@ -1950,7 +1950,7 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 	  nv_add_nvp (out, "rule", buf);
 	  end = db_query_next_tuple (result);
 	}
-      db_query_end (result);
+      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
 
   if (con_type == DB_CONSTRAINT_FOREIGN_KEY)

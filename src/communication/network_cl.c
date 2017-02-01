@@ -642,6 +642,7 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_VACUUM].name = "NET_SERVER_VACUUM";
   net_Req_buffer[NET_SERVER_GET_MVCC_SNAPSHOT].name = "NET_SERVER_GET_MVCC_SNAPSHOT";
   net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
+  net_Req_buffer[NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT].name = "NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT";
 }
 
 /*

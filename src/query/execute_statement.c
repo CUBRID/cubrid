@@ -4303,7 +4303,7 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Row count should be reset to -1 for explicit commits (i.e: commit statements) but should not be reset in
    * AUTO_COMMIT mode. This is the best place to reset it for commit statements. */
   db_update_row_count_cache (-1);
-  return tran_commit (statement->info.commit_work.retain_lock ? true : false);
+  return tran_commit (statement->info.commit_work.retain_lock ? true : false, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 }
 
 /*
@@ -8911,7 +8911,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *hint_arg;
   QUERY_ID query_id_self = parser->query_id;
   bool savepoint_started = false;
-
   assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
@@ -8988,7 +8987,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  query_flag |= NOT_FROM_RESULT_CACHE;
 	  query_flag |= RESULT_CACHE_INHIBITED;
-
 	  if (parser->is_xasl_pinned_reference)
 	    {
 	      query_flag |= XASL_CACHE_PINNED_REFERENCE;
@@ -9015,7 +9013,8 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  err =
 	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+			   parser->host_variables, &list_id, query_flag, NULL, NULL,
+			   &statement->query_execution_ending_type);
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
 	    {
@@ -9088,8 +9087,16 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      regu_free_listid (list_id);
 	    }
-	  /* end the query; reset query_id and call qmgr_end_query() */
-	  pt_end_query (parser, query_id_self);
+
+	  if (DB_IS_QUERY_EXECUTED_ENDED (statement->query_execution_ending_type))
+	    {
+	      /* query already ended, reset query_id */
+	      parser->query_id = query_id_self;
+	    }
+	  else
+	    {
+	      pt_end_query (parser, query_id_self);
+	    }
 	}
 
       /* accumulate intermediate results */
@@ -10144,7 +10151,6 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   int query_flag;
   QUERY_ID query_id_self = parser->query_id;
   bool savepoint_started = false;
-
   assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
@@ -10218,7 +10224,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
 	}
-
+      assert (!DB_IS_QUERY_EXECUTED (statement->query_execution_ending_type));
       if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
 	{
 	  do_set_trace_to_query_flag (&query_flag);
@@ -10230,7 +10236,8 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       list_id = NULL;
       err =
 	execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		       parser->host_variables, &list_id, query_flag, NULL, NULL);
+		       parser->host_variables, &list_id, query_flag, NULL, NULL,
+		       &statement->query_execution_ending_type);
 
       AU_RESTORE (au_save);
 
@@ -10299,8 +10306,17 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  regu_free_listid (list_id);
 	}
-      /* end the query; reset query_id and call qmgr_end_query() */
-      pt_end_query (parser, query_id_self);
+
+      if (DB_IS_QUERY_EXECUTED_ENDED (statement->query_execution_ending_type))
+	{
+	  /* query already ended, reset query_id  */
+	  parser->query_id = query_id_self;
+	}
+      else
+	{
+	  /* end the query; reset query_id and call qmgr_end_query() */
+	  pt_end_query (parser, query_id_self);
+	}
 
       /* accumulate intermediate results */
       if (err >= NO_ERROR)
@@ -13261,6 +13277,8 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
+
+  assert (!DB_IS_QUERY_EXECUTED (statement->query_execution_ending_type));
   if (parser->return_generated_keys)
     {
       query_flag |= RETURN_GENERATED_KEYS;
@@ -13281,7 +13299,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   err =
     execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, NULL, NULL);
+		   parser->host_variables, &list_id, query_flag, NULL, NULL, &statement->query_execution_ending_type);
 
   /* free returned QFILE_LIST_ID */
   if (list_id)
@@ -13298,8 +13316,16 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* end the query; reset query_id and call qmgr_end_query() */
-  pt_end_query (parser, query_id_self);
+  if (DB_IS_QUERY_EXECUTED_ENDED (statement->query_execution_ending_type))
+    {
+      /* query already ended, reset query_id */
+      parser->query_id = query_id_self;
+    }
+  else
+    {
+      /* end the query; reset query_id and call qmgr_end_query() */
+      pt_end_query (parser, query_id_self);
+    }
 
   return err;
 }
@@ -13988,6 +14014,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   query_flag = DEFAULT_EXEC_MODE;
+  assert (!DB_IS_QUERY_EXECUTED (statement->query_execution_ending_type));
 
   if (parser->is_holdable)
     {
@@ -14035,7 +14062,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   err =
     execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time);
+		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time, NULL);
 
   AU_RESTORE (au_save);
 
@@ -14150,6 +14177,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       query_flag |= RESULT_CACHE_INHIBITED;
     }
+
+  assert (!DB_IS_QUERY_EXECUTED (statement->query_execution_ending_type));
   if (parser->is_holdable)
     {
       query_flag |= RESULT_HOLDABLE;
@@ -14203,7 +14232,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   err =
     execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time);
+		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time,
+		   &statement->query_execution_ending_type);
 
   AU_RESTORE (au_save);
 
@@ -15784,7 +15814,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   QUERY_ID ins_query_id = NULL_QUERY_ID;
   QUERY_ID query_id_self = parser->query_id;
   bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
-
   assert (parser->query_id == NULL_QUERY_ID);
 
   CHECK_MODIFICATION_ERROR ();
@@ -15822,6 +15851,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* server side execution */
       int query_flag = DEFAULT_EXEC_MODE;
 
+      assert (!DB_IS_QUERY_EXECUTED (statement->query_execution_ending_type));
       /* check if it is not necessary to execute this statement */
       if (statement->xasl_id == NULL)
 	{
@@ -15855,7 +15885,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       err =
 	execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		       parser->host_variables, &list_id, query_flag, NULL, NULL);
+		       parser->host_variables, &list_id, query_flag, NULL, NULL,
+		       &statement->query_execution_ending_type);
       AU_RESTORE (au_save);
       if (err != NO_ERROR)
 	{
@@ -15876,8 +15907,17 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  regu_free_listid (list_id);
 	  list_id = NULL;
 	}
-      /* end the query; reset query_id and call qmgr_end_query() */
-      pt_end_query (parser, query_id_self);
+
+      if (DB_IS_QUERY_EXECUTED_ENDED (statement->query_execution_ending_type))
+	{
+	  /* query already ended, reset query_id  */
+	  parser->query_id = query_id_self;
+	}
+      else
+	{
+	  /* end the query; reset query_id and call qmgr_end_query() */
+	  pt_end_query (parser, query_id_self);
+	}
     }
   else
     {
@@ -15908,7 +15948,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  list_id = NULL;
 	  err =
 	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+			   parser->host_variables, &list_id, query_flag, NULL, NULL, NULL);
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
 	    {

@@ -687,7 +687,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 	}
     }
 
-  status = db_commit_transaction ();
+  status = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   if (status != NO_ERROR)
     {
       goto error;
@@ -747,7 +747,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 		}
 	    }
 
-	  status = db_commit_transaction ();
+	  status = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	  if (status != NO_ERROR)
 	    {
 	      goto error;
@@ -816,7 +816,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 			       failed_objects[i], modified_objects[i], big_objects[i], delete_old_repr_flag,
 			       initial_last_repr[i] == COMPACTDB_REPR_DELETED);
 
-	      db_commit_transaction ();
+	      db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	    }
 
 	  last_completed_class_index = temp_index - 1;
@@ -866,7 +866,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
       switch (status)
 	{
 	case NO_ERROR:
-	  status = db_commit_transaction ();
+	  status = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	  if (status != NO_ERROR)
 	    {
 	      goto error;
@@ -916,7 +916,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 	  class_name = NULL;
 	}
 
-      db_commit_transaction ();
+      db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
 
 error:
@@ -1258,7 +1258,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
   *addresses_reclaimed = false;
   *error_while_processing = NO_ERROR;
 
-  error_code = db_commit_transaction ();
+  error_code = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -1452,7 +1452,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
       *addresses_reclaimed = true;
     }
 
-  error_code = db_commit_transaction ();
+  error_code = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   if (error_code != NO_ERROR)
     {
       goto error_exit;

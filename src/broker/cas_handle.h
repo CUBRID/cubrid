@@ -133,6 +133,7 @@ struct t_query_result
   MYSQL_BIND *defines;
 #else				/* CAS_FOR_MYSQL */
   void *result;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type;
   char *null_type_column;
   T_COL_UPDATE_INFO *col_update_info;
   void *column_info;

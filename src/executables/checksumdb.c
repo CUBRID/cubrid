@@ -221,7 +221,7 @@ chksum_report_schema_diff (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -232,7 +232,7 @@ chksum_report_schema_diff (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -251,7 +251,7 @@ chksum_report_schema_diff (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -270,7 +270,7 @@ chksum_report_schema_diff (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -287,7 +287,7 @@ chksum_report_schema_diff (FILE * fp)
 	  pos = db_query_next_tuple (query_result);
 	  CHKSUM_PRINT_AND_LOG (fp, "\n");
 	}
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
       CHKSUM_PRINT_AND_LOG (fp,
 			    "* Due to schema inconsistency, the checksum "
@@ -296,7 +296,7 @@ chksum_report_schema_diff (FILE * fp)
   else if (res == 0)
     {
       CHKSUM_PRINT_AND_LOG (fp, "NONE\n\n");
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   else
     {
@@ -341,7 +341,7 @@ chksum_report_diff (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 	  CHKSUM_PRINT_AND_LOG (fp, "%-15s ", db_get_string (&out_value));
@@ -351,7 +351,7 @@ chksum_report_diff (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 	  CHKSUM_PRINT_AND_LOG (fp, "%-15d ", DB_GET_INT (&out_value));
@@ -361,7 +361,7 @@ chksum_report_diff (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 	  CHKSUM_PRINT_AND_LOG (fp, "%s\n", db_get_string (&out_value));
@@ -370,12 +370,12 @@ chksum_report_diff (FILE * fp)
 	  pos = db_query_next_tuple (query_result);
 	}
       CHKSUM_PRINT_AND_LOG (fp, "\n");
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   else if (res == 0)
     {
       CHKSUM_PRINT_AND_LOG (fp, "NONE\n\n");
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   else
     {
@@ -425,7 +425,7 @@ chksum_report_summary (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 	  CHKSUM_PRINT_AND_LOG (fp, "%-15s ", db_get_string (&out_value));
@@ -435,7 +435,7 @@ chksum_report_summary (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 	  num_chunks = DB_GET_INT (&out_value);
@@ -446,7 +446,7 @@ chksum_report_summary (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 	  CHKSUM_PRINT_AND_LOG (fp, "%-23d ", DB_GET_INT (&out_value));
@@ -456,7 +456,7 @@ chksum_report_summary (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -467,7 +467,7 @@ chksum_report_summary (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -478,7 +478,7 @@ chksum_report_summary (FILE * fp)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -489,12 +489,12 @@ chksum_report_summary (FILE * fp)
 	}
 
       CHKSUM_PRINT_AND_LOG (fp, "\n");
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   else if (res == 0)
     {
       CHKSUM_PRINT_AND_LOG (fp, "NONE\n\n");
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   else
     {
@@ -710,8 +710,8 @@ chksum_drop_and_create_checksum_table (void)
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
     {
-      db_query_end (query_result);
-      error = db_commit_transaction ();
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   else
     {
@@ -838,7 +838,7 @@ chksum_get_prev_checksum_results (void)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -853,7 +853,7 @@ chksum_get_prev_checksum_results (void)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -864,7 +864,7 @@ chksum_get_prev_checksum_results (void)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -879,7 +879,7 @@ chksum_get_prev_checksum_results (void)
 	  error = db_query_get_tuple_value (query_result, out_val_idx++, &value);
 	  if (error != NO_ERROR)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      return error;
 	    }
 
@@ -891,7 +891,7 @@ chksum_get_prev_checksum_results (void)
 
 	  pos = db_query_next_tuple (query_result);
 	}
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   else
     {
@@ -1323,7 +1323,7 @@ chksum_get_next_lower_bound (PARSER_CONTEXT * parser, const char *table_name, DB
   if (prev_lower_bound != NULL && res < chunk_size)
     {
       /* no more chunk to process */
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
       return NULL;
     }
@@ -1361,7 +1361,7 @@ chksum_get_next_lower_bound (PARSER_CONTEXT * parser, const char *table_name, DB
 	  res = ER_FAILED;
 	  break;
 	}
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
 
   if (res < 0)
@@ -1512,7 +1512,7 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser, const char *table_name, 
 	  res = ER_FAILED;
 	  break;
 	}
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
       update_checksum_query = chksum_print_update_master_checksum (parser, table_name, chunk_id, master_checksum);
       if (update_checksum_query == NULL)
@@ -1524,7 +1524,7 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser, const char *table_name, 
       res = db_execute (query, &query_result, &query_error);
       if (res >= 0)
 	{
-	  db_query_end (query_result);
+	  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	}
     }
 
@@ -1593,7 +1593,7 @@ chksum_update_current_schema_definition (const char *table_name, int repid)
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
     {
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   else
     {
@@ -1630,7 +1630,7 @@ chksum_insert_schema_definition (const char *table_name, int repid)
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
     {
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
       res = chksum_update_current_schema_definition (table_name, repid);
       if (res < 0)
@@ -1700,7 +1700,7 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
   res = db_execute (query, &query_result, &query_error);
   if (res >= 0)
     {
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
       res = chksum_update_master_checksum (parser, table_name, chunk_id);
       if (res < 0)
@@ -1815,7 +1815,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
   tbl_list = db_fetch_all_classes (DB_FETCH_READ);
 
   /* commit here to invalidate snapshot captured by db_fetch_all_classes */
-  error = db_commit_transaction ();
+  error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   if (error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, "Failed to get the list of tables", error);
@@ -1888,7 +1888,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 		  error = chksum_insert_schema_definition (table_name, repid);
 		  if (error == NO_ERROR)
 		    {
-		      error = db_commit_transaction ();
+		      error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 		    }
 
 		  if (error != NO_ERROR)
@@ -1999,7 +1999,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 
 	  lower_bound = next_lower_bound;
 
-	  error = db_commit_transaction ();
+	  error = db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	  if (error != NO_ERROR)
 	    {
 	      break;

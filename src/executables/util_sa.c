@@ -642,7 +642,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
   if (user_define_file != NULL)
     {
@@ -656,7 +656,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
       fclose (user_define_file);
     }
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   db_shutdown ();
 
   if (output_file != stdout)
@@ -1072,7 +1072,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  db_commit_transaction ();
+	  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	  db_shutdown ();
 	}
     }
@@ -1181,7 +1181,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   db_shutdown ();
 
   cfg_free_directory (dir);
@@ -1388,7 +1388,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
     }
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   db_shutdown ();
 
   return EXIT_SUCCESS;
@@ -2661,7 +2661,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
 	}
       else
 	{
-	  db_commit_transaction ();
+	  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_SYNC_OK),
 		   CT_COLLATION_NAME);
 	}
@@ -2856,7 +2856,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
 	  if (query_result != NULL)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      query_result = NULL;
 	    }
 	}
@@ -2911,7 +2911,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
 	  if (query_result != NULL)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      query_result = NULL;
 	    }
 
@@ -3072,7 +3072,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
 	  if (query_result != NULL)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      query_result = NULL;
 	    }
 	}
@@ -3150,7 +3150,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
 	  if (query_result != NULL)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      query_result = NULL;
 	    }
 	}
@@ -3201,7 +3201,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
 	  if (query_result != NULL)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      query_result = NULL;
 	    }
 	}
@@ -3262,7 +3262,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
 	  if (query_result != NULL)
 	    {
-	      db_query_end (query_result);
+	      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	      query_result = NULL;
 	    }
 	}
@@ -3363,7 +3363,7 @@ exit:
 
   if (query_result != NULL)
     {
-      db_query_end (query_result);
+      db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
       query_result = NULL;
     }
   if (db_collations != NULL)
@@ -3435,7 +3435,7 @@ delete_all_ha_apply_info (void)
     {
       int error;
 
-      error = db_query_end (result);
+      error = db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
       if (error != NO_ERROR)
 	{
 	  res = error;
@@ -3566,7 +3566,7 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
     {
       int error;
 
-      error = db_query_end (result);
+      error = db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
       if (error != NO_ERROR)
 	{
 	  res = error;
@@ -3637,7 +3637,7 @@ delete_all_slave_ha_apply_info (char *database_name, char *master_host_name)
     {
       int error;
 
-      error = db_query_end (result);
+      error = db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
       if (error != NO_ERROR)
 	{
 	  res = error;
@@ -3863,7 +3863,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	}
 
     }
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   db_shutdown ();
 
   return EXIT_SUCCESS;
@@ -4020,7 +4020,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 	  else
 	    {
 	      /* write the new checksum in the database */
-	      db_commit_transaction ();
+	      db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	    }
 	  db_shutdown ();
 	}

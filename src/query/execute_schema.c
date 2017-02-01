@@ -4372,7 +4372,7 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
       if (error >= 0)
 	{
 	  error = NO_ERROR;
-	  db_query_end (query_result);
+	  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	}
       free_and_init (query_buf);
       if (error < 0)
@@ -13285,7 +13285,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
       goto end;
     }
 
-  error = db_execute_statement_local (session, stmt_id, &result);
+  error = db_execute_statement_local (session, stmt_id, &result, NULL);
   if (error < 0)
     {
       goto end;
@@ -13329,7 +13329,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
 end:
   if (result != NULL)
     {
-      db_query_end (result);
+      db_query_end (result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
     }
   if (session != NULL)
     {
@@ -13398,7 +13398,7 @@ do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
   check_tr_state = tr_set_execution_state (false);
   assert (check_tr_state == save_tr_state);
 
-  error = db_execute_statement_local (session, stmt_id, NULL);
+  error = db_execute_statement_local (session, stmt_id, NULL, NULL);
   if (error < 0)
     {
       goto end;
@@ -13421,7 +13421,7 @@ end:
 
   if (session != NULL)
     {
-      db_free_query (session);
+      db_free_query (session, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
       db_close_session (session);
     }
 
