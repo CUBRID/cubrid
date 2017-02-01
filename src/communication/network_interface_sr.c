@@ -4542,6 +4542,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     }
 }
 
+/* FIXME - refactor the function to remove redundancies */
 
 /*
  * sqmgr_execute_query_with_commit - Process a SERVER_QM_EXECUTE_AND_COMMIT request
@@ -4587,7 +4588,9 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
   int queryinfo_string_length = 0;
   char queryinfo_string[QUERY_INFO_BUF_SIZE];
 
-  MNT_SERVER_EXEC_STATS base_stats, current_stats, diff_stats;
+  UINT64 *base_stats = NULL;
+  UINT64 *current_stats = NULL;
+  UINT64 *diff_stats = NULL;
   char *sql_id = NULL;
   int error_code = NO_ERROR, all_error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
@@ -4604,8 +4607,13 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
-      xmnt_server_start_stats (thread_p, false);
-      xmnt_server_copy_stats (thread_p, &base_stats);
+      base_stats = perfmon_allocate_values ();
+      if (base_stats == NULL)
+	{
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  return;
+	}
+      xperfmon_server_copy_stats (thread_p, base_stats);
 
       tsc_getticks (&start_tick);
 
@@ -4803,22 +4811,45 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	  response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
 
-	  xmnt_server_copy_stats (thread_p, &current_stats);
-	  mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
+	  if (base_stats == NULL)
+	    {
+	      base_stats = perfmon_allocate_values ();
+	      if (base_stats == NULL)
+		{
+		  css_send_abort_to_client (thread_p->conn_entry, rid);
+		  return;
+		}
+	    }
+
+	  current_stats = perfmon_allocate_values ();
+	  if (current_stats == NULL)
+	    {
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      goto exit;
+	    }
+	  diff_stats = perfmon_allocate_values ();
+	  if (diff_stats == NULL)
+	    {
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      goto exit;
+	    }
+
+	  xperfmon_server_copy_stats (thread_p, current_stats);
+	  perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
 
 	  if (response_time >= trace_slow_msec)
 	    {
 	      queryinfo_string_length =
-		er_log_slow_query (thread_p, &info, response_time, &diff_stats, queryinfo_string);
-	      event_log_slow_query (thread_p, &info, response_time, &diff_stats);
+		er_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string);
+	      event_log_slow_query (thread_p, &info, response_time, diff_stats);
 	    }
 
-	  if (trace_ioreads > 0 && diff_stats.pb_num_ioreads >= trace_ioreads)
+	  if (trace_ioreads > 0 && diff_stats[PSTAT_PB_NUM_IOREADS] >= trace_ioreads)
 	    {
-	      event_log_many_ioreads (thread_p, &info, response_time, &diff_stats);
+	      event_log_many_ioreads (thread_p, &info, response_time, diff_stats);
 	    }
 
-	  xmnt_server_stop_stats (thread_p);
+	  perfmon_stop_watch (thread_p);
 	}
 
       if (thread_p->event_stats.temp_expand_pages > 0)
@@ -4920,6 +4951,20 @@ sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char
   if (p_net_Deferred_end_queries != net_Deferred_end_queries)
     {
       free_and_init (p_net_Deferred_end_queries);
+    }
+
+exit:
+  if (base_stats != NULL)
+    {
+      free_and_init (base_stats);
+    }
+  if (current_stats != NULL)
+    {
+      free_and_init (current_stats);
+    }
+  if (diff_stats != NULL)
+    {
+      free_and_init (diff_stats);
     }
 }
 
