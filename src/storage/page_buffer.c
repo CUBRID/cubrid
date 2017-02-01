@@ -13106,7 +13106,7 @@ pgbuf_initialize_page_quota_parameters (void)
 	  quota->num_private_LRU_list = PGBUF_PRIVATE_LRU_MIN_COUNT;
 	}
     }
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   /* stand-alone quota is disabled */
   quota->num_private_LRU_list = 0;
 #endif /* SA_MODE */
