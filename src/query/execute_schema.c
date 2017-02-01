@@ -13285,7 +13285,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
       goto end;
     }
 
-  error = db_execute_statement_local (session, stmt_id, &result, NULL);
+  error = db_execute_statement_local (session, stmt_id, &result);
   if (error < 0)
     {
       goto end;
@@ -13398,7 +13398,7 @@ do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
   check_tr_state = tr_set_execution_state (false);
   assert (check_tr_state == save_tr_state);
 
-  error = db_execute_statement_local (session, stmt_id, NULL, NULL);
+  error = db_execute_statement_local (session, stmt_id, NULL);
   if (error < 0)
     {
       goto end;
@@ -13421,7 +13421,7 @@ end:
 
   if (session != NULL)
     {
-      db_free_query (session, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_free_query (session);
       db_close_session (session);
     }
 

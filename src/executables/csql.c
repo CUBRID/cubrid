@@ -1890,7 +1890,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  goto error;
 	}
 
-      db_error = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
+      db_error = db_execute_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
       if (db_error < 0)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -1992,7 +1992,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	   * run implicitly by the statement.  If so, we need to end the
 	   * query on the server.
 	   */
-	  db_free_query (session, query_execution_ending_type);
+	  db_free_query_ex (session, query_execution_ending_type);
 	}
 
       if (csql_Is_time_on)
@@ -3065,7 +3065,7 @@ csql_display_trace (void)
       goto end;
     }
 
-  db_error = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
+  db_error = db_execute_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
 
   if (db_error < 0)
     {

@@ -2020,7 +2020,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
        * which cannot be prepared, such as serial, we should execute it to get its plan. And, currently, we cannot see
        * a plan for a statement which includes both "cannot be prepared" term and host variable. This limitation also
        * exists in csql. */
-      err = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
+      err = db_execute_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
       if (err < 0 && err != ER_UCI_TOO_FEW_HOST_VARS)
 	{
 	  /* We will ignore an error "too few host variables are given" to return a plan for a statement including host 

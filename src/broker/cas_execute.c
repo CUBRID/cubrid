@@ -1221,7 +1221,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     }
 #endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-  n = db_execute_and_keep_statement (session, stmt_id, &result, &query_execution_ending_type);
+  n = db_execute_and_keep_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
 
 #ifndef LIBCAS_FOR_JSP
   stmt_type = db_get_statement_type (session, stmt_id);
@@ -1537,7 +1537,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 #endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
-      n = db_execute_and_keep_statement (session, stmt_id, &result, &query_execution_ending_type);
+      n = db_execute_and_keep_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
 
 #ifndef LIBCAS_FOR_JSP
@@ -1796,7 +1796,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   stmt_id = srv_handle->q_result->stmt_id;
 
   jsp_set_prepare_call ();
-  n = db_execute_and_keep_statement (session, stmt_id, &result, &query_execution_ending_type);
+  n = db_execute_and_keep_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
   jsp_unset_prepare_call ();
 
 #ifndef LIBCAS_FOR_JSP
@@ -2044,7 +2044,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	}
 #endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-      res_count = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
+      res_count = db_execute_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
 #ifndef LIBCAS_FOR_JSP
@@ -2276,7 +2276,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 #endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
-      res_count = db_execute_and_keep_statement (session, stmt_id, &result, &query_execution_ending_type);
+      res_count = db_execute_and_keep_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
       if (stmt_type < 0)
@@ -8371,7 +8371,7 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_bu
 
   stmt_type = db_get_statement_type (session, stmt_id);
   lang_set_parser_use_client_charset (false);
-  num_result = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
+  num_result = db_execute_statement_ex (session, stmt_id, &result, &query_execution_ending_type);
   lang_set_parser_use_client_charset (true);
 
 #ifndef LIBCAS_FOR_JSP

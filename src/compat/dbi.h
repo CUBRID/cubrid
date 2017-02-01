@@ -695,11 +695,13 @@ extern int db_execute_oid (const char *CSQL_query, DB_QUERY_RESULT ** result, DB
 
 extern int db_query_produce_updatable_result (DB_SESSION * session, int stmtid);
 
-extern int db_execute_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result,
-				 DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type);
+extern int db_execute_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
+extern int db_execute_statement_ex (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result,
+				    DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type);
 
-extern int db_execute_and_keep_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result,
-					  DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type);
+extern int db_execute_and_keep_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
+extern int db_execute_and_keep_statement_ex (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result,
+					     DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type);
 extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION * session, int stmt_id);
 
 extern void db_invalidate_mvcc_snapshot_before_statement (void);
@@ -725,7 +727,8 @@ extern bool db_get_cacheinfo (DB_SESSION * session, int stmt_ndx, bool * use_pla
    it for the PC.  If we don't want them here, they should go somewhere
    else so csql.c doesn't have to have an explicit declaration.
 */
-extern void db_free_query (DB_SESSION * session, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type);
+extern void db_free_query (DB_SESSION * session);
+extern void db_free_query_ex (DB_SESSION * session, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type);
 extern DB_QUERY_TYPE *db_get_query_type_ptr (DB_QUERY_RESULT * result);
 
 /* OBSOLETE FUNCTIONS

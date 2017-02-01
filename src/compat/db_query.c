@@ -1578,7 +1578,7 @@ db_execute_with_values (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QU
 
   if (stmt_no > 0)
     {
-      error = db_execute_statement_local (session, stmt_no, result, NULL);
+      error = db_execute_statement_local (session, stmt_no, result);
     }
 
   db_close_session_local (session);

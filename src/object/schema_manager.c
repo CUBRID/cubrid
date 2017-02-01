@@ -15131,7 +15131,7 @@ sm_truncate_using_delete (MOP class_mop)
       goto end;
     }
 
-  error = db_execute_statement_local (session, stmt_id, NULL, NULL);
+  error = db_execute_statement_local (session, stmt_id, NULL);
   if (error < 0)
     {
       goto end;
@@ -15142,7 +15142,7 @@ sm_truncate_using_delete (MOP class_mop)
 end:
   if (session != NULL)
     {
-      db_free_query (session, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      db_free_query (session);
       db_close_session (session);
     }
 

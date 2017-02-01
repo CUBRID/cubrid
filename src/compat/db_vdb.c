@@ -2834,19 +2834,35 @@ db_has_modified_class (DB_SESSION * session, int stmt_id)
 }
 
 /*
- * db_execute_and_keep_statement() - Please refer to the
- *         db_execute_and_keep_statement_local() function
+ * db_execute_and_keep_statement() - Please refer to db_execute_and_keep_statement_local() function
  * return : error status, if execution failed
  *          number of affected objects, if a success & stmt is a SELECT,
  *          UPDATE, DELETE, or INSERT
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
- * query_execution_ending_type(in/out): query execution ending type
+ *
+ * NOTE: This is a legacy version.
  */
 int
-db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
-			       DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
+db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+{
+  return db_execute_and_keep_statement_ex (session, stmt_ndx, result, NULL);
+}
+
+/*
+ * db_execute_and_keep_statement_ex() - Please refer to db_execute_and_keep_statement_local() function
+ * return : error status, if execution failed
+ *          number of affected objects, if a success & stmt is a SELECT,
+ *          UPDATE, DELETE, or INSERT
+ * session(in) : contains the SQL query that has been compiled
+ * stmt(in) : int returned by a successful compilation
+ * result(out): query results descriptor
+ * query_execution_ending_type(out): query execution ending type
+ */
+int
+db_execute_and_keep_statement_ex (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
+				  DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
 
@@ -2872,6 +2888,30 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
+ *
+ * note : You must free the results of calling this function by using the
+ *    db_query_end() function. The resources for the identified compiled
+ *    statement (not its result) are freed. Consequently, the statement may
+ *    not be executed again.
+ * NOTE: This is a legacy version.
+ */
+int
+db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+{
+  return db_execute_statement_local_ex (session, stmt_ndx, result, NULL);
+}
+
+/*
+ * db_execute_statement_local_ex() - This function executes the SQL statement
+ *    identified by the stmt argument and returns the result. The
+ *    statement ID must have already been returned by a previously successful
+ *    call to the db_compile_statement() function.
+ * returns  : error status, if execution failed
+ *            number of affected objects, if a success & stmt is a
+ *            SELECT, UPDATE, DELETE, or INSERT
+ * session(in) : contains the SQL query that has been compiled
+ * stmt(in) : int returned by a successful compilation
+ * result(out): query results descriptor
  * query_execution_ending_type(out): query execution ending type
  *
  * note : You must free the results of calling this function by using the
@@ -2880,8 +2920,8 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
  *    not be executed again.
  */
 int
-db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
-			    DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
+db_execute_statement_local_ex (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
+			       DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
   PT_NODE *statement;
@@ -2907,8 +2947,26 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
 }
 
 /*
- * db_execute_statement() - Please refer to the
- *    db_execute_statement_local() function
+ * db_execute_statement() - Please refer to db_execute_statement_local() function
+ * returns  : error status, if execution failed
+ *            number of affected objects, if a success & stmt is a
+ *            SELECT, UPDATE, DELETE, or INSERT
+ * session(in) : contains the SQL query that has been compiled
+ * stmt(in) : int returned by a successful compilation
+ * result(out): query results descriptor
+ *
+ * NOTE: db_execute_statement should be used only as entry point for statement
+ *	 execution. Otherwise, db_execute_statement_local should be used.
+ * NOTE: This is a legacy version.
+ */
+int
+db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+{
+  return db_execute_statement_ex (session, stmt_ndx, result, NULL);
+}
+
+/*
+ * db_execute_statement_ex() - Please refer to db_execute_statement_local() function
  * returns  : error status, if execution failed
  *            number of affected objects, if a success & stmt is a
  *            SELECT, UPDATE, DELETE, or INSERT
@@ -2921,8 +2979,8 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
  *	 execution. Otherwise, db_execute_statement_local should be used.
  */
 int
-db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
-		      DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
+db_execute_statement_ex (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
+			 DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
 
@@ -2933,7 +2991,7 @@ db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** res
 	  || *query_execution_ending_type == DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   db_invalidate_mvcc_snapshot_before_statement ();
 
-  err = db_execute_statement_local (session, stmt_ndx, result, query_execution_ending_type);
+  err = db_execute_statement_local_ex (session, stmt_ndx, result, query_execution_ending_type);
 
   db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
@@ -3077,7 +3135,7 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
       while (stmt_no > 0)
 	{
 	  /* Execute current query */
-	  error = db_execute_statement_local (session, stmt_no, (DB_QUERY_RESULT **) result, NULL);
+	  error = db_execute_statement_local (session, stmt_no, (DB_QUERY_RESULT **) result);
 	  if (error < 0)
 	    {
 	      break;
@@ -3629,13 +3687,23 @@ db_validate (DB_OBJECT * vc)
 }
 
 /*
- * db_free_query() - If an implicit query was executed, free the query on the
- *   server.
+ * db_free_query() - If an implicit query was executed, free the query on the server.
  * returns  : void
  * session(in) : session handle
  */
 void
-db_free_query (DB_SESSION * session, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type)
+db_free_query (DB_SESSION * session)
+{
+  pt_end_query (session->parser, NULL_QUERY_ID);
+}
+
+/*
+ * db_free_query_ex() - If an implicit query was executed, free the query on the server.
+ * returns  : void
+ * session(in) : session handle
+ */
+void
+db_free_query_ex (DB_SESSION * session, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type)
 {
   if (DB_IS_QUERY_EXECUTED_ENDED (query_execution_ending_type))
     {

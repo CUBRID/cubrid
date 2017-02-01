@@ -338,6 +338,7 @@ EXPORTS
     db_error_init
     db_execute
     db_execute_and_keep_statement
+    db_execute_and_keep_statement_ex
     db_execute_deferred_activities
     db_execute_oid
     db_execute_statement
@@ -367,6 +368,7 @@ EXPORTS
     db_free_domain_list
     db_free_method_descriptor
     db_free_query
+    db_free_query_ex
     db_free_query_format
     db_free_query_result
     db_freepgs

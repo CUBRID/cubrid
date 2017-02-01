@@ -1206,7 +1206,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       stmt_type = db_get_statement_type (session, stmt_id);
 
       res = (DB_QUERY_RESULT *) NULL;
-      error = db_execute_statement (session, stmt_id, &res, &query_execution_ending_type);
+      error = db_execute_statement_ex (session, stmt_id, &res, &query_execution_ending_type);
 
       if (error < 0)
 	{

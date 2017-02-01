@@ -1681,7 +1681,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       goto release;
     }
 
-  error = db_execute_statement_local (session, stmt_id, &result, NULL);
+  error = db_execute_statement_local (session, stmt_id, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -2060,7 +2060,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
       goto release;
     }
 
-  error = db_execute_statement_local (session, stmt_id, &result, NULL);
+  error = db_execute_statement_local (session, stmt_id, &result);
   if (error < 0)
     {
       goto release;
@@ -2939,7 +2939,7 @@ au_compute_groups (MOP member, char *name)
       goto ret;
     }
 
-  error = db_execute_statement_local (session, stmt_id, &result, NULL);
+  error = db_execute_statement_local (session, stmt_id, &result);
   if (error < 0)
     goto ret;
 
@@ -3445,7 +3445,7 @@ au_drop_user (MOP user)
 	  goto error;
 	}
 
-      error = db_execute_statement_local (session, stmt_id, &result, NULL);
+      error = db_execute_statement_local (session, stmt_id, &result);
       if (error < 0)
 	{
 	  db_close_session (session);
@@ -3508,7 +3508,7 @@ au_drop_user (MOP user)
 	  stmt_id = db_compile_statement (session);
 	  if (stmt_id == 1)
 	    {
-	      error = db_execute_statement_local (session, stmt_id, &result, NULL);
+	      error = db_execute_statement_local (session, stmt_id, &result);
 	      db_query_end (result);
 	    }
 	  else
@@ -3543,7 +3543,7 @@ au_drop_user (MOP user)
   stmt_id = db_compile_statement (session);
   if (stmt_id == 1)
     {
-      error = db_execute_statement_local (session, stmt_id, &result, NULL);
+      error = db_execute_statement_local (session, stmt_id, &result);
       if (error > 0)
 	{
 	  error = NO_ERROR;
