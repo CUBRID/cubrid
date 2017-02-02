@@ -4550,9 +4550,9 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PB_AIN_RATIO,
+  {PRM_ID_PB_AIN_RATIO,		/* unused */
    PRM_NAME_PB_AIN_RATIO,
-   (PRM_FOR_SERVER | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_RELOADABLE | PRM_DEPRECATED),
    PRM_FLOAT,
    (void *) &prm_pb_ain_ratio_flag,
    (void *) &prm_pb_ain_ratio_default,
