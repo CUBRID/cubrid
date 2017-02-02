@@ -908,9 +908,9 @@ static bool pgbuf_Monitor_locks = true;
  *       careful about overusing this. the code may not be fully optimized when using it. */
 static int pgbuf_Abort_release_line = 0;
 #define PGBUF_ABORT_RELEASE() do { pgbuf_Abort_release_line = __LINE__; abort (); } while (false)
-		       /* #else *//* !NDEBUG */
+					     /* #else *//* !NDEBUG */
 /* #define PGBUF_ABORT_RELEASE() assert (false) */
-			 /* #endif *//* !NDEBUG */
+						 /* #endif *//* !NDEBUG */
 
 /* TODO: remove these */
 #if defined (assert)
@@ -13272,7 +13272,6 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
   int all_private_quota;
   int sum_private_lru_activity_total = 0;
   TSC_TICKS curr_tick;
-  TSCTIMEVAL diff_time;
   INT64 diff_usec;
   int lru_hits;
   int lru_shared_hits = 0;
