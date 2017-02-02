@@ -14614,6 +14614,7 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
 
   /* update victim counter. */
   /* add to lock-free circular queue so victimizers can find it... if this is not a private list under quota. */
+  ATOMIC_INC_32 (&lru_list->count_vict_cand, 1);
   if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index) || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
     {
       if (pgbuf_lfcq_add_lru_with_victims (lru_list))
