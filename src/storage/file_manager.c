@@ -4055,7 +4055,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 		      ASSERT_ERROR_AND_SET (error_code);
 		      goto exit;
 		    }
-                  pgbuf_dealloc_page (thread_p, page_ftab);
+		  pgbuf_dealloc_page (thread_p, page_ftab);
 		  page_ftab = NULL;
 		}
 	    }

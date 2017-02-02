@@ -8636,7 +8636,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
 #if defined (SERVER_MODE)
 	      if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority)
-                  >= (5 + (thread_num_worker_threads () / 20)))
+		  >= (5 + (thread_num_worker_threads () / 20)))
 		{
 		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bcb_prev);
 		}
@@ -9154,12 +9154,12 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 		}
 	      /* not assigned. unlock bcb mutex and fall through */
 	      PGBUF_BCB_UNLOCK (bcb);
-            }
-          else
-            {
-              /* don't try too hard. it will be victimized eventually. */
-              /* fall through */
-            }
+	    }
+	  else
+	    {
+	      /* don't try too hard. it will be victimized eventually. */
+	      /* fall through */
+	    }
 	}
     }
   /* not assigned directly */
@@ -15213,12 +15213,12 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
 	  return victim;
 	}
       else
-        {
-          /* we couldn't add to queue. it usually does not happen, but a consumer can be preempted for a long time,
-           * temporarily creating the impression that queue is full. it will be added later, when a new victim
-           * candidate shows up or when adjust quota checks it. */
-          /* fall through */
-        }
+	{
+	  /* we couldn't add to queue. it usually does not happen, but a consumer can be preempted for a long time,
+	   * temporarily creating the impression that queue is full. it will be added later, when a new victim
+	   * candidate shows up or when adjust quota checks it. */
+	  /* fall through */
+	}
     }
 
   /* we're not adding the list back to the queue... so we need to reflect that in the list flags. next time when a new
