@@ -8842,7 +8842,7 @@ pgbuf_lru_add_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
       else
 	{
 	  /* no. we should add the bcb before top. */
-	  assert (pgbuf_bcb_get_zone (lru_list->top) == PGBUF_LRU_2_ZONE);
+	  assert (pgbuf_bcb_get_zone (lru_list->top) != PGBUF_LRU_1_ZONE);
 	  assert (lru_list->bottom != NULL);
 
 	  /* link current top with new bcb */
