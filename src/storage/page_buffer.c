@@ -8442,9 +8442,9 @@ pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock)
 	    }
 	}
     }
-  return bcb->fcnt == 0 && bcb->next_wait_thrd == NULL && (has_mutex_lock || bcb->latch_mode == PGBUF_NO_LATCH);
+  return bcb->fcnt > 0 || bcb->next_wait_thrd != NULL || (!has_mutex_lock && bcb->latch_mode != PGBUF_NO_LATCH);
 #else /* !SERVER_MODE */
-  return bcb->fcnt == 0;
+  return bcb->fcnt != 0;
 #endif /* !SERVER_MODE */
 }
 
@@ -8477,7 +8477,10 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
     }
 
   /* must not be fixed and must not have waiters. */
-  return !pgbuf_is_bcb_fixed_by_any (bcb, has_mutex_lock);
+  if (pgbuf_is_bcb_fixed_by_any (bcb, has_mutex_lock))
+    {
+      return false;
+    }
 #endif /* SERVER_MODE */
 
   /* valid */
