@@ -62,9 +62,6 @@ extern DISK_ISVALID xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids, int num_oids,
 				       BTID * index_btid);
 extern VOLID xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info);
-#if 0
-extern int xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid, bool clear_cached);
-#endif
 extern int xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p);
 extern int xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p);
 extern VOLID xboot_find_last_permanent (THREAD_ENTRY * thread_p);
@@ -147,24 +144,11 @@ extern int xtran_server_is_active_and_has_updated (THREAD_ENTRY * thread_p);
 extern int xtran_wait_server_active_trans (THREAD_ENTRY * thrd);
 extern int xtran_lock_rep_read (THREAD_ENTRY * thread_p, LOCK lock_rr_tran);
 
-
-extern LOID *xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid, int length, char *buffer, int est_lo_len,
-				  OID * oid);
-extern int xlargeobjmgr_destroy (THREAD_ENTRY * thread_p, LOID * loid);
-extern int xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer);
-extern int xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer);
-extern int xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer);
-extern INT64 xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, INT64 length);
-extern int xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid, int length, char *buffer);
-extern INT64 xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset);
-extern int xlargeobjmgr_compress (THREAD_ENTRY * thread_p, LOID * loid);
-extern INT64 xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
-
 extern void xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set);
 extern void xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set);
 
 extern int xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs);
-extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool unlock_by_isolation);
+extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation);
 
 extern LOG_LSA *log_get_final_restored_lsa (void);
 extern float log_get_db_compatibility (void);
@@ -182,7 +166,6 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
 					DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch);
-extern int xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, DB_VALUE * key_value);
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size);
 extern BTREE_SEARCH xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid, int pruning_type, BTID * btids,
 					       DB_VALUE * values, int count, SCAN_OPERATION_TYPE op_type, OID ** oids,
@@ -204,8 +187,8 @@ extern char *xdisk_get_remarks (THREAD_ENTRY * thread_p, VOLID volid);
 extern int *disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int *db_charset);
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid, char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, VOLID volid);
-extern VOLID xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
-					       VOL_SPACE_INFO * space_info);
+extern int xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
+					     VOL_SPACE_INFO * space_info);
 
 extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID volid, PAGEID pageid,
 				      char *page_bufp, int *page_sizep);
@@ -227,7 +210,7 @@ extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
 /* server execution statistics */
 extern void xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats);
-extern void xperfmon_server_copy_global_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats);
+extern void xperfmon_server_copy_global_stats (UINT64 * to_stats);
 /* catalog manager interface */
 
 extern int xcatalog_check_rep_dir (THREAD_ENTRY * thread_p, OID * class_id, OID * rep_dir_p);

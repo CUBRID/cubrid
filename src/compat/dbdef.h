@@ -77,17 +77,16 @@
    db_add_volext API function. */
 typedef enum
 {
-
-  DISK_PERMVOL_DATA_PURPOSE = 0,
-  DISK_PERMVOL_INDEX_PURPOSE = 1,
-  DISK_PERMVOL_GENERIC_PURPOSE = 2,
-  DISK_PERMVOL_TEMP_PURPOSE = 3,
-
-  DISK_TEMPVOL_TEMP_PURPOSE = 4,	/* internal use only */
-  DISK_UNKNOWN_PURPOSE = 5,	/* internal use only: Does not mean anything */
-  DISK_EITHER_TEMP_PURPOSE = 6	/* internal use only: Either pervol_temp or tempvol_tmp.. Used only to select a volume */
+  DB_PERMANENT_DATA_PURPOSE = 0,
+  DB_TEMPORARY_DATA_PURPOSE = 1,	/* internal use only */
+  DISK_UNKNOWN_PURPOSE = 2,	/* internal use only: Does not mean anything */
 } DB_VOLPURPOSE;
 
+typedef enum
+{
+  DB_PERMANENT_VOLTYPE,
+  DB_TEMPORARY_VOLTYPE
+} DB_VOLTYPE;
 
 /* These are the status codes that can be returned by db_value_compare. */
 typedef enum
@@ -405,7 +404,7 @@ typedef unsigned int SESSION_ID;
 typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;
 struct dbdef_vol_ext_info
 {
-  char *path;			/* Directory where the volume extension is created.  If NULL, is given, it defaults to
+  const char *path;		/* Directory where the volume extension is created.  If NULL, is given, it defaults to
 				 * the system parameter. */
   const char *name;		/* Name of the volume extension If NULL, system generates one like "db".ext"volid"
 				 * where "db" is the database name and "volid" is the volume identifier to be assigned
@@ -413,10 +412,12 @@ struct dbdef_vol_ext_info
   const char *comments;		/* Comments which are included in the volume extension header. */
   int max_npages;		/* Maximum pages of this volume */
   int extend_npages;		/* Number of pages to extend - used for generic volume only */
+  INT32 nsect_total;		/* DKNSECTS type, number of sectors for volume extension */
+  INT32 nsect_max;		/* DKNSECTS type, maximum number of sectors for volume extension */
   int max_writesize_in_sec;	/* the amount of volume written per second */
   DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following: -
-				 * DISK_PERMVOL_DATA_PURPOSE, - DISK_PERMVOL_INDEX_PURPOSE, -
-				 * DISK_PERMVOL_GENERIC_PURPOSE, - DISK_PERMVOL_TEMP_PURPOSE, */
+				 * DB_PERMANENT_DATA_PURPOSE, DB_TEMPORARY_DATA_PURPOSE */
+  DB_VOLTYPE voltype;		/* Permanent of temporary volume type */
   bool overwrite;
 };
 

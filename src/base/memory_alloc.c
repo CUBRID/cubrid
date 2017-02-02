@@ -518,8 +518,30 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
  *   ptr(in): memory pointer to reallocate
  *   size(in): size to allocate
  */
+/* dummy definition for Windows */
+#if defined(WINDOWS)
+#if !defined(NDEBUG)
 void *
-db_private_realloc (void *thrd, void *ptr, size_t size)
+db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
+{
+  return NULL;
+}
+#else
+void *
+db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, const char *caller_file, int caller_line)
+{
+  return NULL;
+}
+#endif
+#endif
+
+#if !defined(NDEBUG)
+void *
+db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, const char *caller_file, int caller_line)
+#else /* NDEBUG */
+void *
+db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
+#endif				/* NDEBUG */
 {
   void *new_ptr = NULL;
 #if defined (SERVER_MODE)
@@ -548,6 +570,23 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	}
     }
+
+#if !defined (NDEBUG)
+  if (rc_track && new_ptr != ptr)
+    {
+      /* remove old pointer from track meter */
+      if (ptr != NULL)
+	{
+	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	}
+      /* add new pointer to track meter */
+      if (new_ptr != NULL)
+	{
+	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, 1, new_ptr, RC_VMEM, MGR_DEF);
+	}
+    }
+#endif /* !NDEBUG */
+
   return new_ptr;
 #else /* SA_MODE */
   if (ptr == NULL)
@@ -767,7 +806,11 @@ db_private_free_external (void *thrd, void *ptr)
 void *
 db_private_realloc_external (void *thrd, void *ptr, size_t size)
 {
-  return db_private_realloc (thrd, ptr, size);
+#if !defined(NDEBUG)
+  return db_private_realloc_debug (thrd, ptr, size, true, __FILE__, __LINE__);
+#else /* NDEBUG */
+  return db_private_realloc_release (thrd, ptr, size, false);
+#endif /* NDEBUG */
 }
 
 #if defined (SERVER_MODE)

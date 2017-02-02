@@ -256,6 +256,14 @@ if(UNIX)
     target_compile_definitions(unittests_snapshot PRIVATE SERVER_MODE ${COMMON_DEFS})
     target_include_directories(unittests_snapshot PRIVATE ${EP_INCLUDES})
     target_link_libraries(unittests_snapshot LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
+    
+  set(UNITTESTS_BIT_SOURCES
+    ${EXECUTABLES_DIR}/unittests_bit.c
+    )
+  add_executable(unittests_bit ${UNITTESTS_BIT_SOURCES})
+  target_compile_definitions(unittests_bit PRIVATE ${COMMON_DEFS})
+  target_include_directories(unittests_bit PRIVATE ${EP_INCLUDES})
+  target_link_libraries(unittests_bit LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
 endif(UNIX)
 
 

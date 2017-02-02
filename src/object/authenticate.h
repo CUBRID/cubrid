@@ -188,9 +188,6 @@ extern int au_set_user_comment (MOP user, const char *comment);
 
 extern const char *au_user_name (void);
 extern char *au_user_name_dup (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int au_user_password (char *buffer);
-#endif
 
 /* grant/revoke */
 extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);

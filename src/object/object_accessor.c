@@ -144,7 +144,6 @@ static MOP find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FE
 static int flush_temporary_OID (MOP classop, DB_VALUE * key);
 
 static DB_VALUE *obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size);
-static MOP obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode, bool is_replication);
 
 /* ATTRIBUTE LOCATION */
 
@@ -4076,23 +4075,8 @@ notfound:
  *                                      AU_FETCH_UPDATE
  *
  */
-
 MOP
 obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
-{
-  assert (DB_VALUE_TYPE (key) != DB_TYPE_MIDXKEY);
-
-  return obj_find_object_by_pkey_internal (classop, key, fetchmode, false);
-}
-
-MOP
-obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
-{
-  return obj_find_object_by_pkey_internal (classop, key, fetchmode, true);
-}
-
-static MOP
-obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode, bool is_replication)
 {
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
@@ -4101,6 +4085,8 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetc
   DB_TYPE value_type;
   MOP mop;
   BTREE_SEARCH btree_search;
+
+  assert (DB_VALUE_TYPE (key) != DB_TYPE_MIDXKEY);
 
   obj = NULL;
 
@@ -4157,14 +4143,7 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetc
 	}
     }
 
-  if (is_replication == true)
-    {
-      btree_search = repl_btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
-    }
-  else
-    {
-      btree_search = btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
-    }
+  btree_search = btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
   if (btree_search == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&unique_oid, NULL);
@@ -4201,90 +4180,6 @@ notfound:
     }
 
   return obj;
-}
-
-/*
- * obj_repl_add_object : create a replication object and add it to link
- *                              for bulk flushing
- *    return:
- *    classop(in):
- *    key_value (in): primary key value
- *    type (in): item type (INSERT, UPDATE, or DELETE)
- *    recdes(in): record to be inserted
- */
-int
-obj_repl_add_object (MOP classop, DB_VALUE * key_value, int type, RECDES * recdes)
-{
-  int error = NO_ERROR;
-  SM_CLASS *class_;
-  DB_TYPE value_type;
-  int pruning_type = DB_NOT_PARTITIONED_CLASS;
-  int operation = 0;
-  OID *class_oid;
-  bool has_index = false;
-
-  if (classop == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  class_oid = ws_oid (classop);
-
-  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (!TM_TRAN_ASYNC_WS ())
-    {
-      error = sm_flush_objects (classop);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  if (type != RVREPL_DATA_DELETE)
-    {
-      error = sm_partitioned_class_type (classop, &pruning_type, NULL, NULL);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  switch (type)
-    {
-    case RVREPL_DATA_UPDATE_START:
-    case RVREPL_DATA_UPDATE_END:
-    case RVREPL_DATA_UPDATE:
-      operation = LC_UPDATE_OPERATION_TYPE (pruning_type);
-      break;
-    case RVREPL_DATA_INSERT:
-      operation = LC_INSERT_OPERATION_TYPE (pruning_type);
-      break;
-    case RVREPL_DATA_DELETE:
-      operation = LC_FLUSH_DELETE;
-      break;
-    default:
-      assert (false);
-    }
-
-  has_index = classobj_class_has_indexes (class_);
-
-  value_type = DB_VALUE_TYPE (key_value);
-
-  if (value_type == DB_TYPE_NULL)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
-      return ER_OBJ_OBJECT_NOT_FOUND;
-    }
-
-  error = ws_add_to_repl_obj_list (class_oid, key_value, recdes, operation, has_index);
-
-  return error;
 }
 
 int

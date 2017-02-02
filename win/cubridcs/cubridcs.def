@@ -783,7 +783,6 @@ EXPORTS
     db_print
     db_print_mop
     db_print_stats
-    db_purpose_totalpgs_freepgs
     db_query_end_internal
     db_query_execute
     db_query_execute_immediate
@@ -924,7 +923,8 @@ EXPORTS
 ; db private
 	db_private_alloc_debug
 	db_private_alloc_release
-	db_private_realloc
+	db_private_realloc_debug
+	db_private_realloc_release
 	db_private_strdup
 	db_private_free_debug
 	db_private_free_release

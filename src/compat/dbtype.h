@@ -180,6 +180,14 @@
 /* The maximum length of the partition expression after it is processed */
 #define DB_MAX_PARTITION_EXPR_LENGTH 2048
 
+/* Defines the state of a value as not being compressable due to its bad compression size or 
+ * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+ */
+#define DB_UNCOMPRESSABLE -1
+
+/* Defines the state of a value not being yet prompted for a compression process. */
+#define DB_NOT_YET_COMPRESSED 0
+
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection
@@ -429,6 +437,13 @@
 
 #define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
 
+#define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
+
+#define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
+	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
+
+#define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
+
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFF
 #define DB_UINT16_MAX  0xFFFFU
@@ -482,7 +497,8 @@ typedef enum
   DB_TYPE_SET = 6,
   DB_TYPE_MULTISET = 7,
   DB_TYPE_SEQUENCE = 8,
-  DB_TYPE_ELO = 9,
+  DB_TYPE_ELO = 9,		/* obsolete... keep for backward compatibility. maybe we can replace with something else
+				 */
   DB_TYPE_TIME = 10,
   DB_TYPE_TIMESTAMP = 11,
   DB_TYPE_DATE = 12,
@@ -687,58 +703,51 @@ struct db_midxkey
  * This is the run-time state structure for an ELO. The ELO is part of
  * the implementation of large object type and not intended to be used
  * directly by the API.
- *
- * NOTE:
- *  1. LOID and related definition which were in storage_common.h moved here.
- *  2. DB_ELO definition in dbi_compat.h does not expose the LOID and
- *     related data type. BE CAREFUL when you change following definitions.
- *     - VPID
- *     - VFID
  */
 
 typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
 struct vpid
 {
   INT32 pageid;			/* Page identifier */
-  INT16 volid;			/* Volume identifier where the page reside */
+  INT16 volid;			/* Volume identifier where the page resides */
 };
 #define VPID_INITIALIZER \
   { NULL_PAGEID, NULL_VOLID }
 
 #define VPID_AS_ARGS(vpidp) (vpidp)->volid, (vpidp)->pageid
 
+typedef struct vsid VSID;	/* REAL SECTOR IDENTIFIER */
+struct vsid
+{
+  INT32 sectid;			/* Sector identifier */
+  INT16 volid;			/* Volume identifier where the sector resides */
+};
+#define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
+#define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
+
 typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
 struct vfid
 {
   INT32 fileid;			/* File identifier */
-  INT16 volid;			/* Volume identifier where the file reside */
+  INT16 volid;			/* Volume identifier where the file resides */
 };
 #define VFID_INITIALIZER \
   { NULL_FILEID, NULL_VOLID }
 
 #define VFID_AS_ARGS(vfidp) (vfidp)->volid, (vfidp)->fileid
 
-typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
-struct loid
-{
-  VPID vpid;			/* Real page identifier */
-  VFID vfid;			/* Real file identifier */
-};
-
 typedef enum db_elo_type DB_ELO_TYPE;
 typedef struct db_elo DB_ELO;
 
 enum db_elo_type
 {
-  ELO_NULL,
-  ELO_LO,
+  ELO_NULL,			/* do we need this anymore? */
   ELO_FBO
 };
 
 struct db_elo
 {
   INT64 size;
-  LOID loid;
   char *locator;
   char *meta_data;
   DB_ELO_TYPE type;
@@ -777,12 +786,14 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
   } info;
   struct
   {
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     unsigned char size;
     char buf[DB_SMALL_CHAR_BUF_SIZE];
   } sm;
@@ -791,14 +802,18 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     int size;
     char *buf;
+    int compressed_size;
+    char *compressed_buf;
   } medium;
   struct
   {
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     DB_LARGE_STRING *str;
   } large;
 };
@@ -1144,5 +1159,9 @@ extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
+
+extern int db_get_compressed_size (DB_VALUE * value);
+extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
+				      int compressed_size, bool compressed_need_clear);
 
 #endif /* _DBTYPE_H_ */

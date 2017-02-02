@@ -60,7 +60,7 @@ static bool es_owfs_initialized = false;
 static const char *es_get_token (const char *base_path, char *token, size_t maxlen);
 static int es_parse_owfs_path (const char *base_path, char *mds_ip, char *svc_code, char *owner_name, char *file_name);
 static ES_OWFS_FSH *es_new_fsh (const char *mds_ip, const char *svc_code);
-static void es_make_unique_name (char *owner_name, char *metaname, char *file_name);
+static void es_make_unique_name (char *owner_name, const char *metaname, char *file_name);
 static ES_OWFS_FSH *es_open_owfs (const char *mds_ip, const char *svc_code);
 
 
@@ -173,7 +173,7 @@ es_parse_owfs_path (const char *base_path, char *mds_ip, char *svc_code, char *o
  * es_make_unique_name -
  */
 static void
-es_make_unique_name (char *owner_name, char *metaname, char *file_name)
+es_make_unique_name (char *owner_name, const char *metaname, char *file_name)
 {
   UINT64 unum;
   unsigned int base;
@@ -642,7 +642,7 @@ es_owfs_delete_file (const char *path)
  * new_path(out): file path newly created
  */
 int
-es_owfs_copy_file (const char *src_path, char *metaname, char *new_path)
+es_owfs_copy_file (const char *src_path, const char *metaname, char *new_path)
 {
   char src_mds_ip[MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN], src_owner_name[NAME_MAX], src_file_name[NAME_MAX];
   char new_owner_name[NAME_MAX], new_file_name[NAME_MAX];
@@ -898,7 +898,7 @@ es_owfs_delete_file (const char *path)
 }
 
 int
-es_owfs_copy_file (const char *src_path, char *metaname, char *new_path)
+es_owfs_copy_file (const char *src_path, const char *metaname, char *new_path)
 {
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;

@@ -41,6 +41,14 @@ struct xcache_related_object
   int tcard;
 };
 
+typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
+enum xcache_cleanup_reason
+{
+  XCACHE_CLEANUP_NONE,		/* no cleanup is required */
+  XCACHE_CLEANUP_FULL,
+  XCACHE_CLEANUP_TIMEOUT
+};
+
 /* XASL cache clones - XASL nodes cached for fast usage.
  *
  */
@@ -105,7 +113,7 @@ extern int xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XA
 				XASL_CLONE * xclone);
 extern void xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 extern int xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_STREAM * stream,
-			  const OID * oid, int n_oid, const OID * class_oids, const int *class_locks,
+			  int n_oid, const OID * class_oids, const int *class_locks,
 			  const int *tcards, XASL_CACHE_ENTRY ** xcache_entry);
 extern void xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid);
 extern void xcache_drop_all (THREAD_ENTRY * thread_p);
@@ -114,4 +122,6 @@ extern void xcache_dump (THREAD_ENTRY * thread_p, FILE * fp);
 extern bool xcache_can_entry_cache_list (XASL_CACHE_ENTRY * xcache_entry);
 
 extern void xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, XASL_CLONE * xclone);
+extern int xcache_get_entry_count (void);
+extern bool xcache_uses_clones (void);
 #endif /* _XASL_CACHE_H_ */

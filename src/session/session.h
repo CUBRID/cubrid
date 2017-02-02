@@ -71,4 +71,5 @@ extern int session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result);
 extern int session_set_trace_stats (THREAD_ENTRY * thread_p, char *scan_stats, int format);
 extern int session_clear_trace_stats (THREAD_ENTRY * thread_p);
 extern TZ_REGION *session_get_session_tz_region (THREAD_ENTRY * thread_p);
+extern int session_get_number_of_holdable_cursors (void);
 #endif /* _SESSION_H_ */

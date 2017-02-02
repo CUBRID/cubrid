@@ -122,8 +122,6 @@ extern int db_set_suppress_repl_on_transaction (int set);
 extern int db_checkpoint (void);
 extern int db_freepgs (const char *vlabel);
 extern int db_totalpgs (const char *vlabel);
-extern int db_purpose_totalpgs_freepgs (int volid, DB_VOLPURPOSE * vol_purpose, int *vol_ntotal_pages,
-					int *vol_nfree_pages);
 extern char *db_vol_label (int volid, char *vol_fullname);
 extern void db_warnspace (const char *vlabel);
 extern int db_add_volume (const char *ext_path, const char *ext_name, const char *ext_comments, const int ext_npages,

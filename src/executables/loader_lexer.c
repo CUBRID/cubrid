@@ -1,6 +1,5 @@
-#line 2 "../../src/executables/loader_lexer.c"
 
-#line 4 "../../src/executables/loader_lexer.c"
+#line 3 "/home1/beatrice/workspace/myfork/src/executables/loader_lexer.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -212,38 +211,57 @@ struct yy_buffer_state
   char *yy_ch_buf;		/* input buffer */
   char *yy_buf_pos;		/* current position in input buffer */
 
-  /* Size of input buffer in bytes, not including room for EOB characters. */
+  /* Size of input buffer in bytes, not including room for EOB
+   * characters.
+   */
   yy_size_t yy_buf_size;
 
-  /* Number of characters read into yy_ch_buf, not including EOB characters. */
+  /* Number of characters read into yy_ch_buf, not including EOB
+   * characters.
+   */
   int yy_n_chars;
 
-  /* Whether we "own" the buffer - i.e., we know we created it, and can realloc() it to grow it, and should free() it
-   * to delete it. */
+  /* Whether we "own" the buffer - i.e., we know we created it,
+   * and can realloc() it to grow it, and should free() it to
+   * delete it.
+   */
   int yy_is_our_buffer;
 
-  /* Whether this is an "interactive" input source; if so, and if we're using stdio for input, then we want to use
-   * getc() instead of fread(), to make sure we stop fetching input after each newline. */
+  /* Whether this is an "interactive" input source; if so, and
+   * if we're using stdio for input, then we want to use getc()
+   * instead of fread(), to make sure we stop fetching input after
+   * each newline.
+   */
   int yy_is_interactive;
 
-  /* Whether we're considered to be at the beginning of a line. If so, '^' rules will be active on the next match,
-   * otherwise not. */
+  /* Whether we're considered to be at the beginning of a line.
+   * If so, '^' rules will be active on the next match, otherwise
+   * not.
+   */
   int yy_at_bol;
 
   int yy_bs_lineno;   /**< The line count. */
   int yy_bs_column;   /**< The column count. */
 
-  /* Whether to try to fill the input buffer when we reach the end of it. */
+  /* Whether to try to fill the input buffer when we reach the
+   * end of it.
+   */
   int yy_fill_buffer;
 
   int yy_buffer_status;
 
 #define YY_BUFFER_NEW 0
 #define YY_BUFFER_NORMAL 1
-  /* When an EOF's been seen but there's still some text to process then we mark the buffer as YY_EOF_PENDING, to
-   * indicate that we shouldn't try reading from the input source any more.  We might still have a bunch of tokens to
-   * match, though, because of possible backing-up. When we actually see the EOF, we change the status to "new" (via
-   * loader_yyrestart()), so that the user can continue scanning by just pointing loader_yyin at a new input file. */
+  /* When an EOF's been seen but there's still some text to process
+   * then we mark the buffer as YY_EOF_PENDING, to indicate that we
+   * shouldn't try reading from the input source any more.  We might
+   * still have a bunch of tokens to match, though, because of
+   * possible backing-up.
+   *
+   * When we actually see the EOF, we change the status to "new"
+   * (via loader_yyrestart()), so that the user can continue scanning by
+   * just pointing loader_yyin at a new input file.
+   */
 #define YY_BUFFER_EOF_PENDING 2
 
 };
@@ -702,7 +720,6 @@ int loader_yy_flex_debug = 0;
 #define YY_MORE_ADJ 0
 #define YY_RESTORE_YY_MORE_OFFSET
 char *loader_yytext;
-#line 1 "../../src/executables/loader_lexer.l"
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
@@ -724,7 +741,6 @@ char *loader_yytext;
 /*
  * loader_lexer.l - loader lexer file
  */
-#line 25 "../../src/executables/loader_lexer.l"
 #include "loader.h"
 #include "loader_grammar.h"
 
@@ -788,8 +804,6 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 static bool load_fail_flag = false;
 
 extern int loader_yyline;
-
-#line 819 "../../src/executables/loader_lexer.c"
 
 #define INITIAL 0
 #define BRACKET_ID 1
@@ -976,10 +990,6 @@ YY_DECL
   register char *yy_cp, *yy_bp;
   register int yy_act;
 
-#line 92 "../../src/executables/loader_lexer.l"
-
-#line 1008 "../../src/executables/loader_lexer.c"
-
   if (!(yy_init))
     {
       (yy_init) = 1;
@@ -1013,7 +1023,9 @@ YY_DECL
       /* Support of loader_yytext. */
       *yy_cp = (yy_hold_char);
 
-      /* yy_bp points to the position in yy_ch_buf of the start of the current run. */
+      /* yy_bp points to the position in yy_ch_buf of the start of
+       * the current run.
+       */
       yy_bp = yy_cp;
 
       yy_current_state = (yy_start);
@@ -1060,13 +1072,10 @@ YY_DECL
 	  goto yy_find_action;
 
 	case 1:
-	  YY_RULE_SETUP
-#line 93 "../../src/executables/loader_lexer.l"
-	    ;
-	  YY_BREAK case 2:
+	  YY_RULE_SETUP;
+	YY_BREAK case 2:
 /* rule 2 can match eol */
-	    YY_RULE_SETUP
-#line 95 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_yylineno = loader_yyline++;
 	    if (load_fail_flag)
@@ -1076,647 +1085,634 @@ YY_DECL
 	      }
 	    return NL;
 	  }
-	  YY_BREAK case 3:YY_RULE_SETUP
-#line 105 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 3:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("NULL_ %s\n", loader_yytext);
 	    return NULL_;
 	  }
-	  YY_BREAK case 4:YY_RULE_SETUP
-#line 110 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 4:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CLASS %s\n", loader_yytext);
 	    return CLASS;
 	  }
-	  YY_BREAK case 5:YY_RULE_SETUP
-#line 115 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 5:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("SHARED %s\n", loader_yytext);
 	    return SHARED;
 	  }
-	  YY_BREAK case 6:YY_RULE_SETUP
-#line 120 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 6:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DEFAULT%s\n", loader_yytext);
 	    return DEFAULT;
 	  }
-	  YY_BREAK case 7:YY_RULE_SETUP
-#line 125 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 7:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DATE %s\n", loader_yytext);
 	    return DATE_;
 	  }
-	  YY_BREAK case 8:YY_RULE_SETUP
-#line 130 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 8:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIME %s\n", loader_yytext);
 	    return TIME;
 	  }
-	  YY_BREAK case 9:YY_RULE_SETUP
-#line 135 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 9:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("UTIME %s\n", loader_yytext);
 	    return UTIME;
 	  }
-	  YY_BREAK case 10:YY_RULE_SETUP
-#line 140 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 10:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIMESTAMP %s\n", loader_yytext);
 	    return TIMESTAMP;
 	  }
-	  YY_BREAK case 11:YY_RULE_SETUP
-#line 145 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 11:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIMESTAMPLTZ %s\n", loader_yytext);
 	    return TIMESTAMPLTZ;
 	  }
-	  YY_BREAK case 12:YY_RULE_SETUP
-#line 150 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 12:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIMESTAMPTZ %s\n", loader_yytext);
 	    return TIMESTAMPTZ;
 	  }
-	  YY_BREAK case 13:YY_RULE_SETUP
-#line 155 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 13:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DATETIME %s\n", loader_yytext);
 	    return DATETIME;
 	  }
-	  YY_BREAK case 14:YY_RULE_SETUP
-#line 160 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 14:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DATETIMELTZ %s\n", loader_yytext);
 	    return DATETIMELTZ;
 	  }
-	  YY_BREAK case 15:YY_RULE_SETUP
-#line 165 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 15:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DATETIMETZ %s\n", loader_yytext);
 	    return DATETIMETZ;
 	  }
-	  YY_BREAK case 16:YY_RULE_SETUP
-#line 170 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 16:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CMD_ID %s\n", loader_yytext);
 	    loader_In_instance_line = false;
 	    return CMD_ID;
 	  }
-	  YY_BREAK case 17:YY_RULE_SETUP
-#line 176 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 17:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CMD_CLASS %s\n", loader_yytext);
 	    loader_In_instance_line = false;
 	    return CMD_CLASS;
 	  }
-	  YY_BREAK case 18:YY_RULE_SETUP
-#line 182 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 18:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CMD_CONSTRUCTOR %s\n", loader_yytext);
 	    return CMD_CONSTRUCTOR;
 	  }
-	  YY_BREAK case 19:YY_RULE_SETUP
-#line 187 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 19:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("REF_ELO_INT %s\n", loader_yytext);
 	    return REF_ELO_INT;
 	  }
-	  YY_BREAK case 20:YY_RULE_SETUP
-#line 192 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 20:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("REF_ELO_EXT %s\n", loader_yytext);
 	    return REF_ELO_EXT;
 	  }
-	  YY_BREAK case 21:YY_RULE_SETUP
-#line 197 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 21:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("REF_USER %s\n", loader_yytext);
 	    return REF_USER;
 	  }
-	  YY_BREAK case 22:YY_RULE_SETUP
-#line 202 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 22:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("REF_CLASS %s\n", loader_yytext);
 	    return REF_CLASS;
 	  }
-	  YY_BREAK case 23:YY_RULE_SETUP
-#line 207 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 23:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("OBJECT_REFERENCE %s\n", loader_yytext);
 	    return OBJECT_REFERENCE;
 	  }
-	  YY_BREAK case 24:YY_RULE_SETUP
-#line 212 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 24:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("OID_DELIMETER %s\n", loader_yytext);
 	    return OID_DELIMETER;
 	  }
-	  YY_BREAK case 25:YY_RULE_SETUP
-#line 217 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 25:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("SET_START_BRACE %s\n", loader_yytext);
 	    return SET_START_BRACE;
 	  }
-	  YY_BREAK case 26:YY_RULE_SETUP
-#line 222 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 26:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("SET_END_BRACE %s\n", loader_yytext);
 	    return SET_END_BRACE;
 	  }
-	  YY_BREAK case 27:YY_RULE_SETUP
-#line 227 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 27:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("START_PAREN %s\n", loader_yytext);
 	    return START_PAREN;
 	  }
-	  YY_BREAK case 28:YY_RULE_SETUP
-#line 232 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 28:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("END_PAREN %s\n", loader_yytext);
 	    return END_PAREN;
 	  }
-	  YY_BREAK case 29:YY_RULE_SETUP
-#line 237 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 29:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("REAL_LIT %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return REAL_LIT;
 	  }
-	  YY_BREAK case 30:YY_RULE_SETUP
-#line 243 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 30:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("INT_LIT %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return INT_LIT;
 	  }
-	  YY_BREAK case 31:YY_RULE_SETUP
-#line 249 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 31:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("OID %s\n", loader_yytext);
 	    loader_yylval.intval = atoi (loader_yytext);
 	    return OID_;
 	  }
-	  YY_BREAK case 32:YY_RULE_SETUP
-#line 255 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 32:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIME_LIT4 %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return TIME_LIT4;
 	  }
-	  YY_BREAK case 33:YY_RULE_SETUP
-#line 261 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 33:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIME_LIT42 %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return TIME_LIT42;
 	  }
-	  YY_BREAK case 34:YY_RULE_SETUP
-#line 267 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 34:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIME_LIT3 %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return TIME_LIT3;
 	  }
-	  YY_BREAK case 35:YY_RULE_SETUP
-#line 273 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 35:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIME_LIT31 %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return TIME_LIT31;
 	  }
-	  YY_BREAK case 36:YY_RULE_SETUP
-#line 279 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 36:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIME_LIT2 %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return TIME_LIT2;
 	  }
-	  YY_BREAK case 37:YY_RULE_SETUP
-#line 285 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 37:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TIME_LIT1 %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return TIME_LIT1;
 	  }
-	  YY_BREAK case 38:YY_RULE_SETUP
-#line 291 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 38:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DATE_LIT2 %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return DATE_LIT2;
 	  }
-	  YY_BREAK case 39:YY_RULE_SETUP
-#line 297 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 39:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("YEN_SYMBOL %s\n", loader_yytext);
 	    return YEN_SYMBOL;
 	  }
-	  YY_BREAK case 40:YY_RULE_SETUP
-#line 302 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 40:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("YEN_SYMBOL %s\n", loader_yytext);
 	    return YEN_SYMBOL;
 	  }
-	  YY_BREAK case 41:YY_RULE_SETUP
-#line 307 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 41:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("WON_SYMBOL %s\n", loader_yytext);
 	    return WON_SYMBOL;
 	  }
-	  YY_BREAK case 42:YY_RULE_SETUP
-#line 312 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 42:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("WON_SYMBOL %s\n", loader_yytext);
 	    return WON_SYMBOL;
 	  }
-	  YY_BREAK case 43:YY_RULE_SETUP
-#line 317 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 43:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TURKISH_LIRA_CURRENCY %s\n", loader_yytext);
 	    return TURKISH_LIRA_CURRENCY;
 	  }
-	  YY_BREAK case 44:YY_RULE_SETUP
-#line 322 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 44:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("TURKISH_LIRA_CURRENCY %s\n", loader_yytext);
 	    return TURKISH_LIRA_CURRENCY;
 	  }
-	  YY_BREAK case 45:YY_RULE_SETUP
-#line 327 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 45:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("BRITISH_POUND_SYMBOL %s\n", loader_yytext);
 	    return BRITISH_POUND_SYMBOL;
 	  }
-	  YY_BREAK case 46:YY_RULE_SETUP
-#line 332 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 46:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CAMBODIAN_RIEL_SYMBOL %s\n", loader_yytext);
 	    return CAMBODIAN_RIEL_SYMBOL;
 	  }
-	  YY_BREAK case 47:YY_RULE_SETUP
-#line 337 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 47:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CHINESE_RENMINBI_SYMBOL %s\n", loader_yytext);
 	    return CHINESE_RENMINBI_SYMBOL;
 	  }
-	  YY_BREAK case 48:YY_RULE_SETUP
-#line 342 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 48:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("INDIAN_RUPEE_SYMBOL %s\n", loader_yytext);
 	    return INDIAN_RUPEE_SYMBOL;
 	  }
-	  YY_BREAK case 49:YY_RULE_SETUP
-#line 347 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 49:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("RUSSIAN_RUBLE_SYMBOL %s\n", loader_yytext);
 	    return RUSSIAN_RUBLE_SYMBOL;
 	  }
-	  YY_BREAK case 50:YY_RULE_SETUP
-#line 352 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 50:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("AUSTRALIAN_DOLLAR_SYMBOL %s\n", loader_yytext);
 	    return AUSTRALIAN_DOLLAR_SYMBOL;
 	  }
-	  YY_BREAK case 51:YY_RULE_SETUP
-#line 357 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 51:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CANADIAN_DOLLAR_SYMBOL %s\n", loader_yytext);
 	    return CANADIAN_DOLLAR_SYMBOL;
 	  }
-	  YY_BREAK case 52:YY_RULE_SETUP
-#line 362 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 52:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("BRASILIAN_REAL_SYMBOL %s\n", loader_yytext);
 	    return BRASILIAN_REAL_SYMBOL;
 	  }
-	  YY_BREAK case 53:YY_RULE_SETUP
-#line 367 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 53:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("ROMANIAN_LEU_SYMBOL %s\n", loader_yytext);
 	    return ROMANIAN_LEU_SYMBOL;
 	  }
-	  YY_BREAK case 54:YY_RULE_SETUP
-#line 372 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 54:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("EURO_SYMBOL %s\n", loader_yytext);
 	    return EURO_SYMBOL;
 	  }
-	  YY_BREAK case 55:YY_RULE_SETUP
-#line 377 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 55:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("SWISS_FRANC_SYMBOL %s\n", loader_yytext);
 	    return SWISS_FRANC_SYMBOL;
 	  }
-	  YY_BREAK case 56:YY_RULE_SETUP
-#line 382 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 56:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DANISH_KRONE_SYMBOL %s\n", loader_yytext);
 	    return DANISH_KRONE_SYMBOL;
 	  }
-	  YY_BREAK case 57:YY_RULE_SETUP
-#line 387 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 57:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("NORWEGIAN_KRONE_SYMBOL %s\n", loader_yytext);
 	    return NORWEGIAN_KRONE_SYMBOL;
 	  }
-	  YY_BREAK case 58:YY_RULE_SETUP
-#line 392 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 58:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("BULGARIAN_LEV_SYMBOL %s\n", loader_yytext);
 	    return BULGARIAN_LEV_SYMBOL;
 	  }
-	  YY_BREAK case 59:YY_RULE_SETUP
-#line 397 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 59:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("VIETNAMESE_DONG_SYMBOL %s\n", loader_yytext);
 	    return VIETNAMESE_DONG_SYMBOL;
 	  }
-	  YY_BREAK case 60:YY_RULE_SETUP
-#line 402 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 60:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CZECH_KORUNA_SYMBOL %s\n", loader_yytext);
 	    return CZECH_KORUNA_SYMBOL;
 	  }
-	  YY_BREAK case 61:YY_RULE_SETUP
-#line 407 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 61:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("POLISH_ZLOTY_SYMBOL %s\n", loader_yytext);
 	    return POLISH_ZLOTY_SYMBOL;
 	  }
-	  YY_BREAK case 62:YY_RULE_SETUP
-#line 412 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 62:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("SWEDISH_KRONA_SYMBOL %s\n", loader_yytext);
 	    return SWEDISH_KRONA_SYMBOL;
 	  }
-	  YY_BREAK case 63:YY_RULE_SETUP
-#line 417 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 63:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("CROATIAN_KUNA_SYMBOL %s\n", loader_yytext);
 	    return CROATIAN_KUNA_SYMBOL;
 	  }
-	  YY_BREAK case 64:YY_RULE_SETUP
-#line 422 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 64:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("SERBIAN_DINAR_SYMBOL %s\n", loader_yytext);
 	    return SERBIAN_DINAR_SYMBOL;
 	  }
-	  YY_BREAK case 65:YY_RULE_SETUP
-#line 427 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 65:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("BACKSLASH %s\n", loader_yytext);
 	    return BACKSLASH;
 	  }
-	  YY_BREAK case 66:YY_RULE_SETUP
-#line 432 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 66:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DOLLAR_SYMBOL %s\n", loader_yytext);
 	    return DOLLAR_SYMBOL;
 	  }
-	  YY_BREAK case 67:YY_RULE_SETUP
-#line 437 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 67:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("DOLLAR_SYMBOL %s\n", loader_yytext);
 	    return DOLLAR_SYMBOL;
 	  }
-	  YY_BREAK case 68:YY_RULE_SETUP
-#line 442 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 68:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("IDENTIFIER %s\n", loader_yytext);
 	    loader_yylval.string = loader_make_string_by_yytext ();
 	    return IDENTIFIER;
 	  }
-	  YY_BREAK case 69:YY_RULE_SETUP
-#line 448 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 69:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("Quote %s\n", loader_yytext);
 	    BEGIN SQS;
-	      loader_set_quoted_string_buffer ();
-	      return Quote;
+	    loader_set_quoted_string_buffer ();
+	    return Quote;
 	  }
-	  YY_BREAK case 70:YY_RULE_SETUP
-#line 455 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 70:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("NQuote %s\n", loader_yytext);
 	    BEGIN SQS;
-	      loader_set_quoted_string_buffer ();
-	      return NQuote;
+	    loader_set_quoted_string_buffer ();
+	    return NQuote;
 	  }
-	  YY_BREAK case 71:YY_RULE_SETUP
-#line 462 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 71:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("BQuote %s\n", loader_yytext);
 	    BEGIN SQS;
-	      loader_set_quoted_string_buffer ();
-	      return BQuote;
+	    loader_set_quoted_string_buffer ();
+	    return BQuote;
 	  }
-	  YY_BREAK case 72:YY_RULE_SETUP
-#line 469 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 72:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("XQuote %s\n", loader_yytext);
 	    BEGIN SQS;
-	      loader_set_quoted_string_buffer ();
-	      return XQuote;
+	    loader_set_quoted_string_buffer ();
+	    return XQuote;
 	  }
-	  YY_BREAK case 73:YY_RULE_SETUP
-#line 476 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 73:
+	  YY_RULE_SETUP
 	  {
 	    loader_set_quoted_string_buffer ();
 	    if (loader_In_instance_line == true)
 	      {
 		BEGIN DQS;
-		  return DQuote;
+		return DQuote;
 	      }
 	    else
 	      {
 		BEGIN DELIMITED_ID;
 	      }
 	  }
-	  YY_BREAK case 74:YY_RULE_SETUP
-#line 489 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 74:
+	  YY_RULE_SETUP
 	  {
 	    loader_set_quoted_string_buffer ();
 	    BEGIN BRACKET_ID;
 	  }
-	  YY_BREAK case 75:
+	YY_BREAK case 75:
 /* rule 75 can match eol */
-	    YY_RULE_SETUP
-#line 494 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_yylineno = loader_yyline++;
 	    /* continue line */ ;
 	  }
-	  YY_BREAK case 76:YY_RULE_SETUP
-#line 499 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 76:
+	  YY_RULE_SETUP
 	  {
 	    PRINT ("COMMA %s\n", loader_yytext);
 	    return COMMA;
 	  }
-	  YY_BREAK case 77:
+	YY_BREAK case 77:
 /* rule 77 can match eol */
-	    YY_RULE_SETUP
-#line 504 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_yylineno = loader_yyline++;
 	    /* C++ comments */
 	  }
-	  YY_BREAK case 78:
+	YY_BREAK case 78:
 /* rule 78 can match eol */
-	    YY_RULE_SETUP
-#line 509 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_yylineno = loader_yyline++;
 	    /* SQL comments */
 	  }
-	  YY_BREAK case 79:YY_RULE_SETUP
-#line 514 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 79:
+	  YY_RULE_SETUP
 	  {
 	    BEGIN COMMENT;	/* C comments */
 	  }
-	  YY_BREAK case 80:
-#line 519 "../../src/executables/loader_lexer.l"
-	  case 81:
+	YY_BREAK case 80:
+	case 81:
 /* rule 81 can match eol */
-	    YY_RULE_SETUP
-#line 519 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_yylineno = loader_yyline++;
 	  }
-	  YY_BREAK case 82:YY_RULE_SETUP
-#line 523 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 82:
+	  YY_RULE_SETUP
 	  {
 	    BEGIN INITIAL;
 	  }
-	  YY_BREAK case 83:YY_RULE_SETUP
-#line 527 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 83:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('"');
 	  }
-	  YY_BREAK case 84:
+	YY_BREAK case 84:
 /* rule 84 can match eol */
-	    YY_RULE_SETUP
-#line 531 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string (loader_yytext[0]);
 	  }
-	  YY_BREAK case 85:YY_RULE_SETUP
-#line 535 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 85:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\0');
 	    PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
 	    loader_yylval.string = loader_make_string_by_buffer ();
 	    BEGIN INITIAL;
-	      return IDENTIFIER;
+	    return IDENTIFIER;
 	  }
-	  YY_BREAK case 86:
+	YY_BREAK case 86:
 /* rule 86 can match eol */
-	    YY_RULE_SETUP
-#line 544 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string (loader_yytext[0]);
 	  }
-	  YY_BREAK case 87:YY_RULE_SETUP
-#line 548 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 87:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\0');
 	    PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
 	    loader_yylval.string = loader_make_string_by_buffer ();
 	    BEGIN INITIAL;
-	      return IDENTIFIER;
+	    return IDENTIFIER;
 	  }
-	  YY_BREAK case 88:YY_RULE_SETUP
-#line 556 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 88:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\n');
 	  }
-	  YY_BREAK case 89:YY_RULE_SETUP
-#line 560 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 89:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\t');
 	  }
-	  YY_BREAK case 90:YY_RULE_SETUP
-#line 564 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 90:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\f');
 	  }
-	  YY_BREAK case 91:YY_RULE_SETUP
-#line 568 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 91:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\r');
 	  }
-	  YY_BREAK case 92:YY_RULE_SETUP
-#line 572 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 92:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ((char) strtol (&loader_yytext[1], NULL, 8));
 	  }
-	  YY_BREAK case 93:YY_RULE_SETUP
-#line 576 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 93:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ((char) strtol (&loader_yytext[2], NULL, 16));
 	  }
-	  YY_BREAK case 94:
+	YY_BREAK case 94:
 /* rule 94 can match eol */
-	    YY_RULE_SETUP
-#line 580 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string (loader_yytext[0]);
 	  }
-	  YY_BREAK case 95:YY_RULE_SETUP
-#line 584 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 95:
+	  YY_RULE_SETUP
 	  {
 	    /* ignore */ ;
 	  }
-	  YY_BREAK case 96:YY_RULE_SETUP
-#line 588 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 96:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\0');
 	    PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
 	    loader_yylval.string = loader_make_string_by_buffer ();
 	    BEGIN INITIAL;
-	      return DQS_String_Body;
+	    return DQS_String_Body;
 	  }
-	  YY_BREAK case 97:YY_RULE_SETUP
-#line 596 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 97:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\'');
 	  }
-	  YY_BREAK case 98:
+	YY_BREAK case 98:
 /* rule 98 can match eol */
-	    YY_RULE_SETUP
-#line 600 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string (loader_yytext[0]);
 	  }
-	  YY_BREAK case 99:
+	YY_BREAK case 99:
 /* rule 99 can match eol */
-	    YY_RULE_SETUP
-#line 604 "../../src/executables/loader_lexer.l"
+	  YY_RULE_SETUP
 	  {
 	    loader_yylineno = loader_yyline++;
 	  }
-	  YY_BREAK case 100:YY_RULE_SETUP
-#line 608 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 100:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\0');
 	    PRINT ("String_Completion %s\n", qstr_Buf_p);
 	    loader_yylval.string = loader_make_string_by_buffer ();
 	    BEGIN INITIAL;
-	      return SQS_String_Body;
+	    return SQS_String_Body;
 	  }
-	  YY_BREAK case 101:YY_RULE_SETUP
-#line 616 "../../src/executables/loader_lexer.l"
+	YY_BREAK case 101:
+	  YY_RULE_SETUP
 	  {
 	    loader_append_string ('\0');
 	    PRINT ("String_Completion2 %s\n", qstr_Buf_p);
 	    loader_yylval.string = loader_make_string_by_buffer ();
 	    BEGIN INITIAL;
-	      return SQS_String_Body;
+	    return SQS_String_Body;
 	  }
-	  YY_BREAK case 102:YY_RULE_SETUP
-#line 624 "../../src/executables/loader_lexer.l"
-	    ECHO;
-	  YY_BREAK
-#line 1937 "../../src/executables/loader_lexer.c"
-	case YY_STATE_EOF (INITIAL):
+	YY_BREAK case 102:
+	  YY_RULE_SETUP ECHO;
+	YY_BREAK case YY_STATE_EOF (INITIAL):
 	case YY_STATE_EOF (BRACKET_ID):
 	case YY_STATE_EOF (DELIMITED_ID):
 	case YY_STATE_EOF (DQS):
@@ -1733,18 +1729,27 @@ YY_DECL
 	    *yy_cp = (yy_hold_char);
 	    YY_RESTORE_YY_MORE_OFFSET if (YY_CURRENT_BUFFER_LVALUE->yy_buffer_status == YY_BUFFER_NEW)
 	      {
-		/* We're scanning a new file or input source.  It's possible that this happened because the user just
-		 * pointed loader_yyin at a new source and called loader_yylex().  If so, then we have to assure
-		 * consistency between YY_CURRENT_BUFFER and our globals.  Here is the right place to do so, because
-		 * this is the first action (other than possibly a back-up) that will match for the new input source. */
+		/* We're scanning a new file or input source.  It's
+		 * possible that this happened because the user
+		 * just pointed loader_yyin at a new source and called
+		 * loader_yylex().  If so, then we have to assure
+		 * consistency between YY_CURRENT_BUFFER and our
+		 * globals.  Here is the right place to do so, because
+		 * this is the first action (other than possibly a
+		 * back-up) that will match for the new input source.
+		 */
 		(yy_n_chars) = YY_CURRENT_BUFFER_LVALUE->yy_n_chars;
 		YY_CURRENT_BUFFER_LVALUE->yy_input_file = loader_yyin;
 		YY_CURRENT_BUFFER_LVALUE->yy_buffer_status = YY_BUFFER_NORMAL;
 	      }
 
-	    /* Note that here we test for yy_c_buf_p "<=" to the position of the first EOB in the buffer, since
-	     * yy_c_buf_p will already have been incremented past the NUL character (since all states make transitions
-	     * on EOB to the end-of-buffer state).  Contrast this with the test in input(). */
+	    /* Note that here we test for yy_c_buf_p "<=" to the position
+	     * of the first EOB in the buffer, since yy_c_buf_p will
+	     * already have been incremented past the NUL character
+	     * (since all states make transitions on EOB to the
+	     * end-of-buffer state).  Contrast this with the test
+	     * in input().
+	     */
 	    if ((yy_c_buf_p) <= &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)])
 	      {			/* This was really a NUL. */
 		yy_state_type yy_next_state;
@@ -1753,9 +1758,14 @@ YY_DECL
 
 		yy_current_state = yy_get_previous_state ();
 
-		/* Okay, we're now positioned to make the NUL transition.  We couldn't have yy_get_previous_state() go
-		 * ahead and do it for us because it doesn't know how to deal with the possibility of jamming (and we
-		 * don't want to build jamming into it because then it will run more slowly). */
+		/* Okay, we're now positioned to make the NUL
+		 * transition.  We couldn't have
+		 * yy_get_previous_state() go ahead and do it
+		 * for us because it doesn't know how to deal
+		 * with the possibility of jamming (and we don't
+		 * want to build jamming into it because then it
+		 * will run more slowly).
+		 */
 
 		yy_next_state = yy_try_NUL_trans (yy_current_state);
 
@@ -1785,9 +1795,15 @@ YY_DECL
 
 		    if (loader_yywrap ())
 		      {
-			/* Note: because we've taken care in yy_get_next_buffer() to have set up loader_yytext, we can
-			 * now set up yy_c_buf_p so that if some total hoser (like flex itself) wants to call the
-			 * scanner after we return the YY_NULL, it'll still work - another YY_NULL will get returned. */
+			/* Note: because we've taken care in
+			 * yy_get_next_buffer() to have set up
+			 * loader_yytext, we can now set up
+			 * yy_c_buf_p so that if some total
+			 * hoser (like flex itself) wants to
+			 * call the scanner after we return the
+			 * YY_NULL, it'll still work - another
+			 * YY_NULL will get returned.
+			 */
 			(yy_c_buf_p) = (yytext_ptr) + YY_MORE_ADJ;
 
 			yy_act = YY_STATE_EOF (YY_START);
@@ -1851,13 +1867,17 @@ yy_get_next_buffer (void)
     {				/* Don't try to fill the buffer, so this is an EOF. */
       if ((yy_c_buf_p) - (yytext_ptr) - YY_MORE_ADJ == 1)
 	{
-	  /* We matched a single character, the EOB, so treat this as a final EOF. */
+	  /* We matched a single character, the EOB, so
+	   * treat this as a final EOF.
+	   */
 	  return EOB_ACT_END_OF_FILE;
 	}
 
       else
 	{
-	  /* We matched some text prior to the EOB, first process it. */
+	  /* We matched some text prior to the EOB, first
+	   * process it.
+	   */
 	  return EOB_ACT_LAST_MATCH;
 	}
     }
@@ -1871,7 +1891,9 @@ yy_get_next_buffer (void)
     *(dest++) = *(source++);
 
   if (YY_CURRENT_BUFFER_LVALUE->yy_buffer_status == YY_BUFFER_EOF_PENDING)
-    /* don't do the read, it's not guaranteed to return an EOF, just force an EOF */
+    /* don't do the read, it's not guaranteed to return an EOF,
+     * just force an EOF
+     */
     YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars) = 0;
 
   else
@@ -2067,8 +2089,10 @@ input (void)
 
   if (*(yy_c_buf_p) == YY_END_OF_BUFFER_CHAR)
     {
-      /* yy_c_buf_p now points to the character we want to return. If this occurs *before* the EOB characters, then
-       * it's a valid NUL; if not, then we've hit the end of the buffer. */
+      /* yy_c_buf_p now points to the character we want to return.
+       * If this occurs *before* the EOB characters, then it's a
+       * valid NUL; if not, then we've hit the end of the buffer.
+       */
       if ((yy_c_buf_p) < &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)])
 	/* This was really a NUL. */
 	*(yy_c_buf_p) = '\0';
@@ -2081,9 +2105,15 @@ input (void)
 	  switch (yy_get_next_buffer ())
 	    {
 	    case EOB_ACT_LAST_MATCH:
-	      /* This happens because yy_g_n_b() sees that we've accumulated a token and flags that we need to try
-	       * matching the token before proceeding.  But for input(), there's no matching to consider. So convert
-	       * the EOB_ACT_LAST_MATCH to EOB_ACT_END_OF_FILE. */
+	      /* This happens because yy_g_n_b()
+	       * sees that we've accumulated a
+	       * token and flags that we need to
+	       * try matching the token before
+	       * proceeding.  But for input(),
+	       * there's no matching to consider.
+	       * So convert the EOB_ACT_LAST_MATCH
+	       * to EOB_ACT_END_OF_FILE.
+	       */
 
 	      /* Reset buffer status. */
 	      loader_yyrestart (loader_yyin);
@@ -2144,8 +2174,11 @@ void
 loader_yy_switch_to_buffer (YY_BUFFER_STATE new_buffer)
 {
 
-  /* TODO. We should be able to replace this entire function body with loader_yypop_buffer_state();
-   * loader_yypush_buffer_state(new_buffer); */
+  /* TODO. We should be able to replace this entire function body
+   * with
+   *              loader_yypop_buffer_state();
+   *              loader_yypush_buffer_state(new_buffer);
+   */
   loader_yyensure_buffer_stack ();
   if (YY_CURRENT_BUFFER == new_buffer)
     return;
@@ -2161,8 +2194,11 @@ loader_yy_switch_to_buffer (YY_BUFFER_STATE new_buffer)
   YY_CURRENT_BUFFER_LVALUE = new_buffer;
   loader_yy_load_buffer_state ();
 
-  /* We don't actually know whether we did this switch during EOF (loader_yywrap()) processing, but the only time this
-   * flag is looked at is after loader_yywrap() is called, so it's safe to go ahead and always set it. */
+  /* We don't actually know whether we did this switch during
+   * EOF (loader_yywrap()) processing, but the only time this flag
+   * is looked at is after loader_yywrap() is called, so it's safe
+   * to go ahead and always set it.
+   */
   (yy_did_buffer_switch_on_eof) = 1;
 }
 
@@ -2192,7 +2228,9 @@ loader_yy_create_buffer (FILE * file, int size)
 
   b->yy_buf_size = size;
 
-  /* yy_ch_buf has to be 2 characters longer than the size given because we need to put in 2 end-of-buffer characters. */
+  /* yy_ch_buf has to be 2 characters longer than the size given because
+   * we need to put in 2 end-of-buffer characters.
+   */
   b->yy_ch_buf = (char *) loader_yyalloc (b->yy_buf_size + 2);
   if (!b->yy_ch_buf)
     YY_FATAL_ERROR ("out of dynamic memory in loader_yy_create_buffer()");
@@ -2238,8 +2276,10 @@ loader_yy_init_buffer (YY_BUFFER_STATE b, FILE * file)
   b->yy_input_file = file;
   b->yy_fill_buffer = 1;
 
-  /* If b is the current buffer, then loader_yy_init_buffer was _probably_ called from loader_yyrestart() or through
-   * yy_get_next_buffer. In that case, we don't want to reset the lineno or column. */
+  /* If b is the current buffer, then loader_yy_init_buffer was _probably_
+   * called from loader_yyrestart() or through yy_get_next_buffer.
+   * In that case, we don't want to reset the lineno or column.
+   */
   if (b != YY_CURRENT_BUFFER)
     {
       b->yy_bs_lineno = 1;
@@ -2263,8 +2303,10 @@ loader_yy_flush_buffer (YY_BUFFER_STATE b)
 
   b->yy_n_chars = 0;
 
-  /* We always need two end-of-buffer characters.  The first causes a transition to the end-of-buffer state.  The
-   * second causes a jam in that state. */
+  /* We always need two end-of-buffer characters.  The first causes
+   * a transition to the end-of-buffer state.  The second causes
+   * a jam in that state.
+   */
   b->yy_ch_buf[0] = YY_END_OF_BUFFER_CHAR;
   b->yy_ch_buf[1] = YY_END_OF_BUFFER_CHAR;
 
@@ -2343,8 +2385,10 @@ loader_yyensure_buffer_stack (void)
   if (!(yy_buffer_stack))
     {
 
-      /* First allocation is just for 2 elements, since we don't know if this scanner will even need a stack. We use 2
-       * instead of 1 to avoid an immediate realloc on the next call. */
+      /* First allocation is just for 2 elements, since we don't know if this
+       * scanner will even need a stack. We use 2 instead of 1 to avoid an
+       * immediate realloc on the next call.
+       */
       num_to_alloc = 1;
       (yy_buffer_stack) = (struct yy_buffer_state **) loader_yyalloc (num_to_alloc * sizeof (struct yy_buffer_state *));
       if (!(yy_buffer_stack))
@@ -2364,9 +2408,8 @@ loader_yyensure_buffer_stack (void)
       int grow_size = 8 /* arbitrary grow size */ ;
 
       num_to_alloc = (yy_buffer_stack_max) + grow_size;
-      (yy_buffer_stack) =
-	(struct yy_buffer_state **) loader_yyrealloc ((yy_buffer_stack),
-						      num_to_alloc * sizeof (struct yy_buffer_state *));
+      (yy_buffer_stack) = (struct yy_buffer_state **) loader_yyrealloc
+	((yy_buffer_stack), num_to_alloc * sizeof (struct yy_buffer_state *));
       if (!(yy_buffer_stack))
 	YY_FATAL_ERROR ("out of dynamic memory in loader_yyensure_buffer_stack()");
 
@@ -2455,7 +2498,9 @@ loader_yy_scan_bytes (yyconst char *yybytes, int _yybytes_len)
   if (!b)
     YY_FATAL_ERROR ("bad buffer in loader_yy_scan_bytes()");
 
-  /* It's okay to grow etc. this buffer, and we should throw it away when we're done. */
+  /* It's okay to grow etc. this buffer, and we should throw it
+   * away when we're done.
+   */
   b->yy_is_our_buffer = 1;
 
   return b;
@@ -2582,8 +2627,9 @@ loader_yyset_debug (int bdebug)
 static int
 yy_init_globals (void)
 {
-  /* Initialization is the same as for the non-reentrant scanner. This function is called from loader_yylex_destroy(),
-   * so don't allocate here. */
+  /* Initialization is the same as for the non-reentrant scanner.
+   * This function is called from loader_yylex_destroy(), so don't allocate here.
+   */
 
   (yy_buffer_stack) = 0;
   (yy_buffer_stack_top) = 0;
@@ -2601,7 +2647,9 @@ yy_init_globals (void)
   loader_yyout = (FILE *) 0;
 #endif
 
-  /* For future reference: Set errno on error, since we are called by loader_yylex_init() */
+  /* For future reference: Set errno on error, since we are called by
+   * loader_yylex_init()
+   */
   return 0;
 }
 
@@ -2622,8 +2670,8 @@ loader_yylex_destroy (void)
   loader_yyfree ((yy_buffer_stack));
   (yy_buffer_stack) = NULL;
 
-  /* Reset the globals. This is important in a non-reentrant scanner so the next time loader_yylex() is called,
-   * initialization will occur. */
+  /* Reset the globals. This is important in a non-reentrant scanner so the next time
+   * loader_yylex() is called, initialization will occur. */
   yy_init_globals ();
 
   return 0;
@@ -2664,9 +2712,13 @@ loader_yyalloc (yy_size_t size)
 void *
 loader_yyrealloc (void *ptr, yy_size_t size)
 {
-  /* The cast to (char *) in the following accommodates both implementations that use char* generic pointers, and those
-   * that use void* generic pointers.  It works with the latter because both ANSI C and C++ allow castless assignment
-   * from any pointer type to void*, and deal with argument conversions as though doing an assignment. */
+  /* The cast to (char *) in the following accommodates both
+   * implementations that use char* generic pointers, and those
+   * that use void* generic pointers.  It works with the latter
+   * because both ANSI C and C++ allow castless assignment from
+   * any pointer type to void*, and deal with argument conversions
+   * as though doing an assignment.
+   */
   return (void *) realloc ((char *) ptr, size);
 }
 
@@ -2678,16 +2730,13 @@ loader_yyfree (void *ptr)
 
 #define YYTABLES_NAME "yytables"
 
-#line 624 "../../src/executables/loader_lexer.l"
-
-
-
 void
 loader_yyerror (const char *s)
 {
   ldr_increment_err_total (ldr_Current_context);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR),
-	   loader_yylineno, loader_yytext);
+  fprintf (stderr,
+	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+			   LOADDB_MSG_SYNTAX_ERR), loader_yylineno, loader_yytext);
 }
 
 int
@@ -2767,8 +2816,8 @@ loader_append_string (char c)
 
 	      if (qstr_Malloc_buffer == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  (size_t) qstr_Malloc_buffer_size);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) qstr_Malloc_buffer_size);
 		  YY_FATAL_ERROR (er_msg ());
 		  return;
 		}

@@ -316,6 +316,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const char *user_define_file_name;
   const char *cubrid_charset;
 
+  int db_volume_sect;
   int db_volume_pages;
   int db_page_size;
   UINT64 db_volume_size;
@@ -413,8 +414,14 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      db_volume_pages = (int) (db_volume_size / db_page_size);
+      /* round up the number of pages */
+      db_volume_pages = (int) ceil ((double) db_volume_size / db_page_size);
     }
+  /* determine volume number of sectors */
+  db_volume_sect = disk_sectors_to_extend_npages (db_volume_pages);
+  /* adjust the number of pages according to the number of sectors */
+  db_volume_pages = DISK_SECTOR_NPAGES * db_volume_sect;
+
   db_volume_size = (UINT64) db_volume_pages *(UINT64) db_page_size;
 
   log_page_str = utility_get_option_string_value (arg_map, CREATE_LOG_PAGE_SIZE_S, 0);
@@ -1490,28 +1497,28 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE STATISTICS ***\n");
-      file_tracker_dump (NULL, outfp);
+      (void) file_tracker_dump (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_CAPACITIES)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE DESCRIPTIONS ***\n");
-      file_dump_all_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all heaps */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL HEAPS ***\n");
-      heap_dump_all_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_heap_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_INDEX_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all indices */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL INDICES ***\n");
-      btree_dump_capacity_all (NULL, outfp);
+      (void) file_tracker_dump_all_btree_capacities (NULL, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CLASSNAMES)
@@ -1606,7 +1613,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       /* this dumps the contents of all heaps */
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
       fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-      heap_dump_all (NULL, outfp, dump_records);
+      (void) file_tracker_dump_all_heap (NULL, outfp, dump_records);
     }
 
   db_shutdown ();
@@ -1701,34 +1708,7 @@ error_exit:
 int
 estimatedb_data (UTIL_FUNCTION_ARG * arg)
 {
-  UTIL_ARG_MAP *arg_map = arg->arg_map;
-  int num_instance;
-  int avg_inst_size;
-  int num_attr;
-  int num_var_attr;
-  int npages;
-
-  if (utility_get_option_string_table_size (arg_map) != 4)
-    {
-      goto print_estimate_data_usage;
-    }
-
-  num_instance = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0));
-  avg_inst_size = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1));
-  num_attr = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 2));
-  num_var_attr = atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 3));
-
-  sysprm_load_and_init (NULL, NULL);
-  (void) db_set_page_size (IO_DEFAULT_PAGE_SIZE, IO_DEFAULT_PAGE_SIZE);
-  npages = heap_estimate_num_pages_needed (NULL, num_instance, avg_inst_size, num_attr, num_var_attr);
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_DATA, ESTIMATEDB_DATA_MSG_NPAGES),
-	   npages);
-  return EXIT_SUCCESS;
-
-print_estimate_data_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_DATA, ESTIMATEDB_DATA_MSG_USAGE),
-	   basename (arg->argv0));
-  return EXIT_FAILURE;
+  /* todo: remove me */
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -3023,7 +3003,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      vclass_names_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  vclass_names = db_private_realloc (NULL, vclass_names, 2 * vclass_names_alloced);
+			  vclass_names = (char *) db_private_realloc (NULL, vclass_names, 2 * vclass_names_alloced);
 
 			  if (vclass_names == NULL)
 			    {
@@ -3050,7 +3030,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      part_tables_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  part_tables = db_private_realloc (NULL, part_tables, 2 * part_tables_alloced);
+			  part_tables = (char *) db_private_realloc (NULL, part_tables, 2 * part_tables_alloced);
 
 			  if (part_tables == NULL)
 			    {

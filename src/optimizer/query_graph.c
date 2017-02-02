@@ -811,7 +811,7 @@ qo_validate (QO_ENV * env)
 static PT_NODE *
 graph_size_select (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -934,7 +934,7 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
 static PT_NODE *
 build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -974,7 +974,7 @@ build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 static PT_NODE *
 build_query_graph_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -1011,7 +1011,7 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree, void 
   QO_NODE *node = NULL;
   QO_SEGMENT *seg_fi;
   const char *seg_name;
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -1142,7 +1142,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity, QO_BUILD_STATUS status)
    * If it is null, we'll make one unless we're dealing with a derived
    * table.
    */
-  if (attr == NULL && entity->info.spec.derived_table == NULL)
+  if (attr == NULL && entity->info.spec.derived_table == NULL && entity->info.spec.entity_name)
     {
       attr = parser_new_node (parser, PT_NAME);
       if (attr == NULL)
@@ -1261,7 +1261,8 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
    * is overkill, but it's easier than figuring out the exact
    * information, and it's usually the same anyway.
    */
-  if (entity->info.spec.derived_table == NULL && (info = qo_get_class_info (env, node)) != NULL)
+  if (entity->info.spec.derived_table == NULL && (info = qo_get_class_info (env, node)) != NULL
+      && (entity->info.spec.cte_pointer == NULL))
     {
       QO_NODE_INFO (node) = info;
       for (i = 0, n = info->n; i < n; i++)
@@ -1623,7 +1624,7 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
 static PT_NODE *
 qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -2685,7 +2686,7 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
 static PT_NODE *
 set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
-  QO_ENV *env = (QO_ENV *) * (long *) arg;
+  QO_ENV *env = *(QO_ENV **) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -7802,6 +7803,15 @@ static void
 qo_env_dump (QO_ENV * env, FILE * f)
 {
   int i;
+
+  if (env->pt_tree->node_type == PT_SELECT && env->pt_tree->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY)
+    {
+      fprintf (f, "Non recursive part of CTE:\n");
+    }
+  else if (env->pt_tree->node_type == PT_SELECT && env->pt_tree->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY)
+    {
+      fprintf (f, "Recursive part of CTE:\n");
+    }
 
   if (f == NULL)
     {

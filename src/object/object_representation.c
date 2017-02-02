@@ -74,6 +74,31 @@
     } \
   while (0)
 
+/*
+ * Lookup to compute the MVCC header size faster:
+ *    INDEX	    MVCC FLAGS					      SIZE
+ *      0	     NO FLAGS				        REP_SIZE + CHN_SIZE
+ *	1	      INSID				    REP_SIZE + CHN_SIZE + MVCCID_SIZE
+ *	2	      DELID				    REP_SIZE + CHN_SIZE + MVCCID_SIZE
+ *	3	   INSID | DELID		        REP_SIZE + CHN_SIZE + MVCCID_SIZE + MVCCID_SIZE
+ *	4	    PREV_VERSION			    REP_SIZE + CHN_SIZE + PREV_VERSION_LSA_SIZE
+ *	5	  INSID | PREV_VERSION		    REP_SIZE + CHN_SIZE + MVCCID_SIZE + PREV_VERSION_LSA_SIZE
+ *      6	  DELID | PREV_VERSION		    REP_SIZE + CHN_SIZE + MVCCID_SIZE + PREV_VERSION_LSA_SIZE
+ *      7	INSID | DELID | PREV_VERSION	 REP_SIZE + CHN_SIZE + MVCCID_SIZE + MVCCID_SIZE + PREV_VERSION_LSA_SIZE
+ *
+ * Note:  In case that the heap record header modifies, mvcc_header_size_lookup must be updated.
+ */
+int mvcc_header_size_lookup[8] = {
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
+  OR_MVCC_REP_SIZE + OR_CHN_SIZE + OR_MVCCID_SIZE + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE
+};
+
 static TP_DOMAIN *unpack_domain (OR_BUF * buf, int *is_null);
 static char *or_pack_method_sig (char *ptr, void *method_sig_ptr);
 static char *or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n);
@@ -843,8 +868,8 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
 
   mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
-  old_mvcc_size = or_mvcc_header_size_from_flags (mvcc_old_flag);
-  new_mvcc_size = or_mvcc_header_size_from_flags (mvcc_rec_header->mvcc_flag);
+  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
+  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
   if (old_mvcc_size != new_mvcc_size)
     {
       /* resize MVCC info inside recdes */
@@ -1324,7 +1349,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
     }
   else
     {
-      rc = or_put_byte (buf, 0xFF);
+      rc = or_put_byte (buf, PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
       compressable = true;
     }
 
@@ -1335,6 +1360,11 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
   if (compressable == true)
     {
+      if (!pr_Enable_string_compression)	/* compression is not set */
+	{
+	  compressed_length = 0;
+	  goto after_compression;
+	}
       /* Future optimization : use a preallocated object for wrkmem in thread_entry. */
       /* Alloc memory */
       wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
@@ -1377,6 +1407,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Store the compression size */
       assert (compressed_length < (lzo_uint) (charlen - 8));
+    after_compression:
       OR_PUT_INT (&net_charlen, compressed_length);
       rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
@@ -2683,59 +2714,6 @@ or_get_oid (OR_BUF * buf, OID * oid)
 }
 
 /*
- * or_put_loid - write a long oid to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    loid(in): pointer to LOID
- */
-int
-or_put_loid (OR_BUF * buf, LOID * loid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_LOID_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      if (loid == NULL)
-	{
-	  OR_PUT_NULL_LOID (buf->ptr);
-	}
-      else
-	{
-	  OR_PUT_LOID (buf->ptr, loid);
-	}
-      buf->ptr += OR_LOID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_loid - read a long oid from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    loid(out): pointer to LOID
- */
-int
-or_get_loid (OR_BUF * buf, LOID * loid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_LOID_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_LOID (buf->ptr, loid);
-      buf->ptr += OR_LOID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
  * or_put_data - write an array of bytes to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
@@ -3533,7 +3511,7 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 
 /*
  * DISK IDENTIFIER TRANSLATORS
- *    Translators for the disk identifiers OID, LOID, HFID, BTID, EHID.
+ *    Translators for the disk identifiers OID, HFID, BTID, EHID.
  */
 
 
@@ -3631,44 +3609,6 @@ or_unpack_oid_array (char *ptr, int n, OID ** oids)
     }
 
   return (ptr);
-}
-
-/*
- * or_pack_loid - write a LOID value
- *    return: advanced buffer pointer
- *    ptr(out): output buffer
- *    loid(in): LOID value
- */
-char *
-or_pack_loid (char *ptr, LOID * loid)
-{
-  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-
-  if (loid != NULL)
-    {
-      OR_PUT_LOID (ptr, loid);
-    }
-  else
-    {
-      OR_PUT_NULL_LOID (ptr);
-    }
-
-  return (ptr + OR_LOID_SIZE);
-}
-
-/*
- * or_unpack_loid - read a LOID value
- *    return: advanced buffer pointer
- *    ptr(in): input buffer
- *    loid(out): LOID value
- */
-char *
-or_unpack_loid (char *ptr, LOID * loid)
-{
-  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-
-  OR_GET_LOID (ptr, loid);
-  return (ptr + OR_LOID_SIZE);
 }
 
 /*
@@ -5346,7 +5286,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      precision = tp_get_fixed_precision (type);
 
 	    case DB_TYPE_NULL:
-	    case DB_TYPE_ELO:
 	    case DB_TYPE_BLOB:
 	    case DB_TYPE_CLOB:
 	      dom = tp_domain_find_noparam (type, is_desc);
@@ -6955,12 +6894,13 @@ or_pack_value (char *buf, DB_VALUE * value)
 }
 
 char *
-or_pack_mem_value (char *ptr, DB_VALUE * value)
+or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment)
 {
   OR_BUF orbuf, *buf;
   PR_TYPE *type;
   TP_DOMAIN *domain;
   char *start, length, bits;
+  char *ptr_to_packed_value;
   int rc = NO_ERROR;
   DB_TYPE dbval_type;
 
@@ -6974,6 +6914,9 @@ or_pack_mem_value (char *ptr, DB_VALUE * value)
   start = buf->ptr;
 
   or_get_align64 (buf);
+
+  /* notice that it points to real starting ptr to packed value */
+  ptr_to_packed_value = buf->ptr;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
   type = PR_TYPE_FROM_ID (dbval_type);
@@ -7018,12 +6961,19 @@ or_pack_mem_value (char *ptr, DB_VALUE * value)
 
   if (rc == NO_ERROR)
     {
+      if (packed_len_except_alignment)
+	{
+	  /* it excludes both leading and trailing alignments */
+	  *packed_len_except_alignment = (int) (buf->ptr - ptr_to_packed_value);
+	}
+
       length = (int) (buf->ptr - start);
       bits = length & 3;
       if (bits)
 	{
 	  rc = or_pad (buf, 4 - bits);
 	}
+
     }
 
   return buf->ptr;
@@ -7607,6 +7557,7 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET (db_enum)));
       size += (*(tp_String.data_lengthval)) (&value, 1);
+      pr_clear_value (&value);
     }
 
   return size;
@@ -7642,6 +7593,8 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       enumeration->collation_id);
       rc = (*(tp_String.data_writeval)) (buf, &value);
+      pr_clear_value (&value);
+
       if (rc != NO_ERROR)
 	{
 	  break;
@@ -7772,43 +7725,7 @@ error_return:
 int
 or_header_size (char *ptr)
 {
-  return or_mvcc_header_size_from_flags (OR_GET_MVCC_FLAG (ptr));
-}
-
-/*
- * or_mvcc_header_size_from_flags () - Return the record header size from flags.
- *
- * mvcc_flags(in): MVCC flags 
- * has_fixed_size(in) : true if has fixed size
- * return : header size
- * 
- */
-int
-or_mvcc_header_size_from_flags (char mvcc_flags)
-{
-  int mvcc_header_size = 0;
-
-  /* skip MVCC fields */
-  mvcc_header_size = OR_MVCC_REP_SIZE;
-
-  mvcc_header_size += OR_INT_SIZE;	/* chn */
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
-    {
-      mvcc_header_size += OR_MVCCID_SIZE;
-    }
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-    {
-      mvcc_header_size += OR_MVCCID_SIZE;
-    }
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
-    {
-      mvcc_header_size += sizeof (LOG_LSA);
-    }
-
-  return mvcc_header_size;
+  return mvcc_header_size_lookup[OR_GET_MVCC_FLAG (ptr)];
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -8159,7 +8076,7 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
  * sha1 (in) : Value to pack.
  */
 char *
-or_pack_sha1 (char *ptr, SHA1Hash * sha1)
+or_pack_sha1 (char *ptr, const SHA1Hash * sha1)
 {
   assert (sha1 != NULL);
 
@@ -8218,13 +8135,13 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
       return NO_ERROR;
     }
 
-  if ((buf->ptr + sizeof (LOG_LSA)) > buf->endptr)
+  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
     }
 
-  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, sizeof (LOG_LSA));
-  buf->ptr += sizeof (LOG_LSA);
+  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
+  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
   return NO_ERROR;
 }
@@ -8251,13 +8168,13 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
       return NO_ERROR;
     }
 
-  if ((buf->ptr + sizeof (LOG_LSA)) > buf->endptr)
+  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
     {
       return (or_underflow (buf));
     }
 
   *prev_version_lsa = *(LOG_LSA *) buf->ptr;
-  buf->ptr += sizeof (LOG_LSA);
+  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
   return NO_ERROR;
 }
@@ -8292,7 +8209,7 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
 		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
 		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
 
-  memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
+  memcpy (record->data + lsa_offset, lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
 
   return NO_ERROR;
 }

@@ -175,6 +175,9 @@ typedef void (*PTR_FNERLOG) (int err_id);
 	  error_code = ER_FAILED; \
 	} \
     } while (false)
+/* Macro that checks no error was set. */
+#define ASSERT_NO_ERROR() \
+  assert (er_errid () == NO_ERROR);
 
 /*
  * Definition of error message structure. One structure is defined for each

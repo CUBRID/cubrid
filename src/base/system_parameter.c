@@ -616,9 +616,18 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_FORCE_RESTART_TO_SKIP_RECOVERY "force_restart_to_skip_recovery"
 
+#define PRM_NAME_ENABLE_STRING_COMPRESSION "enable_string_compression"
+
+#define PRM_NAME_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES "xasl_cache_time_threshold_in_minutes"
+
 #define PRM_NAME_EXTENDED_STATISTICS_ACTIVATION "extended_statistics_activation"
 
+#define PRM_NAME_DISK_LOGGING "disk_logging_debug"
+#define PRM_NAME_FILE_LOGGING "file_logging_debug"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
+#define PRM_VALUE_MAX "MAX"
+#define PRM_VALUE_MIN "MIN"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1273,7 +1282,7 @@ static int prm_xasl_cache_max_entries_default = 1000;
 static unsigned int prm_xasl_cache_max_entries_flag = 0;
 
 int PRM_XASL_CACHE_MAX_CLONES = 1000;
-static int prm_xasl_cache_max_clones_default = 0;
+static int prm_xasl_cache_max_clones_default = 1000;
 static int prm_xasl_cache_max_clones_lower = 0;
 static int prm_xasl_cache_max_clones_upper = 2000;
 static unsigned int prm_xasl_cache_max_clones_flag = 0;
@@ -1507,7 +1516,7 @@ bool PRM_INTL_MBS_SUPPORT = false;
 static bool prm_intl_mbs_support_default = false;
 static unsigned int prm_intl_mbs_support_flag = 0;
 
-bool PRM_LOG_COMPRESS = false;
+bool PRM_LOG_COMPRESS = true;
 static bool prm_log_compress_default = true;
 static unsigned int prm_log_compress_flag = 0;
 
@@ -1663,7 +1672,7 @@ static unsigned int prm_multi_range_opt_limit_flag = 0;
 
 UINT64 PRM_DB_VOLUME_SIZE = 536870912ULL;
 static UINT64 prm_db_volume_size_default = 536870912ULL;	/* 512M */
-static UINT64 prm_db_volume_size_lower = 20971520ULL;	/* 20M */
+static UINT64 prm_db_volume_size_lower = 0;
 static UINT64 prm_db_volume_size_upper = 21474836480ULL;	/* 20G */
 static unsigned int prm_db_volume_size_flag = 0;
 
@@ -2024,12 +2033,29 @@ bool PRM_FORCE_RESTART_TO_SKIP_RECOVERY = false;
 static bool prm_force_restart_to_skip_recovery_default = false;
 static unsigned int prm_force_restart_to_skip_recovery_flag = 0;
 
-static unsigned int prm_extended_statistics_flag = 0;
-static int prm_extended_statistics_default = 15;
 int PRM_EXTENDED_STATISTICS = 15;
-static int prm_extended_statistics_upper = 15;
+static int prm_extended_statistics_default = 15;
 static int prm_extended_statistics_lower = 0;
+static int prm_extended_statistics_upper = 15;
+static unsigned int prm_extended_statistics_flag = 0;
 
+bool PRM_ENABLE_STRING_COMPRESSION = true;
+static bool prm_enable_string_compression_default = true;
+static unsigned int prm_enable_string_compression_flag = 0;
+
+int PRM_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES = 360;
+static unsigned int prm_xasl_cache_time_threshold_in_minutes_flag = 0;
+static int prm_xasl_cache_time_threshold_in_minutes_default = 360;
+static int prm_xasl_cache_time_threshold_in_minutes_upper = INT_MAX;
+static int prm_xasl_cache_time_threshold_in_minutes_lower = 0;
+
+bool PRM_DISK_LOGGING = false;
+static bool prm_disk_logging_default = false;
+static unsigned int prm_disk_logging_flag = 0;
+
+bool PRM_FILE_LOGGING = false;
+static bool prm_file_logging_default = false;
+static unsigned int prm_file_logging_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -2053,6 +2079,7 @@ static void update_session_state_from_sys_params (THREAD_ENTRY * thread_p, SESSI
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
 {
+  PARAM_ID id;			/* parameter ID */
   const char *name;		/* the keyword expected */
   unsigned int static_flag;	/* bitmask flag representing status words */
   SYSPRM_DATATYPE datatype;	/* value data type */
@@ -2067,7 +2094,8 @@ struct sysprm_param
 };
 
 static SYSPRM_PARAM prm_Def[] = {
-  {PRM_NAME_ER_LOG_DEBUG,
+  {PRM_ID_ER_LOG_DEBUG,
+   PRM_NAME_ER_LOG_DEBUG,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_er_log_debug_flag,
@@ -2077,7 +2105,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_BTREE_DEBUG,
+  {PRM_ID_ER_BTREE_DEBUG,
+   PRM_NAME_ER_BTREE_DEBUG,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_er_btree_debug_flag,
@@ -2087,7 +2116,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_LOG_LEVEL,
+  {PRM_ID_ER_LOG_LEVEL,
+   PRM_NAME_ER_LOG_LEVEL,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_KEYWORD,
    (void *) &prm_er_log_level_flag,
@@ -2097,7 +2127,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_LOG_WARNING,
+  {PRM_ID_ER_LOG_WARNING,
+   PRM_NAME_ER_LOG_WARNING,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_er_log_warning_flag,
@@ -2107,7 +2138,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_EXIT_ASK,
+  {PRM_ID_ER_EXIT_ASK,
+   PRM_NAME_ER_EXIT_ASK,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_er_exit_ask_flag,
@@ -2117,7 +2149,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_LOG_SIZE,
+  {PRM_ID_ER_LOG_SIZE,
+   PRM_NAME_ER_LOG_SIZE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_INTEGER,
    (void *) &prm_er_log_size_flag,
@@ -2127,7 +2160,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_LOG_FILE,
+  {PRM_ID_ER_LOG_FILE,
+   PRM_NAME_ER_LOG_FILE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_STRING,
    (void *) &prm_er_log_file_flag,
@@ -2137,7 +2171,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ACCESS_IP_CONTROL,
+  {PRM_ID_ACCESS_IP_CONTROL,
+   PRM_NAME_ACCESS_IP_CONTROL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_access_ip_control_flag,
@@ -2147,7 +2182,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ACCESS_IP_CONTROL_FILE,
+  {PRM_ID_ACCESS_IP_CONTROL_FILE,
+   PRM_NAME_ACCESS_IP_CONTROL_FILE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_STRING,
    (void *) &prm_access_ip_control_file_flag,
@@ -2157,7 +2193,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_IO_LOCKF_ENABLE,
+  {PRM_ID_IO_LOCKF_ENABLE,
+   PRM_NAME_IO_LOCKF_ENABLE,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_io_lockf_enable_flag,
@@ -2167,7 +2204,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SR_NBUFFERS,
+  {PRM_ID_SR_NBUFFERS,
+   PRM_NAME_SR_NBUFFERS,
    (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_sr_nbuffers_flag,
@@ -2177,7 +2215,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SORT_BUFFER_SIZE,
+  {PRM_ID_SORT_BUFFER_SIZE,
+   PRM_NAME_SORT_BUFFER_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_sr_nbuffers_flag,
@@ -2187,7 +2226,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_io_pages,
    (DUP_PRM_FUNC) prm_io_pages_to_size},
-  {PRM_NAME_PB_BUFFER_FLUSH_RATIO,
+  {PRM_ID_PB_BUFFER_FLUSH_RATIO,
+   PRM_NAME_PB_BUFFER_FLUSH_RATIO,
    (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),
    PRM_FLOAT,
    (void *) &prm_pb_buffer_flush_ratio_flag,
@@ -2198,7 +2238,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_NBUFFERS,
+  {PRM_ID_PB_NBUFFERS,
+   PRM_NAME_PB_NBUFFERS,
    (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_pb_nbuffers_flag,
@@ -2208,7 +2249,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PAGE_BUFFER_SIZE,
+  {PRM_ID_PAGE_BUFFER_SIZE,
+   PRM_NAME_PAGE_BUFFER_SIZE,
    (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_pb_nbuffers_flag,
@@ -2218,7 +2260,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_io_pages,
    (DUP_PRM_FUNC) prm_io_pages_to_size},
-  {PRM_NAME_HF_UNFILL_FACTOR,
+  {PRM_ID_HF_UNFILL_FACTOR,
+   PRM_NAME_HF_UNFILL_FACTOR,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_FLOAT,
    (void *) &prm_hf_unfill_factor_flag,
@@ -2228,7 +2271,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HF_MAX_BESTSPACE_ENTRIES,
+  {PRM_ID_HF_MAX_BESTSPACE_ENTRIES,
+   PRM_NAME_HF_MAX_BESTSPACE_ENTRIES,
    (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_hf_max_bestspace_entries_flag,
@@ -2238,7 +2282,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_BT_UNFILL_FACTOR,
+  {PRM_ID_BT_UNFILL_FACTOR,
+   PRM_NAME_BT_UNFILL_FACTOR,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_FLOAT,
    (void *) &prm_bt_unfill_factor_flag,
@@ -2248,7 +2293,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_BT_OID_NBUFFERS,
+  {PRM_ID_BT_OID_NBUFFERS,
+   PRM_NAME_BT_OID_NBUFFERS,
    (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_FLOAT,
    (void *) &prm_bt_oid_nbuffers_flag,
@@ -2258,7 +2304,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_BT_OID_BUFFER_SIZE,
+  {PRM_ID_BT_OID_BUFFER_SIZE,
+   PRM_NAME_BT_OID_BUFFER_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_FLOAT,
    (void *) &prm_bt_oid_nbuffers_flag,
@@ -2268,7 +2315,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_io_pages,
    (DUP_PRM_FUNC) prm_io_pages_to_size},
-  {PRM_NAME_BT_INDEX_SCAN_OID_ORDER,
+  {PRM_ID_BT_INDEX_SCAN_OID_ORDER,
+   PRM_NAME_BT_INDEX_SCAN_OID_ORDER,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_bt_index_scan_oid_order_flag,
@@ -2278,7 +2326,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_BOSR_MAXTMP_PAGES,
+  {PRM_ID_BOSR_MAXTMP_PAGES,
+   PRM_NAME_BOSR_MAXTMP_PAGES,	/* todo: change me */
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_bosr_maxtmp_flag,
@@ -2288,7 +2337,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LK_TIMEOUT_MESSAGE_DUMP_LEVEL,
+  {PRM_ID_LK_TIMEOUT_MESSAGE_DUMP_LEVEL,
+   PRM_NAME_LK_TIMEOUT_MESSAGE_DUMP_LEVEL,
    (PRM_OBSOLETED),
    PRM_NO_TYPE,
    (void *) &prm_lk_timeout_message_dump_level_flag,
@@ -2299,7 +2349,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LK_ESCALATION_AT,
+  {PRM_ID_LK_ESCALATION_AT,
+   PRM_NAME_LK_ESCALATION_AT,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_lk_escalation_at_flag,
@@ -2309,7 +2360,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LK_ROLLBACK_ON_LOCK_ESCALATION,
+  {PRM_ID_LK_ROLLBACK_ON_LOCK_ESCALATION,
+   PRM_NAME_LK_ROLLBACK_ON_LOCK_ESCALATION,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_lk_rollback_on_lock_escalation_flag,
@@ -2319,7 +2371,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LK_TIMEOUT_SECS,
+  {PRM_ID_LK_TIMEOUT_SECS,
+   PRM_NAME_LK_TIMEOUT_SECS,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_DEPRECATED),
    PRM_INTEGER,
    (void *) &prm_lk_timeout_secs_flag,
@@ -2329,7 +2382,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LK_TIMEOUT,
+  {PRM_ID_LK_TIMEOUT,
+   PRM_NAME_LK_TIMEOUT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_lk_timeout_secs_flag,
@@ -2339,7 +2393,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_NAME_LK_RUN_DEADLOCK_INTERVAL,
+  {PRM_ID_LK_RUN_DEADLOCK_INTERVAL,
+   PRM_NAME_LK_RUN_DEADLOCK_INTERVAL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_FLOAT,
    (void *) &prm_lk_run_deadlock_interval_flag,
@@ -2349,7 +2404,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_NBUFFERS,
+  {PRM_ID_LOG_NBUFFERS,
+   PRM_NAME_LOG_NBUFFERS,
    (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_log_nbuffers_flag,
@@ -2359,7 +2415,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_BUFFER_SIZE,
+  {PRM_ID_LOG_BUFFER_SIZE,
+   PRM_NAME_LOG_BUFFER_SIZE,
    (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_log_nbuffers_flag,
@@ -2369,7 +2426,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_log_pages,
    (DUP_PRM_FUNC) prm_log_pages_to_size},
-  {PRM_NAME_LOG_CHECKPOINT_NPAGES,
+  {PRM_ID_LOG_CHECKPOINT_NPAGES,
+   PRM_NAME_LOG_CHECKPOINT_NPAGES,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_log_checkpoint_npages_flag,
@@ -2379,7 +2437,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_CHECKPOINT_SIZE,
+  {PRM_ID_LOG_CHECKPOINT_SIZE,
+   PRM_NAME_LOG_CHECKPOINT_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_log_checkpoint_npages_flag,
@@ -2389,7 +2448,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_log_pages,
    (DUP_PRM_FUNC) prm_log_pages_to_size},
-  {PRM_NAME_LOG_CHECKPOINT_INTERVAL_SECS,
+  {PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS,
+   PRM_NAME_LOG_CHECKPOINT_INTERVAL_SECS,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_log_checkpoint_interval_secs_flag,
@@ -2399,7 +2459,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_min_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_min},
-  {PRM_NAME_LOG_CHECKPOINT_INTERVAL,
+  {PRM_ID_LOG_CHECKPOINT_INTERVAL,
+   PRM_NAME_LOG_CHECKPOINT_INTERVAL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_log_checkpoint_interval_secs_flag,
@@ -2409,7 +2470,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_NAME_LOG_CHECKPOINT_SLEEP_MSECS,
+  {PRM_ID_LOG_CHECKPOINT_SLEEP_MSECS,
+   PRM_NAME_LOG_CHECKPOINT_SLEEP_MSECS,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_log_checkpoint_sleep_msecs_flag,
@@ -2419,7 +2481,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_BACKGROUND_ARCHIVING,
+  {PRM_ID_LOG_BACKGROUND_ARCHIVING,
+   PRM_NAME_LOG_BACKGROUND_ARCHIVING,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_log_background_archiving_flag,
@@ -2429,7 +2492,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_ISOLATION_LEVEL,
+  {PRM_ID_LOG_ISOLATION_LEVEL,
+   PRM_NAME_LOG_ISOLATION_LEVEL,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_KEYWORD,
    (void *) &prm_log_isolation_level_flag,
@@ -2440,7 +2504,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_MEDIA_FAILURE_SUPPORT,
+  {PRM_ID_LOG_MEDIA_FAILURE_SUPPORT,
+   PRM_NAME_LOG_MEDIA_FAILURE_SUPPORT,
    (PRM_OBSOLETED),
    PRM_NO_TYPE,
    (void *) &prm_log_media_failure_support_flag,
@@ -2451,7 +2516,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_COMMIT_ON_SHUTDOWN,
+  {PRM_ID_COMMIT_ON_SHUTDOWN,
+   PRM_NAME_COMMIT_ON_SHUTDOWN,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_commit_on_shutdown_flag,
@@ -2461,7 +2527,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS,
+  {PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS,
+   PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_shutdown_wait_time_in_secs_flag,
@@ -2471,7 +2538,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CSQL_AUTO_COMMIT,
+  {PRM_ID_CSQL_AUTO_COMMIT,
+   PRM_NAME_CSQL_AUTO_COMMIT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_csql_auto_commit_flag,
@@ -2481,7 +2549,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_SWEEP_CLEAN,
+  {PRM_ID_LOG_SWEEP_CLEAN,
+   PRM_NAME_LOG_SWEEP_CLEAN,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_log_sweep_clean_flag,
@@ -2491,7 +2560,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_WS_HASHTABLE_SIZE,
+  {PRM_ID_WS_HASHTABLE_SIZE,
+   PRM_NAME_WS_HASHTABLE_SIZE,
    (PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_ws_hashtable_size_flag,
@@ -2501,7 +2571,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_WS_MEMORY_REPORT,
+  {PRM_ID_WS_MEMORY_REPORT,
+   PRM_NAME_WS_MEMORY_REPORT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_ws_memory_report_flag,
@@ -2511,7 +2582,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_GC_ENABLE,
+  {PRM_ID_GC_ENABLE,
+   PRM_NAME_GC_ENABLE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_DEPRECATED),
    PRM_BOOLEAN,
    (void *) &prm_gc_enable_flag,
@@ -2521,7 +2593,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TCP_PORT_ID,
+  {PRM_ID_TCP_PORT_ID,
+   PRM_NAME_TCP_PORT_ID,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_tcp_port_id_flag,
@@ -2531,7 +2604,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TCP_CONNECTION_TIMEOUT,
+  {PRM_ID_TCP_CONNECTION_TIMEOUT,
+   PRM_NAME_TCP_CONNECTION_TIMEOUT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_INTEGER,
    (void *) &prm_tcp_connection_timeout_flag,
@@ -2541,7 +2615,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZATION_LEVEL,
+  {PRM_ID_OPTIMIZATION_LEVEL,
+   PRM_NAME_OPTIMIZATION_LEVEL,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_INTEGER,
    (void *) &prm_optimization_level_flag,
@@ -2551,7 +2626,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_QO_DUMP,
+  {PRM_ID_QO_DUMP,
+   PRM_NAME_QO_DUMP,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_qo_dump_flag,
@@ -2561,7 +2637,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CSS_MAX_CLIENTS,
+  {PRM_ID_CSS_MAX_CLIENTS,
+   PRM_NAME_CSS_MAX_CLIENTS,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_css_max_clients_flag,
@@ -2571,7 +2648,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_THREAD_STACKSIZE,
+  {PRM_ID_THREAD_STACKSIZE,
+   PRM_NAME_THREAD_STACKSIZE,
    (PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    (void *) &prm_thread_stacksize_flag,
@@ -2582,7 +2660,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CFG_DB_HOSTS,
+  {PRM_ID_CFG_DB_HOSTS,
+   PRM_NAME_CFG_DB_HOSTS,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_STRING,
    (void *) &prm_cfg_db_hosts_flag,
@@ -2592,7 +2671,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_RESET_TR_PARSER,
+  {PRM_ID_RESET_TR_PARSER,
+   PRM_NAME_RESET_TR_PARSER,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_reset_tr_parser_flag,
@@ -2602,7 +2682,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_IO_BACKUP_NBUFFERS,
+  {PRM_ID_IO_BACKUP_NBUFFERS,
+   PRM_NAME_IO_BACKUP_NBUFFERS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_io_backup_nbuffers_flag,
@@ -2612,7 +2693,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_IO_BACKUP_MAX_VOLUME_SIZE,
+  {PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE,
+   PRM_NAME_IO_BACKUP_MAX_VOLUME_SIZE,
    (PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    (void *) &prm_io_backup_max_volume_size_flag,
@@ -2623,7 +2705,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_IO_BACKUP_SLEEP_MSECS,
+  {PRM_ID_IO_BACKUP_SLEEP_MSECS,
+   PRM_NAME_IO_BACKUP_SLEEP_MSECS,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_io_backup_sleep_msecs_flag,
@@ -2633,7 +2716,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MAX_PAGES_IN_TEMP_FILE_CACHE,
+  {PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE,
+   PRM_NAME_MAX_PAGES_IN_TEMP_FILE_CACHE,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_max_pages_in_temp_file_cache_flag,
@@ -2643,7 +2727,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MAX_ENTRIES_IN_TEMP_FILE_CACHE,
+  {PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE,
+   PRM_NAME_MAX_ENTRIES_IN_TEMP_FILE_CACHE,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_max_entries_in_temp_file_cache_flag,
@@ -2653,7 +2738,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PTHREAD_SCOPE_PROCESS,	/* AIX only */
+  {PRM_ID_PTHREAD_SCOPE_PROCESS,
+   PRM_NAME_PTHREAD_SCOPE_PROCESS,	/* AIX only */
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_pthread_scope_process_flag,
@@ -2663,7 +2749,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TEMP_MEM_BUFFER_PAGES,
+  {PRM_ID_TEMP_MEM_BUFFER_PAGES,
+   PRM_NAME_TEMP_MEM_BUFFER_PAGES,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_temp_mem_buffer_pages_flag,
@@ -2674,7 +2761,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_INDEX_SCAN_KEY_BUFFER_PAGES,
+  {PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES,
+   PRM_NAME_INDEX_SCAN_KEY_BUFFER_PAGES,
    (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_index_scan_key_buffer_pages_flag,
@@ -2685,7 +2773,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_INDEX_SCAN_KEY_BUFFER_SIZE,
+  {PRM_ID_INDEX_SCAN_KEY_BUFFER_SIZE,
+   PRM_NAME_INDEX_SCAN_KEY_BUFFER_SIZE,
    (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_index_scan_key_buffer_pages_flag,
@@ -2696,7 +2785,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_io_pages,
    (DUP_PRM_FUNC) prm_io_pages_to_size},
-  {PRM_NAME_DONT_REUSE_HEAP_FILE,
+  {PRM_ID_DONT_REUSE_HEAP_FILE,
+   PRM_NAME_DONT_REUSE_HEAP_FILE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_dont_reuse_heap_file_flag,
@@ -2706,7 +2796,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_INSERT_MODE,
+  {PRM_ID_INSERT_MODE,
+   PRM_NAME_INSERT_MODE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_insert_mode_flag,
@@ -2717,7 +2808,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LK_MAX_SCANID_BIT,
+  {PRM_ID_LK_MAX_SCANID_BIT,
+   PRM_NAME_LK_MAX_SCANID_BIT,
    (PRM_OBSOLETED),
    PRM_INTEGER,
    (void *) &prm_lk_max_scanid_bit_flag,
@@ -2728,7 +2820,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HOSTVAR_LATE_BINDING,
+  {PRM_ID_HOSTVAR_LATE_BINDING,
+   PRM_NAME_HOSTVAR_LATE_BINDING,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_hostvar_late_binding_flag,
@@ -2738,7 +2831,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ENABLE_HISTO,
+  {PRM_ID_ENABLE_HISTO,
+   PRM_NAME_ENABLE_HISTO,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_enable_histo_flag,
@@ -2748,7 +2842,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MUTEX_BUSY_WAITING_CNT,
+  {PRM_ID_MUTEX_BUSY_WAITING_CNT,
+   PRM_NAME_MUTEX_BUSY_WAITING_CNT,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_mutex_busy_waiting_cnt_flag,
@@ -2758,7 +2853,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_NUM_LRU_CHAINS,
+  {PRM_ID_PB_NUM_LRU_CHAINS,
+   PRM_NAME_PB_NUM_LRU_CHAINS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_pb_num_LRU_chains_flag,
@@ -2769,7 +2865,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PAGE_BG_FLUSH_INTERVAL_MSECS,
+  {PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS,
+   PRM_NAME_PAGE_BG_FLUSH_INTERVAL_MSECS,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED),
    PRM_INTEGER,
    (void *) &prm_page_bg_flush_interval_msec_flag,
@@ -2779,7 +2876,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PAGE_BG_FLUSH_INTERVAL,
+  {PRM_ID_PAGE_BG_FLUSH_INTERVAL,
+   PRM_NAME_PAGE_BG_FLUSH_INTERVAL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_page_bg_flush_interval_msec_flag,
@@ -2789,7 +2887,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_equal_to_ori,
    (DUP_PRM_FUNC) prm_equal_to_ori},
-  {PRM_NAME_ADAPTIVE_FLUSH_CONTROL,
+  {PRM_ID_ADAPTIVE_FLUSH_CONTROL,
+   PRM_NAME_ADAPTIVE_FLUSH_CONTROL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_adaptive_flush_control_flag,
@@ -2800,7 +2899,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MAX_FLUSH_PAGES_PER_SECOND,
+  {PRM_ID_MAX_FLUSH_PAGES_PER_SECOND,
+   PRM_NAME_MAX_FLUSH_PAGES_PER_SECOND,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_max_flush_pages_per_second_flag,
@@ -2811,7 +2911,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MAX_FLUSH_SIZE_PER_SECOND,
+  {PRM_ID_MAX_FLUSH_SIZE_PER_SECOND,
+   PRM_NAME_MAX_FLUSH_SIZE_PER_SECOND,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_max_flush_pages_per_second_flag,
@@ -2822,7 +2923,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_io_pages,
    (DUP_PRM_FUNC) prm_io_pages_to_size},
-  {PRM_NAME_PB_SYNC_ON_NFLUSH,
+  {PRM_ID_PB_SYNC_ON_NFLUSH,
+   PRM_NAME_PB_SYNC_ON_NFLUSH,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_pb_sync_on_nflush_flag,
@@ -2833,7 +2935,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_SYNC_ON_FLUSH_SIZE,
+  {PRM_ID_PB_SYNC_ON_FLUSH_SIZE,
+   PRM_NAME_PB_SYNC_ON_FLUSH_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_pb_sync_on_nflush_flag,
@@ -2844,7 +2947,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_io_pages,
    (DUP_PRM_FUNC) prm_io_pages_to_size},
-  {PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL,
+  {PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL,
+   PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_KEYWORD,
    (void *) &prm_pb_debug_page_validation_level_flag,
@@ -2855,7 +2959,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ORACLE_STYLE_OUTERJOIN,
+  {PRM_ID_ORACLE_STYLE_OUTERJOIN,
+   PRM_NAME_ORACLE_STYLE_OUTERJOIN,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_oracle_style_outerjoin_flag,
@@ -2865,7 +2970,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ANSI_QUOTES,
+  {PRM_ID_ANSI_QUOTES,
+   PRM_NAME_ANSI_QUOTES,
    (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_ansi_quotes_flag,
@@ -2875,7 +2981,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_DEFAULT_WEEK_FORMAT,
+  {PRM_ID_DEFAULT_WEEK_FORMAT,
+   PRM_NAME_DEFAULT_WEEK_FORMAT,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_INTEGER,
    (void *) &prm_week_format_flag,
@@ -2886,7 +2993,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TEST_MODE,
+  {PRM_ID_TEST_MODE,
+   PRM_NAME_TEST_MODE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_test_mode_flag,
@@ -2896,7 +3004,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ONLY_FULL_GROUP_BY,
+  {PRM_ID_ONLY_FULL_GROUP_BY,
+   PRM_NAME_ONLY_FULL_GROUP_BY,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_only_full_group_by_flag,
@@ -2906,7 +3015,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PIPES_AS_CONCAT,
+  {PRM_ID_PIPES_AS_CONCAT,
+   PRM_NAME_PIPES_AS_CONCAT,
    (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_pipes_as_concat_flag,
@@ -2916,7 +3026,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES,
+  {PRM_ID_MYSQL_TRIGGER_CORRELATION_NAMES,
+   PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES,
    (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_mysql_trigger_correlation_names_flag,
@@ -2926,7 +3037,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER,
+  {PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER,
+   PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER,
    (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    (void *) &prm_require_like_escape_character_flag,
@@ -2936,7 +3048,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_NO_BACKSLASH_ESCAPES,
+  {PRM_ID_NO_BACKSLASH_ESCAPES,
+   PRM_NAME_NO_BACKSLASH_ESCAPES,
    (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_no_backslash_escapes_flag,
@@ -2946,7 +3059,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_GROUP_CONCAT_MAX_LEN,
+  {PRM_ID_GROUP_CONCAT_MAX_LEN,
+   PRM_NAME_GROUP_CONCAT_MAX_LEN,
    (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    (void *) &prm_group_concat_max_len_flag,
@@ -2957,7 +3071,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_STRING_MAX_SIZE_BYTES,
+  {PRM_ID_STRING_MAX_SIZE_BYTES,
+   PRM_NAME_STRING_MAX_SIZE_BYTES,
    (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_SIZE_UNIT | PRM_FOR_HA_CONTEXT),
    PRM_BIGINT,
    (void *) &prm_string_max_size_bytes_flag,
@@ -2968,7 +3083,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ADD_COLUMN_UPDATE_HARD_DEFAULT,
+  {PRM_ID_ADD_COLUMN_UPDATE_HARD_DEFAULT,
+   PRM_NAME_ADD_COLUMN_UPDATE_HARD_DEFAULT,
    (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_add_column_update_hard_default_flag,
@@ -2978,7 +3094,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_RETURN_NULL_ON_FUNCTION_ERRORS,
+  {PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS,
+   PRM_NAME_RETURN_NULL_ON_FUNCTION_ERRORS,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_return_null_on_function_errors_flag,
@@ -2988,7 +3105,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ALTER_TABLE_CHANGE_TYPE_STRICT,
+  {PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT,
+   PRM_NAME_ALTER_TABLE_CHANGE_TYPE_STRICT,
    (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_alter_table_change_type_strict_flag,
@@ -2998,7 +3116,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_COMPACTDB_PAGE_RECLAIM_ONLY,
+  {PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY,
+   PRM_NAME_COMPACTDB_PAGE_RECLAIM_ONLY,
    (PRM_EMPTY_FLAG),
    PRM_INTEGER,
    (void *) &prm_compactdb_page_reclaim_only_flag,
@@ -3008,7 +3127,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PLUS_AS_CONCAT,
+  {PRM_ID_PLUS_AS_CONCAT,
+   PRM_NAME_PLUS_AS_CONCAT,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_plus_as_concat_flag,
@@ -3018,7 +3138,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LIKE_TERM_SELECTIVITY,
+  {PRM_ID_LIKE_TERM_SELECTIVITY,
+   PRM_NAME_LIKE_TERM_SELECTIVITY,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_FLOAT,
    (void *) &prm_like_term_selectivity_flag,
@@ -3029,7 +3150,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MAX_OUTER_CARD_OF_IDXJOIN,
+  {PRM_ID_MAX_OUTER_CARD_OF_IDXJOIN,
+   PRM_NAME_MAX_OUTER_CARD_OF_IDXJOIN,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_max_outer_card_of_idxjoin_flag,
@@ -3040,7 +3162,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ORACLE_STYLE_EMPTY_STRING,
+  {PRM_ID_ORACLE_STYLE_EMPTY_STRING,
+   PRM_NAME_ORACLE_STYLE_EMPTY_STRING,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_QRY_STRING | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_oracle_style_empty_string_flag,
@@ -3050,7 +3173,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SUPPRESS_FSYNC,
+  {PRM_ID_SUPPRESS_FSYNC,
+   PRM_NAME_SUPPRESS_FSYNC,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_suppress_fsync_flag,
@@ -3061,7 +3185,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CALL_STACK_DUMP_ON_ERROR,
+  {PRM_ID_CALL_STACK_DUMP_ON_ERROR,
+   PRM_NAME_CALL_STACK_DUMP_ON_ERROR,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_call_stack_dump_on_error_flag,
@@ -3071,7 +3196,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CALL_STACK_DUMP_ACTIVATION,
+  {PRM_ID_CALL_STACK_DUMP_ACTIVATION,
+   PRM_NAME_CALL_STACK_DUMP_ACTIVATION,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_INTEGER_LIST,
    (void *) &prm_call_stack_dump_activation_flag,
@@ -3081,7 +3207,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CALL_STACK_DUMP_DEACTIVATION,
+  {PRM_ID_CALL_STACK_DUMP_DEACTIVATION,
+   PRM_NAME_CALL_STACK_DUMP_DEACTIVATION,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_INTEGER_LIST,
    (void *) &prm_call_stack_dump_deactivation_flag,
@@ -3091,7 +3218,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE,
+  {PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE,
+   PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_compat_numeric_division_scale_flag,
@@ -3101,7 +3229,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_DBFILES_PROTECT,
+  {PRM_ID_DBFILES_PROTECT,
+   PRM_NAME_DBFILES_PROTECT,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_dbfiles_protect_flag,
@@ -3111,7 +3240,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_AUTO_RESTART_SERVER,
+  {PRM_ID_AUTO_RESTART_SERVER,
+   PRM_NAME_AUTO_RESTART_SERVER,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_auto_restart_server_flag,
@@ -3121,7 +3251,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_XASL_CACHE_MAX_ENTRIES,
+  {PRM_ID_XASL_CACHE_MAX_ENTRIES,
+   PRM_NAME_XASL_CACHE_MAX_ENTRIES,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_INTEGER,
    (void *) &prm_xasl_cache_max_entries_flag,
@@ -3132,7 +3263,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_XASL_CACHE_MAX_CLONES,
+  {PRM_ID_XASL_CACHE_MAX_CLONES,
+   PRM_NAME_XASL_CACHE_MAX_CLONES,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_xasl_cache_max_clones_flag,
@@ -3143,7 +3275,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_XASL_CACHE_TIMEOUT,
+  {PRM_ID_XASL_CACHE_TIMEOUT,
+   PRM_NAME_XASL_CACHE_TIMEOUT,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_xasl_cache_timeout_flag,
@@ -3153,7 +3286,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_XASL_CACHE_LOGGING,
+  {PRM_ID_XASL_CACHE_LOGGING,
+   PRM_NAME_XASL_CACHE_LOGGING,
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_xasl_cache_logging_flag,
@@ -3163,7 +3297,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_FILTER_PRED_MAX_CACHE_ENTRIES,
+  {PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES,
+   PRM_NAME_FILTER_PRED_MAX_CACHE_ENTRIES,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_filter_pred_max_cache_entries_flag,
@@ -3173,7 +3308,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_FILTER_PRED_MAX_CACHE_CLONES,
+  {PRM_ID_FILTER_PRED_MAX_CACHE_CLONES,
+   PRM_NAME_FILTER_PRED_MAX_CACHE_CLONES,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_filter_pred_max_cache_clones_flag,
@@ -3183,7 +3319,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LIST_QUERY_CACHE_MODE,
+  {PRM_ID_LIST_QUERY_CACHE_MODE,
+   PRM_NAME_LIST_QUERY_CACHE_MODE,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_list_query_cache_mode_flag,
@@ -3194,7 +3331,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LIST_MAX_QUERY_CACHE_ENTRIES,
+  {PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES,
+   PRM_NAME_LIST_MAX_QUERY_CACHE_ENTRIES,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_list_max_query_cache_entries_flag,
@@ -3204,7 +3342,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES,
+  {PRM_ID_LIST_MAX_QUERY_CACHE_PAGES,
+   PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_list_max_query_cache_pages_flag,
@@ -3214,7 +3353,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_USE_ORDERBY_SORT_LIMIT,
+  {PRM_ID_USE_ORDERBY_SORT_LIMIT,
+   PRM_NAME_USE_ORDERBY_SORT_LIMIT,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_use_orderby_sort_limit_flag,
@@ -3224,7 +3364,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_REPLICATION_MODE,
+  {PRM_ID_REPLICATION_MODE,
+   PRM_NAME_REPLICATION_MODE,
    (PRM_OBSOLETED),
    PRM_NO_TYPE,
    (void *) &prm_replication_mode_flag,
@@ -3235,7 +3376,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_MODE,
+  {PRM_ID_HA_MODE,
+   PRM_NAME_HA_MODE,
    (PRM_FOR_SERVER | PRM_FOR_HA | PRM_FORCE_SERVER),
    PRM_KEYWORD,
    (void *) &prm_ha_mode_flag,
@@ -3246,7 +3388,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY,
+  {PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY,
+   PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY,
    (PRM_EMPTY_FLAG),
    PRM_KEYWORD,
    (void *) &prm_ha_mode_flag,
@@ -3257,7 +3400,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_SERVER_STATE,
+  {PRM_ID_HA_SERVER_STATE,
+   PRM_NAME_HA_SERVER_STATE,
    (PRM_FOR_SERVER | PRM_HIDDEN | PRM_FOR_HA),
    PRM_KEYWORD,
    (void *) &prm_ha_server_state_flag,
@@ -3268,7 +3412,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_LOG_APPLIER_STATE,
+  {PRM_ID_HA_LOG_APPLIER_STATE,
+   PRM_NAME_HA_LOG_APPLIER_STATE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_HA),
    PRM_KEYWORD,
    (void *) &prm_ha_log_applier_state_flag,
@@ -3279,7 +3424,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_NODE_LIST,
+  {PRM_ID_HA_NODE_LIST,
+   PRM_NAME_HA_NODE_LIST,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_RELOADABLE | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_node_list_flag,
@@ -3289,7 +3435,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_REPLICA_LIST,
+  {PRM_ID_HA_REPLICA_LIST,
+   PRM_NAME_HA_REPLICA_LIST,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_RELOADABLE | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_replica_list_flag,
@@ -3299,7 +3446,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_DB_LIST,
+  {PRM_ID_HA_DB_LIST,
+   PRM_NAME_HA_DB_LIST,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_db_list_flag,
@@ -3309,7 +3457,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_COPY_LOG_BASE,
+  {PRM_ID_HA_COPY_LOG_BASE,
+   PRM_NAME_HA_COPY_LOG_BASE,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_copy_log_base_flag,
@@ -3319,7 +3468,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_COPY_SYNC_MODE,
+  {PRM_ID_HA_COPY_SYNC_MODE,
+   PRM_NAME_HA_COPY_SYNC_MODE,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_copy_sync_mode_flag,
@@ -3329,7 +3479,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_APPLY_MAX_MEM_SIZE,
+  {PRM_ID_HA_APPLY_MAX_MEM_SIZE,
+   PRM_NAME_HA_APPLY_MAX_MEM_SIZE,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_apply_max_mem_size_flag,
@@ -3339,7 +3490,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_PORT_ID,
+  {PRM_ID_HA_PORT_ID,
+   PRM_NAME_HA_PORT_ID,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_port_id_flag,
@@ -3349,7 +3501,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_INIT_TIMER_IN_MSECS,
+  {PRM_ID_HA_INIT_TIMER_IN_MSECS,
+   PRM_NAME_HA_INIT_TIMER_IN_MSECS,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_init_timer_im_msecs_flag,
@@ -3359,7 +3512,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_HEARTBEAT_INTERVAL_IN_MSECS,
+  {PRM_ID_HA_HEARTBEAT_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_HEARTBEAT_INTERVAL_IN_MSECS,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_heartbeat_interval_in_msecs_flag,
@@ -3369,7 +3523,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_CALC_SCORE_INTERVAL_IN_MSECS,
+  {PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_CALC_SCORE_INTERVAL_IN_MSECS,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_calc_score_interval_in_msecs_flag,
@@ -3379,7 +3534,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_FAILOVER_WAIT_TIME_IN_MSECS,
+  {PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS,
+   PRM_NAME_HA_FAILOVER_WAIT_TIME_IN_MSECS,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_failover_wait_time_in_msecs_flag,
@@ -3389,7 +3545,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS,
+  {PRM_ID_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_process_start_confirm_interval_in_msecs_flag,
@@ -3399,7 +3556,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS,
+  {PRM_ID_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_process_dereg_confirm_interval_in_msecs_flag,
@@ -3409,7 +3567,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_MAX_PROCESS_START_CONFIRM,
+  {PRM_ID_HA_MAX_PROCESS_START_CONFIRM,
+   PRM_NAME_HA_MAX_PROCESS_START_CONFIRM,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_max_process_start_confirm_flag,
@@ -3419,7 +3578,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM,
+  {PRM_ID_HA_MAX_PROCESS_DEREG_CONFIRM,
+   PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_max_process_dereg_confirm_flag,
@@ -3429,7 +3589,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF,
+  {PRM_ID_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS,
+   PRM_NAME_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF,
    (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT),
    PRM_INTEGER,
    (void *) &prm_ha_unacceptable_proc_restart_timediff_flag,
@@ -3439,7 +3600,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_CHANGEMODE_INTERVAL_IN_MSEC,
+  {PRM_ID_HA_CHANGEMODE_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_CHANGEMODE_INTERVAL_IN_MSEC,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_changemode_interval_in_msecs_flag,
@@ -3449,7 +3611,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_MAX_HEARTBEAT_GAP,
+  {PRM_ID_HA_MAX_HEARTBEAT_GAP,
+   PRM_NAME_HA_MAX_HEARTBEAT_GAP,
    (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_max_heartbeat_gap_flag,
@@ -3459,7 +3622,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_PING_HOSTS,
+  {PRM_ID_HA_PING_HOSTS,
+   PRM_NAME_HA_PING_HOSTS,
    (PRM_FOR_CLIENT | PRM_RELOADABLE | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_ping_hosts_flag,
@@ -3469,7 +3633,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST,
+  {PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST,
+   PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER_LIST,
    (void *) &prm_ha_applylogdb_retry_error_list_flag,
@@ -3479,7 +3644,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
+  {PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
+   PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER_LIST,
    (void *) &prm_ha_applylogdb_ignore_error_list_flag,
@@ -3489,7 +3655,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS,
+  {PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS,
+   PRM_NAME_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS,
    (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_ha_applylogdb_log_wait_time_in_secs_flag,
@@ -3499,7 +3666,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_SQL_LOGGING,
+  {PRM_ID_HA_SQL_LOGGING,
+   PRM_NAME_HA_SQL_LOGGING,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_BOOLEAN,
    (void *) &prm_ha_sql_logging_flag,
@@ -3509,7 +3677,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_SQL_LOG_MAX_SIZE_IN_MB,
+  {PRM_ID_HA_SQL_LOG_MAX_SIZE_IN_MB,
+   PRM_NAME_HA_SQL_LOG_MAX_SIZE_IN_MB,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_sql_log_max_size_in_mb_flag,
@@ -3520,7 +3689,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES,
+  {PRM_ID_HA_COPY_LOG_MAX_ARCHIVES,
+   PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_copy_log_max_archives_flag,
@@ -3531,7 +3701,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_COPY_LOG_TIMEOUT,
+  {PRM_ID_HA_COPY_LOG_TIMEOUT,
+   PRM_NAME_HA_COPY_LOG_TIMEOUT,
    (PRM_FOR_SERVER | PRM_FOR_HA | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_ha_copy_log_timeout_flag,
@@ -3542,7 +3713,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_REPLICA_DELAY,
+  {PRM_ID_HA_REPLICA_DELAY_IN_SECS,
+   PRM_NAME_HA_REPLICA_DELAY,
    (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_ha_replica_delay_in_secs_flag,
@@ -3553,7 +3725,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_NAME_HA_REPLICA_TIME_BOUND,
+  {PRM_ID_HA_REPLICA_TIME_BOUND,
+   PRM_NAME_HA_REPLICA_TIME_BOUND,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_replica_time_bound_flag,
@@ -3563,7 +3736,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_DELAY_LIMIT,
+  {PRM_ID_HA_DELAY_LIMIT_IN_SECS,
+   PRM_NAME_HA_DELAY_LIMIT,
    (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_ha_delay_limit_in_secs_flag,
@@ -3574,7 +3748,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_NAME_HA_DELAY_LIMIT_DELTA,
+  {PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS,
+   PRM_NAME_HA_DELAY_LIMIT_DELTA,
    (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_ha_delay_limit_delta_in_secs_flag,
@@ -3585,7 +3760,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
+  {PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_INTEGER,
    (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_flag,
@@ -3596,7 +3772,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL,
+  {PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL,
+   PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL,
    (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT),
    PRM_INTEGER,
    (void *) &prm_ha_applylogdb_max_commit_interval_in_msecs_flag,
@@ -3607,7 +3784,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
+  {PRM_ID_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
+   PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
    (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_ha_check_disk_failure_interval_in_secs_flag,
@@ -3618,7 +3796,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_NAME_JAVA_STORED_PROCEDURE,
+  {PRM_ID_JAVA_STORED_PROCEDURE,
+   PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_java_stored_procedure_flag,
@@ -3628,7 +3807,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_COMPAT_PRIMARY_KEY,
+  {PRM_ID_COMPAT_PRIMARY_KEY,
+   PRM_NAME_COMPAT_PRIMARY_KEY,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_compat_primary_key_flag,
@@ -3638,7 +3818,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_HEADER_FLUSH_INTERVAL,
+  {PRM_ID_LOG_HEADER_FLUSH_INTERVAL,
+   PRM_NAME_LOG_HEADER_FLUSH_INTERVAL,
    (PRM_OBSOLETED),
    PRM_NO_TYPE,
    (void *) &prm_log_header_flush_interval_flag,
@@ -3649,7 +3830,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_ASYNC_COMMIT,
+  {PRM_ID_LOG_ASYNC_COMMIT,
+   PRM_NAME_LOG_ASYNC_COMMIT,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_log_async_commit_flag,
@@ -3659,7 +3841,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_GROUP_COMMIT_INTERVAL_MSECS,
+  {PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS,
+   PRM_NAME_LOG_GROUP_COMMIT_INTERVAL_MSECS,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_log_group_commit_interval_msecs_flag,
@@ -3669,7 +3852,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_BG_FLUSH_INTERVAL_MSECS,
+  {PRM_ID_LOG_BG_FLUSH_INTERVAL_MSECS,
+   PRM_NAME_LOG_BG_FLUSH_INTERVAL_MSECS,
    (PRM_OBSOLETED),
    PRM_NO_TYPE,
    (void *) &prm_log_bg_flush_interval_msecs_flag,
@@ -3680,7 +3864,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_BG_FLUSH_NUM_PAGES,
+  {PRM_ID_LOG_BG_FLUSH_NUM_PAGES,
+   PRM_NAME_LOG_BG_FLUSH_NUM_PAGES,
    (PRM_OBSOLETED),
    PRM_NO_TYPE,
    (void *) &prm_log_bg_flush_num_pages_flag,
@@ -3691,7 +3876,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_INTL_MBS_SUPPORT,
+  {PRM_ID_INTL_MBS_SUPPORT,
+   PRM_NAME_INTL_MBS_SUPPORT,
    (PRM_FOR_CLIENT),
    PRM_BOOLEAN,
    (void *) &prm_intl_mbs_support_flag,
@@ -3701,7 +3887,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_COMPRESS,
+  {PRM_ID_LOG_COMPRESS,
+   PRM_NAME_LOG_COMPRESS,
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_log_compress_flag,
@@ -3711,7 +3898,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_BLOCK_NOWHERE_STATEMENT,
+  {PRM_ID_BLOCK_NOWHERE_STATEMENT,
+   PRM_NAME_BLOCK_NOWHERE_STATEMENT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_block_nowhere_statement_flag,
@@ -3721,7 +3909,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_BLOCK_DDL_STATEMENT,
+  {PRM_ID_BLOCK_DDL_STATEMENT,
+   PRM_NAME_BLOCK_DDL_STATEMENT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_block_ddl_statement_flag,
@@ -3732,7 +3921,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 #if defined (ENABLE_UNUSED_FUNCTION)
-  {PRM_NAME_SINGLE_BYTE_COMPARE,
+  {PRM_ID_SINGLE_BYTE_COMPARE,
+   PRM_NAME_SINGLE_BYTE_COMPARE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_single_byte_compare_flag,
@@ -3743,7 +3933,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 #endif
-  {PRM_NAME_CSQL_HISTORY_NUM,
+  {PRM_ID_CSQL_HISTORY_NUM,
+   PRM_NAME_CSQL_HISTORY_NUM,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_INTEGER,
    (void *) &prm_csql_history_num_flag,
@@ -3754,7 +3945,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_TRACE_DEBUG,
+  {PRM_ID_LOG_TRACE_DEBUG,
+   PRM_NAME_LOG_TRACE_DEBUG,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_log_trace_debug_flag,
@@ -3764,7 +3956,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_DL_FORK,
+  {PRM_ID_DL_FORK,
+   PRM_NAME_DL_FORK,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_STRING,
    (void *) &prm_dl_fork_flag,
@@ -3774,7 +3967,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_PRODUCTION_MODE,
+  {PRM_ID_ER_PRODUCTION_MODE,
+   PRM_NAME_ER_PRODUCTION_MODE,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_GET_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_er_production_mode_flag,
@@ -3784,7 +3978,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_STOP_ON_ERROR,
+  {PRM_ID_ER_STOP_ON_ERROR,
+   PRM_NAME_ER_STOP_ON_ERROR,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_er_stop_on_error_flag,
@@ -3794,7 +3989,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TCP_RCVBUF_SIZE,
+  {PRM_ID_TCP_RCVBUF_SIZE,
+   PRM_NAME_TCP_RCVBUF_SIZE,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_tcp_rcvbuf_size_flag,
@@ -3804,7 +4000,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TCP_SNDBUF_SIZE,
+  {PRM_ID_TCP_SNDBUF_SIZE,
+   PRM_NAME_TCP_SNDBUF_SIZE,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_tcp_sndbuf_size_flag,
@@ -3814,7 +4011,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TCP_NODELAY,
+  {PRM_ID_TCP_NODELAY,
+   PRM_NAME_TCP_NODELAY,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_tcp_nodelay_flag,
@@ -3824,7 +4022,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TCP_KEEPALIVE,
+  {PRM_ID_TCP_KEEPALIVE,
+   PRM_NAME_TCP_KEEPALIVE,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT),
    PRM_BOOLEAN,
    (void *) &prm_tcp_keepalive_flag,
@@ -3834,7 +4033,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CSQL_SINGLE_LINE_MODE,
+  {PRM_ID_CSQL_SINGLE_LINE_MODE,
+   PRM_NAME_CSQL_SINGLE_LINE_MODE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_csql_single_line_mode_flag,
@@ -3844,7 +4044,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_XASL_DEBUG_DUMP,
+  {PRM_ID_XASL_DEBUG_DUMP,
+   PRM_NAME_XASL_DEBUG_DUMP,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_xasl_debug_dump_flag,
@@ -3854,7 +4055,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_MAX_ARCHIVES,
+  {PRM_ID_LOG_MAX_ARCHIVES,
+   PRM_NAME_LOG_MAX_ARCHIVES,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_log_max_archives_flag,
@@ -3864,7 +4066,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES,
+  {PRM_ID_FORCE_REMOVE_LOG_ARCHIVES,
+   PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_force_remove_log_archives_flag,
@@ -3874,7 +4077,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_REMOVE_LOG_ARCHIVES_INTERVAL,
+  {PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL,
+   PRM_NAME_REMOVE_LOG_ARCHIVES_INTERVAL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_remove_log_archives_interval_flag,
@@ -3884,7 +4088,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_NO_LOGGING,
+  {PRM_ID_LOG_NO_LOGGING,
+   PRM_NAME_LOG_NO_LOGGING,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_log_no_logging_flag,
@@ -3894,7 +4099,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_UNLOADDB_IGNORE_ERROR,
+  {PRM_ID_UNLOADDB_IGNORE_ERROR,
+   PRM_NAME_UNLOADDB_IGNORE_ERROR,
    (PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_unloaddb_ignore_error_flag,
@@ -3904,7 +4110,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_UNLOADDB_LOCK_TIMEOUT,
+  {PRM_ID_UNLOADDB_LOCK_TIMEOUT,
+   PRM_NAME_UNLOADDB_LOCK_TIMEOUT,
    (PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_unloaddb_lock_timeout_flag,
@@ -3914,7 +4121,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOADDB_FLUSH_INTERVAL,
+  {PRM_ID_LOADDB_FLUSH_INTERVAL,
+   PRM_NAME_LOADDB_FLUSH_INTERVAL,
    (PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_loaddb_flush_interval_flag,
@@ -3924,7 +4132,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_IO_TEMP_VOLUME_PATH,
+  {PRM_ID_IO_TEMP_VOLUME_PATH,
+   PRM_NAME_IO_TEMP_VOLUME_PATH,
    (PRM_FOR_SERVER),
    PRM_STRING,
    (void *) &prm_io_temp_volume_path_flag,
@@ -3934,7 +4143,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_IO_VOLUME_EXT_PATH,
+  {PRM_ID_IO_VOLUME_EXT_PATH,
+   PRM_NAME_IO_VOLUME_EXT_PATH,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_STRING,
    (void *) &prm_io_volume_ext_path_flag,
@@ -3944,7 +4154,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_UNIQUE_ERROR_KEY_VALUE,
+  {PRM_ID_UNIQUE_ERROR_KEY_VALUE,
+   PRM_NAME_UNIQUE_ERROR_KEY_VALUE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN | PRM_DEPRECATED),
    PRM_BOOLEAN,
    (void *) &prm_unique_error_key_value_flag,
@@ -3954,7 +4165,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_USE_SYSTEM_MALLOC,
+  {PRM_ID_USE_SYSTEM_MALLOC,
+   PRM_NAME_USE_SYSTEM_MALLOC,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_use_system_malloc_flag,
@@ -3964,7 +4176,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_EVENT_HANDLER,
+  {PRM_ID_EVENT_HANDLER,
+   PRM_NAME_EVENT_HANDLER,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_STRING,
    (void *) &prm_event_handler_flag,
@@ -3974,7 +4187,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_EVENT_ACTIVATION,
+  {PRM_ID_EVENT_ACTIVATION,
+   PRM_NAME_EVENT_ACTIVATION,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_INTEGER_LIST,
    (void *) &prm_event_activation_flag,
@@ -3984,7 +4198,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_READ_ONLY_MODE,
+  {PRM_ID_READ_ONLY_MODE,
+   PRM_NAME_READ_ONLY_MODE,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT),
    PRM_BOOLEAN,
    (void *) &prm_read_only_mode_flag,
@@ -3994,7 +4209,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MNT_WAITING_THREAD,
+  {PRM_ID_MNT_WAITING_THREAD,
+   PRM_NAME_MNT_WAITING_THREAD,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_mnt_waiting_thread_flag,
@@ -4004,7 +4220,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MNT_STATS_THRESHOLD,
+  {PRM_ID_MNT_STATS_THRESHOLD,
+   PRM_NAME_MNT_STATS_THRESHOLD,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER_LIST,
    (void *) &prm_mnt_stats_threshold_flag,
@@ -4014,7 +4231,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SERVICE_SERVICE_LIST,
+  {PRM_ID_SERVICE_SERVICE_LIST,
+   PRM_NAME_SERVICE_SERVICE_LIST,
    (PRM_FOR_SERVER),
    PRM_STRING,
    (void *) &prm_service_service_list_flag,
@@ -4024,7 +4242,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SERVICE_SERVER_LIST,
+  {PRM_ID_SERVICE_SERVER_LIST,
+   PRM_NAME_SERVICE_SERVER_LIST,
    (PRM_FOR_SERVER),
    PRM_STRING,
    (void *) &prm_service_server_list_flag,
@@ -4034,7 +4253,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SESSION_STATE_TIMEOUT,
+  {PRM_ID_SESSION_STATE_TIMEOUT,
+   PRM_NAME_SESSION_STATE_TIMEOUT,
    (PRM_FOR_SERVER | PRM_TEST_CHANGE),
    PRM_INTEGER,
    (void *) &prm_session_timeout_flag,
@@ -4045,7 +4265,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MULTI_RANGE_OPT_LIMIT,
+  {PRM_ID_MULTI_RANGE_OPT_LIMIT,
+   PRM_NAME_MULTI_RANGE_OPT_LIMIT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    (void *) &prm_multi_range_opt_limit_flag,
@@ -4056,7 +4277,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_INTL_NUMBER_LANG,
+  {PRM_ID_INTL_NUMBER_LANG,
+   PRM_NAME_INTL_NUMBER_LANG,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
    PRM_STRING,
    (void *) &prm_intl_number_lang_flag,
@@ -4066,7 +4288,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_INTL_DATE_LANG,
+  {PRM_ID_INTL_DATE_LANG,
+   PRM_NAME_INTL_DATE_LANG,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
    PRM_STRING,
    (void *) &prm_intl_date_lang_flag,
@@ -4079,7 +4302,8 @@ static SYSPRM_PARAM prm_Def[] = {
   /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by 
    * other parameters (for example in sysprm_load_and_init the parameters are set to their default in the order they
    * are found in this array). */
-  {PRM_NAME_COMPAT_MODE,
+  {PRM_ID_COMPAT_MODE,
+   PRM_NAME_COMPAT_MODE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_COMPOUND),
    PRM_KEYWORD,
    (void *) &prm_compat_mode_flag,
@@ -4089,7 +4313,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_DB_VOLUME_SIZE,
+  {PRM_ID_DB_VOLUME_SIZE,
+   PRM_NAME_DB_VOLUME_SIZE,
    (PRM_SIZE_UNIT),
    PRM_BIGINT,
    (void *) &prm_db_volume_size_flag,
@@ -4100,7 +4325,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_VOLUME_SIZE,
+  {PRM_ID_LOG_VOLUME_SIZE,
+   PRM_NAME_LOG_VOLUME_SIZE,
    (PRM_SIZE_UNIT),
    PRM_BIGINT,
    (void *) &prm_log_volume_size_flag,
@@ -4111,7 +4337,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_UNICODE_INPUT_NORMALIZATION,
+  {PRM_ID_UNICODE_INPUT_NORMALIZATION,
+   PRM_NAME_UNICODE_INPUT_NORMALIZATION,
    (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_unicode_input_normalization_flag,
@@ -4121,7 +4348,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_UNICODE_OUTPUT_NORMALIZATION,
+  {PRM_ID_UNICODE_OUTPUT_NORMALIZATION,
+   PRM_NAME_UNICODE_OUTPUT_NORMALIZATION,
    (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_unicode_output_normalization_flag,
@@ -4131,7 +4359,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_INTL_CHECK_INPUT_STRING,
+  {PRM_ID_INTL_CHECK_INPUT_STRING,
+   PRM_NAME_INTL_CHECK_INPUT_STRING,
    (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_intl_check_input_string_flag,
@@ -4141,7 +4370,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CHECK_PEER_ALIVE,
+  {PRM_ID_CHECK_PEER_ALIVE,
+   PRM_NAME_CHECK_PEER_ALIVE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_SESSION),
    PRM_KEYWORD,
    (void *) &prm_check_peer_alive_flag,
@@ -4151,7 +4381,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SQL_TRACE_SLOW_MSECS,
+  {PRM_ID_SQL_TRACE_SLOW_MSECS,
+   PRM_NAME_SQL_TRACE_SLOW_MSECS,
    (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_DEPRECATED),
    PRM_INTEGER,
    (void *) &prm_sql_trace_slow_msecs_flag,
@@ -4162,7 +4393,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SQL_TRACE_SLOW,
+  {PRM_ID_SQL_TRACE_SLOW,
+   PRM_NAME_SQL_TRACE_SLOW,
    (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_sql_trace_slow_msecs_flag,
@@ -4173,7 +4405,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_equal_to_ori,
    (DUP_PRM_FUNC) prm_equal_to_ori},
-  {PRM_NAME_SQL_TRACE_EXECUTION_PLAN,
+  {PRM_ID_SQL_TRACE_EXECUTION_PLAN,
+   PRM_NAME_SQL_TRACE_EXECUTION_PLAN,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_sql_trace_execution_plan_flag,
@@ -4184,7 +4417,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_TRACE_FLUSH_TIME,
+  {PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS,
+   PRM_NAME_LOG_TRACE_FLUSH_TIME,
    (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_TIME_UNIT),
    PRM_INTEGER,
    (void *) &prm_log_trace_flush_time_msecs_flag,
@@ -4195,7 +4429,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_INTL_COLLATION,
+  {PRM_ID_INTL_COLLATION,
+   PRM_NAME_INTL_COLLATION,
    (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
    PRM_STRING,
    (void *) &prm_intl_collation_flag,
@@ -4205,7 +4440,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_GENERIC_VOL_PREALLOC_SIZE,
+  {PRM_ID_GENERIC_VOL_PREALLOC_SIZE,
+   PRM_NAME_GENERIC_VOL_PREALLOC_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT),
    PRM_BIGINT,
    (void *) &prm_generic_vol_prealloc_size_flag,
@@ -4216,7 +4452,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SORT_LIMIT_MAX_COUNT,
+  {PRM_ID_SORT_LIMIT_MAX_COUNT,
+   PRM_NAME_SORT_LIMIT_MAX_COUNT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    (void *) &prm_sort_limit_max_count_flag,
@@ -4227,7 +4464,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SQL_TRACE_IOREADS,
+  {PRM_ID_SQL_TRACE_IOREADS,
+   PRM_NAME_SQL_TRACE_IOREADS,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_sql_trace_ioreads_flag,
@@ -4238,7 +4476,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_QUERY_TRACE,
+  {PRM_ID_QUERY_TRACE,
+   PRM_NAME_QUERY_TRACE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_query_trace_flag,
@@ -4248,7 +4487,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_QUERY_TRACE_FORMAT,
+  {PRM_ID_QUERY_TRACE_FORMAT,
+   PRM_NAME_QUERY_TRACE_FORMAT,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_KEYWORD,
    (void *) &prm_query_trace_format_flag,
@@ -4259,7 +4499,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MAX_RECURSION_SQL_DEPTH,
+  {PRM_ID_MAX_RECURSION_SQL_DEPTH,
+   PRM_NAME_MAX_RECURSION_SQL_DEPTH,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_max_recursion_sql_depth_flag,
@@ -4270,7 +4511,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_UPDATE_USE_ATTRIBUTE_REFERENCES,
+  {PRM_ID_UPDATE_USE_ATTRIBUTE_REFERENCES,
+   PRM_NAME_UPDATE_USE_ATTRIBUTE_REFERENCES,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    (void *) &prm_update_use_attribute_references_flag,
@@ -4281,7 +4523,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_AIN_RATIO,
+  {PRM_ID_PB_AIN_RATIO,
+   PRM_NAME_PB_AIN_RATIO,
    (PRM_FOR_SERVER | PRM_RELOADABLE),
    PRM_FLOAT,
    (void *) &prm_pb_ain_ratio_flag,
@@ -4292,7 +4535,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_AOUT_RATIO,
+  {PRM_ID_PB_AOUT_RATIO,
+   PRM_NAME_PB_AOUT_RATIO,
    (PRM_FOR_SERVER | PRM_RELOADABLE),
    PRM_FLOAT,
    (void *) &prm_pb_aout_ratio_flag,
@@ -4303,7 +4547,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_MAX_AGG_HASH_SIZE,
+  {PRM_ID_MAX_AGG_HASH_SIZE,
+   PRM_NAME_MAX_AGG_HASH_SIZE,
    (PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_SIZE_UNIT),
    PRM_BIGINT,
    (void *) &prm_max_agg_hash_size_flag,
@@ -4314,7 +4559,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_AGG_HASH_RESPECT_ORDER,
+  {PRM_ID_AGG_HASH_RESPECT_ORDER,
+   PRM_NAME_AGG_HASH_RESPECT_ORDER,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_agg_hash_respect_order_flag,
@@ -4325,7 +4571,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_USE_BTREE_FENCE_KEY,
+  {PRM_ID_USE_BTREE_FENCE_KEY,
+   PRM_NAME_USE_BTREE_FENCE_KEY,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_use_btree_fence_key_flag,
@@ -4336,7 +4583,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN,
+  {PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN,
+   PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_enable_merge_join_flag,
@@ -4346,7 +4594,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_01,
+  {PRM_ID_OPTIMIZER_RESERVE_01,
+   PRM_NAME_OPTIMIZER_RESERVE_01,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_01_flag,
@@ -4356,7 +4605,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_02,
+  {PRM_ID_OPTIMIZER_RESERVE_02,
+   PRM_NAME_OPTIMIZER_RESERVE_02,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_02_flag,
@@ -4366,7 +4616,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_03,
+  {PRM_ID_OPTIMIZER_RESERVE_03,
+   PRM_NAME_OPTIMIZER_RESERVE_03,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_03_flag,
@@ -4376,7 +4627,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_04,
+  {PRM_ID_OPTIMIZER_RESERVE_04,
+   PRM_NAME_OPTIMIZER_RESERVE_04,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_04_flag,
@@ -4386,7 +4638,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_05,
+  {PRM_ID_OPTIMIZER_RESERVE_05,
+   PRM_NAME_OPTIMIZER_RESERVE_05,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_05_flag,
@@ -4396,7 +4649,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_06,
+  {PRM_ID_OPTIMIZER_RESERVE_06,
+   PRM_NAME_OPTIMIZER_RESERVE_06,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_06_flag,
@@ -4406,7 +4660,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_07,
+  {PRM_ID_OPTIMIZER_RESERVE_07,
+   PRM_NAME_OPTIMIZER_RESERVE_07,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_07_flag,
@@ -4416,7 +4671,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_08,
+  {PRM_ID_OPTIMIZER_RESERVE_08,
+   PRM_NAME_OPTIMIZER_RESERVE_08,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_08_flag,
@@ -4426,7 +4682,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_09,
+  {PRM_ID_OPTIMIZER_RESERVE_09,
+   PRM_NAME_OPTIMIZER_RESERVE_09,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_09_flag,
@@ -4436,7 +4693,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_10,
+  {PRM_ID_OPTIMIZER_RESERVE_10,
+   PRM_NAME_OPTIMIZER_RESERVE_10,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_10_flag,
@@ -4446,7 +4704,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_11,
+  {PRM_ID_OPTIMIZER_RESERVE_11,
+   PRM_NAME_OPTIMIZER_RESERVE_11,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_11_flag,
@@ -4456,7 +4715,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_12,
+  {PRM_ID_OPTIMIZER_RESERVE_12,
+   PRM_NAME_OPTIMIZER_RESERVE_12,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_12_flag,
@@ -4466,7 +4726,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_13,
+  {PRM_ID_OPTIMIZER_RESERVE_13,
+   PRM_NAME_OPTIMIZER_RESERVE_13,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_13_flag,
@@ -4476,7 +4737,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_14,
+  {PRM_ID_OPTIMIZER_RESERVE_14,
+   PRM_NAME_OPTIMIZER_RESERVE_14,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_14_flag,
@@ -4486,7 +4748,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_15,
+  {PRM_ID_OPTIMIZER_RESERVE_15,
+   PRM_NAME_OPTIMIZER_RESERVE_15,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_15_flag,
@@ -4496,7 +4759,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_16,
+  {PRM_ID_OPTIMIZER_RESERVE_16,
+   PRM_NAME_OPTIMIZER_RESERVE_16,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_16_flag,
@@ -4506,7 +4770,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_17,
+  {PRM_ID_OPTIMIZER_RESERVE_17,
+   PRM_NAME_OPTIMIZER_RESERVE_17,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_17_flag,
@@ -4516,7 +4781,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_18,
+  {PRM_ID_OPTIMIZER_RESERVE_18,
+   PRM_NAME_OPTIMIZER_RESERVE_18,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_18_flag,
@@ -4526,7 +4792,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_19,
+  {PRM_ID_OPTIMIZER_RESERVE_19,
+   PRM_NAME_OPTIMIZER_RESERVE_19,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_19_flag,
@@ -4536,7 +4803,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_RESERVE_20,
+  {PRM_ID_OPTIMIZER_RESERVE_20,
+   PRM_NAME_OPTIMIZER_RESERVE_20,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_reserve_20_flag,
@@ -4546,7 +4814,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE,
+  {PRM_ID_HA_REPL_ENABLE_SERVER_SIDE_UPDATE,
+   PRM_NAME_HA_REPL_ENABLE_SERVER_SIDE_UPDATE,
    (PRM_FOR_HA | PRM_HIDDEN | PRM_DEPRECATED),
    PRM_BOOLEAN,
    (void *) &prm_ha_repl_enable_server_side_update_flag,
@@ -4557,7 +4826,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_LRU_HOT_RATIO,
+  {PRM_ID_PB_LRU_HOT_RATIO,
+   PRM_NAME_PB_LRU_HOT_RATIO,
    (PRM_FOR_SERVER | PRM_RELOADABLE),
    PRM_FLOAT,
    (void *) &prm_pb_lru_hot_ratio_flag,
@@ -4568,7 +4838,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_PREFETCHLOGDB_ENABLE,
+  {PRM_ID_HA_PREFETCHLOGDB_ENABLE,
+   PRM_NAME_HA_PREFETCHLOGDB_ENABLE,
    (PRM_FOR_HA | PRM_FOR_CLIENT),
    PRM_BOOLEAN,
    (void *) &prm_ha_prefetchlogdb_enable_flag,
@@ -4579,7 +4850,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
+  {PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
+   PRM_NAME_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
    (PRM_FOR_HA | PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_ha_prefetchlogdb_max_thread_count_flag,
@@ -4590,7 +4862,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_PREFETCHLOGDB_PAGE_DISTANCE,
+  {PRM_ID_HA_PREFETCHLOGDB_PAGE_DISTANCE,
+   PRM_NAME_HA_PREFETCHLOGDB_PAGE_DISTANCE,
    (PRM_FOR_HA | PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_INTEGER,
    (void *) &prm_ha_prefetchlogdb_page_distance_flag,
@@ -4601,7 +4874,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_PREFETCHLOGDB_MAX_PAGE_COUNT,
+  {PRM_ID_HA_PREFETCHLOGDB_MAX_PAGE_COUNT,
+   PRM_NAME_HA_PREFETCHLOGDB_MAX_PAGE_COUNT,
    (PRM_FOR_HA | PRM_FOR_CLIENT),
    PRM_INTEGER,
    (void *) &prm_ha_prefetchlogdb_max_page_count_flag,
@@ -4612,7 +4886,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL,
+  {PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL,
+   PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    (void *) &prm_vacuum_master_wakeup_interval_flag,
@@ -4623,7 +4898,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_VACUUM_LOG_BLOCK_PAGES,
+  {PRM_ID_VACUUM_LOG_BLOCK_PAGES,
+   PRM_NAME_VACUUM_LOG_BLOCK_PAGES,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_vacuum_log_block_pages_flag,
@@ -4634,7 +4910,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_VACUUM_WORKER_COUNT,
+  {PRM_ID_VACUUM_WORKER_COUNT,
+   PRM_NAME_VACUUM_WORKER_COUNT,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_vacuum_worker_count_flag,
@@ -4645,7 +4922,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_ER_LOG_VACUUM,
+  {PRM_ID_ER_LOG_VACUUM,
+   PRM_NAME_ER_LOG_VACUUM,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_er_log_vacuum_flag,
@@ -4656,7 +4934,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_DISABLE_VACUUM,
+  {PRM_ID_DISABLE_VACUUM,
+   PRM_NAME_DISABLE_VACUUM,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_disable_vacuum_flag,
@@ -4667,7 +4946,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_BTREE_OPS,
+  {PRM_ID_LOG_BTREE_OPS,
+   PRM_NAME_LOG_BTREE_OPS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_log_btree_ops_flag,
@@ -4678,7 +4958,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OBJECT_PRINT_FORMAT_OID,
+  {PRM_ID_OBJECT_PRINT_FORMAT_OID,
+   PRM_NAME_OBJECT_PRINT_FORMAT_OID,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_object_print_format_oid_flag,
@@ -4689,7 +4970,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TIMEZONE,
+  {PRM_ID_TIMEZONE,
+   PRM_NAME_TIMEZONE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
    PRM_STRING,
    (void *) &prm_timezone_flag,
@@ -4699,7 +4981,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_SERVER_TIMEZONE,
+  {PRM_ID_SERVER_TIMEZONE,
+   PRM_NAME_SERVER_TIMEZONE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_STRING,
    (void *) &prm_server_timezone_flag,
@@ -4709,7 +4992,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_TZ_LEAP_SECOND_SUPPORT,
+  {PRM_ID_TZ_LEAP_SECOND_SUPPORT,
+   PRM_NAME_TZ_LEAP_SECOND_SUPPORT,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_TEST_CHANGE),
    PRM_BOOLEAN,
    (void *) &prm_leap_second_support_flag,
@@ -4719,7 +5003,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION,
+  {PRM_ID_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION,
+   PRM_NAME_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION,
    (PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_optimizer_enable_aggregate_optimization_flag,
@@ -4729,7 +5014,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_VACUUM_PREFETCH_LOG_NBUFFERS,
+  {PRM_ID_VACUUM_PREFETCH_LOG_NBUFFERS,
+   PRM_NAME_VACUUM_PREFETCH_LOG_NBUFFERS,
    (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_vacuum_prefetch_log_nbuffers_flag,
@@ -4739,7 +5025,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_VACUUM_PREFETCH_LOG_BUFFER_SIZE,
+  {PRM_ID_VACUUM_PREFETCH_LOG_BUFFER_SIZE,
+   PRM_NAME_VACUUM_PREFETCH_LOG_BUFFER_SIZE,
    (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_vacuum_prefetch_log_nbuffers_flag,
@@ -4749,7 +5036,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_log_pages,
    (DUP_PRM_FUNC) prm_log_pages_to_size},
-  {PRM_NAME_VACUUM_PREFETCH_LOG_MODE,
+  {PRM_ID_VACUUM_PREFETCH_LOG_MODE,
+   PRM_NAME_VACUUM_PREFETCH_LOG_MODE,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_vacuum_prefetch_log_mode_flag,
@@ -4760,7 +5048,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_NEIGHBOR_FLUSH_NONDIRTY,
+  {PRM_ID_PB_NEIGHBOR_FLUSH_NONDIRTY,
+   PRM_NAME_PB_NEIGHBOR_FLUSH_NONDIRTY,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    (void *) &prm_pb_neighbor_flush_nondirty_flag,
@@ -4771,7 +5060,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_NEIGHBOR_FLUSH_PAGES,
+  {PRM_ID_PB_NEIGHBOR_FLUSH_PAGES,
+   PRM_NAME_PB_NEIGHBOR_FLUSH_PAGES,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
    PRM_INTEGER,
    (void *) &prm_pb_neighbor_flush_pages_flag,
@@ -4782,7 +5072,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_FAULT_INJECTION_IDS,
+  {PRM_ID_FAULT_INJECTION_IDS,
+   PRM_NAME_FAULT_INJECTION_IDS,
    (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER_LIST,
    (void *) &prm_fault_injection_id_flag,
@@ -4793,7 +5084,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_FAULT_INJECTION_TEST,
+  {PRM_ID_FAULT_INJECTION_TEST,
+   PRM_NAME_FAULT_INJECTION_TEST,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_KEYWORD,
    (void *) &prm_fault_injection_test_flag,
@@ -4804,7 +5096,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT,
+  {PRM_ID_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT,
+   PRM_NAME_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_fault_injection_action_prefer_abort_to_exit_flag,
@@ -4814,7 +5107,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_REPL_FILTER_TYPE,
+  {PRM_ID_HA_REPL_FILTER_TYPE,
+   PRM_NAME_HA_REPL_FILTER_TYPE,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_KEYWORD,
    (void *) &prm_ha_repl_filter_type_flag,
@@ -4825,7 +5119,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_HA_REPL_FILTER_FILE,
+  {PRM_ID_HA_REPL_FILTER_FILE,
+   PRM_NAME_HA_REPL_FILTER_FILE,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_repl_filter_file_flag,
@@ -4835,7 +5130,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_COMPENSATE_DEBUG,
+  {PRM_ID_COMPENSATE_DEBUG,
+   PRM_NAME_COMPENSATE_DEBUG,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_compensate_debug_flag,
@@ -4845,7 +5141,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_POSTPONE_DEBUG,
+  {PRM_ID_POSTPONE_DEBUG,
+   PRM_NAME_POSTPONE_DEBUG,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_postpone_debug_flag,
@@ -4855,7 +5152,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_CLIENT_CLASS_CACHE_DEBUG,
+  {PRM_ID_CLIENT_CLASS_CACHE_DEBUG,
+   PRM_NAME_CLIENT_CLASS_CACHE_DEBUG,
    (PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_client_class_cache_debug_flag,
@@ -4865,7 +5163,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_EXAMINE_CLIENT_CACHED_LOCKS,
+  {PRM_ID_EXAMINE_CLIENT_CACHED_LOCKS,
+   PRM_NAME_EXAMINE_CLIENT_CACHED_LOCKS,
    (PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_examine_client_cached_locks_flag,
@@ -4875,7 +5174,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_PB_SEQUENTIAL_VICTIM_FLUSH,
+  {PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH,
+   PRM_NAME_PB_SEQUENTIAL_VICTIM_FLUSH,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_pb_sequential_victim_flush_flag,
@@ -4885,7 +5185,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOG_UNIQUE_STATS,
+  {PRM_ID_LOG_UNIQUE_STATS,
+   PRM_NAME_LOG_UNIQUE_STATS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_log_unique_stats_flag,
@@ -4895,7 +5196,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_LOGPB_LOGGING_DEBUG,
+  {PRM_ID_LOGPB_LOGGING_DEBUG,
+   PRM_NAME_LOGPB_LOGGING_DEBUG,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_logpb_logging_debug_flag,
@@ -4905,7 +5207,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_FORCE_RESTART_TO_SKIP_RECOVERY,
+  {PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY,
+   PRM_NAME_FORCE_RESTART_TO_SKIP_RECOVERY,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    (void *) &prm_force_restart_to_skip_recovery_flag,
@@ -4916,7 +5219,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_EXTENDED_STATISTICS_ACTIVATION,
+  {PRM_ID_EXTENDED_STATISTICS_ACTIVATION,
+   PRM_NAME_EXTENDED_STATISTICS_ACTIVATION,
    (PRM_FOR_SERVER | PRM_FOR_CLIENT),
    PRM_INTEGER,
    (void *) &prm_extended_statistics_flag,
@@ -4926,7 +5230,52 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_extended_statistics_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_STRING_COMPRESSION,
+   PRM_NAME_ENABLE_STRING_COMPRESSION,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_BOOLEAN,
+   (void *) &prm_enable_string_compression_flag,
+   (void *) &prm_enable_string_compression_default,
+   (void *) &PRM_ENABLE_STRING_COMPRESSION,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES,
+   PRM_NAME_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   (void *) &prm_xasl_cache_time_threshold_in_minutes_flag,
+   (void *) &prm_xasl_cache_time_threshold_in_minutes_default,
+   (void *) &PRM_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES,
+   (void *) &prm_xasl_cache_time_threshold_in_minutes_upper,
+   (void *) &prm_xasl_cache_time_threshold_in_minutes_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DISK_LOGGING,
+   PRM_NAME_DISK_LOGGING,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_disk_logging_flag,
+   (void *) &prm_disk_logging_default,
+   (void *) &PRM_DISK_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_FILE_LOGGING,
+   PRM_NAME_FILE_LOGGING,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   (void *) &prm_file_logging_flag,
+   (void *) &prm_file_logging_default,
+   (void *) &PRM_FILE_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -5236,16 +5585,16 @@ static void prm_the_file_has_been_loaded (const char *path);
 static int prm_print_value (const SYSPRM_PARAM * prm, char *buf, size_t len);
 static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print_mode,
 		      PRM_PRINT_VALUE_MODE print_value_mode);
-static int sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload,
-					  bool check_intl_param);
+static int sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload);
 static void prm_check_environment (void);
 static int prm_check_parameters (void);
 static SYSPRM_ERR sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list);
 static int prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload,
-				const char *file, bool ha, bool check_intl_param);
+				const char *file, bool ha);
 static int prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload,
-					const bool ha, const bool check_intl_param);
+					const bool ha);
 static void prm_report_bad_entry (const char *key, int line, int err, const char *where);
+static int sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max);
 static int prm_check_range (SYSPRM_PARAM * prm, void *value);
 static int prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag);
 static int prm_set_force (SYSPRM_PARAM * prm, const char *value);
@@ -5261,7 +5610,7 @@ static PARAM_ID sysprm_get_id (const SYSPRM_PARAM * prm);
 static int sysprm_compare_values (void *first_value, void *second_value, unsigned int val_type);
 static void sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value, SYSPRM_PARAM * prm);
 static SESSION_PARAM *sysprm_alloc_session_parameters (void);
-static SYSPRM_ERR sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bool set_default,
+static SYSPRM_ERR sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 					     SYSPRM_VALUE * new_value);
 static int sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate);
 static void sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value);
@@ -5428,7 +5777,7 @@ sysprm_set_er_log_file (const char *db_name)
  * Note: Parameters would be tuned and forced according to the internal rules.
  */
 static int
-sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload, bool check_intl_param)
+sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload)
 {
   char *base_db_name = NULL;
   char file_being_dealt_with[PATH_MAX];
@@ -5515,7 +5864,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
   else
     {
-      r = prm_read_and_parse_ini_file (file_being_dealt_with, base_db_name, reload, HA_IGNORE, check_intl_param);
+      r = prm_read_and_parse_ini_file (file_being_dealt_with, base_db_name, reload, HA_IGNORE);
     }
 
   if (r != NO_ERROR)
@@ -5537,7 +5886,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 	}
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
-	  r = prm_read_and_parse_ini_file (file_being_dealt_with, NULL, reload, HA_READ, check_intl_param);
+	  r = prm_read_and_parse_ini_file (file_being_dealt_with, NULL, reload, HA_READ);
 	}
     }
 
@@ -5688,7 +6037,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 int
 sysprm_load_and_init (const char *db_name, const char *conf_file)
 {
-  return sysprm_load_and_init_internal (db_name, conf_file, false, false);
+  return sysprm_load_and_init_internal (db_name, conf_file, false);
 }
 
 /*
@@ -5702,7 +6051,7 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
 int
 sysprm_load_and_init_client (const char *db_name, const char *conf_file)
 {
-  return sysprm_load_and_init_internal (db_name, conf_file, false, true);
+  return sysprm_load_and_init_internal (db_name, conf_file, false);
 }
 
 /*
@@ -5715,7 +6064,7 @@ sysprm_load_and_init_client (const char *db_name, const char *conf_file)
 int
 sysprm_reload_and_init (const char *db_name, const char *conf_file)
 {
-  return sysprm_load_and_init_internal (db_name, conf_file, true, false);
+  return sysprm_load_and_init_internal (db_name, conf_file, true);
 }
 
 /*
@@ -5727,11 +6076,9 @@ sysprm_reload_and_init (const char *db_name, const char *conf_file)
  *   reload(in):
  *   file(in):
  *   ha(in):
- *   check_intl_param(in):
  */
 static int
-prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload, const char *file, bool ha,
-		     bool check_intl_param)
+prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload, const char *file, bool ha)
 {
   int i, error;
   int sec_len;
@@ -5807,37 +6154,6 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
       if (PRM_IS_DEPRECATED (prm->static_flag))
 	{
 	  prm_report_bad_entry (key + sec_len, ini->lineno[i], PRM_ERR_DEPRICATED, file);
-	}
-
-      if (check_intl_param)
-	{
-	  if (strcasecmp (PRM_NAME_INTL_DATE_LANG, prm->name) == 0
-	      || strcasecmp (PRM_NAME_INTL_NUMBER_LANG, prm->name) == 0)
-	    {
-	      INTL_LANG dummy;
-	      if (value == NULL || lang_get_lang_id_from_name (value, &dummy) != 0)
-		{
-		  error = PRM_ERR_BAD_VALUE;
-		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
-		  return error;
-		}
-	    }
-
-	  if (strcasecmp (PRM_NAME_INTL_COLLATION, prm->name) == 0)
-	    {
-	      LANG_COLLATION *lc = NULL;
-	      if (value != NULL)
-		{
-		  lc = lang_get_collation_by_name (value);
-		}
-
-	      if (lc == NULL)
-		{
-		  error = PRM_ERR_BAD_VALUE;
-		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
-		  return error;
-		}
-	    }
 	}
 
       if (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0 && on_server)
@@ -5926,11 +6242,9 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
  *   db_name(in):
  *   reload(in):
  *   ha(in):
- *   check_intl_param(in):
  */
 static int
-prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload, const bool ha,
-			     const bool check_intl_param)
+prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload, const bool ha)
 {
   INI_TABLE *ini;
   char sec_name[LINE_MAX];
@@ -5946,32 +6260,32 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
       return PRM_ERR_FILE_ERR;
     }
 
-  error = prm_load_by_section (ini, "common", true, reload, prm_file_name, ha, check_intl_param);
+  error = prm_load_by_section (ini, "common", true, reload, prm_file_name, ha);
   if (error == NO_ERROR && !ha && db_name != NULL && *db_name != '\0')
     {
       snprintf (sec_name, LINE_MAX, "@%s", db_name);
-      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha, check_intl_param);
+      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha);
     }
 
 #if defined (SA_MODE)
   if (error == NO_ERROR)
     {
-      error = prm_load_by_section (ini, "standalone", true, reload, prm_file_name, ha, check_intl_param);
+      error = prm_load_by_section (ini, "standalone", true, reload, prm_file_name, ha);
     }
 #endif /* SA_MODE */
 
   if (error == NO_ERROR && !ha)
     {
-      error = prm_load_by_section (ini, "service", false, reload, prm_file_name, ha, check_intl_param);
+      error = prm_load_by_section (ini, "service", false, reload, prm_file_name, ha);
     }
   if (error == NO_ERROR && ha && PRM_HA_MODE != HA_MODE_OFF && GETHOSTNAME (host_name, MAXHOSTNAMELEN) == 0)
     {
       snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
-      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha, check_intl_param);
+      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha);
       if (error == NO_ERROR && getlogin_r (user_name, MAXHOSTNAMELEN) == 0)
 	{
 	  snprintf (sec_name, LINE_MAX, "%%%s|%s", host_name, user_name);
-	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha, check_intl_param);
+	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha);
 	}
     }
 
@@ -6544,7 +6858,6 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
     {
       /* parse data */
       SYSPRM_ASSIGN_VALUE *assign = NULL;
-      bool set_default = false;
 
       /* get parameter name and value */
       err = prm_get_next_param_value (&p, &name, &value);
@@ -6571,53 +6884,6 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
 	  break;
 	}
 
-      if (strlen (value) == 7 && intl_identifier_casecmp (value, PRM_VALUE_DEFAULT) == 0)
-	{
-	  set_default = true;
-	}
-
-      if (check && !set_default)
-	{
-	  if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0 || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
-	    {
-	      INTL_LANG dummy;
-
-	      if (lang_get_lang_id_from_name (value, &dummy) != 0)
-		{
-		  err = PRM_ERR_BAD_VALUE;
-		  break;
-		}
-	    }
-	  if (strcmp (prm->name, PRM_NAME_INTL_COLLATION) == 0)
-	    {
-	      LANG_COLLATION *lc = NULL;
-	      if (value != NULL)
-		{
-		  lc = lang_get_collation_by_name (value);
-		}
-
-	      if (lc == NULL)
-		{
-		  err = PRM_ERR_BAD_VALUE;
-		  break;
-		}
-	    }
-	  if (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0)
-	    {
-	      int er_status = NO_ERROR;
-
-	      if (value != NULL)
-		{
-		  er_status = tz_str_to_region (value, strlen (value), NULL);
-		  if (er_status != NO_ERROR)
-		    {
-		      err = PRM_ERR_BAD_VALUE;
-		      break;
-		    }
-		}
-	    }
-	}
-
       /* create a SYSPRM_CHANGE_VAL object */
       assign = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
       if (assign == NULL)
@@ -6626,7 +6892,7 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
 	  err = PRM_ERR_NO_MEM_FOR_PRM;
 	  break;
 	}
-      err = sysprm_generate_new_value (prm, value, check, set_default, &assign->value);
+      err = sysprm_generate_new_value (prm, value, check, &assign->value);
       if (err != PRM_ERR_NO_ERROR)
 	{
 	  if (err == PRM_ERR_NOT_FOR_CLIENT || err == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
@@ -7662,28 +7928,16 @@ xsysprm_dump_server_parameters (FILE * outfp)
 #endif /* !CS_MODE */
 
 /*
- * sysprm_get_range -
- *   return:
- *   pname (in): parameter name
- *   value (in): parameter value
+ * sysprm_get_param_range - returns the minimum and maximum value for a SYSPRM_PARAM
+ *   return: error code
+ *   prm (in): the paramter for which we want the limits
+ *   min (out): the minimum possible value for the parameter
+ *   max (out): the maximum possible value for the parameter
  */
-int
-sysprm_get_range (const char *pname, void *min, void *max)
+static int
+sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
 {
   int error = NO_ERROR;
-  SYSPRM_PARAM *prm;
-
-  prm = prm_find (pname, NULL);
-  if (prm == NULL)
-    {
-      return PRM_ERR_UNKNOWN_PARAM;
-    }
-
-  if (PRM_DIFFERENT_UNIT (prm->static_flag))
-    {
-      assert (prm->get_dup != NULL);
-    }
-
   if (PRM_IS_INTEGER (prm))
     {
       if (prm->lower_limit)
@@ -7779,6 +8033,33 @@ sysprm_get_range (const char *pname, void *min, void *max)
     }
 
   return PRM_ERR_NO_ERROR;
+}
+
+/*
+ * sysprm_get_range - returns the minimum and maximum value
+ *                    for a paramter, given by its name 
+ *   return: error code
+ *   pname (in): parameter name
+ *   min (out): the minimum possible value for the parameter
+ *   max (out): the maximum possible value for the parameter
+ */
+int
+sysprm_get_range (const char *pname, void *min, void *max)
+{
+  int error = NO_ERROR;
+  SYSPRM_PARAM *prm;
+
+  prm = prm_find (pname, NULL);
+  if (prm == NULL)
+    {
+      return PRM_ERR_UNKNOWN_PARAM;
+    }
+
+  if (PRM_DIFFERENT_UNIT (prm->static_flag))
+    {
+      assert (prm->get_dup != NULL);
+    }
+  return sysprm_get_param_range (prm, min, max);
 }
 
 /*
@@ -7954,16 +8235,16 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
  * value (in)	   : parameter value in char * format
  * check (in)	   : check if value can be changed. set to false if value
  *		     should be forced
- * set_default(in) : whether set this sysprm to default value
  * new_value (out) : SYSPRM_VALUE converted from string
  */
 static SYSPRM_ERR
-sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bool set_default,
-			   SYSPRM_VALUE * new_value)
+sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SYSPRM_VALUE * new_value)
 {
   char *end = NULL;
   int error = NO_ERROR;
+  int set_min = 0, set_max = 0, set_default = 0;
   SYSPRM_ERR ret = PRM_ERR_NO_ERROR;
+  SYSPRM_VALUE min, max;
 
   if (prm == NULL)
     {
@@ -8024,6 +8305,75 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
     }
 #endif /* SERVER_MODE */
 
+  if (strcasecmp (value, PRM_VALUE_DEFAULT) == 0)
+    {
+      set_default = true;
+    }
+  if (strcasecmp (value, PRM_VALUE_MAX) == 0)
+    {
+      set_max = true;
+    }
+  if (strcasecmp (value, PRM_VALUE_MIN) == 0)
+    {
+      set_min = true;
+    }
+#if defined(CS_MODE)
+  if (!set_default)
+    {
+      if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0 || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
+	{
+	  INTL_LANG dummy;
+
+	  if (lang_get_lang_id_from_name (value, &dummy) != 0)
+	    {
+	      return PRM_ERR_BAD_VALUE;
+	    }
+	}
+      if (strcmp (prm->name, PRM_NAME_INTL_COLLATION) == 0)
+	{
+	  LANG_COLLATION *lc = NULL;
+	  if (value != NULL)
+	    {
+	      lc = lang_get_collation_by_name (value);
+	    }
+
+	  if (lc == NULL)
+	    {
+	      return PRM_ERR_BAD_VALUE;
+	    }
+	}
+      if (strcmp (prm->name, PRM_NAME_TIMEZONE) == 0)
+	{
+	  int er_status = NO_ERROR;
+
+	  if (value != NULL)
+	    {
+	      er_status = tz_str_to_region (value, strlen (value), NULL);
+	      if (er_status != NO_ERROR)
+		{
+		  return PRM_ERR_BAD_VALUE;
+		}
+	    }
+	}
+    }
+#endif
+  if (set_max || set_min)
+    {
+      ret = sysprm_get_param_range (prm, &min, &max);
+      if (ret != PRM_ERR_NO_ERROR)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+      if (set_min)
+	{
+	  new_value = &min;
+	}
+      else
+	{
+	  new_value = &max;
+	}
+      return PRM_ERR_NO_ERROR;
+    }
   switch (prm->datatype)
     {
     case PRM_INTEGER:
@@ -8305,18 +8655,17 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
 	/* check if the value is represented as a null keyword */
 	if (prm_keyword (-1, value, null_words, DIM (null_words)) != NULL)
 	  {
-	    val = NULL;
+	    new_value->str = NULL;
 	  }
 	else
 	  {
-	    val = strdup (value);
-	    if (val == NULL)
+	    new_value->str = strdup (value);
+	    if (new_value->str == NULL)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (value)));
 		return PRM_ERR_NO_MEM_FOR_PRM;
 	      }
 	  }
-	new_value->str = val;
 	break;
       }
 
@@ -8531,7 +8880,7 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
   SYSPRM_ERR error = PRM_ERR_NO_ERROR;
   SYSPRM_VALUE new_value;
 
-  error = sysprm_generate_new_value (prm, value, false, false, &new_value);
+  error = sysprm_generate_new_value (prm, value, false, &new_value);
   if (error != PRM_ERR_NO_ERROR)
     {
       return error;

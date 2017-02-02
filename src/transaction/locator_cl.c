@@ -3870,13 +3870,10 @@ locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint_class,
  *   class(in): The class object of the hinted class mop
  *   hfid(in): The heap of instances of the hinted class
  *   decache(in): true if objects must be decached after they are flushed
- *   isone_mflush(in): true if process stops after one set of objects
- *                 (i.e., one area) has been flushed to page buffer pool
- *                 (server).
+ *   isone_mflush(in): true if process stops after one set of objects (i.e., one area) has been flushed to server.
  *
- * Note:Initialize the mflush structure which describes the objects in
- *              disk format to flush. A copy area of one page is defined to
- *              place the objects.
+ * Note: Initialize the mflush structure which describes the objects in disk format to flush. 
+ *	 A copy area of one page is defined to place the objects.
  */
 static int
 locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ class_obj, HFID * hfid, bool decache,
@@ -3910,9 +3907,8 @@ locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ cl
  *
  *   mflush(in): Structure which describes objects to flush
  *
- * Note: Reset the mflush structure which describes objects in disk
- *              format to flush to server. This function is used after a
- *              an flush area has been forced.
+ * Note: Reset the mflush structure which describes objects in disk format to flush to server.
+ *	 This function is used after a an flush area has been forced.
  */
 static void
 locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush)
@@ -3929,16 +3925,14 @@ locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush)
 }
 
 /*
- * locator_mflush_reallocate_copy_area () - Reallocate copy area and reset
- *                                          flush area
+ * locator_mflush_reallocate_copy_area () - Reallocate copy area and reset flush area
  *
  * return: NO_ERROR if all OK, ER status otherwise
  *
  *   mflush(in): Structure which describes objects to flush
  *   minsize(in): Minimal size of flushing copy area
  *
- * Note: Reset the mflush structure which describes objects in disk
- *              format to flush.
+ * Note: Reset the mflush structure which describes objects in disk format to flush.
  */
 static int
 locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize)
@@ -4027,8 +4021,7 @@ locator_mflush_end (LOCATOR_MFLUSH_CACHE * mflush)
  *
  *   mflush(in): Structure which describe objects to flush
  *
- * Note: Dump the mflush area
- *              This function is used for DEBUGGING PURPOSES.
+ * Note: Dump the mflush area. This function is used for DEBUGGING PURPOSES.
  */
 static void
 locator_dump_mflush (FILE * out_fp, LOCATOR_MFLUSH_CACHE * mflush)
@@ -4059,8 +4052,7 @@ locator_dump_mflush (FILE * out_fp, LOCATOR_MFLUSH_CACHE * mflush)
  *   ignore_object(in): The object that has been chached
  *   ignore_argument(in):
  *
- * Note: Set the given object as dirty. This function is used when
- *              mflush failed
+ * Note: Set the given object as dirty. This function is used when mflush failed
  */
 static void
 locator_mflush_set_dirty (MOP mop, MOBJ ignore_object, void *ignore_argument)
@@ -4075,8 +4067,7 @@ locator_mflush_set_dirty (MOP mop, MOBJ ignore_object, void *ignore_argument)
  *
  *   mflush(in): Structure which describes to objects to flush
  *
- * Note: The repl objects placed on the mflush area are forced to the
- *              server (page buffer pool).
+ * Note: The repl objects placed on the mflush area are forced to the server (page buffer pool).
  */
 static int
 locator_repl_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
@@ -4151,8 +4142,7 @@ locator_repl_mflush_check_error (LC_COPYAREA * reply_copyarea)
  *
  *   mflush(in): Structure which describes to objects to flush
  *
- * Note: The disk objects placed on the mflush area are forced to the
- *              server (page buffer pool).
+ * Note: The disk objects placed on the mflush area are forced to the server (page buffer pool).
  */
 static int
 locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
@@ -5040,8 +5030,7 @@ locator_mflush (MOP mop, void *mf)
 }
 
 /*
- * locator_repl_mflush () - place repl objects
- *                         into LOCATOR_MFLUSH_CACHE
+ * locator_repl_mflush () - place repl objects into LOCATOR_MFLUSH_CACHE
  *
  * return: error code
  *
@@ -5064,7 +5053,8 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	  break;
 	}
 
-      required_length = OR_VALUE_ALIGNED_SIZE (repl_obj->pkey_value);
+      /* includes leading and trailing alignment */
+      required_length = repl_obj->packed_pkey_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
       if (repl_obj->operation != LC_FLUSH_DELETE)
 	{
 	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
@@ -5095,7 +5085,14 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       /* put packed key_value first */
       obj_start_p = ptr = mflush->recdes.data;
-      ptr = or_pack_mem_value (ptr, repl_obj->pkey_value);
+
+      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
+
+      memcpy (ptr, repl_obj->packed_pkey_value, repl_obj->packed_pkey_value_length);
+      ptr += repl_obj->packed_pkey_value_length;
+
+      ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);	/* for int alignment. see or_pack_mem_value */
+
       key_length = CAST_BUFLEN (ptr - obj_start_p);
       mflush->recdes.data = ptr;
 

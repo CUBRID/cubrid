@@ -313,7 +313,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
@@ -398,7 +397,6 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
@@ -476,8 +474,11 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       value->data.ch.info.is_max_string = false;
+      value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
@@ -489,8 +490,11 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
       value->data.ch.info.is_max_string = false;
+      value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -560,7 +564,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
@@ -638,8 +641,11 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
       value->data.ch.info.is_max_string = true;
+      value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = NULL;
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
@@ -651,8 +657,11 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
       value->data.ch.info.is_max_string = true;
+      value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = NULL;
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -785,8 +794,11 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
       value->data.ch.info.is_max_string = false;
+      value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = (char *) "";
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -794,9 +806,12 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
     case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
+      value->data.ch.info.compressed_need_clear = false;
       value->data.ch.info.is_max_string = false;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "";
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -811,7 +826,6 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
 #if 1				/* TODO - */
     case DB_TYPE_OBJECT:
     case DB_TYPE_MIDXKEY:
-    case DB_TYPE_ELO:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
@@ -1154,7 +1168,6 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_VARIABLE:
@@ -1601,6 +1614,9 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	  value->data.ch.info.codeset = codeset;
 	  value->domain.char_info.collation_id = collation_id;
 	  value->data.ch.info.is_max_string = false;
+	  value->data.ch.info.compressed_need_clear = false;
+	  value->data.ch.medium.compressed_buf = NULL;
+	  value->data.ch.medium.compressed_size = 0;
 	  /* 
 	   * If size is set to the default, and the type is any
 	   * kind of character string, assume the string is NULL
@@ -2581,6 +2597,9 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int 
   value->domain.char_info.collation_id = collation_id;
   value->data.enumeration.str_val.info.style = MEDIUM_STRING;
   value->data.ch.info.is_max_string = false;
+  value->data.ch.info.compressed_need_clear = false;
+  value->data.ch.medium.compressed_buf = NULL;
+  value->data.ch.medium.compressed_size = 0;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
@@ -3528,7 +3547,6 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_NULL:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
     case DB_TYPE_ENUMERATION:
       result = tp_domain_resolve_default (type);
       break;
@@ -4706,7 +4724,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
@@ -6426,7 +6443,6 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 
 	  break;
 
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	  elo_p = DB_GET_ELO (value_p);
@@ -6665,14 +6681,9 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	  buffer_p = valcnv_append_string (buffer_p, "'");
 	  break;
 
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
-	  if (DB_VALUE_TYPE (value_p) == DB_TYPE_ELO)
-	    {
-	      buffer_p = valcnv_append_string (buffer_p, "ELO'");
-	    }
-	  else if (DB_VALUE_TYPE (value_p) == DB_TYPE_BLOB)
+	  if (DB_VALUE_TYPE (value_p) == DB_TYPE_BLOB)
 	    {
 	      buffer_p = valcnv_append_string (buffer_p, "BLOB'");
 	    }
@@ -6767,4 +6778,51 @@ void
 db_set_connect_status (int status)
 {
   db_Connect_status = status;
+}
+
+/*
+ *  db_set_compressed_string()	    :- Sets the compressed string, its size and its need for clear in the DB_VALUE
+ *
+ *  value(in/out)		    :- The DB_VALUE
+ *  compressed_string(in)	    :-
+ *  compressed_size(in)		    :-
+ *  compressed_need_clear(in)	    :-
+ */
+void
+db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return;
+    }
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  value->data.ch.medium.compressed_buf = compressed_string;
+  value->data.ch.medium.compressed_size = compressed_size;
+  value->data.ch.info.compressed_need_clear = compressed_need_clear;
+
+  return;
+}
+
+int
+db_get_compressed_size (DB_VALUE * value)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return 0;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Preliminary check */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+
+  return value->data.ch.medium.compressed_size;
 }

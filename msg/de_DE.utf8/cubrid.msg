@@ -1260,8 +1260,9 @@ $ LOADDB
 1191 Stand-alone-Vakuumausführung wird beendet.
 1192 Value Genauigkeit von %1$zu überschreitet maximal zulässige %2$d.
 1193 Die Länge der bearbeiteten Partitionsausdruck die maximal zulässige (%1$d) übersteigt.
-1194 Letzter Fehler
-
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Letzter Fehler
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
 2 Keine Fehlermeldung vorhanden.

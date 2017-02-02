@@ -715,7 +715,6 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	case DB_TYPE_POINTER:
 	  hash = GET_PTR_FOR_HASH (db_get_pointer (val));
 	  break;
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	case DB_TYPE_SUB:

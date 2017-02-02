@@ -78,12 +78,14 @@ static int
 fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * obj_oid, QFILE_TUPLE tpl,
 		  DB_VALUE ** peek_dbval)
 {
-  ARITH_TYPE *arithptr = regu_var->value.arithptr;
+  ARITH_TYPE *arithptr;
   DB_VALUE *peek_left, *peek_right, *peek_third, *peek_fourth;
   DB_VALUE tmp_value;
   TP_DOMAIN *original_domain = NULL;
   TP_DOMAIN_STATUS dom_status;
 
+  assert (regu_var != NULL);
+  arithptr = regu_var->value.arithptr;
   if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
     {
       *peek_dbval = arithptr->value;
@@ -3804,6 +3806,12 @@ fetch_peek_arith_end:
 error:
   thread_dec_recursion_depth (thread_p);
 
+  if (original_domain)
+    {
+      /* restores regu variable domain */
+      regu_var->domain = original_domain;
+    }
+
   return ER_FAILED;
 }
 
@@ -4087,6 +4095,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 			assert (false);	/* is impossible */
 			error = ER_QPROC_INVALID_DATATYPE;
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+			if (index != NULL && index->need_clear == true)
+			  {
+			    pr_clear_value (index);
+			  }
 			goto exit_on_error;
 		      }
 
@@ -4541,6 +4553,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
 	      pr_clear_value (regup->value.vfetch_to);
 	      return ER_FAILED;
 	    }
+
 	  PR_SHARE_VALUE (tmp, regup->value.vfetch_to);
 	}
     }

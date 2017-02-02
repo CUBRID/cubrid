@@ -1537,8 +1537,12 @@
 #define ER_PRECISION_OVERFLOW			    -1192
 #define ER_PARTITION_EXPRESSION_TOO_LONG	    -1193
 
-#define ER_QSTR_DEFAULT_EXPRESSION_TOO_LONG         -1194
-#define ER_LAST_ERROR                               -1195
+#define ER_CANNOT_CHECK_FILE                        -1194
+
+#define ER_BUILDVALUE_IN_REC_CTE		    -1195
+
+#define ER_QSTR_DEFAULT_EXPRESSION_TOO_LONG         -1196
+#define ER_LAST_ERROR                               -1197
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -1590,17 +1594,16 @@
    db_add_volext API function. */
 typedef enum
 {
-
-  DISK_PERMVOL_DATA_PURPOSE = 0,
-  DISK_PERMVOL_INDEX_PURPOSE = 1,
-  DISK_PERMVOL_GENERIC_PURPOSE = 2,
-  DISK_PERMVOL_TEMP_PURPOSE = 3,
-
-  DISK_TEMPVOL_TEMP_PURPOSE = 4,	/* internal use only */
-  DISK_UNKNOWN_PURPOSE = 5,	/* internal use only: Does not mean anything */
-  DISK_EITHER_TEMP_PURPOSE = 6	/* internal use only: Either pervol_temp or tempvol_tmp.. Used only to select a volume */
+  DB_PERMANENT_DATA_PURPOSE = 0,
+  DB_TEMPORARY_DATA_PURPOSE = 1,	/* internal use only */
+  DISK_UNKNOWN_PURPOSE = 2,	/* internal use only: Does not mean anything */
 } DB_VOLPURPOSE;
 
+typedef enum
+{
+  DB_PERMANENT_VOLTYPE,
+  DB_TEMPORARY_VOLTYPE
+} DB_VOLTYPE;
 
 /* These are the status codes that can be returned by db_value_compare. */
 typedef enum
@@ -2695,13 +2698,6 @@ struct db_midxkey
  * This is the run-time state structure for an ELO. The ELO is part of
  * the implementation of large object type and not intended to be used
  * directly by the API.
- *
- * NOTE:
- *  1. LOID and related definition which were in storage_common.h moved here.
- *  2. DB_ELO definition in dbi_compat.h does not expose the LOID and
- *     related data type. BE CAREFUL when you change following definitions.
- *     - VPID
- *     - VFID
  */
 
 typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
@@ -2718,27 +2714,18 @@ struct vfid
   short volid;			/* Volume identifier where the file reside */
 };
 
-typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
-struct loid
-{
-  VPID vpid;			/* Real page identifier */
-  VFID vfid;			/* Real file identifier */
-};
-
 typedef enum db_elo_type DB_ELO_TYPE;
 typedef struct db_elo DB_ELO;
 
 enum db_elo_type
 {
   ELO_NULL,
-  ELO_LO,
   ELO_FBO
 };
 
 struct db_elo
 {
   int64_t size;
-  LOID loid;
   char *locator;
   char *meta_data;
   DB_ELO_TYPE type;
@@ -2777,12 +2764,14 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
   } info;
   struct
   {
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     unsigned char size;
     char buf[DB_SMALL_CHAR_BUF_SIZE];
   } sm;
@@ -2791,14 +2780,18 @@ union db_char
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     int size;
     char *buf;
+    int compressed_size;
+    char *compressed_buf;
   } medium;
   struct
   {
     unsigned char style;
     unsigned char codeset;
     unsigned char is_max_string;
+    unsigned char compressed_need_clear;
     DB_LARGE_STRING *str;
   } large;
 };
@@ -3365,8 +3358,6 @@ extern void db_set_interrupt (int set);
 extern int db_set_suppress_repl_on_transaction (int set);
 extern int db_freepgs (const char *vlabel);
 extern int db_totalpgs (const char *vlabel);
-extern int db_purpose_totalpgs_freepgs (int volid, DB_VOLPURPOSE * vol_purpose, int *vol_ntotal_pages,
-					int *vol_nfree_pages);
 extern char *db_vol_label (int volid, char *vol_fullname);
 extern void db_warnspace (const char *vlabel);
 extern int db_add_volume (const char *ext_path, const char *ext_name, const char *ext_comments, const int ext_npages,

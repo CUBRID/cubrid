@@ -400,7 +400,6 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_
 	case DB_TYPE_BIGINT:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_DOUBLE:
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	case DB_TYPE_TIME:
@@ -4061,7 +4060,6 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	    }
 	  break;
 
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	  elo = db_get_elo (value);
@@ -4342,12 +4340,6 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  buffer = pt_append_nulstring (parser, buffer, "X'");
-	  buffer = describe_data (parser, buffer, value);
-	  buffer = pt_append_nulstring (parser, buffer, "'");
-	  break;
-
-	case DB_TYPE_ELO:
-	  buffer = pt_append_nulstring (parser, buffer, "ELO'");
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;

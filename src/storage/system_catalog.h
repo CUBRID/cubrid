@@ -141,7 +141,7 @@ extern void catalog_initialize (CTID * catid);
 extern void catalog_finalize (void);
 
 /* these two routines should be called only once and by the root */
-extern CTID *catalog_create (THREAD_ENTRY * thread_p, CTID * catid, DKNPAGES exp_ncatpg, DKNPAGES exp_nindpg);
+extern CTID *catalog_create (THREAD_ENTRY * thread_p, CTID * catid);
 extern int catalog_destroy (void);
 
 extern int catalog_reclaim_space (THREAD_ENTRY * thread_p);
