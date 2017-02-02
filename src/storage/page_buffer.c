@@ -9382,7 +9382,7 @@ pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   PGBUF_LRU_LIST *lru_list;
 
-  assert (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_2_ZONE || pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_1_ZONE);
+  assert (PGBUF_IS_BCB_IN_LRU (bcb));
 
   lru_list = pgbuf_lru_list_from_bcb (bcb);
 
