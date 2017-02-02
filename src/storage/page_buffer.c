@@ -698,9 +698,6 @@ struct pgbuf_page_monitor
 #if defined (SERVER_MODE)
   PGBUF_MONITOR_BCB_MUTEX *bcb_locks;	/* track bcb mutex usage. */
 #endif				/* SERVER_MODE */
-
-  int count_victims;
-  int count_lru3;
 };
 
 typedef struct pgbuf_page_quota PGBUF_PAGE_QUOTA;
@@ -14641,8 +14638,6 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
 	    }
 	}
     }
-
-  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims, 1);
 }
 
 /*
@@ -14662,7 +14657,6 @@ pgbuf_lru_remove_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
       /* we cannot remove an entry from lock-free circular queue easily. we just hope that this does not happen too
        * often. do nothing here. */
     }
-  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims, -1);
 
   /* now update the hint if it was same as this bcb. */
   if (bcb != lru_list->victim_hint)
@@ -14829,7 +14823,6 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
 	  break;
 	case PGBUF_LRU_3_ZONE:
 	  lru_list->count_lru3--;
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3, -1);
 	  if (is_valid_victim_candidate)
 	    {
 	      /* bcb was a valid victim and in the zone that could be victimized. update victim counter & hint */
@@ -14860,7 +14853,6 @@ pgbuf_bcb_change_zone (PGBUF_BCB * bcb, int new_lru_idx, PGBUF_ZONE new_zone)
 	  break;
 	case PGBUF_LRU_3_ZONE:
 	  lru_list->count_lru3++;
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_lru3, 1);
 	  if (is_valid_victim_candidate)
 	    {
 	      pgbuf_lru_add_victim_candidate (lru_list, bcb);
