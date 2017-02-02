@@ -14444,10 +14444,12 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 	{
 	  /* not assigned directly */
 	  assert (!pgbuf_bcb_is_direct_victim (bcb_flushed));
-	  pgbuf_bcb_mark_was_flushed (bcb_flushed);
 	  /* could not assign it directly. there must be no waiters */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER);
 	}
+
+      /* make sure bcb is no longer marked as flushing */
+      pgbuf_bcb_mark_was_flushed (bcb_flushed);
 
       /* wakeup blocked flushers */
       while (((thrd_blocked = bcb_flushed->next_wait_thrd) != NULL)
