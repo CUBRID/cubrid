@@ -899,7 +899,7 @@ static bool pgbuf_Monitor_locks = true;
 #define PGBUF_BCB_TRYLOCK(bcb) pgbuf_bcb_trylock (bcb, __LINE__)
 #define PGBUF_BCB_UNLOCK(bcb) pgbuf_bcb_unlock (bcb)
 
-/* todo: disable PGBUF_ABORT_RELEASE before merging patch */
+/* TODO: disable PGBUF_ABORT_RELEASE before merging patch */
 /* #if defined (NDEBUG) */
 /* note: release bugs can be hard to debug due to compile optimization. the crash call-stack may point to a completely
  *       different code than the one that caused the crash. my workaround is to save the line of code in this global
@@ -908,11 +908,11 @@ static bool pgbuf_Monitor_locks = true;
  *       careful about overusing this. the code may not be fully optimized when using it. */
 static int pgbuf_Abort_release_line = 0;
 #define PGBUF_ABORT_RELEASE() do { pgbuf_Abort_release_line = __LINE__; abort (); } while (false)
-	    /* #else *//* !NDEBUG */
-/* #define PGBUF_ABORT_RELEASE() assert (false)* /
-	     /* #endif *//* !NDEBUG */
+		       /* #else *//* !NDEBUG */
+/* #define PGBUF_ABORT_RELEASE() assert (false) */
+			 /* #endif *//* !NDEBUG */
 
-/* todo: remove these */
+/* TODO: remove these */
 #if defined (assert)
 #undef assert
 #endif
