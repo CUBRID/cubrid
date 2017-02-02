@@ -899,7 +899,8 @@ static bool pgbuf_Monitor_locks = true;
 #define PGBUF_BCB_TRYLOCK(bcb) pgbuf_bcb_trylock (bcb, __LINE__)
 #define PGBUF_BCB_UNLOCK(bcb) pgbuf_bcb_unlock (bcb)
 
-#if defined (NDEBUG)
+/* todo: disable PGBUF_ABORT_RELEASE before merging patch */
+/* #if defined (NDEBUG) */
 /* note: release bugs can be hard to debug due to compile optimization. the crash call-stack may point to a completely
  *       different code than the one that caused the crash. my workaround is to save the line of code in this global
  *       variable pgbuf_Abort_release_line.
@@ -907,9 +908,19 @@ static bool pgbuf_Monitor_locks = true;
  *       careful about overusing this. the code may not be fully optimized when using it. */
 static int pgbuf_Abort_release_line = 0;
 #define PGBUF_ABORT_RELEASE() do { pgbuf_Abort_release_line = __LINE__; abort (); } while (false)
-#else /* !NDEBUG */
-#define PGBUF_ABORT_RELEASE() assert (false)
-#endif /* !NDEBUG */
+	    /* #else *//* !NDEBUG */
+/* #define PGBUF_ABORT_RELEASE() assert (false)* /
+	     /* #endif *//* !NDEBUG */
+
+/* todo: remove these */
+#if defined (assert)
+#undef assert
+#endif
+#if defined (assert_release)
+#undef assert_release
+#endif
+#define assert(cond) if (!(cond)) PGBUF_ABORT_RELEASE ()
+#define assert_release(cond) if (!(cond)) PGBUF_ABORT_RELEASE ()
 
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
@@ -7669,8 +7680,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PERF_STAT_ID pstat_cond_wait;
 #endif /* SERVER_MODE */
 
-  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
-
   /* how it works: we need to free a bcb for new VPID.
    * 1. first source should be invalid list. initially, all bcb's will be in this list. sometimes, bcb's can be added to
    *    this list during runtime. in any case, these bcb's are not used by anyone, do not need any flush or other
@@ -7689,11 +7698,13 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   bufptr = pgbuf_get_bcb_from_invalid_list (thread_p);
   if (bufptr != NULL)
     {
-      goto end;
+      return bufptr;
     }
 
-  /* search lru lists */
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_search_and_wait);
+
+  /* search lru lists */
   bufptr = pgbuf_get_victim (thread_p);
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
   if (bufptr != NULL)
@@ -8809,7 +8820,7 @@ pgbuf_lru_add_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU
       else
 	{
 	  /* no. we should add the bcb before top. */
-	  assert (pgbuf_bcb_get_zone (lru_list->top) == PGBUF_LRU_2_ZONE);
+	  assert (pgbuf_bcb_get_zone (lru_list->top) != PGBUF_LRU_1_ZONE);
 	  assert (lru_list->bottom != NULL);
 
 	  /* link current top with new bcb */
@@ -9357,7 +9368,7 @@ pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   PGBUF_LRU_LIST *lru_list;
 
-  assert (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_2_ZONE || pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_1_ZONE);
+  assert (PGBUF_IS_BCB_IN_LRU (bcb));
 
   lru_list = pgbuf_lru_list_from_bcb (bcb);
 
