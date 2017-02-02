@@ -249,6 +249,20 @@ typedef enum
 #define PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE(bcb) (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_3_ZONE)
 #define PGBUF_IS_BCB_IN_LRU(bcb) ((pgbuf_bcb_get_zone (bcb) & PGBUF_LRU_ZONE_MASK) != 0)
 
+/* How old is a BCB (bcb_age) related to age of list to which it belongs */
+#define PGBUF_AGE_DIFF(bcb_age,list_age) \
+  (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : (DB_INT32_MAX - ((bcb_age) - (list_age))))
+
+#define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
+#define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
+
+#define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
+#define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
+#define PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD(list) \
+  ((list)->threshold_lru1 + (list)->threshold_lru2 < PGBUF_LRU_ZONE_ONE_TWO_COUNT(list))
+
+/* macros for retrieving info on shared and private LRUs */
+
 /* Limits for private chains */
 #define PGBUF_PRIVATE_LRU_MIN_COUNT 4
 #define PGBUF_PRIVATE_LRU_MAX_QUOTA 5000
@@ -258,8 +272,8 @@ typedef enum
 
 #define PGBUF_PAGE_QUOTA_IS_ENABLED (pgbuf_Pool.quota.num_private_LRU_list > 0)
 
-/* macros for retrieving id of private chains of thread (to use actual LRU index
- * use PGBUF_LRU_INDEX_FROM_PRIVATE on this result */
+/* macros for retrieving id of private chains of thread (to use actual LRU index use PGBUF_LRU_INDEX_FROM_PRIVATE on
+ * this result */
 #if defined (SERVER_MODE)
 #define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) \
   ((thread_p) != NULL) ? ((thread_p)->private_lru_index) : (0)
@@ -270,7 +284,6 @@ typedef enum
 #define PGBUF_THREAD_HAS_PRIVATE_LRU(thread_p) false
 #endif
 
-/* macros for retrieving info on shared, garbage and private LRUs */
 #define PGBUF_SHARED_LRU_COUNT (pgbuf_Pool.num_LRU_list)
 #define PGBUF_PRIVATE_LRU_COUNT (pgbuf_Pool.quota.num_private_LRU_list)
 #define PGBUF_TOTAL_LRU_COUNT (PGBUF_SHARED_LRU_COUNT + PGBUF_PRIVATE_LRU_COUNT)
@@ -281,23 +294,9 @@ typedef enum
 #define PGBUF_IS_SHARED_LRU_INDEX(lru_idx) ((lru_idx) < PGBUF_SHARED_LRU_COUNT)
 #define PGBUF_IS_PRIVATE_LRU_INDEX(lru_idx) ((lru_idx) >= PGBUF_SHARED_LRU_COUNT)
 
-/* How old is a BCB (bcb_age) related to age of list to which it belongs */
-#define PGBUF_AGE_DIFF(bcb_age,list_age) \
-  (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : (DB_INT32_MAX - ((bcb_age) - (list_age))))
-
-#define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
-#define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
-
 #define PGBUF_LRU_LIST_IS_OVER_QUOTA(list) (PGBUF_LRU_LIST_COUNT (list) > (list)->quota)
 #define PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA(list) ((PGBUF_LRU_ZONE_ONE_TWO_COUNT (list) > (list)->quota))
-
 #define PGBUF_LRU_LIST_OVER_QUOTA_COUNT(list) (PGBUF_LRU_LIST_COUNT (list) - (list)->quota)
-
-#define PGBUF_LRU_IS_ZONE_ONE_OVER_THRESHOLD(list) ((list)->threshold_lru1 < (list)->count_lru1)
-#define PGBUF_LRU_IS_ZONE_TWO_OVER_THRESHOLD(list) ((list)->threshold_lru2 < (list)->count_lru2)
-
-#define PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD(list) \
-  ((list)->threshold_lru1 + (list)->threshold_lru2 < PGBUF_LRU_ZONE_ONE_TWO_COUNT(list))
 
 #define PGBUF_IS_PRIVATE_LRU_OVER_QUOTA(lru_idx) \
   (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
@@ -8636,7 +8635,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	      pgbuf_remove_from_lru_list (bufptr, lru_list);
 
 #if defined (SERVER_MODE)
-	      if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority) >= 50)
+	      if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority)
+                  >= (5 + (thread_num_worker_threads () / 20)))
 		{
 		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bcb_prev);
 		}
