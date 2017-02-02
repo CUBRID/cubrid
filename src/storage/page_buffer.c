@@ -7677,8 +7677,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PERF_STAT_ID pstat_cond_wait;
 #endif /* SERVER_MODE */
 
-  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
-
   /* how it works: we need to free a bcb for new VPID.
    * 1. first source should be invalid list. initially, all bcb's will be in this list. sometimes, bcb's can be added to
    *    this list during runtime. in any case, these bcb's are not used by anyone, do not need any flush or other
@@ -7697,10 +7695,12 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   bufptr = pgbuf_get_bcb_from_invalid_list (thread_p);
   if (bufptr != NULL)
     {
-      goto end;
+      return bufptr;
     }
 
+  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_search_and_wait);
+
   bufptr = pgbuf_get_victim (thread_p);
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
   if (bufptr != NULL)
