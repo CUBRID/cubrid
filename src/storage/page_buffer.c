@@ -5422,7 +5422,7 @@ error_return:
       free_and_init (list->bufarray);
     }
 
-  if (list->aout_buf_ht == NULL)
+  if (list->aout_buf_ht != NULL)
     {
       for (i = 0; list->aout_buf_ht[i] != NULL; i++)
 	{
@@ -9644,26 +9644,14 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 
   hash_idx = AOUT_HASH_IDX (vpid, (&pgbuf_Pool.buf_AOUT_list));
 
+  rv = pthread_mutex_lock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
+  /* Search the vpid in the hash table */
   aout_buf = mht_get (pgbuf_Pool.buf_AOUT_list.aout_buf_ht[hash_idx], vpid);
   if (aout_buf == NULL)
     {
-      /* vpid not in Aout */
+      /* Not there, just return */
+      pthread_mutex_unlock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
       return PGBUF_AOUT_NOT_FOUND;
-    }
-
-  /* Remove it from Aout. We were optimistic and assumed we will not find it. Unfortunately, after we get exclusive
-   * access to Aout list, we have to search for it again because somebody else might have thrown it out. */
-  rv = pthread_mutex_lock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
-  if (!VPID_EQ (&aout_buf->vpid, vpid))
-    {
-      /* Somebody else pushed our vpid out of the list. Search again */
-      aout_buf = mht_get (pgbuf_Pool.buf_AOUT_list.aout_buf_ht[hash_idx], vpid);
-      if (aout_buf == NULL)
-	{
-	  /* Not there anymore, just return */
-	  pthread_mutex_unlock (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
-	  return PGBUF_AOUT_NOT_FOUND;
-	}
     }
 
   /* We can assume that aout_buf is what we're looking for if it still has the same VPID as before acquiring the mutex. 
