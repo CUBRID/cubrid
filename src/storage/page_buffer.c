@@ -14432,10 +14432,12 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 	{
 	  /* not assigned directly */
 	  assert (!pgbuf_bcb_is_direct_victim (bcb_flushed));
-	  pgbuf_bcb_mark_was_flushed (bcb_flushed);
 	  /* could not assign it directly. there must be no waiters */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER);
 	}
+
+      /* make sure bcb is no longer marked as flushing */
+      pgbuf_bcb_mark_was_flushed (bcb_flushed);
 
       /* wakeup blocked flushers */
       while (((thrd_blocked = bcb_flushed->next_wait_thrd) != NULL)
@@ -14601,6 +14603,7 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
 
   /* update victim counter. */
   /* add to lock-free circular queue so victimizers can find it... if this is not a private list under quota. */
+  ATOMIC_INC_32 (&lru_list->count_vict_cand, 1);
   if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index) || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
     {
       if (pgbuf_lfcq_add_lru_with_victims (lru_list))
