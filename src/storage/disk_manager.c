@@ -1947,6 +1947,14 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
+	{
+	  /* rollback will not remove volume, we have to do it manually */
+	  if (disk_unformat (thread_p, extinfo->name) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	}
       goto exit;
     }
 
