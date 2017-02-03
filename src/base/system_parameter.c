@@ -2080,7 +2080,7 @@ static int prm_pb_num_private_chains_upper = CSS_MAX_CLIENT_COUNT + VACUUM_MAX_W
 static int prm_pb_num_private_chains_lower = -1;
 static unsigned int prm_pb_num_private_chains_flag = 0;
 
-int PRM_PB_MONITOR_LOCKS = false;
+bool PRM_PB_MONITOR_LOCKS = false;
 static bool prm_pb_monitor_locks_default = false;
 static unsigned int prm_pb_monitor_locks_flag = 0;
 
@@ -5330,7 +5330,7 @@ static SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_PB_MONITOR_LOCKS,
    PRM_NAME_PB_MONITOR_LOCKS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
-   PRM_INTEGER,
+   PRM_BOOLEAN,
    (void *) &prm_pb_monitor_locks_flag,
    (void *) &prm_pb_monitor_locks_default,
    (void *) &PRM_PB_MONITOR_LOCKS,
