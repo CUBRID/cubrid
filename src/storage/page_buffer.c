@@ -1549,7 +1549,6 @@ pgbuf_finalize (void)
       pgbuf_Pool.buf_AOUT_list.num_hashes = 0;
     }
 
-
   pthread_mutex_destroy (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
 
   pgbuf_Pool.buf_AOUT_list.aout_buf_ht = NULL;
@@ -2929,10 +2928,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   pgbuf_scramble (&bufptr->iopage_buffer->iopage);
 #endif /* CUBRID_DEBUG */
 
-  /* 
-   * Now, invalidation task is performed
-   * after holding a page latch with PGBUF_LATCH_INVALID mode.
-   */
+  /* Now, invalidation task is performed after holding a page latch with PGBUF_LATCH_INVALID mode. */
   if (pgbuf_invalidate_bcb (bufptr) != NO_ERROR)
     {
       return ER_FAILED;
@@ -2943,13 +2939,12 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_invalidate_all () - Invalidate all unfixed buffers corresponding to
- *                           the given volume
+ * pgbuf_invalidate_all () - Invalidate all unfixed buffers corresponding to the given volume
  *   return: NO_ERROR, or ER_code
  *   volid(in): Permanent Volume Identifier or NULL_VOLID
  *
- * Note: The pages in these buffers are disassociated from the buffers. If a
- *       page was dirty, it is flushed before the buffer is invalidated.
+ * Note: The pages in these buffers are disassociated from the buffers.
+ * If a page was dirty, it is flushed before the buffer is invalidated.
  */
 #if !defined(NDEBUG)
 int
@@ -3098,14 +3093,12 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 }
 
 /*
- * pgbuf_flush_with_wal () - Flush a page out to disk after following the wal
- *                           rule
+ * pgbuf_flush_with_wal () - Flush a page out to disk after following the wal rule
  *   return: pgptr on success, NULL on failure
  *   pgptr(in): Page pointer
  *
- * Note: The page associated with pgptr is written out to disk (ONLY when the
- *       page is dirty) Before the page is flushed, the WAL rule of the log
- *       manger is called.
+ * Note: The page associated with pgptr is written out to disk (ONLY when the page is dirty) 
+ *       Before the page is flushed, the WAL rule of the log manager is called.
  */
 PAGE_PTR
 pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
@@ -7851,14 +7844,10 @@ static int
 pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
 #if defined(SERVER_MODE)
-  THREAD_ENTRY *cur_thrd_entry;
-
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-  cur_thrd_entry = thread_p;
 #endif /* SERVER_MODE */
 
   /* the caller is holding bufptr->mutex */
@@ -7886,9 +7875,7 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       return ER_FAILED;
     }
 
-  /* 
-   * If above function returns success,
-   * the caller is still holding bufptr->mutex.
+  /* If above function returns success, the caller is still holding bufptr->mutex.
    * Otherwise, the caller does not hold bufptr->mutex.
    */
 
@@ -11111,19 +11098,19 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
 /*
  * pgbuf_is_thread_high_priority () - 
  *
- * return	       : true if the threads has any fixed pages and other
- *			 threads are waiting on any of them.
+ * return	       : true if the threads has any fixed pages and the other is waiting on any of them or
+ *			 it has an important hot page such as volume header, file header, index root and heap header.
  * thread_p (in)       : Thread entry.
  */
 static bool
 pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p)
 {
   int thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
-  int count = 0;
   PGBUF_HOLDER *holder = NULL;
 
   if (pgbuf_Pool.thrd_holder_info[thrd_idx].num_hold_cnt == 0)
     {
+      /* not owns any page */
       return false;
     }
 
@@ -11131,8 +11118,10 @@ pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p)
     {
       if (holder->bufptr->next_wait_thrd != NULL)
 	{
+	  /* someone is waiting for the thread */
 	  return true;
 	}
+
       if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_VOLHEADER)
 	{
 	  /* has volume header */
@@ -11149,16 +11138,14 @@ pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p)
 	  /* holds b-tree root */
 	  return true;
 	}
-      if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_HEAP)
+      if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_HEAP
+	  && heap_is_page_file_header (holder->bufptr->iopage_buffer->iopage.page))
 	{
-	  PAGE_PTR page = holder->bufptr->iopage_buffer->iopage.page;
-	  if (heap_is_page_file_header (page))
-	    {
-	      /* heap file header */
-	      return true;
-	    }
+	  /* heap file header */
+	  return true;
 	}
     }
+
   return false;
 }
 #endif /* SERVER_MODE */
@@ -11177,6 +11164,7 @@ enum
   NEIGHBOR_ABORT_TWO_CONSECTIVE_NONDIRTIES,
   NEIGHBOR_ABORT_TOO_MANY_NONDIRTIES
 };
+
 /*
  * pgbuf_flush_page_and_neighbors_fb () - Flush page pointed to by the supplied
  *				       BCB and also flush neighbor pages
@@ -15241,6 +15229,7 @@ STATIC_INLINE PGBUF_LRU_LIST *
 pgbuf_lru_list_from_bcb (const PGBUF_BCB * bcb)
 {
   assert (PGBUF_IS_BCB_IN_LRU (bcb));
+
   return PGBUF_GET_LRU_LIST (pgbuf_bcb_get_lru_index (bcb));
 }
 
@@ -15289,8 +15278,8 @@ pgbuf_is_hit_ratio_low (void)
 #define PGBUF_MIN_VICTIM_REQ        100
 #define PGBUF_DESIRED_HIT_RATE      100
 
-  return pgbuf_Pool.monitor.lru_victim_req_cnt > PGBUF_MIN_VICTIM_REQ
-    && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_RATE > pgbuf_Pool.monitor.fix_req_cnt;
+  return (pgbuf_Pool.monitor.lru_victim_req_cnt > PGBUF_MIN_VICTIM_REQ
+	  && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_RATE > pgbuf_Pool.monitor.fix_req_cnt);
 
 #undef PGBUF_DESIRED_HIT_RATE
 #undef PGBUF_MIN_VICTIM_REQ
@@ -15339,6 +15328,7 @@ pgbuf_bcb_lock (PGBUF_BCB * bcb, int caller_line)
       bcb->owner_mutex = index;
       return;
     }
+
   (void) pthread_mutex_lock (&bcb->mutex);
 #endif /* SERVER_MODE */
 }
@@ -15398,6 +15388,7 @@ pgbuf_bcb_trylock (PGBUF_BCB * bcb, int caller_line)
 	}
       return rv;
     }
+
   return pthread_mutex_trylock (&bcb->mutex);
 #else /* !SERVER_MODE * */
   return 0;
@@ -15444,6 +15435,7 @@ pgbuf_bcb_unlock (PGBUF_BCB * bcb)
 	}
       /* fall through */
     }
+
   pthread_mutex_unlock (&bcb->mutex);
 #endif /* SERVER_MODE */
 }
