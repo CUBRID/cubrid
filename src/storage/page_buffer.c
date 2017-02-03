@@ -6370,7 +6370,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 		{
 		  /* if this is vacuum, it does not matter if found on AOUT (that is quite expected) */
-
 		  if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
 		    {
 		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND_VAC);
@@ -9124,6 +9123,7 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 	   * assigning the bcb directly as victim */
 	  if (PGBUF_BCB_TRYLOCK (bcb) == 0)
 	    {
+              VPID vpid_copy = bcb->vpid;
 	      if (pgbuf_is_bcb_victimizable (bcb, true) && pgbuf_assign_direct_victim (thread_p, bcb))
 		{
 		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
@@ -9133,7 +9133,7 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 
 		  PGBUF_BCB_UNLOCK (bcb);
 
-		  pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
+		  pgbuf_add_vpid_to_aout_list (thread_p, &vpid_copy, lru_idx);
 		  return;
 		}
 	      /* not assigned. unlock bcb mutex and fall through */
@@ -9547,6 +9547,8 @@ pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const i
     {
       return;
     }
+
+  assert (!VPID_ISNULL (vpid));
 
   list = &pgbuf_Pool.buf_AOUT_list;
 
