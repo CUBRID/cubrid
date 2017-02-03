@@ -10926,7 +10926,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			    {
 			      memset (format, 0x00, sizeof format);
 
-			      strcpy (format, buf.buffer + 2);
+			      strcpy (format, to_char_style_default);
 			      format_str = strrchr (format, '\'');	/* find last single quote */
 			      if (format_str)
 				{
@@ -10980,8 +10980,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 				{
 				case DB_TYPE_STRING:
 				case DB_TYPE_VARNCHAR:
-				  DB_MAKE_STRING (db_default, memory_default_value[default_index++]);
-				  break;
 				case DB_TYPE_CHAR:
 				case DB_TYPE_NCHAR:
 				  DB_MAKE_CHAR (db_default, precision, memory_default_value[default_index++], len,
