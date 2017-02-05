@@ -1724,6 +1724,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   UINT64 lock_wait_time, holder_wait_time, fix_wait_time;
   bool is_perf_tracking;
   bool is_latch_wait;
+  bool hash_anchor_mutex_owned = false;
 
   /* paramter validation */
   if (request_mode != PGBUF_LATCH_READ && request_mode != PGBUF_LATCH_WRITE)
@@ -1797,11 +1798,28 @@ try_again:
 
   buf_lock_acquired = false;
   bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
+  hash_anchor_mutex_owned = (bufptr == NULL) ? true : false;
   if (bufptr != NULL && pgbuf_bcb_is_direct_victim (bufptr))
     {
+      /* TODO : it seems more complicated to steal the BCB back from direct victimizing thread, although I think is the
+       * logic approach */
+
       /* too late, this bcb must be victimized. */
       PGBUF_BCB_UNLOCK (bufptr);
-      bufptr = NULL;
+      /* unlock, and wait for the victimizing thread to replace VPID of BCB with new VPID */
+      PGBUF_BCB_LOCK (bufptr);
+      /* direct victimizing thread has new VPID into BCB */
+      if (VPID_EQ (vpid, &bufptr->vpid))
+	{
+	  /* the direct victmizing thread has loaded the same VPID ? is this possible ? */
+	  ;
+	  /* keep mutex on BCB, just keep going on as if the VPID was found in the first place */
+	}
+      else
+	{
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  bufptr = NULL;
+	}
     }
   if (bufptr != NULL)
     {
@@ -1826,42 +1844,48 @@ try_again:
       /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
       if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK || fetch_mode == OLD_PAGE_IF_EXISTS)
 	{
-	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	  if (hash_anchor_mutex_owned)
+	    {
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	    }
 	  pgbuf_check_mutex_leaks ();
 	  return NULL;
 	}
 
       /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
        * released in pgbuf_lock_page (). */
-      if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
+      if (hash_anchor_mutex_owned)
 	{
-	  if (is_perf_tracking)
+	  if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
 	    {
-	      tsc_getticks (&end_tick);
-	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	      lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	      if (is_perf_tracking)
+		{
+		  tsc_getticks (&end_tick);
+		  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+		  lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+		}
+
+	      if (fetch_mode == NEW_PAGE)
+		{
+		  perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
+		}
+	      else
+		{
+		  perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+		}
+	      goto try_again;
 	    }
 
-	  if (fetch_mode == NEW_PAGE)
+	  if (perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT && perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
 	    {
-	      perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
-	    }
-	  else
-	    {
-	      perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-	    }
-	  goto try_again;
-	}
-
-      if (perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT && perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
-	{
-	  if (fetch_mode == NEW_PAGE)
-	    {
-	      perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
-	    }
-	  else
-	    {
-	      perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
+	      if (fetch_mode == NEW_PAGE)
+		{
+		  perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
+		}
+	      else
+		{
+		  perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
+		}
 	    }
 	}
 
