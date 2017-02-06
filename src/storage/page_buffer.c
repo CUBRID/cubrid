@@ -1801,25 +1801,43 @@ try_again:
   hash_anchor_mutex_owned = (bufptr == NULL) ? true : false;
   if (bufptr != NULL && pgbuf_bcb_is_direct_victim (bufptr))
     {
+      bool bcb_is_direct_victim = true;
+      int count = 0;
       /* TODO : it seems more complicated to steal the BCB back from direct victimizing thread, although I think is the
        * logic approach */
 
       /* too late, this bcb must be victimized. */
       PGBUF_BCB_UNLOCK (bufptr);
-      /* unlock, and wait for the victimizing thread to replace VPID of BCB with new VPID */
-      PGBUF_BCB_LOCK (bufptr);
-      /* direct victimizing thread has new VPID into BCB */
-      if (VPID_EQ (vpid, &bufptr->vpid))
+      /* unlocked; now, wait for the victimizing thread to replace VPID of BCB with new VPID */
+      do
 	{
-	  /* the direct victmizing thread has loaded the same VPID ? is this possible ? */
-	  ;
-	  /* keep mutex on BCB, just keep going on as if the VPID was found in the first place */
-	}
-      else
-	{
+	  PGBUF_BCB_LOCK (bufptr);
+	  bcb_is_direct_victim = pgbuf_bcb_is_direct_victim (bufptr);
+	  if (!bcb_is_direct_victim)
+	    {
+	      if (VPID_EQ (vpid, &bufptr->vpid))
+		{
+		  /* the direct victmizing thread has loaded the same VPID ? is this possible ? */
+		  break;
+		  /* keep mutex on BCB, just keep going on as if the VPID was found in the first place */
+		}
+	      else
+		{
+		  PGBUF_BCB_UNLOCK (bufptr);
+		  bufptr = NULL;
+		  break;
+		}
+	    }
 	  PGBUF_BCB_UNLOCK (bufptr);
-	  bufptr = NULL;
+
+	  thread_sleep (0.001f);
+	  /* TODO : too much wait */
+	  if (count++ > 1000000)
+	    {
+	      PGBUF_ABORT_RELEASE ();
+	    }
 	}
+      while (bcb_is_direct_victim);
     }
   if (bufptr != NULL)
     {
