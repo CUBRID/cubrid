@@ -8914,6 +8914,12 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
 
+  if (p->info.query.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
   q = pt_append_nulstring (parser, q, "(");
   q = pt_append_varchar (parser, q, r1);
@@ -9452,7 +9458,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, ")");
 	}
     }
-  else
+  else if (PT_SPEC_IS_DERIVED (p))
     {				/* should be a derived table */
       if (p->info.spec.derived_table_type == PT_IS_SET_EXPR)
 	{
@@ -9491,7 +9497,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       parser->custom_print = save_custom;
     }
-  if (p->info.spec.as_attr_list)
+  if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -13044,6 +13050,12 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
 
+  if (p->info.query.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
   r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
   q = pt_append_nulstring (parser, q, "(");
@@ -15474,6 +15486,12 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
 
+  if (p->info.query.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
   r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
   q = pt_append_nulstring (parser, q, "(");
@@ -17407,6 +17425,7 @@ pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL;
   PT_NODE *cte;
+  bool first_cte = true;
 
   q = pt_append_nulstring (parser, q, "with ");
   if (p->info.with_clause.recursive)
@@ -17417,7 +17436,12 @@ pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p)
   for (cte = p->info.with_clause.cte_definition_list; cte != NULL; cte = cte->next)
     {
       PARSER_VARCHAR *r = pt_print_cte (parser, cte);
+      if (!first_cte)
+	{
+	  q = pt_append_nulstring (parser, q, ", ");
+	}
       q = pt_append_varchar (parser, q, r);
+      first_cte = false;
     }
 
   return q;
