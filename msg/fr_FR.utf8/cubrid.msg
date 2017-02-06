@@ -1713,6 +1713,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Usage non valide de fonctions d'agrégation.
 293 La valeur doit être strictement croissante pour chaque partition.
 294 Impossible d'utiliser des index de fonction ou de filtre pour les colonnes avec local timezone type.
+295 SELECT INTO is not allowed in subqueries.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.
