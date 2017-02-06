@@ -1805,7 +1805,7 @@ try_again:
       int count = 0;
       /* TODO : it seems more complicated to steal the BCB back from direct victimizing thread, although I think is the
        * logic approach */
-
+#if defined (SERVER_MODE)
       /* too late, this bcb must be victimized. */
       PGBUF_BCB_UNLOCK (bufptr);
       /* unlocked; now, wait for the victimizing thread to replace VPID of BCB with new VPID */
@@ -1838,6 +1838,10 @@ try_again:
 	    }
 	}
       while (bcb_is_direct_victim);
+#else
+      PGBUF_BCB_UNLOCK (bufptr);
+      bufptr = NULL;
+#endif
     }
   if (bufptr != NULL)
     {
