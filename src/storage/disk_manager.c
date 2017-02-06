@@ -515,7 +515,10 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
    * in a top operation) */
   addr.offset = (PGLENGTH) volid;
   addr.pgptr = NULL;
-  log_append_undo_data (thread_p, RVDK_FORMAT, &addr, (int) strlen (vol_fullname) + 1, vol_fullname);
+  if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
+    {
+      log_append_undo_data (thread_p, RVDK_FORMAT, &addr, (int) strlen (vol_fullname) + 1, vol_fullname);
+    }
 
   /* this log must be flushed. */
   LOG_CS_ENTER (thread_p);
@@ -530,6 +533,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+  /* from now on, if error occurs, we need to go to exit */
 
   /* initialize the volume header and the sector and page allocation tables */
   vpid.volid = volid;
@@ -540,7 +544,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   if (addr.pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      goto exit;
     }
   (void) pgbuf_set_page_ptype (thread_p, addr.pgptr, PAGE_VOLHEADER);
 
@@ -564,20 +568,19 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   disk_volume_header_set_stab (vol_purpose, vhdr);
   if (vhdr->sys_lastpage >= extend_npages)
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-
-      (void) pgbuf_invalidate_all (thread_p, volid);
+      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_BAD_NPAGES, 2, vol_fullname, extend_npages);
-      return ER_IO_FORMAT_BAD_NPAGES;
+      error_code = ER_IO_FORMAT_BAD_NPAGES;
+      goto exit;
     }
 
   /* Find the time of the creation of the database and the current LSA checkpoint. */
 
-  if (log_get_db_start_parameters (&vhdr->db_creation, &vhdr->chkpt_lsa) != NO_ERROR)
+  error_code = log_get_db_start_parameters (&vhdr->db_creation, &vhdr->chkpt_lsa);
+  if (error_code != NO_ERROR)
     {
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-
-      return NULL_VOLID;
+      ASSERT_ERROR ();
+      goto exit;
     }
 
   /* Initialize the system heap file for booting purposes. This field is reseted after the heap file is created by the
@@ -596,27 +599,21 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-
-      return error_code;
+      goto exit;
     }
 
   error_code = disk_vhdr_set_next_vol_fullname (vhdr, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-
-      return error_code;
+      goto exit;
     }
 
   error_code = disk_vhdr_set_vol_remarks (vhdr, ext_info->comments);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-
-      return error_code;
+      goto exit;
     }
 
   /* Make sure that in the case of a crash, the volume is created. Otherwise, the recovery will not work */
@@ -641,10 +638,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       /* Problems setting the map allocation tables, release the header page, dismount and destroy the volume, and
        * return */
       ASSERT_ERROR ();
-      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-
-      (void) pgbuf_invalidate_all (thread_p, volid);
-      return error_code;
+      goto exit;
     }
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE && volid != LOG_DBFIRST_VOLID)
     {
@@ -652,11 +646,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-
-	  pgbuf_unfix_and_init (thread_p, addr.pgptr);
-
-	  (void) pgbuf_invalidate_all (thread_p, volid);
-	  return error_code;
+	  goto exit;
 	}
     }
 
@@ -699,8 +689,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	      ASSERT_ERROR ();
 	      /* Problems reseting the pages of the permanent volume for temporary storage purposes... That is, with a
 	       * tempvol LSA. dismount and destroy the volume, and return */
-	      pgbuf_unfix_and_init (thread_p, addr.pgptr);
-	      return error_code;
+	      goto exit;
 	    }
 	}
     }
@@ -719,7 +708,30 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
    * not be necessary. with the exception of file manager and disk manager, who already manage to skip logging on
    * temporary files, all other changes on temporary pages are really not logged. so why bother? */
 
-  return NO_ERROR;
+exit:
+
+  if (addr.pgptr != NULL)
+    {
+      pgbuf_unfix (thread_p, addr.pgptr);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      /* volume is going to be removed, so we should invalidate all its pages in page buffer */
+      (void) pgbuf_invalidate_all (thread_p, volid);
+
+      if (ext_info->voltype == DB_TEMPORARY_VOLTYPE)
+	{
+	  /* since temporary volumes are not logged, we cannot rely on rollback. we need to remove volume immediately.
+	   */
+	  if (disk_unformat (thread_p, vol_fullname) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	}
+    }
+
+  return error_code;
 }
 
 /*
@@ -1930,11 +1942,19 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 	}
     }
 
-  /* this must be last step (sys op will get committed/aborted) */
+  /* this must be last step */
   error_code = boot_dbparm_save_volume (thread_p, extinfo->voltype, volid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
+	{
+	  /* rollback will not remove volume, we have to do it manually */
+	  if (disk_unformat (thread_p, extinfo->name) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	}
       goto exit;
     }
 
