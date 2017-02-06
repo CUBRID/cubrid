@@ -1261,7 +1261,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
    * is overkill, but it's easier than figuring out the exact
    * information, and it's usually the same anyway.
    */
-  if (PT_SPEC_IS_ENTITY (entity) && (info = qo_get_class_info (env, node)) != NULL)
+  if (!PT_SPEC_IS_DERIVED (entity) && !PT_SPEC_IS_CTE (entity) && (info = qo_get_class_info (env, node)) != NULL)
     {
       QO_NODE_INFO (node) = info;
       for (i = 0, n = info->n; i < n; i++)
@@ -1283,7 +1283,6 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
     }
   else
     {
-      assert (PT_SPEC_IS_DERIVED (entity) || PT_SPEC_IS_CTE (entity));
       QO_NODE_NCARD (node) = 5;	/* just guess */
       QO_NODE_TCARD (node) = 1;	/* just guess */
 
