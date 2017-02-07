@@ -1714,6 +1714,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 293 Valoarea trebuie să fie strict crescătoare pentru fiecare partiție.
 294 Nu se pot folosi function sau filter indexes pe coloane timezone.
 295 SELECT INTO nu este permis in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.
