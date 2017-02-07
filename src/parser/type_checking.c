@@ -8112,8 +8112,16 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 static PT_NODE *
 pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
+
   if (node == NULL)
     {
+      return node;
+    }
+
+  if (sc_info->donot_fold == true)
+    {
+      /* skip folding */
       return node;
     }
 
