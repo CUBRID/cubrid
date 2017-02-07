@@ -205,7 +205,6 @@ static int qfile_Max_tuple_page_size;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
 static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2, TP_DOMAIN * domain, int *cmp);
-static int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
 #if defined (CUBRID_DEBUG)
 static void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
 #endif
@@ -321,6 +320,7 @@ qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_LIST_ID
     }
 
   list_id_p->tpl_descr.f_valp = NULL;
+  list_id_p->tpl_descr.clear_f_val_at_clone_decache = NULL;
   return NO_ERROR;
 }
 
@@ -442,6 +442,11 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
   if (list_id_p->tpl_descr.f_valp)
     {
       free_and_init (list_id_p->tpl_descr.f_valp);
+    }
+
+  if (list_id_p->tpl_descr.clear_f_val_at_clone_decache)
+    {
+      free_and_init (list_id_p->tpl_descr.clear_f_val_at_clone_decache);
     }
 
   if (list_id_p->sort_list)
@@ -691,6 +696,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
       rc = (*(pr_type_p->data_readval)) (&buf, &dbval2, domain_p, -1, is_copy, NULL, 0);
       if (rc != NO_ERROR)
 	{
+	  pr_clear_value (&dbval1);
 	  return ER_FAILED;
 	}
     }
@@ -712,11 +718,8 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
       *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL, domain_p->collation_id);
     }
 
-  if (is_copy)
-    {
-      pr_clear_value (&dbval1);
-      pr_clear_value (&dbval2);
-    }
+  pr_clear_value (&dbval1);
+  pr_clear_value (&dbval2);
 
   return NO_ERROR;
 }
@@ -731,7 +734,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
  *       set it to the source type.
  *       This should probably set an error for non-null mismatches.
  */
-static int
+int
 qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 {
   int i;
@@ -1508,7 +1511,9 @@ qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, 
 
   for (i = 0; i < tuple_descr_p->f_cnt; i++)
     {
-      if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i], tuple_p, &tuple_value_size) != NO_ERROR)
+      if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i],
+					      !(tuple_descr_p->clear_f_val_at_clone_decache[i]),
+					      tuple_p, &tuple_value_size) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -2076,7 +2081,7 @@ qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 	  /* because qmgr_free_list_temp_file() destroy only FILE_TEMP file */
 	  if (!VFID_ISNULL (&list_id_p->temp_vfid))
 	    {
-	      file_destroy (thread_p, &list_id_p->temp_vfid);
+	      file_temp_retire (thread_p, &list_id_p->temp_vfid);
 	    }
 	}
 
@@ -2769,7 +2774,8 @@ qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR
   /* build tuple */
   for (i = 0; i < tpl_descr->f_cnt; i++)
     {
-      if (qdata_copy_db_value_to_tuple_value (tpl_descr->f_valp[i], tuple_p, &size) != NO_ERROR)
+      if (qdata_copy_db_value_to_tuple_value (tpl_descr->f_valp[i], !(tpl_descr->clear_f_val_at_clone_decache[i]),
+					      tuple_p, &size) != NO_ERROR)
 	{
 	  /* error has already been set */
 	  db_private_free_and_init (thread_p, tplrec->tpl);
@@ -5511,7 +5517,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 	}
 
       /* destroy the temp file of XASL_ID */
-      if (!VFID_ISNULL (&lent->list_id.temp_vfid) && file_destroy (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
+      if (!VFID_ISNULL (&lent->list_id.temp_vfid) && file_temp_retire (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for vfid { %d %d }\n",
 			lent->list_id.temp_vfid.fileid, lent->list_id.temp_vfid.volid);

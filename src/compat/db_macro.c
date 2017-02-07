@@ -313,7 +313,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
@@ -398,7 +397,6 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
@@ -566,7 +564,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
@@ -829,7 +826,6 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
 #if 1				/* TODO - */
     case DB_TYPE_OBJECT:
     case DB_TYPE_MIDXKEY:
-    case DB_TYPE_ELO:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
@@ -1172,7 +1168,6 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_VARIABLE:
@@ -3552,7 +3547,6 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_NULL:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
     case DB_TYPE_ENUMERATION:
       result = tp_domain_resolve_default (type);
       break;
@@ -4730,7 +4724,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-    case DB_TYPE_ELO:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
@@ -6450,7 +6443,6 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 
 	  break;
 
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	  elo_p = DB_GET_ELO (value_p);
@@ -6689,14 +6681,9 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	  buffer_p = valcnv_append_string (buffer_p, "'");
 	  break;
 
-	case DB_TYPE_ELO:
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
-	  if (DB_VALUE_TYPE (value_p) == DB_TYPE_ELO)
-	    {
-	      buffer_p = valcnv_append_string (buffer_p, "ELO'");
-	    }
-	  else if (DB_VALUE_TYPE (value_p) == DB_TYPE_BLOB)
+	  if (DB_VALUE_TYPE (value_p) == DB_TYPE_BLOB)
 	    {
 	      buffer_p = valcnv_append_string (buffer_p, "BLOB'");
 	    }

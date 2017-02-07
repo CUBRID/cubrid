@@ -1260,8 +1260,10 @@ $ LOADDB
 1191 Ejecucion stand-alone de aspirar finalizada.
 1192 La precision de %1$zu del valor excede lo maximo permitido %2$d
 1193 La longitud de la expresion de particion procesada excede lo maximo permitido (%1$d).
-1194 Incompatible log header types: %1$d is different from %2$d.
-1195 Ultimo error
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Incompatible log header types: %1$d is different from %2$d.
+1197 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1713,6 +1715,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Uso invalido de funciones de agregado.
 293 El valor debe ser estrictamente cresciente para cada particion.
 294 No se pueden utilizar indices de funcion o filtro en columnas cuyo tipo de datos es dependiente de la zona horaria.
+295 SELECT INTO is not allowed in subqueries.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

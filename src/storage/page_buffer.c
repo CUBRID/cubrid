@@ -573,12 +573,7 @@ struct pgbuf_buffer_pool
 
 #if defined(SERVER_MODE)
   bool is_flushing_victims;	/* flag set true when pgbuf flush thread is flushing victim candidates */
-  pthread_mutex_t volinfo_mutex;
 #endif				/* SERVER_MODE */
-  VOLID last_perm_volid;	/* last perm. volume id */
-  int num_permvols_tmparea;	/* # of perm. vols for temp */
-  int size_permvols_tmparea_volids;	/* size of the array */
-  VOLID *permvols_tmparea_volids;	/* the volids array */
 
   int lru_victim_req_cnt;	/* number of victim request from this queue */
   int ain_victim_req_cnt;
@@ -783,7 +778,7 @@ static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREA
 #endif /* NDEBUG */
 #endif /* SERVER_MODE */
 
-static INLINE bool pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p, int page_validation_level)
+static INLINE bool pgbuf_get_check_page_validation_level (THREAD_ENTRY * thread_p, int page_validation_level)
   __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
 static INLINE void pgbuf_set_bcb_page_vpid (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
@@ -917,7 +912,14 @@ pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2)
   const VPID *vpid1 = (VPID *) key_vpid1;
   const VPID *vpid2 = (VPID *) key_vpid2;
 
-  return VPID_EQ (vpid1, vpid2);
+  if (vpid1->volid == vpid2->volid)
+    {
+      return vpid1->pageid - vpid2->pageid;
+    }
+  else
+    {
+      return vpid1->volid - vpid2->volid;
+    }
 }
 
 /*
@@ -982,11 +984,6 @@ pgbuf_initialize (void)
     }
 
   pgbuf_Pool.check_for_interrupts = false;
-  pthread_mutex_init (&pgbuf_Pool.volinfo_mutex, NULL);
-  pgbuf_Pool.last_perm_volid = LOG_MAX_DBVOLID;
-  pgbuf_Pool.num_permvols_tmparea = 0;
-  pgbuf_Pool.size_permvols_tmparea_volids = 0;
-  pgbuf_Pool.permvols_tmparea_volids = NULL;
 
   pgbuf_Pool.victim_cand_list =
     ((PGBUF_VICTIM_CANDIDATE_LIST *) malloc (pgbuf_Pool.num_buffers * sizeof (PGBUF_VICTIM_CANDIDATE_LIST)));
@@ -1045,7 +1042,6 @@ void
 pgbuf_finalize (void)
 {
   PGBUF_BCB *bufptr;
-  void *area;
   PGBUF_HOLDER_SET *holder_set;
   int i;
   size_t hash_size, j;
@@ -1126,17 +1122,6 @@ pgbuf_finalize (void)
       holder_set = pgbuf_Pool.free_holder_set;
       pgbuf_Pool.free_holder_set = holder_set->next_set;
       free_and_init (holder_set);
-    }
-
-  /* final task for volume info */
-  pthread_mutex_destroy (&pgbuf_Pool.volinfo_mutex);
-  area = pgbuf_Pool.permvols_tmparea_volids;
-  if (area != NULL)
-    {
-      pgbuf_Pool.num_permvols_tmparea = 0;
-      pgbuf_Pool.size_permvols_tmparea_volids = 0;
-      pgbuf_Pool.permvols_tmparea_volids = NULL;
-      free_and_init (area);
     }
 
   if (pgbuf_Pool.victim_cand_list != NULL)
@@ -1242,41 +1227,6 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fet
 #endif
 #endif
 
-#if !defined(NDEBUG)
-PAGE_PTR
-pgbuf_fix_without_validation_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-				    PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition,
-				    const char *caller_file, int caller_line)
-{
-  PAGE_PTR pgptr;
-  bool old_check_page_validation, rv;
-
-  old_check_page_validation = thread_set_check_page_validation (thread_p, false);
-
-  pgptr = pgbuf_fix_debug (thread_p, vpid, fetch_mode, request_mode, condition, caller_file, caller_line);
-
-  rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
-
-  return pgptr;
-}
-#else /* NDEBUG */
-PAGE_PTR
-pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-				      PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition)
-{
-  PAGE_PTR pgptr;
-  bool old_check_page_validation, rv;
-
-  old_check_page_validation = thread_set_check_page_validation (thread_p, false);
-
-  pgptr = pgbuf_fix_release (thread_p, vpid, fetch_mode, request_mode, condition);
-
-  rv = thread_set_check_page_validation (thread_p, old_check_page_validation);
-
-  return pgptr;
-}
-#endif /* NDEBUG */
-
 /*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
@@ -1333,7 +1283,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   ATOMIC_INC_32 (&pgbuf_Pool.fix_req_cnt, 1);
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_EXISTS. */
@@ -1713,11 +1663,50 @@ try_again:
 
 #if !defined (NDEBUG)
   thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF, MGR_DEF);
-  if (pgbuf_is_lsa_temporary (pgptr))
-    {
-      thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF_TEMP, MGR_DEF);
-    }
 #endif /* NDEBUG */
+
+  if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
+    {
+      /* deallocated page */
+      switch (fetch_mode)
+	{
+	case NEW_PAGE:
+	case OLD_PAGE_DEALLOCATED:
+	case OLD_PAGE_IF_EXISTS:
+	  /* fixing deallocated page is expected. fall through to return it. */
+	  break;
+	case OLD_PAGE:
+	case OLD_PAGE_PREVENT_DEALLOC:
+	default:
+	  /* caller does not expect any deallocated pages. this is an invalid page. */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+		  fileio_get_volume_label (vpid->volid, PEEK));
+	  /* fall through to unfix */
+	  pgbuf_unfix (thread_p, pgptr);
+	  return NULL;
+	case OLD_PAGE_MAYBE_DEALLOCATED:
+	  /* OLD_PAGE_MAYBE_DEALLOCATED is called when deallocated page may be fixed. The caller wants the page only if
+	   * it is not deallocated. However, if it is deallocated, no error is required. */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+		  fileio_get_volume_label (vpid->volid, PEEK));
+	  /* fall through to unfix */
+	  pgbuf_unfix (thread_p, pgptr);
+	  return NULL;
+	}
+
+      /* note: maybe we could check this in an earlier stage, but would have been a lot more complicated. the only
+       *       interesting case here is OLD_PAGE_MAYBE_DEALLOCATED. However, even this is used in cases where the vast
+       *       majority of pages will not be deallocated! So in terms of performance, the loss is insignificant.
+       *       However, it is safer and easier to treat the case here, where we have latch to prevent concurrent
+       *       deallocations. */
+    }
+  else
+    {
+      /* this cannot be a new page or a deallocated page.
+       * note: temporary pages are not strictly handled in regard with their deallocation status. */
+      assert ((fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_DEALLOCATED) || pgbuf_is_lsa_temporary (pgptr));
+    }
 
   /* Record number of fetches in statistics */
   if (is_perf_tracking)
@@ -1819,7 +1808,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
   assert (pgptr_p != NULL);
   assert (*pgptr_p != NULL);
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
     {
       if (pgbuf_is_valid_page_ptr (*pgptr_p) == false)
 	{
@@ -2086,7 +2075,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #if !defined (NDEBUG)
   assert (pgptr != NULL);
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_FREE))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2199,7 +2188,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
    * since its operations and their implications are very expensive.
    * Too much I/O
    */
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       /* 
        * Check if the content of the page is consistent and then scramble
@@ -2383,7 +2372,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2675,7 +2664,7 @@ pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -2741,7 +2730,7 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   int rv;
 #endif /* SERVER_MODE */
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -3945,7 +3934,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	   * Do not cache the page in the page buffer pool.
 	   * Read the needed portion of the page directly from disk
 	   */
-	  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+	  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
 	      if (pgbuf_is_valid_page (thread_p, vpid, false NULL, NULL) != DISK_VALID)
 		{
@@ -4041,7 +4030,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
       if (do_fetch == false)
 	{
 	  /* Do not cache the page in the page buffer pool. Write the desired portion of the page directly to disk */
-	  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+	  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
 	      if (pgbuf_is_valid_page (thread_p, vpid, false NULL, NULL) != DISK_VALID)
 		{
@@ -4103,7 +4092,7 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 
   /* TODO: Wouldn't be an useful check here that page is write latched? */
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4118,15 +4107,7 @@ pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int free_page)
 #if defined(SERVER_MODE) && !defined(NDEBUG)
   if (bufptr->vpid.pageid == 0)
     {
-      DISK_VAR_HEADER *vhdr;
-
-      (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_VOLHEADER);
-
-      vhdr = (DISK_VAR_HEADER *) pgptr;
-      if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) != 0)
-	{
-	  assert (0);
-	}
+      disk_volheader_check_magic (thread_p, pgptr);
     }
 #endif
 
@@ -4149,7 +4130,7 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 {
   FILEIO_PAGE *io_pgptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4196,7 +4177,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4305,7 +4286,7 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4337,7 +4318,7 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4362,7 +4343,7 @@ pgbuf_get_latch_mode (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4387,7 +4368,7 @@ pgbuf_get_page_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4419,7 +4400,7 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4434,8 +4415,8 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   ptype = (PAGE_TYPE) (bufptr->iopage_buffer->iopage.prv.ptype);
 
-  assert (PAGE_UNKNOWN <= ptype);
-  assert (ptype < PAGE_LAST);
+  assert (PAGE_UNKNOWN <= (int) ptype);
+  assert (ptype <= PAGE_LAST);
 
   return ptype;
 }
@@ -4450,7 +4431,7 @@ pgbuf_get_volume_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  if (pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4481,97 +4462,6 @@ pgbuf_get_volume_label (PAGE_PTR pgptr)
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   return fileio_get_volume_label (bufptr->vpid.volid, PEEK);
-}
-
-/*
- * pgbuf_refresh_max_permanent_volume_id () - Refresh the maxmim permanent
- *                             volume identifier cached by the page buffer pool
- *   return: void
- *   volid(in): Volume identifier of last allocated permanent volume
- *
- * Note: This is needed to initialize the lsa of a page that it is fetched as
- *       new. The lsa need to be initialized according to the storage purpose
- *       of the page.
- */
-void
-pgbuf_refresh_max_permanent_volume_id (VOLID volid)
-{
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  rv = pthread_mutex_lock (&pgbuf_Pool.volinfo_mutex);
-  pgbuf_Pool.last_perm_volid = volid;
-  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-}
-
-/*
- * pgbuf_get_max_permanent_volume_id () - Return the maxmim permanent
- *                             volume identifier cached by the page buffer pool
- *   return: VOLID
- *
- */
-VOLID
-pgbuf_get_max_permanent_volume_id (void)
-{
-  return pgbuf_Pool.last_perm_volid;
-}
-
-/*
- * pgbuf_cache_permanent_volume_for_temporary () - The given permanent volume
- *                                  is remembered for temporary storage purposes
- *   return: void
- *   volid(in): Volume identifier of last allocated permanent volume
- *
- * Note: This declaration is needed since newly allocated pages can be fetched
- *       as "new". That is, the page buffer manager will not read the page
- *       from disk.
- */
-void
-pgbuf_cache_permanent_volume_for_temporary (VOLID volid)
-{
-  void *area;
-  int num_entries, nbytes;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  rv = pthread_mutex_lock (&pgbuf_Pool.volinfo_mutex);
-  if (pgbuf_Pool.permvols_tmparea_volids == NULL)
-    {
-      num_entries = 10;
-      nbytes = num_entries * sizeof (pgbuf_Pool.permvols_tmparea_volids);
-
-      area = malloc (nbytes);
-      if (area == NULL)
-	{
-	  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) nbytes);
-	  return;
-	}
-      pgbuf_Pool.permvols_tmparea_volids = (VOLID *) area;
-      pgbuf_Pool.size_permvols_tmparea_volids = num_entries;
-      /* pgbuf_Pool.num_permvols_tmparea is initialized to 0 in pgbuf_initialize(). */
-    }
-  else if (pgbuf_Pool.size_permvols_tmparea_volids == pgbuf_Pool.num_permvols_tmparea)
-    {
-      /* We need to expand the array */
-      num_entries = pgbuf_Pool.size_permvols_tmparea_volids + 10;
-      nbytes = num_entries * sizeof (pgbuf_Pool.permvols_tmparea_volids);
-
-      area = realloc (pgbuf_Pool.permvols_tmparea_volids, nbytes);
-      if (area == NULL)
-	{
-	  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-	  return;
-	}
-      pgbuf_Pool.permvols_tmparea_volids = (VOLID *) area;
-      pgbuf_Pool.size_permvols_tmparea_volids = num_entries;
-    }
-
-  pgbuf_Pool.permvols_tmparea_volids[pgbuf_Pool.num_permvols_tmparea] = volid;
-  pgbuf_Pool.num_permvols_tmparea++;
-  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
 }
 
 /*
@@ -4728,7 +4618,7 @@ pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -4786,31 +4676,13 @@ pgbuf_is_lsa_temporary (PAGE_PTR pgptr)
 STATIC_INLINE bool
 pgbuf_is_temporary_volume (VOLID volid)
 {
-  int i;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  rv = pthread_mutex_lock (&pgbuf_Pool.volinfo_mutex);
-  if (volid > pgbuf_Pool.last_perm_volid)
+  /* todo: I don't know why page buffer should care about temporary files and what this does, but it is really annoying.
+   * until database is loaded and restarted, I will return false always. */
+  if (!LOG_ISRESTARTED ())
     {
-      /* it means temporary volumes */
-      pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-      return true;
+      return false;
     }
-
-  /* find the given volid from the volid set of permanent volumes with temporary purpose. */
-  for (i = 0; i < pgbuf_Pool.num_permvols_tmparea; i++)
-    {
-      if (volid == pgbuf_Pool.permvols_tmparea_volids[i])
-	{
-	  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-	  return true;
-	}
-    }
-
-  pthread_mutex_unlock (&pgbuf_Pool.volinfo_mutex);
-  return false;
+  return (xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
 }
 
 /*
@@ -6060,14 +5932,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
 #if !defined(NDEBUG)
   thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF, MGR_DEF);
-  if (pgbuf_is_lsa_temporary (pgptr))
-    {
-      /* for the defense of add vol */
-      if (thread_rc_track_amount_pgbuf_temp (thread_p) > 0)
-	{
-	  thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF_TEMP, MGR_DEF);
-	}
-    }
 #endif /* NDEBUG */
 
   if (holder_status != NO_ERROR)
@@ -8915,21 +8779,15 @@ pgbuf_kickoff_blocked_victim_request (PGBUF_BCB * bufptr)
 #endif /* SERVER_MODE */
 
 /*
- * pgbuf_get_check_page_validation -
+ * pgbuf_get_check_page_validation_level -
  *   return:
  *
  */
 STATIC_INLINE bool
-pgbuf_get_check_page_validation (THREAD_ENTRY * thread_p, int page_validation_level)
+pgbuf_get_check_page_validation_level (THREAD_ENTRY * thread_p, int page_validation_level)
 {
 #if !defined(NDEBUG)
-  if (prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >= page_validation_level)
-    {
-      if (thread_get_check_page_validation (thread_p) == true)
-	{
-	  return true;
-	}
-    }
+  return prm_get_integer_value (PRM_ID_PB_DEBUG_PAGE_VALIDATION_LEVEL) >= page_validation_level;
 #endif
 
   return false;
@@ -8955,6 +8813,8 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
 {
   DISK_ISVALID valid;
 
+  /* todo: fix me */
+
   if (fileio_get_volume_label (vpid->volid, PEEK) == NULL || VPID_ISNULL (vpid))
     {
       assert (no_error);
@@ -8962,7 +8822,8 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
       return DISK_INVALID;
     }
 
-  valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid);
+  /*valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid); */
+  valid = disk_is_page_sector_reserved_with_debug_crash (thread_p, vpid->volid, vpid->pageid, !no_error);
   if (valid != DISK_VALID || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
     {
       if (valid != DISK_ERROR && !no_error)
@@ -9099,7 +8960,7 @@ pgbuf_check_page_ptype_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_T
       thread_p = thread_get_thread_entry_info ();
     }
 
-  if (pgbuf_get_check_page_validation (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+  if (pgbuf_get_check_page_validation_level (thread_p, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
     {
       if (pgbuf_is_valid_page_ptr (pgptr) == false)
 	{
@@ -9411,7 +9272,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
     }
   else
     {
-      if (bufptr->fcnt <= 0 && pgbuf_get_check_page_validation (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
+      if (bufptr->fcnt <= 0 && pgbuf_get_check_page_validation_level (NULL, PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	{
 	  int i;
 	  /* The page should be scrambled, otherwise some one step on it */
@@ -12007,19 +11868,24 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   PAGE_PTR page_to_flush = NULL;
   VPID vpid_to_flush = VPID_INITIALIZER;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
   assert (rcv->pgptr == NULL);
   assert (rcv->length == sizeof (VPID));
 
   VPID_COPY (&vpid_to_flush, (VPID *) rcv->data);
   page_to_flush =
-    pgbuf_fix_without_validation (thread_p, &vpid_to_flush, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+    pgbuf_fix (thread_p, &vpid_to_flush, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_to_flush == NULL)
     {
       /* Page no longer exist. */
+      er_clear ();
       return NO_ERROR;
     }
   /* Flush page and unfix. */
+  /* add a log or else the end of logical system operation will complain */
+  log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, &addr);
+  pgbuf_set_dirty (thread_p, page_to_flush, DONT_FREE);
   pgbuf_flush (thread_p, page_to_flush, DONT_FREE);
   pgbuf_unfix (thread_p, page_to_flush);
 
@@ -12202,4 +12068,219 @@ pgbuf_get_page_type_for_stat (PAGE_PTR pgptr)
     }
 
   return perf_page_type;
+}
+
+/*
+ * pgbuf_log_new_page () - log new page being created
+ *
+ * return         : error code
+ * thread_p (in)  : thread entry
+ * page_new (in)  : new page
+ * data_size (in) : size of page data
+ * ptype_new (in) : new page type
+ */
+void
+pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new)
+{
+  assert (ptype_new != PAGE_UNKNOWN);
+  assert (page_new != NULL);
+  assert (data_size > 0);
+
+  log_append_undoredo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page_new, (PGLENGTH) ptype_new, 0, data_size, NULL,
+			     page_new);
+  pgbuf_set_dirty (thread_p, page_new, DONT_FREE);
+}
+
+/*
+ * log_redo_page () - Apply redo for changing entire page (or at least its first part).
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_TYPE set_page_type;
+  assert (rcv->pgptr != NULL);
+  assert (rcv->length >= 0);
+  assert (rcv->length <= DB_PAGESIZE);
+
+  if (rcv->length > 0)
+    {
+      memcpy (rcv->pgptr, rcv->data, rcv->length);
+    }
+
+  set_page_type = (PAGE_TYPE) rcv->offset;
+  if (set_page_type != PAGE_UNKNOWN)
+    {
+      pgbuf_set_page_ptype (thread_p, rcv->pgptr, set_page_type);
+    }
+  else
+    {
+      assert (false);
+    }
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_new_page_undo () - undo new page (by resetting its page type to PAGE_UNKNOWN)
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_dealloc_page () - deallocate a page
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * page (in)     : page to deallocate
+ */
+int
+pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR * page_dealloc)
+{
+  PGBUF_BUFFER_HASH *hash_anchor = NULL;
+  PGBUF_BCB *bufptr = NULL;
+  PAGE_TYPE ptype;
+
+  int error_code = NO_ERROR;
+
+  /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also invalidate the entry in page
+   *               buffer. */
+
+  ptype = pgbuf_get_page_ptype (thread_p, *page_dealloc);
+  assert (ptype != PAGE_UNKNOWN);
+  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, *page_dealloc, (PGLENGTH) ptype, sizeof (VPID), 0,
+			     pgbuf_get_vpid_ptr (*page_dealloc), NULL);
+  pgbuf_set_page_ptype (thread_p, *page_dealloc, PAGE_UNKNOWN);
+  pgbuf_set_dirty (thread_p, *page_dealloc, DONT_FREE);
+  error_code = pgbuf_invalidate (thread_p, *page_dealloc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  *page_dealloc = NULL;
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_dealloc_redo () - redo page deallocate (by resetting page type to unknown).
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_dealloc_undo () - undo page deallocation. the page is validated by setting its page type back.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ *
+ * note: we had to make this function logical, because if a page is deallocated, it cannot be fixed, unless we use
+ *       fetch type OLD_PAGE_DEALLOCATED.
+ */
+int
+pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  VPID *vpid = (VPID *) rcv->data;
+  PAGE_PTR page_deallocated = NULL;
+  PAGE_TYPE ptype = (PAGE_TYPE) rcv->offset;
+
+  assert (rcv->length == sizeof (VPID));
+  assert (!VPID_ISNULL (vpid));
+  assert (ptype > PAGE_UNKNOWN && ptype <= PAGE_LAST);
+
+  /* fix deallocated page */
+  page_deallocated = pgbuf_fix (thread_p, vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_deallocated == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  assert (pgbuf_get_page_ptype (thread_p, page_deallocated) == PAGE_UNKNOWN);
+  pgbuf_set_page_ptype (thread_p, page_deallocated, ptype);
+  log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, vpid, rcv->offset, page_deallocated, 0,
+					 NULL, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
+  pgbuf_set_dirty_and_free (thread_p, page_deallocated);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_fix_if_not_deallocated () - fix a page if it is not deallocated. the difference compared to regulat page fix
+ *                                   finding deallocated pages is expected. if the page is indeed deallocated, it will
+ *                                   not fix it
+ *
+ * return               : error code
+ * thread_p (in)        : thread entry
+ * vpid (in)            : page identifier
+ * latch_mode (in)      : latch mode
+ * latch_condition (in) : latch condition
+ * page (out)           : output fixed page if not deallocated. output NULL if deallocated.
+ * caller_file (in)     : caller file name
+ * caller_line (in)     : caller line
+ */
+int
+pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * vpid, PGBUF_LATCH_MODE latch_mode,
+					  PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
+					  const char *caller_file, int caller_line)
+{
+  DISK_ISVALID isvalid;
+  int error_code = NO_ERROR;
+
+  assert (vpid != NULL && !VPID_ISNULL (vpid));
+  assert (page != NULL);
+  *page = NULL;
+
+  isvalid = disk_is_page_sector_reserved (thread_p, vpid->volid, vpid->pageid);
+  if (isvalid == DISK_INVALID)
+    {
+      /* deallocated */
+      return NO_ERROR;
+    }
+  else if (isvalid == DISK_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  assert (isvalid == DISK_VALID);
+
+  /* is reserved */
+#if defined (NDEBUG)
+  *page = pgbuf_fix_release (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition);
+#else /* !NDEBUG */
+  *page =
+    pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition, caller_file, caller_line);
+#endif /* !NDEBUG */
+  if (*page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      if (error_code == ER_PB_BAD_PAGEID)
+	{
+	  /* deallocated */
+	  er_clear ();
+	  error_code = NO_ERROR;
+	}
+    }
+  return error_code;
 }

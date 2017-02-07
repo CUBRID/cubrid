@@ -858,7 +858,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
    * log. */
   if (lock_mode != X_LOCK)
     {
-      log_start_system_op (thread_p);
+      log_sysop_start (thread_p);
     }
 
   if (lock_mode != X_LOCK && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
@@ -915,7 +915,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   if (lock_mode != X_LOCK)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
     }
 
   return NO_ERROR;
@@ -924,10 +924,11 @@ exit_on_error:
 
   if (lock_mode != X_LOCK)
     {
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      log_sysop_abort (thread_p);
     }
 
-  return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  ASSERT_ERROR_AND_SET (ret);
+  return ret;
 }
 
 /*

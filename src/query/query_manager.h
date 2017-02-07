@@ -41,7 +41,6 @@
   while (0)
 
 #define NULL_PAGEID_IN_PROGRESS -2
-#define QMGR_VPID_ARRAY_SIZE    20
 
 typedef enum
 {
@@ -73,12 +72,6 @@ struct qmgr_temp_file
   QMGR_TEMP_FILE *prev;
   FILE_TYPE temp_file_type;
   VFID temp_vfid;
-  int curr_free_page_index;	/* current free page index */
-  int last_free_page_index;	/* last free page index */
-  int vpid_index;		/* index into vpid_array */
-  int vpid_count;		/* index into vpid_array */
-  VPID vpid_array[QMGR_VPID_ARRAY_SIZE];	/* an array of vpids */
-  int total_count;		/* total number of file pages alloc'd */
   int membuf_last;
   PAGE_PTR *membuf;
   int membuf_npages;
@@ -133,6 +126,7 @@ struct qmgr_query_entry
   QMGR_QUERY_STATUS query_status;
   QUERY_FLAG query_flag;
   bool is_holdable;		/* true if this query should be available */
+  bool is_preserved;		/* true if query was preserved in session, false otherwise. */
 };
 
 extern QMGR_QUERY_ENTRY *qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);
@@ -157,7 +151,7 @@ extern QMGR_TEMP_FILE *qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY
 extern QMGR_TEMP_FILE *qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern int qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_FILE * tfile_vfidp);
 extern int qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfidp, QUERY_ID query_id,
-				     bool is_error);
+				     bool is_error, bool was_preserved);
 
 #if defined (SERVER_MODE)
 extern bool qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id);

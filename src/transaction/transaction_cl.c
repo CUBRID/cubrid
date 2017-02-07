@@ -206,7 +206,7 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
 
   if (tm_Tran_isolation != isolation)
     {
-      error_code = log_reset_isolation (isolation, true);
+      error_code = log_reset_isolation (isolation);
       if (error_code == NO_ERROR)
 	{
 	  tm_Tran_isolation = isolation;

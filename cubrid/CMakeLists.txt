@@ -35,6 +35,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/binaryheap.c
+  ${BASE_DIR}/bit.c
   ${BASE_DIR}/chartype.c
   ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
@@ -172,8 +173,6 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/file_io.c
-  ${STORAGE_DIR}/large_object_directory.c
-  ${STORAGE_DIR}/large_object.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c

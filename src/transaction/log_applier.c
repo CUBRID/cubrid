@@ -225,7 +225,9 @@ struct la_item
   char *class_name;
   char *db_user;
   char *ha_sys_prm;
-  DB_VALUE key;
+  int packed_key_value_length;
+  char *packed_key_value;	/* disk image of pkey value */
+  DB_VALUE key;			/* it will be unpacked from packed_key_value on demand */
   LOG_LSA lsa;			/* the LSA of the replication log record */
   LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
@@ -479,6 +481,7 @@ static void la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAG
 static LA_ITEM *la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa);
 static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
 
+static DB_VALUE *la_get_item_pk_value (LA_ITEM * item);
 static LA_ITEM *la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static void la_unlink_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_repl_item (LA_APPLY * apply, LA_ITEM * item);
@@ -3083,6 +3086,11 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   item->ha_sys_prm = NULL;
   LSA_COPY (&item->lsa, lsa);
   LSA_COPY (&item->target_lsa, target_lsa);
+
+  DB_MAKE_NULL (&item->key);
+  item->packed_key_value_length = 0;
+  item->packed_key_value = NULL;
+
   item->next = NULL;
   item->prev = NULL;
 
@@ -3118,6 +3126,25 @@ la_add_repl_item (LA_APPLY * apply, LA_ITEM * item)
 
   apply->num_items++;
   return;
+}
+
+static DB_VALUE *
+la_get_item_pk_value (LA_ITEM * item)
+{
+  assert (item != NULL);
+
+  if (item->log_type == LOG_REPLICATION_DATA && DB_IS_NULL (&item->key))
+    {
+      /* unpack pk image to construct DB_VALUE on demand */
+      assert (item->packed_key_value != NULL && item->packed_key_value_length > 0);
+
+      or_unpack_mem_value (item->packed_key_value, &item->key);
+
+      assert (DB_VALUE_TYPE (&item->key) != DB_TYPE_NULL);
+    }
+
+  /* statement replication or key was already unpacked */
+  return &item->key;
 }
 
 static LA_ITEM *
@@ -3179,12 +3206,18 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
   switch (log_type)
     {
     case LOG_REPLICATION_DATA:
-      ptr = or_unpack_string (area, &item->class_name);
-      ptr = or_unpack_mem_value (ptr, &item->key);	/* 
-							 * domain is only
-							 * used to pack/unpack
-							 * primary key DB value
-							 */
+      ptr = or_unpack_int (area, &item->packed_key_value_length);
+      ptr = or_unpack_string (ptr, &item->class_name);
+
+      item->packed_key_value = (char *) malloc (item->packed_key_value_length);
+      if (item->packed_key_value == NULL)
+	{
+	  goto error_return;
+	}
+
+      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
+      memcpy (item->packed_key_value, ptr, item->packed_key_value_length);
+
       item->item_type = repl_log->rcvindex;
 
       break;
@@ -3237,6 +3270,11 @@ error_return:
       if (item->ha_sys_prm != NULL)
 	{
 	  db_private_free_and_init (NULL, item->ha_sys_prm);
+	}
+
+      if (item->packed_key_value != NULL)
+	{
+	  free_and_init (item->packed_key_value);
 	}
 
       free_and_init (item);
@@ -3307,6 +3345,11 @@ la_free_repl_item (LA_APPLY * apply, LA_ITEM * item)
       db_private_free_and_init (NULL, item->ha_sys_prm);
     }
 
+  if (item->packed_key_value != NULL)
+    {
+      free_and_init (item->packed_key_value);
+    }
+
   free_and_init (item);
 
   return;
@@ -3343,6 +3386,7 @@ static void
 la_free_and_add_next_repl_item (LA_APPLY * apply, LA_ITEM * last_item, LOG_LSA * commit_lsa)
 {
   LA_ITEM *item, *next_item;
+
   assert (apply);
   assert (!LSA_ISNULL (commit_lsa));
 
@@ -4824,6 +4868,72 @@ la_flush_repl_items (bool immediate)
   return error;
 }
 
+/*
+ * la_repl_add_object : create a replication object and add it to link for bulk flushing
+ *    return:
+ *    classop(in):
+ *    item (in): item
+ *    recdes(in): record to be inserted
+ */
+static int
+la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
+{
+  int error = NO_ERROR;
+  SM_CLASS *class_;
+  DB_TYPE value_type;
+  int pruning_type = DB_NOT_PARTITIONED_CLASS;
+  int operation = 0;
+  OID *class_oid;
+  bool has_index = false;
+
+  assert (classop != NULL && item != NULL);
+
+  class_oid = ws_oid (classop);
+
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = sm_flush_objects (classop);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (item->item_type != RVREPL_DATA_DELETE)
+    {
+      error = sm_partitioned_class_type (classop, &pruning_type, NULL, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  switch (item->item_type)
+    {
+    case RVREPL_DATA_UPDATE_START:
+    case RVREPL_DATA_UPDATE_END:
+    case RVREPL_DATA_UPDATE:
+      operation = LC_UPDATE_OPERATION_TYPE (pruning_type);
+      break;
+    case RVREPL_DATA_INSERT:
+      operation = LC_INSERT_OPERATION_TYPE (pruning_type);
+      break;
+    case RVREPL_DATA_DELETE:
+      operation = LC_FLUSH_DELETE;
+      break;
+    default:
+      assert (false);
+    }
+
+  has_index = classobj_class_has_indexes (class_);
+
+  error = ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
+				   operation, has_index);
+  return error;
+}
 
 /*
  * la_apply_delete_log() - apply the delete log to the target slave
@@ -4861,7 +4971,7 @@ la_apply_delete_log (LA_ITEM * item)
 
       if (la_enable_sql_logging)
 	{
-	  if (sl_write_delete_sql (item->class_name, mclass, &item->key) != NO_ERROR)
+	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
 	    {
 	      help_sprint_value (&item->key, buf, 255);
 	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
@@ -4873,7 +4983,7 @@ la_apply_delete_log (LA_ITEM * item)
 	    }
 	}
 
-      error = obj_repl_add_object (class_obj, &item->key, item->item_type, NULL);
+      error = la_repl_add_object (class_obj, item, NULL);
       if (error == NO_ERROR)
 	{
 	  la_Info.delete_counter++;
@@ -4883,7 +4993,7 @@ la_apply_delete_log (LA_ITEM * item)
 
   if (error != NO_ERROR)
     {
-      help_sprint_value (&item->key, buf, 255);
+      help_sprint_value (la_get_item_pk_value (item), buf, 255);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_delete : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, buf);
@@ -4977,7 +5087,7 @@ la_apply_update_log (LA_ITEM * item)
       goto end;
     }
 
-  error = obj_repl_add_object (class_obj, &item->key, item->item_type, recdes);
+  error = la_repl_add_object (class_obj, item, recdes);
 
   /* 
    * regardless of the success or failure of obj_repl_update_object,
@@ -5008,7 +5118,7 @@ la_apply_update_log (LA_ITEM * item)
 	      break;
 	    }
 
-	  rc = la_disk_to_obj (mclass, recdes, inst_tp, &item->key);
+	  rc = la_disk_to_obj (mclass, recdes, inst_tp, la_get_item_pk_value (item));
 	  if (rc != NO_ERROR)
 	    {
 	      sql_logging_failed = true;
@@ -5030,7 +5140,7 @@ la_apply_update_log (LA_ITEM * item)
 
       if (sql_logging_failed == true)
 	{
-	  help_sprint_value (&item->key, buf, 255);
+	  help_sprint_value (la_get_item_pk_value (item), buf, 255);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
 		    buf);
 
@@ -5043,7 +5153,7 @@ la_apply_update_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
-      help_sprint_value (&item->key, buf, 255);
+      help_sprint_value (la_get_item_pk_value (item), buf, 255);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_update : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, buf);
@@ -5158,7 +5268,7 @@ la_apply_insert_log (LA_ITEM * item)
       goto end;
     }
 
-  error = obj_repl_add_object (class_obj, &item->key, item->item_type, recdes);
+  error = la_repl_add_object (class_obj, item, recdes);
 
   if (la_enable_sql_logging == true)
     {
@@ -5188,7 +5298,7 @@ la_apply_insert_log (LA_ITEM * item)
 	    }
 
 	  /* make object using the record description */
-	  rc = la_disk_to_obj (mclass, recdes, inst_tp, &item->key);
+	  rc = la_disk_to_obj (mclass, recdes, inst_tp, la_get_item_pk_value (item));
 	  if (rc != NO_ERROR)
 	    {
 	      sql_logging_failed = true;
@@ -5196,7 +5306,7 @@ la_apply_insert_log (LA_ITEM * item)
 	      break;
 	    }
 
-	  if (sl_write_insert_sql (inst_tp, &item->key) != NO_ERROR)
+	  if (sl_write_insert_sql (inst_tp, la_get_item_pk_value (item)) != NO_ERROR)
 	    {
 	      sql_logging_failed = true;
 	      AU_RESTORE (au_save);
@@ -5210,7 +5320,7 @@ la_apply_insert_log (LA_ITEM * item)
 
       if (sql_logging_failed == true)
 	{
-	  help_sprint_value (&item->key, buf, 255);
+	  help_sprint_value (la_get_item_pk_value (item), buf, 255);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
 		    buf);
 
@@ -5223,7 +5333,7 @@ la_apply_insert_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
-      help_sprint_value (&item->key, buf, 255);
+      help_sprint_value (la_get_item_pk_value (item), buf, 255);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_insert : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, buf);
@@ -5603,7 +5713,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
   if (apply->head == NULL || LSA_LE (commit_lsa, &la_Info.last_committed_lsa))
     {
-      if (rectype == LOG_COMMIT_TOPOPE)
+      if (rectype == LOG_SYSOP_END)
 	{
 	  la_free_all_repl_items (apply);
 	}
@@ -5686,7 +5796,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	      assert (er_errid () != NO_ERROR);
 	      errid = er_errid ();
 
-	      help_sprint_value (&item->key, buf, 255);
+	      help_sprint_value (la_get_item_pk_value (item), buf, 255);
 	      sprintf (error_string, "[%s,%s] %s", item->class_name, buf, db_error_string (1));
 	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
 
@@ -5714,7 +5824,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
       if ((item != NULL) && LSA_GT (&item->lsa, commit_lsa))
 	{
-	  assert (rectype == LOG_COMMIT_TOPOPE);
+	  assert (rectype == LOG_SYSOP_END);
 	  has_more_commit_items = true;
 	  break;
 	}
@@ -5723,7 +5833,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 end:
   *total_rows += apply_repl_log_cnt;
 
-  if (rectype == LOG_COMMIT_TOPOPE)
+  if (rectype == LOG_SYSOP_END)
     {
       if (has_more_commit_items)
 	{
@@ -5761,7 +5871,7 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
   LSA_SET_NULL (lsa);
 
   commit = la_Info.commit_head;
-  if (commit && (commit->type == LOG_COMMIT || commit->type == LOG_COMMIT_TOPOPE || commit->type == LOG_ABORT))
+  if (commit && (commit->type == LOG_COMMIT || commit->type == LOG_SYSOP_END || commit->type == LOG_ABORT))
     {
       error = la_apply_repl_log (commit->tranid, commit->type, &commit->log_lsa, &la_Info.total_rows, final_pageid);
       if (error != NO_ERROR)
@@ -6017,13 +6127,13 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	}
       break;
 
-    case LOG_COMMIT_TOPOPE:
+    case LOG_SYSOP_END:
     case LOG_COMMIT:
       /* apply the replication log to the slave */
       if (LSA_GT (final, &la_Info.committed_lsa))
 	{
 	  /* add the repl_list to the commit_list */
-	  if (lrec->type == LOG_COMMIT_TOPOPE)
+	  if (lrec->type == LOG_SYSOP_END)
 	    {
 	      eot_time = 0;
 	    }

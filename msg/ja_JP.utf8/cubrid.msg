@@ -1260,8 +1260,10 @@ $ LOADDB
 1191 スタンドアロン真空スイープの実行が終了しました。
 1192 %1$zuの値の精度は最大許容%2$dを超えていました。
 1193 処理されたパーティション式の長さが許容される最大「%1$d」を超えていました。
-1194 Incompatible log header types: %1$d is different from %2$d.
-1195 ラストエラー
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Incompatible log header types: %1$d is different from %2$d.
+1197 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1713,6 +1715,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 集計関数の使用が無効です。
 293 値は厳密に各パーティションに増加しなければなりません。
 294 ローカルタイムゾーン型指定された列に関数やフィルタ索引を使用することはできません。
+295 SELECT INTO is not allowed in subqueries.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

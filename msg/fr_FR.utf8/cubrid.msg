@@ -1260,8 +1260,10 @@ $ LOADDB
 1191 Exécution de nettoyage autonome est terminé.
 1192 La précision de la valeur de %1$zu dépasse le maximum autorisé %2$d.
 1193 La dimension de l'expression de partition traité dépasse le maximum autorisé(%1$d).
-1194 Incompatible log header types: %1$d is different from %2$d.
-1195 Dernière erreur
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Incompatible log header types: %1$d is different from %2$d.
+1197 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1713,6 +1715,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Usage non valide de fonctions d'agrégation.
 293 La valeur doit être strictement croissante pour chaque partition.
 294 Impossible d'utiliser des index de fonction ou de filtre pour les colonnes avec local timezone type.
+295 SELECT INTO is not allowed in subqueries.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

@@ -368,6 +368,7 @@ qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
  * qdata_copy_db_value_to_tuple_value () -
  *   return: int (true on success, false on failure)
  *   dbval(in)  : Source dbval node
+ *   clear_compressed_string(in): true, if need to clear compressed string
  *   tvalp(in)  :  Tuple value
  *   tval_size(out)      : Set to the tuple value size
  *
@@ -375,7 +376,8 @@ qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
  * THIS ROUTINE ASSUMES THAT THE VALUE WILL FIT IN THE TPL!!!!
  */
 int
-qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *tuple_val_size)
+qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_string, char *tuple_val_p,
+				    int *tuple_val_size)
 {
   char *val_p;
   int val_size, align, rc;
@@ -414,14 +416,17 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	}
 
       /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
-      if (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR)
+      if (clear_compressed_string)
 	{
-	  rc = pr_clear_compressed_string (dbval_p);
-	  if (rc != NO_ERROR)
+	  if (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR)
 	    {
-	      /* This should not happen for now */
-	      assert (false);
-	      return ER_FAILED;
+	      rc = pr_clear_compressed_string (dbval_p);
+	      if (rc != NO_ERROR)
+		{
+		  /* This should not happen for now */
+		  assert (false);
+		  return ER_FAILED;
+		}
 	    }
 	}
 
@@ -461,6 +466,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
   char *tuple_p;
   int k, tval_size, tlen, tpl_size;
   int n_size, toffset;
+  bool clear_compressed_string = false;
 
   tpl_size = 0;
   tlen = QFILE_TUPLE_LENGTH_SIZE;
@@ -480,6 +486,15 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
 	  if (dbval_p == NULL)
 	    {
 	      return ER_FAILED;
+	    }
+
+	  if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      clear_compressed_string = false;
+	    }
+	  else
+	    {
+	      clear_compressed_string = true;
 	    }
 
 	  n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
@@ -516,7 +531,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
 	      tuple_p = (char *) (tuple_record_p->tpl) + toffset;
 	    }
 
-	  if (qdata_copy_db_value_to_tuple_value (dbval_p, tuple_p, &tval_size) != NO_ERROR)
+	  if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -556,6 +571,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
   DB_VALUE *val_buffer;
   DB_TYPE dbval_type;
+  HL_HEAPID save_heapid = 0;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -573,6 +589,17 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	    {
 	      status = QPROC_TPLDESCR_FAILURE;
 	      goto exit_with_status;
+	    }
+
+	  /* Set clear_f_val_at_clone_decache to avoid memory issues */
+	  assert (tuple_desc_p->clear_f_val_at_clone_decache != NULL);
+	  if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] = true;
+	    }
+	  else
+	    {
+	      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] = false;
 	    }
 
 	  dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
@@ -598,7 +625,11 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
 	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
 	    {
-	      pr_clear_compressed_string (val_buffer);
+	      if (!(tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt]))
+		{
+		  /* Clear compressed string since val_buffer was allocated during XASL execution. */
+		  pr_clear_compressed_string (val_buffer);
+		}
 	    }
 
 	  tuple_desc_p->tpl_size += value_size;
@@ -641,8 +672,11 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_lis
 
       if (dbval_p != NULL)
 	{
-	  /* this may be shared with another reguvariable that was already evaluated */
-	  pr_clear_value (dbval_p);
+	  if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      /* this may be shared with another regu variable that was already evaluated */
+	      pr_clear_value (dbval_p);
+	    }
 
 	  if (db_value_domain_init (dbval_p, DB_VALUE_DOMAIN_TYPE (dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) !=
 	      NO_ERROR)
@@ -7703,9 +7737,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID scan_id;
   SCAN_CODE scan_code;
-  QFILE_TUPLE_RECORD tuple_record = {
-    NULL, 0
-  };
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   char *tuple_p;
   PR_TYPE *pr_type_p;
   OR_BUF buf;
@@ -8301,6 +8333,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  domain_p = list_id_p->type_list.domp[i];
 	  if (domain_p == NULL || domain_p->type == NULL)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
 	      return ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
 	    }
@@ -8308,6 +8341,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  if (db_value_domain_init (value_list->val, TP_DOMAIN_TYPE (domain_p), domain_p->precision, domain_p->scale) !=
 	      NO_ERROR)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
 	      return ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
 	    }
@@ -8315,6 +8349,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  pr_type_p = domain_p->type;
 	  if (pr_type_p == NULL)
 	    {
+	      qfile_close_scan (thread_p, &scan_id);
 	      return ER_FAILED;
 	    }
 
@@ -8423,6 +8458,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
   DB_TYPE dom_type, val_type;
   TP_DOMAIN_STATUS dom_status;
   int result;
+  HL_HEAPID save_heapid = 0;
 
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
@@ -8459,7 +8495,17 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		}
 	      else
 		{
+		  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		    {
+		      save_heapid = db_change_private_heap (thread_p, 0);
+		    }
+
 		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
+		    }
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
 		      result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
@@ -11251,7 +11297,6 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	{
 	  qfile_close_list (thread_p, func_p->list_id);
 	  qfile_destroy_list (thread_p, func_p->list_id);
-	  func_p->list_id = NULL;
 	}
 
       if (!list_id_p)
@@ -12185,6 +12230,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;
   DB_DOMAIN *dom;
+  HL_HEAPID save_heapid = 0;
 
   assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operand.type == TYPE_REGU_VAR_LIST);
 
@@ -12240,9 +12286,26 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	  /* Note: we must cast the const value to the same domain as the compared field in the order by clause */
 	  dom = regu_tmp_node->value.domain;
 
+	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_node->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      save_heapid = db_change_private_heap (thread_p, 0);
+	    }
+
 	  if (db_value_coerce (*val_node_p, *val_node_p, dom) != NO_ERROR)
 	    {
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		  save_heapid = 0;
+		}
+
 	      goto exit_on_error;
+	    }
+
+	  if (save_heapid != 0)
+	    {
+	      (void) db_change_private_heap (thread_p, save_heapid);
+	      save_heapid = 0;
 	    }
 
 	  regu_var_node = regu_var_node->next;

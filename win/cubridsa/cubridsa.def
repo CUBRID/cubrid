@@ -74,13 +74,7 @@ EXPORTS
     do_is_partitioned_subclass
     er_errid
     er_errid_if_has_error
-    file_alloc_pages
-    file_dealloc_page
-    file_find_nthfile
-    file_get_numfiles
-    file_get_tracker_vfid
     fileio_make_volume_info_name
-    file_update_used_pages_of_vol_header
     locator_has_heap
     ntohi64
     numeric_coerce_int_to_num
@@ -582,7 +576,6 @@ EXPORTS
     db_print
     db_print_mop
     db_print_stats
-    db_purpose_totalpgs_freepgs
     db_push_values
     db_put
     db_query_column_count
@@ -788,7 +781,6 @@ EXPORTS
     envvar_root
     envvar_set
     envvar_bindir_file
-    btree_fix_overflow_oid_page_all_btrees
     catcls_get_db_collation
     lang_get_collation
     lang_init

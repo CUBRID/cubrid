@@ -34,12 +34,10 @@
 #include "page_buffer.h"
 #include "recovery.h"
 
-extern VPID *overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
-			      int *ovf_first_page);
-extern VPID *overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid,
-						   RECDES * recdes, int *ovf_first_page);
-extern const VPID *overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid,
-				    RECDES * recdes);
+extern int overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
+			    FILE_TYPE file_type);
+extern int overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid, RECDES * recdes,
+			    FILE_TYPE file_type);
 extern const VPID *overflow_delete (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid);
 extern void overflow_flush (THREAD_ENTRY * thread_p, const VPID * ovf_vpid);
 extern int overflow_get_length (THREAD_ENTRY * thread_p, const VPID * ovf_vpid);
@@ -49,12 +47,9 @@ extern SCAN_CODE overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_
 				      int max_nbytes, int *remaining_length, MVCC_SNAPSHOT * mvcc_snapshot);
 extern int overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, int *ovf_length, int *ovf_num_pages,
 				  int *ovf_overhead, int *ovf_free_space);
-extern int overflow_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_novf_sets, int avg_ovfdata_size);
 #if defined (CUBRID_DEBUG)
 extern int overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid);
 #endif
-extern int overflow_rv_newpage_logical_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void overflow_rv_newpage_logical_dump_undo (FILE * fp, int length_ignore, void *data);
 extern int overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int overflow_rv_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -77,8 +77,6 @@ extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, 
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
 extern int locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size);
 extern int locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area);
-extern int locator_force_repl_update (BTID * btid, OID * class_oid, DB_VALUE * key_value, bool has_index, int operation,
-				      RECDES * recdes);
 extern int locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int class_chn, LOCK lock,
 						int quit_on_errors, int prune_level, LC_LOCKSET ** lockset,
@@ -112,14 +110,11 @@ extern int heap_reclaim_addresses (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern DISK_VOLPURPOSE disk_get_purpose (VOLID volid);
-#endif
-extern VOLID disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info);
+extern int disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
 extern bool disk_is_volume_exist (VOLID volid);
 extern int log_reset_wait_msecs (int wait_msecs);
-extern int log_reset_isolation (TRAN_ISOLATION isolation, bool unlock_by_isolation);
+extern int log_reset_isolation (TRAN_ISOLATION isolation);
 extern void log_set_interrupt (int set);
 extern int log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
@@ -166,9 +161,6 @@ extern int boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_leve
 			const char *backup_verbose_file, int num_threads, FILEIO_ZIP_METHOD zip_method,
 			FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
 extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
-#if 0
-extern int boot_del_volume_extension (VOLID volid, bool clear_cached);
-#endif
 extern int boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * idx_btid);
 extern int boot_find_number_permanent_volumes (void);
 extern int boot_find_number_temp_volumes (void);
@@ -188,16 +180,6 @@ extern int boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGE
 				 FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout);
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
-extern LOID *largeobjmgr_create (LOID * loid, int length, char *buffer, int est_lo_length, OID * oid);
-extern int largeobjmgr_destroy (LOID * loid);
-extern int largeobjmgr_read (LOID * loid, INT64 offset, int length, char *buffer);
-extern int largeobjmgr_write (LOID * loid, INT64 offset, int length, char *buffer);
-extern int largeobjmgr_insert (LOID * loid, INT64 offset, int length, char *buffer);
-extern INT64 largeobjmgr_delete (LOID * loid, INT64 offset, INT64 length);
-extern int largeobjmgr_append (LOID * loid, int length, char *buffer);
-extern INT64 largeobjmgr_truncate (LOID * loid, INT64 offset);
-extern int largeobjmgr_compress (LOID * loid);
-extern INT64 largeobjmgr_length (LOID * loid);
 extern char *stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr);
 extern int stats_update_statistics (OID * classoid, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
@@ -215,7 +197,6 @@ extern BTREE_SEARCH btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_
 extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid);
 extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids, DB_VALUE * keys,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
-extern int btree_delete_with_unique_key (BTID * btid, OID * class_oid, DB_VALUE * key_value);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
 extern int qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);

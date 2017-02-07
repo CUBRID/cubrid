@@ -1260,8 +1260,10 @@ $ LOADDB
 1191 Stand-alone vacuum s-a finalizat.
 1192 Valoarea %1$zu depășește maximul permis %2$d.
 1193 După procesare, lungimea expresiei de partiționare depășește lungimea maximă(%1$d).
-1194 Tipuri incompatibile de log header: %1$d este diferit de %2$d.
-1195 Ultima eroare
+1194 Nu se poate verifica fisierul %1d|%2d pentru ca nu s-a putut seta lock imediat pe clasa %3d|%4d|%5d.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Tipuri incompatibile de log header: %1$d este diferit de %2$d.
+1197 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1713,6 +1715,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Utilizare invalidă a funcțiilor de agregare.
 293 Valoarea trebuie să fie strict crescătoare pentru fiecare partiție.
 294 Nu se pot folosi function sau filter indexes pe coloane timezone.
+295 SELECT INTO nu este permis in subqueries.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

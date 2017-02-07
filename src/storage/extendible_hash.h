@@ -48,9 +48,6 @@ extern int eh_capacity (EHID * ehid, int *num_recs, int *avg_reclength, int *num
 			int *dir_depth, int *avg_freespace_per_page, int *avg_overhead_per_page);
 #endif
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_nkeys, int avg_key_size);
-#endif
 extern int ehash_map (THREAD_ENTRY * thread_p, EHID * ehid,
 		      int (*fun) (THREAD_ENTRY * thread_p, void *, void *, void *args), void *args);
 

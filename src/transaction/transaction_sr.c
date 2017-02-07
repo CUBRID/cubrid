@@ -233,7 +233,6 @@ tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p)
 int
 xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
 {
-  LOG_LSA *lsa;
   int error_code = NO_ERROR;
 
   /* 
@@ -241,24 +240,20 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
    * started by the log manager.
    */
 
-  lsa = log_start_system_op (thread_p);
-  if (lsa == NULL)
+  log_sysop_start (thread_p);
+  if (log_get_parent_lsa_system_op (thread_p, topop_lsa) == NULL)
     {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  error_code = locator_savepoint_transient_class_name_entries (thread_p, topop_lsa);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       LSA_SET_NULL (topop_lsa);
-      error_code = ER_FAILED;
+      return error_code;
     }
-  else
-    {
-      LSA_COPY (topop_lsa, lsa);
-      error_code = locator_savepoint_transient_class_name_entries (thread_p, lsa);
-      if (error_code != NO_ERROR)
-	{
-	  LSA_SET_NULL (topop_lsa);
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-	}
-    }
-
-  return error_code;
+  return NO_ERROR;
 }
 
 /*
@@ -271,7 +266,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
  *                  started.
  *
  * NOTE:Finish the latest nested top macro operation by either
- *              aborting or attaching to outter parent.
+ *              aborting or attaching to outer parent.
  *
  *      Note that a top operation is not associated with the current
  *              transaction, thus, it can be aborted
@@ -282,6 +277,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 {
   TRAN_STATE state;
   bool drop_transient_class = false;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   assert (result == LOG_RESULT_TOPOP_ABORT || result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 
@@ -289,6 +285,13 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
+
+  if (tdes == NULL)
+    {
+      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return TRAN_UNACTIVE_UNKNOWN;
+    }
 
   switch (result)
     {
@@ -298,30 +301,30 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	{
 	  drop_transient_class = true;
 	}
-      state = log_end_system_op (thread_p, result);
+      if (result == LOG_RESULT_TOPOP_COMMIT)
+	{
+	  log_sysop_commit (thread_p);
+	  state = TRAN_UNACTIVE_COMMITTED;
+	}
+      else
+	{
+	  log_sysop_abort (thread_p);
+	  state = TRAN_UNACTIVE_ABORTED;
+	}
       if (drop_transient_class)
 	{
 	  (void) locator_drop_transient_class_name_entries (thread_p, topop_lsa);
 	}
       if (result == LOG_RESULT_TOPOP_ABORT)
 	{
-	  int tran_index;
-	  LOG_TDES *tdes;
-
-	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  tdes = LOG_FIND_TDES (tran_index);
-	  if (tdes == NULL)
-	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-	      return TRAN_UNACTIVE_UNKNOWN;
-	    }
 	  log_clear_lob_locator_list (thread_p, tdes, false, topop_lsa);
 	}
       break;
 
     case LOG_RESULT_TOPOP_ATTACH_TO_OUTER:
     default:
-      state = log_end_system_op (thread_p, result);
+      log_sysop_attach_to_outer (thread_p);
+      state = tdes->state;
       break;
     }
   return state;

@@ -50,7 +50,7 @@ db_create_fbo (DB_VALUE * value, DB_TYPE type)
 
   CHECK_1ARG_ERROR (value);
 
-  ret = elo_create (&elo, ELO_FBO);
+  ret = elo_create (&elo);
   if (ret == NO_ERROR)
     {
       ret = db_make_elo (value, type, &elo);

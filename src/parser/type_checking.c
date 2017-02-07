@@ -1396,8 +1396,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads[num++] = sig;
 
       /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_DATE;
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATE;
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_INTEGER;
@@ -4142,8 +4142,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads[num++] = sig;
 
       /* TIMESTAMP(DATETIME,NUMBER) */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_DATETIME;
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.type = PT_GENERIC_TYPE_DATE;
       sig.arg2_type.is_generic = true;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NUMBER;
       sig.return_type.is_generic = false;
@@ -4949,7 +4949,6 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 	  return PT_TYPE_INTEGER;
 	}
       return arg_type;
-      break;
 
     case PT_GENERIC_TYPE_PRIMITIVE:
       if (PT_IS_PRIMITIVE_TYPE (arg_type))
@@ -4967,7 +4966,6 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 
     case PT_GENERIC_TYPE_DISCRETE_NUMBER:
       return PT_TYPE_BIGINT;
-      break;
 
     case PT_GENERIC_TYPE_NUMBER:
       if (arg_type == PT_TYPE_ENUMERATION)
@@ -4975,29 +4973,23 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 	  return PT_TYPE_SMALLINT;
 	}
       return PT_TYPE_DOUBLE;
-      break;
 
     case PT_GENERIC_TYPE_CHAR:
     case PT_GENERIC_TYPE_STRING:
     case PT_GENERIC_TYPE_STRING_VARYING:
       return PT_TYPE_VARCHAR;
-      break;
 
     case PT_GENERIC_TYPE_NCHAR:
       return PT_TYPE_VARNCHAR;
-      break;
 
     case PT_GENERIC_TYPE_BIT:
       return PT_TYPE_VARBIT;
-      break;
 
     case PT_GENERIC_TYPE_DATE:
       return PT_TYPE_DATETIME;
-      break;
 
     default:
       return PT_TYPE_NONE;
-      break;
     }
 
   return PT_TYPE_NONE;
@@ -5266,7 +5258,6 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
     case PT_GENERIC_TYPE_ANY:
       /* PT_GENERIC_TYPE_ANY is equivalent to any type */
       return true;
-      break;
     case PT_GENERIC_TYPE_PRIMITIVE:
       if (PT_IS_PRIMITIVE_TYPE (op_type))
 	{
@@ -5343,7 +5334,6 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
 
     default:
       return false;
-      break;
     }
 
   return false;
@@ -5634,7 +5624,9 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
        * from the select list */
       PT_NODE *arg2_list = NULL;
 
+      /* duplicates are not relevant; order by is not relevant; */
       expr->info.expr.arg2->info.query.all_distinct = PT_DISTINCT;
+      pt_try_remove_order_by (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
       if (PT_IS_COLLECTION_TYPE (arg2_list->type_enum) && arg2_list->node_type == PT_FUNCTION)
@@ -5816,77 +5808,69 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		case PT_TYPE_CHAR:
 		case PT_TYPE_NCHAR:
 		case PT_TYPE_BIT:
-		  {
-		    /* CHAR, NCHAR and BIT are common types only if all arguments are of type NCHAR or CHAR */
-		    assert (temp->type_enum == PT_TYPE_CHAR || temp->type_enum == PT_TYPE_NCHAR);
-		    if (precision > temp->info.data_type.precision)
-		      {
-			precision = temp->info.data_type.precision;
-		      }
-		    break;
-		  }
+		  /* CHAR, NCHAR and BIT are common types only if all arguments are of type NCHAR or CHAR */
+		  assert (temp->type_enum == PT_TYPE_CHAR || temp->type_enum == PT_TYPE_NCHAR);
+		  if (precision > temp->info.data_type.precision)
+		    {
+		      precision = temp->info.data_type.precision;
+		    }
+		  break;
 		case PT_TYPE_VARCHAR:
 		case PT_TYPE_VARNCHAR:
-		  {
-		    /* either all elements are already of string types or we set maximum precision */
-		    if (!PT_IS_CHAR_STRING_TYPE (temp->type_enum))
-		      {
-			precision = TP_FLOATING_PRECISION_VALUE;
-			/* no need to look any further, we've already found a type for which we have to set maximum
-			 * precision */
-			keep_searching = false;
-			break;
-		      }
-		    if (precision > temp->info.data_type.precision)
-		      {
-			precision = temp->info.data_type.precision;
-		      }
-		    break;
-		  }
+		  /* either all elements are already of string types or we set maximum precision */
+		  if (!PT_IS_CHAR_STRING_TYPE (temp->type_enum))
+		    {
+		      precision = TP_FLOATING_PRECISION_VALUE;
+		      /* no need to look any further, we've already found a type for which we have to set maximum
+		       * precision */
+		      keep_searching = false;
+		      break;
+		    }
+		  if (precision > temp->info.data_type.precision)
+		    {
+		      precision = temp->info.data_type.precision;
+		    }
+		  break;
 		case PT_TYPE_VARBIT:
-		  {
-		    /* either all elements are already of bit types or we set maximum precision */
-		    if (!PT_IS_BIT_STRING_TYPE (temp->type_enum))
-		      {
-			precision = TP_FLOATING_PRECISION_VALUE;
-			/* no need to look any further, we've already found a type for which we have to set maximum
-			 * precision */
-			keep_searching = false;
-			break;
-		      }
-		    if (precision > temp->info.data_type.precision)
-		      {
-			precision = temp->info.data_type.precision;
-		      }
-		    break;
-		  }
+		  /* either all elements are already of bit types or we set maximum precision */
+		  if (!PT_IS_BIT_STRING_TYPE (temp->type_enum))
+		    {
+		      precision = TP_FLOATING_PRECISION_VALUE;
+		      /* no need to look any further, we've already found a type for which we have to set maximum
+		       * precision */
+		      keep_searching = false;
+		      break;
+		    }
+		  if (precision > temp->info.data_type.precision)
+		    {
+		      precision = temp->info.data_type.precision;
+		    }
+		  break;
 		case PT_TYPE_NUMERIC:
-		  {
-		    /* either all elements are numeric or all are discrete numbers */
-		    if (temp->type_enum == PT_TYPE_NUMERIC)
-		      {
-			if (precision < temp->info.data_type.precision)
-			  {
-			    precision = temp->info.data_type.precision;
-			  }
-			if (scale < temp->info.data_type.dec_precision)
-			  {
-			    scale = temp->info.data_type.dec_precision;
-			  }
-		      }
-		    else if (PT_IS_DISCRETE_NUMBER_TYPE (temp->type_enum))
-		      {
-			if (precision < TP_BIGINT_PRECISION)
-			  {
-			    precision = TP_BIGINT_PRECISION;
-			  }
-		      }
-		    else
-		      {
-			assert (false);
-		      }
-		    break;
-		  }
+		  /* either all elements are numeric or all are discrete numbers */
+		  if (temp->type_enum == PT_TYPE_NUMERIC)
+		    {
+		      if (precision < temp->info.data_type.precision)
+			{
+			  precision = temp->info.data_type.precision;
+			}
+		      if (scale < temp->info.data_type.dec_precision)
+			{
+			  scale = temp->info.data_type.dec_precision;
+			}
+		    }
+		  else if (PT_IS_DISCRETE_NUMBER_TYPE (temp->type_enum))
+		    {
+		      if (precision < TP_BIGINT_PRECISION)
+			{
+			  precision = TP_BIGINT_PRECISION;
+			}
+		    }
+		  else
+		    {
+		      assert (false);
+		    }
+		  break;
 
 		default:
 		  assert (false);
@@ -6378,8 +6362,8 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
    * NVL2, IS [NOT] NULL and so on, just decide the retun type as NULL. */
   if (!does_op_specially_treat_null_arg (op)
       && ((arg1 && !arg1->is_added_by_parser && arg1_type == PT_TYPE_NULL)
-	  || (arg2 && !arg2->is_added_by_parser && arg2_type == PT_TYPE_NULL) || (arg3 && !arg3->is_added_by_parser
-										  && arg3_type == PT_TYPE_NULL)))
+	  || (arg2 && !arg2->is_added_by_parser && arg2_type == PT_TYPE_NULL)
+	  || (arg3 && !arg3->is_added_by_parser && arg3_type == PT_TYPE_NULL)))
     {
       expr->type_enum = PT_TYPE_NULL;
       return NO_ERROR;
@@ -7354,13 +7338,24 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_NODE *derived_table;
 
 	      derived_table = from->info.spec.derived_table;
-	      if (derived_table && derived_table->node_type == PT_VALUE)
+	      if (PT_IS_FALSE_WHERE_VALUE (derived_table))
 		{
-		  if (derived_table->type_enum == PT_TYPE_NULL
-		      || (derived_table->type_enum == PT_TYPE_SET
-			  && (derived_table->info.value.data_value.set == NULL)))
+		  return true;
+		}
+	    }
+	  else if (PT_SPEC_IS_CTE (from))
+	    {
+	      PT_NODE *cte = from->info.spec.cte_pointer;
+	      PT_NODE *cte_non_recursive;
+
+	      CAST_POINTER_TO_NODE (cte);
+
+	      if (cte)
+		{
+		  cte_non_recursive = cte->info.cte.non_recursive_part;
+
+		  if (PT_IS_FALSE_WHERE_VALUE (cte_non_recursive))
 		    {
-		      /* derived table is '(null)' or 'table(set{})' */
 		      return true;
 		    }
 		}
@@ -8348,11 +8343,27 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      arg1 = node->info.query.q.union_.arg1;
-      arg2 = node->info.query.q.union_.arg2;
+    case PT_CTE:
+      /* a PT_CTE node is actually a union between two queries */
+
+      if (node->node_type == PT_CTE)
+	{
+	  arg1 = node->info.cte.non_recursive_part;
+	  arg2 = node->info.cte.recursive_part;
+	  if (arg2 == NULL)
+	    {
+	      /* then the CTE is not recursive (just one part) */
+	      break;
+	    }
+	}
+      else
+	{
+	  arg1 = node->info.query.q.union_.arg1;
+	  arg2 = node->info.query.q.union_.arg2;
+	}
 
       arg1_is_false = pt_false_where (parser, arg1);
-      if (arg1_is_false || pt_false_where (parser, arg2))
+      if (node->node_type != PT_CTE && (arg1_is_false || pt_false_where (parser, arg2)))
 	{
 	  node = pt_fold_union (parser, node, arg1_is_false);
 	}
@@ -8374,8 +8385,8 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 		}
 	    }
 
-	  node->type_enum = node->info.query.q.union_.arg1->type_enum;
-	  dt = node->info.query.q.union_.arg1->data_type;
+	  node->type_enum = arg1->type_enum;
+	  dt = arg1->data_type;
 	  if (dt)
 	    {
 	      node->data_type = parser_copy_tree_list (parser, dt);
@@ -8660,16 +8671,10 @@ pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE
 		next_att = arg_list->next;
 
 		if ((set_data->type_enum != arg_list->type_enum
-		     && (!is_numeric || !PT_IS_NUMERIC_TYPE (arg_list->type_enum))) || (for_collation == true
-											&& PT_HAS_COLLATION (set_data->
-													     type_enum)
-											&& PT_HAS_COLLATION (arg_list->
-													     type_enum)
-											&& arg_list->data_type != NULL
-											&& set_data->info.data_type.
-											collation_id !=
-											arg_list->data_type->info.
-											data_type.collation_id))
+		     && (!is_numeric || !PT_IS_NUMERIC_TYPE (arg_list->type_enum)))
+		    || (for_collation == true && PT_HAS_COLLATION (set_data->type_enum)
+			&& PT_HAS_COLLATION (arg_list->type_enum) && arg_list->data_type != NULL
+			&& set_data->info.data_type.collation_id != arg_list->data_type->info.data_type.collation_id))
 		  {
 		    /* Set the expected domain of host variable to type set_data so that at runtime the host variable
 		     * should be casted to it if needed */
@@ -9117,6 +9122,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
   int first_node;
   PT_NODE *expr = NULL;
   bool check_expr_coll = true;
+  DB_TYPE dbtype2 = DB_TYPE_UNKNOWN, dbtype3 = DB_TYPE_UNKNOWN;
 
   /* by the time we get here, the leaves have already been typed. this is because this function is called from a post
    * function of a parser_walk_tree, after all leaves have been visited. */
@@ -9244,151 +9250,135 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
   switch (op)
     {
     case PT_PLUS:
-      {
-	if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)
-	  {
-	    if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == false
-		|| (!PT_IS_STRING_TYPE (arg1_type) && !PT_IS_STRING_TYPE (arg2_type)))
-	      {
-		node->type_enum = PT_TYPE_NULL;
-		goto error;
-	      }
-	  }
-	if (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE)
-	  {
-	    node->type_enum = PT_TYPE_MAYBE;
-	    goto cannot_use_signature;
-	  }
-	if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
-	  {
-	    /* in mysql mode, PT_PLUS is not defined on date and number */
-	    break;
-	  }
-	/* PT_PLUS has four overloads for which we cannot apply symmetric rule 1. DATE/TIME type + NUMBER 2. NUMBER +
-	 * DATE/TIME type 3. DATE/TIME type + STRING 4. STRING + DATE/TIME type STRING/NUMBER operand involved is
-	 * coerced to BIGINT. For these overloads, PT_PLUS is a syntactic sugar for the ADD_DATE expression. Even
-	 * though both PLUS and MINUS have this behavior, we cannot treat them in the same place because, for this
-	 * case, PT_PLUS is commutative and PT_MINUS isn't */
-	if (PT_IS_DATE_TIME_TYPE (arg1_type)
-	    && (PT_IS_NUMERIC_TYPE (arg2_type) || PT_IS_CHAR_STRING_TYPE (arg2_type) || arg2_type == PT_TYPE_ENUMERATION
-		|| arg2_type == PT_TYPE_MAYBE))
-	  {
-	    if (!PT_IS_DISCRETE_NUMBER_TYPE (arg2_type))
-	      {
-		/* coerce first argument to BIGINT */
-		int err = pt_coerce_expression_argument (parser, node, &arg2,
-							 PT_TYPE_BIGINT,
-							 NULL);
-		if (err != NO_ERROR)
-		  {
-		    node->type_enum = PT_TYPE_NONE;
-		    goto error;
-		  }
-	      }
-	    node->info.expr.arg2 = arg2;
-	    node->type_enum = arg1_type;
-	    goto error;
-	  }
-	if (PT_IS_DATE_TIME_TYPE (arg2_type)
-	    && (PT_IS_NUMERIC_TYPE (arg1_type) || PT_IS_CHAR_STRING_TYPE (arg1_type) || arg1_type == PT_TYPE_ENUMERATION
-		|| arg1_type == PT_TYPE_MAYBE))
-	  {
-	    if (!PT_IS_DISCRETE_NUMBER_TYPE (arg1_type))
-	      {
-		int err = pt_coerce_expression_argument (parser, node, &arg1,
-							 PT_TYPE_BIGINT,
-							 NULL);
-		if (err != NO_ERROR)
-		  {
-		    node->type_enum = PT_TYPE_NONE;
-		    goto error;
-		  }
-	      }
-	    node->info.expr.arg1 = arg1;
-	    node->type_enum = arg2_type;
-	    goto error;
-	  }
-	break;
-      }
+      if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)
+	{
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == false
+	      || (!PT_IS_STRING_TYPE (arg1_type) && !PT_IS_STRING_TYPE (arg2_type)))
+	    {
+	      node->type_enum = PT_TYPE_NULL;
+	      goto error;
+	    }
+	}
+      if (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE)
+	{
+	  node->type_enum = PT_TYPE_MAYBE;
+	  goto cannot_use_signature;
+	}
+      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
+	{
+	  /* in mysql mode, PT_PLUS is not defined on date and number */
+	  break;
+	}
+      /* PT_PLUS has four overloads for which we cannot apply symmetric rule 1. DATE/TIME type + NUMBER 2. NUMBER +
+       * DATE/TIME type 3. DATE/TIME type + STRING 4. STRING + DATE/TIME type STRING/NUMBER operand involved is
+       * coerced to BIGINT. For these overloads, PT_PLUS is a syntactic sugar for the ADD_DATE expression. Even
+       * though both PLUS and MINUS have this behavior, we cannot treat them in the same place because, for this
+       * case, PT_PLUS is commutative and PT_MINUS isn't */
+      if (PT_IS_DATE_TIME_TYPE (arg1_type)
+	  && (PT_IS_NUMERIC_TYPE (arg2_type) || PT_IS_CHAR_STRING_TYPE (arg2_type) || arg2_type == PT_TYPE_ENUMERATION
+	      || arg2_type == PT_TYPE_MAYBE))
+	{
+	  if (!PT_IS_DISCRETE_NUMBER_TYPE (arg2_type))
+	    {
+	      /* coerce first argument to BIGINT */
+	      int err = pt_coerce_expression_argument (parser, node, &arg2, PT_TYPE_BIGINT, NULL);
+	      if (err != NO_ERROR)
+		{
+		  node->type_enum = PT_TYPE_NONE;
+		  goto error;
+		}
+	    }
+	  node->info.expr.arg2 = arg2;
+	  node->type_enum = arg1_type;
+	  goto error;
+	}
+      if (PT_IS_DATE_TIME_TYPE (arg2_type)
+	  && (PT_IS_NUMERIC_TYPE (arg1_type) || PT_IS_CHAR_STRING_TYPE (arg1_type) || arg1_type == PT_TYPE_ENUMERATION
+	      || arg1_type == PT_TYPE_MAYBE))
+	{
+	  if (!PT_IS_DISCRETE_NUMBER_TYPE (arg1_type))
+	    {
+	      int err = pt_coerce_expression_argument (parser, node, &arg1, PT_TYPE_BIGINT, NULL);
+	      if (err != NO_ERROR)
+		{
+		  node->type_enum = PT_TYPE_NONE;
+		  goto error;
+		}
+	    }
+	  node->info.expr.arg1 = arg1;
+	  node->type_enum = arg2_type;
+	  goto error;
+	}
+      break;
     case PT_MINUS:
-      {
-	if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)
-	  {
-	    node->type_enum = PT_TYPE_NULL;
-	    goto error;
-	  }
-	if (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE)
-	  {
-	    node->type_enum = PT_TYPE_MAYBE;
-	    goto cannot_use_signature;
-	  }
-	if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
-	  {
-	    /* in mysql mode - does is not defined on date and number */
-	    break;
-	  }
-	if (PT_IS_DATE_TIME_TYPE (arg1_type) && (PT_IS_NUMERIC_TYPE (arg2_type) || arg2_type == PT_TYPE_ENUMERATION))
-	  {
-	    if (!PT_IS_DISCRETE_NUMBER_TYPE (arg2_type))
-	      {
-		/* coerce arg2 to bigint */
-		int err = pt_coerce_expression_argument (parser, expr, &arg2,
-							 PT_TYPE_BIGINT,
-							 NULL);
-		if (err != NO_ERROR)
-		  {
-		    node->type_enum = PT_TYPE_NONE;
-		    goto error;
-		  }
-		node->info.expr.arg2 = arg2;
-	      }
-	    node->type_enum = arg1_type;
-	    goto error;
-	  }
-	break;
-      }
+      if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)
+	{
+	  node->type_enum = PT_TYPE_NULL;
+	  goto error;
+	}
+      if (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE)
+	{
+	  node->type_enum = PT_TYPE_MAYBE;
+	  goto cannot_use_signature;
+	}
+      if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
+	{
+	  /* in mysql mode - does is not defined on date and number */
+	  break;
+	}
+      if (PT_IS_DATE_TIME_TYPE (arg1_type) && (PT_IS_NUMERIC_TYPE (arg2_type) || arg2_type == PT_TYPE_ENUMERATION))
+	{
+	  if (!PT_IS_DISCRETE_NUMBER_TYPE (arg2_type))
+	    {
+	      /* coerce arg2 to bigint */
+	      int err = pt_coerce_expression_argument (parser, expr, &arg2, PT_TYPE_BIGINT, NULL);
+	      if (err != NO_ERROR)
+		{
+		  node->type_enum = PT_TYPE_NONE;
+		  goto error;
+		}
+	      node->info.expr.arg2 = arg2;
+	    }
+	  node->type_enum = arg1_type;
+	  goto error;
+	}
+      break;
     case PT_BETWEEN_AND:
     case PT_BETWEEN_GE_LE:
     case PT_BETWEEN_GE_LT:
     case PT_BETWEEN_GT_LE:
     case PT_BETWEEN_GT_LT:
-      {
-	/* these expressions will be handled by PT_BETWEEN */
-	node->type_enum = pt_common_type (arg1_type, arg2_type);
-	goto error;
-	break;
-      }
+      /* these expressions will be handled by PT_BETWEEN */
+      node->type_enum = pt_common_type (arg1_type, arg2_type);
+      goto error;
+      break;
     case PT_BETWEEN:
     case PT_NOT_BETWEEN:
-      {
-	/* between and range operators are written like: PT_BETWEEN(arg1, PT_BETWEEN_AND(arg2,arg3)) We convert it to
-	 * PT_BETWEEN(arg1, arg2, arg2) to be able to decide the correct common type of all arguments and we will
-	 * convert it back once we apply the correct casts */
-	if (arg2->node_type == PT_EXPR && pt_is_between_range_op (arg2->info.expr.op))
-	  {
-	    arg2 = node->info.expr.arg2;
-	    node->info.expr.arg2 = arg2->info.expr.arg1;
-	    node->info.expr.arg3 = arg2->info.expr.arg2;
-	  }
-	break;
-      }
+      /* between and range operators are written like: PT_BETWEEN(arg1, PT_BETWEEN_AND(arg2,arg3)) We convert it to
+       * PT_BETWEEN(arg1, arg2, arg2) to be able to decide the correct common type of all arguments and we will
+       * convert it back once we apply the correct casts */
+      if (arg2->node_type == PT_EXPR && pt_is_between_range_op (arg2->info.expr.op))
+	{
+	  arg2 = node->info.expr.arg2;
+	  node->info.expr.arg2 = arg2->info.expr.arg1;
+	  node->info.expr.arg3 = arg2->info.expr.arg2;
+	}
+      break;
     case PT_LIKE:
     case PT_NOT_LIKE:
-      {
-	/* [NOT] LIKE operators with an escape clause are parsed like PT_LIKE(arg1, PT_LIKE_ESCAPE(arg2, arg3)). We
-	 * convert it to PT_LIKE(arg1, arg2, arg3) to be able to decide the correct common type of all arguments and we
-	 * will convert it back once we apply the correct casts.
-	 * 
-	 * A better approach would be to modify the parser to output PT_LIKE(arg1, arg2, arg3) directly. */
+      /* [NOT] LIKE operators with an escape clause are parsed like PT_LIKE(arg1, PT_LIKE_ESCAPE(arg2, arg3)). We
+       * convert it to PT_LIKE(arg1, arg2, arg3) to be able to decide the correct common type of all arguments and we
+       * will convert it back once we apply the correct casts.
+       * 
+       * A better approach would be to modify the parser to output PT_LIKE(arg1, arg2, arg3) directly. */
 
-	if (arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_LIKE_ESCAPE)
-	  {
-	    arg2 = node->info.expr.arg2;
-	    node->info.expr.arg2 = arg2->info.expr.arg1;
-	    node->info.expr.arg3 = arg2->info.expr.arg2;
-	  }
-	break;
-      }
+      if (arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_LIKE_ESCAPE)
+	{
+	  arg2 = node->info.expr.arg2;
+	  node->info.expr.arg2 = arg2->info.expr.arg1;
+	  node->info.expr.arg3 = arg2->info.expr.arg2;
+	}
+      break;
 
     case PT_LIKE_LOWER_BOUND:
     case PT_LIKE_UPPER_BOUND:
@@ -10077,79 +10067,76 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
   switch (op)
     {
     case PT_IF:
-      {
-	DB_TYPE dbtype2 = DB_TYPE_UNKNOWN, dbtype3 = DB_TYPE_UNKNOWN;
-	if (arg1_type == PT_TYPE_MAYBE)
-	  {
-	    d = tp_domain_resolve_default (DB_TYPE_STRING);
-	    SET_EXPECTED_DOMAIN (arg1, d);
-	    pt_preset_hostvar (parser, arg1);
-	  }
-	else if (arg1_type != PT_TYPE_LOGICAL && arg2_type != PT_TYPE_NULL)
-	  {
-	    node->type_enum = PT_TYPE_NONE;
-	    break;
-	  }
-	if (arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE)
-	  {
-	    if (arg2_type == PT_TYPE_MAYBE && arg3_type == PT_TYPE_MAYBE)
-	      {
-		if (node->expected_domain != NULL)
-		  {
-		    /* the expected domain might have been set by a different pass through the tree */
-		    common_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (node->expected_domain));
-		  }
-		else
-		  {
-		    common_type = PT_TYPE_VARCHAR;
-		  }
-	      }
-	    else
-	      {
-		common_type = (arg2_type == PT_TYPE_MAYBE) ? arg3_type : arg2_type;
-	      }
-	  }
-	else
-	  {
-	    /* We have to decide a common type for arg2 and arg3. We cannot use pt_common_type_op because this function 
-	     * is designed mostly for arithmetic expression. This is why we use the tp_is_more_general_type here. */
-	    dbtype2 = pt_type_enum_to_db (arg2_type);
-	    dbtype3 = pt_type_enum_to_db (arg3_type);
-	    if (tp_more_general_type (dbtype2, dbtype3) > 0)
-	      {
-		common_type = arg2_type;
-	      }
-	    else
-	      {
-		common_type = arg3_type;
-	      }
-	  }
-	if (common_type == PT_TYPE_LOGICAL)
-	  {
-	    /* we will end up with logical here if arg3 and arg2 are logical */
-	    common_type = PT_TYPE_INTEGER;
-	  }
-	if (pt_coerce_expression_argument (parser, node, &arg2, common_type, NULL) != NO_ERROR)
-	  {
-	    node->type_enum = PT_TYPE_NONE;
-	    break;
-	  }
-	node->info.expr.arg2 = arg2;
+      if (arg1_type == PT_TYPE_MAYBE)
+	{
+	  d = tp_domain_resolve_default (DB_TYPE_STRING);
+	  SET_EXPECTED_DOMAIN (arg1, d);
+	  pt_preset_hostvar (parser, arg1);
+	}
+      else if (arg1_type != PT_TYPE_LOGICAL && arg2_type != PT_TYPE_NULL)
+	{
+	  node->type_enum = PT_TYPE_NONE;
+	  break;
+	}
+      if (arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE)
+	{
+	  if (arg2_type == PT_TYPE_MAYBE && arg3_type == PT_TYPE_MAYBE)
+	    {
+	      if (node->expected_domain != NULL)
+		{
+		  /* the expected domain might have been set by a different pass through the tree */
+		  common_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (node->expected_domain));
+		}
+	      else
+		{
+		  common_type = PT_TYPE_VARCHAR;
+		}
+	    }
+	  else
+	    {
+	      common_type = (arg2_type == PT_TYPE_MAYBE) ? arg3_type : arg2_type;
+	    }
+	}
+      else
+	{
+	  /* We have to decide a common type for arg2 and arg3. We cannot use pt_common_type_op because this function 
+	   * is designed mostly for arithmetic expression. This is why we use the tp_is_more_general_type here. */
+	  dbtype2 = pt_type_enum_to_db (arg2_type);
+	  dbtype3 = pt_type_enum_to_db (arg3_type);
+	  if (tp_more_general_type (dbtype2, dbtype3) > 0)
+	    {
+	      common_type = arg2_type;
+	    }
+	  else
+	    {
+	      common_type = arg3_type;
+	    }
+	}
+      if (common_type == PT_TYPE_LOGICAL)
+	{
+	  /* we will end up with logical here if arg3 and arg2 are logical */
+	  common_type = PT_TYPE_INTEGER;
+	}
+      if (pt_coerce_expression_argument (parser, node, &arg2, common_type, NULL) != NO_ERROR)
+	{
+	  node->type_enum = PT_TYPE_NONE;
+	  break;
+	}
+      node->info.expr.arg2 = arg2;
 
-	if (pt_coerce_expression_argument (parser, node, &arg3, common_type, NULL) != NO_ERROR)
-	  {
-	    node->type_enum = PT_TYPE_NONE;
-	    break;
-	  }
-	node->info.expr.arg3 = arg3;
-	node->type_enum = common_type;
+      if (pt_coerce_expression_argument (parser, node, &arg3, common_type, NULL) != NO_ERROR)
+	{
+	  node->type_enum = PT_TYPE_NONE;
+	  break;
+	}
+      node->info.expr.arg3 = arg3;
+      node->type_enum = common_type;
 
-	if (PT_HAS_COLLATION (common_type))
-	  {
-	    check_expr_coll = true;
-	  }
-	break;
-      }
+      if (PT_HAS_COLLATION (common_type))
+	{
+	  check_expr_coll = true;
+	}
+      break;
 
     case PT_FIELD:
       if ((arg1 && arg1_type == PT_TYPE_LOGICAL) || (arg2 && arg2_type == PT_TYPE_LOGICAL)
@@ -10362,96 +10349,94 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_DATE_ADD:
     case PT_DATE_SUB:
-      {
-	if (arg1_hv && arg1_type == PT_TYPE_MAYBE)
-	  {
-	    /* Though arg1 can be date/timestamp/datetime/string, assume it is a string which is the most general. */
-	    d = tp_domain_resolve_default (DB_TYPE_STRING);
-	    SET_EXPECTED_DOMAIN (arg1, d);
-	    pt_preset_hostvar (parser, arg1);
-	    common_type = node->type_enum = PT_TYPE_VARCHAR;
-	  }
-	if (arg2_hv && arg2_type == PT_TYPE_MAYBE)
-	  {
-	    d = tp_domain_resolve_default (DB_TYPE_STRING);
-	    SET_EXPECTED_DOMAIN (arg2, d);
-	    pt_preset_hostvar (parser, arg2);
-	  }
+      if (arg1_hv && arg1_type == PT_TYPE_MAYBE)
+	{
+	  /* Though arg1 can be date/timestamp/datetime/string, assume it is a string which is the most general. */
+	  d = tp_domain_resolve_default (DB_TYPE_STRING);
+	  SET_EXPECTED_DOMAIN (arg1, d);
+	  pt_preset_hostvar (parser, arg1);
+	  common_type = node->type_enum = PT_TYPE_VARCHAR;
+	}
+      if (arg2_hv && arg2_type == PT_TYPE_MAYBE)
+	{
+	  d = tp_domain_resolve_default (DB_TYPE_STRING);
+	  SET_EXPECTED_DOMAIN (arg2, d);
+	  pt_preset_hostvar (parser, arg2);
+	}
 
-	/* arg1 -> date or string, arg2 -> integer or string acc to unit */
-	if ((PT_HAS_DATE_PART (arg1_type) || PT_IS_CHAR_STRING_TYPE (arg1_type) || arg1_type == PT_TYPE_MAYBE)
-	    && (PT_IS_CHAR_STRING_TYPE (arg2_type) || PT_IS_NUMERIC_TYPE (arg2_type) || arg2_type == PT_TYPE_MAYBE))
-	  {
-	    /* if arg2 is integer, unit must be one of MILLISECOND, SECOND, MINUTE, HOUR, DAY, WEEK, MONTH, QUARTER,
-	     * YEAR. */
-	    int is_single_unit;
+      /* arg1 -> date or string, arg2 -> integer or string acc to unit */
+      if ((PT_HAS_DATE_PART (arg1_type) || PT_IS_CHAR_STRING_TYPE (arg1_type) || arg1_type == PT_TYPE_MAYBE)
+	  && (PT_IS_CHAR_STRING_TYPE (arg2_type) || PT_IS_NUMERIC_TYPE (arg2_type) || arg2_type == PT_TYPE_MAYBE))
+	{
+	  /* if arg2 is integer, unit must be one of MILLISECOND, SECOND, MINUTE, HOUR, DAY, WEEK, MONTH, QUARTER,
+	   * YEAR. */
+	  int is_single_unit;
 
-	    is_single_unit = (arg3
-			      && (arg3->info.expr.qualifier == PT_MILLISECOND || arg3->info.expr.qualifier == PT_SECOND
-				  || arg3->info.expr.qualifier == PT_MINUTE || arg3->info.expr.qualifier == PT_HOUR
-				  || arg3->info.expr.qualifier == PT_DAY || arg3->info.expr.qualifier == PT_WEEK
-				  || arg3->info.expr.qualifier == PT_MONTH || arg3->info.expr.qualifier == PT_QUARTER
-				  || arg3->info.expr.qualifier == PT_YEAR));
+	  is_single_unit = (arg3
+			    && (arg3->info.expr.qualifier == PT_MILLISECOND || arg3->info.expr.qualifier == PT_SECOND
+				|| arg3->info.expr.qualifier == PT_MINUTE || arg3->info.expr.qualifier == PT_HOUR
+				|| arg3->info.expr.qualifier == PT_DAY || arg3->info.expr.qualifier == PT_WEEK
+				|| arg3->info.expr.qualifier == PT_MONTH || arg3->info.expr.qualifier == PT_QUARTER
+				|| arg3->info.expr.qualifier == PT_YEAR));
 
-	    if (arg1_type == PT_TYPE_DATETIMETZ || arg1_type == PT_TYPE_TIMESTAMPTZ)
-	      {
-		node->type_enum = PT_TYPE_DATETIMETZ;
-	      }
-	    else if (arg1_type == PT_TYPE_DATETIMELTZ || arg1_type == PT_TYPE_TIMESTAMPLTZ)
-	      {
-		node->type_enum = PT_TYPE_DATETIMELTZ;
-	      }
-	    else if (arg1_type == PT_TYPE_DATETIME || arg1_type == PT_TYPE_TIMESTAMP)
-	      {
-		node->type_enum = PT_TYPE_DATETIME;
-	      }
-	    else if (arg1_type == PT_TYPE_DATE)
-	      {
-		if (arg3->info.expr.qualifier == PT_DAY || arg3->info.expr.qualifier == PT_WEEK
-		    || arg3->info.expr.qualifier == PT_MONTH || arg3->info.expr.qualifier == PT_QUARTER
-		    || arg3->info.expr.qualifier == PT_YEAR || arg3->info.expr.qualifier == PT_YEAR_MONTH)
-		  {
-		    node->type_enum = PT_TYPE_DATE;
-		  }
-		else
-		  {
-		    node->type_enum = PT_TYPE_DATETIME;
-		  }
-	      }
-	    else
-	      {
-		node->type_enum = PT_TYPE_VARCHAR;
-		common_type = node->type_enum;
-	      }
-	  }
-	else if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)
-	  {
-	    node->type_enum = PT_TYPE_NULL;
-	  }
-	else
-	  {
-	    /* if we got here, we have a type incompatibility; however, if one of the arguments is of type MAYBE, the
-	     * error will not be caught. NOTE: see label 'error' at end of function */
-	    if (arg1 && arg1->type_enum == PT_TYPE_MAYBE)
-	      {
-		arg1 = NULL;
-	      }
+	  if (arg1_type == PT_TYPE_DATETIMETZ || arg1_type == PT_TYPE_TIMESTAMPTZ)
+	    {
+	      node->type_enum = PT_TYPE_DATETIMETZ;
+	    }
+	  else if (arg1_type == PT_TYPE_DATETIMELTZ || arg1_type == PT_TYPE_TIMESTAMPLTZ)
+	    {
+	      node->type_enum = PT_TYPE_DATETIMELTZ;
+	    }
+	  else if (arg1_type == PT_TYPE_DATETIME || arg1_type == PT_TYPE_TIMESTAMP)
+	    {
+	      node->type_enum = PT_TYPE_DATETIME;
+	    }
+	  else if (arg1_type == PT_TYPE_DATE)
+	    {
+	      if (arg3->info.expr.qualifier == PT_DAY || arg3->info.expr.qualifier == PT_WEEK
+		  || arg3->info.expr.qualifier == PT_MONTH || arg3->info.expr.qualifier == PT_QUARTER
+		  || arg3->info.expr.qualifier == PT_YEAR || arg3->info.expr.qualifier == PT_YEAR_MONTH)
+		{
+		  node->type_enum = PT_TYPE_DATE;
+		}
+	      else
+		{
+		  node->type_enum = PT_TYPE_DATETIME;
+		}
+	    }
+	  else
+	    {
+	      node->type_enum = PT_TYPE_VARCHAR;
+	      common_type = node->type_enum;
+	    }
+	}
+      else if (arg1_type == PT_TYPE_NULL || arg2_type == PT_TYPE_NULL)
+	{
+	  node->type_enum = PT_TYPE_NULL;
+	}
+      else
+	{
+	  /* if we got here, we have a type incompatibility; however, if one of the arguments is of type MAYBE, the
+	   * error will not be caught. NOTE: see label 'error' at end of function */
+	  if (arg1 && arg1->type_enum == PT_TYPE_MAYBE)
+	    {
+	      arg1 = NULL;
+	    }
 
-	    if (arg2 && arg2->type_enum == PT_TYPE_MAYBE)
-	      {
-		arg2 = NULL;
-	      }
+	  if (arg2 && arg2->type_enum == PT_TYPE_MAYBE)
+	    {
+	      arg2 = NULL;
+	    }
 
-	    if (arg3 && arg3->type_enum == PT_TYPE_MAYBE)
-	      {
-		arg3 = NULL;
-	      }
+	  if (arg3 && arg3->type_enum == PT_TYPE_MAYBE)
+	    {
+	      arg3 = NULL;
+	    }
 
-	    /* set type to NONE so error message is shown */
-	    node->type_enum = PT_TYPE_NONE;
-	  }
-	break;
-      }
+	  /* set type to NONE so error message is shown */
+	  node->type_enum = PT_TYPE_NONE;
+	}
+      break;
     case PT_CAST:
       cast_type = node->info.expr.cast_type;
 
@@ -11949,7 +11934,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    }
 	}
       else
-	dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	{
+	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	}
       break;
 
     case PT_CONCAT:
@@ -12258,7 +12245,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	      break;
 	    }
 	  /* holds at most a DATETIME type */
-	  dt->info.data_type.precision = 26;
+	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
 	}
       break;
 
@@ -19872,6 +19859,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 				     qualifier))
 	{
 	  result = pt_dbval_to_value (parser, &dbval_res);
+	  if (result->data_type == NULL && result->type_enum != PT_TYPE_NULL)
+	    {
+	      /* data_type may be needed later... e.g. in CTEs */
+	      result->data_type = parser_copy_tree_list (parser, expr->data_type);
+	    }
 	  if (result && expr->or_next && result != expr)
 	    {
 	      PT_NODE *other;
@@ -20064,13 +20056,11 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
   switch (fcode)
     {
     case F_INSERT_SUBSTRING:
-      {
-	error = db_string_insert_substring (args[0], args[1], args[2], args[3], result);
-	if (error != NO_ERROR)
-	  {
-	    return 0;
-	  }
-      }
+      error = db_string_insert_substring (args[0], args[1], args[2], args[3], result);
+      if (error != NO_ERROR)
+	{
+	  return 0;
+	}
       break;
     case F_ELT:
       error = db_string_elt (result, args, num_args);
@@ -23641,24 +23631,28 @@ coerce_result:
 	  assert (args_w_coll_maybe > 0);
 	  if (op == PT_NVL2)
 	    {
-	      if (arg2_type == PT_TYPE_MAYBE)
+	      if (PT_HAS_COLLATION (arg1_type))
 		{
-		  expr_wrap_type = arg3_type;
+		  expr_wrap_type = arg1_type;
+		}
+	      else if (PT_HAS_COLLATION (arg2_type))
+		{
+		  expr_wrap_type = arg2_type;
 		}
 	      else
 		{
-		  expr_wrap_type = arg2_type;
+		  expr_wrap_type = arg3_type;
 		}
 	    }
 	  else
 	    {
-	      if (arg1_type == PT_TYPE_MAYBE)
+	      if (PT_HAS_COLLATION (arg1_type))
 		{
-		  expr_wrap_type = arg2_type;
+		  expr_wrap_type = arg1_type;
 		}
 	      else
 		{
-		  expr_wrap_type = arg1_type;
+		  expr_wrap_type = arg2_type;
 		}
 	    }
 
@@ -24550,9 +24544,9 @@ pt_fix_arguments_collation_flag (PT_NODE * expr)
   assert (expr->node_type == PT_EXPR);
 
   if ((expr->info.expr.arg1 == NULL || expr->info.expr.arg1->node_type != PT_EXPR
-       || expr->info.expr.arg1->info.expr.op != PT_CAST) && (expr->info.expr.arg2 == NULL
-							     || expr->info.expr.arg2->node_type != PT_EXPR
-							     || expr->info.expr.arg2->info.expr.op != PT_CAST)
+       || expr->info.expr.arg1->info.expr.op != PT_CAST)
+      && (expr->info.expr.arg2 == NULL || expr->info.expr.arg2->node_type != PT_EXPR
+	  || expr->info.expr.arg2->info.expr.op != PT_CAST)
       && (expr->info.expr.arg3 == NULL || expr->info.expr.arg3->node_type != PT_EXPR
 	  || expr->info.expr.arg3->info.expr.op != PT_CAST))
     {

@@ -763,9 +763,19 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val_p)
   if (oid_p == NULL)
     {
       oid_p = &oid_buf;
-      name_p = heap_get_class_name (thread_p, class_oid_p);
+      if (heap_get_class_name (thread_p, class_oid_p, &name_p) != NO_ERROR)
+	{
+	  /* class_oid object may be deleted */
+	  ASSERT_ERROR ();
+	  db_make_null (oid_val_p);
+
+	  return er_errid ();
+	}
+
       if (name_p == NULL)
 	{
+	  /* this is only possible if ER_HEAP_NODATA_NEWADDRESS occur */
+	  db_make_null (oid_val_p);
 	  return NO_ERROR;
 	}
 
@@ -1284,6 +1294,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -1594,7 +1605,17 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
       error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
       if (error != NO_ERROR)
 	{
-	  goto error;
+	  ASSERT_ERROR ();
+	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* class oid may be deleted; class_oid will be set to NULL OID */
+	      er_clear ();
+	      assert (DB_IS_NULL (attr_val_p));
+	    }
+	  else
+	    {
+	      goto error;
+	    }
 	}
 
       if (DB_IS_NULL (attr_val_p))
@@ -1692,6 +1713,7 @@ catcls_get_or_value_from_method (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -1920,6 +1942,7 @@ catcls_get_or_value_from_method_file (THREAD_ENTRY * thread_p, OR_BUF * buf_p, O
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -1989,6 +2012,7 @@ catcls_get_or_value_from_resolution (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -2589,6 +2613,7 @@ catcls_get_object_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_siz
       error = catcls_convert_class_oid_to_oid (thread_p, &oid_val);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto error;
 	}
 
@@ -3693,21 +3718,11 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       goto error;
     }
 
-#if defined(SERVER_MODE)
-  lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-#endif /* SERVER_MODE */
   free_and_init (record.data);
 
   return NO_ERROR;
 
 error:
-
-#if defined(SERVER_MODE)
-  if (is_lock_inited)
-    {
-      lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-    }
-#endif /* SERVER_MODE */
 
   if (record.data)
     {
@@ -3798,21 +3813,11 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
       goto error;
     }
 
-#if defined(SERVER_MODE)
-  lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-#endif /* SERVER_MODE */
   catcls_free_or_value (value_p);
 
   return NO_ERROR;
 
 error:
-
-#if defined(SERVER_MODE)
-  if (is_lock_inited)
-    {
-      lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-    }
-#endif /* SERVER_MODE */
 
   if (value_p)
     {
@@ -3957,9 +3962,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       free_and_init (record.data);
     }
 
-#if defined(SERVER_MODE)
-  lock_unlock_object (thread_p, oid_p, class_oid_p, X_LOCK, false);
-#endif /* SERVER_MODE */
   catcls_free_or_value (old_value_p);
 
   return NO_ERROR;
