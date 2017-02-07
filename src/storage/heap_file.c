@@ -23387,6 +23387,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    * In case of non-MVCC heap deletion, the logging is done with RVHF_DELETE recovery index.
    */
 
+  /* TO DO - use pgbuf_copy_to_bcb_area_release to improve the logging */
   if (is_mvcc_op)
     {
       /*
