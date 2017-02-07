@@ -5341,8 +5341,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 
 	      recdes.data = NULL;
 
-	      if (heap_get_visible_version (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache,
-					    PEEK, NULL_CHN) == S_SUCCESS)
+	      if (heap_get_visible_version (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, false,
+					    &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
 		{
 		  MVCC_REC_HEADER mvcc_rec_header;
 		  if (or_mvcc_get_header (&recdes, &mvcc_rec_header) == NO_ERROR)

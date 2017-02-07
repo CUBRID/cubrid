@@ -2868,6 +2868,7 @@ heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr)
  *       In this case, unfortunately, if some record is not deleted
  *       from this page in the future, we may not use this page until
  *       heap_stats_sync_bestspace function searches all pages.
+ *	 No need to increment count modifications here, since readers does not uses best space statistics.
  */
 void
 heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid, int prev_freespace)
@@ -6405,6 +6406,7 @@ heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid
  *		     it must be obtained from heap file header.
  *
  * Note: Delete the content of a multipage object.
+ *       No need to increment count modifications here, since no other concurrent transaction can access the object.
  */
 const OID *
 heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, VFID * ovf_vfid_p)
@@ -7317,27 +7319,105 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   int try_max = 1;
   int ret;
   bool is_system_class = false;
+  bool bcb_area_copied = false;
+  VPID object_vpid;
+  PAGE_PTR page_ptr;
+#if defined(SERVER_MODE)
+  int copy_retry_count = 1, copy_retry_max = 5;
+#endif
 
   assert (context->oid_p != NULL);
 
-try_again:
+  VPID_GET_FROM_OID (&object_vpid, context->oid_p);
 
-  /* First make sure object home_page is fixed. */
-  ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
-  if (ret != NO_ERROR)
+  page_ptr = NULL;
+try_again:
+#if defined(SERVER_MODE)
+  if (context->copy_page_without_latch_allowed && latch_mode == PGBUF_LATCH_READ
+      && context->ispeeking == COPY && context->bcb_area == NULL && context->home_page_watcher.pgptr == NULL)
     {
-      if (ret == ER_HEAP_UNKNOWN_OBJECT)
+      /*
+       * Acquires the transaction BCB area to copy the page, if the BCB area does not keep a copy of another page
+       * that is still used by current transaction.
+       */
+      ret = pgbuf_acquire_tran_bcb_area (thread_p, &context->bcb_area);
+      if (ret != NO_ERROR)
 	{
-	  /* bad page id, consider the object does not exist and let the caller handle the case */
-	  return S_DOESNT_EXIST;
+	  ASSERT_ERROR ();
+	  goto error;
 	}
 
-      goto error;
+      if (context->bcb_area != NULL)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
+	  pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area to copy heap page (%d, %d)\n",
+			  object_vpid.volid, object_vpid.pageid);
+
+	try_copy_area_again:
+	  /* Copy the heap page to BCB area. */
+	  if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->bcb_area, DB_PAGESIZE,
+				      &bcb_area_copied) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error;
+	    }
+
+	  if (bcb_area_copied)
+	    {
+	      page_ptr = context->bcb_area;
+	      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS);
+	      pgbuf_copy_log ("pgbuf_copy_page: Successfully copied heap page (%d, %d) \n",
+			      object_vpid.volid, object_vpid.pageid);
+	    }
+	  else
+	    {
+	      if (copy_retry_count < copy_retry_max)
+		{
+		  /* try again */
+		  copy_retry_count++;
+		  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_RETRIES);
+		  pgbuf_copy_log ("pgbuf_copy_page: Retry %d to copy the heap page (%d,%d) without latch\n",
+				  copy_retry_count, object_vpid.volid, object_vpid.pageid);
+		  goto try_copy_area_again;
+		}
+	      else
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED);
+		  pgbuf_copy_log ("pgbuf_copy_page: Can't copy the heap page (%d,%d) without latch after %d tries\n",
+				  object_vpid.volid, object_vpid.pageid, copy_retry_count);
+		}
+	    }
+	}
+      else
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
+	  pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area to copy heap page (%d, %d)\n",
+			  object_vpid.volid, object_vpid.pageid);
+	}
     }
+#endif
+
+prepare_object_page:
+  if (page_ptr == NULL)
+    {
+      ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, latch_mode);
+      if (ret != NO_ERROR)
+	{
+	  if (ret == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* bad page id, consider the object does not exist and let the caller handle the case */
+	      return S_DOESNT_EXIST;
+	    }
+
+	  goto error;
+	}
+      page_ptr = context->home_page_watcher.pgptr;
+    }
+  assert (page_ptr != NULL);
 
   /* Output class_oid if necessary. */
   if (context->class_oid_p != NULL && OID_ISNULL (context->class_oid_p)
-      && heap_get_class_oid_from_page (thread_p, context->home_page_watcher.pgptr, context->class_oid_p) != NO_ERROR)
+      && heap_get_class_oid_from_page (thread_p, page_ptr, context->class_oid_p) != NO_ERROR)
     {
       /* Unexpected. */
       assert_release (false);
@@ -7345,7 +7425,7 @@ try_again:
     }
 
   /* Get slot. */
-  slot_p = spage_get_slot (context->home_page_watcher.pgptr, context->oid_p->slotid);
+  slot_p = spage_get_slot (page_ptr, context->oid_p->slotid);
   if (slot_p == NULL)
     {
       /* Slot doesn't exist. */
@@ -7362,6 +7442,22 @@ try_again:
       return S_DOESNT_EXIST;
     }
 
+#if defined(SERVER_MODE)
+  if (page_ptr == context->bcb_area)
+    {
+      if (slot_p->record_type == REC_BIGONE || slot_p->record_type == REC_RELOCATION)
+	{
+	  /* Quick fix to avoid NULL group id issue and multi page object issue. Extending the optimization
+	   * for multi page object, requires additional processing.
+	   */
+	  pgbuf_release_tran_bcb_area (thread_p);
+	  context->bcb_area = NULL;
+	  page_ptr = NULL;
+	  goto prepare_object_page;
+	}
+    }
+#endif
+
   /* Output record type. */
   context->record_type = slot_p->record_type;
 
@@ -7377,7 +7473,7 @@ try_again:
     {
     case REC_RELOCATION:
       /* Need to get forward_oid and fix forward page */
-      scan = spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, &peek_recdes, PEEK);
+      scan = spage_get_record (page_ptr, context->oid_p->slotid, &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
@@ -7388,6 +7484,7 @@ try_again:
       COPY_OID (&context->forward_oid, (OID *) peek_recdes.data);
 
       /* Try to latch forward_page. */
+      assert (context->bcb_area == NULL && context->home_page_watcher.pgptr == page_ptr);
       PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
       ret = heap_prepare_object_page (thread_p, &context->forward_oid, &context->fwd_page_watcher, latch_mode);
       if (ret == NO_ERROR)
@@ -7418,7 +7515,7 @@ try_again:
 
     case REC_BIGONE:
       /* Need to get forward_oid and forward_page (first overflow page). */
-      scan = spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, &peek_recdes, PEEK);
+      scan = spage_get_record (page_ptr, context->oid_p->slotid, &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
@@ -7431,7 +7528,9 @@ try_again:
       /* Fix overflow page. Since overflow pages should be always accessed with their home pages latched, unconditional 
        * latch should work; However, we need to use the same ordered_fix approach. */
       PGBUF_WATCHER_RESET_RANK (&context->fwd_page_watcher, PGBUF_ORDERED_HEAP_OVERFLOW);
+      assert (context->bcb_area == NULL && context->home_page_watcher.pgptr == page_ptr);
       PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
+
       ret = heap_prepare_object_page (thread_p, &context->forward_oid, &context->fwd_page_watcher, latch_mode);
       if (ret == NO_ERROR)
 	{
@@ -7454,7 +7553,7 @@ try_again:
 	  /* Just ignore record. */
 	  return S_DOESNT_EXIST;
 	}
-      if (spage_check_slot_owner (thread_p, context->home_page_watcher.pgptr, context->oid_p->slotid))
+      if (spage_check_slot_owner (thread_p, page_ptr, context->oid_p->slotid))
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_NODATA_NEWADDRESS, 3, context->oid_p->volid,
 		  context->oid_p->pageid, context->oid_p->slotid);
@@ -7558,10 +7657,14 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
 
   oid = context->oid_p;
   home_page = context->home_page_watcher.pgptr;
+  if (home_page == NULL)
+    {
+      home_page = context->bcb_area;
+    }
+  assert (home_page != NULL);
+
   forward_page = context->fwd_page_watcher.pgptr;
 
-  assert (home_page != NULL);
-  assert (pgbuf_get_page_id (home_page) == oid->pageid && pgbuf_get_volume_id (home_page) == oid->volid);
   assert (context->record_type == REC_HOME || context->record_type == REC_RELOCATION
 	  || context->record_type == REC_BIGONE);
   assert (context->record_type == REC_HOME
@@ -7643,9 +7746,17 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_SCANCACHE *scan_cache_p = context->scan_cache;
+  PAGE_PTR home_page_ptr;
 
   /* We have everything set up to get record data. */
   assert (context != NULL);
+
+  home_page_ptr = context->home_page_watcher.pgptr;
+  if (home_page_ptr == NULL)
+    {
+      home_page_ptr = context->bcb_area;
+    }
+  assert (home_page_ptr != NULL);
 
   /* Assert ispeeking, scan_cache and recdes are compatible. If ispeeking is PEEK, it is the caller responsabilty to
    * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated
@@ -7678,8 +7789,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  ASSERT_ERROR ();
 	  return S_ERROR;
 	}
-      return spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
-			       context->ispeeking);
+      return spage_get_record (home_page_ptr, context->oid_p->slotid, context->recdes_p, context->ispeeking);
     default:
       break;
     }
@@ -8230,7 +8340,7 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
 	  /* Scanrange starts with the given object */
 	  scan_range->first_oid = *start_oid;
 	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid,
-					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN);
+					   &recdes, false, &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -8341,7 +8451,7 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 	  scan_range->last_oid = *last_oid;
 	  scan =
 	    heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid, &recdes,
-				      &scan_range->scan_cache, PEEK, NULL_CHN);
+				      false, &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -8437,7 +8547,7 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes, H
       /* Retrieve the first object in the scanrange */
       *next_oid = scan_range->first_oid;
       scan =
-	heap_get_visible_version (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes,
+	heap_get_visible_version (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes, false,
 				  &scan_range->scan_cache, ispeeking, NULL_CHN);
       if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
@@ -8836,7 +8946,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
   scan_cache.mvcc_snapshot = &copy_mvcc_snapshot;
 
   /* Check only if the last version of the object is not deleted, see mvcc_is_not_deleted_for_snapshot return values */
-  scan = heap_get_visible_version (thread_p, oid, class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
+  scan = heap_get_visible_version (thread_p, oid, class_oid, NULL, false, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       goto exit_on_end;
@@ -18790,6 +18900,10 @@ int
 heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header)
 {
   RECDES ovf_recdes;
+  int error_code = NO_ERROR;
+#if defined (SERVER_MODE)
+  bool modification_started = false;
+#endif
 
   assert (ovf_page != NULL);
   assert (mvcc_header != NULL);
@@ -18816,7 +18930,19 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
 
   /* Safe guard */
   assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header)] == OR_MVCC_MAX_HEADER_SIZE);
-  return or_mvcc_set_header (&ovf_recdes, mvcc_header);
+#if defined (SERVER_MODE)
+  pgbuf_start_modification (ovf_page, &modification_started);
+#endif /* SERVER_MODE */
+
+  error_code = or_mvcc_set_header (&ovf_recdes, mvcc_header);
+
+#if defined (SERVER_MODE)
+  if (modification_started)
+    {
+      pgbuf_end_modification (ovf_page);
+    }
+#endif /* SERVER_MODE */
+  return error_code;
 }
 
 /*
@@ -24808,6 +24934,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  *   oid (in): Object to be obtained.
  *   class_oid (in): 
  *   recdes (out): Record descriptor. NULL if not needed
+ *   copy_page_without_latch_allowed (in): True, if copy page without latch is allowed
  *   scan_cache(in): Heap scan cache.
  *   ispeeking(in): Peek record or copy.
  *   old_chn (in): Cache coherency number for existing record data. It is
@@ -24817,12 +24944,13 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  */
 SCAN_CODE
 heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			  bool copy_page_without_latch_allowed, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, copy_page_without_latch_allowed, scan_cache,
+			 ispeeking, old_chn);
 
   scan = heap_get_visible_version_internal (thread_p, &context, false);
 
@@ -24859,7 +24987,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, false, scan_cache, ispeeking, old_chn);
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
@@ -25226,23 +25354,33 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
     }
 
   assert (context->home_page_watcher.pgptr == NULL && context->fwd_page_watcher.pgptr == NULL);
+#if defined (SERVER_MODE)
+  if (context->bcb_area)
+    {
+      /* Release the transaction BCB area, in order to allow to copy another page. */
+      pgbuf_release_tran_bcb_area (thread_p);
+      context->bcb_area = NULL;
+    }
+#endif
 }
 
 /* 
  * heap_init_get_context () - Initiate all heap get context fields with generic informations
  *
- * thread_p (in)   : Thread_identifier.
- * context (out)   : Heap get context.
- * oid (in)	   : Object identifier.
- * class_oid (in)  : Class oid.
- * recdes (in)     : Record descriptor.
- * scan_cache (in) : Scan cache. 
- * is_peeking (in) : PEEK or COPY.
- * old_chn (in)	   : Cache coherency number. 
+ * thread_p (in)			: Thread_identifier.
+ * context (out)			: Heap get context.
+ * oid (in)				: Object identifier.
+ * class_oid (in)			: Class oid.
+ * recdes (in)				: Record descriptor.
+ * copy_page_without_latch_allowed (in) : True, if copy page without latch is allowed
+ * scan_cache (in)			: Scan cache.
+ * is_peeking (in)			: PEEK or COPY.
+ * old_chn (in)				: Cache coherency number.
 */
 void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid, OID * class_oid,
-		       RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+		       RECDES * recdes, bool copy_page_without_latch_allowed, HEAP_SCANCACHE * scan_cache,
+		       int ispeeking, int old_chn)
 {
   context->oid_p = oid;
   context->class_oid_p = class_oid;
@@ -25264,11 +25402,14 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
+      assert (copy_page_without_latch_allowed == false);
     }
   else
     {
       context->latch_mode = PGBUF_LATCH_READ;
     }
+  context->copy_page_without_latch_allowed = copy_page_without_latch_allowed;
+  context->bcb_area = NULL;
 }
 
 /*
@@ -25360,7 +25501,7 @@ heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * 
   /* for debugging set root_oid NULL and check afterwards if it really is root oid */
   OID_SET_NULL (&root_oid);
 #endif /* !NDEBUG */
-  heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, scan_cache, ispeeking, NULL_CHN);
+  heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, false, scan_cache, ispeeking, NULL_CHN);
 
   scan = heap_get_last_version (thread_p, &context);
 
