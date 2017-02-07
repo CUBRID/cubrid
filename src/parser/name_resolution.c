@@ -7798,16 +7798,11 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
       if (pt_name_equal (parser, cte_name, node->info.spec.entity_name))
 	{
-	  if (match_count > 0)
-	    {
-	      /* there are more CTEs with the same name; should return real error and should be moved from here */
-	      PT_INTERNAL_ERROR (parser, "CTE name ambiguity");
-	      return NULL;
-	    }
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.cte_pointer = pt_point (parser, cte);
 	  node->info.spec.cte_pointer->info.pointer.do_walk = false;
 	  match_count++;
+	  break;
 	}
     }
 
@@ -7930,6 +7925,22 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     {
       PT_INTERNAL_ERROR (parser, "expecting cte definitions");
       return NULL;
+    }
+
+  /* check ambiguity in the names of CTEs */
+  for (previous_cte = cte_list; previous_cte != NULL; previous_cte = previous_cte->next)
+    {
+      for (curr_cte = previous_cte->next; curr_cte != NULL; curr_cte = curr_cte->next)
+	{
+	  if (pt_name_equal (parser, previous_cte->info.cte.name, curr_cte->info.cte.name))
+	    {
+	      /* ambiguity, two CTEs with the same name */
+	      PT_ERRORmf (parser, with, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CTE_NAME_AMBIGUITY,
+			  curr_cte->info.cte.name->info.name.original);
+	      return NULL;
+
+	    }
+	}
     }
 
   /* STEP 1: Check if CTE is recursive - find if CTE definition contains self references and resolve them */
