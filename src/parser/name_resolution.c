@@ -7938,7 +7938,6 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      PT_ERRORmf (parser, with, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CTE_NAME_AMBIGUITY,
 			  curr_cte->info.cte.name->info.name.original);
 	      return NULL;
-
 	    }
 	}
     }
