@@ -4174,12 +4174,13 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
     {
       *continue_walk = PT_STOP_WALK;
     }
-
+  /* We support 'to_char(sysdatetime,...)'' in default.
+   * PT_SYS_DATETIME is removed from switch-block
+   */
   switch (tree->info.expr.op)
     {
     case PT_SYS_TIME:
     case PT_SYS_DATE:
-    case PT_SYS_DATETIME:
     case PT_SYS_TIMESTAMP:
     case PT_CURRENT_TIME:
     case PT_CURRENT_DATE:

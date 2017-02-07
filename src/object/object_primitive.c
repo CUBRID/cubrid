@@ -11976,7 +11976,6 @@ mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       src_length = strlen (src);
     }
 
-
   /* The only thing we really care about at this point, is the byte length of the string.  The precision could be
    * checked here but it really isn't necessary for this operation. Calculate the maximum number of bytes we have
    * available here. The multiplier is dependent on codeset */
@@ -11984,6 +11983,15 @@ mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
   if (mem_length < src_length)
     {
+      /* Check if it has default style: to_chat(...)
+       * In this case, strlen of default value can be greater than the precision
+       * it is normal.
+       */
+      if (strstr (src, "to_char(") != NULL)
+	{
+	  return NO_ERROR;
+	}
+
       /* 
        * should never get here, this is supposed to be caught during domain
        * validation, need a better error message.

@@ -906,6 +906,110 @@ parser_final (void)
 void
 pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values, int values_count)
 {
+
+  PT_OP_TYPE op;
+  DB_VALUE _v, *value = &_v;
+  char *new_default_str = NULL, *default_clause = NULL;
+  INTL_CODESET frmt_codeset;
+  DB_VALUE *fmt;
+  int rc = 0;
+  int fmt_len = 0;
+  int cur_format_size = 0;
+  char *next_format_str_ptr = NULL;
+  char format[1024] = { 0, };
+  char *temp_ptr = NULL;
+  char *last_format_str_ptr, *cur_format_str_ptr;
+
+  op = tree->info.expr.op;
+
+  /* If the op of current parse tree is PT_TOCHAR, we won't call pt_evaluate_tree_internal().
+   * Instead, we will put the expression itself as a default value, by putting DB_VALUE type
+   * return value 'db_values' in arguments.
+   */
+
+  switch (op)
+    {
+    case PT_TO_CHAR:
+      default_clause = parser_print_tree (parser, tree->info.expr.arg2);
+      fmt = db_private_alloc (NULL, 255);
+      db_make_string (fmt, default_clause);
+      frmt_codeset = DB_GET_STRING_CODESET (fmt);
+
+      strcpy (format, default_clause);
+
+      /* Find default string 'to_char(...)'.
+       * It is surrounded by two single quote.
+       */
+      temp_ptr = strrchr (format, '\'');	/* find single quote from end of string */
+      if (temp_ptr)
+	{
+	  *temp_ptr = 0x00;	/* replace last signle quote to end of string */
+	}
+      if (temp_ptr == NULL)
+	{
+	  break;
+	}
+      temp_ptr = strchr (format, '\'');	/* find first single quote    */
+
+      if (temp_ptr == NULL)
+	{
+	  break;		/* error, we must have expr inside two quotes */
+	}
+
+      cur_format_str_ptr = temp_ptr + 1;
+      fmt_len = strlen (cur_format_str_ptr);
+      last_format_str_ptr = cur_format_str_ptr + fmt_len;
+
+      rc = DT_NORMAL;
+
+      for (;;)
+	{
+
+	  rc =
+	    get_next_format_external (cur_format_str_ptr, frmt_codeset, DB_TYPE_DATETIME,
+				      &cur_format_size, &next_format_str_ptr);
+
+	  if (rc == DT_INVALID)
+	    {
+	      break;
+	    }
+
+	  cur_format_str_ptr = next_format_str_ptr;
+
+	  if (next_format_str_ptr == last_format_str_ptr)
+	    {
+	      break;
+	    }
+
+	}
+
+      if (rc < 0)		/* We have invalid format of to_char */
+	{
+	  PT_ERRORmf (parser, tree, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_FORMAT), pt_short_print (parser, tree));
+	  return;
+	}
+
+      new_default_str = parser_print_tree (parser, tree);	/* get string value of current expr */
+
+      /*
+       * Now, we have default string of type 'to_char(...)' in temp_ptr
+       * Make it to DB_VALUE pointer and return to put into default.
+       */
+      temp_ptr = strstr (new_default_str, "to_char");
+      if (temp_ptr == NULL)
+	{
+	  break;
+	}
+
+      db_make_null (value);
+      db_make_string (value, temp_ptr);
+      (void) db_value_clone (value, db_values);	/* make return value of def expr. */
+      return;			/* Do not Evaluate Tree anymore, just store current expression */
+      break;			/* do not reach */
+    default:
+      break;
+    }
+
   pt_evaluate_tree_internal (parser, tree, db_values, values_count, false);
 }
 

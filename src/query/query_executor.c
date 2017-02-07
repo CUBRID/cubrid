@@ -118,6 +118,11 @@
 /* maximum selectivity allowed for hash aggregate evaluation */
 #define HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD         0.5f
 
+/* Max Number of column that have to_char style default */
+#define MAX_NUM_ROWS_HAS_TO_CHAR_DEFAULT	128
+
+#define MAX_TOCHAR_STYLE_DEFAULT_CLAUSE	255
+
 
 #define QEXEC_CLEAR_AGG_LIST_VALUE(agg_list) \
   do \
@@ -10681,6 +10686,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   DB_VALUE oid_val;
   int is_autoincrement_set = 0;
   int month, day, year, hour, minute, second, millisecond;
+  int default_index = 0;
 
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
@@ -10890,6 +10896,101 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
+		      /* Default extension, proc. for default value to_char(...) style */
+		      if (pr_type->id == DB_TYPE_STRING || pr_type->id == DB_TYPE_CHAR
+			  || pr_type->id == DB_TYPE_VARNCHAR || pr_type->id == DB_TYPE_NCHAR)
+			{
+			  DB_VALUE *result_str;
+			  DB_VALUE _lang, *lang = &_lang;
+			  DB_TYPE type;
+			  DB_VALUE *db_default = insert->vals[k];
+			  DB_VALUE _fmt, *fmt = &_fmt, _db_systime, *db_systime = &_db_systime;
+			  int precision = attr->domain->precision;
+			  int scale = attr->domain->scale;
+			  int rc = 0;
+			  int len = 0;
+			  char format[MAX_TOCHAR_STYLE_DEFAULT_CLAUSE] = { 0, };
+			  char target[MAX_TOCHAR_STYLE_DEFAULT_CLAUSE] = { 0, };
+			  char memory_default_value[MAX_NUM_ROWS_HAS_TO_CHAR_DEFAULT][256];
+			  char *result = NULL;
+			  char *format_str = NULL;
+			  char *to_char_style_default = NULL;
+
+			  to_char_style_default = strstr (buf.buffer, "to_char(");
+
+			  /*
+			   * Now, we have to_char style default for a column, expand it into
+			   * format with CURRENT DB Date
+			   */
+			  if (to_char_style_default)
+			    {
+			      memset (format, 0x00, sizeof format);
+
+			      strcpy (format, to_char_style_default);
+			      format_str = strrchr (format, '\'');	/* find last single quote */
+			      if (format_str)
+				{
+				  *format_str = 0x00;
+				}
+
+			      format_str = strchr (format, '\'');	/* Find first single quote */
+			      if (format_str == NULL)	/* Invalid format string        */
+				{
+				  error = ER_QSTR_INVALID_FORMAT;
+				  GOTO_EXIT_ON_ERROR;
+				}
+
+			      strcpy (target, format_str + 1);
+
+			      DB_MAKE_NULL (fmt);
+			      DB_MAKE_NULL (db_systime);
+			      DB_MAKE_STRING (fmt, target);
+			      DB_MAKE_DATETIME (db_systime, &xasl_state->vd.sys_datetime);
+			      DB_MAKE_INT (lang, 5);
+
+			      type = DB_VALUE_DOMAIN_TYPE (db_systime);
+
+			      result_str = db_value_create ();
+			      DB_MAKE_NULL (result_str);
+
+			      /* /* Convert the current date in format specified. */
+			      rc = date_to_char_external (db_systime, fmt, lang, result_str, attr->domain);
+
+			      if (rc != NO_ERROR || default_index >= MAX_NUM_ROWS_HAS_TO_CHAR_DEFAULT)
+				{
+				  break;	/* HAVE TO DO something */
+				}
+
+			      result = DB_GET_STRING (result_str);
+			      if (result == NULL)
+				{
+				  break;
+				}
+
+			      len = strlen (result);
+			      memset (memory_default_value[default_index], 0x00, 256);
+			      strcpy (memory_default_value[default_index], result);
+
+			      db_value_free (result_str);	/* No longer required */
+
+			      /* Prepare for INSERT */
+			      db_value_domain_init (insert->vals[k], attr->type, precision, scale);
+
+			      switch (attr->type)
+				{
+				case DB_TYPE_STRING:
+				case DB_TYPE_VARNCHAR:
+				case DB_TYPE_CHAR:
+				case DB_TYPE_NCHAR:
+				  DB_MAKE_CHAR (db_default, precision, memory_default_value[default_index++], len,
+						DB_GET_STRING_CODESET (db_default),
+						DB_GET_STRING_COLLATION (db_default));
+				  break;
+				default:
+				  break;
+				}
+			    }	/* END-OF-IF: For TO_CHAR Default Processing */
+			}	/* END-OF-IF: CHAR type DATA */
 		      break;
 		    default:
 		      error = ER_FAILED;

@@ -1327,6 +1327,9 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
   DB_VALUE *value;
   TP_DOMAIN_STATUS status;
   char real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char *str_default = NULL;	/* default value, in (char *) */
+  char *new_style_default = NULL;	/* to_char() type default or not */
+  int original_precision = 0;	/* New precision, when the new default is applied to avoid truncation of str */
 
   sm_downcase_name (name, real_name, SM_MAX_IDENTIFIER_LENGTH);
   name = real_name;
@@ -1351,6 +1354,21 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
       status = tp_domain_check (att->domain, value, TP_EXACT_MATCH);
       if (status != DOMAIN_COMPATIBLE)
 	{
+	  /* check whether it contains default extension */
+	  if (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_CHAR ||
+	      DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NCHAR)
+	    {
+	      str_default = DB_GET_STRING (value);
+	      if (str_default != NULL)
+		{		/* if str_default is not NULL, check default extension */
+		  if (strlen (str_default) >= 8)
+		    {
+		      new_style_default = strstr (str_default, "to_char(");
+		    }
+		}
+
+	    }
+
 	  /* coerce it if we can */
 	  value = pr_make_ext_value ();
 	  if (value == NULL)
@@ -1360,8 +1378,21 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	      goto end;
 	    }
 
+	  original_precision = att->domain->precision;
+	  /* change precision to the string length of DEFAULT Clause */
+	  if (new_style_default != NULL)
+	    {
+	      att->domain->precision = strlen (DB_GET_STRING (proposed_value));
+	    }
+
 	  status = tp_value_cast (proposed_value, value, att->domain, false);
 	  /* value is freed at the bottom */
+
+	  /* restore precision value to its original */
+	  if (new_style_default != NULL)
+	    {
+	      att->domain->precision = original_precision;
+	    }
 	}
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -1371,7 +1402,9 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	{
 	  /* check a subset of the integrity constraints, we can't check for NOT NULL or unique here */
 
-	  if (value != NULL && tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
+	  /* Skip checking, if it is of type default extension */
+	  if (new_style_default == NULL && value != NULL
+	      && tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
 	    {
 	      /* need an error message that isn't specific to "string" types */
 	      ERROR2 (error, ER_OBJ_STRING_OVERFLOW, att->header.name, att->domain->precision);
@@ -1387,7 +1420,10 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	       * default value to the attribute. This should be handled by using candidates in the template and storing 
 	       * an extra bit field in the candidate structure. See the comment above sm_attribute for more information
 	       * about "original_value". */
-	      if (att->flags & SM_ATTFLAG_NEW)
+
+
+	      /* run if it is not the case of default extension */
+	      if (new_style_default == NULL && att->flags & SM_ATTFLAG_NEW)
 		{
 		  smt_set_attribute_orig_default_value (att, value, default_expr);
 		}
