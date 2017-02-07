@@ -1713,6 +1713,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Ungültige Verwendung von Aggregatfunktionen.
 293 Der Wert muss streng monoton wachsend werden für jede Partition.
 294 Kann nicht mit Funktion oder Filter Indizes auf Zeitzone Variante Spalten eingegeben.
+295 SELECT INTO is not allowed in subqueries.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

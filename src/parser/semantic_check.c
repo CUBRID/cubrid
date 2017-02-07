@@ -9183,6 +9183,14 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
   if (!(into = qry->info.query.into_list))
     return;
 
+  if (qry->info.query.is_subquery != 0)
+    {
+      /* current query execution mechanism can not handle select_into inside subqueries, since only the results of
+       * the main query are available on the client, where the select_into assignment is done
+       */
+      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SELECT_INTO_IN_SUBQUERY);
+    }
+
   tgt_cnt = pt_length_of_list (into);
   col_cnt = pt_length_of_select_list (pt_get_select_list (parser, qry), EXCLUDE_HIDDEN_COLUMNS);
   if (tgt_cnt != col_cnt)
