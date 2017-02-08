@@ -210,20 +210,25 @@ typedef enum
 #define PGBUF_BCB_FLUSHING_TO_DISK_FLAG     ((int) 0x40000000)
 /* flag to mark bcb was directly victimized. we can have certain situations when victimizations fail. the thread goes
  * to sleep then and waits to be awaken by another thread, which also assigns it a bcb directly. there can be multiple
- * providers of such bcb's. this bcb is no longer valid! (it cannot be fixed anymore) */
+ * providers of such bcb's.
+ * there is a small window of opportunity for active workers to fix this bcb. when fixing a direct victim, we need to
+ * replace the flag with PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG. there is not point of victimizing this bcb to fix it
+ * again. The thread waiting for the bcb will know it was fixed again and will request another bcb. */
 #define PGBUF_BCB_VICTIM_DIRECT_FLAG        ((int) 0x20000000)
+#define PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG    ((int) 0x10000000)
 /* flag for unlatch bcb to move it to the bottom of lru when fix count is 0. usually set when page is deallocated */
-#define PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG   ((int) 0x10000000)
+#define PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG   ((int) 0x08000000)
 /* flag for pages that should be vacuumed. */
-#define PGBUF_BCB_TO_VACUUM_FLAG            ((int) 0x08000000)
+#define PGBUF_BCB_TO_VACUUM_FLAG            ((int) 0x04000000)
 /* flag for asynchronous flush request */
-#define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x04000000)
+#define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x02000000)
 
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK     \
   (PGBUF_BCB_DIRTY_FLAG \
    | PGBUF_BCB_FLUSHING_TO_DISK_FLAG \
    | PGBUF_BCB_VICTIM_DIRECT_FLAG \
+   | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG \
    | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG \
    | PGBUF_BCB_TO_VACUUM_FLAG \
    | PGBUF_BCB_ASYNC_FLUSH_REQ)
@@ -236,7 +241,8 @@ typedef enum
 #define PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK \
   (PGBUF_BCB_DIRTY_FLAG \
    | PGBUF_BCB_FLUSHING_TO_DISK_FLAG \
-   | PGBUF_BCB_VICTIM_DIRECT_FLAG)
+   | PGBUF_BCB_VICTIM_DIRECT_FLAG \
+   | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG)
 
 /* bcb has no flag initially and is in invalid zone */
 #define PGBUF_BCB_INIT_FLAGS PGBUF_INVALID_ZONE
@@ -1149,6 +1155,7 @@ STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__ ((AL
 STATIC_INLINE void pgbuf_bcb_mark_is_flushing (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_invalid_direct_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_async_flush_request (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_is_to_vacuum (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
@@ -1801,47 +1808,8 @@ try_again:
   hash_anchor_mutex_owned = (bufptr == NULL) ? true : false;
   if (bufptr != NULL && pgbuf_bcb_is_direct_victim (bufptr))
     {
-      bool bcb_is_direct_victim = true;
-      int count = 0;
-      /* TODO : it seems more complicated to steal the BCB back from direct victimizing thread, although I think is the
-       * logic approach */
-#if defined (SERVER_MODE)
-      /* too late, this bcb must be victimized. */
-      PGBUF_BCB_UNLOCK (bufptr);
-      /* unlocked; now, wait for the victimizing thread to replace VPID of BCB with new VPID */
-      do
-	{
-	  PGBUF_BCB_LOCK (bufptr);
-	  bcb_is_direct_victim = pgbuf_bcb_is_direct_victim (bufptr);
-	  if (!bcb_is_direct_victim)
-	    {
-	      if (VPID_EQ (vpid, &bufptr->vpid))
-		{
-		  /* the direct victmizing thread has loaded the same VPID ? is this possible ? */
-		  break;
-		  /* keep mutex on BCB, just keep going on as if the VPID was found in the first place */
-		}
-	      else
-		{
-		  PGBUF_BCB_UNLOCK (bufptr);
-		  bufptr = NULL;
-		  break;
-		}
-	    }
-	  PGBUF_BCB_UNLOCK (bufptr);
-
-	  thread_sleep (0.001f);
-	  /* TODO : too much wait */
-	  if (count++ > 1000000)
-	    {
-	      PGBUF_ABORT_RELEASE ();
-	    }
-	}
-      while (bcb_is_direct_victim);
-#else
-      PGBUF_BCB_UNLOCK (bufptr);
-      bufptr = NULL;
-#endif
+      /* we need to notify the thread that is waiting for this bcb to victimize that it cannot use it. */
+      pgbuf_bcb_update_flags (bufptr, PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG, PGBUF_BCB_VICTIM_DIRECT_FLAG);
     }
   if (bufptr != NULL)
     {
@@ -7716,6 +7684,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   struct timespec to;
   int r = 0;
   PERF_STAT_ID pstat_cond_wait;
+  bool high_priority = false;
 #endif /* SERVER_MODE */
 
   /* how it works: we need to free a bcb for new VPID.
@@ -7756,7 +7725,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     {
       pgbuf_wakeup_flush_thread (thread_p);
     }
+  high_priority = VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
+retry:
   /* add to waiters thread list to be assigned victim directly */
   to.tv_sec = (int) time (NULL) + PGBUF_TIMEOUT;
   to.tv_nsec = 0;
@@ -7766,7 +7737,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   assert (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] == NULL);
 
   /* push to waiter thread list */
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p))
+  if (high_priority)
     {
       if (VACUUM_IS_THREAD_VACUUM (thread_p))
 	{
@@ -7817,7 +7788,12 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       if (thread_p->resume_status == THREAD_ALLOC_BCB_RESUMED)
 	{
 	  bufptr = pgbuf_get_direct_victim (thread_p);
-	  assert (bufptr != NULL);
+          if (bufptr == NULL)
+            {
+              /* bcb was fixed again */
+              high_priority = true;
+              goto retry;
+            }
 	  goto end;
 	}
 
@@ -14532,12 +14508,16 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
   PGBUF_BCB *bcb = (PGBUF_BCB *) ATOMIC_TAS_ADDR (&pgbuf_Pool.direct_victims.bcb_victims[thread_p->index], NULL);
   int lru_idx;
 
-  if (bcb == NULL)
-    {
-      return NULL;
-    }
+  assert (bcb != NULL);
 
   PGBUF_BCB_LOCK (bcb);
+
+  if (pgbuf_bcb_is_invalid_direct_victim (bcb))
+    {
+      /* somebody fixed the page again. */
+      pgbuf_bcb_update_flags (bcb, 0, PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG);
+      return NULL;
+    }
 
   assert (pgbuf_bcb_is_direct_victim (bcb));
 
@@ -15041,6 +15021,18 @@ STATIC_INLINE bool
 pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb)
 {
   return (bcb->flags & PGBUF_BCB_VICTIM_DIRECT_FLAG) != 0;
+}
+
+/*
+ * pgbuf_bcb_is_invalid_direct_victim () - is bcb assigned as victim directly, but invalidated after?
+ *
+ * return   : true/false
+ * bcb (in) : bcb
+ */
+STATIC_INLINE bool
+pgbuf_bcb_is_invalid_direct_victim (const PGBUF_BCB * bcb)
+{
+  return (bcb->flags & PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG) != 0;
 }
 
 /*
