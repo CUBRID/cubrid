@@ -19830,6 +19830,11 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   pr_midxkey_add_elements (&new_key, new_key_dbvals, curr_key->data.midxkey.ncolumns,
 			   curr_key->data.midxkey.domain->setdomain);
 
+  for (i = 0; i < prefix_len; i++)
+    {
+      pr_clear_value (&new_key_dbvals[i]);	/* it might be alloced/copied */
+    }
+
 #if !defined(NDEBUG)
   if (DB_IS_NULL (target_key))
     {
