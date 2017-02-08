@@ -12801,6 +12801,7 @@ void
 qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE * agg_list, bool copy_vals)
 {
   int i = 0;
+  DB_TYPE db_type;
 
   if (value == NULL)
     {
@@ -12839,13 +12840,30 @@ qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE 
 	      /* set tuple count */
 	      agg_list->accumulator.curr_cnt = value->accumulators[i].curr_cnt;
 
-	      /* shallow copy dbval */
+	      /*
+	       * shallow, fast copy dbval. This may be unsafe. Internally, value->accumulators[i].value and
+	       * agg_list->accumulator.value values keeps the same pointer to a buffer. If a value is cleared, the other
+	       * value refer a invalid memory. Probably a safety way would be to use clone.
+	       */
 	      *(agg_list->accumulator.value) = *(value->accumulators[i].value);
 	      *(agg_list->accumulator.value2) = *(value->accumulators[i].value2);
 
-	      /* reset accumulator values */
-	      db_make_null (value->accumulators[i].value);
-	      db_make_null (value->accumulators[i].value2);
+	      /* reset accumulator values. */
+	      value->accumulators[i].value->need_clear = false;
+	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value);
+	      if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_VARCHAR
+		  || db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
+		{
+		  value->accumulators[i].value->data.ch.info.compressed_need_clear = false;
+		}
+
+	      value->accumulators[i].value2->need_clear = false;
+	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2);
+	      if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_VARCHAR
+		  || db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
+		{
+		  value->accumulators[i].value2->data.ch.info.compressed_need_clear = false;
+		}
 	    }
 	}
 
