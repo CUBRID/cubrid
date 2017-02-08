@@ -12843,9 +12843,9 @@ qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE 
 	      *(agg_list->accumulator.value) = *(value->accumulators[i].value);
 	      *(agg_list->accumulator.value2) = *(value->accumulators[i].value2);
 
-	      /* reset accumulator values */
-	      db_make_null (value->accumulators[i].value);
-	      db_make_null (value->accumulators[i].value2);
+	      /* mark as container */
+	      value->accumulators[i].value->need_clear = false;
+	      value->accumulators[i].value2->need_clear = false;
 	    }
 	}
 
