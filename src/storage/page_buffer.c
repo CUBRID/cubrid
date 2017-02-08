@@ -1731,7 +1731,6 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   UINT64 lock_wait_time, holder_wait_time, fix_wait_time;
   bool is_perf_tracking;
   bool is_latch_wait;
-  bool hash_anchor_mutex_owned = false;
 
   /* paramter validation */
   if (request_mode != PGBUF_LATCH_READ && request_mode != PGBUF_LATCH_WRITE)
@@ -1834,48 +1833,42 @@ try_again:
       /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
       if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK || fetch_mode == OLD_PAGE_IF_EXISTS)
 	{
-	  if (hash_anchor_mutex_owned)
-	    {
-	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	    }
+	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	  pgbuf_check_mutex_leaks ();
 	  return NULL;
 	}
 
       /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
        * released in pgbuf_lock_page (). */
-      if (hash_anchor_mutex_owned)
+      if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
 	{
-	  if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
+	  if (is_perf_tracking)
 	    {
-	      if (is_perf_tracking)
-		{
-		  tsc_getticks (&end_tick);
-		  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-		  lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-		}
-
-	      if (fetch_mode == NEW_PAGE)
-		{
-		  perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
-		}
-	      else
-		{
-		  perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-		}
-	      goto try_again;
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
 	    }
 
-	  if (perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT && perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
+	  if (fetch_mode == NEW_PAGE)
 	    {
-	      if (fetch_mode == NEW_PAGE)
-		{
-		  perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
-		}
-	      else
-		{
-		  perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
-		}
+	      perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
+	    }
+	  else
+	    {
+	      perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	    }
+	  goto try_again;
+	}
+
+      if (perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT && perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
+	{
+	  if (fetch_mode == NEW_PAGE)
+	    {
+	      perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
+	    }
+	  else
+	    {
+	      perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
 	    }
 	}
 
