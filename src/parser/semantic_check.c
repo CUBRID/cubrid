@@ -15711,7 +15711,7 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
   assert (union_node->node_type == PT_UNION || union_node->node_type == PT_INTERSECTION
 	  || union_node->node_type == PT_DIFFERENCE || union_node->node_type == PT_CTE);
 
-  if (union_node == PT_CTE)
+  if (union_node->node_type == PT_CTE)
     {
       /* A CTE is a union between the non_recursive and recursive parts */
       return STATEMENT_SET_FOLD_NOTHING;
