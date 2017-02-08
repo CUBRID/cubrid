@@ -1,0 +1,19 @@
+language: c
+
+compiler:
+  - gcc
+
+os:
+- linux
+
+addons:
+  apt:
+    sources:
+      kalakris-cmake
+    packages:
+      - cmake
+      - systemtap-sdt-dev
+      - libelf-dev
+
+script:
+  - mkdir build && cd build && cmake .. && make

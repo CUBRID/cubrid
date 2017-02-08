@@ -84,7 +84,7 @@ if(WIN32)
 endif(WIN32)
 add_executable(cub_server ${CUB_SERVER_SOURCES})
 target_include_directories(cub_server PRIVATE ${EP_INCLUDES})
-target_link_libraries(cub_server LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
+target_link_libraries(cub_server LINK_PRIVATE cubrid)
 if(WIN32)
   target_link_libraries(cub_server LINK_PRIVATE dbghelp)
 endif(WIN32)
@@ -239,7 +239,7 @@ if(UNIX)
   add_executable(unittests_area ${UNITTESTS_AREA_SOURCES})
   target_compile_definitions(unittests_area PRIVATE SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_area PRIVATE ${EP_INCLUDES})
-  target_link_libraries(unittests_area LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
+  target_link_libraries(unittests_area LINK_PRIVATE cubrid)
 
   set(UNITTESTS_CQUEUE_SOURCES
     ${EXECUTABLES_DIR}/unittests_cqueue.c
@@ -247,7 +247,7 @@ if(UNIX)
   add_executable(unittests_cqueue ${UNITTESTS_CQUEUE_SOURCES})
   target_compile_definitions(unittests_cqueue PRIVATE UNITTEST_CQ SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_cqueue PRIVATE ${EP_INCLUDES})
-  target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
+  target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid)
   
   set(UNITTESTS_SNAPSHOT_SOURCES
       ${EXECUTABLES_DIR}/unittests_snapshot.c
@@ -255,7 +255,7 @@ if(UNIX)
     add_executable(unittests_snapshot ${UNITTESTS_SNAPSHOT_SOURCES})
     target_compile_definitions(unittests_snapshot PRIVATE SERVER_MODE ${COMMON_DEFS})
     target_include_directories(unittests_snapshot PRIVATE ${EP_INCLUDES})
-    target_link_libraries(unittests_snapshot LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
+    target_link_libraries(unittests_snapshot LINK_PRIVATE cubrid)
     
   set(UNITTESTS_BIT_SOURCES
     ${EXECUTABLES_DIR}/unittests_bit.c
@@ -263,7 +263,7 @@ if(UNIX)
   add_executable(unittests_bit ${UNITTESTS_BIT_SOURCES})
   target_compile_definitions(unittests_bit PRIVATE ${COMMON_DEFS})
   target_include_directories(unittests_bit PRIVATE ${EP_INCLUDES})
-  target_link_libraries(unittests_bit LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
+  target_link_libraries(unittests_bit LINK_PRIVATE cubrid)
 endif(UNIX)
 
 
