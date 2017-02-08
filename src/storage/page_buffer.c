@@ -14516,6 +14516,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
     {
       /* somebody fixed the page again. */
       pgbuf_bcb_update_flags (bcb, 0, PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG);
+      PGBUF_BCB_UNLOCK (bcb);
       return NULL;
     }
 
