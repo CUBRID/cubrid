@@ -19857,6 +19857,14 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   pr_clone_value (&new_key, target_key);
   pr_clear_value (&new_key);
 
+  for (i = 0; i < prefix_len; i++)
+    {
+      if (new_key_dbvals[i].need_clear == true)
+	{
+	  pr_clear_value (&new_key_dbvals[i]);
+	}
+    }
+
   db_private_free (thread_p, new_key_dbvals);
 
   /* all ok */
