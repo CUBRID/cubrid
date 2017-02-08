@@ -13748,6 +13748,8 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
   PGBUF_BCB *bufptr;
   int i;
   int lfcq_size;
+  int bcb_flags;
+  PGBUF_ZONE zone;
 
   *fixed_cnt = 0;
   *dirty_cnt = 0;
@@ -13767,20 +13769,23 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
 	  *fixed_cnt = *fixed_cnt + 1;
 	}
 
-      if (pgbuf_bcb_is_dirty (bufptr))
+      /* copy flags. we do not lock the bcb and we can be affected by concurrent changes. */
+      bcb_flags = bufptr->flags;
+      if (bcb_flags & PGBUF_BCB_DIRTY_FLAG)
 	{
 	  *dirty_cnt = *dirty_cnt + 1;
 	}
 
-      if (pgbuf_bcb_get_zone (bufptr) == PGBUF_LRU_1_ZONE)
+      zone = PGBUF_GET_ZONE (bcb_flags);
+      if (zone == PGBUF_LRU_1_ZONE)
 	{
 	  *lru1_cnt = *lru1_cnt + 1;
 	}
-      else if (pgbuf_bcb_get_zone (bufptr) == PGBUF_LRU_2_ZONE)
+      else if (zone == PGBUF_LRU_2_ZONE)
 	{
 	  *lru2_cnt = *lru2_cnt + 1;
 	}
-      else if (pgbuf_bcb_get_zone (bufptr) == PGBUF_LRU_3_ZONE)
+      else if (zone == PGBUF_LRU_3_ZONE)
 	{
 	  *lru3_cnt = *lru3_cnt + 1;
 	}
@@ -13790,14 +13795,14 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
 	  *avoid_dealloc_cnt = *avoid_dealloc_cnt + 1;
 	}
 
-      if (pgbuf_bcb_is_flushing (bufptr))
+      if (bcb_flags & PGBUF_BCB_FLUSHING_TO_DISK_FLAG)
 	{
 	  *avoid_victim_cnt = *avoid_victim_cnt + 1;
 	}
 
-      if (PGBUF_IS_BCB_IN_LRU (bufptr))
+      if (zone & PGBUF_LRU_ZONE_MASK)
 	{
-	  if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bufptr)))
+	  if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_flags & PGBUF_LRU_INDEX_MASK))
 	    {
 	      *private_cnt = *private_cnt + 1;
 	    }
