@@ -7422,7 +7422,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    }
 
 		  pr_clear_value (agg_p->accumulator.value);
-		  error = db_value_clone (&dbval, agg_p->accumulator.value);
+		  error = pr_clone_value (&dbval, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
 		      pr_clear_value (&dbval);
@@ -9108,7 +9108,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARI
       /* TYPE_CONSTANT but not in val_list, check if it is inst_num() (orderby_num() is not allowed) */
       if (regu_p->value.dbvalptr == xasl->instnum_val)
 	{
-	  if (db_value_clone (xasl->instnum_val, result_val_p) != NO_ERROR)
+	  if (pr_clone_value (xasl->instnum_val, result_val_p) != NO_ERROR)
 	    {
 	      return false;
 	    }
@@ -9529,7 +9529,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 		{
 		  goto error2;
 		}
-	      if (db_value_clone (save_values[i], valp->val) != NO_ERROR)
+	      if (pr_clone_value (save_values[i], valp->val) != NO_ERROR)
 		{
 		  goto error2;
 		}
@@ -9539,7 +9539,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	    {
 	      if (save_values[i])
 		{
-		  if (db_value_free (save_values[i]) != NO_ERROR)
+		  if (pr_free_ext_value (save_values[i]) != NO_ERROR)
 		    {
 		      goto error2;
 		    }
@@ -9571,7 +9571,7 @@ error:
 	{
 	  if (save_values[i])
 	    {
-	      db_value_free (save_values[i]);
+	      pr_free_ext_value (save_values[i]);
 	    }
 	}
       db_private_free_and_init (thread_p, save_values);
@@ -10443,7 +10443,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
    * operand should already be cast to the right type (CHAR
    * or NCHAR VARYING)
    */
-  error_status = db_value_clone (operand_value, function_p->value);
+  error_status = pr_clone_value (operand_value, function_p->value);
 
 fast_exit:
   return error_status;
