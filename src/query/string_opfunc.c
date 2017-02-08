@@ -11182,7 +11182,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
       goto error;
     }
 
-  db_value_clear (&new_time_value);
+  pr_clear_value (&new_time_value);
 
   /* 2. Compute the value for each format specifier */
   if (mi < 0)
@@ -11403,7 +11403,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
   return error_status;
 
 error:
-  db_value_clear (&new_time_value);
+  pr_clear_value (&new_time_value);
 
   if (res != NULL)
     {
