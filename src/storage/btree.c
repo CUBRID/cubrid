@@ -19981,7 +19981,7 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 	  goto error;
 	}
       db_value_clear (node_info[BTREE_NODE_INFO_FIRST_KEY]);
-      db_value_clone (&key_value, node_info[BTREE_NODE_INFO_FIRST_KEY]);
+      *node_info[BTREE_NODE_INFO_FIRST_KEY] = key_value;	/* just copy. it will be cleared later */
 
       /* Get last key */
       if (spage_get_record (btns->crt_page, key_cnt, &rec, PEEK) != S_SUCCESS)
@@ -19994,7 +19994,7 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 	  goto error;
 	}
       db_value_clear (node_info[BTREE_NODE_INFO_LAST_KEY]);
-      db_value_clone (&key_value, node_info[BTREE_NODE_INFO_LAST_KEY]);
+      *node_info[BTREE_NODE_INFO_LAST_KEY] = key_value;	/* just copy. it will be cleared later */
     }
   else
     {
