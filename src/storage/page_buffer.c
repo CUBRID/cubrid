@@ -7788,12 +7788,12 @@ retry:
       if (thread_p->resume_status == THREAD_ALLOC_BCB_RESUMED)
 	{
 	  bufptr = pgbuf_get_direct_victim (thread_p);
-          if (bufptr == NULL)
-            {
-              /* bcb was fixed again */
-              high_priority = true;
-              goto retry;
-            }
+	  if (bufptr == NULL)
+	    {
+	      /* bcb was fixed again */
+	      high_priority = true;
+	      goto retry;
+	    }
 	  goto end;
 	}
 
@@ -9145,7 +9145,7 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 	   * assigning the bcb directly as victim */
 	  if (PGBUF_BCB_TRYLOCK (bcb) == 0)
 	    {
-              VPID vpid_copy = bcb->vpid;
+	      VPID vpid_copy = bcb->vpid;
 	      if (pgbuf_is_bcb_victimizable (bcb, true) && pgbuf_assign_direct_victim (thread_p, bcb))
 		{
 		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
