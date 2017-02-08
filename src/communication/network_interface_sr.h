@@ -120,6 +120,7 @@ extern void sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid, ch
 extern void sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_prepare_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
+extern void sqmgr_execute_query_with_commit (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_end_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

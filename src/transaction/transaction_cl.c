@@ -231,6 +231,7 @@ bool tm_Use_OID_preflush = true;
  *
  *   retain_lock(in): false = release locks (default)
  *                    true  = retain locks
+ *   latest_query_execution_ending_type(in): latest query execution ending type
  *
  * NOTE: commit the current transaction. All objects that have been
  *              updated by the transaction and are still dirty in the
@@ -246,10 +247,11 @@ bool tm_Use_OID_preflush = true;
  *              cached in the workspace are cleared.
  */
 int
-tran_commit (bool retain_lock)
+tran_commit (bool retain_lock, DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execution_ending_type)
 {
   TRAN_STATE state;
   int error_code = NO_ERROR;
+  bool query_end_notify_server;
 
   /* check deferred trigger activities, these may prevent the transaction from being committed. */
   error_code = tr_check_commit_triggers (TR_TIME_BEFORE);
@@ -277,57 +279,84 @@ tran_commit (bool retain_lock)
 	}
     }
 
+  if (DB_IS_QUERY_EXECUTED_ENDED (latest_query_execution_ending_type))
+    {
+      query_end_notify_server = false;
+    }
+  else
+    {
+      query_end_notify_server = true;
+    }
+
   /* Clear all the queries */
-  db_clear_client_query_result (true, false);
+  db_clear_client_query_result (query_end_notify_server, false);
 
   /* if the commit fails or not, we should clear the clients savepoint list */
   tran_free_savepoint_list ();
 
-  /* Forward the commit the transaction manager in the server */
-  state = tran_server_commit (retain_lock);
-
-  switch (state)
+  if (!DB_IS_QUERY_EXECUTED_COMMITTED (latest_query_execution_ending_type))
     {
-    case TRAN_UNACTIVE_COMMITTED:
-    case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
-      /* Successful commit */
-      error_code = NO_ERROR;
-      break;
+      /* Forward the commit the transaction manager in the server */
+      state = tran_server_commit (retain_lock);
 
-    case TRAN_UNACTIVE_ABORTED:
-    case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
-    case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
-      /* The commit failed */
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "tm_commit: Unable to commit. Transaction was aborted\n");
-#endif /* CUBRID_DEBUG */
-      break;
-
-    case TRAN_UNACTIVE_UNKNOWN:
-      if (!BOOT_IS_CLIENT_RESTARTED ())
+      switch (state)
 	{
+	case TRAN_UNACTIVE_COMMITTED:
+	case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
+	  /* Successful commit */
+	  error_code = NO_ERROR;
+	  break;
+
+	case TRAN_UNACTIVE_ABORTED:
+	case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
+	case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
+	  /* The commit failed */
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
+#if defined(CUBRID_DEBUG)
+	  er_log_debug (ARG_FILE_LINE, "tm_commit: Unable to commit. Transaction was aborted\n");
+#endif /* CUBRID_DEBUG */
+	  break;
+
+	case TRAN_UNACTIVE_UNKNOWN:
+	  if (!BOOT_IS_CLIENT_RESTARTED ())
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error_code = er_errid ();
+	      break;
+	    }
+	  /* Fall Thru */
+	case TRAN_RECOVERY:
+	case TRAN_ACTIVE:
+	case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
+	case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
+	case TRAN_UNACTIVE_2PC_PREPARE:
+	case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
+	case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+	case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
+	default:
+	  assert (er_errid () != NO_ERROR);
+	  error_code = er_errid ();
+#if defined(CUBRID_DEBUG)
+	  er_log_debug (ARG_FILE_LINE, "tm_commit: Unknown commit state = %s at client\n", log_state_string (state));
+#endif /* CUBRID_DEBUG */
 	  break;
 	}
-      /* Fall Thru */
-    case TRAN_RECOVERY:
-    case TRAN_ACTIVE:
-    case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_2PC_PREPARE:
-    case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
-    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
-    case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
-    default:
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "tm_commit: Unknown commit state = %s at client\n", log_state_string (state));
-#endif /* CUBRID_DEBUG */
-      break;
+    }
+  else
+    {
+#if defined(CS_MODE)
+      if (DB_IS_QUERY_EXECUTED_COMMITTED_WITH_RESET (latest_query_execution_ending_type)
+	  && log_does_allow_replication () == true)
+	{
+	  /* 
+	   * fail-back action
+	   * make the client to reconnect to the active server
+	   */
+	  db_Connect_status = DB_CONNECTION_STATUS_RESET;
+	  er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
+	}
+#endif
     }
 
   /* Increment snapshot version in work space */

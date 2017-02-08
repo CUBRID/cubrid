@@ -211,6 +211,7 @@ extern int db_query_stmt_id (DB_QUERY_RESULT * result);
 #endif
 
 extern int db_query_end (DB_QUERY_RESULT * result);
+extern int db_query_end_ex (DB_QUERY_RESULT * result, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type);
 extern int db_query_end_internal (DB_QUERY_RESULT * result, bool notify_server);
 
 extern void db_clear_client_query_result (int notify_server, bool end_holdable);
@@ -224,5 +225,7 @@ extern void db_final_client_query_result (void);
 extern void db_set_execution_plan (char *plan, int length);
 extern char *db_get_execution_plan (void);
 extern void db_free_execution_plan (void);
+extern DB_QUERY_EXECUTION_ENDING_TYPE db_get_end_type_after_query_execution (int end_query_result, bool committed,
+									     int reset_on_commit);
 
 #endif /* _DB_QUERY_H_ */

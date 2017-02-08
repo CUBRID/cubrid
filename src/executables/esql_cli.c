@@ -738,6 +738,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
   DB_GADGET *gadget = NULL;
   DB_NODE *statement;
   int error;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   CHK_SQLCODE ();
 
@@ -924,7 +925,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
   else
     {
       /* non-repetitive, non-insert, or failed gadget */
-      e = db_execute_statement (session, stmt_id, &curr_result);
+      e = db_execute_statement_ex (session, stmt_id, &curr_result, &query_execution_ending_type);
       db_push_values (session, 0, NULL);
       db_close_session (session);
     }
@@ -1003,6 +1004,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no, int readonly)
   DB_QUERY_RESULT *tmp_result;
   int n;
   int error;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   CHK_SQLCODE ();
 
@@ -1077,7 +1079,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no, int readonly)
 
   /* execute the compiled stmt */
   tmp_result = (DB_QUERY_RESULT *) NULL;
-  n = db_execute_and_keep_statement (session, stmt_id, &tmp_result);
+  n = db_execute_and_keep_statement_ex (session, stmt_id, &tmp_result, &query_execution_ending_type);
   db_push_values (session, 0, NULL);
 
   if (!is_uci_start_state)	/* nested stmt was executed */
@@ -1369,6 +1371,7 @@ uci_execute (int stmt_no, int num_out_vars)
 {
   DYNAMIC *dt;
   int e;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   CHK_SQLCODE ();
 
@@ -1399,7 +1402,7 @@ uci_execute (int stmt_no, int num_out_vars)
 
   /* execute the compiled stmt */
   db_push_values (dt->session, db_Value_table.db_value_top, db_Value_table.db_values);
-  e = db_execute_and_keep_statement (dt->session, dt->stmt_id, &curr_result);
+  e = db_execute_and_keep_statement_ex (dt->session, dt->stmt_id, &curr_result, &query_execution_ending_type);
   db_push_values (dt->session, 0, NULL);
 
   if (!is_uci_start_state)	/* nested stmt was executed */
@@ -1466,6 +1469,7 @@ uci_execute_immediate (const char *stmt, int length)
   CUBRID_STMT_TYPE stmt_type;
   int e;
   DB_QUERY_RESULT *dummy_result;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   CHK_SQLCODE ();
 
@@ -1498,7 +1502,7 @@ uci_execute_immediate (const char *stmt, int length)
 
   /* execute the compiled stmt */
   dummy_result = (DB_QUERY_RESULT *) NULL;
-  e = db_execute_statement (session, stmt_id, &dummy_result);
+  e = db_execute_statement_ex (session, stmt_id, &dummy_result, &query_execution_ending_type);
 
   db_close_session (session);
 
@@ -1520,7 +1524,7 @@ uci_execute_immediate (const char *stmt, int length)
 
   if (dummy_result != NULL)	/* throw away the results */
     {
-      e = db_query_end (dummy_result);
+      e = db_query_end_ex (dummy_result, query_execution_ending_type);
       CHECK_DBI (e < 0, return);
     }
 
