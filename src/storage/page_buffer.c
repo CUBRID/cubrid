@@ -10362,7 +10362,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   PGBUF_HOLDER *holder, *next_holder;
   PAGE_PTR pgptr, ret_pgptr;
   int i, thrd_idx;
-  int saved_pages_cnt;
+  int saved_pages_cnt = 0;
   int curr_request_mode;
   PAGE_FETCH_MODE curr_fetch_mode;
   PGBUF_HOLDER_INFO ordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
@@ -10525,8 +10525,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       /* to proceed ordered fix the pages, forget any underlying error. */
       er_status = NO_ERROR;
     }
-
-  saved_pages_cnt = 0;
 
   if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
     {
