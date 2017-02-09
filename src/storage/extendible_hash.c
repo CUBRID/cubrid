@@ -1087,7 +1087,8 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
       ASSERT_ERROR ();
       goto exit_on_error;
     }
-  if (file_alloc (thread_p, &dir_vfid, file_init_page_type, &ptype, &dir_vpid, &dir_page_p) != NO_ERROR)
+  if (file_alloc (thread_p, &dir_vfid, is_tmp ? file_init_temp_page_type : file_init_page_type, &ptype, &dir_vpid,
+		  &dir_page_p) != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit_on_error;
