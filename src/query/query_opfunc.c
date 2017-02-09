@@ -12851,16 +12851,14 @@ qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE 
 	      /* reset accumulator values. */
 	      value->accumulators[i].value->need_clear = false;
 	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value);
-	      if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_VARCHAR
-		  || db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
+	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
 		{
 		  value->accumulators[i].value->data.ch.info.compressed_need_clear = false;
 		}
 
 	      value->accumulators[i].value2->need_clear = false;
 	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2);
-	      if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_VARCHAR
-		  || db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
+	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
 		{
 		  value->accumulators[i].value2->data.ch.info.compressed_need_clear = false;
 		}
