@@ -8456,23 +8456,12 @@ STATIC_INLINE bool
 pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
 {
   /* must not be dirty */
-  if (pgbuf_bcb_is_dirty (bcb))
+  if (pgbuf_bcb_avoid_victim (bcb))
     {
       return false;
     }
 
 #if defined (SERVER_MODE)
-  /* must not be marked to avoid victim (flush to disk is in progress) */
-  if (pgbuf_bcb_is_flushing (bcb))
-    {
-      return false;
-    }
-
-  if (pgbuf_bcb_is_direct_victim (bcb))
-    {
-      return false;
-    }
-
   /* must not be fixed and must not have waiters. */
   if (pgbuf_is_bcb_fixed_by_any (bcb, has_mutex_lock))
     {
@@ -14336,10 +14325,12 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 #if defined (SERVER_MODE)
   THREAD_ENTRY *waiter_thread = NULL;
 
-  /* must hold bcb mutex */
+  /* must hold bcb mutex and victimization should be possible. the only victim-candidate invalidating flag allowed here
+   * is PGBUF_BCB_FLUSHING_TO_DISK_FLAG (because flush also calls this). */
   assert (!pgbuf_bcb_is_direct_victim (bcb));
+  assert (!pgbuf_bcb_is_invalid_direct_victim (bcb));
   assert (!pgbuf_bcb_is_dirty (bcb));
-  assert (bcb->fcnt == 0 || bcb->next_wait_thrd == NULL);
+  assert (!pgbuf_is_bcb_fixed_by_any (bcb, true));
 
   pgbuf_bcb_check_own (bcb);
 
@@ -14371,7 +14362,6 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 
       /* assign bcb to thread */
       pgbuf_bcb_update_flags (bcb, PGBUF_BCB_VICTIM_DIRECT_FLAG, PGBUF_BCB_FLUSHING_TO_DISK_FLAG);
-      assert (!pgbuf_bcb_is_dirty (bcb));
 
       pgbuf_Pool.direct_victims.bcb_victims[waiter_thread->index] = bcb;
 
@@ -14411,7 +14401,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 	  /* dirty bcb is not a valid victim */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY);
 	}
-      else if (bcb_flushed->fcnt > 0 || bcb_flushed->next_wait_thrd != NULL)
+      else if (pgbuf_is_bcb_fixed_by_any (bcb_flushed, true))
 	{
 	  /* bcb is fixed. we cannot assign it as victim */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED);
