@@ -292,7 +292,7 @@ struct pgbuf_holder_info
   PGBUF_WATCHER *watcher[PGBUF_MAX_PAGE_WATCHERS];	/* pointers to all watchers to this holder */
   PGBUF_LATCH_MODE latch_mode;	/* aggregate latch mode of all watchers */
   PAGE_TYPE ptype;		/* page type (should be HEAP or OVERFLOW) */
-  bool prevent_dealloc;		/* page is prevented to be deallocated. */
+  bool prevent_dealloc;		/* page is prevented from being deallocated. */
 };
 
 typedef struct pgbuf_holder_stat PGBUF_HOLDER_STAT;
