@@ -2502,7 +2502,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       pr_clear_value (&keys);
       if (pvalue)
 	{
-	  db_value_free (pvalue);
+	  pr_free_ext_value (pvalue);
 	  pvalue = NULL;
 	}
 
@@ -2529,7 +2529,7 @@ error:
   pr_clear_value (&avalue);
   if (pvalue)
     {
-      db_value_free (pvalue);
+      pr_free_ext_value (pvalue);
     }
   return error;
 }
