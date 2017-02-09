@@ -1940,6 +1940,13 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	case TARGET_LIST:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.list_node.list_regu_list_pred, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.list_node.list_regu_list_rest, final);
+
+	  if (p->s.list_node.xasl_node && p->s.list_node.xasl_node->status != XASL_CLEARED
+	      && XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	    {
+	      XASL_SET_FLAG (p->s.list_node.xasl_node, XASL_DECACHE_CLONE);
+	      pg_cnt += qexec_clear_xasl (thread_p, p->s.list_node.xasl_node, final);
+	    }
 	  break;
 	case TARGET_SHOWSTMT:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.showstmt_node.arg_list, final);
