@@ -7829,8 +7829,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 
 	  if (agg_p->flag_agg_optimize == false)
 	    {
-	      list_id_p = agg_p->list_id =
-		qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
+	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
 
 	      if (list_id_p != NULL && er_has_error ())
 		{
@@ -7842,8 +7841,6 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  goto exit;
 		}
 
-	      agg_p->list_id = list_id_p;
-
 	      if (list_id_p == NULL)
 		{
 		  if (!er_has_error ())
@@ -7854,6 +7851,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  error = er_errid ();
 		  goto exit;
 		}
+
+	      agg_p->list_id = list_id_p;
 
 	      if (agg_p->function == PT_COUNT)
 		{
