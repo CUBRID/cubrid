@@ -292,6 +292,7 @@ struct pgbuf_holder_info
   PGBUF_WATCHER *watcher[PGBUF_MAX_PAGE_WATCHERS];	/* pointers to all watchers to this holder */
   PGBUF_LATCH_MODE latch_mode;	/* aggregate latch mode of all watchers */
   PAGE_TYPE ptype;		/* page type (should be HEAP or OVERFLOW) */
+  bool prevent_dealloc;		/* page is prevented to be deallocated. */
 };
 
 typedef struct pgbuf_holder_stat PGBUF_HOLDER_STAT;
@@ -10372,6 +10373,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   VPID req_page_groupid;
   bool has_dealloc_prevent_flag = false;
   PGBUF_LATCH_CONDITION latch_condition;
+  PGBUF_BCB *bufptr = NULL;
 #if defined(PGBUF_ORDERED_DEBUG)
   static unsigned int global_ordered_fix_id = 0;
   unsigned int ordered_fix_id;
@@ -10603,6 +10605,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  ordered_holders_info[saved_pages_cnt].latch_mode = PGBUF_LATCH_READ;
 	  pg_watcher = holder->first_watcher;
 	  j = 0;
+	  ordered_holders_info[saved_pages_cnt].prevent_dealloc = false;
 
 	  /* add all watchers */
 	  while (pg_watcher != NULL)
@@ -10772,6 +10775,9 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
       CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
       assert (holder_fix_cnt > 0);
+      /* prevent deallocate. */
+      ATOMIC_INC_32 (holder->bufptr->avoid_dealloc_cnt, 1);
+      ordered_holders_info[i].prevent_dealloc = true;
       while (holder_fix_cnt-- > 0)
 	{
 	  pgbuf_unfix (thread_p, pgptr);
@@ -10833,7 +10839,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	{
 	  if (has_dealloc_prevent_flag == true)
 	    {
-	      PGBUF_BCB *bufptr;
 	      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
 	      has_dealloc_prevent_flag = false;
@@ -10896,7 +10901,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	      ordered_holders_info[saved_pages_cnt].rank = req_watcher->curr_rank;
 	    }
 	}
-
+      ordered_holders_info[saved_pages_cnt].prevent_dealloc = false;
       saved_pages_cnt++;
     }
 
@@ -10987,7 +10992,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 	  if (has_dealloc_prevent_flag == true)
 	    {
-	      PGBUF_BCB *bufptr;
 	      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
 	      has_dealloc_prevent_flag = false;
@@ -11017,6 +11021,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       else
 	{
 	  int j;
+
+	  /* page is fixed, therefore avoiding deallocate is no longer necessary */
+	  assert (ordered_holders_info[i].prevent_dealloc);
+	  ordered_holders_info[i].prevent_dealloc = false;
+	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+	  ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
 
 	  /* page after re-fix should have the same type as before unfix */
 	  (void) pgbuf_check_page_ptype (thread_p, pgptr, ordered_holders_info[i].ptype);
@@ -11102,6 +11112,30 @@ exit:
       req_watcher->curr_rank = PGBUF_ORDERED_HEAP_HDR;
     }
 
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      if (ordered_holders_info[i].prevent_dealloc)
+	{
+	  /* we need to remove prevent deallocate. */
+	  PGBUF_BUFFER_HASH *hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&ordered_holders_info[i].vpid)];
+	  bufptr = pgbuf_search_hash_chain (hash_anchor, &ordered_holders_info[i].vpid);
+
+	  if (bufptr == NULL)
+	    {
+	      /* oops... no longer in buffer?? */
+	      assert (false);
+	      continue;
+	    }
+	  if (bufptr->avoid_dealloc_cnt == 0)
+	    {
+	      /* oops... deallocate not prevented */
+	      assert (false);
+	      continue;
+	    }
+	  ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	}
+    }
+
   return er_status;
 }
 
@@ -11112,7 +11146,7 @@ exit:
  *   return: error code
  *   req_vpid(in): id of page for which the group is needed (for debug)
  *   pgptr(in): page (already latched); only heap page allowed
- *   groupid(out): group identifer (VPID of HFID)
+ *   groupid(out): group identifier (VPID of HFID)
  *   do_unfix(in): if true, it unfixes the page.
  *
  * Note : helper function of ordered fix.
