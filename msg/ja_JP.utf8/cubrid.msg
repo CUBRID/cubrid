@@ -1713,6 +1713,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 集計関数の使用が無効です。
 293 値は厳密に各パーティションに増加しなければなりません。
 294 ローカルタイムゾーン型指定された列に関数やフィルタ索引を使用することはできません。
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

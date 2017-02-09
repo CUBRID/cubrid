@@ -848,8 +848,8 @@ int PRM_ER_BTREE_DEBUG = 0;
 static int prm_er_btree_debug_default = 0;
 static unsigned int prm_er_btree_debug_flag = 0;
 
-int PRM_ER_LOG_LEVEL = ER_SYNTAX_ERROR_SEVERITY;
-static int prm_er_log_level_default = ER_SYNTAX_ERROR_SEVERITY;
+int PRM_ER_LOG_LEVEL = ER_NOTIFICATION_SEVERITY;
+static int prm_er_log_level_default = ER_NOTIFICATION_SEVERITY;
 static int prm_er_log_level_lower = ER_FATAL_ERROR_SEVERITY;
 static int prm_er_log_level_upper = ER_NOTIFICATION_SEVERITY;
 static unsigned int prm_er_log_level_flag = 0;

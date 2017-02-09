@@ -2270,7 +2270,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	{
 	  if (iscan_id->multi_range_opt.top_n_items[i] != NULL)
 	    {
-	      db_value_clear (&(iscan_id->multi_range_opt.top_n_items[i]->index_value));
+	      pr_clear_value (&(iscan_id->multi_range_opt.top_n_items[i]->index_value));
 	      db_private_free_and_init (thread_p, iscan_id->multi_range_opt.top_n_items[i]);
 	    }
 	}
@@ -4607,7 +4607,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      if (isidp->multi_range_opt.top_n_items[i] != NULL)
 		{
-		  db_value_clear (&(isidp->multi_range_opt.top_n_items[i]->index_value));
+		  pr_clear_value (&(isidp->multi_range_opt.top_n_items[i]->index_value));
 		  db_private_free_and_init (thread_p, isidp->multi_range_opt.top_n_items[i]);
 		}
 	    }

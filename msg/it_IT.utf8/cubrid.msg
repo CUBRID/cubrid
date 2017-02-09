@@ -1713,6 +1713,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Utilizzo non valido di funzioni di aggregazione.
 293 Il valore deve essere strettamente crescente per ogni partizione.
 294 Non è possibile utilizzare gli indici di funzione o di filtro su colonne fuso orario locale.
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.
