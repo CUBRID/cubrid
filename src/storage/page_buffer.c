@@ -1804,7 +1804,6 @@ try_again:
 
   buf_lock_acquired = false;
   bufptr = pgbuf_search_hash_chain (hash_anchor, vpid);
-  hash_anchor_mutex_owned = (bufptr == NULL) ? true : false;
   if (bufptr != NULL && pgbuf_bcb_is_direct_victim (bufptr))
     {
       /* we need to notify the thread that is waiting for this bcb to victimize that it cannot use it. */
