@@ -27930,53 +27930,61 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
     {
     case DB_TYPE_DATETIMETZ:
       {
+	DB_DATETIMETZ datetimetz_out;
+
 	datetimetz = DB_GET_DATETIMETZ (time_val);
-	error = conv_tz (datetimetz, DB_TYPE_DATETIMETZ);
+	error = conv_tz (datetimetz, &datetimetz_out, DB_TYPE_DATETIMETZ);
 
 	if (error != NO_ERROR)
 	  {
 	    return error;
 	  }
-	DB_MAKE_DATETIMETZ (result_time, datetimetz);
+	DB_MAKE_DATETIMETZ (result_time, &datetimetz_out);
       }
       break;
 
     case DB_TYPE_DATETIMELTZ:
       {
+	DB_DATETIME datetime_out;
+
 	datetime = DB_GET_DATETIME (time_val);
-	error = conv_tz (datetime, DB_TYPE_DATETIMELTZ);
+	error = conv_tz (datetime, &datetime_out, DB_TYPE_DATETIMELTZ);
 
 	if (error != NO_ERROR)
 	  {
 	    return error;
 	  }
-	DB_MAKE_DATETIMELTZ (result_time, datetime);
+	DB_MAKE_DATETIMELTZ (result_time, &datetime_out);
       }
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
       {
+	DB_TIMESTAMPTZ timestamptz_out;
+
 	timestamptz = DB_GET_TIMESTAMPTZ (time_val);
-	error = conv_tz (timestamptz, DB_TYPE_TIMESTAMPTZ);
+	error = conv_tz (timestamptz, &timestamptz_out, DB_TYPE_TIMESTAMPTZ);
 
 	if (error != NO_ERROR)
 	  {
 	    return error;
 	  }
-	DB_MAKE_TIMESTAMPTZ (result_time, timestamptz);
+	DB_MAKE_TIMESTAMPTZ (result_time, &timestamptz_out);
       }
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
       {
+	DB_TIMESTAMP timestamp_out;
+
 	timestamp = DB_GET_TIMESTAMP (time_val);
-	error = conv_tz (timestamp, DB_TYPE_TIMESTAMPLTZ);
+	error = conv_tz (timestamp, &timestamp_out, DB_TYPE_TIMESTAMPLTZ);
 
 	if (error != NO_ERROR)
 	  {
 	    return error;
 	  }
-	DB_MAKE_TIMESTAMPLTZ (result_time, *timestamp);
+	DB_MAKE_TIMESTAMPLTZ (result_time, timestamp_out);
       }
       break;
 

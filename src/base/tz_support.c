@@ -174,6 +174,10 @@ static TZ_DATA new_timezone_data = { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0
 static const int days_of_month[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 static const int days_up_to_month[] = { 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 };
 
+bool is_backward_compatible[ZONE_MAX];
+bool compare_datetimetz_tz_id = false;
+bool compare_timestamptz_tz_id = false;
+
 #if defined(WINDOWS)
 #define TZ_GET_SYM_ADDR(lib, sym) GetProcAddress(lib, sym)
 #else
@@ -5596,7 +5600,7 @@ tz_create_datetimetz_from_parts (const int m, const int d, const int y, const in
 static int
 set_new_zone_id (TZ_DECODE_INFO * tz_info)
 {
-  char *timezone_name = NULL;
+  const char *timezone_name = NULL;
   unsigned int new_zone_id;
   int err_status = NO_ERROR;
 
@@ -5619,12 +5623,13 @@ set_new_zone_id (TZ_DECODE_INFO * tz_info)
 * conv_tz() - Converts a tz type from one time library to another
 *				      
 *  Returns error or no error
-*  p (in/out): pointer to timezone data type
+*  p_in (in): pointer to input timezone data type
+*  p_out (out): pointer to output timezone data type
 *  type (in): timezone type
 *
 */
 int
-conv_tz (void *p, DB_TYPE type)
+conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 {
   int err_status = NO_ERROR;
   TZ_DATA save_data;
@@ -5635,17 +5640,32 @@ conv_tz (void *p, DB_TYPE type)
     {
     case DB_TYPE_TIMESTAMPTZ:
       {
-	DB_TIMESTAMPTZ *p1;
+	DB_TIMESTAMPTZ *p1, *p2;
 	DB_DATE date_local;
 	DB_TIME time_local;
 	TZ_DECODE_INFO tz_info;
 	DB_DATETIME src_dt, dest_dt;
 	DB_TIMESTAMP timestamp_utc;
 
-	p1 = (DB_TIMESTAMPTZ *) p;
-	if (p1->tz_id == TZ_REGION_OFFSET)
+	p1 = (DB_TIMESTAMPTZ *) p_in;
+	p2 = (DB_TIMESTAMPTZ *) p_out;
+	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
+	if (tz_info.type == TZ_REGION_OFFSET)
 	  {
+	    *p2 = *p1;
 	    return NO_ERROR;
+	  }
+	if (is_backward_compatible[tz_info.zone.zone_id] == true)
+	  {
+	    err_status = set_new_zone_id (&tz_info);
+	    if (err_status != NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		goto exit;
+	      }
+	    tz_encode_tz_id (&tz_info, &(p2->tz_id));
+	    p2->timestamp = p1->timestamp;
+	    goto exit;
 	  }
 
 	err_status = db_timestamp_decode_w_tz_id (&(p1->timestamp), &(p1->tz_id), &date_local, &time_local);
@@ -5654,7 +5674,6 @@ conv_tz (void *p, DB_TYPE type)
 	    goto exit;
 	  }
 
-	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
 	src_dt.date = date_local;
 	src_dt.time = time_local * 1000;
 
@@ -5681,24 +5700,39 @@ conv_tz (void *p, DB_TYPE type)
 	  }
 
 	dest_dt.time /= 1000;
-	tz_encode_tz_id (&tz_info, &(p1->tz_id));
+	tz_encode_tz_id (&tz_info, &(p2->tz_id));
 	// Encode UTC time for timestamptz
 	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, &timestamp_utc);
-	p1->timestamp = timestamp_utc;
+	p2->timestamp = timestamp_utc;
       }
       break;
 
     case DB_TYPE_DATETIMETZ:
       {
-	DB_DATETIMETZ *p1;
+	DB_DATETIMETZ *p1, *p2;
 	TZ_DECODE_INFO tz_info;
 	DB_DATETIME dest_dt;
 	DB_DATETIME datetime_local;
 
-	p1 = (DB_DATETIMETZ *) p;
-	if (p1->tz_id == TZ_REGION_OFFSET)
+	p1 = (DB_DATETIMETZ *) p_in;
+	p2 = (DB_DATETIMETZ *) p_out;
+	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
+	if (tz_info.type == TZ_REGION_OFFSET)
 	  {
+	    *p2 = *p1;
 	    return NO_ERROR;
+	  }
+	if (is_backward_compatible[tz_info.zone.zone_id] == true)
+	  {
+	    err_status = set_new_zone_id (&tz_info);
+	    if (err_status != NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		goto exit;
+	      }
+	    tz_encode_tz_id (&tz_info, &(p2->tz_id));
+	    p2->datetime = p1->datetime;
+	    goto exit;
 	  }
 
 	err_status = tz_utc_datetimetz_to_local (&(p1->datetime), &(p1->tz_id), &datetime_local);
@@ -5707,7 +5741,6 @@ conv_tz (void *p, DB_TYPE type)
 	    goto exit;
 	  }
 
-	tz_decode_tz_id (&(p1->tz_id), true, &tz_info);
 	err_status = set_new_zone_id (&tz_info);
 	if (err_status != NO_ERROR)
 	  {
@@ -5729,25 +5762,33 @@ conv_tz (void *p, DB_TYPE type)
 	      }
 	  }
 
-	tz_encode_tz_id (&tz_info, &(p1->tz_id));
-	p1->datetime = dest_dt;
+	tz_encode_tz_id (&tz_info, &(p2->tz_id));
+	p2->datetime = dest_dt;
       }
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
       {
-	DB_TIMESTAMP *p1;
+	DB_TIMESTAMP *p1, *p2;
 	TZ_ID ses_tz_id;
 	DB_DATE date_local;
 	DB_TIME time_local;
 	DB_DATETIME src_dt, dest_dt;
 	TZ_DECODE_INFO tz_info;
 
-	p1 = (DB_TIMESTAMP *) p;
+	p1 = (DB_TIMESTAMP *) p_in;
+	p2 = (DB_TIMESTAMP *) p_out;
 	err_status = tz_create_session_tzid_for_timestamp (p1, &ses_tz_id);
 	if (err_status != NO_ERROR)
 	  {
 	    goto exit;
+	  }
+
+	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
+	if ((tz_info.type == TZ_REGION_OFFSET) || (is_backward_compatible[tz_info.zone.zone_id] == true))
+	  {
+	    *p2 = *p1;
+	    return NO_ERROR;
 	  }
 
 	err_status = db_timestamp_decode_w_tz_id (p1, &ses_tz_id, &date_local, &time_local);
@@ -5756,7 +5797,6 @@ conv_tz (void *p, DB_TYPE type)
 	    goto exit;
 	  }
 
-	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
 	src_dt.date = date_local;
 	src_dt.time = time_local * 1000;
 
@@ -5774,22 +5814,30 @@ conv_tz (void *p, DB_TYPE type)
 	  }
 
 	dest_dt.time /= 1000;
-	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, p1);
+	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, p2);
       }
       break;
 
     case DB_TYPE_DATETIMELTZ:
       {
-	DB_DATETIME *p1;
+	DB_DATETIME *p1, *p2;
 	TZ_ID ses_tz_id;
 	TZ_DECODE_INFO tz_info;
 	DB_DATETIME datetime_local;
 
-	p1 = (DB_DATETIME *) p;
+	p1 = (DB_DATETIME *) p_in;
+	p2 = (DB_DATETIME *) p_out;
 	err_status = tz_create_session_tzid_for_datetime (p1, true, &ses_tz_id);
 	if (err_status != NO_ERROR)
 	  {
 	    goto exit;
+	  }
+
+	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
+	if ((tz_info.type == TZ_REGION_OFFSET) || (is_backward_compatible[tz_info.zone.zone_id] == true))
+	  {
+	    *p2 = *p1;
+	    return NO_ERROR;
 	  }
 
 	err_status = tz_utc_datetimetz_to_local (p1, &ses_tz_id, &datetime_local);
@@ -5798,7 +5846,6 @@ conv_tz (void *p, DB_TYPE type)
 	    goto exit;
 	  }
 
-	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
 	err_status = set_new_zone_id (&tz_info);
 	if (err_status != NO_ERROR)
 	  {
@@ -5806,7 +5853,7 @@ conv_tz (void *p, DB_TYPE type)
 	    goto exit;
 	  }
 
-	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, p1);
+	err_status = tz_datetime_utc_conv (&datetime_local, &tz_info, false, false, p2);
 	if (err_status != NO_ERROR)
 	  {
 	    goto exit;
@@ -5817,7 +5864,6 @@ conv_tz (void *p, DB_TYPE type)
       assert (false);
       break;
     }
-
 exit:
   tz_set_data (&save_data);
   return err_status;

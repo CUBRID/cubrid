@@ -69,6 +69,7 @@
 
 #define TZ_DS_STRING_SIZE 10
 #define TZR_SIZE 100
+#define ZONE_MAX  10000
 
 enum
 {
@@ -126,6 +127,9 @@ struct tz_region
 };
 
 typedef DB_BIGINT full_date_t;
+extern bool is_backward_compatible[];
+extern bool compare_datetimetz_tz_id;
+extern bool compare_timestamptz_tz_id;
 
 #ifdef __cplusplus
 extern "C"
@@ -237,7 +241,7 @@ extern "C"
   extern int tz_create_datetimetz_from_parts (const int m, const int d, const int y, const int h, const int mi,
 					      const int s, const int ms, const TZ_ID * tz_id, DB_DATETIMETZ * dt_tz);
   extern int get_day_from_timetz (const DB_TIMETZ * timetz);
-  extern int conv_tz (void *, DB_TYPE);
+  extern int conv_tz (const void *, void *, DB_TYPE);
 #ifdef __cplusplus
 }
 #endif

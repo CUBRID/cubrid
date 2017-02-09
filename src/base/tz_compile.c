@@ -461,7 +461,7 @@ static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
 static int tzc_extend (TZ_DATA * tzd);
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
-static int tzc_update (TZ_DATA * tzd, char *database_name);
+static int tzc_update (TZ_DATA * tzd, const char *database_name);
 static int execute_query (const char *str, bool abort_transaction, DB_QUERY_RESULT ** result);
 
 #if defined(WINDOWS)
@@ -5412,8 +5412,8 @@ tzc_extend (TZ_DATA * tzd)
 {
   int err_status = NO_ERROR;
   TZ_DATA old_tzd;
-  TZ_TIMEZONE *all_timezones = NULL, *timezones;
-  TZ_NAME *names, *all_names = NULL;
+  TZ_TIMEZONE *all_timezones = NULL, *timezones, *old_timezones;
+  TZ_NAME *names, *all_names = NULL, *old_names;
   int i, j, k, l;
   int all_timezones_count = 0;
   int all_timezones_and_aliases_count = 0;
@@ -5819,7 +5819,14 @@ tzc_extend (TZ_DATA * tzd)
 			      break;
 			    }
 			}
-
+		      else
+			{
+			  if (old_tzd.offset_rules[j].ds_ruleset != tzd->offset_rules[tzd_offset_rule_index].ds_ruleset)
+			    {
+			      is_compat = false;
+			      break;
+			    }
+			}
 		      if (comp_offset_rules (&old_tzd.offset_rules[j], &tzd->offset_rules[tzd_offset_rule_index]) ==
 			  false)
 			{
@@ -6122,6 +6129,106 @@ exit:
 
   if (err_status == NO_ERROR)
     {
+      old_names = old_tzd.names;
+      old_timezones = old_tzd.timezones;
+      names = tzd->names;
+      timezones = tzd->timezones;
+
+      for (i = 0; i < ZONE_MAX; i++)
+	{
+	  is_backward_compatible[i] = true;
+	}
+
+      for (i = 0; i < old_tzd.name_count; i++)
+	{
+	  int tzd_zone_id;
+	  int old_start, old_count;
+	  int new_start, new_count;
+
+	  tzd_zone_id = tzc_find_timezone_names (tzd, old_names[i].name);
+	  //This should not ever happen
+	  assert (tzd_zone_id != -1);
+
+	  if (old_timezones[old_names[i].zone_id].gmt_off_rule_count != timezones[tzd_zone_id].gmt_off_rule_count)
+	    {
+	      is_backward_compatible[i] = false;
+	      continue;
+	    }
+	  old_start = old_timezones[old_names[i].zone_id].gmt_off_rule_start;
+	  new_start = timezones[tzd_zone_id].gmt_off_rule_start;
+	  old_count = old_timezones[old_names[i].zone_id].gmt_off_rule_count;
+	  new_count = timezones[tzd_zone_id].gmt_off_rule_count;
+
+	  j = old_start;
+	  k = new_start;
+	  while ((j < old_start + old_count) && (k < new_start + new_count))
+	    {
+	      TZ_OFFSET_RULE rule1, rule2;
+
+	      rule1 = old_tzd.offset_rules[j];
+	      rule2 = tzd->offset_rules[k];
+
+	      if (rule1.ds_type != rule2.ds_type)
+		{
+		  is_backward_compatible[i] = false;
+		  break;
+		}
+
+	      if (comp_offset_rules (&rule1, &rule2) == false)
+		{
+		  is_backward_compatible[i] = false;
+		  break;
+		}
+
+	      if (rule1.ds_type != DS_TYPE_FIXED)
+		{
+		  int ds_rule1_count = old_tzd.ds_rulesets[rule1.ds_ruleset].count;
+		  int ds_rule2_count = tzd->ds_rulesets[rule2.ds_ruleset].count;
+		  int ds_rule1_start = old_tzd.ds_rulesets[rule1.ds_ruleset].index_start;
+		  int ds_rule2_start = tzd->ds_rulesets[rule2.ds_ruleset].index_start;
+		  int rule1_index = ds_rule1_start;
+		  int rule2_index = ds_rule2_start;
+
+		  if (strcmp (old_tzd.ds_rulesets[rule1.ds_ruleset].ruleset_name,
+			      tzd->ds_rulesets[rule2.ds_ruleset].ruleset_name) != 0)
+		    {
+		      is_backward_compatible[i] = false;
+		      break;
+		    }
+
+		  if (ds_rule1_count != ds_rule2_count)
+		    {
+		      is_backward_compatible[i] = false;
+		      break;
+		    }
+
+		  while ((rule1_index < ds_rule1_start + ds_rule1_count)
+			 && (rule2_index < ds_rule2_start + ds_rule2_count))
+		    {
+		      TZ_DS_RULE ds_rule1 = old_tzd.ds_rules[rule1_index];
+		      TZ_DS_RULE ds_rule2 = tzd->ds_rules[rule2_index];
+
+		      if (comp_ds_rules (&ds_rule1, &ds_rule2) == false)
+			{
+			  break;
+			}
+		      rule1_index++, rule2_index++;
+		    }
+		  if (rule1_index < ds_rule1_start + ds_rule1_count)
+		    {
+		      is_backward_compatible[i] = false;
+		      break;
+		    }
+		}
+	      else if (rule1.ds_ruleset != rule2.ds_ruleset)
+		{
+		  is_backward_compatible[i] = false;
+		  break;
+		}
+	      j++, k++;
+	    }
+	}
+
       if (is_compat == false)
 	{
 	  printf ("Updating data in the tables containing timezone data types...\n");
@@ -6391,7 +6498,6 @@ execute_query (const char *str, bool abort_transaction, DB_QUERY_RESULT ** resul
       goto exit;
     }
 
-  /* Here in error is returned the number of rows for show tables query */
   error = db_execute_statement_local (session, stmt_id, result);
   if ((error < 0) && (abort_transaction == true))
     {
@@ -6418,7 +6524,9 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 {
 #define TABLE_NAME_MAX_SIZE 100
 #define QUERY_BUF_MAX_SIZE 1024
-  char query_buf[QUERY_BUF_MAX_SIZE];
+  char query_buf[2 * QUERY_BUF_MAX_SIZE];
+  char update_query[QUERY_BUF_MAX_SIZE];
+  char where_query[QUERY_BUF_MAX_SIZE];
   DB_QUERY_RESULT *result1, *result2, *result3;
   DB_VALUE value1, value2, value3;
   int error = NO_ERROR;
@@ -6427,11 +6535,14 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
   bool need_db_shutdown = false;
   const char *program_name = "extend";
   char *table_name = NULL;
+  bool is_first_column = true;
 
   tz_set_new_timezone_data (tzd);
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
+  compare_datetimetz_tz_id = true;
+  compare_timestamptz_tz_id = true;
 
   /* Read the directory with the databases names */
   error = cfg_read_directory (&dir, false);
@@ -6460,7 +6571,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
       strcat (query_buf, "show tables");
 
       error = execute_query (query_buf, false, &result1);
-      if (error <= 0)
+      if (error < 0)
 	{
 	  need_db_shutdown = true;
 	  goto exit;
@@ -6500,11 +6611,19 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
 			    table_name_buf);
 		  error = execute_query (query_buf, false, &result2);
-		  if (error <= 0)
+		  if (error < 0)
 		    {
 		      need_db_shutdown = true;
 		      goto exit;
 		    }
+		  memset (query_buf, 0, sizeof (query_buf));
+		  memset (update_query, 0, sizeof (update_query));
+		  memset (where_query, 0, sizeof (where_query));
+		  strcpy (update_query, "update ");
+		  strcat (update_query, table_name);
+		  strcat (update_query, " set ");
+		  strcpy (where_query, " where ");
+		  is_first_column = true;
 
 		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
 		    {
@@ -6539,16 +6658,37 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			  column_type == DB_TYPE_DATETIMELTZ ||
 			  column_type == DB_TYPE_TIMESTAMPTZ || column_type == DB_TYPE_TIMESTAMPLTZ)
 			{
-			  memset (query_buf, 0, sizeof (query_buf));
-			  snprintf (query_buf, sizeof (query_buf) - 1,
-				    "update %s set %s = conv_tz(%s)", table_name, column_name, column_name);
-
-			  error = execute_query (query_buf, true, &result3);
-			  if (error < 0)
+			  if (is_first_column == true)
 			    {
-			      need_db_shutdown = true;
-			      goto exit;
+			      is_first_column = false;
 			    }
+			  else
+			    {
+			      strcat (update_query, ",");
+			      strcat (where_query, " or ");
+			    }
+			  strcat (update_query, column_name);
+			  strcat (update_query, "=");
+			  strcat (update_query, "conv_tz(");
+			  strcat (update_query, column_name);
+			  strcat (update_query, ")");
+			  strcat (where_query, column_name);
+			  strcat (where_query, "!=");
+			  strcat (where_query, "conv_tz(");
+			  strcat (where_query, column_name);
+			  strcat (where_query, ")");
+			}
+		    }
+		  /* If we have at least a column that is of timezone data type then execute the query */
+		  if (is_first_column == false)
+		    {
+		      strcpy (query_buf, update_query);
+		      strcat (query_buf, where_query);
+		      error = execute_query (query_buf, true, &result3);
+		      if (error < 0)
+			{
+			  need_db_shutdown = true;
+			  goto exit;
 			}
 		    }
 		}
@@ -6568,6 +6708,8 @@ exit:
     {
       db_shutdown ();
     }
+  compare_datetimetz_tz_id = false;
+  compare_timestamptz_tz_id = false;
   return error;
 #undef TABLE_NAME_MAX_SIZE
 #undef QUERY_BUF_MAX_SIZE
