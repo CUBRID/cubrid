@@ -14695,6 +14695,7 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
 {
   int old_flags;
   int new_flags;
+  bool old_dirty, new_dirty;
 
   /* sanity checks */
   assert (bcb != NULL);
@@ -14735,6 +14736,20 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
 	  /* bcb status remains the same */
 	}
     }
+
+  old_dirty = (old_flags | PGBUF_BCB_DIRTY_FLAG) != 0;
+  new_dirty = (old_flags | PGBUF_BCB_DIRTY_FLAG) != 0;
+  if (old_dirty && !new_dirty)
+    {
+      /* cleared dirty flag. */
+      ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, -1);
+    }
+  else if (!old_dirty && new_dirty)
+    {
+      /* added dirty flag */
+      ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1);
+    }
+  assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
 }
 
 /*
@@ -14907,20 +14922,6 @@ pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_set_dirty (PGBUF_BCB * bcb)
 {
-  /* note: should have either bcb mutex or write latch */
-
-  if (!pgbuf_bcb_is_dirty (bcb))
-    {
-      /* increment global dirty counter */
-      ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1);
-      assert (pgbuf_Pool.monitor.dirties_cnt > 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
-
-      if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb))
-	{
-	  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_PB_VICTIM_LRU_INVALIDATE_CANDIDATE);
-	}
-    }
-
   /* set dirty flag and clear none */
   pgbuf_bcb_update_flags (bcb, PGBUF_BCB_DIRTY_FLAG, 0);
 }
@@ -14934,13 +14935,6 @@ pgbuf_bcb_set_dirty (PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_clear_dirty (PGBUF_BCB * bcb)
 {
-  if (pgbuf_bcb_is_dirty (bcb))
-    {
-      /* decrement global dirty counter */
-      ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, -1);
-      assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt < pgbuf_Pool.num_buffers);
-    }
-
   /* set no flag and clear dirty */
   pgbuf_bcb_update_flags (bcb, 0, PGBUF_BCB_DIRTY_FLAG);
 }
@@ -14957,10 +14951,6 @@ STATIC_INLINE void
 pgbuf_bcb_mark_is_flushing (PGBUF_BCB * bcb)
 {
   assert (pgbuf_bcb_is_dirty (bcb));
-
-  /* decrement the global dirty counter */
-  ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, -1);
-  assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt < pgbuf_Pool.num_buffers);
 
   /* set flushing flag and clear dirty */
   pgbuf_bcb_update_flags (bcb, PGBUF_BCB_FLUSHING_TO_DISK_FLAG, PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_ASYNC_FLUSH_REQ);
@@ -14988,12 +14978,6 @@ pgbuf_bcb_mark_was_flushed (PGBUF_BCB * bcb)
 STATIC_INLINE void
 pgbuf_bcb_mark_was_not_flushed (PGBUF_BCB * bcb)
 {
-  if (!pgbuf_bcb_is_dirty (bcb))
-    {
-      ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1);
-      assert (pgbuf_Pool.monitor.dirties_cnt > 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
-    }
-
   /* set dirty flag and clear flushing */
   pgbuf_bcb_update_flags (bcb, PGBUF_BCB_DIRTY_FLAG, PGBUF_BCB_FLUSHING_TO_DISK_FLAG);
 }
