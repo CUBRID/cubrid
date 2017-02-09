@@ -10776,7 +10776,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
       assert (holder_fix_cnt > 0);
       /* prevent deallocate. */
-      ATOMIC_INC_32 (holder->bufptr->avoid_dealloc_cnt, 1);
+      ATOMIC_INC_32 (&holder->bufptr->avoid_dealloc_cnt, 1);
       ordered_holders_info[i].prevent_dealloc = true;
       while (holder_fix_cnt-- > 0)
 	{
