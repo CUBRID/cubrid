@@ -5084,7 +5084,7 @@ file_init_page_type_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PAGE_TYPE 
   pgbuf_set_page_ptype (thread_p, page, ptype);
   if (!is_temp)
     {
-      log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) ptype, 0, NULL);
+      log_append_undoredo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) ptype, 0, 0, NULL, NULL);
     }
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
   return NO_ERROR;
@@ -9086,7 +9086,8 @@ file_tracker_init_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 
   pgbuf_set_page_ptype (thread_p, page, PAGE_FTAB);
   file_extdata_init (sizeof (FILE_TRACK_ITEM), DB_PAGESIZE, extdata);
-  log_append_redo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) PAGE_FTAB, sizeof (*extdata), page);
+  log_append_undoredo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) PAGE_FTAB, 0, sizeof (*extdata), NULL,
+			     page);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;
