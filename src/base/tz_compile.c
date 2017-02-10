@@ -458,10 +458,12 @@ static int init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd, co
 static int copy_ds_rule (TZ_DS_RULE * dst, const TZ_DATA * tzd, const int index);
 static int tz_data_partial_clone (char **timezone_names, TZ_TIMEZONE * timezones, TZ_NAME * names, const TZ_DATA * tzd);
 static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
+#if defined(SA_MODE)
 static int tzc_extend (TZ_DATA * tzd);
+static int tzc_update (TZ_DATA * tzd, const char *database_name);
+#endif
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
-static int tzc_update (TZ_DATA * tzd, const char *database_name);
 static int execute_query (const char *str, DB_QUERY_RESULT ** result);
 
 #if defined(WINDOWS)
@@ -590,6 +592,7 @@ exit:
   return err_status;
 }
 
+#if defined (SA_MODE)
 /*
  * timezone_compile_data() - loads data from all relevant tz files into
  *			     temporary structures, reorganizes & optimizes data
@@ -711,6 +714,7 @@ exit:
 
   return err_status;
 }
+#endif
 
 /*
  * tzc_free_tz_data () - frees members of a TZ_DATA* structure
@@ -5395,6 +5399,7 @@ exit:
   return err_status;
 }
 
+#if defined (SA_MODE)
 /*
  * tzc_extend() - Does a merge between the new timezone data and
  *                the old timezone data in order to maintain backward
@@ -6237,6 +6242,7 @@ exit:
 
   return err_status;
 }
+#endif
 
 /*
  * tzc_compute_timezone_checksum() - Computes an MD5 for the timezone data
@@ -6507,6 +6513,7 @@ exit:
   return error;
 }
 
+#if defined (SA_MODE)
 /*
  * tzc_update() - Do a data migration in case that tzc_extend fails 
  *
@@ -6700,13 +6707,13 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		      strcat (query_buf, where_query);
 
 		      error = execute_query (query_buf, &result3);
-		      db_query_end (result3);
 		      if (error < 0)
 			{
 			  db_abort_transaction ();
 			  need_db_shutdown = true;
 			  goto exit;
 			}
+		      db_query_end (result3);
 		    }
 		}
 	    }
@@ -6743,3 +6750,4 @@ exit:
 #undef TABLE_NAME_MAX_SIZE
 #undef QUERY_BUF_MAX_SIZE
 }
+#endif
