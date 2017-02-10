@@ -2999,6 +2999,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
   PERF_UTIME_TRACKER perf_tracker;
   PERF_UTIME_TRACKER job_time_tracker;
+#if defined (SA_MODE)
+  bool dummy_continue_check = false;
+#endif /* SA_MODE */
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -3057,6 +3060,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
       if (thread_p->shutdown)
 	{
 	  /* Server shutdown was requested, stop vacuuming. */
+	  goto end;
+	}
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+      if (logtb_is_interrupted (thread_p, true, &dummy_continue_check))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error_code = ER_INTERRUPTED;
 	  goto end;
 	}
 #endif /* SERVER_MODE */
@@ -3654,8 +3664,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
-	VACUUM_ER_LOG_ERROR;
-      assert (false);
+	er_errid () == ER_INTERRUPTED ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
+      assert (er_errid () == ER_INTERRUPTED);
 #endif /* !SERVER_MODE */
 
       /* Vacuum will have to be re-run */

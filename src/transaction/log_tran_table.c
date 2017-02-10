@@ -3182,7 +3182,11 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
   INT64 now;
 #if !defined(SERVER_MODE)
   struct timeval tv;
-#endif /* !SERVER_MODE */
+
+#else /* SERVER_MODE */
+  /* vacuum threads should not be interruptible */
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+#endif /* SERVER_MODE */
 
   interrupt = tdes->interrupt;
   if (!LOG_ISTRAN_ACTIVE (tdes))
@@ -3254,16 +3258,12 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
  *                        interrupts to check or to false if there are not
  *                        more interrupts.
  *
- * Note: Find if the current execution must be stopped due to an
- *              interrupt (^C). If clear is true, the interruption flag is
- *              cleared; This is the expected case, once someone is notified,
- *              we do not have to keep the flag on.
+ * Note: Find if the current execution must be stopped due to an interrupt (^C). If clear is true, the interruption flag
+ *       is cleared; This is the expected case, once someone is notified, we do not have to keep the flag on.
  *
- *       If the transaction is not active, false is returned. For
- *              example, in the middle of an undo action, the transaction will
- *              not be interrupted. The recovery manager will interrupt the
- *              transaction at the end of the undo action...int this case the
- *              transaction will be partially aborted.
+ *       If the transaction is not active, false is returned. For example, in the middle of an undo action, the
+ *       transaction will not be interrupted. The recovery manager will interrupt the transaction at the end of the undo
+ *       action... in this case the transaction will be partially aborted.
  */
 bool
 logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
@@ -3297,13 +3297,11 @@ logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_check
  *                        more interrupts.
  *   tran_index(in):
  *
- * Note: Find if the execution o fthe given transaction must be stopped
- *              due to an interrupt (^C). If clear is true, the
- *              interruption flag is cleared; This is the expected case, once
- *              someone is notified, we do not have to keep the flag on.
- *       This function is called to see if a transaction that is
- *              waiting (e.g., suspended wiating on a lock) on an event must
- *              be interrupted.
+ * Note: Find if the execution of the given transaction must be stopped due to an interrupt (^C). If clear is true, the
+ *       interruption flag is cleared; This is the expected case, once someone is notified, we do not have to keep the
+ *       flag on.
+ *       This function is called to see if a transaction that is waiting (e.g., suspended on a lock) on an event must
+ *       be interrupted.
  */
 bool
 logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index)
