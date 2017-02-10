@@ -15791,13 +15791,9 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 
   if (fold_as == STATEMENT_SET_FOLD_AS_NULL)
     {
-      /* fold the statement set as null, we don't need to fold orderby clause clause because we return null. */
-      DB_VALUE dummy;
-
+      /* fold the statement set as null, we don't need to fold orderby clause because we return null. */
       parser_free_tree (parser, union_node);
-
-      union_node = parser_new_node (parser, PT_VALUE);
-
+      new_node = parser_new_node (parser, PT_VALUE);
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {
