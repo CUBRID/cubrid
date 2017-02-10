@@ -2503,6 +2503,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 #else	/* !SERVER_MODE */		   /* SA_MODE */
   VACUUM_DATA_ENTRY vacuum_data_entry;
   bool save_check_interrupt;
+  bool dummy_continue_check_interrupt;
 #endif /* SA_MODE */
 
   VACUUM_DATA_PAGE *data_page = NULL;
@@ -2798,6 +2799,12 @@ restart:
       vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
       vacuum_data_entry = *entry;
       error_code = vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
+      if (error_code == ER_INTERRUPTED || logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
+	{
+	  /* wrap up all executed jobs and stop */
+	  vacuum_data_mark_finished (thread_p);
+	  return;
+	}
       assert (error_code == NO_ERROR);
 
       er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum finished block %lld.\n",
@@ -3062,8 +3069,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  /* Server shutdown was requested, stop vacuuming. */
 	  goto end;
 	}
-#else	/* !SERVER_MODE */		 /* SA_MODE */
-      if (logtb_is_interrupted (thread_p, true, &dummy_continue_check))
+#else	/* !SERVER_MODE */		   /* SA_MODE */
+      if (thread_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &dummy_continue_check))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	  error_code = ER_INTERRUPTED;
