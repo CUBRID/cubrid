@@ -251,7 +251,6 @@ static int pt_difference_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_V
 static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, DB_VALUE * set2,
 			    DB_VALUE * result, PT_NODE * o2);
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
-static PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -7578,124 +7577,6 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
   return node;
 }
 
-
-/*
- * pt_fold_union () - Called when at least one side is a compile time
- * 	null query, this removes the empty query from the tree
- *   return:
- *   parser(in):
- *   node(in/out):
- *   arg1_is_false(in):
- */
-static PT_NODE *
-pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * node, bool arg1_is_false)
-{
-  PT_MISC_TYPE distinct, subq;
-  char oids_incl;
-  SCAN_OPERATION_TYPE scan_op_type;
-  PT_NODE *order_by, *orderby_for;
-  PT_NODE *into_list;
-  PT_NODE_TYPE type;
-  int line, column;
-  const char *alias_print;
-  PT_NODE *next;
-  PT_NODE *arg1, *arg2;
-
-  distinct = node->info.query.all_distinct;
-  subq = node->info.query.is_subquery;
-  oids_incl = node->info.query.oids_included;
-  scan_op_type = node->info.query.scan_op_type;
-  order_by = node->info.query.order_by;
-  orderby_for = node->info.query.orderby_for;
-  into_list = node->info.query.into_list;
-  type = node->node_type;
-  line = node->line_number;
-  column = node->column_number;
-  alias_print = node->alias_print;
-
-  arg1 = node->info.query.q.union_.arg1;
-  arg2 = node->info.query.q.union_.arg2;
-
-  next = node->next;
-
-  /* cut-off link, free node */
-  node->next = NULL;
-  node->info.query.q.union_.arg1 = NULL;
-  node->info.query.q.union_.arg2 = NULL;
-  node->info.query.order_by = NULL;
-  node->info.query.orderby_for = NULL;
-  node->info.query.into_list = NULL;
-  parser_free_tree (parser, node);
-
-  if (arg1_is_false)
-    {
-      if (type == PT_UNION)
-	{
-	  node = arg2;
-	}
-      else
-	{
-	  node = arg1;
-	}
-    }
-  else
-    {				/* arg2 must be a null query */
-      if (type == PT_INTERSECTION)
-	{
-	  node = arg2;
-	}
-      else
-	{
-	  node = arg1;
-	}
-    }
-
-  if (node == arg1)
-    {
-      parser_free_tree (parser, arg2);
-    }
-  else
-    {
-      parser_free_tree (parser, arg1);
-    }
-
-  node->line_number = line;
-  node->column_number = column;
-  node->alias_print = alias_print;
-
-  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
-    {
-      /* These things need to be kept from the outer union node. i.e. if there is an order_by on the union statement,
-       * it takes precedence over any order_by on the argument node */
-
-      if (distinct == PT_DISTINCT)
-	{
-	  node->info.query.all_distinct = PT_DISTINCT;
-	}
-      node->info.query.is_subquery = subq;
-      node->info.query.oids_included = oids_incl;
-      node->info.query.scan_op_type = scan_op_type;
-      if (order_by)
-	{
-	  node->info.query.order_by = order_by;
-	}
-
-      if (orderby_for)
-	{
-	  node->info.query.orderby_for = orderby_for;
-	}
-
-      if (into_list)
-	{
-	  node->info.query.into_list = into_list;
-	}
-    }
-
-  node->next = next;
-
-  return node;
-}
-
 /*
  * pt_eval_recursive_expr_type () - evaluates type for recursive expression
  *	nodes.
@@ -8112,8 +7993,16 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 static PT_NODE *
 pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
+
   if (node == NULL)
     {
+      return node;
+    }
+
+  if (sc_info->donot_fold == true)
+    {
+      /* skip folding */
       return node;
     }
 
@@ -8157,6 +8046,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
   SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
   bool arg1_is_false = false;
   PT_NODE *list;
+  STATEMENT_SET_FOLD do_fold;
 
   switch (node->node_type)
     {
@@ -8343,33 +8233,35 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-    case PT_CTE:
       /* a PT_CTE node is actually a union between two queries */
+    case PT_CTE:
 
-      if (node->node_type == PT_CTE)
+      /* check if union can be folded */
+      do_fold = pt_check_union_is_foldable (parser, node);
+      if (do_fold != STATEMENT_SET_FOLD_NOTHING)
 	{
-	  arg1 = node->info.cte.non_recursive_part;
-	  arg2 = node->info.cte.recursive_part;
-	  if (arg2 == NULL)
-	    {
-	      /* then the CTE is not recursive (just one part) */
-	      break;
-	    }
-	}
-      else
-	{
-	  arg1 = node->info.query.q.union_.arg1;
-	  arg2 = node->info.query.q.union_.arg2;
-	}
-
-      arg1_is_false = pt_false_where (parser, arg1);
-      if (node->node_type != PT_CTE && (arg1_is_false || pt_false_where (parser, arg2)))
-	{
-	  node = pt_fold_union (parser, node, arg1_is_false);
+	  node = pt_fold_union (parser, node, do_fold);
 	}
       else
 	{
 	  /* check that signatures are compatible */
+
+	  if (node->node_type == PT_CTE)
+	    {
+	      arg1 = node->info.cte.non_recursive_part;
+	      arg2 = node->info.cte.recursive_part;
+	      if (arg2 == NULL)
+		{
+		  /* then the CTE is not recursive (just one part) */
+		  break;
+		}
+	    }
+	  else
+	    {
+	      arg1 = node->info.query.q.union_.arg1;
+	      arg2 = node->info.query.q.union_.arg2;
+	    }
+
 	  if ((arg1 && PT_IS_VALUE_QUERY (arg1)) || (arg2 && PT_IS_VALUE_QUERY (arg2)))
 	    {
 	      if (pt_check_union_type_compatibility_of_values_query (parser, node) == NULL)
