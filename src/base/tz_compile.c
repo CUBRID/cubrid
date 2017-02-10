@@ -462,7 +462,7 @@ static int tzc_extend (TZ_DATA * tzd);
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
 static int tzc_update (TZ_DATA * tzd, const char *database_name);
-static int execute_query (const char *str, bool abort_transaction, DB_QUERY_RESULT ** result);
+static int execute_query (const char *str, DB_QUERY_RESULT ** result);
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
@@ -6470,12 +6470,11 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
  *
  * Return: error or no error
  * str (in): query string
- * abort_transaction (in): true if aborting the current transaction is necessary
  * result (out): query result
  *
  */
 static int
-execute_query (const char *str, bool abort_transaction, DB_QUERY_RESULT ** result)
+execute_query (const char *str, DB_QUERY_RESULT ** result)
 {
   DB_SESSION *session = NULL;
   STATEMENT_ID stmt_id;
@@ -6498,15 +6497,13 @@ execute_query (const char *str, bool abort_transaction, DB_QUERY_RESULT ** resul
     }
 
   error = db_execute_statement_local (session, stmt_id, result);
-  if ((error < 0) && (abort_transaction == true))
-    {
-      db_abort_transaction ();
-    }
+
 exit:
   if (session != NULL)
     {
       db_close_session (session);
     }
+
   return error;
 }
 
@@ -6521,8 +6518,9 @@ exit:
 static int
 tzc_update (TZ_DATA * tzd, const char *database_name)
 {
-#define TABLE_NAME_MAX_SIZE 100
-#define QUERY_BUF_MAX_SIZE 1024
+#define TABLE_NAME_MAX_SIZE 256
+#define QUERY_BUF_MAX_SIZE 4096
+
   char query_buf[2 * QUERY_BUF_MAX_SIZE];
   char update_query[QUERY_BUF_MAX_SIZE];
   char where_query[QUERY_BUF_MAX_SIZE];
@@ -6535,11 +6533,13 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
   const char *program_name = "extend";
   char *table_name = NULL;
   bool is_first_column = true;
+  bool has_timezone_column;
 
   tz_set_new_timezone_data (tzd);
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
+
   tz_Compare_datetimetz_tz_id = true;
   tz_Compare_timestamptz_tz_id = true;
 
@@ -6569,7 +6569,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
       memset (query_buf, 0, sizeof (query_buf));
       strcat (query_buf, "show tables");
 
-      error = execute_query (query_buf, false, &result1);
+      error = execute_query (query_buf, &result1);
       if (error < 0)
 	{
 	  need_db_shutdown = true;
@@ -6597,32 +6597,41 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 	      else
 		{
 		  char table_name_buf[TABLE_NAME_MAX_SIZE];
+
 		  /* First get the name of the table */
 		  table_name = db_get_string (&value1);
+
 		  memset (query_buf, 0, sizeof (query_buf));
 		  memset (table_name_buf, 0, sizeof (table_name_buf));
 		  strcat (table_name_buf, "'");
 		  strcat (table_name_buf, table_name);
 		  strcat (table_name_buf, "'");
 
-		  snprintf (query_buf,
-			    sizeof (query_buf) - 1,
+		  snprintf (query_buf, sizeof (query_buf) - 1,
 			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
 			    table_name_buf);
-		  error = execute_query (query_buf, false, &result2);
+		  error = execute_query (query_buf, &result2);
 		  if (error < 0)
 		    {
 		      need_db_shutdown = true;
 		      goto exit;
 		    }
+
+		  /* We are going to make an update query for each table which includes a timezone column like:
+		   *  UPDATE t SET tzc1 = CONV_TZ(tzc1), tzc2 = CONV_TZ(tzc2) ...
+		   *  WHERE tzc1 != CONV_TZ(tzc1) OR tzc2 != CONV_TZ(tzc2) ... ;
+		   */
 		  memset (query_buf, 0, sizeof (query_buf));
 		  memset (update_query, 0, sizeof (update_query));
 		  memset (where_query, 0, sizeof (where_query));
-		  strcpy (update_query, "update ");
+
+		  strcpy (update_query, "UPDATE ");
 		  strcat (update_query, table_name);
-		  strcat (update_query, " set ");
-		  strcpy (where_query, " where ");
+		  strcat (update_query, " SET ");
+		  strcpy (where_query, " WHERE ");
+
 		  is_first_column = true;
+		  has_timezone_column = false;
 
 		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
 		    {
@@ -6653,24 +6662,27 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		      column_type = db_get_int (&value3);
 
 		      /* Now do the update if the datatype is of timezone type */
-		      if (column_type == DB_TYPE_DATETIMETZ ||
-			  column_type == DB_TYPE_DATETIMELTZ ||
-			  column_type == DB_TYPE_TIMESTAMPTZ || column_type == DB_TYPE_TIMESTAMPLTZ)
+		      if (column_type == DB_TYPE_DATETIMETZ || column_type == DB_TYPE_DATETIMELTZ
+			  || column_type == DB_TYPE_TIMESTAMPTZ || column_type == DB_TYPE_TIMESTAMPLTZ)
 			{
+			  has_timezone_column = true;
+
 			  if (is_first_column == true)
 			    {
 			      is_first_column = false;
 			    }
 			  else
 			    {
-			      strcat (update_query, ",");
-			      strcat (where_query, " or ");
+			      strcat (update_query, ", ");
+			      strcat (where_query, " OR ");
 			    }
+
 			  strcat (update_query, column_name);
 			  strcat (update_query, "=");
 			  strcat (update_query, "conv_tz(");
 			  strcat (update_query, column_name);
 			  strcat (update_query, ")");
+
 			  strcat (where_query, column_name);
 			  strcat (where_query, "!=");
 			  strcat (where_query, "conv_tz(");
@@ -6678,14 +6690,20 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			  strcat (where_query, ")");
 			}
 		    }
+
+		  db_query_end (result2);
+
 		  /* If we have at least a column that is of timezone data type then execute the query */
-		  if (is_first_column == false)
+		  if (has_timezone_column == true)
 		    {
 		      strcpy (query_buf, update_query);
 		      strcat (query_buf, where_query);
-		      error = execute_query (query_buf, true, &result3);
+
+		      error = execute_query (query_buf, &result3);
+		      db_query_end (result3);
 		      if (error < 0)
 			{
+			  db_abort_transaction ();
 			  need_db_shutdown = true;
 			  goto exit;
 			}
@@ -6693,11 +6711,20 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		}
 	    }
 	}
+
+      db_query_end (result1);
+
       db_commit_transaction ();
       db_shutdown ();
+
+      /* FIXME: Please make it verbose to let DBAs know progress
+       * and also think of ways we can help them to troubleshoot
+       * Please imagine an error happens while migrating databases.
+       */
     }
 
   error = NO_ERROR;
+
 exit:
   if (dir != NULL)
     {
@@ -6712,6 +6739,7 @@ exit:
   tz_Compare_timestamptz_tz_id = false;
 
   return error;
+
 #undef TABLE_NAME_MAX_SIZE
 #undef QUERY_BUF_MAX_SIZE
 }
