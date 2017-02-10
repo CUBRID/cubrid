@@ -494,7 +494,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* specs referring a CTE will have an entity name, just like a normal class;
    * in order to not try and prefetch (and possibly fail) such classes, we must first resolve such specs */
-  (void) parser_walk_tree (parser, statement, pt_resolve_cte_specs, NULL, NULL, NULL);
+  (void) parser_walk_tree (parser, statement, NULL, NULL, pt_resolve_cte_specs, NULL);
 
   lcks.num_classes = 0;
 
