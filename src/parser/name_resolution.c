@@ -9465,6 +9465,12 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 		  {
 		    col = pt_name (parser, att->info.value.text);
 		  }
+		else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
+		  {
+		    PARSER_VARCHAR *alias;
+		    alias = pt_print_bytes (parser, att);
+		    col = pt_name (parser, alias->bytes);
+		  }
 		else
 		  {		/* generate column name */
 		    id = i;
