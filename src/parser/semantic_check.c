@@ -15815,37 +15815,42 @@ pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * val
 void
 pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 {
+  PT_NODE *col, *next;
+
   assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
+
+  if (query->info.query.order_by == NULL || query->info.query.orderby_for != NULL || query->info.query.limit != NULL)
+    {
+      /* order_by can not be removed when query has orderby_for or limit */
+      return;
+    }
 
   /* if select list has orderby_num(), can not remove ORDER BY clause for example:
    * (i, j) = (select i, orderby_num() from t order by i) 
    */
-  if (query->info.query.orderby_for == NULL && query->info.query.order_by)
+  for (col = pt_get_select_list (parser, query); col; col = col->next)
     {
-      PT_NODE *col, *next;
-      for (col = pt_get_select_list (parser, query); col; col = col->next)
+      if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
 	{
-	  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
-	    {
-	      break;		/* can not remove ORDER BY clause */
-	    }
+	  break;		/* can not remove ORDER BY clause */
 	}
+    }
 
-      if (!col)
+  if (!col)
+    {
+      /* no column is ORDERBY_NUM, order_by can be removed */
+      parser_free_tree (parser, query->info.query.order_by);
+      query->info.query.order_by = NULL;
+      query->info.query.order_siblings = 0;
+
+      for (col = pt_get_select_list (parser, query); col && col->next; col = next)
 	{
-	  parser_free_tree (parser, query->info.query.order_by);
-	  query->info.query.order_by = NULL;
-	  query->info.query.order_siblings = 0;
-
-	  for (col = pt_get_select_list (parser, query); col && col->next; col = next)
+	  next = col->next;
+	  if (next->is_hidden_column)
 	    {
-	      next = col->next;
-	      if (next->is_hidden_column)
-		{
-		  parser_free_tree (parser, next);
-		  col->next = NULL;
-		  break;
-		}
+	      parser_free_tree (parser, next);
+	      col->next = NULL;
+	      break;
 	    }
 	}
     }
