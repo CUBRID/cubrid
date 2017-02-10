@@ -5505,14 +5505,14 @@ set_new_zone_id (TZ_DECODE_INFO * tz_info)
 * conv_tz() - Converts a tz type from one time library to another
 *				      
 *  Returns error or no error
-*  p_in (in): pointer to input timezone data type
 *  p_out (out): pointer to output timezone data type
+*  p_in (in): pointer to input timezone data type
 *  type (in): timezone type
 *
 * NOTE: It does not make sense to use the function as NON-SA_MODE.
 */
 int
-conv_tz (const void *p_in, void *p_out, DB_TYPE type)
+conv_tz (void *p_out, const void *p_in, DB_TYPE type)
 {
   int err_status = NO_ERROR;
   TZ_DATA save_data;
@@ -5532,12 +5532,14 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 
 	current = (DB_TIMESTAMPTZ *) p_in;
 	to_be = (DB_TIMESTAMPTZ *) p_out;
+
 	tz_decode_tz_id (&(current->tz_id), true, &tz_info);
 	if (tz_info.type == TZ_REGION_OFFSET)
 	  {
 	    *to_be = *current;
 	    return NO_ERROR;
 	  }
+
 #if defined (SA_MODE)
 	if (tz_Is_backward_compatible_timezone[tz_info.zone.zone_id] == true)
 	  {
@@ -5602,6 +5604,7 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 
 	current = (DB_DATETIMETZ *) p_in;
 	to_be = (DB_DATETIMETZ *) p_out;
+
 	tz_decode_tz_id (&(current->tz_id), true, &tz_info);
 	if (tz_info.type == TZ_REGION_OFFSET)
 	  {
@@ -5669,6 +5672,7 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 
 	current = (DB_TIMESTAMP *) p_in;
 	to_be = (DB_TIMESTAMP *) p_out;
+
 	err_status = tz_create_session_tzid_for_timestamp (current, &ses_tz_id);
 	if (err_status != NO_ERROR)
 	  {
@@ -5723,6 +5727,7 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 
 	current = (DB_DATETIME *) p_in;
 	to_be = (DB_DATETIME *) p_out;
+
 	err_status = tz_create_session_tzid_for_datetime (current, true, &ses_tz_id);
 	if (err_status != NO_ERROR)
 	  {
@@ -5761,11 +5766,14 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 	  }
       }
       break;
+
     default:
       assert (false);
       break;
     }
+
 exit:
   tz_set_data (&save_data);
+
   return err_status;
 }

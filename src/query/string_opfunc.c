@@ -27897,8 +27897,7 @@ parse_tzd (const char *str, const int max_expect_len)
 }
 
 /*
- * db_conv_tz () - Converts a timezone data type from one timezone library to
- *		   another
+ * db_conv_tz () - Converts a timezone data type from one timezone library to another
  *
  * return ERROR or NO_ERROR
  * time_val (in)     : time value (datetimetz, datetimeltz, timestamptz, timestampltz)
@@ -27933,8 +27932,8 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
 	DB_DATETIMETZ datetimetz_out;
 
 	datetimetz = DB_GET_DATETIMETZ (time_val);
-	error = conv_tz (datetimetz, &datetimetz_out, DB_TYPE_DATETIMETZ);
 
+	error = conv_tz (&datetimetz_out, datetimetz, DB_TYPE_DATETIMETZ);
 	if (error != NO_ERROR)
 	  {
 	    return error;
@@ -27948,8 +27947,8 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
 	DB_DATETIME datetime_out;
 
 	datetime = DB_GET_DATETIME (time_val);
-	error = conv_tz (datetime, &datetime_out, DB_TYPE_DATETIMELTZ);
 
+	error = conv_tz (&datetime_out, datetime, DB_TYPE_DATETIMELTZ);
 	if (error != NO_ERROR)
 	  {
 	    return error;
@@ -27963,8 +27962,8 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
 	DB_TIMESTAMPTZ timestamptz_out;
 
 	timestamptz = DB_GET_TIMESTAMPTZ (time_val);
-	error = conv_tz (timestamptz, &timestamptz_out, DB_TYPE_TIMESTAMPTZ);
 
+	error = conv_tz (&timestamptz_out, timestamptz, DB_TYPE_TIMESTAMPTZ);
 	if (error != NO_ERROR)
 	  {
 	    return error;
@@ -27978,8 +27977,8 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
 	DB_TIMESTAMP timestamp_out;
 
 	timestamp = DB_GET_TIMESTAMP (time_val);
-	error = conv_tz (timestamp, &timestamp_out, DB_TYPE_TIMESTAMPLTZ);
 
+	error = conv_tz (&timestamp_out, timestamp, DB_TYPE_TIMESTAMPLTZ);
 	if (error != NO_ERROR)
 	  {
 	    return error;
