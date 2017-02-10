@@ -90,7 +90,7 @@ struct tz_file_descriptor
  * NOTE: the array below is sorted by type. This order is used in 
  *	 timezone_data_load(), so it must be preserved.
  */
-static const TZ_FILE_DESCRIPTOR tz_files[] = {
+static const TZ_FILE_DESCRIPTOR tz_Files[] = {
   {TZF_COUNTRIES, "iso3166.tab"},
   {TZF_ZONES, "zone.tab"},
   {TZF_RULES, "africa"},
@@ -111,7 +111,7 @@ static const TZ_FILE_DESCRIPTOR tz_files[] = {
   {TZF_LEAP, "leapseconds"}
 #endif
 };
-static int tz_file_count = DIM (tz_files);
+static int tz_File_count = DIM (tz_Files);
 
 typedef struct tz_raw_country TZ_RAW_COUNTRY;
 struct tz_raw_country
@@ -267,7 +267,7 @@ static const char DAY_NAMES_ABBREV[TZ_WEEK_DAY_COUNT][TZ_CAL_ABBREV_SIZE] =
 #define TZC_ERR_LINKING_TRUE_ZONES	-17
 #define TZC_ERR_LAST_ERROR		-18
 
-static const char *tzc_err_messages[] = {
+static const char *tzc_Err_messages[] = {
   /* NO_ERROR */
   "",
   /* TZC_ERR_GENERIC */
@@ -306,7 +306,7 @@ static const char *tzc_err_messages[] = {
   "Error! Found a link between %s and %s, which are fully defined timezones."
 };
 
-static const int tzc_err_message_count = -TZC_ERR_LAST_ERROR;
+static const int tzc_Err_message_count = -TZC_ERR_LAST_ERROR;
 
 extern const char *tz_timezone_names[];
 extern const TZ_COUNTRY tz_countries[];
@@ -569,15 +569,15 @@ tzc_check_new_package_validity (const char *input_folder)
   int i;
   char temp_path[PATH_MAX];
 
-  for (i = 0; i < tz_file_count && err_status == NO_ERROR; i++)
+  for (i = 0; i < tz_File_count && err_status == NO_ERROR; i++)
     {
-      tzc_build_filepath (temp_path, sizeof (temp_path), input_folder, tz_files[i].name);
+      tzc_build_filepath (temp_path, sizeof (temp_path), input_folder, tz_Files[i].name);
 
       fp = fopen_ex (temp_path, "rb");
       if (fp == NULL)
 	{
 	  err_status = TZC_ERR_INVALID_PACKAGE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_PACKAGE, tz_files[i].name, input_folder);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_PACKAGE, tz_Files[i].name, input_folder);
 	  goto exit;
 	}
       else
@@ -852,9 +852,9 @@ tzc_load_raw_data (TZ_RAW_DATA * tzd_raw, const char *input_folder)
     }
 
   /* load daylight saving rules, zone aliases and zone offset information */
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type != TZF_RULES)
+      if (tz_Files[i].type != TZF_RULES)
 	{
 	  continue;
 	}
@@ -1040,20 +1040,20 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   FILE *fp = NULL;
   TZ_RAW_COUNTRY *temp_tz_country = NULL;
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_COUNTRIES)
+      if (tz_Files[i].type == TZF_COUNTRIES)
 	{
 	  /* Only one file containing country data is allowed */
 	  assert (file_index == -1);
 	  file_index = i;
 	}
     }
-  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_files, code fixes are
+  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_Files, code fixes are
    * needed */
   assert (file_index != -1);
 
-  tzc_build_filepath (country_filepath, sizeof (country_filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (country_filepath, sizeof (country_filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (country_filepath, "rt");
   if (fp == NULL)
     {
@@ -1066,7 +1066,7 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   tzd_raw->country_count = 0;
   tzd_raw->countries = NULL;
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1142,20 +1142,20 @@ tzc_load_zone_names (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 
   col_code = col_coord = col_tz_name = col_comments = NULL;
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_ZONES)
+      if (tz_Files[i].type == TZF_ZONES)
 	{
 	  /* Only one file containing zone data is allowed */
 	  assert (file_index == -1);
 	  file_index = i;
 	}
     }
-  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_files, code fixes are
+  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_Files, code fixes are
    * needed */
   assert (file_index != -1);
 
-  tzc_build_filepath (zone_filepath, sizeof (zone_filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (zone_filepath, sizeof (zone_filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (zone_filepath, "rt");
   if (fp == NULL)
     {
@@ -1168,7 +1168,7 @@ tzc_load_zone_names (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   tzd_raw->zone_count = 0;
   tzd_raw->zones = NULL;
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1224,7 +1224,7 @@ exit:
  *			   (e.g. europe, asia etc.)
  * Returns: 0 (NO_ERROR) if success, error code or -1 otherwise
  * tzd_raw(out): timezone data structure to hold the loaded information
- * file_index(in): index in tz_files file list for the file to be loaded
+ * file_index(in): index in tz_Files file list for the file to be loaded
  * input_folder(in): folder containing IANA's timezone database
  *
  * NOTE: tz_load_rules() must be called after tz_load_zones(), because it
@@ -1246,10 +1246,10 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index, const char *inp
 
   assert (tzd_raw != NULL);
   assert (input_folder != NULL);
-  assert (file_index > 0 && file_index < tz_file_count);
-  assert (tz_files[file_index].type == TZF_RULES);
+  assert (file_index > 0 && file_index < tz_File_count);
+  assert (tz_Files[file_index].type == TZF_RULES);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
@@ -1259,7 +1259,7 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index, const char *inp
       goto exit;
     }
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1399,9 +1399,9 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   assert (tzd_raw != NULL);
   assert (input_folder != NULL);
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_BACKWARD)
+      if (tz_Files[i].type == TZF_BACKWARD)
 	{
 	  file_index = i;
 	  break;
@@ -1409,7 +1409,7 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
     }
   assert (file_index != -1);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
@@ -1419,7 +1419,7 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       goto exit;
     }
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1503,9 +1503,9 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   leap_year = leap_month_num = leap_day_num = -1;
   leap_time_h = leap_time_m = leap_time_s = -1;
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_LEAP)
+      if (tz_Files[i].type == TZF_LEAP)
 	{
 	  file_index = i;
 	  break;
@@ -1513,7 +1513,7 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
     }
   assert (file_index != -1);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
@@ -1526,7 +1526,7 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   tzd_raw->leap_sec_count = 0;
   tzd_raw->leap_sec = NULL;
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -4784,7 +4784,7 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
   char err_msg[TZC_ERR_MSG_MAX_SIZE];
   char err_msg_temp[TZC_ERR_MSG_MAX_SIZE];
 
-  assert (code <= 0 && -(code) < tzc_err_message_count);
+  assert (code <= 0 && -(code) < tzc_Err_message_count);
   *err_msg = '\0';
   *err_msg_temp = '\0';
 
@@ -4796,7 +4796,7 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
   strcat (err_msg, err_msg_temp);
 
   *err_msg_temp = '\0';
-  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_err_messages[-code], msg1, msg2);
+  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_Err_messages[-code], msg1, msg2);
   strcat (err_msg, err_msg_temp);
   strcat (err_msg, "\n");
 
@@ -5092,16 +5092,16 @@ tzc_load_windows_iana_map (TZ_DATA * tz_data, const char *input_folder)
   assert (tz_data != NULL);
   assert (input_folder != NULL);
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_WINDOWS_IANA_ZONES_MAP)
+      if (tz_Files[i].type == TZF_WINDOWS_IANA_ZONES_MAP)
 	{
 	  break;
 	}
     }
 
-  assert (i < tz_file_count);
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[i].name);
+  assert (i < tz_File_count);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_Files[i].name);
 
   tz_data->windows_iana_map_count = 0;
   tz_data->windows_iana_map = NULL;
@@ -5800,9 +5800,9 @@ tzc_extend (TZ_DATA * tzd)
 		  start_gmt_new = tzd->timezones[zone_id].gmt_off_rule_start;
 		  for (j = start_gmt_old; j < start_gmt_old + old_tzd.timezones[i].gmt_off_rule_count; j++)
 		    {
-		      int tzd_offset_rule_index = start_gmt_new + j - start_gmt_old;
+		      int tzd_offset_rule_idx = start_gmt_new + j - start_gmt_old;
 
-		      if (old_tzd.offset_rules[j].ds_type != tzd->offset_rules[tzd_offset_rule_index].ds_type)
+		      if (old_tzd.offset_rules[j].ds_type != tzd->offset_rules[tzd_offset_rule_idx].ds_type)
 			{
 			  is_compat = false;
 			  break;
@@ -5810,9 +5810,9 @@ tzc_extend (TZ_DATA * tzd)
 
 		      if (old_tzd.offset_rules[j].ds_type != DS_TYPE_FIXED)
 			{
-			  if (strcmp
-			      (old_tzd.ds_rulesets[old_tzd.offset_rules[j].ds_ruleset].ruleset_name,
-			       tzd->ds_rulesets[tzd->offset_rules[tzd_offset_rule_index].ds_ruleset].ruleset_name) != 0)
+			  if (strcmp (old_tzd.ds_rulesets[old_tzd.offset_rules[j].ds_ruleset].ruleset_name,
+				      tzd->ds_rulesets[tzd->offset_rules[tzd_offset_rule_idx].ds_ruleset].ruleset_name)
+			      != 0)
 			    {
 			      is_compat = false;
 			      break;
@@ -5820,13 +5820,13 @@ tzc_extend (TZ_DATA * tzd)
 			}
 		      else
 			{
-			  if (old_tzd.offset_rules[j].ds_ruleset != tzd->offset_rules[tzd_offset_rule_index].ds_ruleset)
+			  if (old_tzd.offset_rules[j].ds_ruleset != tzd->offset_rules[tzd_offset_rule_idx].ds_ruleset)
 			    {
 			      is_compat = false;
 			      break;
 			    }
 			}
-		      if (comp_offset_rules (&old_tzd.offset_rules[j], &tzd->offset_rules[tzd_offset_rule_index]) ==
+		      if (comp_offset_rules (&old_tzd.offset_rules[j], &tzd->offset_rules[tzd_offset_rule_idx]) ==
 			  false)
 			{
 			  is_compat = false;
@@ -6145,6 +6145,7 @@ exit:
 	  int new_start, new_count;
 
 	  tzd_zone_id = tzc_find_timezone_names (tzd, old_names[i].name);
+
 	  /* This should not ever happen */
 	  assert (tzd_zone_id != -1);
 
@@ -6153,14 +6154,13 @@ exit:
 	      tz_Is_backward_compatible_timezone[i] = false;
 	      continue;
 	    }
+
 	  old_start = old_timezones[old_names[i].zone_id].gmt_off_rule_start;
 	  new_start = timezones[tzd_zone_id].gmt_off_rule_start;
 	  old_count = old_timezones[old_names[i].zone_id].gmt_off_rule_count;
 	  new_count = timezones[tzd_zone_id].gmt_off_rule_count;
 
-	  j = old_start;
-	  k = new_start;
-	  while ((j < old_start + old_count) && (k < new_start + new_count))
+	  for (j = old_start, k = new_start; j < old_start + old_count && k < new_start + new_count; j++, k++)
 	    {
 	      TZ_OFFSET_RULE rule1, rule2;
 
@@ -6213,6 +6213,7 @@ exit:
 			}
 		      rule1_index++, rule2_index++;
 		    }
+
 		  if (rule1_index < ds_rule1_start + ds_rule1_count)
 		    {
 		      tz_Is_backward_compatible_timezone[i] = false;
@@ -6224,7 +6225,6 @@ exit:
 		  tz_Is_backward_compatible_timezone[i] = false;
 		  break;
 		}
-	      j++, k++;
 	    }
 	}
 
