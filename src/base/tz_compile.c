@@ -1607,9 +1607,8 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	  leap_is_rolling = true;
 	}
 
-      if (tzc_add_leap_sec
-	  (tzd_raw, leap_year, leap_month_num, leap_day_num, leap_time_h, leap_time_m, leap_time_s, leap_corr_minus,
-	   leap_is_rolling) != NO_ERROR)
+      if (tzc_add_leap_sec (tzd_raw, leap_year, leap_month_num, leap_day_num, leap_time_h, leap_time_m, leap_time_s,
+			    leap_corr_minus, leap_is_rolling) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
 	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "leap second data", "line");
@@ -6136,7 +6135,7 @@ exit:
 
       for (i = 0; i < ZONE_MAX; i++)
 	{
-	  is_backward_compatible[i] = true;
+	  tz_Is_backward_compatible_timezone[i] = true;
 	}
 
       for (i = 0; i < old_tzd.name_count; i++)
@@ -6146,12 +6145,12 @@ exit:
 	  int new_start, new_count;
 
 	  tzd_zone_id = tzc_find_timezone_names (tzd, old_names[i].name);
-	  //This should not ever happen
+	  /* This should not ever happen */
 	  assert (tzd_zone_id != -1);
 
 	  if (old_timezones[old_names[i].zone_id].gmt_off_rule_count != timezones[tzd_zone_id].gmt_off_rule_count)
 	    {
-	      is_backward_compatible[i] = false;
+	      tz_Is_backward_compatible_timezone[i] = false;
 	      continue;
 	    }
 	  old_start = old_timezones[old_names[i].zone_id].gmt_off_rule_start;
@@ -6170,13 +6169,13 @@ exit:
 
 	      if (rule1.ds_type != rule2.ds_type)
 		{
-		  is_backward_compatible[i] = false;
+		  tz_Is_backward_compatible_timezone[i] = false;
 		  break;
 		}
 
 	      if (comp_offset_rules (&rule1, &rule2) == false)
 		{
-		  is_backward_compatible[i] = false;
+		  tz_Is_backward_compatible_timezone[i] = false;
 		  break;
 		}
 
@@ -6192,13 +6191,13 @@ exit:
 		  if (strcmp (old_tzd.ds_rulesets[rule1.ds_ruleset].ruleset_name,
 			      tzd->ds_rulesets[rule2.ds_ruleset].ruleset_name) != 0)
 		    {
-		      is_backward_compatible[i] = false;
+		      tz_Is_backward_compatible_timezone[i] = false;
 		      break;
 		    }
 
 		  if (ds_rule1_count != ds_rule2_count)
 		    {
-		      is_backward_compatible[i] = false;
+		      tz_Is_backward_compatible_timezone[i] = false;
 		      break;
 		    }
 
@@ -6216,13 +6215,13 @@ exit:
 		    }
 		  if (rule1_index < ds_rule1_start + ds_rule1_count)
 		    {
-		      is_backward_compatible[i] = false;
+		      tz_Is_backward_compatible_timezone[i] = false;
 		      break;
 		    }
 		}
 	      else if (rule1.ds_ruleset != rule2.ds_ruleset)
 		{
-		  is_backward_compatible[i] = false;
+		  tz_Is_backward_compatible_timezone[i] = false;
 		  break;
 		}
 	      j++, k++;
@@ -6541,8 +6540,8 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  compare_datetimetz_tz_id = true;
-  compare_timestamptz_tz_id = true;
+  tz_Compare_datetimetz_tz_id = true;
+  tz_Compare_timestamptz_tz_id = true;
 
   /* Read the directory with the databases names */
   error = cfg_read_directory (&dir, false);
@@ -6708,8 +6707,10 @@ exit:
     {
       db_shutdown ();
     }
-  compare_datetimetz_tz_id = false;
-  compare_timestamptz_tz_id = false;
+
+  tz_Compare_datetimetz_tz_id = false;
+  tz_Compare_timestamptz_tz_id = false;
+
   return error;
 #undef TABLE_NAME_MAX_SIZE
 #undef QUERY_BUF_MAX_SIZE

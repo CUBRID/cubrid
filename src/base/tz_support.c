@@ -174,9 +174,11 @@ static TZ_DATA new_timezone_data = { 0, NULL, 0, NULL, NULL, 0, NULL, 0, NULL, 0
 static const int days_of_month[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 static const int days_up_to_month[] = { 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 };
 
-bool is_backward_compatible[ZONE_MAX];
-bool compare_datetimetz_tz_id = false;
-bool compare_timestamptz_tz_id = false;
+#if defined (SA_MODE)
+bool tz_Is_backward_compatible_timezone[ZONE_MAX];
+bool tz_Compare_datetimetz_tz_id = false;
+bool tz_Compare_timestamptz_tz_id = false;
+#endif /* SA_MODE */
 
 #if defined(WINDOWS)
 #define TZ_GET_SYM_ADDR(lib, sym) GetProcAddress(lib, sym)
@@ -5655,7 +5657,8 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 	    *p2 = *p1;
 	    return NO_ERROR;
 	  }
-	if (is_backward_compatible[tz_info.zone.zone_id] == true)
+#if defined (SA_MODE)
+	if (tz_Is_backward_compatible_timezone[tz_info.zone.zone_id] == true)
 	  {
 	    err_status = set_new_zone_id (&tz_info);
 	    if (err_status != NO_ERROR)
@@ -5667,6 +5670,9 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 	    p2->timestamp = p1->timestamp;
 	    goto exit;
 	  }
+#else /* !SA_MODE */
+	/* NON SA_MODE have no interest. */
+#endif /* !SA_MODE */
 
 	err_status = db_timestamp_decode_w_tz_id (&(p1->timestamp), &(p1->tz_id), &date_local, &time_local);
 	if (err_status != NO_ERROR)
@@ -5687,7 +5693,6 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 	err_status = tz_datetime_utc_conv (&src_dt, &tz_info, false, false, &dest_dt);
 	/* If we get an error it means that the abbreviation does no longer exist
 	 * Then we must try to convert without the abbreviation
-	 *
 	 */
 	if (err_status != NO_ERROR)
 	  {
@@ -5701,7 +5706,7 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 
 	dest_dt.time /= 1000;
 	tz_encode_tz_id (&tz_info, &(p2->tz_id));
-	// Encode UTC time for timestamptz
+	/* Encode UTC time for timestamptz */
 	db_timestamp_encode_utc (&dest_dt.date, &dest_dt.time, &timestamp_utc);
 	p2->timestamp = timestamp_utc;
       }
@@ -5722,7 +5727,9 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 	    *p2 = *p1;
 	    return NO_ERROR;
 	  }
-	if (is_backward_compatible[tz_info.zone.zone_id] == true)
+
+#if defined (SA_MODE)
+	if (tz_Is_backward_compatible_timezone[tz_info.zone.zone_id] == true)
 	  {
 	    err_status = set_new_zone_id (&tz_info);
 	    if (err_status != NO_ERROR)
@@ -5734,6 +5741,9 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 	    p2->datetime = p1->datetime;
 	    goto exit;
 	  }
+#else /* !SA_MODE */
+	/* NON SA_MODE have no interest. */
+#endif /* !SA_MODE */
 
 	err_status = tz_utc_datetimetz_to_local (&(p1->datetime), &(p1->tz_id), &datetime_local);
 	if (err_status)
@@ -5785,11 +5795,16 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 	  }
 
 	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
-	if ((tz_info.type == TZ_REGION_OFFSET) || (is_backward_compatible[tz_info.zone.zone_id] == true))
+
+#if defined (SA_MODE)
+	if ((tz_info.type == TZ_REGION_OFFSET) || (tz_Is_backward_compatible_timezone[tz_info.zone.zone_id] == true))
 	  {
 	    *p2 = *p1;
 	    return NO_ERROR;
 	  }
+#else /* !SA_MODE */
+	/* NON SA_MODE have no interest. */
+#endif /* !SA_MODE */
 
 	err_status = db_timestamp_decode_w_tz_id (p1, &ses_tz_id, &date_local, &time_local);
 	if (err_status != NO_ERROR)
@@ -5834,11 +5849,16 @@ conv_tz (const void *p_in, void *p_out, DB_TYPE type)
 	  }
 
 	tz_decode_tz_id (&ses_tz_id, true, &tz_info);
-	if ((tz_info.type == TZ_REGION_OFFSET) || (is_backward_compatible[tz_info.zone.zone_id] == true))
+
+#if defined (SA_MODE)
+	if ((tz_info.type == TZ_REGION_OFFSET) || (tz_Is_backward_compatible_timezone[tz_info.zone.zone_id] == true))
 	  {
 	    *p2 = *p1;
 	    return NO_ERROR;
 	  }
+#else /* !SA_MODE */
+	/* NON SA_MODE have no interest. */
+#endif /* !SA_MODE */
 
 	err_status = tz_utc_datetimetz_to_local (p1, &ses_tz_id, &datetime_local);
 	if (err_status)

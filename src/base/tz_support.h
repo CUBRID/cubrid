@@ -127,9 +127,11 @@ struct tz_region
 };
 
 typedef DB_BIGINT full_date_t;
-extern bool is_backward_compatible[];
-extern bool compare_datetimetz_tz_id;
-extern bool compare_timestamptz_tz_id;
+#if defined (SA_MODE)
+extern bool tz_Is_backward_compatible_timezone[];
+extern bool tz_Compare_datetimetz_tz_id;
+extern bool tz_Compare_timestamptz_tz_id;
+#endif /* SA_MODE */
 
 #ifdef __cplusplus
 extern "C"
