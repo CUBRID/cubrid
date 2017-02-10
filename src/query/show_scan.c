@@ -361,7 +361,7 @@ showstmt_free_array_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * c
       vals = ctx->tuples[i];
       for (j = 0; j < ctx->num_cols; j++)
 	{
-	  db_value_clear (&vals[j]);
+	  pr_clear_value (&vals[j]);
 	}
 
       db_private_free (thread_p, vals);
@@ -440,7 +440,7 @@ showstmt_array_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_v
 
   for (i = 0; i < ctx->num_cols; i++)
     {
-      db_value_clone (&vals[i], out_values[i]);
+      pr_clone_value (&vals[i], out_values[i]);
     }
 
   return S_SUCCESS;

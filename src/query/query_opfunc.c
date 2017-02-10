@@ -7422,7 +7422,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    }
 
 		  pr_clear_value (agg_p->accumulator.value);
-		  error = db_value_clone (&dbval, agg_p->accumulator.value);
+		  error = pr_clone_value (&dbval, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
 		      pr_clear_value (&dbval);
@@ -7829,8 +7829,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 
 	  if (agg_p->flag_agg_optimize == false)
 	    {
-	      list_id_p = agg_p->list_id =
-		qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
+	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
 
 	      if (list_id_p != NULL && er_has_error ())
 		{
@@ -7842,8 +7841,6 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  goto exit;
 		}
 
-	      agg_p->list_id = list_id_p;
-
 	      if (list_id_p == NULL)
 		{
 		  if (!er_has_error ())
@@ -7854,6 +7851,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  error = er_errid ();
 		  goto exit;
 		}
+
+	      agg_p->list_id = list_id_p;
 
 	      if (agg_p->function == PT_COUNT)
 		{
@@ -9108,7 +9107,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARI
       /* TYPE_CONSTANT but not in val_list, check if it is inst_num() (orderby_num() is not allowed) */
       if (regu_p->value.dbvalptr == xasl->instnum_val)
 	{
-	  if (db_value_clone (xasl->instnum_val, result_val_p) != NO_ERROR)
+	  if (pr_clone_value (xasl->instnum_val, result_val_p) != NO_ERROR)
 	    {
 	      return false;
 	    }
@@ -9529,7 +9528,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 		{
 		  goto error2;
 		}
-	      if (db_value_clone (save_values[i], valp->val) != NO_ERROR)
+	      if (pr_clone_value (save_values[i], valp->val) != NO_ERROR)
 		{
 		  goto error2;
 		}
@@ -9539,7 +9538,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	    {
 	      if (save_values[i])
 		{
-		  if (db_value_free (save_values[i]) != NO_ERROR)
+		  if (pr_free_ext_value (save_values[i]) != NO_ERROR)
 		    {
 		      goto error2;
 		    }
@@ -9571,7 +9570,7 @@ error:
 	{
 	  if (save_values[i])
 	    {
-	      db_value_free (save_values[i]);
+	      pr_free_ext_value (save_values[i]);
 	    }
 	}
       db_private_free_and_init (thread_p, save_values);
@@ -10443,7 +10442,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
    * operand should already be cast to the right type (CHAR
    * or NCHAR VARYING)
    */
-  error_status = db_value_clone (operand_value, function_p->value);
+  error_status = pr_clone_value (operand_value, function_p->value);
 
 fast_exit:
   return error_status;
@@ -12801,6 +12800,7 @@ void
 qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE * agg_list, bool copy_vals)
 {
   int i = 0;
+  DB_TYPE db_type;
 
   if (value == NULL)
     {
@@ -12839,13 +12839,28 @@ qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE 
 	      /* set tuple count */
 	      agg_list->accumulator.curr_cnt = value->accumulators[i].curr_cnt;
 
-	      /* shallow copy dbval */
+	      /*
+	       * shallow, fast copy dbval. This may be unsafe. Internally, value->accumulators[i].value and
+	       * agg_list->accumulator.value values keeps the same pointer to a buffer. If a value is cleared, the other
+	       * value refer a invalid memory. Probably a safety way would be to use clone.
+	       */
 	      *(agg_list->accumulator.value) = *(value->accumulators[i].value);
 	      *(agg_list->accumulator.value2) = *(value->accumulators[i].value2);
 
-	      /* mark as container */
+	      /* reset accumulator values. */
 	      value->accumulators[i].value->need_clear = false;
+	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value);
+	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
+		{
+		  value->accumulators[i].value->data.ch.info.compressed_need_clear = false;
+		}
+
 	      value->accumulators[i].value2->need_clear = false;
+	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2);
+	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
+		{
+		  value->accumulators[i].value2->data.ch.info.compressed_need_clear = false;
+		}
 	    }
 	}
 

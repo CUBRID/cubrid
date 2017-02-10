@@ -1971,7 +1971,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * k
 
   if (key_ptr != key)
     {
-      db_value_clear (key_ptr);
+      pr_clear_value (key_ptr);
     }
 
   return ret;
@@ -1985,7 +1985,7 @@ exit_on_error:
 
   if (key_ptr != key)
     {
-      db_value_clear (key_ptr);
+      pr_clear_value (key_ptr);
     }
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -16043,14 +16043,14 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
   DB_MAKE_INT (key_info[BTREE_KEY_INFO_SLOTID], bts->slot_id);
 
   /* Get key */
-  db_value_clear (key_info[BTREE_KEY_INFO_KEY]);
-  db_value_clone (&bts->cur_key, key_info[BTREE_KEY_INFO_KEY]);
+  pr_clear_value (key_info[BTREE_KEY_INFO_KEY]);
+  pr_clone_value (&bts->cur_key, key_info[BTREE_KEY_INFO_KEY]);
 
   /* Get overflow key and overflow oids */
-  db_value_clear (key_info[BTREE_KEY_INFO_OVERFLOW_KEY]);
+  pr_clear_value (key_info[BTREE_KEY_INFO_OVERFLOW_KEY]);
   DB_MAKE_STRING (key_info[BTREE_KEY_INFO_OVERFLOW_KEY],
 		  btree_leaf_is_flaged (&bts->key_record, BTREE_LEAF_RECORD_OVERFLOW_KEY) ? "true" : "false");
-  db_value_clear (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS]);
+  pr_clear_value (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS]);
   DB_MAKE_STRING (key_info[BTREE_KEY_INFO_OVERFLOW_OIDS],
 		  btree_leaf_is_flaged (&bts->key_record, BTREE_LEAF_RECORD_OVERFLOW_OIDS) ? "true" : "false");
 
@@ -18699,8 +18699,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	}
 
       /* overwrite the last item with the new key and OIDs */
-      db_value_clear (&(last_item->index_value));
-      db_value_clone (&(bts->cur_key), &(last_item->index_value));
+      pr_clear_value (&(last_item->index_value));
+      pr_clone_value (&(bts->cur_key), &(last_item->index_value));
       COPY_OID (&(last_item->inst_oid), p_new_oid);
     }
   else
@@ -18717,7 +18717,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	}
 
       multi_range_opt->top_n_items[multi_range_opt->cnt] = curr_item;
-      db_value_clone (&(bts->cur_key), &(curr_item->index_value));
+      pr_clone_value (&(bts->cur_key), &(curr_item->index_value));
 
       COPY_OID (&(curr_item->inst_oid), p_new_oid);
 
@@ -19857,6 +19857,10 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   pr_clone_value (&new_key, target_key);
   pr_clear_value (&new_key);
 
+  for (i = 0; i < prefix_len; i++)
+    {
+      pr_clear_value (&new_key_dbvals[i]);	/* it might be alloced/copied */
+    }
   db_private_free (thread_p, new_key_dbvals);
 
   /* all ok */
@@ -19962,7 +19966,7 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
   DB_MAKE_INT (node_info[BTREE_NODE_INFO_PAGEID], btns->crt_vpid.pageid);
 
   /* Get node type */
-  db_value_clear (node_info[BTREE_NODE_INFO_NODE_TYPE]);
+  pr_clear_value (node_info[BTREE_NODE_INFO_NODE_TYPE]);
   DB_MAKE_STRING (node_info[BTREE_NODE_INFO_NODE_TYPE], (node_type == BTREE_NON_LEAF_NODE) ? "non-leaf" : "leaf");
 
   /* Get key count */
@@ -19980,8 +19984,8 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 	{
 	  goto error;
 	}
-      db_value_clear (node_info[BTREE_NODE_INFO_FIRST_KEY]);
-      db_value_clone (&key_value, node_info[BTREE_NODE_INFO_FIRST_KEY]);
+      pr_clear_value (node_info[BTREE_NODE_INFO_FIRST_KEY]);
+      *node_info[BTREE_NODE_INFO_FIRST_KEY] = key_value;	/* just copy. it will be cleared later */
 
       /* Get last key */
       if (spage_get_record (btns->crt_page, key_cnt, &rec, PEEK) != S_SUCCESS)
@@ -19993,16 +19997,16 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 	{
 	  goto error;
 	}
-      db_value_clear (node_info[BTREE_NODE_INFO_LAST_KEY]);
-      db_value_clone (&key_value, node_info[BTREE_NODE_INFO_LAST_KEY]);
+      pr_clear_value (node_info[BTREE_NODE_INFO_LAST_KEY]);
+      *node_info[BTREE_NODE_INFO_LAST_KEY] = key_value;	/* just copy. it will be cleared later */
     }
   else
     {
       /* Empty node */
-      db_value_clear (node_info[BTREE_NODE_INFO_FIRST_KEY]);
+      pr_clear_value (node_info[BTREE_NODE_INFO_FIRST_KEY]);
       DB_MAKE_NULL (node_info[BTREE_NODE_INFO_FIRST_KEY]);
 
-      db_value_clear (node_info[BTREE_NODE_INFO_LAST_KEY]);
+      pr_clear_value (node_info[BTREE_NODE_INFO_LAST_KEY]);
       DB_MAKE_NULL (node_info[BTREE_NODE_INFO_LAST_KEY]);
     }
 
@@ -21681,7 +21685,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 		   * fence for compare */
 		  /* For now, do nothing */
 		}
-	      db_value_clear (&rec_key_value);
+	      pr_clear_value (&rec_key_value);
 	    }
 	  else
 	    {

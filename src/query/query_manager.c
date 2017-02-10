@@ -1518,7 +1518,7 @@ end:
     {
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
-	  db_value_clear (dbval);
+	  pr_clear_value (dbval);
 	}
       db_private_free_and_init (thread_p, dbvals_p);
     }
@@ -1795,7 +1795,7 @@ end:
     {
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
-	  db_value_clear (dbval);
+	  pr_clear_value (dbval);
 	}
       db_private_free_and_init (thread_p, dbvals_p);
     }
