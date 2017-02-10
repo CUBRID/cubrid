@@ -1020,7 +1020,7 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 
 	  if (typ != DB_TYPE_OID)
 	    {
-	      db_value_clear (dbval);
+	      pr_clear_value (dbval);
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
@@ -1031,7 +1031,7 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 	    {
 	    case EH_KEY_FOUND:
 	      /* Make it null because it was already processed */
-	      db_value_clear (orig_dbval);
+	      pr_clear_value (orig_dbval);
 	      rem_cnt++;
 	      break;
 	    case EH_KEY_NOTFOUND:
@@ -1812,7 +1812,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 		{
 		  for (i = 0; i < HEAP_RECORD_INFO_COUNT; i++)
 		    {
-		      db_value_clear (hsidp->cache_recordinfo[i]);
+		      pr_clear_value (hsidp->cache_recordinfo[i]);
 		    }
 		}
 	      hsidp->caches_inited = false;
@@ -1825,7 +1825,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	      int i;
 	      for (i = 0; i < HEAP_PAGE_INFO_COUNT; i++)
 		{
-		  db_value_clear (hpsidp->cache_page_info[i]);
+		  pr_clear_value (hpsidp->cache_page_info[i]);
 		}
 	    }
 	  break;
@@ -1868,7 +1868,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	      int i;
 	      for (i = 0; i < BTREE_KEY_INFO_COUNT; i++)
 		{
-		  db_value_clear (isidp->key_info_values[i]);
+		  pr_clear_value (isidp->key_info_values[i]);
 		}
 	      isidp->caches_inited = false;
 	    }
@@ -1881,7 +1881,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	      int i;
 	      for (i = 0; i < BTREE_NODE_INFO_COUNT; i++)
 		{
-		  db_value_clear (insidp->node_info_values[i]);
+		  pr_clear_value (insidp->node_info_values[i]);
 		}
 	      insidp->caches_inited = false;
 	    }
@@ -1940,6 +1940,13 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	case TARGET_LIST:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.list_node.list_regu_list_pred, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.list_node.list_regu_list_rest, final);
+
+	  if (p->s.list_node.xasl_node && p->s.list_node.xasl_node->status != XASL_CLEARED
+	      && XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	    {
+	      XASL_SET_FLAG (p->s.list_node.xasl_node, XASL_DECACHE_CLONE);
+	      pg_cnt += qexec_clear_xasl (thread_p, p->s.list_node.xasl_node, final);
+	    }
 	  break;
 	case TARGET_SHOWSTMT:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.showstmt_node.arg_list, final);
@@ -7472,7 +7479,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	    {
 	      for (i = 0; i < HEAP_RECORD_INFO_COUNT; i++)
 		{
-		  db_value_clear (hsidp->cache_recordinfo[i]);
+		  pr_clear_value (hsidp->cache_recordinfo[i]);
 		}
 	    }
 	  hsidp->caches_inited = false;
@@ -7498,7 +7505,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	{
 	  for (i = 0; i < HEAP_PAGE_INFO_COUNT; i++)
 	    {
-	      db_value_clear (hpsidp->cache_page_info[i]);
+	      pr_clear_value (hpsidp->cache_page_info[i]);
 	    }
 	}
       error =
@@ -18526,10 +18533,10 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 		  all_cols_equal = false;
 		}
 
-	      db_value_clear (&list_dbvals[i]);
+	      pr_clear_value (&list_dbvals[i]);
 	    }
 
-	  db_value_clone (&val, &list_dbvals[i]);
+	  pr_clone_value (&val, &list_dbvals[i]);
 
 	  if (DB_NEED_CLEAR (&val))
 	    {
@@ -21783,7 +21790,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       db_make_string (&braket, ")");
       db_make_string (&enum_, "ENUM(");
 
-      db_value_clone (&enum_, penum_result);
+      pr_clone_value (&enum_, penum_result);
       for (i = 0; i < enum_elements_count; i++)
 	{
 	  penum_temp = penum_arg1;
@@ -21792,10 +21799,10 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	  if ((db_string_concatenate (penum_arg1, &quote, penum_result, &data_stat) != NO_ERROR)
 	      || (data_stat != DATA_STATUS_OK))
 	    {
-	      db_value_clear (penum_arg1);
+	      pr_clear_value (penum_arg1);
 	      goto exit_on_error;
 	    }
-	  db_value_clear (penum_arg1);
+	  pr_clear_value (penum_arg1);
 
 	  penum_temp = penum_arg1;
 	  penum_arg1 = penum_result;
@@ -21805,10 +21812,10 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	  if ((db_string_concatenate (penum_arg1, penum_arg2, penum_result, &data_stat) != NO_ERROR)
 	      || (data_stat != DATA_STATUS_OK))
 	    {
-	      db_value_clear (penum_arg1);
+	      pr_clear_value (penum_arg1);
 	      goto exit_on_error;
 	    }
-	  db_value_clear (penum_arg1);
+	  pr_clear_value (penum_arg1);
 
 	  penum_temp = penum_arg1;
 	  penum_arg1 = penum_result;
@@ -21818,7 +21825,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	      if ((db_string_concatenate (penum_arg1, &quote_comma_space, penum_result, &data_stat) != NO_ERROR)
 		  || (data_stat != DATA_STATUS_OK))
 		{
-		  db_value_clear (penum_arg1);
+		  pr_clear_value (penum_arg1);
 		  goto exit_on_error;
 		}
 	    }
@@ -21827,11 +21834,11 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	      if ((db_string_concatenate (penum_arg1, &quote, penum_result, &data_stat) != NO_ERROR)
 		  || (data_stat != DATA_STATUS_OK))
 		{
-		  db_value_clear (penum_arg1);
+		  pr_clear_value (penum_arg1);
 		  goto exit_on_error;
 		}
 	    }
-	  db_value_clear (penum_arg1);
+	  pr_clear_value (penum_arg1);
 	}
 
       penum_temp = penum_arg1;
@@ -21842,9 +21849,9 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	{
 	  goto exit_on_error;
 	}
-      db_value_clear (penum_arg1);
-      db_value_clone (penum_result, result);
-      db_value_clear (penum_result);
+      pr_clear_value (penum_arg1);
+      pr_clone_value (penum_result, result);
+      pr_clear_value (penum_result);
 
       return NO_ERROR;
     }
@@ -21903,7 +21910,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       db_make_string (&comma, ",");
       db_make_string (&set_of, set_of_string);
 
-      db_value_clone (&set_of, pset_result);
+      pr_clone_value (&set_of, pset_result);
       for (setdomain = domain->setdomain, i = 0; setdomain; setdomain = setdomain->next, i++)
 	{
 	  pset_temp = pset_arg1;
@@ -21914,10 +21921,10 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	      || (data_stat != DATA_STATUS_OK))
 	    {
 	      free_and_init (ordered_names);
-	      db_value_clear (pset_arg1);
+	      pr_clear_value (pset_arg1);
 	      goto exit_on_error;
 	    }
-	  db_value_clear (pset_arg1);
+	  pr_clear_value (pset_arg1);
 
 	  if (setdomain->next != NULL)
 	    {
@@ -21928,15 +21935,15 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 		  || (data_stat != DATA_STATUS_OK))
 		{
 		  free_and_init (ordered_names);
-		  db_value_clear (pset_arg1);
+		  pr_clear_value (pset_arg1);
 		  goto exit_on_error;
 		}
-	      db_value_clear (pset_arg1);
+	      pr_clear_value (pset_arg1);
 	    }
 	}
 
-      db_value_clone (pset_result, result);
-      db_value_clear (pset_result);
+      pr_clone_value (pset_result, result);
+      pr_clear_value (pset_result);
       free_and_init (ordered_names);
       return NO_ERROR;
     }
@@ -21962,14 +21969,14 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       db_make_string (&bracket2, ")");
       db_make_string (&db_name, name);
 
-      db_value_clone (&db_name, pprec_scale_arg1);
+      pr_clone_value (&db_name, pprec_scale_arg1);
       if ((db_string_concatenate (pprec_scale_arg1, &bracket1, pprec_scale_result, &data_stat) != NO_ERROR)
 	  || (data_stat != DATA_STATUS_OK))
 	{
-	  db_value_clear (pprec_scale_arg1);
+	  pr_clear_value (pprec_scale_arg1);
 	  goto exit_on_error;
 	}
-      db_value_clear (pprec_scale_arg1);
+      pr_clear_value (pprec_scale_arg1);
 
       pprec_scale_temp = pprec_scale_arg1;
       pprec_scale_arg1 = pprec_scale_result;
@@ -21977,11 +21984,11 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       if ((db_string_concatenate (pprec_scale_arg1, &db_str_precision, pprec_scale_result, &data_stat) != NO_ERROR)
 	  || (data_stat != DATA_STATUS_OK))
 	{
-	  db_value_clear (pprec_scale_arg1);
+	  pr_clear_value (pprec_scale_arg1);
 	  goto exit_on_error;
 	}
-      db_value_clear (&db_str_precision);
-      db_value_clear (pprec_scale_arg1);
+      pr_clear_value (&db_str_precision);
+      pr_clear_value (pprec_scale_arg1);
 
       if (scale >= 0)
 	{
@@ -21989,7 +21996,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	  DB_MAKE_NULL (&db_str_scale);
 	  if (tp_value_cast (&db_int_scale, &db_str_scale, &tp_String_domain, false) != DOMAIN_COMPATIBLE)
 	    {
-	      db_value_clear (pprec_scale_result);
+	      pr_clear_value (pprec_scale_result);
 	      goto exit_on_error;
 	    }
 
@@ -21999,10 +22006,10 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	  if ((db_string_concatenate (pprec_scale_arg1, &comma, pprec_scale_result, &data_stat) != NO_ERROR)
 	      || (data_stat != DATA_STATUS_OK))
 	    {
-	      db_value_clear (pprec_scale_arg1);
+	      pr_clear_value (pprec_scale_arg1);
 	      goto exit_on_error;
 	    }
-	  db_value_clear (pprec_scale_arg1);
+	  pr_clear_value (pprec_scale_arg1);
 
 	  pprec_scale_temp = pprec_scale_arg1;
 	  pprec_scale_arg1 = pprec_scale_result;
@@ -22010,11 +22017,11 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	  if ((db_string_concatenate (pprec_scale_arg1, &db_str_scale, pprec_scale_result, &data_stat) != NO_ERROR)
 	      || (data_stat != DATA_STATUS_OK))
 	    {
-	      db_value_clear (pprec_scale_arg1);
+	      pr_clear_value (pprec_scale_arg1);
 	      goto exit_on_error;
 	    }
-	  db_value_clear (&db_str_scale);
-	  db_value_clear (pprec_scale_arg1);
+	  pr_clear_value (&db_str_scale);
+	  pr_clear_value (pprec_scale_arg1);
 	}
 
       pprec_scale_temp = pprec_scale_arg1;
@@ -22023,13 +22030,13 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       if ((db_string_concatenate (pprec_scale_arg1, &bracket2, pprec_scale_result, &data_stat) != NO_ERROR)
 	  || (data_stat != DATA_STATUS_OK))
 	{
-	  db_value_clear (pprec_scale_arg1);
+	  pr_clear_value (pprec_scale_arg1);
 	  goto exit_on_error;
 	}
-      db_value_clear (pprec_scale_arg1);
+      pr_clear_value (pprec_scale_arg1);
 
-      db_value_clone (pprec_scale_result, result);
-      db_value_clear (pprec_scale_result);
+      pr_clone_value (pprec_scale_result, result);
+      pr_clear_value (pprec_scale_result);
 
       return NO_ERROR;
     }
@@ -22037,7 +22044,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
   {
     DB_VALUE db_name;
     db_make_string (&db_name, name);
-    db_value_clone (&db_name, result);
+    pr_clone_value (&db_name, result);
   }
 
   return NO_ERROR;
@@ -22403,10 +22410,10 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  for (j = 1; j < size_values; j++)
 	    {
-	      db_value_clear (out_values[j]);
+	      pr_clear_value (out_values[j]);
 	    }
 	}
-      db_value_clear (out_values[0]);
+      pr_clear_value (out_values[0]);
     }
 
   free_and_init (out_values);
@@ -22441,7 +22448,7 @@ exit_on_error:
     {
       for (i = 0; i < size_values; i++)
 	{
-	  db_value_clear (out_values[i]);
+	  pr_clear_value (out_values[i]);
 	}
 
       free_and_init (out_values);

@@ -11245,7 +11245,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	{
 	  DB_VALUE *save;
 	  save = db_value_copy (&value->dbvalue);
-	  db_value_clear (&value->dbvalue);
+	  pr_clear_value (&value->dbvalue);
 
 	  /* read and delete old value */
 	  ret = heap_attrvalue_read (recdes, value, attr_info);
@@ -11264,7 +11264,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 		{
 		  ret = db_elo_delete (elo);
 		}
-	      db_value_clear (&value->dbvalue);
+	      pr_clear_value (&value->dbvalue);
 	      ret = (ret >= 0 ? NO_ERROR : ret);
 	      if (ret != NO_ERROR)
 		{
@@ -11272,8 +11272,8 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 		}
 	    }
 	  value->state = HEAP_WRITTEN_ATTRVALUE;
-	  db_value_clone (save, &value->dbvalue);
-	  db_value_free (save);
+	  pr_clone_value (save, &value->dbvalue);
+	  pr_free_ext_value (save);
 	}
     }
 
@@ -11676,7 +11676,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		      error = (error >= 0 ? NO_ERROR : error);
 		      if (error == NO_ERROR)
 			{
-			  db_value_clear (dbvalue);
+			  pr_clear_value (dbvalue);
 			  db_make_elo (dbvalue, pr_type->id, &dest_elo);
 			  dbvalue->need_clear = true;
 			}
