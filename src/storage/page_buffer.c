@@ -11122,15 +11122,19 @@ exit:
 	    {
 	      /* oops... no longer in buffer?? */
 	      assert (false);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	      continue;
 	    }
 	  if (bufptr->avoid_dealloc_cnt == 0)
 	    {
 	      /* oops... deallocate not prevented */
 	      assert (false);
-	      continue;
 	    }
-	  ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	  else
+	    {
+	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	    }
+	  pthread_mutex_unlock (&bufptr->BCB_mutex);
 	}
     }
 
