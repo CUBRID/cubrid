@@ -2503,6 +2503,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 #else	/* !SERVER_MODE */		   /* SA_MODE */
   VACUUM_DATA_ENTRY vacuum_data_entry;
   bool save_check_interrupt;
+  bool dummy_continue_check_interrupt;
 #endif /* SA_MODE */
 
   VACUUM_DATA_PAGE *data_page = NULL;
@@ -2798,6 +2799,12 @@ restart:
       vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
       vacuum_data_entry = *entry;
       error_code = vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
+      if (error_code == ER_INTERRUPTED || logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
+	{
+	  /* wrap up all executed jobs and stop */
+	  vacuum_data_mark_finished (thread_p);
+	  return;
+	}
       assert (error_code == NO_ERROR);
 
       er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum finished block %lld.\n",
@@ -2995,6 +3002,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
   PERF_UTIME_TRACKER perf_tracker;
   PERF_UTIME_TRACKER job_time_tracker;
+#if defined (SA_MODE)
+  bool dummy_continue_check = false;
+#endif /* SA_MODE */
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -3053,6 +3063,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
       if (thread_p->shutdown)
 	{
 	  /* Server shutdown was requested, stop vacuuming. */
+	  goto end;
+	}
+#else	/* !SERVER_MODE */		   /* SA_MODE */
+      if (thread_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &dummy_continue_check))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error_code = ER_INTERRUPTED;
 	  goto end;
 	}
 #endif /* SERVER_MODE */
@@ -3650,8 +3667,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
-	VACUUM_ER_LOG_ERROR;
-      assert (false);
+	er_errid () == ER_INTERRUPTED ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
+      assert (er_errid () == ER_INTERRUPTED);
 #endif /* !SERVER_MODE */
 
       /* Vacuum will have to be re-run */
