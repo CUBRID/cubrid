@@ -2351,7 +2351,8 @@ thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
 	  thread_p = thread_get_thread_entry_info ();
 	}
 
-      assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+      /* safe guard: vacuum workers should not check for interrupt */
+      assert (flag == false || !VACUUM_IS_THREAD_VACUUM (thread_p));
       old_val = thread_p->check_interrupt;
       thread_p->check_interrupt = flag;
     }
