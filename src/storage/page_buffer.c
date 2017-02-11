@@ -702,6 +702,9 @@ struct pgbuf_page_monitor
 #if defined (SERVER_MODE)
   PGBUF_MONITOR_BCB_MUTEX *bcb_locks;	/* track bcb mutex usage. */
 #endif				/* SERVER_MODE */
+
+  bool victim_rich;             /* true if page buffer pool has many victims. pgbuf_adjust_quotas will update this
+                                 * value. */
 };
 
 typedef struct pgbuf_page_quota PGBUF_PAGE_QUOTA;
@@ -8343,55 +8346,80 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
 
-  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+  /* how this works:
+   * we need to find a victim in one of all lru lists. we have two lru list types: private and shared. private are pages
+   * fixed by a single transaction, while shared are pages fix by multiple transactions. we usually prioritize the
+   * private lists.
+   * the order we look for victimize is this:
+   * 1. first search in own private list if it is not under quota.
+   * 2. look in another private list.
+   * 3. look in a shared list.
+   *
+   * normally, if the system does not lack victims, one of the three searches should provide a victim candidate.
+   * however, we can be unlucky and not find a candidate with the three steps. this is especially possible when we have
+   * only one active transaction, with long transactions, and many vacuum workers trying to catch up. all candidates
+   * are found in a single private list, which means that many vacuum workers may not find the lists in lru queue.
+   * for this case, we loop the three searches, as long as pgbuf_Pool.monitor.victim_rich is true.
+   *
+   * note: if quota is disabled (although this is not recommended), only shared lists are searched.
+   */
+  do
     {
-      /* first try my own private list */
-      int private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
-      PGBUF_LRU_LIST *lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
+      /* loop the three searches. */
 
-      /* don't victimize from own list if it is under quota */
-      if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
-	  || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) && lru_list->count_vict_cand > 0))
-	{
-	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
-	  if (victim != NULL)
+      /* 1. search own private list */
+      if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+        {
+          /* first try my own private list */
+          int private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+          PGBUF_LRU_LIST *lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
+
+          /* don't victimize from own list if it is under quota */
+          if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
+	      || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) && lru_list->count_vict_cand > 0))
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
+	      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
+	      if (victim != NULL)
+	        {
+	          perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
+	          return victim;
+	        }
+	      /* failed */
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
+
+	      /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim */
+	      if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	        {
+	          return NULL;
+	        }
+	      else
+	        {
+	          /* vacuum workers usually have empty private lists. let them search */
+	        }
+	    }
+        }
+
+      /* 2. search other private list */
+      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
+        {
+          victim = pgbuf_lfcq_get_victim_from_lru (thread_p, true);
+          if (victim != NULL)
+	    {
 	      return victim;
 	    }
-	  /* failed */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
+        }
 
-	  /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim */
-	  if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
-	    {
-	      return NULL;
-	    }
-	  else
-	    {
-	      /* vacuum workers usually have empty private lists. let them search */
-	    }
-	}
-    }
-
-  if (PGBUF_PAGE_QUOTA_IS_ENABLED)
-    {
-      /* try another private list */
-      victim = pgbuf_lfcq_get_victim_from_lru (thread_p, true);
+      /* 3. search a shared list. */
+      victim = pgbuf_lfcq_get_victim_from_lru (thread_p, false);
       if (victim != NULL)
-	{
-	  return victim;
-	}
-    }
+        {
+          return victim;
+        }
 
-  /* try a shared lru */
-  victim = pgbuf_lfcq_get_victim_from_lru (thread_p, false);
-  if (victim != NULL)
-    {
-      return victim;
+      /* no victim found... */
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
     }
-
-  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
+  while (pgbuf_Pool.monitor.victim_rich);
 
   assert (victim == NULL);
   return victim;
@@ -13141,6 +13169,9 @@ pgbuf_initialize_page_monitor (void)
     }
 #endif /* SERVER_MDOE */
 
+  /* no bcb's, no victims */
+  monitor->victim_rich = false;
+
 exit:
   return error_status;
 }
@@ -13268,6 +13299,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
   float new_lru_ratio;
   const INT64 onesec_usec = 1000000LL;
   const INT64 tensec_usec = 10 * onesec_usec;
+  int total_victims = 0;
 
   PGBUF_LRU_LIST *lru_list;
 
@@ -13349,6 +13381,9 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	  /* collect to total shared hits */
 	  lru_shared_hits += lru_hits;
 	}
+
+      lru_list = PGBUF_GET_LRU_LIST (i);
+      total_victims += lru_list->count_vict_cand;
     }
 
   /* compute private ratio */
@@ -13469,6 +13504,10 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
+
+  /* is pool victim rich? we consider this true if the victim count is more than 10% of page buffer. I think we could
+   * lower the bar a little bit */
+  pgbuf_Pool.monitor.victim_rich = total_victims >= (int) (0.1 * pgbuf_Pool.num_buffers);
 
   quota->is_adjusting = 0;
 }
@@ -15141,6 +15180,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
   PGBUF_LRU_LIST *lru_list;
   PGBUF_BCB *victim = NULL;
   int flags = 0;
+  bool added_back = false;
 
   if (lfcq == NULL)
     {
@@ -15160,6 +15200,16 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
   assert (from_private == PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx));
 
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
+
+  if (from_private && PGBUF_LRU_LIST_COUNT (lru_list) > 2 * lru_list->quota)
+    {
+      /* add lru list back to queue early. others should be able to find in queue. */
+      if (lf_circular_queue_produce (lfcq, &lru_idx))
+	{
+	  perfmon_inc_stat (thread_p, from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_READD : PSTAT_PB_LFCQ_LRU_SHR_GET_READD);
+          added_back = true;
+        }
+    }
 
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
   if (victim != NULL)
@@ -15183,6 +15233,12 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
 	}
+    }
+
+  if (added_back)
+    {
+      /* already added back to queue */
+      return victim;
     }
 
   /* we add a lru list back to queue if all conditions are met:
