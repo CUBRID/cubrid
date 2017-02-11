@@ -721,6 +721,57 @@ typedef enum
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
+/* database space info */
+typedef struct spacedb_all SPACEDB_ALL;
+struct spacedb_all
+{
+  int nvols_perm_perm;
+  int nsect_used_perm_perm;
+  int nsect_free_perm_perm;
+
+  int nvols_perm_temp;
+  int nsect_used_perm_temp;
+  int nsect_free_perm_temp;
+
+  int nvols_temp_temp;
+  int nsect_used_temp_temp;
+  int nsect_free_temp_temp;
+};
+
+typedef struct spacedb_onevol SPACEDB_ONEVOL;
+struct spacedb_onevol
+{
+  VOLID volid;
+  DB_VOLTYPE type;
+  DB_VOLPURPOSE purpose;
+  int nsect_used;
+  int nsect_free;
+};
+
+typedef struct spacedb_files SPACEDB_FILES;
+struct spacedb_files
+{
+  int nfile_index;
+  int npage_index_ftab;
+  int npage_index_alloc;
+  int npage_index_reserved;
+
+  int nfile_heap;
+  int npage_heap_ftab;
+  int npage_heap_alloc;
+  int npage_heap_reserved;
+
+  int nfile_system;
+  int npage_system_ftab;
+  int npage_system_alloc;
+  int npage_system_reserved;
+
+  int nfile_temp;
+  int npage_temp_ftab;
+  int npage_temp_alloc;
+  int npage_temp_reserved;
+};
+
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);
 extern INT16 db_log_page_size (void);

@@ -2441,6 +2441,12 @@ disk_unlock_extend (void)
 #endif /* !NDEBUG */
 }
 
+/*
+ * disk_cache_lock_reserve_for_purpose () - lock reservations for given purpose
+ *
+ * return       : void
+ * purpose (in) : permanent/temporary purpose
+ */
 STATIC_INLINE void
 disk_cache_lock_reserve_for_purpose (DB_VOLPURPOSE purpose)
 {
@@ -2454,6 +2460,12 @@ disk_cache_lock_reserve_for_purpose (DB_VOLPURPOSE purpose)
     }
 }
 
+/*
+ * disk_cache_unlock_reserve_for_purpose () - unlock reservations for given purpose
+ *
+ * return       : void
+ * purpose (in) : permanent/temporary purpose
+ */
 STATIC_INLINE void
 disk_cache_unlock_reserve_for_purpose (DB_VOLPURPOSE purpose)
 {
@@ -2467,6 +2479,12 @@ disk_cache_unlock_reserve_for_purpose (DB_VOLPURPOSE purpose)
     }
 }
 
+/*
+ * disk_cache_lock_reserve () - lock reservations (permanent or temporary)
+ *
+ * return           : void
+ * extend_info (in) : extend info (permanent or temporary)
+ */
 STATIC_INLINE void
 disk_cache_lock_reserve (DISK_EXTEND_INFO * extend_info)
 {
@@ -2487,6 +2505,12 @@ disk_cache_lock_reserve (DISK_EXTEND_INFO * extend_info)
 #endif /* !NDEBUG */
 }
 
+/*
+ * disk_cache_unlock_reserve () - lock reservations (permanent or temporary)
+ *
+ * return           : void
+ * extend_info (in) : extend info (permanent or temporary)
+ */
 STATIC_INLINE void
 disk_cache_unlock_reserve (DISK_EXTEND_INFO * extend_info)
 {
@@ -5412,6 +5436,141 @@ disk_get_voltype (VOLID volid)
   assert (disk_is_valid_volid (volid));
 
   return volid < disk_Cache->nvols_perm ? DB_PERMANENT_VOLTYPE : DB_TEMPORARY_VOLTYPE;
+}
+
+/*
+ * disk_spacedb () - get space info from disk manager
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * spaceall (out)  : output info on all volumes
+ * spacevols (out) : output info for each volume if not null
+ */
+int
+disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols)
+{
+  int iter_vol;
+  int iter_spacevols;
+  int nvols_perm_temp;
+  int nvols_total;
+  bool is_extend_locked = false;
+
+  int error_code = NO_ERROR;
+
+  assert (spaceall != NULL);
+
+  spaceall->nvols_perm_temp = 0;
+
+  /* block extensions for the short period we'll be reading volume info. */
+  disk_lock_extend ();
+  is_extend_locked = true;
+
+  /* get number of volumes. we know the total number of permanent type volumes, we'll have to count how many of them
+   * have temporary purpose */
+  for (iter_vol = 0; iter_vol < disk_Cache->nvols_perm; iter_vol++)
+    {
+      if (disk_Cache->vols[iter_vol].purpose == DB_TEMPORARY_DATA_PURPOSE)
+	{
+	  ++spaceall->nvols_perm_temp;
+	}
+    }
+
+  spaceall->nvols_perm_perm = disk_Cache->nvols_perm - spaceall->nvols_perm_temp;
+  spaceall->nvols_temp_temp = disk_Cache->nvols_temp;
+  nvols_total = disk_Cache->nvols_perm + disk_Cache->nvols_temp;
+
+  spaceall->nsect_used_perm_perm =
+    disk_Cache->perm_purpose_info.extend_info.nsect_total - disk_Cache->perm_purpose_info.extend_info.nsect_free;
+  spaceall->nsect_free_perm_perm = disk_Cache->perm_purpose_info.extend_info.nsect_free;
+
+  spaceall->nsect_used_perm_temp =
+    disk_Cache->temp_purpose_info.nsect_perm_total - disk_Cache->temp_purpose_info.nsect_perm_free;
+  spaceall->nsect_free_perm_perm = disk_Cache->temp_purpose_info.nsect_perm_free;
+
+  spaceall->nsect_used_temp_temp =
+    disk_Cache->temp_purpose_info.extend_info.nsect_total - disk_Cache->temp_purpose_info.extend_info.nsect_free;
+  spaceall->nsect_free_temp_temp = disk_Cache->temp_purpose_info.extend_info.nsect_free;
+
+  if (spacevols != NULL)
+    {
+      /* get info on each volume */
+      iter_spacevols = 0;
+
+      *spacevols =
+	(SPACEDB_ONEVOL *) db_private_alloc (thread_p,
+					     (disk_Cache->nvols_perm +
+					      disk_Cache->nvols_temp) * sizeof (SPACEDB_ONEVOL));
+      if (*spacevols == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (disk_Cache->nvols_perm + disk_Cache->nvols_temp) * sizeof (SPACEDB_ONEVOL));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+
+      for (iter_vol = 0; iter_vol < disk_Cache->nvols_perm; iter_vol++)
+	{
+	  spacevols[iter_spacevols]->volid = iter_vol;
+	  spacevols[iter_spacevols]->type = DB_PERMANENT_VOLTYPE;
+	  spacevols[iter_spacevols]->purpose = disk_Cache->vols->purpose;
+	  spacevols[iter_spacevols]->nsect_free = disk_Cache->vols->nsect_free;
+	}
+      for (iter_vol = LOG_MAX_DBVOLID - disk_Cache->nvols_temp + 1; iter_vol <= LOG_MAX_DBVOLID; iter_vol++)
+	{
+	  spacevols[iter_spacevols]->volid = iter_vol;
+	  spacevols[iter_spacevols]->type = DB_TEMPORARY_VOLTYPE;
+	  spacevols[iter_spacevols]->purpose = disk_Cache->vols->purpose;
+	  spacevols[iter_spacevols]->nsect_free = disk_Cache->vols->nsect_free;
+	}
+    }
+  assert (iter_spacevols == nvols_total);
+
+  /* now unlock the extensions */
+  disk_unlock_extend ();
+  is_extend_locked = false;
+
+  if (spacevols != NULL)
+    {
+      PAGE_PTR page_volheader = NULL;
+      DISK_VOLUME_HEADER *volheader = NULL;
+
+      /* we still have to read the total number of sectors for each volume, but they are not cached. since this is slow
+       * (we need to fix each volume header page) and since we don't need to lock extensions anymore, we'll now get
+       * this missing piece of information. */
+      assert (*spacevols != NULL);
+
+      for (iter_spacevols = 0; iter_spacevols < nvols_total; iter_spacevols++)
+	{
+	  error_code =
+	    disk_get_volheader (thread_p, spacevols[iter_spacevols]->volid, PGBUF_LATCH_READ, &page_volheader,
+				&volheader);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+	  spacevols[iter_spacevols]->nsect_used = volheader->nsect_total - spacevols[iter_spacevols]->nsect_free;
+	  pgbuf_unfix_and_init (thread_p, page_volheader);
+	}
+    }
+
+  /* success */
+  assert (error_code == NO_ERROR);
+
+exit:
+
+  if (is_extend_locked)
+    {
+      disk_unlock_extend ();
+    }
+
+  if (error_code != NO_ERROR && *spacevols != NULL)
+    {
+      /* free spacevols */
+      db_private_free_and_init (thread_p, *spacevols);
+    }
+
+  return error_code;
 }
 
 /************************************************************************/

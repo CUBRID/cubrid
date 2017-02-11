@@ -186,8 +186,6 @@ extern DISK_ISVALID disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY 
 								   bool debug_crash);
 extern DISK_ISVALID disk_check_sectors_are_reserved (THREAD_ENTRY * thread_p, VSID * vsids, int nsects);
 
-
-
 extern INT16 xdisk_get_purpose_and_sys_lastpage (THREAD_ENTRY * thread_p, INT16 volid, DISK_VOLPURPOSE * vol_purpose,
 						 INT32 * sys_lastpage);
 extern int disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * vol_lsa);
@@ -197,6 +195,7 @@ extern HFID *disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hf
 extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *next_volext_fullname);
 extern DISK_ISVALID disk_check (THREAD_ENTRY * thread_p, bool repair);
 extern int disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp);
+extern int disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols);
 
 extern int disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					  void **ctx);
