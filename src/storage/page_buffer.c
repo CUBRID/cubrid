@@ -703,8 +703,8 @@ struct pgbuf_page_monitor
   PGBUF_MONITOR_BCB_MUTEX *bcb_locks;	/* track bcb mutex usage. */
 #endif				/* SERVER_MODE */
 
-  bool victim_rich;             /* true if page buffer pool has many victims. pgbuf_adjust_quotas will update this
-                                 * value. */
+  bool victim_rich;		/* true if page buffer pool has many victims. pgbuf_adjust_quotas will update this
+				 * value. */
 };
 
 typedef struct pgbuf_page_quota PGBUF_PAGE_QUOTA;
@@ -8369,52 +8369,52 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 
       /* 1. search own private list */
       if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
-        {
-          /* first try my own private list */
-          int private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
-          PGBUF_LRU_LIST *lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
+	{
+	  /* first try my own private list */
+	  int private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+	  PGBUF_LRU_LIST *lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
 
-          /* don't victimize from own list if it is under quota */
-          if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
+	  /* don't victimize from own list if it is under quota */
+	  if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
 	      || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) && lru_list->count_vict_cand > 0))
 	    {
 	      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
 	      if (victim != NULL)
-	        {
-	          perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
-	          return victim;
-	        }
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
+		  return victim;
+		}
 	      /* failed */
 	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
 
 	      /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim */
 	      if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
-	        {
-	          return NULL;
-	        }
+		{
+		  return NULL;
+		}
 	      else
-	        {
-	          /* vacuum workers usually have empty private lists. let them search */
-	        }
+		{
+		  /* vacuum workers usually have empty private lists. let them search */
+		}
 	    }
-        }
+	}
 
       /* 2. search other private list */
       if (PGBUF_PAGE_QUOTA_IS_ENABLED)
-        {
-          victim = pgbuf_lfcq_get_victim_from_lru (thread_p, true);
-          if (victim != NULL)
+	{
+	  victim = pgbuf_lfcq_get_victim_from_lru (thread_p, true);
+	  if (victim != NULL)
 	    {
 	      return victim;
 	    }
-        }
+	}
 
       /* 3. search a shared list. */
       victim = pgbuf_lfcq_get_victim_from_lru (thread_p, false);
       if (victim != NULL)
-        {
-          return victim;
-        }
+	{
+	  return victim;
+	}
 
       /* no victim found... */
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
@@ -15207,8 +15207,8 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
       if (lf_circular_queue_produce (lfcq, &lru_idx))
 	{
 	  perfmon_inc_stat (thread_p, from_private ? PSTAT_PB_LFCQ_LRU_PRV_GET_READD : PSTAT_PB_LFCQ_LRU_SHR_GET_READD);
-          added_back = true;
-        }
+	  added_back = true;
+	}
     }
 
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
