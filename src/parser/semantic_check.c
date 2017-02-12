@@ -9739,6 +9739,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node->info.expr.op == PT_CAST)
 	{
 	  node = pt_semantic_type (parser, node, info);
+	  if (node == NULL)
+	    {
+	      break;
+	    }
 	  (void) pt_check_cast_op (parser, node);
 	}
 
