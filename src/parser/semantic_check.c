@@ -9739,11 +9739,15 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node->info.expr.op == PT_CAST)
 	{
 	  node = pt_semantic_type (parser, node, info);
-	  if (node == NULL || node->node_type != PT_EXPR || node->info.expr.op != PT_CAST)
+	  if (node == NULL)
 	    {
 	      break;
 	    }
-	  (void) pt_check_cast_op (parser, node);
+
+	  if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+	    {
+	      (void) pt_check_cast_op (parser, node);
+	    }
 	}
 
       /* check instnum compatibility */
