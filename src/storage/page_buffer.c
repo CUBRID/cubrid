@@ -7693,6 +7693,11 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
    *                 on very hot pages (b-tree roots, heap headers, volume header or file headers).
    *                 thread will then be assigned a victim directly (there are multiple ways this can happen) and woken
    *                 up.
+   *                 TODO: we have one big vulnerability with waiting threads. what if, for any reason, no one feeds the
+   *                       waiting thread with a victim. page flush thread may be sleeping and no one wakes it, and the
+   *                       activity may be so reduced that no adjustments are made to lists. thread ends up with
+   *                       timeout. right now, after we added the victim rich hack, this may not happen. we could
+   *                       consider a backup plan to generate victims for a forgotten waiter.
    *    SA_MODE: pages are flushed and victim is searched again (and we expect this time to find a victim).
    */
 
@@ -8387,14 +8392,15 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	      /* failed */
 	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
 
-	      /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim */
-	      if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	      /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim. */
+	      if (!pgbuf_Pool.monitor.victim_rich && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 		{
 		  return NULL;
 		}
 	      else
 		{
-		  /* vacuum workers usually have empty private lists. let them search */
+                  /* is system is victim rich, we do not want to stop for any reason. */
+		  /* vacuum workers usually have empty private lists. let them search. */
 		}
 	    }
 	}
