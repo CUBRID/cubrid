@@ -10334,8 +10334,23 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER) && cast_type == NULL)
 	{
-	  /* cast_type should be the same as arg1 type */
-	  cast_type = parser_copy_tree (parser, arg1->data_type);
+	  if (arg1->type_enum == PT_TYPE_ENUMERATION)
+	    {
+	      LANG_COLLATION *lc;
+
+	      lc = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
+
+	      /* silently rewrite the COLLATE modifier into full CAST: CAST (ENUM as STRING) */
+	      cast_type = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+	      cast_type->info.data_type.collation_id = PT_GET_COLLATION_MODIFIER (node);
+	      cast_type->info.data_type.units = lc->codeset;
+	      PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_CAST_COLL_MODIFIER);
+	    }
+	  else
+	    {
+	      /* cast_type should be the same as arg1 type */
+	      cast_type = parser_copy_tree (parser, arg1->data_type);
+	    }
 
 	  /* for HV argument, attempt to resolve using the expected domain of expression's node or arg1 node */
 	  if (cast_type == NULL && node->expected_domain != NULL
