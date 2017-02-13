@@ -12499,7 +12499,7 @@ exit:
 	    {
 	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
 	    }
-	  pthread_mutex_unlock (&bufptr->BCB_mutex);
+	  PGBUF_BCB_UNLOCK (bcb);
 	}
     }
 
