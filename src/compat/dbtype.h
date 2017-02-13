@@ -1191,6 +1191,10 @@ extern int valcnv_convert_value_to_string (DB_VALUE * value);
 extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
+extern char *db_get_method_error_msg (void);
+extern short db_get_enum_short (const DB_VALUE * value);
+extern char *db_get_enum_string (const DB_VALUE * value);
+extern int db_get_enum_string_size (const DB_VALUE * value);
 
 /* MACROS FOR ERROR CHECKING */
 /* These should be used at the start of every db_ function so we can check
@@ -1293,10 +1297,6 @@ STATIC_INLINE int db_get_string_collation (const DB_VALUE * value) __attribute__
 STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE char *db_get_method_error_msg (void) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE char *db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * db_get_int() -
@@ -1962,73 +1962,6 @@ db_get_enum_collation (const DB_VALUE * value)
 #endif
 
   return value->domain.char_info.collation_id;
-}
-
-
-/*
- * db_get_method_error_msg() -
- * return :
- */
-STATIC_INLINE char *
-db_get_method_error_msg (void)
-{
-#if !defined(SERVER_MODE)
-  return obj_Method_error_msg;
-#else
-  return NULL;
-#endif
-}
-
-/*
- * db_get_enum_short () -
- * return :
- * value(in):
- */
-STATIC_INLINE short
-db_get_enum_short (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
-
-  return value->data.enumeration.short_val;
-}
-
-
-
-/*
- * db_get_enum_string () -
- * return :
- * value(in):
- */
-STATIC_INLINE char *
-db_get_enum_string (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  return value->data.enumeration.str_val.medium.buf;
-}
-
-/*
- * db_get_enum_string_size () -
- * return :
- * value(in):
- */
-STATIC_INLINE int
-db_get_enum_string_size (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
-
-  return value->data.enumeration.str_val.medium.size;
 }
 
 /************************************************************************/
@@ -3372,11 +3305,5 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 
 /* obsolete */
 #define DB_GET_SEQ DB_GET_SEQUENCE
-
-#define DB_GET_ENUM_SHORT(value) db_get_enum_short(value)
-
-#define DB_GET_ENUM_STRING(value) db_get_enum_string(value)
-
-#define DB_GET_ENUM_STRING_SIZE(value) db_get_enum_string_size(value)
 
 #endif /* _DBTYPE_H_ */
