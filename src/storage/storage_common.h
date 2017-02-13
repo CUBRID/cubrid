@@ -79,6 +79,7 @@ enum
 /* Type definitions related to disk information	*/
 
 typedef INT16 VOLID;		/* Volume identifier */
+typedef VOLID DKNVOLS;		/* Number of volumes */
 
 typedef INT32 PAGEID;		/* Data page identifier */
 typedef PAGEID DKNPAGES;	/* Number of disk pages */
@@ -725,17 +726,17 @@ typedef enum
 typedef struct spacedb_all SPACEDB_ALL;
 struct spacedb_all
 {
-  int nvols_perm_perm;
-  int nsect_used_perm_perm;
-  int nsect_free_perm_perm;
+  DKNVOLS nvols_perm_perm;
+  DKNSECTS nsect_used_perm_perm;
+  DKNSECTS nsect_free_perm_perm;
 
-  int nvols_perm_temp;
-  int nsect_used_perm_temp;
-  int nsect_free_perm_temp;
+  DKNVOLS nvols_perm_temp;
+  DKNSECTS nsect_used_perm_temp;
+  DKNSECTS nsect_free_perm_temp;
 
-  int nvols_temp_temp;
-  int nsect_used_temp_temp;
-  int nsect_free_temp_temp;
+  DKNVOLS nvols_temp_temp;
+  DKNSECTS nsect_used_temp_temp;
+  DKNSECTS nsect_free_temp_temp;
 };
 
 typedef struct spacedb_onevol SPACEDB_ONEVOL;
@@ -744,34 +745,34 @@ struct spacedb_onevol
   VOLID volid;
   DB_VOLTYPE type;
   DB_VOLPURPOSE purpose;
-  int nsect_used;
-  int nsect_free;
+  DKNSECTS nsect_used;
+  DKNSECTS nsect_free;
 };
 
 typedef struct spacedb_files SPACEDB_FILES;
 struct spacedb_files
 {
   int nfile_index;
-  int npage_index_ftab;
-  int npage_index_alloc;
-  int npage_index_reserved;
+  DKNPAGES npage_index_ftab;
+  DKNPAGES npage_index_alloc;
+  DKNPAGES npage_index_reserved;
 
   int nfile_heap;
-  int npage_heap_ftab;
-  int npage_heap_alloc;
-  int npage_heap_reserved;
+  DKNPAGES npage_heap_ftab;
+  DKNPAGES npage_heap_alloc;
+  DKNPAGES npage_heap_reserved;
 
   int nfile_system;
-  int npage_system_ftab;
-  int npage_system_alloc;
-  int npage_system_reserved;
+  DKNPAGES npage_system_ftab;
+  DKNPAGES npage_system_alloc;
+  DKNPAGES npage_system_reserved;
 
   /* todo: getting detailed info on temporary files is a little bit complicated. we'd have to synchronize and block
    * temporary file creation/destruction which is not desirable. think of a good solution. */
   int nfile_temp;
-  int npage_temp_ftab;
-  int npage_temp_alloc;
-  int npage_temp_reserved;
+  DKNPAGES npage_temp_ftab;
+  DKNPAGES npage_temp_alloc;
+  DKNPAGES npage_temp_reserved;
 };
 
 extern INT16 db_page_size (void);

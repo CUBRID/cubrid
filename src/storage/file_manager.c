@@ -472,6 +472,12 @@ struct file_tempcache
 #endif				/* !NDEBUG */
 
   FILE_TEMPCACHE_ENTRY **tran_files;	/* transaction temporary files */
+
+  /* stats */
+  int nfile_total;
+  DKNPAGES npage_ftab_total;
+  DKNPAGES npage_user_total;
+  DKNPAGES npage_reserved_total;
 };
 
 static FILE_TEMPCACHE *file_Tempcache = NULL;
@@ -3744,6 +3750,15 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	}
     }
 
+  if (is_temp)
+    {
+      /* update stats */
+      ATOMIC_INC_32 (&file_Tempcache->nfile_total, 1);
+      ATOMIC_INC_32 (&file_Tempcache->npage_ftab_total, fhead->n_page_ftab);
+      ATOMIC_INC_32 (&file_Tempcache->npage_user_total, fhead->n_page_user);
+      ATOMIC_INC_32 (&file_Tempcache->npage_reserved_total, fhead->n_page_free);
+    }
+
   /* Fall through to exit */
 exit:
 
@@ -4084,6 +4099,11 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
   else
     {
+      /* update temporary files global stats */
+      ATOMIC_INC_32 (&file_Tempcache->nfile_total, -1);
+      ATOMIC_INC_32 (&file_Tempcache->npage_ftab_total, -fhead->n_page_ftab);
+      ATOMIC_INC_32 (&file_Tempcache->npage_user_total, -fhead->n_page_user);
+      ATOMIC_INC_32 (&file_Tempcache->npage_reserved_total, -fhead->n_page_free);
       pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
@@ -7159,7 +7179,11 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
 int
 file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
 {
-  /* todo: temporary files */
+  /* temporary files stats are already cached. */
+  spacedb->nfile_temp = file_Tempcache->nfile_total;
+  spacedb->npage_temp_ftab = file_Tempcache->npage_ftab_total;
+  spacedb->npage_temp_alloc = file_Tempcache->npage_user_total;
+  spacedb->npage_temp_reserved = file_Tempcache->npage_reserved_total;
 
   /* use file tracker to get info on permanent purpose files */
   return file_tracker_spacedb (thread_p, spacedb);
@@ -8034,6 +8058,9 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 		FILE_PARTSECT_MSG ("newly reserved sector")
 		FILE_EXTDATA_MSG ("last partial table component"),
 		FILE_PARTSECT_AS_ARGS (&partsect_new), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
+
+      /* update temporary file stats */
+      ATOMIC_INC_64 (&file_Tempcache->npage_reserved_total, DISK_SECTOR_NPAGES);
     }
   assert (fhead->n_page_free > 0);
 
@@ -8096,6 +8123,17 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       assert (page_ftab != page_fhead);
       pgbuf_set_dirty_and_free (thread_p, page_ftab);
     }
+
+  /* update temporary file stats */
+  if (alloc_type == FILE_ALLOC_USER_PAGE)
+    {
+      ATOMIC_INC_64 (&file_Tempcache->npage_user_total, 1);
+    }
+  else
+    {
+      ATOMIC_INC_64 (&file_Tempcache->npage_ftab_total, 1);
+    }
+  ATOMIC_INC_64 (&file_Tempcache->npage_reserved_total, -1);
 
   /* done */
   assert (error_code == NO_ERROR);
@@ -8296,9 +8334,13 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   fhead->n_sector_partial = nsect_part_new;
   fhead->n_sector_full = nsect_full_new;
 
+  /* also update temporary files global stats */
+  ATOMIC_INC_64 (&file_Tempcache->npage_ftab_total, collector.npages - fhead->n_page_ftab);
   fhead->n_page_ftab = collector.npages;
-  fhead->n_page_free = fhead->n_page_total - fhead->n_page_ftab;
+  ATOMIC_INC_64 (&file_Tempcache->npage_user_total, -fhead->n_page_user);
   fhead->n_page_user = 0;
+  ATOMIC_INC_64 (&file_Tempcache->npage_reserved_total, fhead->n_page_total - fhead->n_page_ftab - fhead->n_page_free);
+  fhead->n_page_free = fhead->n_page_total - fhead->n_page_ftab;
 
   /* reset pointers used for allocations */
   fhead->vpid_last_temp_alloc = vpid_fhead;
