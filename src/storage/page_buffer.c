@@ -12477,7 +12477,7 @@ exit:
  *   return: error code
  *   req_vpid(in): id of page for which the group is needed (for debug)
  *   pgptr(in): page (already latched); only heap page allowed
- *   groupid(out): group identifer (VPID of HFID)
+ *   groupid(out): group identifier (VPID of HFID)
  *   do_unfix(in): if true, it unfixes the page.
  *
  * Note : helper function of ordered fix.
