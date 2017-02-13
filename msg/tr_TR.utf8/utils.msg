@@ -1080,8 +1080,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Saat dilimi verileri ile kaynak dosyaları oluşturun paylaşılan kütüphane\n\
         derlenmiş için\n\
-kullanım: %s gen_tz [OPTION]\n\
-          %s gen_tz -g extend [OPTION] [database-name]\n\
+kullanım: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 geçerli seçenekler:\n\
   -i, --input-folder    Bir IANA saat dilimi sürümünü içeren giriş klasörünün yolunu.\n\
@@ -1093,15 +1092,18 @@ geçerli seçenekler:\n\
                         ayrıca tüm ülkeleri ve zaman dilimi isimleri içeren bir kaynak dosyası\n\
                         oluşturmak (geliştirici kullanılmak üzere tasarlanmıştır, gelecekteki\n\
                         CUBRID sürümleri entegre edilecek).\n\
-                        2. EXTEND : giriş klasöründen verileri kullanarak, saat diliminin kaynak\n\
-                        dosya (lar) oluşturmak; CUBRID içine kodlanmış saat diliminin ID-leri korunur;\n\
-                        yeni dilimleri ikincil bir kaynak oluşturmak; GMT uzaklıklar ve yaz saati\n\
-                        bilgisi güncellenir (ya da yeni saat dilimlerinde  için eklendi);\n\
-                        CUBRID kodlanmış bir saat diliminin girdi dosyaları eksik ise saat dilimlerinde\n\
-                        kaldırıldı asla, ilişkili veriler mevcut saat diliminin kütüphanesinden alınır.\n\
-                        Tüm saat diliminin adlarını içeren yeni bir C dosyası oluşturulur ve yeni\n\
-                        saat diliminin kütüphanesi kullanılabilir önce CUBRID kaynak dosya klasöründe\n\
-                        dahil edilmelidir.\n
+                        2. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removed if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 Verilen saat diliminin İD aralığının dışında. Tüm saat dilimlerini ve bunların İD görmek için -z kullanın.\n

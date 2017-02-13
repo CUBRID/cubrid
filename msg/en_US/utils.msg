@@ -1083,8 +1083,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Generate source files containing timezone data to be compiled into\n\
         a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] [database-name]\n\
+usage:	%s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 valid options:\n\
   -i, --input-folder    path to an input folder containing a version of\n\
@@ -1098,17 +1097,17 @@ valid options:\n\
                         and timezone names (intended for developer use, to\n\
                         be integrated into future CUBRID versions).\n\
                         2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
                         information is updated (or added, for new timezones);\n\
                         timezones are never removed if a timezone encoded into\n\
                         CUBRID is missing from the input files, the associated\n\
                         data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 The supplied zone ID is out of range. Use -z to see all\n\

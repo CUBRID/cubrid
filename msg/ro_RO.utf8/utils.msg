@@ -1102,8 +1102,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Generează fișiere ce conțin informații timezone, pentru a fi compilate\n\
         într-o librărie shared.\n\
-utilizare: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] [database-name]\n\
+utilizare: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 opțiuni valide:\n\
   -i, --input-folder    calea pentru un fișier input ce conține o versiune a\n\
@@ -1115,20 +1114,15 @@ opțiuni valide:\n\
                         librăria shared, fără nicio asociere cu versiunile\n\
                         anterioare; deasemenea generează un fișier cu toate\n\
                         țările și denumirile timezone.\n\
-                        2. EXTEND : generează fișierele timezone folosind\n\
-                        datele din fișierul input; id-urile timezone actuale\n\
-                        din CUBRID sunt păstrate; deasemenea este generat un\n\
-                        fișier timezone secundar cu noile timezone-uri din\n\
-                        fișierul input; offset-urile GMT și informațiile\n\
-                        daylight saving sunt actualizate (sau adăugate, pentru\n\
-                        fiecare timezone nou); vechile timezone-uri integrate\n\
-                        deja în CUBRID nu sunt înlăturate, chiar dacă nu există\n\
-                        în fișierul input.\n\
-                        Este generat un nou fișier C, ce conține toate\n\
-                        denumirile timezone, care trebuie inclus în fișierele\n\
-                        sursă CUBRID, înainte ca noua librarie timezone să\n\
-                        poată fi folosită.\n
-
+                        2. EXTEND : genereaza libraria de timezone folosind libraria anterioara\n\
+                        astfel incat sa se asigure compatibilitate cu datele existente in tabele;\n\
+                        Noile zone geografice gasite in fisierele IANA vor fi adaugate;offset-urile GMT\n\
+                        si regulile de daylight saving sunt modificate conform noilor fisiere de la IANA;\n\ 
+                        Zonele geografice care nu mai apar in noile fisiere IANA sunt pastrate astfel incat\n\
+                        sa se asigure compatibilitatea cu datele din tabele; Daca e necesar, atunci cand prima\n\
+                        faza a operatiei de extend nu reuseste sa faca toate datele compatibile o actualizare\n\
+                        a tabelelor care contin coloane cu tipuri timezone este realizata.\n
+                  
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 ID-ul de zonă introdus este în afara intervalului acceptat. Folosește -z\n\
  pentru afișare timezeone-uri și ID-uri valide\n

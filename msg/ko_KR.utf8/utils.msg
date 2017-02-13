@@ -1076,8 +1076,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 60 유효하지 않거나 변질된 입력 폴더입니다.\n
 61 \
 gen_tz: 타임존 데이터를 포함하는 소스 파일을 생성하여 공유 라이브러리로 컴파일\n\
-사용법: %s gen_tz [옵션]\n\
-       %s gen_tz -g extend [옵션] [database-name]\n\
+사용법: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 valid options:\n\
   -i, --input-folder    IANA 타임존 데이터베이스 파일을 포함하는 입력 디렉터리 경로\n\
@@ -1087,14 +1086,18 @@ valid options:\n\
                         1. NEW (기본값) : 기존 버전에 대한 고려없이 공유 라이브러리를 위한 소스 파일 생성;\n\
                         또한 모든 국가와 타임존 이름을 포함하도록 소스 파일을 생성\n\
                         (개발자가 사용하는 것을 의도, 향후 CUBRID 버전에 통합 예정).\n\
-                        2. EXTEND : 입력된 디렉터리의 데이터를 사용하지 타임존 소스 파일을 생성;\n\
-                        기존에 CUBRID에 인코딩된 타임존 식별자는 보존됨;\n\
-                        입력 파일에서 발견된 새로운 타임존은 생성될 이차 소스 파일에 추가됨;\n\
-                        GMT 오프셋과 일광 절약 시간제 정보는 갱신되거나 새로운 타임존의 경우는 추가됨;\n\
-                        기존 인코딩된 타임존이 입력 파일에 포함되어 있지 않으면 해당 타임존은 제거되지 않으며,\n\
-                        해당 데이터는 기존 타임존 라이브러리에서 검색됨.\n\
-                        전체 타임존 이름을 모두 포함하는 새로운 C 파일이 생성되며,\n\
-                        이는 새로운 타임존 라이브러리가 사용되기 이전에 CUBRID 소스 파일 디렉터리에 반드시 포함되어야 한다.\n
+                        2. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removed if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 유효하지 않은 타임존 식별자가 주어졌습니다. 전체 타임존과 해당 식별자를 확인하기 위해서 -z를 사용하세요\n
