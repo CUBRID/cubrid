@@ -1713,6 +1713,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Toplama işlevlerinin kullanımı geçersiz.
 293 Değeri kesinlikle her bölüm için artan olmalıdır.
 294 Yerel saat dilimi yazdığınız sütunlarda işlev veya filtre indeksleri kullanılamaz.
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

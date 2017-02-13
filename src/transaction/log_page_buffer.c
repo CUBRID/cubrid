@@ -1377,9 +1377,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   LSA_SET_NULL (&loghdr->eof_lsa);
   LSA_SET_NULL (&loghdr->smallest_lsa_at_last_chkpt);
 
-  LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
-  loghdr->last_block_newest_mvccid = MVCCID_NULL;
-  loghdr->last_block_oldest_mvccid = MVCCID_NULL;
+  vacuum_reset_log_header_cache ();
 
   return NO_ERROR;
 }

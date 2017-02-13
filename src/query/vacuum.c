@@ -2503,6 +2503,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 #else	/* !SERVER_MODE */		   /* SA_MODE */
   VACUUM_DATA_ENTRY vacuum_data_entry;
   bool save_check_interrupt;
+  bool dummy_continue_check_interrupt;
 #endif /* SA_MODE */
 
   VACUUM_DATA_PAGE *data_page = NULL;
@@ -2798,6 +2799,12 @@ restart:
       vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
       vacuum_data_entry = *entry;
       error_code = vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
+      if (error_code == ER_INTERRUPTED || logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
+	{
+	  /* wrap up all executed jobs and stop */
+	  vacuum_data_mark_finished (thread_p);
+	  return;
+	}
       assert (error_code == NO_ERROR);
 
       er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum finished block %lld.\n",
@@ -2910,9 +2917,7 @@ restart:
   vacuum_cleanup_dropped_files (thread_p);
 
   /* Reset log header information saved for vacuum. */
-  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
-  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
-  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+  vacuum_reset_log_header_cache ();
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_END, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
@@ -2946,9 +2951,7 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vacuum_Data.oldest_unvacuumed_mvccid = oldest_newest_mvccid;
 
   /* Reset log header information saved for vacuum. */
-  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
-  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
-  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+  vacuum_reset_log_header_cache ();
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -2999,6 +3002,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
   PERF_UTIME_TRACKER perf_tracker;
   PERF_UTIME_TRACKER job_time_tracker;
+#if defined (SA_MODE)
+  bool dummy_continue_check = false;
+#endif /* SA_MODE */
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -3057,6 +3063,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
       if (thread_p->shutdown)
 	{
 	  /* Server shutdown was requested, stop vacuuming. */
+	  goto end;
+	}
+#else	/* !SERVER_MODE */		   /* SA_MODE */
+      if (thread_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &dummy_continue_check))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error_code = ER_INTERRUPTED;
 	  goto end;
 	}
 #endif /* SERVER_MODE */
@@ -3654,8 +3667,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
-	VACUUM_ER_LOG_ERROR;
-      assert (false);
+	er_errid () == ER_INTERRUPTED ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
+      assert (er_errid () == ER_INTERRUPTED);
 #endif /* !SERVER_MODE */
 
       /* Vacuum will have to be re-run */
@@ -4821,7 +4834,7 @@ vacuum_rv_undoredo_first_data_page_dump (FILE * fp, int length, void *data)
 int
 vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  char *rcv_data_ptr = (void *) rcv->data;
+  const char *rcv_data_ptr = rcv->data;
   VACUUM_LOG_BLOCKID blockid;
   VACUUM_LOG_BLOCKID blockid_with_flags;
   VACUUM_LOG_BLOCKID page_unvacuumed_blockid;
@@ -4891,7 +4904,7 @@ vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 void
 vacuum_rv_redo_data_finished_dump (FILE * fp, int length, void *data)
 {
-  char *rcv_data_ptr = data;
+  const char *rcv_data_ptr = (const char *) data;
   VACUUM_LOG_BLOCKID blockid;
   VACUUM_LOG_BLOCKID blockid_with_flags;
 
@@ -5243,6 +5256,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   LOG_LSA mvcc_op_log_lsa = LSA_INITIALIZER;
   bool is_last_block = false;
 
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+		 "VACUUM: vacuum_recover_lost_block_data, lsa = %lld|%d n", LSA_AS_ARGS (&vacuum_Data.recovery_lsa));
   if (LSA_ISNULL (&vacuum_Data.recovery_lsa))
     {
       /* No recovery was done. */
@@ -5258,6 +5273,9 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   if (LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
     {
       /* We need to search for an MVCC op log record to start recovering lost blocks. */
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+		     "VACUUM: vacuum_recover_lost_block_data, log_Gl.hdr.mvcc_op_log_lsa is null \n");
+
       LSA_COPY (&log_lsa, &vacuum_Data.recovery_lsa);
       /* Stop search if search reaches blocks already in vacuum data. */
       stop_at_pageid = VACUUM_LAST_LOG_PAGEID_IN_BLOCK (vacuum_Data.last_blockid);
@@ -5279,6 +5297,9 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	      || log_rec_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA)
 	    {
 	      LSA_COPY (&mvcc_op_log_lsa, &log_lsa);
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			     "VACUUM: vacuum_recover_lost_block_data, found mvcc op at lsa = %lld|%d \n",
+			     LSA_AS_ARGS (&mvcc_op_log_lsa));
 	      break;
 	    }
 	  else if (log_rec_header.type == LOG_REDO_DATA)
@@ -5293,6 +5314,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	      if (redo->data.rcvindex == RVVAC_COMPLETE)
 		{
 		  /* stop looking */
+		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+				 "VACUUM: vacuum_recover_lost_block_data, complete vacuum \n");
 		  break;
 		}
 	    }
@@ -5302,13 +5325,19 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       if (LSA_ISNULL (&mvcc_op_log_lsa))
 	{
 	  /* Vacuum data was reached, so there is nothing to recover. */
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "VACUUM: vacuum_recover_lost_block_data, nothing to recovery \n");
 	  return NO_ERROR;
 	}
     }
   else if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) <= vacuum_Data.last_blockid)
     {
       /* Already in vacuum data. */
-      LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+		     "VACUUM: vacuum_recover_lost_block_data, mvcc_op_log_lsa %lld|%d is already in vacuum data "
+		     "(last blockid = %lld) \n", LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa),
+		     (long long int) vacuum_Data.last_blockid);
+      vacuum_reset_log_header_cache ();
       return NO_ERROR;
     }
   else
@@ -5316,6 +5345,10 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       LSA_COPY (&mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
     }
   assert (!LSA_ISNULL (&mvcc_op_log_lsa));
+
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+		 "VACUUM: vacuum_recover_lost_block_data, start recovering from %lld|%d \n",
+		 LSA_AS_ARGS (&mvcc_op_log_lsa));
 
   /* Start recovering blocks. */
   is_last_block = true;
@@ -5370,6 +5403,13 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	  log_Gl.hdr.last_block_newest_mvccid = data.newest_mvccid;
 	  LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &data.start_lsa);
 	  is_last_block = false;
+
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "VACUUM: Restore log global cached info: \n\t mvcc_op_log_lsa = %lld|%d \n"
+			 "\t last_block_oldest_mvccid = %llu \n\t last_block_newest_mvccid = %llu \n",
+			 LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa),
+			 (unsigned long long int) log_Gl.hdr.last_block_oldest_mvccid,
+			 (unsigned long long int) log_Gl.hdr.last_block_newest_mvccid);
 	}
       else
 	{
@@ -5387,6 +5427,18 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 
   lf_circular_queue_async_reset (vacuum_Block_data_buffer);
   return NO_ERROR;
+}
+
+/*
+ * vacuum_reset_log_header_cache () - reset vacuum data cached in log global header.
+ */
+void
+vacuum_reset_log_header_cache (void)
+{
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Reset vacuum info in log_Gl.hdr \n");
+  LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
+  log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
+  log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
 }
 
 /*
@@ -5520,7 +5572,7 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
   vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Update keep_from_log_pageid to %lld", (long long int) vacuum_Data.keep_from_log_pageid);
+		 "VACUUM: Update keep_from_log_pageid to %lld \n", (long long int) vacuum_Data.keep_from_log_pageid);
 }
 
 /*

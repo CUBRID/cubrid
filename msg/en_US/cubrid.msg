@@ -1713,6 +1713,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Invalid use of aggregate functions.
 293 Value must be strictly increasing for each partition.
 294 Cannot use function or filter indexes on local timezone typed columns.
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

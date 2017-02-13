@@ -5837,8 +5837,8 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
 
   OID_GET_VIRTUAL_CLASS_OF_DIR_OID (catalog_access_info->class_oid, &virtual_class_dir_oid);
 #if defined (SERVER_MODE)
-  current_lock =
-    lock_get_object_lock (catalog_access_info->dir_oid, &virtual_class_dir_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  current_lock = lock_get_object_lock (catalog_access_info->dir_oid, &virtual_class_dir_oid,
+				       LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   if (current_lock != NULL_LOCK)
     {
       assert (false);
@@ -5854,11 +5854,14 @@ catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO 
 #endif /* SERVER_MODE */
 
   /* before go further, we should get the lock to disable updating schema */
-  lk_grant_code =
-    lock_object (thread_p, catalog_access_info->dir_oid, &virtual_class_dir_oid, lock_mode, LK_UNCOND_LOCK);
+  lk_grant_code = lock_object (thread_p, catalog_access_info->dir_oid, &virtual_class_dir_oid, lock_mode,
+			       LK_UNCOND_LOCK);
   if (lk_grant_code != LK_GRANTED)
     {
-      assert (lk_grant_code == LK_NOTGRANTED_DUE_ABORTED || lk_grant_code == LK_NOTGRANTED_DUE_TIMEOUT);
+      /* deadlocked, timedout or interrupted */
+      assert (lk_grant_code == LK_NOTGRANTED_DUE_ABORTED || lk_grant_code == LK_NOTGRANTED_DUE_TIMEOUT
+	      || lk_grant_code == LK_NOTGRANTED_DUE_ERROR);
+
       if (catalog_access_info->class_name == NULL)
 	{
 	  if (heap_get_class_name (thread_p, catalog_access_info->class_oid, &catalog_access_info->class_name) !=

@@ -281,6 +281,7 @@ extern void vacuum_start_new_job (THREAD_ENTRY * thread_p);
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_load_data_from_disk (THREAD_ENTRY * thread_p);
+extern void vacuum_reset_log_header_cache (void);
 extern VACUUM_LOG_BLOCKID vacuum_get_log_blockid (LOG_PAGEID pageid);
 extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVCCID oldest_mvccid,
 					   MVCCID newest_mvccid);

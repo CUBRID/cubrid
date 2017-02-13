@@ -1714,6 +1714,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 非法使用聚集函数.
 293 每一个分区的值都必须是严格递增的.
 294 在本地时区类型的列上不能使用函数或索引筛选(filter indexes).
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

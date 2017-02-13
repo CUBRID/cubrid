@@ -2158,7 +2158,7 @@ perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int di
   module = perfmon_get_module_type (thread_p);
 
   assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-  assert (page_type > PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
+  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
   assert (buf_dirty == 0 || buf_dirty == 1);
   assert (dirtied_by_holder == 0 || dirtied_by_holder == 1);
   assert (holder_latch >= PERF_HOLDER_LATCH_READ && holder_latch < PERF_HOLDER_LATCH_CNT);

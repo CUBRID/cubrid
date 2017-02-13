@@ -1713,6 +1713,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Uso invalido de funciones de agregado.
 293 El valor debe ser estrictamente cresciente para cada particion.
 294 No se pueden utilizar indices de funcion o filtro en columnas cuyo tipo de datos es dependiente de la zona horaria.
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.
