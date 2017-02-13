@@ -12499,7 +12499,7 @@ exit:
 	    {
 	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
 	    }
-	  PGBUF_BCB_UNLOCK (bcb);
+	  PGBUF_BCB_UNLOCK (bufptr);
 	}
     }
 
