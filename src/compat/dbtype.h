@@ -1192,9 +1192,9 @@ extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
 extern char *db_get_method_error_msg (void);
-extern short db_get_enum_short (const DB_VALUE * value);
+STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-extern int db_get_enum_string_size (const DB_VALUE * value);
+STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
 /* MACROS FOR ERROR CHECKING */
 /* These should be used at the start of every db_ function so we can check
@@ -1962,6 +1962,50 @@ db_get_enum_collation (const DB_VALUE * value)
 #endif
 
   return value->domain.char_info.collation_id;
+}
+
+/*
+ * db_get_enum_string () -
+ * return :
+ * value(in):
+ */
+STATIC_INLINE char *
+db_get_enum_string (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  return value->data.enumeration.str_val.medium.buf;
+}
+
+/*
+ * db_get_enum_short () -
+ * return :
+ * value(in):
+ */
+STATIC_INLINE unsigned short
+db_get_enum_short (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
+
+  return value->data.enumeration.short_val;
+}
+
+/*
+ * db_get_enum_string_size () -
+ * return :
+ * value(in):
+ */
+STATIC_INLINE int
+db_get_enum_string_size (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
+
+  return value->data.enumeration.str_val.medium.size;
 }
 
 /************************************************************************/
@@ -3303,26 +3347,13 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 
 #define DB_GET_SEQUENCE DB_GET_LIST
 
-/* obsolete */
-#define DB_GET_SEQ DB_GET_SEQUENCE
-
-/*
- * db_get_enum_string () -
- * return :
- * value(in):
- */
-STATIC_INLINE char *
-db_get_enum_string (const DB_VALUE * value)
-{
-  CHECK_1ARG_ZERO (value);
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  return value->data.enumeration.str_val.medium.buf;
-}
-
 #define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
 
+#define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
+
+#define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
+
+/* obsolete */
+#define DB_GET_SEQ DB_GET_SEQUENCE
 
 #endif /* _DBTYPE_H_ */
