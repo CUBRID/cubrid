@@ -7149,6 +7149,22 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
   return NO_ERROR;
 }
 
+/*
+ * file_spacedb () - get space usage information
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * spacedb (out) : output space usage information
+ */
+int
+file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
+{
+  /* todo: temporary files */
+
+  /* use file tracker to get info on permanent purpose files */
+  return file_tracker_spacedb (thread_p, spacedb);
+}
+
 /************************************************************************/
 /* Numerable files section.                                             */
 /************************************************************************/
@@ -10560,6 +10576,114 @@ file_tracker_item_check (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EX
   return NO_ERROR;
 }
 #endif /* SA_MODE */
+
+/*
+ * file_tracker_item_spacedb () - FILE_TRACKER_ITEM_FUNC to collect space information
+ *
+ * return            : error code
+ * thread_p (in)     : thread entry
+ * page_of_item (in) : page of item
+ * extdata (in)      : extensible data
+ * index_item (in)   : index of item
+ * stop (in)         : ignored
+ * args (in/out)     : SPACEDB_FILES *
+ */
+static int
+file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
+			   int index_item, bool * stop, void *args)
+{
+  FILE_TRACK_ITEM *item;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+
+  SPACEDB_FILES *spacedb = (SPACEDB_FILES *) args;
+
+  int error_code = NO_ERROR;
+
+  item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
+  vpid_fhead.volid = item->volid;
+  vpid_fhead.pageid = item->fileid;
+
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+
+  switch (fhead->type)
+    {
+    case FILE_BTREE:
+      /* index file */
+      spacedb->nfile_index++;
+      spacedb->npage_index_ftab += fhead->n_page_ftab;
+      spacedb->npage_index_alloc += fhead->n_page_user;
+      spacedb->npage_index_reserved += fhead->n_page_free;
+      break;
+    case FILE_HEAP:
+    case FILE_HEAP_REUSE_SLOTS:
+      /* heap file */
+      spacedb->nfile_heap++;
+      spacedb->npage_heap_ftab += fhead->n_page_ftab;
+      spacedb->npage_heap_alloc += fhead->n_page_user;
+      spacedb->npage_heap_reserved += fhead->n_page_free;
+      break;
+    default:
+      /* system file */
+      spacedb->nfile_system++;
+      spacedb->npage_system_ftab += fhead->n_page_ftab;
+      spacedb->npage_system_alloc += fhead->n_page_user;
+      spacedb->npage_system_reserved += fhead->n_page_free;
+      break;
+    }
+
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
+ * file_tracker_spacedb () - collect space usage information from all files
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * spacedb (out) : output space usage information
+ */
+int
+file_tracker_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead;
+  FILE_HEADER *fhead;
+
+  int error_code = NO_ERROR;
+
+  error_code = file_tracker_map (thread_p, PGBUF_LATCH_READ, file_tracker_item_spacedb, spacedb);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* file tracker is also a system file */
+  FILE_GET_HEADER_VPID (&file_Tracker_vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+
+  spacedb->nfile_system++;
+  spacedb->npage_system_ftab += fhead->n_page_ftab;
+  spacedb->npage_system_alloc += fhead->n_page_user;
+  spacedb->npage_heap_reserved += fhead->n_page_free;
+
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+  return NO_ERROR;
+}
 
 /************************************************************************/
 /* File descriptor section                                              */

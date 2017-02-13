@@ -766,6 +766,8 @@ struct spacedb_files
   int npage_system_alloc;
   int npage_system_reserved;
 
+  /* todo: getting detailed info on temporary files is a little bit complicated. we'd have to synchronize and block
+   * temporary file creation/destruction which is not desirable. think of a good solution. */
   int nfile_temp;
   int npage_temp_ftab;
   int npage_temp_alloc;
