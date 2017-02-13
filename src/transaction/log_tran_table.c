@@ -3184,8 +3184,8 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
   struct timeval tv;
 
 #else /* SERVER_MODE */
-  /* vacuum threads should not be interruptible */
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+  /* vacuum threads should not be interruptible (unless this is still recovery). */
+  assert (!BO_IS_SERVER_RESTARTED () || !VACUUM_IS_THREAD_VACUUM (thread_p));
 #endif /* SERVER_MODE */
 
   interrupt = tdes->interrupt;
