@@ -18777,6 +18777,11 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 exit:
   if (new_key_value != NULL)
     {
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
+	{
+	  pr_clear_value (&new_key_value[i]);
+	}
+
       db_private_free_and_init (thread_p, new_key_value);
     }
   return error;
