@@ -15309,7 +15309,7 @@ pgbuf_bcb_register_hit_for_lru (PGBUF_BCB * bcb)
 {
   assert (PGBUF_IS_BCB_IN_LRU (bcb));
 
-  if (bcb->hit_age > pgbuf_Pool.quota.adjust_age)
+  if (bcb->hit_age < pgbuf_Pool.quota.adjust_age)
     {
       pgbuf_Pool.monitor.lru_hits[pgbuf_bcb_get_lru_index (bcb)]++;
       bcb->hit_age = pgbuf_Pool.quota.adjust_age;
