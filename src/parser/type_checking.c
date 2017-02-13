@@ -10348,7 +10348,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else
 	    {
-    	      /* cast_type should be the same as arg1 type */
+	      /* cast_type should be the same as arg1 type */
 	      cast_type = parser_copy_tree (parser, arg1->data_type);
 	    }
 
