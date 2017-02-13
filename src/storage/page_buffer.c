@@ -8399,7 +8399,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 		}
 	      else
 		{
-                  /* is system is victim rich, we do not want to stop for any reason. */
+		  /* is system is victim rich, we do not want to stop for any reason. */
 		  /* vacuum workers usually have empty private lists. let them search. */
 		}
 	    }

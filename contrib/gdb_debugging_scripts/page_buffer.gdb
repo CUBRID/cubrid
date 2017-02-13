@@ -295,6 +295,7 @@ define pgbuf_lru_print_victim_status
   set $shared_2 = 0
   set $shared_3 = 0
   set $shared_vc = 0
+  set $shared_empty = 0
   
   while $i < pgbuf_Pool.num_LRU_list
     set $lru_list = &pgbuf_Pool.buf_LRU_list[$i]
@@ -302,6 +303,9 @@ define pgbuf_lru_print_victim_status
     set $shared_2 = $shared_2 + $lru_list->count_lru2
     set $shared_3 = $shared_3 + $lru_list->count_lru3
     set $shared_vc = $shared_vc + $lru_list->count_vict_cand
+    if $lru_list->count_lru1 + $lru_list->count_lru2 + $lru_list->count_lru3 == 0
+      set $shared_empty = $shared_empty + 1
+      end
     set $i = $i + 1
     end
     
@@ -309,6 +313,7 @@ define pgbuf_lru_print_victim_status
   set $private_2 = 0
   set $private_3 = 0
   set $private_vc = 0
+  set $private_empty = 0
   set $private_quota = 0
   set $oq_lists = 0
   set $oq_bcbs = 0
@@ -332,18 +337,21 @@ define pgbuf_lru_print_victim_status
         set $oq_with_vc_bcbs = $oq_with_vc_bcbs + $lru_list->count_vict_cand
         end
       end
+    if $lru_list->count_lru1 + $lru_list->count_lru2 + $lru_list->count_lru3 == 0
+      set $private_empty = $private_empty + 1
+      end
     set $i = $i + 1
     end
   
   printf "\n"
-  printf "Shared lists: \n"
+  printf "Shared lists: %d, empty = %d \n", pgbuf_Pool.num_LRU_list, $shared_empty
   printf "Total bcbs: %d \n", $shared_1 + $shared_2 + $shared_3
   printf "Zone 1: %d \n", $shared_1
   printf "Zone 2: %d \n", $shared_2
   printf "Zone 3: %d \n", $shared_3
   printf "Victim candidates: %d \n", $shared_vc
   printf "\n"
-  printf "Private lists: \n"
+  printf "Private lists: %d, empty = %d \n", pgbuf_Pool.quota.num_private_LRU_list, $private_empty
   printf "Total bcbs: %d \n", $private_1 + $private_2 + $private_3
   printf "Zone 1: %d \n", $private_1
   printf "Zone 2: %d \n", $private_2
