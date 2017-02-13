@@ -170,10 +170,10 @@
   ((v)->data.enumeration)
 #define DB_GET_ENUM_SHORT(v) \
   ((v)->data.enumeration.short_val)
-#define DB_GET_ENUM_STRING(v) \
-  ((v)->data.enumeration.str_val.medium.buf)
 #define DB_GET_ENUM_STRING_SIZE(v) \
   ((v)->data.enumeration.str_val.medium.size)
+
+#define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
 
 /* TODO: Decide whether we keep this as it is or we use inline functions */
 #define db_value_is_null(v) DB_IS_NULL(v)
@@ -202,8 +202,6 @@
     (v)->data.enumeration.str_val.info.codeset	  = (cs), \
     (v)->domain.char_info.collation_id		  = (coll)
 
-#define db_get_enum_short(v) DB_GET_ENUM_SHORT(v)
 #define db_get_enum_string_size(v) DB_GET_ENUM_STRING_SIZE(v)
-#define db_get_enum_string(v) DB_GET_ENUM_STRING(v)
 
 #endif /* _DBVAL_H_ */

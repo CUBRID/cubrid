@@ -1193,7 +1193,7 @@ extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
 extern char *db_get_method_error_msg (void);
 extern short db_get_enum_short (const DB_VALUE * value);
-extern char *db_get_enum_string (const DB_VALUE * value);
+STATIC_INLINE char *db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 extern int db_get_enum_string_size (const DB_VALUE * value);
 
 /* MACROS FOR ERROR CHECKING */
@@ -3305,5 +3305,24 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 
 /* obsolete */
 #define DB_GET_SEQ DB_GET_SEQUENCE
+
+/*
+ * db_get_enum_string () -
+ * return :
+ * value(in):
+ */
+STATIC_INLINE char *
+db_get_enum_string (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  return value->data.enumeration.str_val.medium.buf;
+}
+
+#define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
+
 
 #endif /* _DBTYPE_H_ */
