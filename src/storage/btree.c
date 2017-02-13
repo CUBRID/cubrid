@@ -18199,16 +18199,21 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 
   if (class_oid != NULL && !OID_ISNULL (class_oid))
     {
-      if (heap_get_class_name (thread_p, class_oid, &class_name) == NO_ERROR)
-	{
-	  snprintf (class_oid_msg_buf, OID_MSG_BUF_SIZE, "(CLASS_OID: %d|%d|%d)", class_oid->volid, class_oid->pageid,
-		    class_oid->slotid);
-	}
-      else
+      int save_old_wait;
+
+      snprintf (class_oid_msg_buf, OID_MSG_BUF_SIZE, "(CLASS_OID: %d|%d|%d)", class_oid->volid, class_oid->pageid,
+		class_oid->slotid);
+
+      /* we have latch on b-tree page. although unlikely, trying to get class name can lead to a dead latch. that is
+       * undesirable, so we'll force no wait for latch here. if the latch fails, the notification will miss class name,
+       * but it will have class OID. */
+      save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+      if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
 	{
 	  /* ignore */
 	  er_clear ();
 	}
+      (void) xlogtb_reset_wait_msecs (thread_p, save_old_wait);
     }
 
   if (key && obj_oid)

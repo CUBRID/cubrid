@@ -107,8 +107,6 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 #else /* !SERVER_MODE */
 
-#define THREAD_VACUUM_WORKERS_COUNT 10
-
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
   ((thrd) ? (thrd)->index : thread_get_current_entry_index())
 
@@ -439,6 +437,11 @@ extern void thread_wakeup_check_ha_delay_info_thread (void);
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
+
+/* is thread functions */
+extern bool thread_is_checkpoint_thread (THREAD_ENTRY * thread_p);
+
+/* wakeup functions */
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
@@ -450,8 +453,10 @@ extern void thread_wakeup_auto_volume_expansion_thread (void);
 extern void thread_wakeup_vacuum_master_thread (void);
 extern void thread_wakeup_vacuum_worker_threads (int n_workers);
 
+/* is available functions */
 extern bool thread_is_page_flush_thread_available (void);
 
+/* is running tunfions */
 extern bool thread_auto_volume_expansion_thread_is_running (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
