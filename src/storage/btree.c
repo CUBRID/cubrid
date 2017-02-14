@@ -18207,13 +18207,18 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
       /* we have latch on b-tree page. although unlikely, trying to get class name can lead to a dead latch. that is
        * undesirable, so we'll force no wait for latch here. if the latch fails, the notification will miss class name,
        * but it will have class OID. */
-      save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
-      if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
+
+      /* We don't provide classname for VACUUM operations, since it may prevent other vacuums from fixing a page. */
+      if (!VACUUM_IS_THREAD_VACUUM (thread_p))
 	{
-	  /* ignore */
-	  er_clear ();
+	  save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	  if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
+	  (void) xlogtb_reset_wait_msecs (thread_p, save_old_wait);
 	}
-      (void) xlogtb_reset_wait_msecs (thread_p, save_old_wait);
     }
 
   if (key && obj_oid)
