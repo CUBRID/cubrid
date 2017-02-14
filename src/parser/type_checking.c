@@ -10344,7 +10344,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      cast_type = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
 	      cast_type->info.data_type.collation_id = PT_GET_COLLATION_MODIFIER (node);
 	      cast_type->info.data_type.units = lc->codeset;
-	      PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_CAST_COLL_MODIFIER);
+	      //PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_CAST_COLL_MODIFIER);
 	    }
 	  else
 	    {
