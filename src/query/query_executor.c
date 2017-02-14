@@ -22142,6 +22142,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   for (regu_var_p = xasl->outptr_list->valptrp, i = 0; regu_var_p; regu_var_p = regu_var_p->next, i++)
     {
       out_values[i] = &(regu_var_p->value.value.dbval);
+      pr_clear_value (out_values[i]);
     }
 
   all_class_attr[0] = rep->attributes;
