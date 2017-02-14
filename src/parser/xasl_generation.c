@@ -8519,7 +8519,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			    regu = r2;
 			  }
 			regu->domain = domain;
-			REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_APPLY_COLLATION);
+			if (!(arg != NULL && arg->node_type == PT_NAME && arg->type_enum == PT_TYPE_ENUMERATION))
+			  {
+			    REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_APPLY_COLLATION);
+			  }
 		      }
 		    else
 		      {
@@ -12072,7 +12075,6 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
   PT_NODE *saved_current_class;
   TABLE_INFO *tbl_info;
   REGU_VARIABLE_LIST regu_attributes_pred, regu_attributes_rest;
-  REGU_VARIABLE *regu_cte_def;
   ACCESS_SPEC_TYPE *access;
   PT_NODE *pred_attrs = NULL, *rest_attrs = NULL;
   int *pred_offsets = NULL, *rest_offsets = NULL;
