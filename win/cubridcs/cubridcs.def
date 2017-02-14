@@ -147,7 +147,9 @@ EXPORTS
     db_get_attribute
     db_get_attribute_by_name
     db_get_attributes
+	db_get_bit
     db_get_cacheinfo
+	db_get_char
     db_get_class
     db_get_class_attribute
     db_get_class_attributes
@@ -176,6 +178,7 @@ EXPORTS
     db_get_query_type_list
     db_get_resolutions
     db_get_statement_type
+	db_get_string
     db_get_string_length
     db_get_subclasses
     db_get_superclasses

@@ -1803,6 +1803,154 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 }
 
 /*
+ * db_get_string() -
+ * return :
+ * value(in):
+ */
+DB_C_CHAR
+db_get_string (const DB_VALUE * value)
+{
+  char *str = NULL;
+  DB_TYPE type;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  /* Needs to be checked !! */
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
+	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
+
+  switch (value->data.ch.info.style)
+    {
+    case SMALL_STRING:
+      str = (char *) value->data.ch.sm.buf;
+      break;
+    case MEDIUM_STRING:
+      str = value->data.ch.medium.buf;
+      break;
+    case LARGE_STRING:
+      /* Currently not implemented */
+      str = NULL;
+      break;
+    }
+
+  return str;
+}
+
+/*
+ * db_get_bit() -
+ * return :
+ * value(in):
+ * length(out):
+ */
+DB_C_BIT
+db_get_bit (const DB_VALUE * value, int *length)
+{
+  char *str = NULL;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+  CHECK_1ARG_NULL (length);
+#endif
+
+  if (value->domain.general_info.is_null)
+    {
+      return NULL;
+    }
+
+  /* Needs to be checked !! */
+  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_BIT || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARBIT);
+
+  switch (value->data.ch.info.style)
+    {
+    case SMALL_STRING:
+      {
+	*length = value->data.ch.sm.size;
+	str = (char *) value->data.ch.sm.buf;
+      }
+      break;
+    case MEDIUM_STRING:
+      {
+	*length = value->data.ch.medium.size;
+	str = value->data.ch.medium.buf;
+      }
+      break;
+    case LARGE_STRING:
+      {
+	/* Currently not implemented */
+	*length = 0;
+	str = NULL;
+      }
+      break;
+    }
+
+  return str;
+}
+
+/*
+ * db_get_char() -
+ * return :
+ * value(in):
+ * length(out):
+ */
+DB_C_CHAR
+db_get_char (const DB_VALUE * value, int *length)
+{
+  char *str = NULL;
+  DB_TYPE type;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+  CHECK_1ARG_NULL (length);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
+	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
+
+  switch (value->data.ch.info.style)
+    {
+    case SMALL_STRING:
+      {
+	str = (char *) value->data.ch.sm.buf;
+	intl_char_count ((unsigned char *) str, value->data.ch.sm.size, (INTL_CODESET) value->data.ch.info.codeset,
+			 length);
+      }
+      break;
+    case MEDIUM_STRING:
+      {
+	str = value->data.ch.medium.buf;
+	intl_char_count ((unsigned char *) str, value->data.ch.medium.size, (INTL_CODESET) value->data.ch.info.codeset,
+			 length);
+      }
+      break;
+    case LARGE_STRING:
+      {
+	/* Currently not implemented */
+	str = NULL;
+	*length = 0;
+      }
+      break;
+    }
+
+  return str;
+}
+
+/*
  * db_type_to_db_domain() - see the note below.
  *
  * return : DB_DOMAIN of a primitive DB_TYPE, returns NULL otherwise
@@ -4316,6 +4464,37 @@ db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int col
 
   return error;
 }
+
+/*
+ * db_make_elo () -
+ * return:
+ * value(out):
+ * type(in):
+ * elo(in):
+ */
+int
+db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ERROR (value);
+#endif
+
+  value->domain.general_info.type = type;
+  if (elo == NULL || elo->size < 0 || elo->type == ELO_NULL)
+    {
+      elo_init_structure (&value->data.elo);
+      value->domain.general_info.is_null = 1;
+    }
+  else
+    {
+      value->data.elo = *elo;
+      value->domain.general_info.is_null = 0;
+    }
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
 
 /*
  * vc_append_bytes(): append a string to string buffer

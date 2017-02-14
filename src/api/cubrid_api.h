@@ -24,7 +24,6 @@
 #ifndef _CUBRID_API_H_
 #define _CUBRID_API_H_
 
-#include "config.h"
 #include <stdlib.h>
 #include "error_code.h"
 

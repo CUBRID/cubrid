@@ -28,16 +28,14 @@
 #define _DBTYPE_H_
 
 #ident "$Id$"
+#include <stdio.h>
+#include <assert.h>
 
-#include "config.h"
-
-#include "assert.h"
-#include "dbdef.h"
+/* Need to check this again and to possibly remove them!! */
 #include "porting.h"
 #include "intl_support.h"
-#include "error_manager.h"
 #include "system_parameter.h"
-#include "es_common.h"
+#include "dbdef.h"
 
 /* From string_opfunc.h */
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
@@ -1108,6 +1106,7 @@ extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
 extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
 extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
 extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
+extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
 
 /*
  * DB_MAKE_ value constructors.
@@ -1126,7 +1125,6 @@ STATIC_INLINE int db_make_multiset (DB_VALUE * value, DB_C_SET * set) __attribut
 STATIC_INLINE int db_make_sequence (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_collection (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value) __attribute__ ((ALWAYS_INLINE));
@@ -1192,9 +1190,9 @@ extern int db_get_compressed_size (DB_VALUE * value);
 extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 				      int compressed_size, bool compressed_need_clear);
 extern char *db_get_method_error_msg (void);
-STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE char *db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+extern DB_C_CHAR db_get_string (const DB_VALUE * value);
+extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
+extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
 
 /* MACROS FOR ERROR CHECKING */
 /* These should be used at the start of every db_ function so we can check
@@ -1270,7 +1268,6 @@ STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__
 STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -1288,8 +1285,6 @@ STATIC_INLINE DB_MONETARY *db_get_monetary (const DB_VALUE * value) __attribute_
 STATIC_INLINE int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_string_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -1297,6 +1292,9 @@ STATIC_INLINE int db_get_string_collation (const DB_VALUE * value) __attribute__
 STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * db_get_int() -
@@ -1347,49 +1345,6 @@ db_get_bigint (const DB_VALUE * value)
   assert (value->domain.general_info.type == DB_TYPE_BIGINT);
 
   return value->data.bigint;
-}
-
-/*
- * db_get_string() -
- * return :
- * value(in):
- */
-STATIC_INLINE DB_C_CHAR
-db_get_string (const DB_VALUE * value)
-{
-  char *str = NULL;
-  DB_TYPE type;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  /* Needs to be checked !! */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
-	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
-
-  switch (value->data.ch.info.style)
-    {
-    case SMALL_STRING:
-      str = (char *) value->data.ch.sm.buf;
-      break;
-    case MEDIUM_STRING:
-      str = value->data.ch.medium.buf;
-      break;
-    case LARGE_STRING:
-      /* Currently not implemented */
-      str = NULL;
-      break;
-    }
-
-  return str;
 }
 
 /*
@@ -1732,111 +1687,6 @@ db_get_numeric (const DB_VALUE * value)
 }
 
 /*
- * db_get_bit() -
- * return :
- * value(in):
- * length(out):
- */
-STATIC_INLINE DB_C_BIT
-db_get_bit (const DB_VALUE * value, int *length)
-{
-  char *str = NULL;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-  CHECK_1ARG_NULL (length);
-#endif
-
-  if (value->domain.general_info.is_null)
-    {
-      return NULL;
-    }
-
-  /* Needs to be checked !! */
-  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_BIT || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARBIT);
-
-  switch (value->data.ch.info.style)
-    {
-    case SMALL_STRING:
-      {
-	*length = value->data.ch.sm.size;
-	str = (char *) value->data.ch.sm.buf;
-      }
-      break;
-    case MEDIUM_STRING:
-      {
-	*length = value->data.ch.medium.size;
-	str = value->data.ch.medium.buf;
-      }
-      break;
-    case LARGE_STRING:
-      {
-	/* Currently not implemented */
-	*length = 0;
-	str = NULL;
-      }
-      break;
-    }
-
-  return str;
-}
-
-/*
- * db_get_char() -
- * return :
- * value(in):
- * length(out):
- */
-STATIC_INLINE DB_C_CHAR
-db_get_char (const DB_VALUE * value, int *length)
-{
-  char *str = NULL;
-  DB_TYPE type;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-  CHECK_1ARG_NULL (length);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CHAR || type == DB_TYPE_VARNCHAR
-	  || type == DB_TYPE_NCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT);
-
-  switch (value->data.ch.info.style)
-    {
-    case SMALL_STRING:
-      {
-	str = (char *) value->data.ch.sm.buf;
-	intl_char_count ((unsigned char *) str, value->data.ch.sm.size, (INTL_CODESET) value->data.ch.info.codeset,
-			 length);
-      }
-      break;
-    case MEDIUM_STRING:
-      {
-	str = value->data.ch.medium.buf;
-	intl_char_count ((unsigned char *) str, value->data.ch.medium.size, (INTL_CODESET) value->data.ch.info.codeset,
-			 length);
-      }
-      break;
-    case LARGE_STRING:
-      {
-	/* Currently not implemented */
-	str = NULL;
-	*length = 0;
-      }
-      break;
-    }
-
-  return str;
-}
-
-/*
  * db_get_nchar() -
  * return :
  * value(in):
@@ -2025,24 +1875,6 @@ db_get_enum_string_size (const DB_VALUE * value)
 #define NULL_SLOTID (-1)	/* Value of an invalid slot identifier */
 #define NULL_OFFSET (-1)	/* Value of an invalid offset */
 #define NULL_FILEID (-1)	/* Value of an invalid file identifier */
-
-/* From elo.c */
-static const DB_ELO elo_Initializer = { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL, ES_NONE };
-
-/* From elo.h */
-STATIC_INLINE void elo_init_structure (DB_ELO * elo) __attribute__ ((ALWAYS_INLINE));
-
-/*
- * elo_init_structure () - init. ELO structure
- */
-STATIC_INLINE void
-elo_init_structure (DB_ELO * elo)
-{
-  if (elo != NULL)
-    {
-      *elo = elo_Initializer;
-    }
-}
 
 /*
  * db_make_null() -
@@ -2746,36 +2578,6 @@ db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
   value->need_clear = false;
 
   return error;
-}
-
-/*
- * db_make_elo () -
- * return:
- * value(out):
- * type(in):
- * elo(in):
- */
-STATIC_INLINE int
-db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  value->domain.general_info.type = type;
-  if (elo == NULL || elo->size < 0 || elo->type == ELO_NULL)
-    {
-      elo_init_structure (&value->data.elo);
-      value->domain.general_info.is_null = 1;
-    }
-  else
-    {
-      value->data.elo = *elo;
-      value->domain.general_info.is_null = 0;
-    }
-  value->need_clear = false;
-
-  return NO_ERROR;
 }
 
 /*

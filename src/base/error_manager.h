@@ -27,9 +27,8 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <stdarg.h>
+#include <stdio.h>
 #if defined (SERVER_MODE)
 #if defined (WINDOWS)
 #include <winsock2.h>
@@ -280,6 +279,6 @@ extern int er_event_restart (void);
 extern void er_clearid (void);
 extern void er_setid (int err_id);
 
-extern bool er_has_error (void);
+extern char er_has_error (void);
 extern void er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...);
 #endif /* _ERROR_MANAGER_H_ */

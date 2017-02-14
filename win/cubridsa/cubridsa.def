@@ -384,7 +384,9 @@ EXPORTS
     db_get_attribute_type
     db_get_attributes
     db_get_base_classes
+	db_get_bit
     db_get_btree_statistics
+	db_get_char
     db_get_class
     db_get_class_attribute
     db_get_class_attribute_names
@@ -439,6 +441,7 @@ EXPORTS
     db_get_shared_attribute_names
     db_get_start_line
     db_get_statement_type
+	db_get_string
     db_get_subclass_names
     db_get_subclasses
     db_get_superclass_names

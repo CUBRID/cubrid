@@ -2043,7 +2043,7 @@ er_severity (void)
  *   return: true if it has an actual error, otherwise false.
  *   note: NOTIFICATION and WARNING are not regarded as an actual error.
  */
-bool
+char
 er_has_error (void)
 {
   ER_MSG *er_entry_p;

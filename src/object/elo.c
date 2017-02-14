@@ -1012,6 +1012,21 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
   return ER_OBJ_INVALID_ARGUMENTS;
 }
 
+static const DB_ELO elo_Initializer = { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL, ES_NONE };
+
+/*
+ * elo_init_structure () - init. ELO structure
+ */
+void
+elo_init_structure (DB_ELO * elo)
+{
+  if (elo != NULL)
+    {
+      *elo = elo_Initializer;
+    }
+}
+
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * elo_meta_get () - get meta data from DB_ELO
