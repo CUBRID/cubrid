@@ -1972,7 +1972,9 @@ db_get_enum_collation (const DB_VALUE * value)
 STATIC_INLINE char *
 db_get_enum_string (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
       return NULL;
@@ -1988,7 +1990,9 @@ db_get_enum_string (const DB_VALUE * value)
 STATIC_INLINE unsigned short
 db_get_enum_short (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
 
   return value->data.enumeration.short_val;
@@ -2002,7 +2006,9 @@ db_get_enum_short (const DB_VALUE * value)
 STATIC_INLINE int
 db_get_enum_string_size (const DB_VALUE * value)
 {
+#if defined(NO_SERVER_OR_DEBUG_MODE)
   CHECK_1ARG_ZERO (value);
+#endif
   assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
 
   return value->data.enumeration.str_val.medium.size;
