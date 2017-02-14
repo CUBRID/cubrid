@@ -7290,6 +7290,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
 			  QFILE_TUPLE_RECORD * tplrec)
 {
   int error;
+  REGU_VARIABLE_LIST p;
 
   if (iscan_id == NULL || iscan_id->indx_cov.val_descr == NULL || iscan_id->indx_cov.output_val_list == NULL
       || iscan_id->rest_attrs.attr_cache == NULL)
@@ -7303,6 +7304,11 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
   if (error != NO_ERROR)
     {
       return error;
+    }
+
+  for (p = iscan_id->rest_regu_list; p; p = p->next)
+    {
+      pr_clear_value (p->value.vfetch_to);
     }
 
   error = fetch_val_list (thread_p, iscan_id->rest_regu_list, iscan_id->indx_cov.val_descr, NULL, oid, NULL, PEEK);
