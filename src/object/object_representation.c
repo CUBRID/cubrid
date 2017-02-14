@@ -8441,3 +8441,206 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
 
   return rc;
 }
+
+/*
+ * or_packed_spacedb_size () - compute the size required to pack all space info
+ *
+ * return     : total required size
+ * all (in)   : aggregated space information
+ * vols (in)  : space information for each volume (may be NULL)
+ * files (in) : space information for files (may be NULL)
+ */
+int
+or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+{
+  int size_total = 0;
+
+  /* aggregated space database information is always packed. we have 9 integer values */
+  size_total = 9 * OR_INT_SIZE;
+
+  if (vols != NULL)
+    {
+      /* we need to pack information on each volume. */
+      int size_onevol = 5 * OR_INT_SIZE;	/* we have 5 values */
+      size_total += size_onevol * (all->nvols_perm_perm + all->nvols_perm_temp + all->nvols_temp_temp);
+    }
+
+  if (files != NULL)
+    {
+      /* another 4 * 4 values */
+      size_total += 16 * OR_INT_SIZE;
+    }
+
+  return size_total;
+}
+
+/*
+ * or_pack_spacedb () - pack space info
+ *
+ * return     : new pointer after packed space info
+ * ptr (in)   : destination pointer for packed space info
+ * all (in)   : aggregated space information
+ * vols (in)  : space information for each volume (may be NULL)
+ * files (in) : space information for files (may be NULL)
+ */
+char *
+or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+{
+  /* all */
+  ptr = or_pack_int (ptr, all->nvols_perm_perm);
+  ptr = or_pack_int (ptr, all->nsect_used_perm_perm);
+  ptr = or_pack_int (ptr, all->nsect_free_perm_perm);
+  ptr = or_pack_int (ptr, all->nvols_perm_temp);
+  ptr = or_pack_int (ptr, all->nsect_used_perm_temp);
+  ptr = or_pack_int (ptr, all->nsect_free_perm_temp);
+  ptr = or_pack_int (ptr, all->nvols_temp_temp);
+  ptr = or_pack_int (ptr, all->nsect_used_temp_temp);
+  ptr = or_pack_int (ptr, all->nsect_free_temp_temp);
+
+  /* vols */
+  if (vols != NULL)
+    {
+      int iter_vol = 0;
+      for (iter_vol = 0; iter_vol < (all->nvols_perm_perm + all->nvols_perm_temp + all->nvols_temp_temp); iter_vol++)
+	{
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].volid);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].type);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].purpose);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].nsect_used);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].nsect_free);
+	}
+    }
+
+  if (files != NULL)
+    {
+      /* index */
+      ptr = or_pack_int (ptr, files->nfile_index);
+      ptr = or_pack_int (ptr, (int) files->npage_index_ftab);
+      ptr = or_pack_int (ptr, (int) files->npage_index_alloc);
+      ptr = or_pack_int (ptr, (int) files->npage_index_reserved);
+
+      /* heap */
+      ptr = or_pack_int (ptr, files->nfile_heap);
+      ptr = or_pack_int (ptr, (int) files->npage_heap_ftab);
+      ptr = or_pack_int (ptr, (int) files->npage_heap_alloc);
+      ptr = or_pack_int (ptr, (int) files->npage_heap_reserved);
+
+      /* system */
+      ptr = or_pack_int (ptr, files->nfile_system);
+      ptr = or_pack_int (ptr, (int) files->npage_system_ftab);
+      ptr = or_pack_int (ptr, (int) files->npage_system_alloc);
+      ptr = or_pack_int (ptr, (int) files->npage_system_reserved);
+
+      /* temp */
+      ptr = or_pack_int (ptr, files->nfile_temp);
+      ptr = or_pack_int (ptr, (int) files->npage_temp_ftab);
+      ptr = or_pack_int (ptr, (int) files->npage_temp_alloc);
+      ptr = or_pack_int (ptr, (int) files->npage_temp_reserved);
+    }
+
+  return ptr;
+}
+
+/*
+ * or_unpack_spacedb () - document me!
+ *
+ * return :
+ * char * ptr (in) :
+ * SPACEDB_ALL * all (in) :
+ * SPACEDB_ONEVOL * * vols (in) :
+ * SPACEDB_FILES * files (in) :
+ */
+char *
+or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files)
+{
+  int unpacked_value;
+  /* all */
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nvols_perm_perm = (DKNVOLS) unpacked_value;
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nsect_used_perm_perm = (DKNSECTS) unpacked_value;
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nsect_free_perm_perm = (DKNSECTS) unpacked_value;
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nvols_perm_temp = (DKNVOLS) unpacked_value;
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nsect_used_perm_temp = (DKNSECTS) unpacked_value;
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nsect_free_perm_temp = (DKNSECTS) unpacked_value;
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nvols_temp_temp = (DKNVOLS) unpacked_value;
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nsect_used_temp_temp = (DKNSECTS) unpacked_value;
+  ptr = or_unpack_int (ptr, &unpacked_value);
+  all->nsect_free_temp_temp = (DKNSECTS) unpacked_value;
+
+  /* vols */
+  if (vols != NULL)
+    {
+      int nvols_total = all->nvols_perm_perm + all->nvols_perm_temp + all->nvols_temp_temp;
+      int iter_vol = 0;
+
+      *vols = (SPACEDB_ONEVOL *) db_private_alloc (NULL, nvols_total * sizeof (SPACEDB_ONEVOL));
+      if (*vols == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nvols_total * sizeof (SPACEDB_ONEVOL));
+	  return NULL;
+	}
+
+      for (iter_vol = 0; iter_vol < nvols_total; iter_vol++)
+	{
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].volid = (VOLID) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].type = (DB_VOLTYPE) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].purpose = (DB_VOLPURPOSE) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].nsect_used = (DKNSECTS) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].nsect_free = (DKNSECTS) unpacked_value;
+	}
+    }
+
+  /* files */
+  if (files != NULL)
+    {
+      /* index */
+      ptr = or_unpack_int (ptr, &files->nfile_index);
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_index_ftab = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_index_alloc = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_index_reserved = (DKNPAGES) unpacked_value;;
+
+      /* heap */
+      ptr = or_unpack_int (ptr, &files->nfile_heap);
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_heap_ftab = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_heap_alloc = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_heap_reserved = (DKNPAGES) unpacked_value;
+
+      /* system */
+      ptr = or_unpack_int (ptr, &files->nfile_system);
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_system_ftab = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_system_alloc = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_system_reserved = (DKNPAGES) unpacked_value;
+
+      /* temp */
+      ptr = or_unpack_int (ptr, &files->nfile_temp);
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_temp_ftab = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_temp_alloc = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      files->npage_temp_reserved = (DKNPAGES) unpacked_value;
+    }
+
+  return ptr;
+}

@@ -10020,3 +10020,84 @@ locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_lis
   return success;
 #endif /* !CS_MODE */
 }
+
+/*
+ * netcl_spacedb () - client-side function to get database space info
+ *
+ * return           : error code
+ * spaceall (out)   : output aggregated space information
+ * spacevols (out)  : if not NULL, output space information per volume
+ * spacefiles (out) : if not NULL, out detailed space information on file usage
+ */
+int
+netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles)
+{
+#if defined (CS_MODE)
+  int error_code = NO_ERROR;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_int (request, spacevols != NULL ? 1 : 0);
+  ptr = or_pack_int (ptr, spacefiles != NULL ? 1 : 0);
+
+  error_code = net_client_request2 (NET_SERVER_SPACEDB, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (error_code != NO_ERROR)
+    {
+      assert (data_reply == NULL);
+      return error_code;
+    }
+  ptr = or_unpack_int (reply, &data_reply_size);
+  ptr = or_unpack_int (reply, &error_code);
+  if (error_code != NO_ERROR)
+    {
+      /* error */
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (data_reply == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  ptr = or_unpack_spacedb (data_reply, spaceall, spacevols, spacefiles);
+  if (ptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  assert ((ptr - data_reply) == data_reply_size);
+
+  free_and_init (data_reply);
+  return NO_ERROR;
+
+#else	/* !CS_MODE */	     /* SA_MDOE */
+  int error_code = ER_FAILED;
+
+  ENTER_SERVER ();
+  error_code = disk_spacedb (NULL, spaceall, spacevols);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (spacefiles != NULL)
+    {
+      error_code = file_spacedb (NULL, spacefiles);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+    }
+  EXIT_SERVER ();
+
+  return error_code;
+#endif /* SA_MODE */
+}

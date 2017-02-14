@@ -194,10 +194,6 @@ net_server_init (void)
   req_p->processing_function = sboot_get_locales_info;
   req_p->name = "NET_SERVER_BO_GET_LOCALES_INFO";
 
-  req_p = &net_Requests[NET_SERVER_TZ_GET_CHECKSUM];
-  req_p->processing_function = sboot_get_timezone_checksum;
-  req_p->name = "NET_SERVER_TZ_GET_CHECKSUM";
-
   /* transaction */
   req_p = &net_Requests[NET_SERVER_TM_SERVER_COMMIT];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | OUT_TRANSACTION);
@@ -834,6 +830,14 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LOCK_RR];
   req_p->processing_function = stran_lock_rep_read;
   req_p->name = "NET_SERVER_LOCK_RR";
+
+  req_p = &net_Requests[NET_SERVER_TZ_GET_CHECKSUM];
+  req_p->processing_function = sboot_get_timezone_checksum;
+  req_p->name = "NET_SERVER_TZ_GET_CHECKSUM";
+
+  req_p = &net_Requests[NET_SERVER_SPACEDB];
+  req_p->processing_function = netsr_spacedb;
+  req_p->name = "NET_SERVER_SPACEDB";
 
   req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);

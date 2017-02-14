@@ -213,6 +213,7 @@ extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 extern void schksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 							   int reqlen);

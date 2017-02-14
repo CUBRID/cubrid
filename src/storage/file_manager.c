@@ -8456,6 +8456,12 @@ file_tempcache_init (void)
     }
   memset (file_Tempcache->tran_files, 0, memsize);
 
+  /* stats */
+  file_Tempcache->nfile_total = 0;
+  file_Tempcache->npage_ftab_total = 0;
+  file_Tempcache->npage_user_total = 0;
+  file_Tempcache->npage_reserved_total = 0;
+
   /* all ok */
   return NO_ERROR;
 }

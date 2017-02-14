@@ -9526,3 +9526,84 @@ end:
   ptr = or_pack_int (reply, success);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
+
+/*
+ * netsr_spacedb () - server-side function to get database space info
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * rid (in)      : request ID
+ * request (in)  : request data
+ * reqlen (in)   : request data length
+ */
+void
+netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  SPACEDB_ALL all;
+  SPACEDB_ONEVOL *vols = NULL;
+  SPACEDB_FILES files;
+
+  int get_vols = 0;
+  int get_files = 0;
+  SPACEDB_ONEVOL **volsp = NULL;
+  SPACEDB_FILES *filesp = NULL;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *data_reply = NULL;
+  int data_reply_length = 0;
+
+  char *ptr;
+
+  int error_code = NO_ERROR;
+
+  /* do we need space information on all volumes? */
+  ptr = or_unpack_int (request, &get_vols);
+  if (get_vols)
+    {
+      volsp = &vols;
+    }
+  /* do we need detailed file information? */
+  ptr = or_unpack_int (ptr, &get_files);
+  if (get_files)
+    {
+      filesp = &files;
+    }
+
+  /* get info from disk manager */
+  error_code = disk_spacedb (thread_p, &all, volsp);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (filesp != NULL)
+    {
+      /* get info from file manager */
+      error_code = file_spacedb (thread_p, filesp);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      /* success. pack space info */
+      data_reply_length = or_packed_spacedb_size (&all, vols, filesp);
+      data_reply = (char *) db_private_alloc (thread_p, data_reply_length);
+      ptr = or_unpack_spacedb (data_reply, &all, vols, filesp);
+      assert (ptr - data_reply == data_reply_length);
+    }
+  else
+    {
+      /* error */
+      return_error_to_client (thread_p, rid);
+    }
+
+  /* send result to client */
+  ptr = or_pack_int (reply, data_reply_length);
+  ptr = or_pack_int (ptr, error_code);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
+				     data_reply_length);
+}
