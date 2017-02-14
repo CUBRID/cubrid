@@ -14808,7 +14808,7 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
     }
 
   old_dirty = (old_flags | PGBUF_BCB_DIRTY_FLAG) != 0;
-  new_dirty = (old_flags | PGBUF_BCB_DIRTY_FLAG) != 0;
+  new_dirty = (new_flags | PGBUF_BCB_DIRTY_FLAG) != 0;
   if (old_dirty && !new_dirty)
     {
       /* cleared dirty flag. */
