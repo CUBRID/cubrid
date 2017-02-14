@@ -32,9 +32,8 @@
 #include <assert.h>
 
 /* Need to check this again and to possibly remove them!! */
-#include "porting.h"
-#include "intl_support.h"
 #include "system_parameter.h"
+#include "intl_support.h"
 #include "dbdef.h"
 
 /* From string_opfunc.h */

@@ -199,6 +199,7 @@ EXPORTS
     db_lock_read
     db_lock_write
     db_login
+	db_make_elo
     db_marker_domain
     db_marker_next
     db_methfile_name
@@ -336,6 +337,7 @@ EXPORTS
     dbt_finish_object
     dbt_put
     dirname
+	elo_init_structure
     envvar_get
     envvar_root
     envvar_set

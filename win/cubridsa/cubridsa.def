@@ -477,6 +477,7 @@ EXPORTS
     db_localtime
     db_lock_read
     db_lock_write
+	db_make_elo
     db_marker_domain
     db_marker_index
     db_marker_next
@@ -720,6 +721,7 @@ EXPORTS
     dbt_set_loader_commands
     dbt_set_object_id
     rel_bit_platform
+	elo_init_structure
     envvar_root
     envvar_set
     envvar_bindir_file
