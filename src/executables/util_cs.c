@@ -3226,7 +3226,7 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 
   if (size_unit == SPACEDB_SIZE_UNIT_PAGE)
     {
-      sprintf (buf, "%11llu", (long long unsigned int) num_pages);
+      sprintf (buf, "%13llu", (long long unsigned int) num_pages);
     }
   else
     {
