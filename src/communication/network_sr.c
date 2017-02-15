@@ -518,17 +518,9 @@ net_server_init (void)
   req_p->processing_function = sdk_remarks;
   req_p->name = "NET_SERVER_DISK_REMARKS";
 
-  req_p = &net_Requests[NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO];
-  req_p->processing_function = sdisk_get_purpose_and_space_info;
-  req_p->name = "NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO";
-
   req_p = &net_Requests[NET_SERVER_DISK_VLABEL];
   req_p->processing_function = sdk_vlabel;
   req_p->name = "NET_SERVER_DISK_VLABEL";
-
-  req_p = &net_Requests[NET_SERVER_DISK_IS_EXIST];
-  req_p->processing_function = sdisk_is_volume_exist;
-  req_p->name = "NET_SERVER_DISK_IS_EXIST";
 
   /* statistics */
   req_p = &net_Requests[NET_SERVER_QST_GET_STATISTICS];

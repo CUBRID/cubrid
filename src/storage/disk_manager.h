@@ -44,71 +44,6 @@
 #define VSID_COPY(dest, src) *((VSID *) dest) = *((VSID *) src)
 #define VSID_EQ(first, second) ((first)->volid == (second)->volid && (first)->sectid == (second)->sectid)
 
-#define OR_VOL_SPACE_INFO_SIZE      (OR_INT_SIZE * 9)
-
-/* todo: fix me */
-#define OR_PACK_VOL_SPACE_INFO(PTR, INFO) \
-  do \
-    { \
-      if ((VOL_SPACE_INFO *) (INFO) != NULL) \
-	{ \
-	  PTR = or_pack_int (PTR, ((INFO)->total_pages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->free_pages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->max_pages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->used_data_npages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->used_index_npages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->used_temp_npages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->n_max_sects)); \
-	  PTR = or_pack_int (PTR, ((INFO)->n_total_sects)); \
-	  PTR = or_pack_int (PTR, ((INFO)->n_free_sects)); \
-	} \
-      else \
-	{ \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	} \
-    } \
-  while (0)
-
-/* todo: fix me */
-#define OR_UNPACK_VOL_SPACE_INFO(PTR, INFO) \
-  do \
-    { \
-      if ((VOL_SPACE_INFO *) (INFO) != NULL) \
-	{ \
-	  PTR = or_unpack_int (PTR, &((INFO)->total_pages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->free_pages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->max_pages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->used_data_npages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->used_index_npages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->used_temp_npages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->n_max_sects)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->n_total_sects)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->n_free_sects)); \
-	} \
-      else \
-	{ \
-	  int dummy; \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	} \
-    } \
-  while (0)
-
 typedef enum
 {
   DISK_DONT_FLUSH,
@@ -123,25 +58,14 @@ typedef enum
   DISK_ERROR
 } DISK_ISVALID;
 
-typedef struct vol_space_info VOL_SPACE_INFO;
-struct vol_space_info
+typedef struct disk_volume_space_info DISK_VOLUME_SPACE_INFO;
+struct disk_volume_space_info
 {
-  INT32 max_pages;		/* max page count of volume this is not equal to the total_pages, if this volume is
-				 * auto extended */
-  INT32 total_pages;		/* Total number of pages (no more that 4G) If page size is 4K, this means about 16
-				 * trillion bytes on the volume. */
-  INT32 free_pages;		/* Number of free pages */
-  INT32 used_data_npages;	/* allocated pages for data purpose */
-  INT32 used_index_npages;	/* allocated pages for index purpose */
-  INT32 used_temp_npages;	/* allocated pages for temp purpose */
-
-  /* new vol space info */
   INT32 n_max_sects;
   INT32 n_total_sects;
   INT32 n_free_sects;
 };
-
-#define VOL_SPACE_INFO_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+#define DISK_VOLUME_SPACE_INFO_INITIALIZER { 0, 0, 0 }
 
 #define DISK_SECTS_SIZE(nsects)  ((INT64) (nsects) * IO_SECTORSIZE)
 #define DISK_SECTS_NPAGES(nsects) ((nsects) * DISK_SECTOR_NPAGES)

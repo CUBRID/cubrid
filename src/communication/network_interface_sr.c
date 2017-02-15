@@ -4321,45 +4321,6 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 }
 
 /*
- * sdisk_get_purpose_and_space_info -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int int_volid;
-  VOLID volid;
-  DISK_VOLPURPOSE vol_purpose;
-  VOL_SPACE_INFO space_info;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  int error_code = NO_ERROR;
-
-  (void) or_unpack_int (request, &int_volid);
-  volid = (VOLID) int_volid;
-
-  error_code = xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return_error_to_client (thread_p, rid);
-    }
-  ptr = or_pack_int (reply, vol_purpose);
-  OR_PACK_VOL_SPACE_INFO (ptr, (&space_info));
-  ptr = or_pack_int (ptr, error_code);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
  * sdk_vlabel -
  *
  * return:
@@ -4411,37 +4372,6 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
     {
       db_private_free_and_init (thread_p, area);
     }
-}
-
-/*
- * sdisk_is_volume_exist -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  VOLID volid;
-  int int_volid;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int exist = 0;
-
-  (void) or_unpack_int (request, &int_volid);
-  volid = (VOLID) int_volid;
-  if (xdisk_is_volume_exist (thread_p, volid))
-    {
-      exist = 1;
-    }
-
-  (void) or_pack_int (reply, exist);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
