@@ -826,7 +826,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   char size_str_4[64];
 
   const char *file_type_strings[] = {
-    "INDEX", "HEAP", "SYSTEM", "TEMP", ""
+    "INDEX", "HEAP", "SYSTEM", "TEMP", "-"
   };
 
   /* todo: there is a lot of work to do here */
@@ -1030,7 +1030,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
        * data_type, file_count, used pages/size, ftab pages/size, reserved pages/size, total pages/size */
       for (i = 0; i < SPACEDB_FILE_COUNT; i++)
 	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_FORMAT + i),
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_FORMAT),
 		   file_type_strings[i], files[i].nfile,
 		   SPACEDB_TO_SIZE_ARG (1, files[i].npage_user), SPACEDB_TO_SIZE_ARG (2, files[i].npage_ftab),
 		   SPACEDB_TO_SIZE_ARG (3, files[i].npage_reserved),
