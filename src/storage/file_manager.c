@@ -7179,6 +7179,9 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
 int
 file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
 {
+  /* init */
+  memset (spacedb, 0, sizeof (SPACEDB_FILES) * SPACEDB_FILE_COUNT);
+
   /* temporary files stats are already cached. */
   spacedb[SPACEDB_TEMP_FILE] = file_Tempcache->spacedb_temp;
 
