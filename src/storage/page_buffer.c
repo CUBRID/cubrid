@@ -8521,15 +8521,19 @@ static PGBUF_BCB *
 pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
   PGBUF_BCB *bufptr;
-  int dirty_cnt = 0;
   int found_victim_cnt = 0;
   int search_cnt = 0;
   int lru_victim_cnt = 0;
   PGBUF_LRU_LIST *lru_list;
   PGBUF_BCB *bufptr_victimizable = NULL;
   PGBUF_BCB *bufptr_start = NULL;
+  PGBUF_BCB *victim_hint = NULL;
+
+  bool restarted = false;
 
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
+
+  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_CALL);
 
   /* check if LRU list is empty */
   if (lru_list->bottom == NULL)
@@ -8554,6 +8558,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   /* search for non dirty bcb */
 
+restart:
+
   lru_victim_cnt = lru_list->count_vict_cand;
   if (lru_victim_cnt <= 0)
     {
@@ -8562,15 +8568,30 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
-  /* start searching with victim hint */
-  bufptr_start = lru_list->victim_hint;
+  /* we will search */
+  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_SEARCH);
+  found_victim_cnt = 0;
+  bufptr_victimizable = NULL;
 
-  if (bufptr_start == NULL)
+  /* start searching with victim hint */
+  victim_hint = lru_list->victim_hint;
+  if (victim_hint == NULL)
     {
-      /* all zone three bcb's are dirty */
+      /* todo: rename stat */
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_EARLY_OUT_NULL_HINT);
-      pthread_mutex_unlock (&lru_list->mutex);
-      return NULL;
+      bufptr_start = lru_list->bottom;
+    }
+  else if (restarted)
+    {
+      /* restart from bottom */
+      bufptr_start = lru_list->bottom;
+    }
+  else
+    {
+      bufptr_start = victim_hint;
+      /* todo: rename stat... it estimates distance from bottom */
+      perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_HINT_BOTTOM,
+                        victim_hint->tick_lru3 - lru_list->bottom->tick_lru3);
     }
 
   if (bufptr_start == lru_list->bottom)
@@ -8581,13 +8602,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   for (bufptr = bufptr_start; bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr);
        bufptr = bufptr->prev_BCB, search_cnt++)
     {
-      /* must not be dirty */
-      if (pgbuf_bcb_is_dirty (bufptr))
-	{
-	  dirty_cnt++;
-	  continue;
-	}
-
       /* must not be any other case that invalidates a victim: is flushing, direct victim */
       if (pgbuf_bcb_avoid_victim (bufptr))
 	{
@@ -8596,8 +8610,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	}
 
       /* must not be fixed */
-      if (bufptr->fcnt != 0 || bufptr->latch_mode != PGBUF_NO_LATCH
-	  || pgbuf_is_exist_blocked_reader_writer_victim (bufptr))
+      if (pgbuf_is_bcb_fixed_by_any (bufptr, false))
 	{
 	  /* this bcb cannot be used now, but it is a valid victim candidate. maybe we should update victim hint */
 	  if (bufptr_victimizable == NULL)
@@ -8605,7 +8618,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	      bufptr_victimizable = bufptr;
 
 	      /* update hint if this is not bufptr_start and hint has not changed in the meantime. */
-	      if (bufptr != bufptr_start && ATOMIC_CAS_ADDR (&lru_list->victim_hint, bufptr_start, bufptr_victimizable))
+	      if (bufptr_victimizable != victim_hint
+                  && ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, bufptr_victimizable))
 		{
 		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
 		}
@@ -8629,15 +8643,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	  if (pgbuf_is_bcb_victimizable (bufptr, true))
 	    {
 	      PGBUF_BCB *bcb_prev = bufptr->prev_BCB;
-	      PGBUF_BCB *victim_hint = NULL;
+	      PGBUF_BCB *victim_hint_new = NULL;
 
 	      if (bufptr_victimizable == NULL)
 		{
 		  /* try to update hint on next */
-		  victim_hint = bcb_prev != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_prev) ? bcb_prev : NULL;
-		  if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, bufptr_start, victim_hint))
+		  victim_hint_new = bcb_prev != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_prev) ? bcb_prev : NULL;
+		  if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, victim_hint_new))
 		    {
-		      if (victim_hint == NULL)
+		      if (victim_hint_new == NULL)
 			{
 			  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_NULL_HINT_WITH_VICTIM);
 			}
@@ -8661,8 +8675,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
 	      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
-	      perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_DIRTY_CNT, dirty_cnt);
 	      perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
+              if (restarted)
+                {
+                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_FOUND_ON_RESTART);
+                }
 
 	      return bufptr;
 	    }
@@ -8679,7 +8696,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	    {
 	      bufptr_victimizable = bufptr;
 	      /* try to replace victim if it was not already changed. */
-	      if (bufptr != bufptr_start && ATOMIC_CAS_ADDR (&lru_list->victim_hint, bufptr_start, bufptr_victimizable))
+	      if (bufptr != bufptr_start && ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, bufptr_victimizable))
 		{
 		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
 		}
@@ -8696,18 +8713,30 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     }
 
   perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_END_ZONE_2);
-  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_FAIL_DIRTY_CNT, dirty_cnt);
-  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_FAIL_SEARCH_CNT, search_cnt);
+  if (bufptr_start != lru_list->bottom)
+    {
+      assert (!restarted);
+      if (bufptr_victimizable == NULL)
+        {
+          /* we had a hint and we failed to find any victim candidates. */
+          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_BAD_HINT);
+        }
+      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_RESTART);
+      
+      restarted = true;
+      goto restart;
+    }
 
   if (bufptr_victimizable == NULL)
     {
       /* nothing can be victimized in this list */
-      if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, bufptr_start, NULL))
+      if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL))
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_NULL_HINT);
 	}
-      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_BAD_HINT);
     }
+
+  perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_FAIL_SEARCH_CNT, search_cnt);
 
   pthread_mutex_unlock (&lru_list->mutex);
   return NULL;
@@ -14650,6 +14679,7 @@ STATIC_INLINE void
 pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
 {
   PGBUF_BCB *old_victim_hint;
+  int list_tick;
   bool updated_hint = true;
 
   /* first, let's update the victim hint. */
@@ -14658,9 +14688,9 @@ pgbuf_lru_add_victim_candidate (PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
       /* replace current victim hint only if this candidate is better. that is if its age in zone 3 is greater that of
        * current hint's */
       old_victim_hint = lru_list->victim_hint;
+      list_tick = lru_list->tick_lru3;
       if (old_victim_hint != NULL
-	  && (PGBUF_AGE_DIFF (old_victim_hint->tick_lru3, lru_list->tick_lru3)
-	      > PGBUF_AGE_DIFF (bcb->tick_lru3, lru_list->tick_lru3)))
+	  && (PGBUF_AGE_DIFF (old_victim_hint->tick_lru3, list_tick) > PGBUF_AGE_DIFF (bcb->tick_lru3, list_tick)))
 	{
 	  /* current hint is older. */
 	  updated_hint = false;
