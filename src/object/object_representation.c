@@ -8463,17 +8463,11 @@ or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, co
       /* we need to pack information on each volume. */
       int size_onevol = 5 * OR_INT_SIZE;	/* we have 5 int values without the name */
       int i;
-      int nvols = 0;
 
-      for (i = 0; i < SPACEDB_TOTAL_ALL; i++)
-	{
-	  nvols += all[i].nvols;
-	}
-
-      size_total += size_onevol * nvols;
+      size_total += size_onevol * all[SPACEDB_TOTAL_ALL].nvols;
 
       /* also volume names */
-      for (i = 0; i < nvols; i++)
+      for (i = 0; i < all[SPACEDB_TOTAL_ALL].nvols; i++)
 	{
 	  size_total += or_packed_string_length (vols[i].name, NULL);
 	}
@@ -8501,7 +8495,6 @@ char *
 or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
 {
   int i;
-  int nvols = 0;
 
   /* all */
   for (i = 0; i < SPACEDB_ALL_COUNT; i++)
@@ -8509,15 +8502,13 @@ or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols
       ptr = or_pack_int (ptr, (int) all[i].nvols);
       ptr = or_pack_int (ptr, (int) all[i].npage_used);
       ptr = or_pack_int (ptr, (int) all[i].npage_free);
-
-      nvols += all[i].nvols;
     }
 
   /* vols */
   if (vols != NULL)
     {
       int iter_vol = 0;
-      for (iter_vol = 0; iter_vol < nvols; iter_vol++)
+      for (iter_vol = 0; iter_vol < all[SPACEDB_TOTAL_ALL].nvols; iter_vol++)
 	{
 	  ptr = or_pack_int (ptr, (int) vols[iter_vol].volid);
 	  ptr = or_pack_int (ptr, (int) vols[iter_vol].type);
