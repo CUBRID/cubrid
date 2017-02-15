@@ -12000,6 +12000,27 @@ values_query
 				    node->info.query.all_distinct = PT_ALL;
 				  }
 				  
+				/* We don't want to allow subqueries for VALUES query */
+				if (PT_IS_VALUE_QUERY (node))
+				  {
+				    PT_NODE *node_list, *attrs;
+
+				    for (node_list = node->info.query.q.select.list; node_list;
+					 node_list = node_list->next)
+				      {
+					/* node_list->node_type should be PT_NODE_LIST */
+					for (attrs = node_list->info.node_list.list; attrs; attrs = attrs->next)
+					  {
+					    if (PT_IS_QUERY (attrs))
+					      {
+						PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+							    MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+						break;
+					      }
+					  }
+				      }
+				  }
+
 				parser_restore_found_Oracle_outer ();
 				if (parser_select_level >= 0)
 				  parser_select_level--;
