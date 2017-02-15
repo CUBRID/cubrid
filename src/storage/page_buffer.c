@@ -13897,8 +13897,7 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
 }
 
 /*
- * pgbuf_flush_control_from_dirty_ratio () - Try to control adaptive flush
- *					     aggressiveness based on the
+ * pgbuf_flush_control_from_dirty_ratio () - Try to control adaptive flush aggressiveness based on the
  *					     page buffer "dirtiness".
  *
  * return : Suggested number to increase flush rate.
@@ -13928,8 +13927,11 @@ pgbuf_flush_control_from_dirty_ratio (void)
   if (crt_dirties_cnt > prev_dirties_cnt)
     {
       int diff = crt_dirties_cnt - prev_dirties_cnt;
+
       /* Set a weight on the difference based on the dirty rate of buffer. */
       adapt_flush_rate += diff * crt_dirties_cnt / pgbuf_Pool.num_buffers;
+
+      prev_dirties_cnt = crt_dirties_cnt;
     }
 
   return adapt_flush_rate;
