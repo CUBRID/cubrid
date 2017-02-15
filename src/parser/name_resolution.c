@@ -7959,7 +7959,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      return NULL;
 	    }
 
-	  if (curr_cte_count == 0)
+	  if (curr_cte_count == 0 && non_recursive_part->node_type == PT_SELECT)
 	    {
 	      /* no self references were found in arg2 from union; search in arg1 also, syntax allows this case */
 	      non_recursive_part =
@@ -7990,6 +7990,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       curr_cte->info.cte.non_recursive_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
       if (curr_cte->info.cte.recursive_part)
 	{
+	  assert (curr_cte->info.cte.recursive_part->node_type == PT_SELECT);
 	  curr_cte->info.cte.recursive_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
 	}
     }
