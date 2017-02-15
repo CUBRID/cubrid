@@ -5451,15 +5451,14 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
 {
   int iter_vol;
   int iter_spacevols;
-  int nvols_perm_temp;
-  int nvols_total;
+  int nvols_total = 0;
   bool is_extend_locked = false;
 
   int error_code = NO_ERROR;
 
   assert (spaceall != NULL);
 
-  spaceall->nvols_perm_temp = 0;
+  spaceall[SPACEDB_PERM_TEMP_ALL].nvols = 0;
 
   /* block extensions for the short period we'll be reading volume info. */
   disk_lock_extend ();
@@ -5471,56 +5470,54 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
     {
       if (disk_Cache->vols[iter_vol].purpose == DB_TEMPORARY_DATA_PURPOSE)
 	{
-	  ++spaceall->nvols_perm_temp;
+	  spaceall[SPACEDB_PERM_TEMP_ALL].nvols++;
 	}
     }
 
-  spaceall->nvols_perm_perm = disk_Cache->nvols_perm - spaceall->nvols_perm_temp;
-  spaceall->nvols_temp_temp = disk_Cache->nvols_temp;
+  spaceall[SPACEDB_PERM_PERM_ALL].nvols = disk_Cache->nvols_perm - spaceall[SPACEDB_PERM_TEMP_ALL].nvols;
+  spaceall[SPACEDB_TEMP_TEMP_ALL].nvols = disk_Cache->nvols_temp;
   nvols_total = disk_Cache->nvols_perm + disk_Cache->nvols_temp;
 
-  spaceall->nsect_used_perm_perm =
-    disk_Cache->perm_purpose_info.extend_info.nsect_total - disk_Cache->perm_purpose_info.extend_info.nsect_free;
-  spaceall->nsect_free_perm_perm = disk_Cache->perm_purpose_info.extend_info.nsect_free;
+  spaceall[SPACEDB_PERM_PERM_ALL].npage_used =
+    DISK_SECTS_NPAGES (disk_Cache->perm_purpose_info.extend_info.nsect_total
+		       - disk_Cache->perm_purpose_info.extend_info.nsect_free);
+  spaceall[SPACEDB_PERM_PERM_ALL].npage_free = DISK_SECTS_NPAGES (disk_Cache->perm_purpose_info.extend_info.nsect_free);
 
-  spaceall->nsect_used_perm_temp =
-    disk_Cache->temp_purpose_info.nsect_perm_total - disk_Cache->temp_purpose_info.nsect_perm_free;
-  spaceall->nsect_free_perm_perm = disk_Cache->temp_purpose_info.nsect_perm_free;
+  spaceall[SPACEDB_PERM_TEMP_ALL].npage_used =
+    DISK_SECTS_NPAGES (disk_Cache->temp_purpose_info.nsect_perm_total - disk_Cache->temp_purpose_info.nsect_perm_free);
+  spaceall[SPACEDB_PERM_TEMP_ALL].npage_free = DISK_SECTS_NPAGES (disk_Cache->temp_purpose_info.nsect_perm_free);
 
-  spaceall->nsect_used_temp_temp =
-    disk_Cache->temp_purpose_info.extend_info.nsect_total - disk_Cache->temp_purpose_info.extend_info.nsect_free;
-  spaceall->nsect_free_temp_temp = disk_Cache->temp_purpose_info.extend_info.nsect_free;
+  spaceall[SPACEDB_TEMP_TEMP_ALL].npage_used =
+    DISK_SECTS_NPAGES (disk_Cache->temp_purpose_info.extend_info.nsect_total
+		       - disk_Cache->temp_purpose_info.extend_info.nsect_free);
+  spaceall[SPACEDB_TEMP_TEMP_ALL].npage_free = DISK_SECTS_NPAGES (disk_Cache->temp_purpose_info.extend_info.nsect_free);
 
   if (spacevols != NULL)
     {
       /* get info on each volume */
       iter_spacevols = 0;
 
-      *spacevols =
-	(SPACEDB_ONEVOL *) db_private_alloc (thread_p,
-					     (disk_Cache->nvols_perm +
-					      disk_Cache->nvols_temp) * sizeof (SPACEDB_ONEVOL));
+      *spacevols = (SPACEDB_ONEVOL *) malloc (nvols_total * sizeof (SPACEDB_ONEVOL));
       if (*spacevols == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (disk_Cache->nvols_perm + disk_Cache->nvols_temp) * sizeof (SPACEDB_ONEVOL));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nvols_total * sizeof (SPACEDB_ONEVOL));
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit;
 	}
 
       for (iter_vol = 0; iter_vol < disk_Cache->nvols_perm; iter_vol++)
 	{
-	  spacevols[iter_spacevols]->volid = iter_vol;
-	  spacevols[iter_spacevols]->type = DB_PERMANENT_VOLTYPE;
-	  spacevols[iter_spacevols]->purpose = disk_Cache->vols->purpose;
-	  spacevols[iter_spacevols]->nsect_free = disk_Cache->vols->nsect_free;
+	  (*spacevols)[iter_spacevols].volid = iter_vol;
+	  (*spacevols)[iter_spacevols].type = DB_PERMANENT_VOLTYPE;
+	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols->purpose;
+	  (*spacevols)[iter_spacevols].npage_free = DISK_SECTS_NPAGES (disk_Cache->vols->nsect_free);
 	}
       for (iter_vol = LOG_MAX_DBVOLID - disk_Cache->nvols_temp + 1; iter_vol <= LOG_MAX_DBVOLID; iter_vol++)
 	{
-	  spacevols[iter_spacevols]->volid = iter_vol;
-	  spacevols[iter_spacevols]->type = DB_TEMPORARY_VOLTYPE;
-	  spacevols[iter_spacevols]->purpose = disk_Cache->vols->purpose;
-	  spacevols[iter_spacevols]->nsect_free = disk_Cache->vols->nsect_free;
+	  (*spacevols)[iter_spacevols].volid = iter_vol;
+	  (*spacevols)[iter_spacevols].type = DB_TEMPORARY_VOLTYPE;
+	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols->purpose;
+	  (*spacevols)[iter_spacevols].npage_free = disk_Cache->vols->nsect_free;
 	}
     }
   assert (iter_spacevols == nvols_total);
@@ -5534,9 +5531,8 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
       PAGE_PTR page_volheader = NULL;
       DISK_VOLUME_HEADER *volheader = NULL;
 
-      /* we still have to read the total number of sectors for each volume, but they are not cached. since this is slow
-       * (we need to fix each volume header page) and since we don't need to lock extensions anymore, we'll now get
-       * this missing piece of information. */
+      /* we still have to read the total number of sectors and names for each volume, which are found in volumes header
+       * pages, which need latches, which are slow, therefore we do it here, after unlocking extend. */
       assert (*spacevols != NULL);
 
       for (iter_spacevols = 0; iter_spacevols < nvols_total; iter_spacevols++)
@@ -5549,7 +5545,9 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
 	      ASSERT_ERROR ();
 	      goto exit;
 	    }
-	  spacevols[iter_spacevols]->nsect_used = volheader->nsect_total - spacevols[iter_spacevols]->nsect_free;
+	  (*spacevols)[iter_spacevols].npage_used =
+	    DISK_SECTS_NPAGES (volheader->nsect_total - spacevols[iter_spacevols]->npage_free);
+	  strncpy ((*spacevols)[iter_spacevols].name, disk_vhdr_get_vol_fullname (volheader), DB_MAX_PATH_LENGTH);
 	  pgbuf_unfix_and_init (thread_p, page_volheader);
 	}
     }
@@ -5567,7 +5565,7 @@ exit:
   if (error_code != NO_ERROR && *spacevols != NULL)
     {
       /* free spacevols */
-      db_private_free_and_init (thread_p, *spacevols);
+      free_and_init (*spacevols);
     }
 
   return error_code;

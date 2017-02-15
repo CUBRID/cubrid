@@ -684,7 +684,24 @@ opciones validas:\n\
                                ajustar la unidad de visualizacion (pagina, mega, giga, tera, legible por humanos); estandar: H\n\
   -s, --summarize              mostrar solo un resumen para cada proposito de volumen\n\
   -p, --purpose                muestra la dimension de cada proposito (data/index/temp) de cada volumen\n
-
+70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+71 type                purpose            volume_count        used_size           free_size           total_size\n
+72 PERMANENT           PERMANENT DATA     %1$5d               %2$10s          %3$10s          %4$10s\n
+73 PERMANENT           TEMPORARY DATA     %1$5d               %2$10s          %3$10s          %4$10s\n
+74 TEMPORARY           TEMPORARY DATA     %1$5d               %2$10s          %3$10s          %4$10s\n
+75                                        %1$5d               %2$10s          %3$10s          %4$10s\n
+80 Space description for all volumes:\n
+81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+82 volid               type                purpose            used_size           free_size           total_size          volume_name\n
+83 %1$5d               PERMANENT           PERMANENT DATA     %2$10s          %3$10s          %4$10s          %5$64s\n
+84 %1$5d               PERMANENT           TEMPORARY DATA     %2$10s          %3$10s          %4$10s          %5$64s\n
+85 %1$5d               TEMPORARY           TEMPORARY DATA     %2$10s          %3$10s          %4$10s          %5$64s\n
+90 Detailed space description for files:\n
+91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+92 data_type           file_count          used_size          file_table_pages    reserved_size       total_size\n
+93 %1$10s          %2$5d               %3$10s          %4$10s          %5$10s          %6$10s\n
+94                                         %3$10s          %4$10s          %5$10s          %6$10s\n
+100 -----------------------------------------------------------------------------------------------------------------\n
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Numero estimado de Paginas = %1$d\n

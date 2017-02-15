@@ -143,8 +143,8 @@ struct vol_space_info
 
 #define VOL_SPACE_INFO_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 
-#define DISK_SECTS_SIZE(nsects)  ((INT64) nsects * IO_SECTORSIZE)
-#define DISK_SECTS_NPAGES(nsects) (nsects * DISK_SECTOR_NPAGES)
+#define DISK_SECTS_SIZE(nsects)  ((INT64) (nsects) * IO_SECTORSIZE)
+#define DISK_SECTS_NPAGES(nsects) ((nsects) * DISK_SECTOR_NPAGES)
 #define DISK_PAGES_TO_SECTS(npages) (CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES))
 
 /* structure used to clone disk sector bitmaps to cross check against file tables */

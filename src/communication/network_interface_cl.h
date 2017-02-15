@@ -384,4 +384,6 @@ extern int tran_lock_rep_read (LOCK lock_rr_tran);
 extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID * class_oidp);
 
 extern int log_does_active_user_exist (const char *user_name, bool * existed);
+
+extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

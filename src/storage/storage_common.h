@@ -722,21 +722,27 @@ typedef enum
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
+/************************************************************************/
+/* spacedb                                                              */
+/************************************************************************/
+
 /* database space info */
+typedef enum
+{
+  SPACEDB_PERM_PERM_ALL,
+  SPACEDB_PERM_TEMP_ALL,
+  SPACEDB_TEMP_TEMP_ALL,
+
+  SPACEDB_TOTAL_ALL,
+  SPACEDB_ALL_COUNT,
+} SPACEDB_ALL_TYPE;
+
 typedef struct spacedb_all SPACEDB_ALL;
 struct spacedb_all
 {
-  DKNVOLS nvols_perm_perm;
-  DKNSECTS nsect_used_perm_perm;
-  DKNSECTS nsect_free_perm_perm;
-
-  DKNVOLS nvols_perm_temp;
-  DKNSECTS nsect_used_perm_temp;
-  DKNSECTS nsect_free_perm_temp;
-
-  DKNVOLS nvols_temp_temp;
-  DKNSECTS nsect_used_temp_temp;
-  DKNSECTS nsect_free_temp_temp;
+  DKNVOLS nvols;
+  DKNPAGES npage_used;
+  DKNPAGES npage_free;
 };
 
 typedef struct spacedb_onevol SPACEDB_ONEVOL;
@@ -745,34 +751,30 @@ struct spacedb_onevol
   VOLID volid;
   DB_VOLTYPE type;
   DB_VOLPURPOSE purpose;
-  DKNSECTS nsect_used;
-  DKNSECTS nsect_free;
+  DKNPAGES npage_used;
+  DKNPAGES npage_free;
+  char name[DB_MAX_PATH_LENGTH];
 };
+
+/* files */
+typedef enum
+{
+  SPACEDB_INDEX_FILE,
+  SPACEDB_HEAP_FILE,
+  SPACEDB_SYSTEM_FILE,
+  SPACEDB_TEMP_FILE,
+
+  SPACEDB_TOTAL_FILE,
+  SPACEDB_FILE_COUNT,
+} SPACEDB_FILE_TYPE;
 
 typedef struct spacedb_files SPACEDB_FILES;
 struct spacedb_files
 {
-  int nfile_index;
-  DKNPAGES npage_index_ftab;
-  DKNPAGES npage_index_alloc;
-  DKNPAGES npage_index_reserved;
-
-  int nfile_heap;
-  DKNPAGES npage_heap_ftab;
-  DKNPAGES npage_heap_alloc;
-  DKNPAGES npage_heap_reserved;
-
-  int nfile_system;
-  DKNPAGES npage_system_ftab;
-  DKNPAGES npage_system_alloc;
-  DKNPAGES npage_system_reserved;
-
-  /* todo: getting detailed info on temporary files is a little bit complicated. we'd have to synchronize and block
-   * temporary file creation/destruction which is not desirable. think of a good solution. */
-  int nfile_temp;
-  DKNPAGES npage_temp_ftab;
-  DKNPAGES npage_temp_alloc;
-  DKNPAGES npage_temp_reserved;
+  int nfile;
+  DKNPAGES npage_ftab;
+  DKNPAGES npage_user;
+  DKNPAGES npage_reserved;
 };
 
 extern INT16 db_page_size (void);

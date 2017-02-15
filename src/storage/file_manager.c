@@ -473,11 +473,8 @@ struct file_tempcache
 
   FILE_TEMPCACHE_ENTRY **tran_files;	/* transaction temporary files */
 
-  /* stats */
-  int nfile_total;
-  DKNPAGES npage_ftab_total;
-  DKNPAGES npage_user_total;
-  DKNPAGES npage_reserved_total;
+  /* space info */
+  SPACEDB_FILES spacedb_temp;
 };
 
 static FILE_TEMPCACHE *file_Tempcache = NULL;
@@ -799,6 +796,9 @@ static int file_tracker_item_dump_btree_capacity (THREAD_ENTRY * thread_p, PAGE_
 static int file_tracker_item_check (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
 				    int index_item, bool * stop, void *args);
 #endif /* SA_MODE */
+static int file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_EXTENSIBLE_DATA * extdata,
+				      int index_item, bool * stop, void *args);
+static int file_tracker_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb);
 
 /************************************************************************/
 /* End of static functions                                              */
@@ -3753,10 +3753,10 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   if (is_temp)
     {
       /* update stats */
-      ATOMIC_INC_32 (&file_Tempcache->nfile_total, 1);
-      ATOMIC_INC_32 (&file_Tempcache->npage_ftab_total, fhead->n_page_ftab);
-      ATOMIC_INC_32 (&file_Tempcache->npage_user_total, fhead->n_page_user);
-      ATOMIC_INC_32 (&file_Tempcache->npage_reserved_total, fhead->n_page_free);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.nfile, 1);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, fhead->n_page_ftab);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, fhead->n_page_user);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, fhead->n_page_free);
     }
 
   /* Fall through to exit */
@@ -4100,10 +4100,10 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
   else
     {
       /* update temporary files global stats */
-      ATOMIC_INC_32 (&file_Tempcache->nfile_total, -1);
-      ATOMIC_INC_32 (&file_Tempcache->npage_ftab_total, -fhead->n_page_ftab);
-      ATOMIC_INC_32 (&file_Tempcache->npage_user_total, -fhead->n_page_user);
-      ATOMIC_INC_32 (&file_Tempcache->npage_reserved_total, -fhead->n_page_free);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.nfile, -1);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, -fhead->n_page_ftab);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, -fhead->n_page_user);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, -fhead->n_page_free);
       pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
@@ -7180,10 +7180,7 @@ int
 file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
 {
   /* temporary files stats are already cached. */
-  spacedb->nfile_temp = file_Tempcache->nfile_total;
-  spacedb->npage_temp_ftab = file_Tempcache->npage_ftab_total;
-  spacedb->npage_temp_alloc = file_Tempcache->npage_user_total;
-  spacedb->npage_temp_reserved = file_Tempcache->npage_reserved_total;
+  spacedb[SPACEDB_TEMP_FILE] = file_Tempcache->spacedb_temp;
 
   /* use file tracker to get info on permanent purpose files */
   return file_tracker_spacedb (thread_p, spacedb);
@@ -8060,7 +8057,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 		FILE_PARTSECT_AS_ARGS (&partsect_new), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
 
       /* update temporary file stats */
-      ATOMIC_INC_64 (&file_Tempcache->npage_reserved_total, DISK_SECTOR_NPAGES);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, DISK_SECTOR_NPAGES);
     }
   assert (fhead->n_page_free > 0);
 
@@ -8127,13 +8124,13 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   /* update temporary file stats */
   if (alloc_type == FILE_ALLOC_USER_PAGE)
     {
-      ATOMIC_INC_64 (&file_Tempcache->npage_user_total, 1);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, 1);
     }
   else
     {
-      ATOMIC_INC_64 (&file_Tempcache->npage_ftab_total, 1);
+      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, 1);
     }
-  ATOMIC_INC_64 (&file_Tempcache->npage_reserved_total, -1);
+  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, -1);
 
   /* done */
   assert (error_code == NO_ERROR);
@@ -8335,11 +8332,12 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   fhead->n_sector_full = nsect_full_new;
 
   /* also update temporary files global stats */
-  ATOMIC_INC_64 (&file_Tempcache->npage_ftab_total, collector.npages - fhead->n_page_ftab);
+  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, collector.npages - fhead->n_page_ftab);
   fhead->n_page_ftab = collector.npages;
-  ATOMIC_INC_64 (&file_Tempcache->npage_user_total, -fhead->n_page_user);
+  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, -fhead->n_page_user);
   fhead->n_page_user = 0;
-  ATOMIC_INC_64 (&file_Tempcache->npage_reserved_total, fhead->n_page_total - fhead->n_page_ftab - fhead->n_page_free);
+  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved,
+		 fhead->n_page_total - fhead->n_page_ftab - fhead->n_page_free);
   fhead->n_page_free = fhead->n_page_total - fhead->n_page_ftab;
 
   /* reset pointers used for allocations */
@@ -8457,10 +8455,7 @@ file_tempcache_init (void)
   memset (file_Tempcache->tran_files, 0, memsize);
 
   /* stats */
-  file_Tempcache->nfile_total = 0;
-  file_Tempcache->npage_ftab_total = 0;
-  file_Tempcache->npage_user_total = 0;
-  file_Tempcache->npage_reserved_total = 0;
+  memset (&file_Tempcache->spacedb_temp, 0, sizeof (file_Tempcache->spacedb_temp));
 
   /* all ok */
   return NO_ERROR;
@@ -10644,9 +10639,8 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
-
   SPACEDB_FILES *spacedb = (SPACEDB_FILES *) args;
-
+  SPACEDB_FILE_TYPE spacedb_ftype;
   int error_code = NO_ERROR;
 
   item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);
@@ -10665,27 +10659,22 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
     {
     case FILE_BTREE:
       /* index file */
-      spacedb->nfile_index++;
-      spacedb->npage_index_ftab += fhead->n_page_ftab;
-      spacedb->npage_index_alloc += fhead->n_page_user;
-      spacedb->npage_index_reserved += fhead->n_page_free;
+      spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       /* heap file */
-      spacedb->nfile_heap++;
-      spacedb->npage_heap_ftab += fhead->n_page_ftab;
-      spacedb->npage_heap_alloc += fhead->n_page_user;
-      spacedb->npage_heap_reserved += fhead->n_page_free;
+      spacedb_ftype = SPACEDB_HEAP_FILE;
       break;
     default:
       /* system file */
-      spacedb->nfile_system++;
-      spacedb->npage_system_ftab += fhead->n_page_ftab;
-      spacedb->npage_system_alloc += fhead->n_page_user;
-      spacedb->npage_system_reserved += fhead->n_page_free;
+      spacedb_ftype = SPACEDB_SYSTEM_FILE;
       break;
     }
+  spacedb[spacedb_ftype].nfile++;
+  spacedb[spacedb_ftype].npage_ftab += fhead->n_page_ftab;
+  spacedb[spacedb_ftype].npage_user += fhead->n_page_user;
+  spacedb[spacedb_ftype].npage_reserved += fhead->n_page_free;
 
   pgbuf_unfix_and_init (thread_p, page_fhead);
   return NO_ERROR;
@@ -10698,7 +10687,7 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
  * thread_p (in) : thread entry
  * spacedb (out) : output space usage information
  */
-int
+static int
 file_tracker_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
 {
   VPID vpid_fhead;
@@ -10724,10 +10713,10 @@ file_tracker_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
     }
   fhead = (FILE_HEADER *) page_fhead;
 
-  spacedb->nfile_system++;
-  spacedb->npage_system_ftab += fhead->n_page_ftab;
-  spacedb->npage_system_alloc += fhead->n_page_user;
-  spacedb->npage_heap_reserved += fhead->n_page_free;
+  spacedb[SPACEDB_SYSTEM_FILE].nfile++;
+  spacedb[SPACEDB_SYSTEM_FILE].npage_ftab += fhead->n_page_ftab;
+  spacedb[SPACEDB_SYSTEM_FILE].npage_user += fhead->n_page_user;
+  spacedb[SPACEDB_SYSTEM_FILE].npage_reserved += fhead->n_page_free;
 
   pgbuf_unfix_and_init (thread_p, page_fhead);
   return NO_ERROR;

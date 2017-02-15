@@ -9539,9 +9539,9 @@ end:
 void
 netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  SPACEDB_ALL all;
+  SPACEDB_ALL all[SPACEDB_ALL_COUNT];
   SPACEDB_ONEVOL *vols = NULL;
-  SPACEDB_FILES files;
+  SPACEDB_FILES files[SPACEDB_FILE_COUNT];
 
   int get_vols = 0;
   int get_files = 0;
@@ -9567,16 +9567,16 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   ptr = or_unpack_int (ptr, &get_files);
   if (get_files)
     {
-      filesp = &files;
+      filesp = files;
     }
 
   /* get info from disk manager */
-  error_code = disk_spacedb (thread_p, &all, volsp);
+  error_code = disk_spacedb (thread_p, all, volsp);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
     }
-  else if (filesp != NULL)
+  else if (get_files)
     {
       /* get info from file manager */
       error_code = file_spacedb (thread_p, filesp);
@@ -9589,9 +9589,9 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   if (error_code == NO_ERROR)
     {
       /* success. pack space info */
-      data_reply_length = or_packed_spacedb_size (&all, vols, filesp);
+      data_reply_length = or_packed_spacedb_size (all, vols, filesp);
       data_reply = (char *) db_private_alloc (thread_p, data_reply_length);
-      ptr = or_unpack_spacedb (data_reply, &all, vols, filesp);
+      ptr = or_pack_spacedb (data_reply, all, vols, filesp);
       assert (ptr - data_reply == data_reply_length);
     }
   else
@@ -9606,4 +9606,13 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
 				     data_reply_length);
+
+  if (vols != NULL)
+    {
+      free_and_init (vols);
+    }
+  if (data_reply != NULL)
+    {
+      db_private_free_and_init (thread_p, data_reply);
+    }
 }
