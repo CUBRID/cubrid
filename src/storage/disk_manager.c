@@ -5539,7 +5539,7 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
       for (iter_spacevols = 0; iter_spacevols < nvols_total; iter_spacevols++)
 	{
 	  error_code =
-	    disk_get_volheader (thread_p, spacevols[iter_spacevols]->volid, PGBUF_LATCH_READ, &page_volheader,
+	    disk_get_volheader (thread_p, (*spacevols)[iter_spacevols].volid, PGBUF_LATCH_READ, &page_volheader,
 				&volheader);
 	  if (error_code != NO_ERROR)
 	    {
@@ -5547,7 +5547,7 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
 	      goto exit;
 	    }
 	  (*spacevols)[iter_spacevols].npage_used =
-	    DISK_SECTS_NPAGES (volheader->nsect_total - spacevols[iter_spacevols]->npage_free);
+	    DISK_SECTS_NPAGES (volheader->nsect_total - (*spacevols)[iter_spacevols].npage_free);
 	  strncpy ((*spacevols)[iter_spacevols].name, disk_vhdr_get_vol_fullname (volheader), DB_MAX_PATH_LENGTH);
 	  pgbuf_unfix_and_init (thread_p, page_volheader);
 	}
