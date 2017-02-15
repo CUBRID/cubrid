@@ -18207,13 +18207,18 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
       /* we have latch on b-tree page. although unlikely, trying to get class name can lead to a dead latch. that is
        * undesirable, so we'll force no wait for latch here. if the latch fails, the notification will miss class name,
        * but it will have class OID. */
-      save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
-      if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
+
+      /* We don't provide classname for VACUUM operations, since it may prevent other vacuums from fixing a page. */
+      if (!VACUUM_IS_THREAD_VACUUM (thread_p))
 	{
-	  /* ignore */
-	  er_clear ();
+	  save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	  if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
+	  (void) xlogtb_reset_wait_msecs (thread_p, save_old_wait);
 	}
-      (void) xlogtb_reset_wait_msecs (thread_p, save_old_wait);
     }
 
   if (key && obj_oid)
@@ -18648,6 +18653,10 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
   for (i = 0; i < multi_range_opt->num_attrs; i++)
     {
       DB_MAKE_NULL (&new_key_value[i]);
+    }
+
+  for (i = 0; i < multi_range_opt->num_attrs; i++)
+    {
       error = pr_midxkey_get_element_nocopy (new_mkey, multi_range_opt->sort_att_idx[i], &new_key_value[i], NULL, NULL);
       if (error != NO_ERROR)
 	{
@@ -18847,6 +18856,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 		}
 	      c = (*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1, 1, NULL,
 						 domains[i]->collation_id);
+	      pr_clear_value (&comp_key_value);
 	      if (c != 0)
 		{
 		  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))
@@ -18883,6 +18893,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 	  return error;
 	}
       c = (*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1, 1, NULL, domains[i]->collation_id);
+      pr_clear_value (&comp_key_value);
       if (c != 0)
 	{
 	  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))

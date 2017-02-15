@@ -15780,6 +15780,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       /* fold the statement set as null, we don't need to fold orderby clause because we return null. */
       parser_free_tree (parser, union_node);
       new_node = parser_new_node (parser, PT_VALUE);
+      new_node->type_enum = PT_TYPE_NULL;
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {
