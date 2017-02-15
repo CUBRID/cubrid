@@ -685,22 +685,21 @@ spacedb: 显示数据库的使用/空闲空间.\n\
   -s, --summarize              为每个设定的卷只显示一个总结\n\
   -p, --purpose                显示每个卷上的每个 purpose(data/index/temp) 已使用的大小\n
 70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
-71 type                purpose            volume_count        used_size           free_size           total_size\n
-72 PERMANENT           PERMANENT DATA     %1$5d               %2$10s          %3$10s          %4$10s\n
-73 PERMANENT           TEMPORARY DATA     %1$5d               %2$10s          %3$10s          %4$10s\n
-74 TEMPORARY           TEMPORARY DATA     %1$5d               %2$10s          %3$10s          %4$10s\n
-75                                        %1$5d               %2$10s          %3$10s          %4$10s\n
+71 type                purpose            volume_count         used_size           free_size           total_size\n
+72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
 80 Space description for all volumes:\n
 81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
-82 volid               type                purpose            used_size           free_size           total_size          volume_name\n
-83 %1$5d               PERMANENT           PERMANENT DATA     %2$10s          %3$10s          %4$10s          %5$64s\n
-84 %1$5d               PERMANENT           TEMPORARY DATA     %2$10s          %3$10s          %4$10s          %5$64s\n
-85 %1$5d               TEMPORARY           TEMPORARY DATA     %2$10s          %3$10s          %4$10s          %5$64s\n
+82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
 90 Detailed space description for files:\n
 91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
-92 data_type           file_count          used_size          file_table_pages    reserved_size       total_size\n
-93 %1$10s          %2$5d               %3$10s          %4$10s          %5$10s          %6$10s\n
-94                                         %3$10s          %4$10s          %5$10s          %6$10s\n
+92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
 100 -----------------------------------------------------------------------------------------------------------------\n
 
 
