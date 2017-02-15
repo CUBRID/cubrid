@@ -9946,7 +9946,7 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
       return error_code;
     }
   ptr = or_unpack_int (reply, &data_reply_size);
-  ptr = or_unpack_int (reply, &error_code);
+  ptr = or_unpack_int (ptr, &error_code);
   if (error_code != NO_ERROR)
     {
       /* error */
