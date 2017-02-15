@@ -15504,7 +15504,8 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  if (first_iteration && non_recursive_part->list_id->tuple_cnt > 0)
 	    {
 	      first_iteration = false;
-	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list)
+	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list
+		  || recursive_part->instnum_val != NULL)
 		{
 		  /* future specific optimizations, changes, etc */
 		}
