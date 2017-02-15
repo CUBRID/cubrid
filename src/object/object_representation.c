@@ -8475,7 +8475,7 @@ or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, co
       /* also volume names */
       for (i = 0; i < nvols; i++)
 	{
-	  size_total += or_packed_string_length (vols->name, NULL);
+	  size_total += or_packed_string_length (vols[i].name, NULL);
 	}
     }
 

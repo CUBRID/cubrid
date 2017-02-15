@@ -5508,16 +5508,16 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
 	{
 	  (*spacevols)[iter_spacevols].volid = iter_vol;
 	  (*spacevols)[iter_spacevols].type = DB_PERMANENT_VOLTYPE;
-	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols->purpose;
-	  (*spacevols)[iter_spacevols].npage_free = DISK_SECTS_NPAGES (disk_Cache->vols->nsect_free);
+	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols[iter_vol].purpose;
+	  (*spacevols)[iter_spacevols].npage_free = DISK_SECTS_NPAGES (disk_Cache->vols[iter_vol].nsect_free);
 	  iter_spacevols++;
 	}
       for (iter_vol = LOG_MAX_DBVOLID - disk_Cache->nvols_temp + 1; iter_vol <= LOG_MAX_DBVOLID; iter_vol++)
 	{
 	  (*spacevols)[iter_spacevols].volid = iter_vol;
 	  (*spacevols)[iter_spacevols].type = DB_TEMPORARY_VOLTYPE;
-	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols->purpose;
-	  (*spacevols)[iter_spacevols].npage_free = disk_Cache->vols->nsect_free;
+	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols[iter_vol].purpose;
+	  (*spacevols)[iter_spacevols].npage_free = DISK_SECTS_NPAGES (disk_Cache->vols[iter_vol].nsect_free);
 	  iter_spacevols++;
 	}
       assert (iter_spacevols == nvols_total);
