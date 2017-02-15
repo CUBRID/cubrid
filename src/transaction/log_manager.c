@@ -8971,7 +8971,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
   const char *vlabel;
   INT64 db_creation;
   DISK_VOLPURPOSE vol_purpose;
-  VOL_SPACE_INFO space_info;
+  DISK_VOLUME_SPACE_INFO space_info;
   VOLID volid;
   int vdes;
   LOG_LSA init_nontemp_lsa;
@@ -9028,7 +9028,8 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 
       if (vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
 	{
-	  (void) fileio_reset_volume (thread_p, vdes, vlabel, space_info.total_pages, &init_nontemp_lsa);
+	  (void) fileio_reset_volume (thread_p, vdes, vlabel, DISK_SECTS_NPAGES (space_info.n_total_sects),
+				      &init_nontemp_lsa);
 	}
 
       (void) disk_set_creation (thread_p, volid, vlabel, &log_Gl.hdr.db_creation, &log_Gl.hdr.chkpt_lsa, false,

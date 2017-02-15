@@ -4321,45 +4321,6 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
 }
 
 /*
- * sdisk_get_purpose_and_space_info -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int int_volid;
-  VOLID volid;
-  DISK_VOLPURPOSE vol_purpose;
-  VOL_SPACE_INFO space_info;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  int error_code = NO_ERROR;
-
-  (void) or_unpack_int (request, &int_volid);
-  volid = (VOLID) int_volid;
-
-  error_code = xdisk_get_purpose_and_space_info (thread_p, volid, &vol_purpose, &space_info);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return_error_to_client (thread_p, rid);
-    }
-  ptr = or_pack_int (reply, vol_purpose);
-  OR_PACK_VOL_SPACE_INFO (ptr, (&space_info));
-  ptr = or_pack_int (ptr, error_code);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
  * sdk_vlabel -
  *
  * return:
@@ -4411,37 +4372,6 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
     {
       db_private_free_and_init (thread_p, area);
     }
-}
-
-/*
- * sdisk_is_volume_exist -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  VOLID volid;
-  int int_volid;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int exist = 0;
-
-  (void) or_unpack_int (request, &int_volid);
-  volid = (VOLID) int_volid;
-  if (xdisk_is_volume_exist (thread_p, volid))
-    {
-      exist = 1;
-    }
-
-  (void) or_pack_int (reply, exist);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -9525,4 +9455,94 @@ slocator_redistribute_partition_data (THREAD_ENTRY * thread_p, unsigned int rid,
 end:
   ptr = or_pack_int (reply, success);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * netsr_spacedb () - server-side function to get database space info
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * rid (in)      : request ID
+ * request (in)  : request data
+ * reqlen (in)   : request data length
+ */
+void
+netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  SPACEDB_ALL all[SPACEDB_ALL_COUNT];
+  SPACEDB_ONEVOL *vols = NULL;
+  SPACEDB_FILES files[SPACEDB_FILE_COUNT];
+
+  int get_vols = 0;
+  int get_files = 0;
+  SPACEDB_ONEVOL **volsp = NULL;
+  SPACEDB_FILES *filesp = NULL;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *data_reply = NULL;
+  int data_reply_length = 0;
+
+  char *ptr;
+
+  int error_code = NO_ERROR;
+
+  /* do we need space information on all volumes? */
+  ptr = or_unpack_int (request, &get_vols);
+  if (get_vols)
+    {
+      volsp = &vols;
+    }
+  /* do we need detailed file information? */
+  ptr = or_unpack_int (ptr, &get_files);
+  if (get_files)
+    {
+      filesp = files;
+    }
+
+  /* get info from disk manager */
+  error_code = disk_spacedb (thread_p, all, volsp);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (get_files)
+    {
+      /* get info from file manager */
+      error_code = file_spacedb (thread_p, filesp);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      /* success. pack space info */
+      data_reply_length = or_packed_spacedb_size (all, vols, filesp);
+      data_reply = (char *) db_private_alloc (thread_p, data_reply_length);
+      ptr = or_pack_spacedb (data_reply, all, vols, filesp);
+      assert (ptr - data_reply == data_reply_length);
+    }
+  else
+    {
+      /* error */
+      return_error_to_client (thread_p, rid);
+    }
+
+  /* send result to client */
+  ptr = or_pack_int (reply, data_reply_length);
+  ptr = or_pack_int (ptr, error_code);
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
+				     data_reply_length);
+
+  if (vols != NULL)
+    {
+      free_and_init (vols);
+    }
+  if (data_reply != NULL)
+    {
+      db_private_free_and_init (thread_p, data_reply);
+    }
 }

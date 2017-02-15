@@ -188,6 +188,7 @@ extern int file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_t
 extern int file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,
 			   PGBUF_LATCH_CONDITION latch_cond, FILE_MAP_PAGE_FUNC func, void *args);
 extern int file_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
+extern int file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb);
 
 extern int file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_nth);

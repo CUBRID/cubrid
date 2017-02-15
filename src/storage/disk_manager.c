@@ -383,7 +383,7 @@ static int disk_stab_set_bits_contiguous (THREAD_ENTRY * thread_p, DISK_STAB_CUR
 /************************************************************************/
 
 static int disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_out,
-			     DB_VOLTYPE * voltype_out, VOL_SPACE_INFO * space_out);
+			     DB_VOLTYPE * voltype_out, DISK_VOLUME_SPACE_INFO * space_out);
 STATIC_INLINE void disk_cache_lock_reserve (DISK_EXTEND_INFO * expand_info) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void disk_cache_unlock_reserve (DISK_EXTEND_INFO * expand_info) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void disk_cache_lock_reserve_for_purpose (DB_VOLPURPOSE purpose) __attribute__ ((ALWAYS_INLINE));
@@ -2083,7 +2083,7 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
  */
 static int
 disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_out, DB_VOLTYPE * voltype_out,
-		  VOL_SPACE_INFO * space_out)
+		  DISK_VOLUME_SPACE_INFO * space_out)
 {
   PAGE_PTR page_volheader = NULL;
   DISK_VOLUME_HEADER *volheader;
@@ -2182,7 +2182,7 @@ disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 {
   DB_VOLPURPOSE vol_purpose;
   DB_VOLTYPE vol_type;
-  VOL_SPACE_INFO space_info = VOL_SPACE_INFO_INITIALIZER;
+  DISK_VOLUME_SPACE_INFO space_info = DISK_VOLUME_SPACE_INFO_INITIALIZER;
 
   if (disk_volume_boot (thread_p, volid, &vol_purpose, &vol_type, &space_info) != NO_ERROR)
     {
@@ -2441,6 +2441,12 @@ disk_unlock_extend (void)
 #endif /* !NDEBUG */
 }
 
+/*
+ * disk_cache_lock_reserve_for_purpose () - lock reservations for given purpose
+ *
+ * return       : void
+ * purpose (in) : permanent/temporary purpose
+ */
 STATIC_INLINE void
 disk_cache_lock_reserve_for_purpose (DB_VOLPURPOSE purpose)
 {
@@ -2454,6 +2460,12 @@ disk_cache_lock_reserve_for_purpose (DB_VOLPURPOSE purpose)
     }
 }
 
+/*
+ * disk_cache_unlock_reserve_for_purpose () - unlock reservations for given purpose
+ *
+ * return       : void
+ * purpose (in) : permanent/temporary purpose
+ */
 STATIC_INLINE void
 disk_cache_unlock_reserve_for_purpose (DB_VOLPURPOSE purpose)
 {
@@ -2467,6 +2479,12 @@ disk_cache_unlock_reserve_for_purpose (DB_VOLPURPOSE purpose)
     }
 }
 
+/*
+ * disk_cache_lock_reserve () - lock reservations (permanent or temporary)
+ *
+ * return           : void
+ * extend_info (in) : extend info (permanent or temporary)
+ */
 STATIC_INLINE void
 disk_cache_lock_reserve (DISK_EXTEND_INFO * extend_info)
 {
@@ -2487,6 +2505,12 @@ disk_cache_lock_reserve (DISK_EXTEND_INFO * extend_info)
 #endif /* !NDEBUG */
 }
 
+/*
+ * disk_cache_unlock_reserve () - lock reservations (permanent or temporary)
+ *
+ * return           : void
+ * extend_info (in) : extend info (permanent or temporary)
+ */
 STATIC_INLINE void
 disk_cache_unlock_reserve (DISK_EXTEND_INFO * extend_info)
 {
@@ -5051,7 +5075,7 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
  */
 int
 xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
-				  VOL_SPACE_INFO * space_info)
+				  DISK_VOLUME_SPACE_INFO * space_info)
 {
   int error_code = NO_ERROR;
 
@@ -5065,8 +5089,7 @@ xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOL
       PAGE_PTR page_volheader;
       DISK_VOLUME_HEADER *volheader;
 
-      space_info->max_pages = space_info->total_pages = space_info->free_pages = 0;
-      space_info->used_data_npages = space_info->used_index_npages = space_info->used_temp_npages = 0;
+      memset (space_info, 0, sizeof (*space_info));
 
       error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &page_volheader, &volheader);
       if (error_code != NO_ERROR)
@@ -5412,6 +5435,151 @@ disk_get_voltype (VOLID volid)
   assert (disk_is_valid_volid (volid));
 
   return volid < disk_Cache->nvols_perm ? DB_PERMANENT_VOLTYPE : DB_TEMPORARY_VOLTYPE;
+}
+
+/*
+ * disk_spacedb () - get space info from disk manager
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * spaceall (out)  : output info on all volumes
+ * spacevols (out) : output info for each volume if not null
+ */
+int
+disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols)
+{
+  int i;
+  int iter_vol;
+  int iter_spacevols;
+  int nvols_total = 0;
+  bool is_extend_locked = false;
+
+  int error_code = NO_ERROR;
+
+  assert (spaceall != NULL);
+
+  spaceall[SPACEDB_PERM_TEMP_ALL].nvols = 0;
+
+  /* block extensions for the short period we'll be reading volume info. */
+  disk_lock_extend ();
+  is_extend_locked = true;
+
+  /* get number of volumes. we know the total number of permanent type volumes, we'll have to count how many of them
+   * have temporary purpose */
+  for (iter_vol = 0; iter_vol < disk_Cache->nvols_perm; iter_vol++)
+    {
+      if (disk_Cache->vols[iter_vol].purpose == DB_TEMPORARY_DATA_PURPOSE)
+	{
+	  spaceall[SPACEDB_PERM_TEMP_ALL].nvols++;
+	}
+    }
+
+  spaceall[SPACEDB_PERM_PERM_ALL].nvols = disk_Cache->nvols_perm - spaceall[SPACEDB_PERM_TEMP_ALL].nvols;
+  spaceall[SPACEDB_TEMP_TEMP_ALL].nvols = disk_Cache->nvols_temp;
+  nvols_total = disk_Cache->nvols_perm + disk_Cache->nvols_temp;
+
+  spaceall[SPACEDB_PERM_PERM_ALL].npage_used =
+    DISK_SECTS_NPAGES (disk_Cache->perm_purpose_info.extend_info.nsect_total
+		       - disk_Cache->perm_purpose_info.extend_info.nsect_free);
+  spaceall[SPACEDB_PERM_PERM_ALL].npage_free = DISK_SECTS_NPAGES (disk_Cache->perm_purpose_info.extend_info.nsect_free);
+
+  spaceall[SPACEDB_PERM_TEMP_ALL].npage_used =
+    DISK_SECTS_NPAGES (disk_Cache->temp_purpose_info.nsect_perm_total - disk_Cache->temp_purpose_info.nsect_perm_free);
+  spaceall[SPACEDB_PERM_TEMP_ALL].npage_free = DISK_SECTS_NPAGES (disk_Cache->temp_purpose_info.nsect_perm_free);
+
+  spaceall[SPACEDB_TEMP_TEMP_ALL].npage_used =
+    DISK_SECTS_NPAGES (disk_Cache->temp_purpose_info.extend_info.nsect_total
+		       - disk_Cache->temp_purpose_info.extend_info.nsect_free);
+  spaceall[SPACEDB_TEMP_TEMP_ALL].npage_free = DISK_SECTS_NPAGES (disk_Cache->temp_purpose_info.extend_info.nsect_free);
+
+  if (spacevols != NULL)
+    {
+      /* get info on each volume */
+      iter_spacevols = 0;
+
+      *spacevols = (SPACEDB_ONEVOL *) malloc (nvols_total * sizeof (SPACEDB_ONEVOL));
+      if (*spacevols == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nvols_total * sizeof (SPACEDB_ONEVOL));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+
+      for (iter_vol = 0; iter_vol < disk_Cache->nvols_perm; iter_vol++)
+	{
+	  (*spacevols)[iter_spacevols].volid = iter_vol;
+	  (*spacevols)[iter_spacevols].type = DB_PERMANENT_VOLTYPE;
+	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols[iter_vol].purpose;
+	  (*spacevols)[iter_spacevols].npage_free = DISK_SECTS_NPAGES (disk_Cache->vols[iter_vol].nsect_free);
+	  iter_spacevols++;
+	}
+      for (iter_vol = LOG_MAX_DBVOLID - disk_Cache->nvols_temp + 1; iter_vol <= LOG_MAX_DBVOLID; iter_vol++)
+	{
+	  (*spacevols)[iter_spacevols].volid = iter_vol;
+	  (*spacevols)[iter_spacevols].type = DB_TEMPORARY_VOLTYPE;
+	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols[iter_vol].purpose;
+	  (*spacevols)[iter_spacevols].npage_free = DISK_SECTS_NPAGES (disk_Cache->vols[iter_vol].nsect_free);
+	  iter_spacevols++;
+	}
+      assert (iter_spacevols == nvols_total);
+    }
+
+  /* now unlock the extensions */
+  disk_unlock_extend ();
+  is_extend_locked = false;
+
+  /* complete total values */
+  memset (&spaceall[SPACEDB_TOTAL_ALL], 0, sizeof (spaceall[SPACEDB_TOTAL_ALL]));
+  for (i = 0; i < SPACEDB_TOTAL_ALL; i++)
+    {
+      spaceall[SPACEDB_TOTAL_ALL].nvols += spaceall[i].nvols;
+      spaceall[SPACEDB_TOTAL_ALL].npage_used += spaceall[i].npage_used;
+      spaceall[SPACEDB_TOTAL_ALL].npage_free += spaceall[i].npage_free;
+    }
+
+  if (spacevols != NULL)
+    {
+      PAGE_PTR page_volheader = NULL;
+      DISK_VOLUME_HEADER *volheader = NULL;
+
+      /* we still have to read the total number of sectors and names for each volume, which are found in volumes header
+       * pages, which need latches, which are slow, therefore we do it here, after unlocking extend. */
+      assert (*spacevols != NULL);
+
+      for (iter_spacevols = 0; iter_spacevols < nvols_total; iter_spacevols++)
+	{
+	  error_code =
+	    disk_get_volheader (thread_p, (*spacevols)[iter_spacevols].volid, PGBUF_LATCH_READ, &page_volheader,
+				&volheader);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+	  (*spacevols)[iter_spacevols].npage_used =
+	    DISK_SECTS_NPAGES (volheader->nsect_total) - (*spacevols)[iter_spacevols].npage_free;
+	  strncpy ((*spacevols)[iter_spacevols].name, disk_vhdr_get_vol_fullname (volheader), DB_MAX_PATH_LENGTH);
+	  pgbuf_unfix_and_init (thread_p, page_volheader);
+	}
+    }
+
+  /* success */
+  assert (error_code == NO_ERROR);
+
+exit:
+
+  if (is_extend_locked)
+    {
+      disk_unlock_extend ();
+    }
+
+  if (error_code != NO_ERROR && *spacevols != NULL)
+    {
+      /* free spacevols */
+      free_and_init (*spacevols);
+    }
+
+  return error_code;
 }
 
 /************************************************************************/

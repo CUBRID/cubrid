@@ -64,7 +64,6 @@ enum
   CSECT_ACL,			/* Latch for accessible IP list table */
   CSECT_PARTITION_CACHE,	/* Latch for partitions cache */
   CSECT_EVENT_LOG_FILE,		/* Latch for event log file */
-  CSECT_TEMPFILE_CACHE,		/* Latch for temp file cache */
   CSECT_LOG_ARCHIVE,		/* Latch for log_Gl.archive */
   CSECT_ACCESS_STATUS,		/* Latch for user access status */
   CSECT_LAST

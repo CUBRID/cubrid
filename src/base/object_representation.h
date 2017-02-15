@@ -1522,4 +1522,9 @@ extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 /* Get the compressed and the decompressed lengths of a string stored in buffer */
 extern int or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size);
 
+extern int or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files);
+extern char *or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols,
+			      const SPACEDB_FILES * files);
+extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files);
+
 #endif /* _OBJECT_REPRESENTATION_H_ */
