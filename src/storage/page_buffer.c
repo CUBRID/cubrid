@@ -12496,6 +12496,7 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
       thread_p = thread_get_thread_entry_info ();
     }
 
+  /* TO DO - reuse page */
   *bcb_area = NULL;
   if (thread_p->tran_bcb_used)
     {
