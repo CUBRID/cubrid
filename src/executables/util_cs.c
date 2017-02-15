@@ -1036,6 +1036,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 		   SPACEDB_TO_SIZE_ARG (3, files[i].npage_reserved),
 		   SPACEDB_TO_SIZE_ARG (4, files[i].npage_user + files[i].npage_ftab + files[i].npage_reserved));
 	}
+      fprintf (outfp, "\n");
     }
 
   if (!summarize)

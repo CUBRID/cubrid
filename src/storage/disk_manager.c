@@ -5448,6 +5448,7 @@ disk_get_voltype (VOLID volid)
 int
 disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols)
 {
+  int i;
   int iter_vol;
   int iter_spacevols;
   int nvols_total = 0;
@@ -5526,6 +5527,15 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
   /* now unlock the extensions */
   disk_unlock_extend ();
   is_extend_locked = false;
+
+  /* complete total values */
+  memset (&spaceall[SPACEDB_TOTAL_ALL], 0, sizeof (spaceall[SPACEDB_TOTAL_ALL]));
+  for (i = 0; i < SPACEDB_TOTAL_ALL; i++)
+    {
+      spaceall[SPACEDB_TOTAL_ALL].nvols += spaceall[i].nvols;
+      spaceall[SPACEDB_TOTAL_ALL].npage_used += spaceall[i].npage_used;
+      spaceall[SPACEDB_TOTAL_ALL].npage_free += spaceall[i].npage_free;
+    }
 
   if (spacevols != NULL)
     {

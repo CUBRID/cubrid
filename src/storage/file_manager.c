@@ -7179,6 +7179,9 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
 int
 file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
 {
+  int i;
+  int error_code = NO_ERROR;
+
   /* init */
   memset (spacedb, 0, sizeof (SPACEDB_FILES) * SPACEDB_FILE_COUNT);
 
@@ -7186,7 +7189,22 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
   spacedb[SPACEDB_TEMP_FILE] = file_Tempcache->spacedb_temp;
 
   /* use file tracker to get info on permanent purpose files */
-  return file_tracker_spacedb (thread_p, spacedb);
+  error_code = file_tracker_spacedb (thread_p, spacedb);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* compute total */
+  memset (&spacedb[SPACEDB_TOTAL_FILE], 0, sizeof (spacedb[SPACEDB_TOTAL_FILE]));
+  for (i = 0; i < SPACEDB_TOTAL_FILE; i++)
+    {
+      spacedb[SPACEDB_TOTAL_FILE].nfile += spacedb[i].nfile;
+      spacedb[SPACEDB_TOTAL_FILE].npage_ftab += spacedb[i].npage_ftab;
+      spacedb[SPACEDB_TOTAL_FILE].npage_user += spacedb[i].npage_user;
+      spacedb[SPACEDB_TOTAL_FILE].npage_reserved += spacedb[i].npage_reserved;
+    }
 }
 
 /************************************************************************/
