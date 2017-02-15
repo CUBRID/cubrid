@@ -8591,7 +8591,7 @@ restart:
       bufptr_start = victim_hint;
       /* todo: rename stat... it estimates distance from bottom */
       perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_HINT_BOTTOM,
-                        victim_hint->tick_lru3 - lru_list->bottom->tick_lru3);
+			victim_hint->tick_lru3 - lru_list->bottom->tick_lru3);
     }
 
   if (bufptr_start == lru_list->bottom)
@@ -8619,7 +8619,7 @@ restart:
 
 	      /* update hint if this is not bufptr_start and hint has not changed in the meantime. */
 	      if (bufptr_victimizable != victim_hint
-                  && ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, bufptr_victimizable))
+		  && ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, bufptr_victimizable))
 		{
 		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_ADVANCE_HINT);
 		}
@@ -8676,10 +8676,10 @@ restart:
 	      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
 	      perfmon_add_stat (thread_p, PSTAT_PB_VICTIM_LRU_SUCCESS_SEARCH_CNT, search_cnt);
-              if (restarted)
-                {
-                  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_FOUND_ON_RESTART);
-                }
+	      if (restarted)
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_FOUND_ON_RESTART);
+		}
 
 	      return bufptr;
 	    }
@@ -8717,12 +8717,12 @@ restart:
     {
       assert (!restarted);
       if (bufptr_victimizable == NULL)
-        {
-          /* we had a hint and we failed to find any victim candidates. */
-          perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_BAD_HINT);
-        }
+	{
+	  /* we had a hint and we failed to find any victim candidates. */
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_BAD_HINT);
+	}
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_RESTART);
-      
+
       restarted = true;
       goto restart;
     }
