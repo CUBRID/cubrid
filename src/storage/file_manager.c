@@ -7205,6 +7205,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
       spacedb[SPACEDB_TOTAL_FILE].npage_user += spacedb[i].npage_user;
       spacedb[SPACEDB_TOTAL_FILE].npage_reserved += spacedb[i].npage_reserved;
     }
+  return NO_ERROR;
 }
 
 /************************************************************************/
