@@ -3049,6 +3049,25 @@ logpb_get_zip_info (THREAD_ENTRY * thread_p, LOG_RECTYPE log_rec_type, bool allo
     }
 }
 
+bool
+prior_lsa_check_log_node_info (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
+			       VPID * vpid, PGLENGTH offset)
+{
+  LOG_DATA *log_data_p = NULL;
+  int *data_header_ulength_p = NULL, *data_header_rlength_p = NULL;
+  LOG_VACUUM_INFO *vacuum_info_p = NULL;
+  MVCCID *mvccid_p = NULL;
+
+  LOG_NODE_GET_DATAP (node, log_data_p, data_header_ulength_p, data_header_rlength_p, vacuum_info_p, mvccid_p);
+  if (rcv_index != log_data_p->rcvindex || vpid->volid != log_data_p->volid || vpid->volid != log_data_p->volid
+      || offset != log_data_p->offset)
+    {
+      return false;
+    }
+
+  return true;
+}
+
 
 /*
  * prior_lsa_update_undoredo_record_from_crumbs () - Update undoredo data of previous generated log prior node
