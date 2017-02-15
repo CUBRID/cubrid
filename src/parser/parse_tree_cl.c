@@ -826,7 +826,8 @@ copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, 
 
   if (new_node->node_type == PT_SPEC && PT_SPEC_IS_CTE (new_node))
     {
-      /* the new cte_pointer must point to the new_cte; new_cte address should be found in tree_copy_info->cte_structures_list */
+      /* the new cte_pointer may have to point to a new cte; it depends if the copied tree includes the CTE too
+       * (should be in cte_structures_list) */
       PT_NODE *cte_pointer = new_node->info.spec.cte_pointer;
       PT_CTE_COPY_INFO *cte_info_it;
 
