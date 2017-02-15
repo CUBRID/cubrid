@@ -1003,7 +1003,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, msg_vols_format),
 		   vols[i].volid, SPACEDB_TO_SIZE_ARG (1, vols[i].npage_used),
 		   SPACEDB_TO_SIZE_ARG (2, vols[i].npage_free),
-		   SPACEDB_TO_SIZE_ARG (3, vols[i].npage_used + vols[i].npage_free));
+		   SPACEDB_TO_SIZE_ARG (3, vols[i].npage_used + vols[i].npage_free), vols[i].name);
 	}
       fprintf (outfp, "\n");
     }
