@@ -18653,6 +18653,10 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
   for (i = 0; i < multi_range_opt->num_attrs; i++)
     {
       DB_MAKE_NULL (&new_key_value[i]);
+    }
+
+  for (i = 0; i < multi_range_opt->num_attrs; i++)
+    {
       error = pr_midxkey_get_element_nocopy (new_mkey, multi_range_opt->sort_att_idx[i], &new_key_value[i], NULL, NULL);
       if (error != NO_ERROR)
 	{
@@ -18852,6 +18856,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 		}
 	      c = (*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1, 1, NULL,
 						 domains[i]->collation_id);
+	      pr_clear_value (&comp_key_value);
 	      if (c != 0)
 		{
 		  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))
@@ -18888,6 +18893,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 	  return error;
 	}
       c = (*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1, 1, NULL, domains[i]->collation_id);
+      pr_clear_value (&comp_key_value);
       if (c != 0)
 	{
 	  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))
