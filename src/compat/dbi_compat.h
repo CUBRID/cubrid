@@ -25,10 +25,10 @@
 #include <time.h>
 #include <sys/types.h>
 
+#include "dbtype.h"
+
 #ifndef _DBI_COMPAT_H_
 #define _DBI_COMPAT_H_
-
-#define bool char
 
 #if defined(WINDOWS) && !defined(__GNUC__)
 #define int32_t __int32
