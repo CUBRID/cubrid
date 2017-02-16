@@ -9910,6 +9910,18 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  pt_coerce_insert_values (parser, node);
 	}
       break;
+
+    case PT_CTE:
+      if (node->info.cte.recursive_part != NULL
+	  && (pt_false_where (parser, node->info.cte.recursive_part)
+	      || pt_false_where (parser, node->info.cte.non_recursive_part)))
+	{
+	  /* the recursive_part can be removed if one of the parts has false_where */
+	  parser_free_tree (parser, node->info.cte.recursive_part);
+	  node->info.cte.recursive_part = NULL;
+	}
+      break;
+
     default:			/* other node types */
       break;
     }
