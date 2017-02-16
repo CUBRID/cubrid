@@ -8047,6 +8047,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
   bool arg1_is_false = false;
   PT_NODE *list;
   STATEMENT_SET_FOLD do_fold;
+  PT_MISC_TYPE is_subquery;
 
   switch (node->node_type)
     {
@@ -8160,10 +8161,12 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
       node->info.query.q.select.where = pt_where_type (parser, node->info.query.q.select.where);
 
+      is_subquery = node->info.query.is_subquery;
+
       if (sc_info->donot_fold == false
-	  && (node->info.query.is_subquery == PT_IS_SUBQUERY || node->info.query.is_subquery == PT_IS_UNION_SUBQUERY
-	      || node->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY
-	      || node->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY) && pt_false_where (parser, node))
+	  && (is_subquery == PT_IS_SUBQUERY || is_subquery == PT_IS_UNION_SUBQUERY
+	      || is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || is_subquery == PT_IS_CTE_REC_SUBQUERY)
+	  && pt_false_where (parser, node))
 	{
 	  node = pt_to_false_subquery (parser, node);
 	}
