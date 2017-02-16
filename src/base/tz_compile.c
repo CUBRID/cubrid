@@ -6724,16 +6724,12 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		}
 	    }
 	}
-      printf ("Finished updating database %s\n", db_info_p->name);
       db_query_end (result1);
 
       db_commit_transaction ();
+      printf ("Finished updating database %s\n", db_info_p->name);
+      printf ("Shutting down database %s...\n", db_info_p->name);
       db_shutdown ();
-
-      /* FIXME: Please make it verbose to let DBAs know progress
-       * and also think of ways we can help them to troubleshoot
-       * Please imagine an error happens while migrating databases.
-       */
     }
 
   error = NO_ERROR;
