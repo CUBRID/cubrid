@@ -44,6 +44,8 @@
 
 #define XCACHE_ENTRY_FIX_COUNT_MASK	    ((INT32) 0x00FFFFFF)
 
+#define XCACHE_ENTRY_DELETED	            (XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK)
+
 #define XCACHE_PTR_TO_KEY(ptr) ((XASL_ID *) ptr)
 #define XCACHE_PTR_TO_ENTRY(ptr) ((XASL_CACHE_ENTRY *) ptr)
 
@@ -583,7 +585,7 @@ xcache_compare_key (void *key1, void *key2)
     {
       /* Lookup for cleaning the entry from hash. The entry must not be fixed by another and must not have any
        * flags. */
-      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, 0, XCACHE_ENTRY_MARK_DELETED))
+      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, 0, XCACHE_ENTRY_DELETED))
 	{
 	  /* Successfully marked for delete. */
 	  xcache_log ("compare keys: found for cleanup\n"
@@ -609,8 +611,16 @@ xcache_compare_key (void *key1, void *key2)
 
   if (lookup_key->cache_flag == XCACHE_ENTRY_MARK_DELETED)
     {
-      /* looking for entry to remove. the entry cache flag must match XCACHE_ENTRY_MARK_DELETED */
-      if (entry_key->cache_flag == XCACHE_ENTRY_MARK_DELETED)
+      /* looking for entry to remove. the entry cache flag must match XCACHE_ENTRY_MARK_DELETED
+       *
+       * note: when multiple threads recompile same entry, we may still have a race here. there may be multiple entries
+       *       for the same query that have been recompile and last unfix happens at the same time. both unfixes will
+       *       want to remove their entries, mark both entries for delete, but both may stop on the first of the
+       *       entries. one succeeds, while the other is baffled with its failure.
+       *       to give them a chance to find both entires, will give each entry to the one that manages to change the
+       *       state from mark for delete to deleted.
+       */
+      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, XCACHE_ENTRY_MARK_DELETED, XCACHE_ENTRY_DELETED))
 	{
 	  /* The deleter found its entry. */
 	  xcache_log ("compare keys: found for delete\n"
