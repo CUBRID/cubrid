@@ -1140,8 +1140,6 @@ extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
 
 extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
-extern char *db_get_enum_string (const DB_VALUE * value);
-extern int db_get_enum_string_size (const DB_VALUE * value);
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
 
@@ -1240,6 +1238,8 @@ static __inline DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
 static __inline int db_get_string_size (const DB_VALUE * value);
 static __inline DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 static __inline unsigned short db_get_enum_short (const DB_VALUE * value);
+static __inline char *db_get_enum_string (const DB_VALUE * value);
+static __inline int db_get_enum_string_size (const DB_VALUE * value);
 
 /*
  * db_get_int() -
