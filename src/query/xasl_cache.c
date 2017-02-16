@@ -1007,6 +1007,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
   int error_code = NO_ERROR;
   int success = 0;
   struct timeval time_last_used;
+  XASL_ID lookup_delete_key = xcache_entry->xasl_id;
 
   assert (xcache_entry != NULL);
   assert (xcache_Enabled);
@@ -1071,7 +1072,8 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
 	}
 
-      error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
+      lookup_delete_key.cache_flag = XCACHE_ENTRY_MARK_DELETED;
+      error_code = lf_hash_delete (t_entry, &xcache_Ht, &lookup_delete_key, &success);
       if (error_code != NO_ERROR)
 	{
 	  /* Errors are not expected. */
@@ -1538,6 +1540,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
   bool can_delete = false;
   int success;
   XASL_ID delete_xids[XCACHE_DELETE_XIDS_SIZE];
+  XASL_ID save_xid;
   int n_delete_xids = 0;
   int xid_index = 0;
   bool finished = false;
@@ -1569,6 +1572,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
 	      /* Mark entry as deleted. */
+	      save_xid = xcache_entry->xasl_id;
 	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
 		{
 		  /* 
@@ -1579,7 +1583,8 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 		    {
 		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
 		    }
-		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
+		  save_xid.cache_flag = XCACHE_ENTRY_MARK_DELETED;
+		  delete_xids[n_delete_xids++] = save_xid;
 		}
 	    }
 
