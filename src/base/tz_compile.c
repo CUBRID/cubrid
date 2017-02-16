@@ -6572,6 +6572,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 	  need_db_shutdown = true;
 	  goto exit;
 	}
+      printf("Updating database %s...\n", db_info_p->name);
 
       memset (query_buf, 0, sizeof (query_buf));
       strcat (query_buf, "show tables");
@@ -6623,6 +6624,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		      need_db_shutdown = true;
 		      goto exit;
 		    }
+		  printf("Updating table %s...\n", table_name);
 
 		  /* We are going to make an update query for each table which includes a timezone column like:
 		   *  UPDATE t SET tzc1 = CONV_TZ(tzc1), tzc2 = CONV_TZ(tzc2) ...
@@ -6640,6 +6642,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  is_first_column = true;
 		  has_timezone_column = false;
 
+		  printf("We will update the following columns:\n");
 		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
 		    {
 		      char *column_name = NULL;
@@ -6695,9 +6698,11 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			  strcat (where_query, "conv_tz(");
 			  strcat (where_query, column_name);
 			  strcat (where_query, ")");
+
+			  printf("%s ", column_name);
 			}
 		    }
-
+		  printf("\n");
 		  db_query_end (result2);
 
 		  /* If we have at least a column that is of timezone data type then execute the query */
@@ -6715,10 +6720,11 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			}
 		      db_query_end (result3);
 		    }
+		  printf("Finished updating table %s\n", table_name);
 		}
 	    }
 	}
-
+      printf("Finished updating database %s\n", db_info_p->name);
       db_query_end (result1);
 
       db_commit_transaction ();
