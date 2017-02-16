@@ -232,7 +232,6 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
   LOCK_TO_LOCKMODE_STRING ((xent)->related_objects[oidx].lock),						  \
   (xent)->related_objects[oidx].tcard
 
-static bool xcache_fix (XASL_ID * xid);
 static bool xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 static void xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone);
 static void xcache_cleanup (THREAD_ENTRY * thread_p);
@@ -587,20 +586,31 @@ xcache_compare_key (void *key1, void *key2)
       if (XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, 0, XCACHE_ENTRY_MARK_DELETED))
 	{
 	  /* Successfully marked for delete. */
+	  xcache_log ("compare keys: found for cleanup\n"
+		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		      XCACHE_LOG_SHA1_ARGS (&entry_key->sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
 	  return 0;
 	}
       else
 	{
 	  /* Entry was fixed or had another flag set. */
+	  xcache_log ("(tran=%d) compare keys: failed to cleanup\n"
+		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		      XCACHE_LOG_SHA1_ARGS (&entry_key->sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
 	  return -1;
 	}
     }
 
-  cache_flag = entry_key->cache_flag;
-  if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
+  if (lookup_key->cache_flag == XCACHE_ENTRY_MARK_DELETED)
     {
-      /* The entry was marked for deletion. */
-      if (lookup_key->cache_flag == cache_flag)
+      /* looking for entry to remove. the entry cache flag must match XCACHE_ENTRY_MARK_DELETED */
+      if (entry_key->cache_flag == XCACHE_ENTRY_MARK_DELETED)
 	{
 	  /* The deleter found its entry. */
 	  xcache_log ("compare keys: found for delete\n"
@@ -614,7 +624,6 @@ xcache_compare_key (void *key1, void *key2)
       else
 	{
 	  /* This is not the deleter. Ignore this entry - it will be removed from hash. */
-
 	  xcache_log ("(tran=%d) compare keys: skip deleted\n"
 		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
 		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
@@ -625,45 +634,44 @@ xcache_compare_key (void *key1, void *key2)
 	}
     }
 
-  if (cache_flag & XCACHE_ENTRY_WAS_RECOMPILED)
+  /* try to fix entry */
+  do
     {
-      /* Go to another entry. */
-
-      xcache_log ("compare keys: skip recompiled\n"
-		  "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
-		  "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
-		  XCACHE_LOG_TRAN_TEXT,
-		  XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
-		  XCACHE_LOG_SHA1_ARGS (&entry_key->sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
-      return -1;
+      cache_flag = entry_key->cache_flag;
+      if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
+	{
+	  /* deleted */
+	  xcache_log ("(tran=%d) compare keys: skip deleted\n"
+		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		      XCACHE_LOG_SHA1_ARGS (&entry_key->sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
+	  return -1;
+	}
+      if (cache_flag & XCACHE_ENTRY_WAS_RECOMPILED)
+	{
+	  xcache_log ("compare keys: skip recompiled\n"
+		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		      XCACHE_LOG_SHA1_ARGS (&entry_key->sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
+	  return -1;
+	}
+      if ((cache_flag & XCACHE_ENTRY_TO_BE_RECOMPILED) && (lookup_key->cache_flag & XCACHE_ENTRY_SKIP_TO_BE_RECOMPILED))
+	{
+	  /* We are trying to insert a new entry to replace the entry to be recompiled. Skip this. */
+	  xcache_log ("compare keys: skip to be recompiled\n"
+		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		      XCACHE_LOG_SHA1_ARGS (&entry_key->sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
+	  return -1;
+	}
     }
-
-  if ((cache_flag & XCACHE_ENTRY_TO_BE_RECOMPILED) && (lookup_key->cache_flag & XCACHE_ENTRY_SKIP_TO_BE_RECOMPILED))
-    {
-      /* We are trying to insert a new entry to replace the entry to be recompiled. Skip this. */
-
-      xcache_log ("compare keys: skip to be recompiled\n"
-		  "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
-		  "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
-		  XCACHE_LOG_TRAN_TEXT,
-		  XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
-		  XCACHE_LOG_SHA1_ARGS (&entry_key->sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
-      return -1;
-    }
-
-  /* The entry is what we are looking for. One last step, we must increment read counter in cache flag. */
-  if (!xcache_fix (entry_key))
-    {
-      /* Entry was deleted. */
-
-      xcache_log ("compare keys: could not fix\n"
-		  "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
-		  "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
-		  XCACHE_LOG_TRAN_TEXT,
-		  XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
-		  XCACHE_LOG_SHA1_ARGS (&entry_key->sha1), XCACHE_LOG_TRAN_ARGS (thread_p));
-      return -1;
-    }
+  while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, cache_flag, cache_flag + 1));
 
   /* Successfully marked as reader. */
   xcache_log ("compare keys: key matched and fixed\n"
@@ -967,39 +975,6 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 	      XCACHE_LOG_XASL_ID_ARGS (xid), XCACHE_LOG_CLONE_ARGS (xclone), XCACHE_LOG_TRAN_ARGS (thread_p));
 
   return NO_ERROR;
-}
-
-/*
- * xcache_fix () - Fix XASL cache entry by incrementing fix count in cache flag.
- *
- * return       : Error code.
- * xid (in/out) : XASL_ID.
- */
-static bool
-xcache_fix (XASL_ID * xid)
-{
-  INT32 cache_flag;
-
-  assert (xid != NULL);
-
-  XCACHE_STAT_INC (fix);
-
-  do
-    {
-      cache_flag = xid->cache_flag;
-#if defined (SA_MODE)
-      assert ((cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 0);
-#endif /* SA_MODE */
-      if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
-	{
-	  /* It was deleted. */
-	  return false;
-	}
-    }
-  while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (xid, cache_flag, cache_flag + 1));
-
-  /* Success */
-  return true;
 }
 
 /*
