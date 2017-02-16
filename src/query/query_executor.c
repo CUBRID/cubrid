@@ -15509,10 +15509,12 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		{
 		  /* future specific optimizations, changes, etc */
 		}
-	      else
+	      else if (recursive_part->spec_list->s.list_node.xasl_node == non_recursive_part)
 		{
 		  /* optimization: use non-recursive list id for both reading and writing
 		   * the recursive xasl will iterate through this list id while appending new results at its end 
+		   * note: this works only if the cte(actually the non_recursive_part link) is the first spec used
+		   * for scanning during recursive iterations
 		   */
 		  save_recursive_list_id = recursive_part->list_id;
 		  recursive_part->list_id = non_recursive_part->list_id;
