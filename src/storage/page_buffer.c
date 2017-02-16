@@ -1317,11 +1317,12 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
     {
       /* not in memory, I can't get the page. The caller is holding only hash_anchor->hash_mutex. */
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
-      goto exit_on_error;
+      return NO_ERROR;
     }
 
   if (pgbuf_check_bcb_page_vpid (thread_p, src_bufptr) != true)
     {
+      assert (false);
       goto exit_on_error;
     }
 

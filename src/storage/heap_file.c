@@ -647,7 +647,7 @@ struct heap_log_info
   do \
     { \
       (p_heap_log_info)->node = NULL;				    \
-      (p_heap_log_info)->rcv_index = -1;			    \
+      (p_heap_log_info)->rcv_index = RV_NOT_DEFINED;		    \
       VPID_SET_NULL (&(p_heap_log_info)->vpid);			    \
       (p_heap_log_info)->slot_id_with_flags = -1;		    \
       (p_heap_log_info)->undo_data_p = NULL;			    \
@@ -15923,7 +15923,7 @@ heap_create_update_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   bool bcb_area_copied = false;
   RECDES *redo_data_p = NULL, *undo_data_p = NULL;
   int copy_retry_count = 1, copy_retry_max = 3;
-  int flag_vacuum_status = 0, redo_data_size = 0, undo_data_size = 0, rcv_index;
+  int flag_vacuum_status = 0, redo_data_size = 0, undo_data_size = 0, rcv_index = RV_NOT_DEFINED;
   int rc;
   VPID vpid;
   PGSLOTID slot_id_with_flags, slot_id = NULL_SLOTID;
@@ -15990,6 +15990,7 @@ try_copy_area_again:
 	{
 	  if (spage_get_record (page_copy_before_fix, context->oid.slotid, p_home_recdes_before_fix, PEEK) != S_SUCCESS)
 	    {
+	      assert_release (false);
 	      return ER_FAILED;
 	    }
 	  has_home_record = true;
@@ -16025,6 +16026,8 @@ try_copy_area_again:
 
 	      /* set slot id */
 	      slot_id = context->oid.slotid;
+
+	      context->recdes_p->type = REC_HOME;
 
 	      /* set undo/redo data */
 	      undo_data_p = p_home_recdes_before_fix;
@@ -16067,6 +16070,8 @@ try_copy_area_again:
 	      /* set slot id */
 	      slot_id = context->oid.slotid;
 
+	      context->recdes_p->type = REC_HOME;
+
 	      undo_data_p = p_home_recdes_before_fix;
 	      undo_data_size = sizeof (p_home_recdes_before_fix);
 	      redo_data_p = context->recdes_p;
@@ -16081,8 +16086,9 @@ try_copy_area_again:
 		{
 		  /* set recovery index */
 		  if (spage_get_record (page_copy_before_fix, forward_oid.slotid, p_home_recdes_before_fix,
-					PEEK) != NO_ERROR)
+					PEEK) != S_SUCCESS)
 		    {
+		      assert_release (false);
 		      return ER_FAILED;
 		    }
 
@@ -16119,6 +16125,8 @@ try_copy_area_again:
 	      /* set recovery index */
 	      rcv_index = is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE;
 
+	      context->recdes_p->type = REC_HOME;
+
 	      /* set slot id */
 	      slot_id = context->oid.slotid;
 
@@ -16135,6 +16143,10 @@ try_copy_area_again:
 	  return NO_ERROR;
 	}
 
+      if (rcv_index == RV_NOT_DEFINED)
+	{
+	  return NO_ERROR;
+	}
       /* TO DO - check all branches */
       if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
 	{
@@ -16146,6 +16158,7 @@ try_copy_area_again:
 					    slot_id_with_flags, undo_data_p, redo_data_p, &update_log_node);
       if (rc != NO_ERROR)
 	{
+	  assert_release (false);
 	  return rc;
 	}
 
@@ -16182,7 +16195,7 @@ heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   bool bcb_area_copied = false;
   char *redo_data_p = NULL, *undo_data_p = NULL;
   int copy_retry_count = 1, copy_retry_max = 3;
-  int flag_vacuum_status = 0, redo_data_size = 0, undo_data_size = 0, rcv_index;
+  int flag_vacuum_status = 0, redo_data_size = 0, undo_data_size = 0, rcv_index = RV_NOT_DEFINED;
   int rc;
   VPID vpid;
   PGSLOTID slot_id = -1, slot_id_with_flags;
@@ -16319,28 +16332,33 @@ try_copy_area_again:
 	      return NO_ERROR;
 	    }
 
-	  /* TO DO - when to update chain - bigone, relocatiion? */
-	  if (rcv_index != RVHF_MVCC_DELETE_REC_NEWHOME)
+	  if (rcv_index != RV_NOT_DEFINED)
 	    {
-	      heap_page_update_chain_after_mvcc_op (thread_p, page_copy_before_fix, mvccid, &flag_vacuum_status);
-	    }
+	      /* TO DO - when to update chain - bigone, relocatiion? */
+	      if (rcv_index != RVHF_MVCC_DELETE_REC_NEWHOME)
+		{
+		  heap_page_update_chain_after_mvcc_op (thread_p, page_copy_before_fix, mvccid, &flag_vacuum_status);
+		}
 
-	  slot_id_with_flags = slot_id | flag_vacuum_status;
-	  rc =
-	    heap_create_log_node_for_logical_deletion (thread_p, tdes, RVHF_MVCC_DELETE_REC_HOME, &context->hfid.vfid,
-						       page_copy_before_fix, slot_id_with_flags, redo_data_p,
-						       redo_data_size, &delete_log_node);
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
-	  HEAP_SET_LOG_INFO (delete_log_info, delete_log_node, rcv_index, &vpid, slot_id_with_flags,
-			     undo_data_p, undo_data_size, redo_data_p, redo_data_size, false);
+	      slot_id_with_flags = slot_id | flag_vacuum_status;
+	      rc =
+		heap_create_log_node_for_logical_deletion (thread_p, tdes, RVHF_MVCC_DELETE_REC_HOME,
+							   &context->hfid.vfid, page_copy_before_fix,
+							   slot_id_with_flags, redo_data_p, redo_data_size,
+							   &delete_log_node);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	      HEAP_SET_LOG_INFO (delete_log_info, delete_log_node, rcv_index, &vpid, slot_id_with_flags,
+				 undo_data_p, undo_data_size, redo_data_p, redo_data_size, false);
 
+	    }
 	}
       else
 	{
 	  /* TO DO - needs update */
+	  return NO_ERROR;
 	  assert (thread_p->disable_zip_undo == false);
 	  thread_p->disable_zip_undo = true;
 	  /*
@@ -16431,7 +16449,6 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, 
       assert (rcv_index == RVHF_MVCC_DELETE_REC_HOME || rcv_index == RVHF_MVCC_DELETE_REC_NEWHOME
 	      || rcv_index == RVHF_MVCC_DELETE_OVERFLOW);
       assert (logical_delete_log_info->node != NULL && logical_delete_log_info->node_appended == false);
-      assert (logical_delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_HOME);
 
       /*
        * The most simple MVCC delete case. Check the log data, to be sure that the log information between
@@ -21457,7 +21474,7 @@ heap_create_insert_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   LOG_PRIOR_NODE *insert_log_node = NULL;
   VPID vpid;
   PGSLOTID slotid;
-  LOG_RCVINDEX rcv_index = -1;
+  LOG_RCVINDEX rcv_index = RV_NOT_DEFINED;
   PAGE_PTR page = NULL;
 
   assert (vfid_p != NULL && p_recdes != NULL && insert_log_info != NULL);
@@ -21930,7 +21947,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
        * Check MVCC delete log info.
        */
       assert (MVCCID_IS_VALID (mvcc_id));
-      assert (delete_log_info == NULL || delete_log_info->rcv_index == RVHF_MVCC_DELETE_REC_HOME);
 
       repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data);
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
@@ -22274,8 +22290,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
   else
     {
       bool is_reusable;
-      /* Check non-MVCC delete log info. */
-      assert (delete_log_info == NULL || delete_log_info->rcv_index == RVHF_DELETE);
 
       is_reusable = heap_is_reusable_oid (context->file_type);
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -24474,6 +24488,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 							   &update_log_info);
       if (rc != NO_ERROR)
 	{
+	  assert (false);
 	  goto exit;
 	}
       if (update_log_info.node != NULL)
