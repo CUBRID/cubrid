@@ -9192,9 +9192,9 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 
     if_true_node = pt_make_dotted_identifier (parser, "VC.vclass_def");
 
-    lhs = pt_make_pred_name_string_val (parser, PT_PLUS, "VC.vclass_def", " comment='");
-    rhs = pt_make_pred_name_string_val (parser, PT_PLUS, "VC.comment", "'");
-    if_false_node = parser_make_expression (parser, PT_PLUS, lhs, rhs, NULL);
+    lhs = pt_make_pred_name_string_val (parser, PT_CONCAT, "VC.vclass_def", " comment='");
+    rhs = pt_make_pred_name_string_val (parser, PT_CONCAT, "VC.comment", "'");
+    if_false_node = parser_make_expression (parser, PT_CONCAT, lhs, rhs, NULL);
 
     comment_node = pt_make_dotted_identifier (parser, "VC.comment");
     lhs = parser_make_expression (parser, PT_IS_NULL, comment_node, NULL, NULL);
