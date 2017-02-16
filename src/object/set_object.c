@@ -6136,6 +6136,25 @@ setobj_print (FILE * fp, COL * col)
 
 /* SET REFERENCE MAINTENANCE */
 
+
+
+/*
+ * setobj_type() - Returns the type of setobj is passed in
+ *      return: DB_TYPE
+ *  set(in) : set object
+ *
+ */
+
+DB_TYPE
+setobj_type (COL * set)
+{
+  if (set)
+    {
+      return set->coltype;
+    }
+  return DB_TYPE_NULL;
+}
+
 /*
  * setobj_domain() - Returns domain of setobj is passed in
  *      return: TP_DOMAIN

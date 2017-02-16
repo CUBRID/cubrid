@@ -29,13 +29,12 @@
 
 #ident "$Id$"
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 
 /* Need to check this again and to possibly remove them!! */
-#include "porting.h"
-#include "intl_support.h"
-#include "system_parameter.h"
-#include "dbdef.h"
+#include "error_manager.h"
+#include "system.h"
 
 /* From string_opfunc.h */
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
@@ -48,40 +47,26 @@
 #define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
                                                  || QSTR_IS_BIT(s))
 
+/* From intl_support.h */
+typedef enum intl_codeset INTL_CODESET;
+enum intl_codeset
+{
+  INTL_CODESET_ERROR = -2,
+  INTL_CODESET_NONE = -1,
+  INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
+  INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
+  INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
+  INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
+  INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
+  INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
+
+  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
+
+  INTL_CODESET_LAST = INTL_CODESET_UTF8
+};
+
 /* From object_accessor.h */
 extern char *obj_Method_error_msg;
-
-/* From language_support.h */
-/* collation and charset do be used by system : */
-enum
-{
-  LANG_COLL_ISO_BINARY = 0,
-  LANG_COLL_UTF8_BINARY = 1,
-  LANG_COLL_ISO_EN_CS = 2,
-  LANG_COLL_ISO_EN_CI = 3,
-  LANG_COLL_UTF8_EN_CS = 4,
-  LANG_COLL_UTF8_EN_CI = 5,
-  LANG_COLL_UTF8_TR_CS = 6,
-  LANG_COLL_UTF8_KO_CS = 7,
-  LANG_COLL_EUCKR_BINARY = 8,
-  LANG_COLL_BINARY = 9
-};
-#define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
-  ? LANG_COLL_UTF8_BINARY :					 \
-  (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
-  (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
-  LANG_COLL_BINARY)))
-
-extern INTL_CODESET lang_charset (void);
-
-#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
-
-#define LANG_SYS_CODESET  lang_charset()
-
-#define LANG_VARIABLE_CHARSET(x) ((x) != INTL_CODESET_ASCII     && \
-  (x) != INTL_CODESET_RAW_BITS  && \
-  (x) != INTL_CODESET_RAW_BYTES && \
-  (x) != INTL_CODESET_ISO88591)
 
 /* From object_domain.h */
 /*
@@ -102,6 +87,9 @@ typedef enum
   LARGE_STRING
 } STRING_STYLE;
 
+
+typedef struct db_object DB_OBJECT, *MOP;
+typedef struct tp_domain DB_DOMAIN;
 /*
  * DB_MAX_IDENTIFIER_LENGTH -
  * This constant defines the maximum length of an identifier
@@ -602,7 +590,35 @@ struct db_numeric
   } d;
 };
 
-
+/* Structure used for the representation of monetary amounts. */
+typedef enum
+{
+  DB_CURRENCY_DOLLAR,
+  DB_CURRENCY_YEN,
+  DB_CURRENCY_BRITISH_POUND,
+  DB_CURRENCY_WON,
+  DB_CURRENCY_TL,
+  DB_CURRENCY_CAMBODIAN_RIEL,
+  DB_CURRENCY_CHINESE_RENMINBI,
+  DB_CURRENCY_INDIAN_RUPEE,
+  DB_CURRENCY_RUSSIAN_RUBLE,
+  DB_CURRENCY_AUSTRALIAN_DOLLAR,
+  DB_CURRENCY_CANADIAN_DOLLAR,
+  DB_CURRENCY_BRASILIAN_REAL,
+  DB_CURRENCY_ROMANIAN_LEU,
+  DB_CURRENCY_EURO,
+  DB_CURRENCY_SWISS_FRANC,
+  DB_CURRENCY_DANISH_KRONE,
+  DB_CURRENCY_NORWEGIAN_KRONE,
+  DB_CURRENCY_BULGARIAN_LEV,
+  DB_CURRENCY_VIETNAMESE_DONG,
+  DB_CURRENCY_CZECH_KORUNA,
+  DB_CURRENCY_POLISH_ZLOTY,
+  DB_CURRENCY_SWEDISH_KRONA,
+  DB_CURRENCY_CROATIAN_KUNA,
+  DB_CURRENCY_SERBIAN_DINAR,
+  DB_CURRENCY_NULL
+} DB_CURRENCY;
 
 typedef struct db_monetary DB_MONETARY;
 struct db_monetary
@@ -823,6 +839,7 @@ struct db_enumeration
  * in passing data in and out of the db_ function layer.
  */
 
+
 typedef union db_data DB_DATA;
 union db_data
 {
@@ -1000,71 +1017,6 @@ extern int db_date_encode (DB_DATE * date, int month, int day, int year);
 extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
 extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
 
-/* From oid.h */
-#define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)
-
-/* From set_object.h */
-/*
- * struct setobj
- * The internal structure of a setobj data struct is private to this module.
- * all access to this structure should be encapsulated via function calls.
- */
-
-struct setobj
-{
-
-  DB_TYPE coltype;
-  int size;			/* valid indexes from 0 to size -1 aka the number of represented values in the
-				 * collection */
-  int lastinsert;		/* the last value insertion point 0 to size. */
-  int topblock;			/* maximum index of an allocated block. This is the maximum non-NULL db_value pointer
-				 * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL 
-				 * pointer for future expansion. */
-  int arraytop;			/* maximum indexable pointer in array the valid indexes for array are 0 to arraytop
-				 * inclusive Generally this may be greater than topblock */
-  int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized 
-				 * block for space efficicency. */
-  DB_VALUE **array;
-
-  /* not stored on disk, attached at run time by the schema */
-  struct tp_domain *domain;
-
-  /* external reference list */
-  DB_COLLECTION *references;
-
-  /* clear if we can't guarentee sort order, always on for sequences */
-  unsigned sorted:1;
-
-  /* set if we can't guarentee that there are no temporary OID's in here */
-  unsigned may_have_temporary_oids:1;
-};
-
-/*
- * SETOBJ
- *    This is the primitive set object header.
- */
-typedef struct setobj SETOBJ;
-
-typedef SETOBJ COL;
-
-STATIC_INLINE DB_TYPE setobj_type (COL * set) __attribute__ ((ALWAYS_INLINE));
-
-/*
- * setobj_type() - Returns the type of setobj is passed in
- *      return: DB_TYPE
- *  set(in) : set object
- *
- */
-
-STATIC_INLINE DB_TYPE
-setobj_type (COL * set)
-{
-  if (set)
-    {
-      return set->coltype;
-    }
-  return DB_TYPE_NULL;
-}
 
 extern DB_VALUE *db_value_create (void);
 extern DB_VALUE *db_value_copy (DB_VALUE * value);
@@ -1107,6 +1059,16 @@ extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
 extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
 extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
 extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
+extern int db_make_string (DB_VALUE * value, const char *str);
+extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
+extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
+			   const int bit_str_bit_size);
+extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
+			    const int size);
+
+extern int db_make_set (DB_VALUE * value, DB_C_SET * set);
+extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
+extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
 
 /*
  * DB_MAKE_ value constructors.
@@ -1115,61 +1077,43 @@ extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
  * arguments. It is not necessary to use these macros but is usually more
  * convenient.
  */
-STATIC_INLINE int db_make_null (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_int (DB_VALUE * value, const int num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_float (DB_VALUE * value, const DB_C_FLOAT num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_set (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_multiset (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_sequence (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_collection (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_date (DB_VALUE * value, const int month, const int day, const int year)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_error (DB_VALUE * value, const int errcode) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_string (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str,
-			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
-				  const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
-				const int char_str_byte_size, const int codeset, const int collation_id)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
-				   const int char_str_byte_size, const int codeset, const int collation_id)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
-				 const int nchar_str_byte_size, const int codeset, const int collation_id)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
-				    const int nchar_str_byte_size, const int codeset, const int collation_id)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
-				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
+
+static __inline int db_make_null (DB_VALUE * value);
+static __inline int db_make_int (DB_VALUE * value, const int num);
+static __inline int db_make_float (DB_VALUE * value, const DB_C_FLOAT num);
+static __inline int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num);
+static __inline int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj);
+static __inline int db_make_collection (DB_VALUE * value, DB_C_SET * set);
+static __inline int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
+static __inline int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
+static __inline int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
+static __inline int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
+static __inline int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
+static __inline int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
+static __inline int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val);
+static __inline int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val);
+static __inline int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
+static __inline int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime);
+static __inline int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz);
+static __inline int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount);
+static __inline int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
+static __inline int db_make_error (DB_VALUE * value, const int errcode);
+static __inline int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg);
+static __inline int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
+static __inline int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
+static __inline int db_make_string_copy (DB_VALUE * value, const char *str);
+static __inline int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
+static __inline int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str,
+				  const int char_str_byte_size, const int codeset, const int collation_id);
+static __inline int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+				     const int char_str_byte_size, const int codeset, const int collation_id);
+static __inline int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
+				   const int nchar_str_byte_size, const int codeset, const int collation_id);
+static __inline int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+				      const int nchar_str_byte_size, const int codeset, const int collation_id);
+static __inline int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
+					 unsigned char codeset, const int collation_id);
+static __inline int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
 extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
 extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
@@ -1193,6 +1137,13 @@ extern char *db_get_method_error_msg (void);
 extern DB_C_CHAR db_get_string (const DB_VALUE * value);
 extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
 extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
+
+extern int db_get_string_codeset (const DB_VALUE * value);
+extern int db_get_string_collation (const DB_VALUE * value);
+extern char *db_get_enum_string (const DB_VALUE * value);
+extern int db_get_enum_string_size (const DB_VALUE * value);
+extern int db_get_enum_codeset (const DB_VALUE * value);
+extern int db_get_enum_collation (const DB_VALUE * value);
 
 /* MACROS FOR ERROR CHECKING */
 /* These should be used at the start of every db_ function so we can check
@@ -1265,43 +1216,37 @@ extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
 #define CHECK_1ARG_UNKNOWN(obj1)        \
   CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
 
-STATIC_INLINE int db_get_int (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_SHORT db_get_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_BIGINT db_get_bigint (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_COLLECTION *db_get_set (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_POINTER db_get_pointer (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_TIME *db_get_time (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_TIMETZ *db_get_timetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));;
-STATIC_INLINE DB_DATETIME *db_get_datetime (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_DATETIMETZ *db_get_datetimetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_DATE *db_get_date (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_MONETARY *db_get_monetary (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_string_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_string_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_enum_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_enum_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE char *db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+static __inline int db_get_int (const DB_VALUE * value);
+static __inline DB_C_SHORT db_get_short (const DB_VALUE * value);
+static __inline DB_BIGINT db_get_bigint (const DB_VALUE * value);
+static __inline DB_C_FLOAT db_get_float (const DB_VALUE * value);
+static __inline DB_C_DOUBLE db_get_double (const DB_VALUE * value);
+static __inline DB_OBJECT *db_get_object (const DB_VALUE * value);
+static __inline DB_COLLECTION *db_get_set (const DB_VALUE * value);
+static __inline DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value);
+static __inline DB_C_POINTER db_get_pointer (const DB_VALUE * value);
+static __inline DB_TIME *db_get_time (const DB_VALUE * value);
+static __inline DB_TIMETZ *db_get_timetz (const DB_VALUE * value);
+static __inline DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value);
+static __inline DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value);;
+static __inline DB_DATETIME *db_get_datetime (const DB_VALUE * value);
+static __inline DB_DATETIMETZ *db_get_datetimetz (const DB_VALUE * value);
+static __inline DB_DATE *db_get_date (const DB_VALUE * value);
+static __inline DB_MONETARY *db_get_monetary (const DB_VALUE * value);
+static __inline int db_get_error (const DB_VALUE * value);
+static __inline DB_ELO *db_get_elo (const DB_VALUE * value);
+static __inline DB_C_NUMERIC db_get_numeric (const DB_VALUE * value);
+static __inline DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
+static __inline int db_get_string_size (const DB_VALUE * value);
+static __inline DB_RESULTSET db_get_resultset (const DB_VALUE * value);
+static __inline unsigned short db_get_enum_short (const DB_VALUE * value);
 
 /*
  * db_get_int() -
  * return :
  * value(in):
  */
-STATIC_INLINE int
+static __inline int
 db_get_int (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1318,7 +1263,7 @@ db_get_int (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_C_SHORT
+static __inline DB_C_SHORT
 db_get_short (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1335,7 +1280,7 @@ db_get_short (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_BIGINT
+static __inline DB_BIGINT
 db_get_bigint (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1352,7 +1297,7 @@ db_get_bigint (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_C_FLOAT
+static __inline DB_C_FLOAT
 db_get_float (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1369,7 +1314,7 @@ db_get_float (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_C_DOUBLE
+static __inline DB_C_DOUBLE
 db_get_double (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1386,7 +1331,7 @@ db_get_double (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_OBJECT *
+static __inline DB_OBJECT *
 db_get_object (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1408,7 +1353,7 @@ db_get_object (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_COLLECTION *
+static __inline DB_COLLECTION *
 db_get_set (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1434,7 +1379,7 @@ db_get_set (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_MIDXKEY *
+static __inline DB_MIDXKEY *
 db_get_midxkey (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1458,7 +1403,7 @@ db_get_midxkey (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_C_POINTER
+static __inline DB_C_POINTER
 db_get_pointer (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1482,7 +1427,7 @@ db_get_pointer (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_TIME *
+static __inline DB_TIME *
 db_get_time (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1499,7 +1444,7 @@ db_get_time (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_TIMETZ *
+static __inline DB_TIMETZ *
 db_get_timetz (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1516,7 +1461,7 @@ db_get_timetz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_TIMESTAMP *
+static __inline DB_TIMESTAMP *
 db_get_timestamp (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1534,7 +1479,7 @@ db_get_timestamp (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_TIMESTAMPTZ *
+static __inline DB_TIMESTAMPTZ *
 db_get_timestamptz (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1551,7 +1496,7 @@ db_get_timestamptz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_DATETIME *
+static __inline DB_DATETIME *
 db_get_datetime (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1569,7 +1514,7 @@ db_get_datetime (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_DATETIMETZ *
+static __inline DB_DATETIMETZ *
 db_get_datetimetz (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1586,7 +1531,7 @@ db_get_datetimetz (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_DATE *
+static __inline DB_DATE *
 db_get_date (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1603,7 +1548,7 @@ db_get_date (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_MONETARY *
+static __inline DB_MONETARY *
 db_get_monetary (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1620,7 +1565,7 @@ db_get_monetary (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE int
+static __inline int
 db_get_error (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1637,7 +1582,7 @@ db_get_error (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_ELO *
+static __inline DB_ELO *
 db_get_elo (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1667,7 +1612,7 @@ db_get_elo (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE DB_C_NUMERIC
+static __inline DB_C_NUMERIC
 db_get_numeric (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1692,7 +1637,7 @@ db_get_numeric (const DB_VALUE * value)
  * value(in):
  * length(out):
  */
-STATIC_INLINE DB_C_NCHAR
+static __inline DB_C_NCHAR
 db_get_nchar (const DB_VALUE * value, int *length)
 {
   return db_get_char (value, length);
@@ -1703,7 +1648,7 @@ db_get_nchar (const DB_VALUE * value, int *length)
  * return :
  * value(in):
  */
-STATIC_INLINE int
+static __inline int
 db_get_string_size (const DB_VALUE * value)
 {
   int size = 0;
@@ -1736,41 +1681,11 @@ db_get_string_size (const DB_VALUE * value)
 }
 
 /*
- * db_get_string_codeset() -
- * return :
- * value(in):
- */
-STATIC_INLINE int
-db_get_string_codeset (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
-#endif
-
-  return value->data.ch.info.codeset;
-}
-
-/*
- * db_get_string_collation() -
- * return :
- * value(in):
- */
-STATIC_INLINE int
-db_get_string_collation (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, int);
-#endif
-
-  return value->domain.char_info.collation_id;
-}
-
-/*
  * db_get_resultset() -
  * return :
  * value(in):
  */
-STATIC_INLINE DB_RESULTSET
+static __inline DB_RESULTSET
 db_get_resultset (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1783,43 +1698,12 @@ db_get_resultset (const DB_VALUE * value)
   return value->data.rset;
 }
 
-
-/*
- * db_get_enum_codeset() -
- * return :
- * value(in):
- */
-STATIC_INLINE int
-db_get_enum_codeset (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
-#endif
-
-  return value->data.enumeration.str_val.info.codeset;
-}
-
-/*
- * db_get_enum_collation() -
- * return :
- * value(in):
- */
-STATIC_INLINE int
-db_get_enum_collation (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO_WITH_TYPE (value, int);
-#endif
-
-  return value->domain.char_info.collation_id;
-}
-
 /*
  * db_get_enum_string () -
  * return :
  * value(in):
  */
-STATIC_INLINE char *
+static __inline char *
 db_get_enum_string (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1837,7 +1721,7 @@ db_get_enum_string (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE unsigned short
+static __inline unsigned short
 db_get_enum_short (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1853,7 +1737,7 @@ db_get_enum_short (const DB_VALUE * value)
  * return :
  * value(in):
  */
-STATIC_INLINE int
+static __inline int
 db_get_enum_string_size (const DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1881,7 +1765,7 @@ db_get_enum_string_size (const DB_VALUE * value)
  * return :
  * value(out) :
  */
-STATIC_INLINE int
+static __inline int
 db_make_null (DB_VALUE * value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1901,7 +1785,7 @@ db_make_null (DB_VALUE * value)
  * value(out) :
  * num(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_int (DB_VALUE * value, const int num)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1922,7 +1806,7 @@ db_make_int (DB_VALUE * value, const int num)
  * value(out) :
  * num(in) :
  */
-STATIC_INLINE int
+static __inline int
 db_make_short (DB_VALUE * value, const short num)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1943,7 +1827,7 @@ db_make_short (DB_VALUE * value, const short num)
  * value(out) :
  * num(in) :
  */
-STATIC_INLINE int
+static __inline int
 db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1964,7 +1848,7 @@ db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
  * value(out) :
  * num(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_float (DB_VALUE * value, const float num)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -1985,7 +1869,7 @@ db_make_float (DB_VALUE * value, const float num)
  * value(out) :
  * num(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_double (DB_VALUE * value, const double num)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2008,7 +1892,7 @@ db_make_double (DB_VALUE * value, const double num)
  * precision(in):
  * scale(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
 {
   int error = NO_ERROR;
@@ -2036,203 +1920,13 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 }
 
 /*
- * db_make_db_char() -
- * return :
- * value(out) :
- * codeset(in):
- * collation_id(in):
- * str(in):
- * size(in):
- */
-STATIC_INLINE int
-db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
-{
-  int error = NO_ERROR;
-  bool is_char_type;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  is_char_type = (value->domain.general_info.type == DB_TYPE_VARCHAR || value->domain.general_info.type == DB_TYPE_CHAR
-		  || value->domain.general_info.type == DB_TYPE_NCHAR
-		  || value->domain.general_info.type == DB_TYPE_VARNCHAR
-		  || value->domain.general_info.type == DB_TYPE_BIT
-		  || value->domain.general_info.type == DB_TYPE_VARBIT);
-
-  if (is_char_type)
-    {
-#if 0
-      if (size <= DB_SMALL_CHAR_BUF_SIZE)
-	{
-	  value->data.ch.info.style = SMALL_STRING;
-	  value->data.ch.sm.codeset = codeset;
-	  value->data.ch.sm.size = size;
-	  memcpy (value->data.ch.sm.buf, str, size);
-	}
-      else
-#endif
-      if (size <= DB_MAX_STRING_LENGTH)
-	{
-	  value->data.ch.info.style = MEDIUM_STRING;
-	  value->data.ch.info.codeset = codeset;
-	  value->domain.char_info.collation_id = collation_id;
-	  value->data.ch.info.is_max_string = false;
-	  value->data.ch.info.compressed_need_clear = false;
-	  value->data.ch.medium.compressed_buf = NULL;
-	  value->data.ch.medium.compressed_size = 0;
-	  /* 
-	   * If size is set to the default, and the type is any
-	   * kind of character string, assume the string is NULL
-	   * terminated.
-	   */
-	  if (size == DB_DEFAULT_STRING_LENGTH && QSTR_IS_ANY_CHAR (value->domain.general_info.type))
-	    {
-	      value->data.ch.medium.size = str ? strlen (str) : 0;
-	    }
-	  else if (size < 0)
-	    {
-	      error = ER_QSTR_BAD_LENGTH;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_BAD_LENGTH, 1, size);
-	    }
-	  else
-	    {
-	      /* We need to ensure that we don't exceed the max size for the char value specified in the domain. */
-	      if (value->domain.char_info.length == TP_FLOATING_PRECISION_VALUE || LANG_VARIABLE_CHARSET (codeset))
-		{
-		  value->data.ch.medium.size = size;
-		}
-	      else
-		{
-		  value->data.ch.medium.size = MIN (size, value->domain.char_info.length);
-		}
-	    }
-	  value->data.ch.medium.buf = (char *) str;
-	}
-      else
-	{
-	  /* case LARGE_STRING: Currently Not Implemented */
-	}
-
-      if (str)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  value->domain.general_info.is_null = 1;
-	}
-
-      if (size == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
-	{
-	  value->domain.general_info.is_null = 1;
-	}
-
-      value->need_clear = false;
-    }
-  else
-    {
-      error = ER_QPROC_INVALID_DATATYPE;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-    }
-  return error;
-}
-
-/*
- * db_make_bit() -
- * return :
- * value(out) :
- * bit_length(in):
- * bit_str(in):
- * bit_str_bit_size(in):
- */
-STATIC_INLINE int
-db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
-{
-  int error;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  error = db_value_domain_init (value, DB_TYPE_BIT, bit_length, 0);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = db_make_db_char (value, INTL_CODESET_RAW_BITS, 0, bit_str, bit_str_bit_size);
-  return error;
-}
-
-/*
- * db_make_varbit() -
- * return :
- * value(out) :
- * max_bit_length(in):
- * bit_str(in):
- * bit_str_bit_size(in):
- */
-STATIC_INLINE int
-db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size)
-{
-  int error;
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  error = db_value_domain_init (value, DB_TYPE_VARBIT, max_bit_length, 0);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = db_make_db_char (value, INTL_CODESET_RAW_BITS, 0, bit_str, bit_str_bit_size);
-
-  return error;
-}
-
-/*
- * db_make_string() -
- * return :
- * value(out) :
- * str(in):
- */
-STATIC_INLINE int
-db_make_string (DB_VALUE * value, const char *str)
-{
-  int error;
-  int size;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  error = db_value_domain_init (value, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
-  if (error == NO_ERROR)
-    {
-      if (str)
-	{
-	  size = strlen (str);
-	}
-      else
-	{
-	  size = 0;
-	}
-      error = db_make_db_char (value, LANG_SYS_CODESET, LANG_SYS_COLLATION, str, size);
-    }
-  return error;
-}
-
-
-/*
  * db_make_string_copy() - alloc buffer and copy str into the buffer.
  *                         need_clear will set as true.
  * return :
  * value(out) :
  * str(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_string_copy (DB_VALUE * value, const char *str)
 {
   int error;
@@ -2259,7 +1953,7 @@ db_make_string_copy (DB_VALUE * value, const char *str)
  * str(in):
  * char_str_byte_size(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
 	      const int codeset, const int collation_id)
 {
@@ -2286,7 +1980,7 @@ db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, cons
  * str(in):
  * char_str_byte_size(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str, const int char_str_byte_size,
 		 const int codeset, const int collation_id)
 {
@@ -2313,7 +2007,7 @@ db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR st
  * str(in):
  * nchar_str_byte_size(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
 	       const int codeset, const int collation_id)
 {
@@ -2340,7 +2034,7 @@ db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, c
  * str(in):
  * nchar_str_byte_size(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
 		  const int codeset, const int collation_id)
 {
@@ -2365,7 +2059,7 @@ db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR
  * value(out) :
  * obj(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_object (DB_VALUE * value, DB_OBJECT * obj)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2389,129 +2083,12 @@ db_make_object (DB_VALUE * value, DB_OBJECT * obj)
 }
 
 /*
- * db_make_set() -
- * return :
- * value(out) :
- * set(in):
- */
-STATIC_INLINE int
-db_make_set (DB_VALUE * value, DB_SET * set)
-{
-  int error = NO_ERROR;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  value->domain.general_info.type = DB_TYPE_SET;
-  value->data.set = set;
-  if (set)
-    {
-      if ((set->set && setobj_type (set->set) == DB_TYPE_SET) || set->disk_set)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  error = ER_QPROC_INVALID_DATATYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	}
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  value->need_clear = false;
-
-  return error;
-}
-
-/*
- * db_make_multiset() -
- * return :
- * value(out) :
- * set(in):
- */
-STATIC_INLINE int
-db_make_multiset (DB_VALUE * value, DB_SET * set)
-{
-  int error = NO_ERROR;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  value->domain.general_info.type = DB_TYPE_MULTISET;
-  value->data.set = set;
-  if (set)
-    {
-      if ((set->set && setobj_type (set->set) == DB_TYPE_MULTISET) || set->disk_set)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  error = ER_QPROC_INVALID_DATATYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	}
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  value->need_clear = false;
-
-  return error;
-}
-
-/*
- * db_make_sequence() -
- * return :
- * value(out) :
- * set(in):
- */
-STATIC_INLINE int
-db_make_sequence (DB_VALUE * value, DB_SET * set)
-{
-  int error = NO_ERROR;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  value->domain.general_info.type = DB_TYPE_SEQUENCE;
-  value->data.set = set;
-  if (set)
-    {
-      if ((set->set && setobj_type (set->set) == DB_TYPE_SEQUENCE) || set->disk_set)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  error = ER_QPROC_INVALID_DATATYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	}
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  value->need_clear = false;
-
-  return error;
-}
-
-/*
  * db_make_collection() -
  * return :
  * value(out) :
  * col(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
 {
   int error = NO_ERROR;
@@ -2548,7 +2125,7 @@ db_make_collection (DB_VALUE * value, DB_COLLECTION * col)
  * value(out) :
  * midxkey(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
 {
   int error = NO_ERROR;
@@ -2586,7 +2163,7 @@ db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
  * value(out) :
  * ptr(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_pointer (DB_VALUE * value, void *ptr)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2616,7 +2193,7 @@ db_make_pointer (DB_VALUE * value, void *ptr)
  * min(in):
  * sec(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2637,7 +2214,7 @@ db_make_time (DB_VALUE * value, const int hour, const int min, const int sec)
  * min(in):
  * sec(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2668,7 +2245,7 @@ db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value)
  * min(in):
  * sec(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2698,7 +2275,7 @@ db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value)
  * day(in):
  * year(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2718,7 +2295,7 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
  * type(in):
  * amount(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
 {
   int error;
@@ -2781,7 +2358,7 @@ db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount)
  * value(out):
  * timeval(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2802,7 +2379,7 @@ db_make_timestamp (DB_VALUE * value, const DB_TIMESTAMP timeval)
  * value(out):
  * timeval(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_timestampltz (DB_VALUE * value, const DB_TIMESTAMP ts_val)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2823,7 +2400,7 @@ db_make_timestampltz (DB_VALUE * value, const DB_TIMESTAMP ts_val)
  * value(out):
  * timeval(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_timestamptz (DB_VALUE * value, const DB_TIMESTAMPTZ * ts_tz_val)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2851,7 +2428,7 @@ db_make_timestamptz (DB_VALUE * value, const DB_TIMESTAMPTZ * ts_tz_val)
  * value(out):
  * date(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2879,7 +2456,7 @@ db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime)
  * value(out):
  * date(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2907,7 +2484,7 @@ db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime)
  * value(out):
  * date(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2939,7 +2516,7 @@ db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz)
  * codeset(in):
  * collation_id(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size, unsigned char codeset,
 		     const int collation_id)
 {
@@ -2970,7 +2547,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int 
  * value(out):
  * errcode(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_error (DB_VALUE * value, const int errcode)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -2994,7 +2571,7 @@ db_make_error (DB_VALUE * value, const int errcode)
  * errcode(in):
  * errmsg(in);
  */
-STATIC_INLINE int
+static __inline int
 db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)
@@ -3022,41 +2599,12 @@ db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg)
 }
 
 /*
- * db_make_oid() -
- * return :
- * value(out):
- * oid(in):
- */
-STATIC_INLINE int
-db_make_oid (DB_VALUE * value, const OID * oid)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_2ARGS_ERROR (value, oid);
-#endif
-
-  if (!oid || OID_ISNULL (oid))
-    {
-      value->domain.general_info.is_null = 1;
-      return NO_ERROR;
-    }
-
-  value->domain.general_info.type = DB_TYPE_OID;
-  value->data.oid.pageid = oid->pageid;
-  value->data.oid.slotid = oid->slotid;
-  value->data.oid.volid = oid->volid;
-  value->domain.general_info.is_null = OID_ISNULL (oid);
-  value->need_clear = false;
-
-  return NO_ERROR;
-}
-
-/*
  * db_make_resultset() -
  * return :
  * value(out):
  * handle(in):
  */
-STATIC_INLINE int
+static __inline int
 db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 {
 #if defined(NO_SERVER_OR_DEBUG_MODE)

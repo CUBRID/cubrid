@@ -105,6 +105,7 @@ typedef struct set_iterator
 extern AREA *Set_Ref_Area;	/* Area for allocation of set reference structures */
 extern AREA *Set_Obj_Area;	/* Area for allocation of set object structures */
 
+typedef SETOBJ COL;
 extern DB_COLLECTION *set_create (DB_TYPE type, int initial_size);
 extern int set_area_init (void);
 extern void set_area_final (void);
@@ -261,5 +262,6 @@ extern int setobj_put_value (COL * col, int index, DB_VALUE * value);
 extern DB_COLLECTION *setobj_get_reference (COL * set);
 extern int setobj_release (COL * set);
 extern int setobj_build_domain_from_col (COL * col, TP_DOMAIN ** set_domain);
+extern DB_TYPE setobj_type (COL * set);
 
 #endif /* _SET_OBJECT_H_ */

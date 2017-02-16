@@ -60,6 +60,38 @@
   ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
    || (c) == LANG_COLL_EUCKR_BINARY)
 
+/* collation and charset do be used by system : */
+enum
+{
+  LANG_COLL_ISO_BINARY = 0,
+  LANG_COLL_UTF8_BINARY = 1,
+  LANG_COLL_ISO_EN_CS = 2,
+  LANG_COLL_ISO_EN_CI = 3,
+  LANG_COLL_UTF8_EN_CS = 4,
+  LANG_COLL_UTF8_EN_CI = 5,
+  LANG_COLL_UTF8_TR_CS = 6,
+  LANG_COLL_UTF8_KO_CS = 7,
+  LANG_COLL_EUCKR_BINARY = 8,
+  LANG_COLL_BINARY = 9
+};
+#define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
+  ? LANG_COLL_UTF8_BINARY :					 \
+  (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
+  (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
+  LANG_COLL_BINARY)))
+
+extern INTL_CODESET lang_charset (void);
+
+#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
+
+#define LANG_SYS_CODESET  lang_charset()
+
+#define LANG_VARIABLE_CHARSET(x) ((x) != INTL_CODESET_ASCII     && \
+  (x) != INTL_CODESET_RAW_BITS  && \
+  (x) != INTL_CODESET_RAW_BYTES && \
+  (x) != INTL_CODESET_ISO88591)
+
+
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
   do {					      \

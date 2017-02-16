@@ -163,6 +163,7 @@ EXPORTS
     db_get_constraints
     db_get_currency_default
     db_get_database_name
+	db_get_enum_codeset
     db_get_foreign_key_action
     db_get_foreign_key_ref_class
     db_get_global_transaction_info
@@ -179,6 +180,7 @@ EXPORTS
     db_get_resolutions
     db_get_statement_type
 	db_get_string
+	db_get_string_codeset
     db_get_string_length
     db_get_subclasses
     db_get_superclasses
@@ -199,7 +201,11 @@ EXPORTS
     db_lock_read
     db_lock_write
     db_login
+	db_make_bit
+	db_make_db_char
 	db_make_elo
+	db_make_set
+	db_make_sequence
     db_marker_domain
     db_marker_next
     db_methfile_name

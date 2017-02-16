@@ -215,7 +215,6 @@ typedef struct sm_method_argument DB_METHARG;
 typedef struct sm_method_file DB_METHFILE;
 typedef struct sm_resolution DB_RESOLUTION;
 typedef struct sm_query_spec DB_QUERY_SPEC;
-typedef struct tp_domain DB_DOMAIN;
 
 /* These are handles to attribute and method descriptors that can
    be used for optimized lookup during repeated operations.
@@ -324,7 +323,6 @@ typedef enum
  * elsewhere and it is not necessary for database applications to
  * understand its contents.
  */
-typedef struct db_object DB_OBJECT, *MOP;
 
 /* Structure defining the common list link header used by the general
  * list routines.  Any structure in the db_ layer that are linked in

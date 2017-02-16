@@ -46,7 +46,7 @@
 #include <wchar.h>
 #endif
 
-#include "system.h"
+#include "dbtype.h"
 
 #ifndef MB_LEN_MAX
 #define MB_LEN_MAX            1
@@ -61,37 +61,6 @@
 #define LC_MESSAGES          LC_ALL
 #endif /* !LC_MESSAGE */
 #endif /* WINDOWS */
-
-/* Structure used for the representation of monetary amounts. */
-/* Taken from dbtype.h. */
-typedef enum
-{
-  DB_CURRENCY_DOLLAR,
-  DB_CURRENCY_YEN,
-  DB_CURRENCY_BRITISH_POUND,
-  DB_CURRENCY_WON,
-  DB_CURRENCY_TL,
-  DB_CURRENCY_CAMBODIAN_RIEL,
-  DB_CURRENCY_CHINESE_RENMINBI,
-  DB_CURRENCY_INDIAN_RUPEE,
-  DB_CURRENCY_RUSSIAN_RUBLE,
-  DB_CURRENCY_AUSTRALIAN_DOLLAR,
-  DB_CURRENCY_CANADIAN_DOLLAR,
-  DB_CURRENCY_BRASILIAN_REAL,
-  DB_CURRENCY_ROMANIAN_LEU,
-  DB_CURRENCY_EURO,
-  DB_CURRENCY_SWISS_FRANC,
-  DB_CURRENCY_DANISH_KRONE,
-  DB_CURRENCY_NORWEGIAN_KRONE,
-  DB_CURRENCY_BULGARIAN_LEV,
-  DB_CURRENCY_VIETNAMESE_DONG,
-  DB_CURRENCY_CZECH_KORUNA,
-  DB_CURRENCY_POLISH_ZLOTY,
-  DB_CURRENCY_SWEDISH_KRONA,
-  DB_CURRENCY_CROATIAN_KUNA,
-  DB_CURRENCY_SERBIAN_DINAR,
-  DB_CURRENCY_NULL
-} DB_CURRENCY;
 
 /* next UTF-8 char */
 #define INTL_NEXTCHAR_UTF8(c) \
@@ -181,22 +150,6 @@ enum intl_zone
   INTL_ZONE_TR
 };
 
-typedef enum intl_codeset INTL_CODESET;
-enum intl_codeset
-{
-  INTL_CODESET_ERROR = -2,
-  INTL_CODESET_NONE = -1,
-  INTL_CODESET_ASCII,		/* US English charset, ASCII encoding */
-  INTL_CODESET_RAW_BITS,	/* Uninterpreted bits, Raw encoding */
-  INTL_CODESET_RAW_BYTES,	/* Uninterpreted bytes, Raw encoding */
-  INTL_CODESET_ISO88591,	/* Latin 1 charset, ISO 8859 encoding */
-  INTL_CODESET_KSC5601_EUC,	/* KSC 5601 1990 charset , EUC encoding */
-  INTL_CODESET_UTF8,		/* UNICODE charset, UTF-8 encoding */
-
-  INTL_CODESET_BINARY = INTL_CODESET_RAW_BYTES,
-
-  INTL_CODESET_LAST = INTL_CODESET_UTF8
-};
 
 typedef enum currency_check_mode CURRENCY_CHECK_MODE;
 enum currency_check_mode
