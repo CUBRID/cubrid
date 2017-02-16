@@ -440,8 +440,11 @@ xcache_entry_uninit (void *entry)
   XASL_CACHE_ENTRY *xcache_entry = XCACHE_PTR_TO_ENTRY (entry);
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-  /* No fixed count or this is claimed & retired immediately. */
+  /* 1. not fixed
+   * 2. or was deleted
+   * 3. or was claimed & retired immediately. */
   assert ((xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 0
+	  || xcache_entry->xasl_id.cache_flag == XCACHE_ENTRY_DELETED
 	  || ((xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 1
 	      && !xcache_entry->free_data_on_uninit));
 
