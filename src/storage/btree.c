@@ -18691,6 +18691,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
 	  c = (*(multi_range_opt->sort_col_dom[i]->type->cmpval)) (&comp_key_value, &new_key_value[i], 1, 1, NULL,
 								   multi_range_opt->sort_col_dom[i]->collation_id);
+	  pr_clear_value (&comp_key_value);
 	  if (c != 0)
 	    {
 	      /* see if new element should be rejected or accepted and stop checking keys */
@@ -18706,6 +18707,10 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
 	  if (new_key_value != NULL)
 	    {
+	      for (i = 0; i < multi_range_opt->num_attrs; i++)
+		{
+		  pr_clear_value (&new_key_value[i]);
+		}
 	      db_private_free_and_init (thread_p, new_key_value);
 	    }
 
