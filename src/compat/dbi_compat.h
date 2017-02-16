@@ -1853,7 +1853,6 @@ typedef struct sm_method_argument DB_METHARG;
 typedef struct sm_method_file DB_METHFILE;
 typedef struct sm_resolution DB_RESOLUTION;
 typedef struct sm_query_spec DB_QUERY_SPEC;
-typedef struct tp_domain DB_DOMAIN;
 typedef struct tp_domain SM_DOMAIN;
 typedef struct tp_domain TP_DOMAIN;
 
