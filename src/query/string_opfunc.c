@@ -16861,7 +16861,6 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 {
   int error_status = NO_ERROR;
   char tmp_str[NUMERIC_MAX_STRING_SIZE];
-  char *tmp_buf;
 
   char *cs = NULL;		/* current source string pointer */
   char *format_str_ptr, *last_format;
@@ -27895,4 +27894,104 @@ parse_tzd (const char *str, const int max_expect_len)
     }
 
   return CAST_BUFLEN (p - str);
+}
+
+/*
+ * db_conv_tz () - Converts a timezone data type from one timezone library to another
+ *
+ * return ERROR or NO_ERROR
+ * time_val (in)     : time value (datetimetz, datetimeltz, timestamptz, timestampltz)
+ * result_time (out) : result
+ *
+ */
+int
+db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
+{
+  int error = NO_ERROR;
+  DB_DATETIMETZ *datetimetz = NULL;
+  DB_DATETIME *datetime = NULL;
+  DB_TIMESTAMPTZ *timestamptz = NULL;
+  DB_TIMESTAMP *timestamp = NULL;
+
+  /* 
+   *  Assert that DB_VALUE structures have been allocated.
+   */
+  assert (time_val != (DB_VALUE *) NULL);
+  assert (result_time != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (time_val))
+    {
+      DB_MAKE_NULL (result_time);
+      return NO_ERROR;
+    }
+
+  switch (DB_VALUE_TYPE (time_val))
+    {
+    case DB_TYPE_DATETIMETZ:
+      {
+	DB_DATETIMETZ datetimetz_out;
+
+	datetimetz = DB_GET_DATETIMETZ (time_val);
+
+	error = conv_tz (&datetimetz_out, datetimetz, DB_TYPE_DATETIMETZ);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	DB_MAKE_DATETIMETZ (result_time, &datetimetz_out);
+      }
+      break;
+
+    case DB_TYPE_DATETIMELTZ:
+      {
+	DB_DATETIME datetime_out;
+
+	datetime = DB_GET_DATETIME (time_val);
+
+	error = conv_tz (&datetime_out, datetime, DB_TYPE_DATETIMELTZ);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	DB_MAKE_DATETIMELTZ (result_time, &datetime_out);
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ timestamptz_out;
+
+	timestamptz = DB_GET_TIMESTAMPTZ (time_val);
+
+	error = conv_tz (&timestamptz_out, timestamptz, DB_TYPE_TIMESTAMPTZ);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	DB_MAKE_TIMESTAMPTZ (result_time, &timestamptz_out);
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMP timestamp_out;
+
+	timestamp = DB_GET_TIMESTAMP (time_val);
+
+	error = conv_tz (&timestamp_out, timestamp, DB_TYPE_TIMESTAMPLTZ);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	DB_MAKE_TIMESTAMPLTZ (result_time, timestamp_out);
+      }
+      break;
+
+    default:
+      error = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      break;
+    }
+
+  return error;
 }

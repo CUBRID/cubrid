@@ -687,7 +687,24 @@ options valids:\n\
                                définir l'unité d'affichage (page, mega, giga, tera, human readable); par défaut: H\n\
   -s, --summarize              afficher seulement un sommaire pour chaque but de volume\n\
   -p, --purpose                afficher la taille utilisée de chaque objet (données/index/temp) de chaque volume\n
-
+70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+71 type                purpose            volume_count         used_size           free_size           total_size\n
+72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+80 Space description for all volumes:\n
+81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+90 Detailed space description for files:\n
+91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+100 -----------------------------------------------------------------------------------------------------------------\n
+  
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Nombre estimatif de pages = %1$d\n
@@ -1090,8 +1107,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Générer les fichiers source contenant des données de fuseau horaire à être compilés dans\n\
         une bibliothèque partagée.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] [database-name]\n\
+usage: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 options valides:\n\
   -i, --input-folder	chemin d'accès à un dossier d'entrée contenant une version des\n\
@@ -1104,17 +1120,18 @@ options valides:\n\
 			également générer un fichier source contenant tous les noms des pays\n\
                         et des fuseaux horaires (destiné pour l'usage du développeur,\n\
                         à être intégré dans une future version de CUBRID).\n\
-			2. EXTEND: génération de(s) fichier(s) source de fuseau horaire en utilisant\n\
-                        les données du dossier d'entrée; les ID des fuseaux horaires codé dans\n\
-                        CUBRID sont conservées; les nouveaux fuseaux horaires trouvées dans les fichiers\n\
-                        d'entrée sont ajoutés dans le fichier source secondaire qui est aussi généré; les \n\
-                        décalages GMT et les informations liés à l'heure d'été sont mises à jour (ou ajouté,\n\
-			dans le cas de nouveaux fuseaux horaires); les fuseaux horaires ne sont jamais enlevés\n\
-			si un fuseau horaire codé dans le CUBRID est manquant depuis les fichiers d'entrée, les\n\
-			données associées sont extraites à partir de la bibliothèque de fuseau horaire existante.\n\
-                        Un nouveau fichier C contenant tous les noms de fuseaux horaires est généré, et il doit\n\
-                        être inclus dans le dossier de fichiers source CUBRID avant que la nouvelle bibliothèque\n\
-			de fuseau horaire peut être utilisée.\n
+			2. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removed if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 L'ID du fuseau indiqué n'est pas compris dans la plage admissible. Utilisez -z pour voir tous\n\

@@ -15422,6 +15422,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
   if (xasl->status == XASL_SUCCESS)
     {
+      /* early exit, CTEs should be executed only once */
       return NO_ERROR;
     }
 
@@ -15504,14 +15505,17 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  if (first_iteration && non_recursive_part->list_id->tuple_cnt > 0)
 	    {
 	      first_iteration = false;
-	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list)
+	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list
+		  || recursive_part->instnum_val != NULL)
 		{
 		  /* future specific optimizations, changes, etc */
 		}
-	      else
+	      else if (recursive_part->spec_list->s.list_node.xasl_node == non_recursive_part)
 		{
 		  /* optimization: use non-recursive list id for both reading and writing
 		   * the recursive xasl will iterate through this list id while appending new results at its end 
+		   * note: this works only if the cte(actually the non_recursive_part link) is the first spec used
+		   * for scanning during recursive iterations
 		   */
 		  save_recursive_list_id = recursive_part->list_id;
 		  recursive_part->list_id = non_recursive_part->list_id;
@@ -15523,7 +15527,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
       /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
        * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
        */
-      qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true);
+      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true) != NO_ERROR)
+	{
+	  QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	  GOTO_EXIT_ON_ERROR;
+	}
 
       if (save_recursive_list_id != NULL)
 	{
@@ -22142,6 +22150,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   for (regu_var_p = xasl->outptr_list->valptrp, i = 0; regu_var_p; regu_var_p = regu_var_p->next, i++)
     {
       out_values[i] = &(regu_var_p->value.value.dbval);
+      pr_clear_value (out_values[i]);
     }
 
   all_class_attr[0] = rep->attributes;

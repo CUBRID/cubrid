@@ -145,9 +145,7 @@ enum net_server_request
   NET_SERVER_DISK_TOTALPGS,
   NET_SERVER_DISK_FREEPGS,
   NET_SERVER_DISK_REMARKS,
-  NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO,
   NET_SERVER_DISK_VLABEL,
-  NET_SERVER_DISK_IS_EXIST,
 
   NET_SERVER_QST_GET_STATISTICS,
   NET_SERVER_QST_UPDATE_STATISTICS,
@@ -233,6 +231,8 @@ enum net_server_request
   NET_SERVER_LOCK_RR,
 
   NET_SERVER_TZ_GET_CHECKSUM,
+
+  NET_SERVER_SPACEDB,
 
   /* Followings are not grouped because they are appended after the above. It is necessary to rearrange with changing
    * network compatibility. */

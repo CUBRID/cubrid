@@ -5373,6 +5373,7 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_UTC_TIMESTAMP:
+    case PT_CONV_TZ:
       break;
 
       /* PT_DRAND and PT_DRANDOM are not supported regardless of whether a seed is given or not. because they produce
@@ -9910,6 +9911,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  pt_coerce_insert_values (parser, node);
 	}
       break;
+
     default:			/* other node types */
       break;
     }
@@ -14914,6 +14916,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
 	case PT_TO_TIME_TZ:
+	case PT_CONV_TZ:
 	  /* valid expression, nothing to do */
 	  break;
 	case PT_NOT:
@@ -15778,6 +15781,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       /* fold the statement set as null, we don't need to fold orderby clause because we return null. */
       parser_free_tree (parser, union_node);
       new_node = parser_new_node (parser, PT_VALUE);
+      new_node->type_enum = PT_TYPE_NULL;
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {

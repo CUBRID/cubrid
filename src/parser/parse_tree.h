@@ -1522,6 +1522,7 @@ typedef enum
   PT_UTC_TIMESTAMP,
   PT_CRC32,
   PT_SCHEMA_DEF,
+  PT_CONV_TZ,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -2792,7 +2793,8 @@ struct pt_query_info
 {
   int correlation_level;	/* for correlated subqueries */
   PT_MISC_TYPE all_distinct;	/* enum value is PT_ALL or PT_DISTINCT */
-  PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, or 0 */
+  PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, PT_IS_CTE_NON_REC_SUBQUERY, 
+				 * PT_IS_CTE_REC_SUBQUERY or 0 */
   char is_view_spec;		/* 0 - normal, 1 - view query spec */
   char oids_included;		/* DB_NO_OIDS/0 DB_ROW_OIDS/1 */
   SCAN_OPERATION_TYPE scan_op_type;	/* scan operation type */
