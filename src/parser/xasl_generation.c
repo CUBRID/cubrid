@@ -16722,7 +16722,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 	}
 
       /* set as zero correlation-level; this uncorrelated subquery need to be executed at most one time */
-      if (node->info.query.correlation_level == 0)
+      if ((PT_IS_QUERY (node) && node->info.query.correlation_level == 0) || node->node_type == PT_CTE)
 	{
 	  XASL_SET_FLAG (xasl, XASL_ZERO_CORR_LEVEL);
 	}
