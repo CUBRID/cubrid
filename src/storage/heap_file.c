@@ -16111,15 +16111,6 @@ try_copy_area_again:
 	  break;
 
 	case REC_BIGONE:
-	  if (has_forward_page == false)
-	    {
-	      COPY_OID (&forward_oid, (OID *) p_home_recdes_before_fix->data);
-	      vpid.volid = forward_oid.volid;
-	      vpid.pageid = forward_oid.pageid;
-	      has_forward_page = true;
-	      goto try_copy_area_again;
-	    }
-
 	  if (spage_is_updatable (thread_p, page_copy_before_fix, context->oid.slotid, context->recdes_p->length))
 	    {
 	      /* set recovery index */
