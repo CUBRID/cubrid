@@ -15422,6 +15422,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
   if (xasl->status == XASL_SUCCESS)
     {
+      /* early exit, CTEs should be executed only once */
       return NO_ERROR;
     }
 
@@ -15526,7 +15527,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
       /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
        * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
        */
-      qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true);
+      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true) != NO_ERROR)
+	{
+	  QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	  GOTO_EXIT_ON_ERROR;
+	}
 
       if (save_recursive_list_id != NULL)
 	{
