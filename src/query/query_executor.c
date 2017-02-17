@@ -15505,7 +15505,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	    {
 	      first_iteration = false;
 	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list
-		  || recursive_part->instnum_val != NULL)
+		  || recursive_part->instnum_val != NULL || recursive_part->proc.buildlist.a_eval_list != NULL)
 		{
 		  /* future specific optimizations, changes, etc */
 		}
