@@ -8254,11 +8254,11 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	      arg1 = node->info.cte.non_recursive_part;
 	      arg2 = node->info.cte.recursive_part;
 	      if (arg2 != NULL && (pt_false_where (parser, arg1) || pt_false_where (parser, arg2)))
-	      {
+		{
 		  /* the recursive_part can be removed if one of the parts has false_where */
 		  parser_free_tree (parser, node->info.cte.recursive_part);
 		  arg2 = node->info.cte.recursive_part = NULL;
-	      }
+		}
 
 	      if (arg2 == NULL)
 		{
