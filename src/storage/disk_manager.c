@@ -2051,6 +2051,16 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
     }
   assert (volid_new == disk_Cache->nvols_perm - 1);
 
+  if (ext_info.purpose == DB_PERMANENT_DATA_PURPOSE)
+    {
+      disk_Cache->perm_purpose_info.extend_info.nsect_total += ext_info.nsect_total;
+      disk_Cache->perm_purpose_info.extend_info.nsect_max += ext_info.nsect_max;
+    }
+  else
+    {
+      disk_Cache->temp_purpose_info.nsect_perm_total += ext_info.nsect_total;
+    }
+
   disk_cache_lock_reserve_for_purpose (ext_info.purpose);
   assert (disk_Cache->vols[volid_new].purpose == ext_info.purpose);
   assert (disk_Cache->vols[volid_new].nsect_free == 0);
