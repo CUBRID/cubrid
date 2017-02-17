@@ -6565,10 +6565,12 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 	  continue;
 	}
 
+      printf ("Opening database %s\n", db_info_p->name);
       /* Open the database */
       error = db_restart (program_name, TRUE, db_info_p->name);
       if (error != NO_ERROR)
 	{
+	  printf ("Error while opening database %s\n", db_info_p->name);
 	  need_db_shutdown = true;
 	  goto exit;
 	}
@@ -6580,6 +6582,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
       error = execute_query (query_buf, &result1);
       if (error < 0)
 	{
+	  printf ("Error while executing show tables query\n");
 	  need_db_shutdown = true;
 	  goto exit;
 	}
@@ -6621,6 +6624,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  error = execute_query (query_buf, &result2);
 		  if (error < 0)
 		    {
+		      printf ("Error while listing column names and types for table %s\n", table_name);
 		      need_db_shutdown = true;
 		      goto exit;
 		    }
@@ -6714,6 +6718,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		      error = execute_query (query_buf, &result3);
 		      if (error < 0)
 			{
+			  printf ("Error while updating table %s\n", table_name);
 			  db_abort_transaction ();
 			  need_db_shutdown = true;
 			  goto exit;
