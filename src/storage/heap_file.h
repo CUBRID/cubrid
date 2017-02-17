@@ -273,6 +273,56 @@ enum update_inplace_style
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
   ((update_inplace_style) != UPDATE_INPLACE_NONE)
 
+/* Log information, used when add logging before page fixing */
+typedef struct heap_log_info HEAP_LOG_INFO;
+struct heap_log_info
+{
+  LOG_PRIOR_NODE *node;		/* log node */
+  int rcv_index;		/* log recovery index */
+  VPID vpid;			/* page identifier */
+  int slot_id_with_flags;	/* slot id with flags */
+
+  char undo_data_buffer[IO_MAX_PAGE_SIZE / 4 + MAX_ALIGNMENT];	/* undo data buffer */
+  void *undo_data_p;		/* pointer to undo data */
+  int undo_data_size;		/* undo data size */
+
+  char redo_data_buffer[IO_MAX_PAGE_SIZE / 4 + MAX_ALIGNMENT];	/* redo data buffer */
+  void *redo_data_p;		/* pointer to redo data */
+  int redo_data_size;		/* redo data size */
+
+  bool node_appended;		/* true, if the log node was appended */
+};
+
+#define HEAP_INIT_LOG_INFO(p_heap_log_info) \
+  do \
+{ \
+  (p_heap_log_info)->node = NULL;				    \
+  (p_heap_log_info)->rcv_index = RV_NOT_DEFINED;		    \
+  VPID_SET_NULL (&(p_heap_log_info)->vpid);			    \
+  (p_heap_log_info)->slot_id_with_flags = -1;		    \
+  (p_heap_log_info)->undo_data_p = NULL;			    \
+  (p_heap_log_info)->undo_data_size = -1;			    \
+  (p_heap_log_info)->redo_data_p = NULL;			    \
+  (p_heap_log_info)->redo_data_size = -1;			    \
+  (p_heap_log_info)->node_appended = false;			    \
+} \
+  while (false)
+
+#define HEAP_SET_LOG_INFO(p_heap_log_info, p_node, recovery_index, vpid_p, slotid_with_flags, p_undo_data, undo_size, p_redo_data, redo_size, node_was_appended) \
+  do \
+{ \
+  (p_heap_log_info)->node = (p_node);			    \
+  (p_heap_log_info)->rcv_index = (recovery_index);		    \
+  VPID_COPY (&(p_heap_log_info->vpid), vpid_p);		    \
+  (p_heap_log_info)->slot_id_with_flags = (slotid_with_flags);  \
+  (p_heap_log_info)->undo_data_p = (p_undo_data);		    \
+  (p_heap_log_info)->undo_data_size = (undo_size);		    \
+  (p_heap_log_info)->redo_data_p = (p_redo_data);		    \
+  (p_heap_log_info)->redo_data_size = (redo_size);		    \
+  (p_heap_log_info)->node_appended = (node_was_appended);	    \
+} \
+  while (false)
+
 /* heap operation information structure */
 typedef struct heap_operation_context HEAP_OPERATION_CONTEXT;
 struct heap_operation_context
@@ -298,17 +348,26 @@ struct heap_operation_context
   INT16 record_type;		/* record type of original record */
   FILE_TYPE file_type;		/* the file type of hfid */
 
+  RECDES forwarding_recdes;	/* used in case of RELOCATION and BIGONE records */
+  OID forward_oid;		/* forward oid identifier */
+
   /* physical page watchers - these should not be referenced directly */
   PGBUF_WATCHER home_page_watcher;	/* home page */
   PGBUF_WATCHER overflow_page_watcher;	/* overflow page */
   PGBUF_WATCHER header_page_watcher;	/* header page */
   PGBUF_WATCHER forward_page_watcher;	/* forward page */
+  PGBUF_WATCHER new_forward_page_watcher;	/* new forward page */
 
   /* page watchers */
   PGBUF_WATCHER *home_page_watcher_p;
   PGBUF_WATCHER *overflow_page_watcher_p;
   PGBUF_WATCHER *header_page_watcher_p;
   PGBUF_WATCHER *forward_page_watcher_p;
+  PGBUF_WATCHER *new_forward_page_watcher_p;
+
+  PAGE_PTR page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
+  RECDES home_recdes_before_page_fix;	/* rec home or rec new home */
+  HEAP_LOG_INFO *heap_log_info_p;	/* Heap log info, used to create the log node before fixing page */
 
   /* logical operation output */
   OID res_oid;			/* object identifier (if operation generates one) */
