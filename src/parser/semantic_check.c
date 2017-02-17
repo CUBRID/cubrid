@@ -71,14 +71,6 @@ typedef enum
   RANGE_MAX = 1
 } RANGE_MIN_MAX_ENUM;
 
-typedef enum
-{
-  STATEMENT_SET_FOLD_NOTHING = 0,
-  STATEMENT_SET_FOLD_AS_NULL,
-  STATEMENT_SET_FOLD_AS_ARG1,
-  STATEMENT_SET_FOLD_AS_ARG2
-} STATEMENT_SET_FOLD;
-
 typedef struct PT_VALUE_LINKS
 {
   PT_NODE *vallink;
@@ -9217,12 +9209,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   PT_NODE *entity, *derived_table;
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *sort_spec = NULL;
-  bool arg1_is_null, arg2_is_null;
   STATEMENT_SET_FOLD fold_as;
-  PT_NODE *arg1, *arg2;
-  PT_NODE *union_orderby, *union_orderby_for, *union_limit;
   PT_FUNCTION_INFO *func_info_p = NULL;
-  unsigned int union_rewrite_limit;
 
   assert (parser != NULL);
 
@@ -9411,159 +9399,13 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  break;
 	}
 
-      arg1 = node->info.query.q.union_.arg1;
-      arg2 = node->info.query.q.union_.arg2;
-
-      arg1_is_null = arg2_is_null = false;
-      if (arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_NULL)
+      fold_as = pt_check_union_is_foldable (parser, node);
+      if (fold_as != STATEMENT_SET_FOLD_NOTHING)
 	{
-	  arg1_is_null = true;
-	}
-      if (arg2->node_type == PT_VALUE && arg2->type_enum == PT_TYPE_NULL)
-	{
-	  arg2_is_null = true;
-	}
-
-      if (!arg1_is_null && !arg2_is_null)
-	{
-	  /* nothing to fold at this moment. */
-	  fold_as = STATEMENT_SET_FOLD_NOTHING;
-	}
-      else if (arg1_is_null && arg2_is_null)
-	{
-	  /* fold the entire node as null */
-	  fold_as = STATEMENT_SET_FOLD_AS_NULL;
-	}
-      else if (arg1_is_null && !arg2_is_null)
-	{
-	  if (node->node_type == PT_UNION)
-	    {
-	      fold_as = STATEMENT_SET_FOLD_AS_ARG2;
-	    }
-	  else
-	    {
-	      assert (node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE);
-	      fold_as = STATEMENT_SET_FOLD_AS_NULL;
-	    }
-	}
-      else
-	{
-	  assert (!arg1_is_null && arg2_is_null);
-
-	  if (node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE)
-	    {
-	      fold_as = STATEMENT_SET_FOLD_AS_ARG1;
-	    }
-	  else
-	    {
-	      assert (node->node_type == PT_INTERSECTION);
-	      fold_as = STATEMENT_SET_FOLD_AS_NULL;
-	    }
-	}
-
-      if (fold_as == STATEMENT_SET_FOLD_AS_NULL)
-	{
-	  /* fold the statement set as null, we don't need to fold orderby clause clause because we return null. */
-	  if (arg1_is_null)
-	    {
-	      node->info.query.q.union_.arg1 = NULL;	/* to save arg1 to fold */
-	      parser_free_tree (parser, node);
-
-	      node = arg1;	/* to fold the query with null */
-	    }
-	  else
-	    {
-	      node->info.query.q.union_.arg2 = NULL;	/* to save arg2 to fold */
-	      parser_free_tree (parser, node);
-
-	      node = arg2;	/* to fold the query with null */
-	    }
+	  node = pt_fold_union (parser, node, fold_as);
 
 	  /* don't need do the following steps */
 	  break;
-	}
-      else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
-	{
-	  PT_NODE *new_node, *active;
-
-	  if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
-	    {
-	      active = arg1;
-	    }
-	  else
-	    {
-	      active = arg2;
-	    }
-
-	  /* to save union's orderby or limit clause to arg1 or arg2 */
-	  union_orderby = node->info.query.order_by;
-	  union_orderby_for = node->info.query.orderby_for;
-	  union_limit = node->info.query.limit;
-	  union_rewrite_limit = node->info.query.rewrite_limit;
-
-	  /* When active node has a limit or orderby_for clause and union node has a limit or ORDERBY clause, need a
-	   * derived table to keep both conflicting clauses. When a subquery has orderby clause without
-	   * limit/orderby_for, it may be ignored for meaningless cases. */
-	  if ((active->info.query.limit || active->info.query.orderby_for) && (union_limit || union_orderby))
-	    {
-	      PT_NODE *derived;
-
-	      derived = mq_rewrite_query_as_derived (parser, active);
-	      if (derived == NULL)
-		{
-		  assert (pt_has_error (parser));
-		  break;
-		}
-
-	      new_node = derived;
-	    }
-	  else
-	    {
-	      /* just use active node */
-	      new_node = active;
-	    }
-
-	  /* unlink and free union node */
-	  node->info.query.order_by = NULL;
-	  node->info.query.orderby_for = NULL;
-	  node->info.query.limit = NULL;
-	  if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
-	    {
-	      node->info.query.q.union_.arg1 = NULL;	/* to save arg1 to fold */
-	    }
-	  else
-	    {
-	      node->info.query.q.union_.arg2 = NULL;	/* to save arg2 to fold */
-	    }
-
-	  parser_free_tree (parser, node);
-
-	  /* to fold the query with remaining parts */
-	  if (union_orderby != NULL)
-	    {
-	      new_node->info.query.order_by = union_orderby;
-	      new_node->info.query.orderby_for = union_orderby_for;
-	    }
-	  if (union_limit != NULL)
-	    {
-	      new_node->info.query.limit = union_limit;
-	      new_node->info.query.rewrite_limit = union_rewrite_limit;
-	    }
-
-	  /* check the union's orderby or limit clause if present */
-	  pt_check_order_by (parser, new_node);
-
-	  /* now node points to the folded */
-	  node = new_node;
-
-	  /* don't need do the following steps */
-	  break;
-	}
-      else
-	{
-	  assert (fold_as == STATEMENT_SET_FOLD_NOTHING);
-
-	  /* do nothing */
 	}
 
       pt_check_into_clause (parser, node);
@@ -9896,37 +9738,16 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     case PT_EXPR:
       if (node->info.expr.op == PT_CAST)
 	{
-	  PT_NODE *cast_type = node->info.expr.cast_type;
-
-	  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER) && cast_type == NULL
-	      && node->info.expr.arg1 != NULL)
+	  node = pt_semantic_type (parser, node, info);
+	  if (node == NULL)
 	    {
-	      if (node->info.expr.arg1->type_enum == PT_TYPE_ENUMERATION)
-		{
-		  LANG_COLLATION *lc;
-
-		  lc = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
-
-		  /* silently rewrite the COLLATE modifier into full CAST: CAST (ENUM as STRING) */
-		  cast_type = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
-		  cast_type->info.data_type.collation_id = PT_GET_COLLATION_MODIFIER (node);
-		  cast_type->info.data_type.units = lc->codeset;
-		  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_CAST_COLL_MODIFIER);
-		}
-	      else
-		{
-		  /* leave as COLLATE (special CAST), but copy data type from argument */
-		  cast_type = parser_copy_tree (parser, node->info.expr.arg1->data_type);
-		}
-
-	      if (cast_type != NULL)
-		{
-		  node->info.expr.cast_type = cast_type;
-		  cast_type->info.data_type.collation_id = PT_GET_COLLATION_MODIFIER (node);
-		}
+	      break;
 	    }
 
-	  (void) pt_check_cast_op (parser, node);
+	  if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+	    {
+	      (void) pt_check_cast_op (parser, node);
+	    }
 	}
 
       /* check instnum compatibility */
@@ -10089,6 +9910,18 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  pt_coerce_insert_values (parser, node);
 	}
       break;
+
+    case PT_CTE:
+      if (node->info.cte.recursive_part != NULL
+	  && (pt_false_where (parser, node->info.cte.recursive_part)
+	      || pt_false_where (parser, node->info.cte.non_recursive_part)))
+	{
+	  /* the recursive_part can be removed if one of the parts has false_where */
+	  parser_free_tree (parser, node->info.cte.recursive_part);
+	  node->info.cte.recursive_part = NULL;
+	}
+      break;
+
     default:			/* other node types */
       break;
     }
@@ -15815,38 +15648,235 @@ pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * val
 void
 pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 {
+  PT_NODE *col, *next;
+
   assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
+
+  if (query->info.query.order_by == NULL || query->info.query.orderby_for != NULL || query->info.query.limit != NULL)
+    {
+      /* order_by can not be removed when query has orderby_for or limit */
+      return;
+    }
 
   /* if select list has orderby_num(), can not remove ORDER BY clause for example:
    * (i, j) = (select i, orderby_num() from t order by i) 
    */
-  if (query->info.query.orderby_for == NULL && query->info.query.order_by)
+  for (col = pt_get_select_list (parser, query); col; col = col->next)
     {
-      PT_NODE *col, *next;
-      for (col = pt_get_select_list (parser, query); col; col = col->next)
+      if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
 	{
-	  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
-	    {
-	      break;		/* can not remove ORDER BY clause */
-	    }
+	  break;		/* can not remove ORDER BY clause */
 	}
+    }
 
-      if (!col)
+  if (!col)
+    {
+      /* no column is ORDERBY_NUM, order_by can be removed */
+      parser_free_tree (parser, query->info.query.order_by);
+      query->info.query.order_by = NULL;
+      query->info.query.order_siblings = 0;
+
+      for (col = pt_get_select_list (parser, query); col && col->next; col = next)
 	{
-	  parser_free_tree (parser, query->info.query.order_by);
-	  query->info.query.order_by = NULL;
-	  query->info.query.order_siblings = 0;
-
-	  for (col = pt_get_select_list (parser, query); col && col->next; col = next)
+	  next = col->next;
+	  if (next->is_hidden_column)
 	    {
-	      next = col->next;
-	      if (next->is_hidden_column)
-		{
-		  parser_free_tree (parser, next);
-		  col->next = NULL;
-		  break;
-		}
+	      parser_free_tree (parser, next);
+	      col->next = NULL;
+	      break;
 	    }
 	}
     }
+}
+
+
+/*
+ * pt_check_union_is_foldable - decide if union can be folded
+ * 
+ *  return : union foldability
+ *  parser(in) : Parser context.
+ *  union_node(in) : Union node.
+ */
+STATEMENT_SET_FOLD
+pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
+{
+  PT_NODE *arg1, *arg2;
+  bool arg1_is_null, arg2_is_null;
+  STATEMENT_SET_FOLD fold_as;
+
+  assert (union_node->node_type == PT_UNION || union_node->node_type == PT_INTERSECTION
+	  || union_node->node_type == PT_DIFFERENCE || union_node->node_type == PT_CTE);
+
+  if (union_node->node_type == PT_CTE)
+    {
+      /* A CTE is a union between the non_recursive and recursive parts */
+      return STATEMENT_SET_FOLD_NOTHING;
+    }
+
+  arg1 = union_node->info.query.q.union_.arg1;
+  arg2 = union_node->info.query.q.union_.arg2;
+
+  arg1_is_null = pt_false_where (parser, arg1);
+  arg2_is_null = pt_false_where (parser, arg2);
+
+  if (!arg1_is_null && !arg2_is_null)
+    {
+      /* nothing to fold at this moment. */
+      fold_as = STATEMENT_SET_FOLD_NOTHING;
+    }
+  else if (arg1_is_null && arg2_is_null)
+    {
+      /* fold the entire node as null */
+      fold_as = STATEMENT_SET_FOLD_AS_NULL;
+    }
+  else if (arg1_is_null && !arg2_is_null)
+    {
+      if (union_node->node_type == PT_UNION)
+	{
+	  fold_as = STATEMENT_SET_FOLD_AS_ARG2;
+	}
+      else
+	{
+	  fold_as = STATEMENT_SET_FOLD_AS_NULL;
+	}
+    }
+  else
+    {
+      assert (!arg1_is_null && arg2_is_null);
+
+      if (union_node->node_type == PT_UNION || union_node->node_type == PT_DIFFERENCE)
+	{
+	  fold_as = STATEMENT_SET_FOLD_AS_ARG1;
+	}
+      else
+	{
+	  assert (union_node->node_type == PT_INTERSECTION);
+	  fold_as = STATEMENT_SET_FOLD_AS_NULL;
+	}
+    }
+
+  return fold_as;
+}
+
+/*
+ * pt_fold_union - fold union node following indicated method
+ *
+ *  return : union node folded
+ *  parser (in) : Parser context.
+ *  union_node (in) : Union node.
+ *  fold_as (in) : indicated folding method
+ */
+PT_NODE *
+pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD fold_as)
+{
+  PT_NODE *arg1, *arg2, *new_node, *next;
+  int line, column;
+  const char *alias_print;
+
+  assert (union_node->node_type == PT_UNION || union_node->node_type == PT_INTERSECTION
+	  || union_node->node_type == PT_DIFFERENCE);
+
+  arg1 = union_node->info.query.q.union_.arg1;
+  arg2 = union_node->info.query.q.union_.arg2;
+
+  line = union_node->line_number;
+  column = union_node->column_number;
+  alias_print = union_node->alias_print;
+  next = union_node->next;
+  union_node->next = NULL;
+
+  if (fold_as == STATEMENT_SET_FOLD_AS_NULL)
+    {
+      /* fold the statement set as null, we don't need to fold orderby clause because we return null. */
+      parser_free_tree (parser, union_node);
+      new_node = parser_new_node (parser, PT_VALUE);
+      new_node->type_enum = PT_TYPE_NULL;
+    }
+  else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
+    {
+      PT_NODE *active;
+      PT_NODE *union_orderby, *union_orderby_for, *union_limit;
+      unsigned int union_rewrite_limit;
+
+      if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
+	{
+	  active = arg1;
+	}
+      else
+	{
+	  active = arg2;
+	}
+
+      /* to save union's orderby or limit clause to arg1 or arg2 */
+      union_orderby = union_node->info.query.order_by;
+      union_orderby_for = union_node->info.query.orderby_for;
+      union_limit = union_node->info.query.limit;
+      union_rewrite_limit = union_node->info.query.rewrite_limit;
+
+      /* When active node has a limit or orderby_for clause and union node has a limit or ORDERBY clause, need a
+       * derived table to keep both conflicting clauses. When a subquery has orderby clause without
+       * limit/orderby_for, it may be ignored for meaningless cases. */
+      if ((active->info.query.limit || active->info.query.orderby_for) && (union_limit || union_orderby))
+	{
+	  PT_NODE *derived;
+
+	  derived = mq_rewrite_query_as_derived (parser, active);
+	  if (derived == NULL)
+	    {
+	      assert (pt_has_error (parser));
+	      return NULL;
+	    }
+
+	  new_node = derived;
+	}
+      else
+	{
+	  /* just use active node */
+	  new_node = active;
+	}
+
+      /* unlink and free union node */
+      union_node->info.query.order_by = NULL;
+      union_node->info.query.orderby_for = NULL;
+      union_node->info.query.limit = NULL;
+      if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
+	{
+	  union_node->info.query.q.union_.arg1 = NULL;	/* to save arg1 to fold */
+	}
+      else
+	{
+	  union_node->info.query.q.union_.arg2 = NULL;	/* to save arg2 to fold */
+	}
+
+      parser_free_tree (parser, union_node);
+
+      /* to fold the query with remaining parts */
+      if (union_orderby != NULL)
+	{
+	  new_node->info.query.order_by = union_orderby;
+	  new_node->info.query.orderby_for = union_orderby_for;
+	}
+      if (union_limit != NULL)
+	{
+	  new_node->info.query.limit = union_limit;
+	  new_node->info.query.rewrite_limit = union_rewrite_limit;
+	}
+
+      /* check the union's orderby or limit clause if present */
+      pt_check_order_by (parser, new_node);
+    }
+  else
+    {
+      assert (fold_as == STATEMENT_SET_FOLD_NOTHING);
+
+      /* do nothing */
+      new_node = union_node;
+    }
+
+  new_node->line_number = line;
+  new_node->column_number = column;
+  new_node->alias_print = alias_print;
+  new_node->next = next;
+
+  return new_node;
 }

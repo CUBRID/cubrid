@@ -7951,6 +7951,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	  PT_NODE *non_recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg1;
 	  int curr_cte_count = 0;
 
+	  /* isolate curr_cte to prevent resolving next CTEs in current recursive part */
+	  saved_curr_cte_next = curr_cte->next;
+	  curr_cte->next = NULL;
+
 	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte_and_count, curr_cte,
 					     pt_count_ctes_post, &curr_cte_count);
 	  if (!recursive_part)
@@ -7959,7 +7963,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      return NULL;
 	    }
 
-	  if (curr_cte_count == 0)
+	  if (curr_cte_count == 0 && non_recursive_part->node_type == PT_SELECT)
 	    {
 	      /* no self references were found in arg2 from union; search in arg1 also, syntax allows this case */
 	      non_recursive_part =
@@ -7985,11 +7989,15 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      curr_cte->info.cte.recursive_part = recursive_part;
 	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_recursive_part->info.query.all_distinct;
 	    }
+
+	  /* restore next link */
+	  curr_cte->next = saved_curr_cte_next;
 	}
 
       curr_cte->info.cte.non_recursive_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
       if (curr_cte->info.cte.recursive_part)
 	{
+	  assert (curr_cte->info.cte.recursive_part->node_type == PT_SELECT);
 	  curr_cte->info.cte.recursive_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
 	}
     }
@@ -9464,6 +9472,12 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 		else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
 		  {
 		    col = pt_name (parser, att->info.value.text);
+		  }
+		else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
+		  {
+		    PARSER_VARCHAR *alias;
+		    alias = pt_print_bytes (parser, att);
+		    col = pt_name (parser, alias->bytes);
 		  }
 		else
 		  {		/* generate column name */

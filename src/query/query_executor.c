@@ -1991,6 +1991,7 @@ qexec_clear_analytic_function_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p,
 	{
 	  (void) pr_clear_value (p->value);
 	  (void) pr_clear_value (p->value2);
+	  (void) pr_clear_value (&p->part_value);
 	  p->domain = p->original_domain;
 	  p->opr_dbtype = p->original_opr_dbtype;
 	  pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, final);
@@ -15515,14 +15516,17 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  if (first_iteration && non_recursive_part->list_id->tuple_cnt > 0)
 	    {
 	      first_iteration = false;
-	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list)
+	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list
+		  || recursive_part->instnum_val != NULL)
 		{
 		  /* future specific optimizations, changes, etc */
 		}
-	      else
+	      else if (recursive_part->spec_list->s.list_node.xasl_node == non_recursive_part)
 		{
 		  /* optimization: use non-recursive list id for both reading and writing
 		   * the recursive xasl will iterate through this list id while appending new results at its end 
+		   * note: this works only if the cte(actually the non_recursive_part link) is the first spec used
+		   * for scanning during recursive iterations
 		   */
 		  save_recursive_list_id = recursive_part->list_id;
 		  recursive_part->list_id = non_recursive_part->list_id;
@@ -22153,6 +22157,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   for (regu_var_p = xasl->outptr_list->valptrp, i = 0; regu_var_p; regu_var_p = regu_var_p->next, i++)
     {
       out_values[i] = &(regu_var_p->value.value.dbval);
+      pr_clear_value (out_values[i]);
     }
 
   all_class_attr[0] = rep->attributes;

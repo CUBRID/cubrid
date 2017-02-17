@@ -1899,65 +1899,6 @@ disk_get_remarks (VOLID volid)
 }
 
 /*
- * disk_get_purpose_and_space_info -
- *
- * return:
- *
- *   volid(in):
- *   vol_purpose(in):
- *   space_info(out):
- *
- * NOTE:
- */
-int
-disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info)
-{
-  int error_code = NO_ERROR;
-
-#if defined(CS_MODE)
-  int temp;
-  int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_pack_int (request, (int) volid);
-
-  req_error =
-    net_client_request (NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (req_error == NO_ERROR)
-    {
-      ptr = or_unpack_int (reply, &temp);
-      *vol_purpose = (DB_VOLPURPOSE) temp;
-      OR_UNPACK_VOL_SPACE_INFO (ptr, space_info);
-      ptr = or_unpack_int (ptr, &error_code);
-    }
-  else
-    {
-      ASSERT_ERROR ();
-      error_code = req_error;
-    }
-
-  return error_code;
-#else /* CS_MODE */
-
-  ENTER_SERVER ();
-
-  error_code = xdisk_get_purpose_and_space_info (NULL, volid, vol_purpose, space_info);
-
-  EXIT_SERVER ();
-
-  return error_code;
-#endif /* !CS_MODE */
-}
-
-/*
  * disk_get_fullname -
  *
  * return:
@@ -2014,57 +1955,6 @@ disk_get_fullname (VOLID volid, char *vol_fullname)
 
   return vol_fullname;
 #endif /* !CS_MODE */
-}
-
-/*
- * disk_is_volume_exist -
- *
- * return:
- *
- *   volid(in):
- *   vol_fullname(in):
- *
- * NOTE:
- */
-bool
-disk_is_volume_exist (VOLID volid)
-{
-  bool exist = false;
-#if defined(CS_MODE)
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-  int int_exist = 0;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_pack_int (request, (int) volid);
-
-  req_error =
-    net_client_request (NET_SERVER_DISK_IS_EXIST, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      (void) or_unpack_int (reply, &int_exist);
-    }
-
-  if (int_exist)
-    {
-      exist = true;
-    }
-#else /* CS_MODE */
-
-  ENTER_SERVER ();
-
-  exist = xdisk_is_volume_exist (NULL, volid);
-
-  EXIT_SERVER ();
-
-#endif /* !CS_MODE */
-  return exist;
 }
 
 /*
@@ -10019,4 +9909,85 @@ locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_lis
 
   return success;
 #endif /* !CS_MODE */
+}
+
+/*
+ * netcl_spacedb () - client-side function to get database space info
+ *
+ * return           : error code
+ * spaceall (out)   : output aggregated space information
+ * spacevols (out)  : if not NULL, output space information per volume
+ * spacefiles (out) : if not NULL, out detailed space information on file usage
+ */
+int
+netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles)
+{
+#if defined (CS_MODE)
+  int error_code = NO_ERROR;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_int (request, spacevols != NULL ? 1 : 0);
+  ptr = or_pack_int (ptr, spacefiles != NULL ? 1 : 0);
+
+  error_code = net_client_request2 (NET_SERVER_SPACEDB, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (error_code != NO_ERROR)
+    {
+      assert (data_reply == NULL);
+      return error_code;
+    }
+  ptr = or_unpack_int (reply, &data_reply_size);
+  ptr = or_unpack_int (ptr, &error_code);
+  if (error_code != NO_ERROR)
+    {
+      /* error */
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (data_reply == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  ptr = or_unpack_spacedb (data_reply, spaceall, spacevols, spacefiles);
+  if (ptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  assert ((ptr - data_reply) == data_reply_size);
+
+  free_and_init (data_reply);
+  return NO_ERROR;
+
+#else	/* !CS_MODE */	       /* SA_MDOE */
+  int error_code = ER_FAILED;
+
+  ENTER_SERVER ();
+  error_code = disk_spacedb (NULL, spaceall, spacevols);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (spacefiles != NULL)
+    {
+      error_code = file_spacedb (NULL, spacefiles);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+    }
+  EXIT_SERVER ();
+
+  return error_code;
+#endif /* SA_MODE */
 }

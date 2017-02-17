@@ -4751,7 +4751,19 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 		     "VACUUM: Candidate heap page %d|%d to remove has waiters.\n", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
-  assert (pgbuf_has_any_waiters (crt_watcher.pgptr) == false);
+
+  /* if we are here, the page should not be accessed by any active or vacuum workers. Active workers are prevented
+   * from accessing it through heap scan, and direct references should not exist.
+   * the function would not be called if any other vacuum workers would try to access the page.
+   * however, we have another thread that could try to latch the page: checkpoint thread. this is the only case we
+   * expect. */
+  if (pgbuf_has_any_non_checkpoint_waiters (crt_watcher.pgptr))
+    {
+      assert (false);
+      vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_ERROR, "VACUUM: Unexpected page waiters \n");
+      goto error;
+    }
+  /* all good, we can deallocate the page */
 
   /* Start changes under the protection of system operation. */
   log_sysop_start (thread_p);

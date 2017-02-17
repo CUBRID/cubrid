@@ -2356,6 +2356,8 @@ thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
 	  thread_p = thread_get_thread_entry_info ();
 	}
 
+      /* safe guard: vacuum workers should not check for interrupt */
+      assert (flag == false || !VACUUM_IS_THREAD_VACUUM (thread_p));
       old_val = thread_p->check_interrupt;
       thread_p->check_interrupt = flag;
     }
@@ -2653,6 +2655,8 @@ thread_vacuum_master_thread (void *arg_p)
   tsd_ptr->type = TT_VACUUM_MASTER;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
   thread_Vacuum_master_thread.is_available = true;
+  /* vacuum master cannot be interrupted */
+  tsd_ptr->check_interrupt = false;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
@@ -2744,6 +2748,8 @@ thread_vacuum_worker_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_VACUUM_WORKER;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  /* vacuum workers cannot be interrupted */
+  tsd_ptr->check_interrupt = false;
 
   /* Assign one vacuum worker daemon monitor to current thread based on thread index. The workers in thread array must
    * be in the same order as their daemons. */
@@ -2967,6 +2973,18 @@ thread_wakeup_checkpoint_thread (void)
   rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
   pthread_cond_signal (&thread_Checkpoint_thread.cond);
   pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
+}
+
+/*
+ * thread_is_checkpoint_thread () - is this the checkpoint thread?
+ *
+ * return        : true/false
+ * thread_p (in) : thread entry
+ */
+bool
+thread_is_checkpoint_thread (THREAD_ENTRY * thread_p)
+{
+  return thread_p != NULL && thread_p->index == thread_Checkpoint_thread.thread_index;
 }
 
 /*

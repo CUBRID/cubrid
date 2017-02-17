@@ -684,6 +684,23 @@ opzioni valide:\n\
                                impostare l'unità di visualizzazione (page, mega, giga, tera, human readable); predefinito: H\n\
   -s, --summarize              visualizzare solo un riepilogo per ogni scopo del volume\n\
   -p, --purpose                visualizzare la dimensione di ciascun utilizzato scopo(data/index/temp) di ciascun volume\n
+70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+71 type                purpose            volume_count         used_size           free_size           total_size\n
+72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+80 Space description for all volumes:\n
+81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+90 Detailed space description for files:\n
+91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+100 -----------------------------------------------------------------------------------------------------------------\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
