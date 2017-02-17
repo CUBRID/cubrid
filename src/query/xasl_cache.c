@@ -44,7 +44,12 @@
 
 #define XCACHE_ENTRY_FIX_COUNT_MASK	    ((INT32) 0x00FFFFFF)
 
-#define XCACHE_ENTRY_DELETED	            (XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK)
+#if defined (SERVER_MODE)
+#define XCACHE_ENTRY_DELETED_BY_ME \
+  ((XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK) - thread_get_current_tran_index ())
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+#define XCACHE_ENTRY_DELETED_BY_ME (XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK)
+#endif /* SA_MODE */
 
 #define XCACHE_PTR_TO_KEY(ptr) ((XASL_ID *) ptr)
 #define XCACHE_PTR_TO_ENTRY(ptr) ((XASL_CACHE_ENTRY *) ptr)
@@ -444,7 +449,7 @@ xcache_entry_uninit (void *entry)
    * 2. or was deleted
    * 3. or was claimed & retired immediately. */
   assert ((xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 0
-	  || xcache_entry->xasl_id.cache_flag == XCACHE_ENTRY_DELETED
+	  || (xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
 	  || ((xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 1
 	      && !xcache_entry->free_data_on_uninit));
 
@@ -588,7 +593,7 @@ xcache_compare_key (void *key1, void *key2)
     {
       /* Lookup for cleaning the entry from hash. The entry must not be fixed by another and must not have any
        * flags. */
-      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, 0, XCACHE_ENTRY_DELETED))
+      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, 0, XCACHE_ENTRY_DELETED_BY_ME))
 	{
 	  /* Successfully marked for delete. */
 	  xcache_log ("compare keys: found for cleanup\n"
@@ -602,7 +607,7 @@ xcache_compare_key (void *key1, void *key2)
       else
 	{
 	  /* Entry was fixed or had another flag set. */
-	  xcache_log ("(tran=%d) compare keys: failed to cleanup\n"
+	  xcache_log ("compare keys: failed to cleanup\n"
 		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
 		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
 		      XCACHE_LOG_TRAN_TEXT,
@@ -612,18 +617,11 @@ xcache_compare_key (void *key1, void *key2)
 	}
     }
 
-  if (lookup_key->cache_flag == XCACHE_ENTRY_MARK_DELETED)
+  if (lookup_key->cache_flag & XCACHE_ENTRY_MARK_DELETED)
     {
-      /* looking for entry to remove. the entry cache flag must match XCACHE_ENTRY_MARK_DELETED
-       *
-       * note: when multiple threads recompile same entry, we may still have a race here. there may be multiple entries
-       *       for the same query that have been recompile and last unfix happens at the same time. both unfixes will
-       *       want to remove their entries, mark both entries for delete, but both may stop on the first of the
-       *       entries. one succeeds, while the other is baffled with its failure.
-       *       to give them a chance to find both entires, will give each entry to the one that manages to change the
-       *       state from mark for delete to deleted.
-       */
-      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, XCACHE_ENTRY_MARK_DELETED, XCACHE_ENTRY_DELETED))
+      /* we may have multiple threads trying to delete multiple entries at once. each entry is marked with a different
+       * flag so each thread knows what entry to delete. */
+      if (entry_key->cache_flag == XCACHE_ENTRY_DELETED_BY_ME)
 	{
 	  /* The deleter found its entry. */
 	  xcache_log ("compare keys: found for delete\n"
@@ -637,7 +635,7 @@ xcache_compare_key (void *key1, void *key2)
       else
 	{
 	  /* This is not the deleter. Ignore this entry - it will be removed from hash. */
-	  xcache_log ("(tran=%d) compare keys: skip deleted\n"
+	  xcache_log ("compare keys: skip not deleted\n"
 		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
 		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
 		      XCACHE_LOG_TRAN_TEXT,
@@ -654,7 +652,7 @@ xcache_compare_key (void *key1, void *key2)
       if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
 	{
 	  /* deleted */
-	  xcache_log ("(tran=%d) compare keys: skip deleted\n"
+	  xcache_log ("compare keys: skip deleted\n"
 		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
 		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
 		      XCACHE_LOG_TRAN_TEXT,
@@ -1007,7 +1005,6 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
   int error_code = NO_ERROR;
   int success = 0;
   struct timeval time_last_used;
-  XASL_ID lookup_delete_key = xcache_entry->xasl_id;
 
   assert (xcache_entry != NULL);
   assert (xcache_Enabled);
@@ -1053,6 +1050,12 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	  /* This the last thread to have fixed the entry and we should mark it as deleted and remove it. */
 	  new_cache_flag = XCACHE_ENTRY_MARK_DELETED;
 	}
+
+      if (new_cache_flag == XCACHE_ENTRY_MARK_DELETED)
+	{
+	  /* we need to mark entry so only me can delete it */
+	  new_cache_flag = XCACHE_ENTRY_DELETED_BY_ME;
+	}
     }
   while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (&xcache_entry->xasl_id, cache_flag, new_cache_flag));
 
@@ -1060,7 +1063,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	      XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
 	      XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
 
-  if (new_cache_flag == XCACHE_ENTRY_MARK_DELETED)
+  if (new_cache_flag == XCACHE_ENTRY_DELETED_BY_ME)
     {
       /* I am last user after object was marked as deleted. */
       xcache_log ("delete entry from hash after unfix: \n"
@@ -1072,8 +1075,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
 	}
 
-      lookup_delete_key.cache_flag = XCACHE_ENTRY_MARK_DELETED;
-      error_code = lf_hash_delete (t_entry, &xcache_Ht, &lookup_delete_key, &success);
+      error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
       if (error_code != NO_ERROR)
 	{
 	  /* Errors are not expected. */
@@ -1137,6 +1139,11 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 	  new_cache_flag &= ~XCACHE_ENTRY_WAS_RECOMPILED;
 	}
       new_cache_flag = new_cache_flag | XCACHE_ENTRY_MARK_DELETED;
+
+      if (new_cache_flag == XCACHE_ENTRY_MARK_DELETED)
+	{
+	  new_cache_flag = XCACHE_ENTRY_DELETED_BY_ME;
+	}
     }
   while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (&xcache_entry->xasl_id, cache_flag, new_cache_flag));
 
@@ -1149,7 +1156,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
 
   /* The entry can be deleted if the only fixer is this transaction. */
-  return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
+  return (new_cache_flag == XCACHE_ENTRY_DELETED_BY_ME);
 }
 
 static XCACHE_CLEANUP_REASON
@@ -1540,7 +1547,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
   bool can_delete = false;
   int success;
   XASL_ID delete_xids[XCACHE_DELETE_XIDS_SIZE];
-  XASL_ID save_xid;
   int n_delete_xids = 0;
   int xid_index = 0;
   bool finished = false;
@@ -1572,7 +1578,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
 	      /* Mark entry as deleted. */
-	      save_xid = xcache_entry->xasl_id;
 	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
 		{
 		  /* 
@@ -1583,8 +1588,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 		    {
 		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
 		    }
-		  save_xid.cache_flag = XCACHE_ENTRY_MARK_DELETED;
-		  delete_xids[n_delete_xids++] = save_xid;
+		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
 
