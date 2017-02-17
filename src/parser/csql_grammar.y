@@ -302,7 +302,8 @@ static FUNCTION_MAP functions[] = {
   {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
   {"utc_timestamp", PT_UTC_TIMESTAMP},
   {"crc32", PT_CRC32},
-  {"schema_def", PT_SCHEMA_DEF}
+  {"schema_def", PT_SCHEMA_DEF},
+  {"conv_tz", PT_CONV_TZ}
 };
 
 
@@ -25160,6 +25161,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
     case PT_REVERSE:
     case PT_TZ_OFFSET:
+    case PT_CONV_TZ:
       if (c != 1)
 	return NULL;
 

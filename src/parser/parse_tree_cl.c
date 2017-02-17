@@ -3907,6 +3907,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "crc32 ";
     case PT_SCHEMA_DEF:
       return "schema_def";
+    case PT_CONV_TZ:
+      return "conv_tz";
     default:
       return "unknown opcode";
     }
@@ -17784,6 +17786,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_FROM_BASE64:
 	case PT_TZ_OFFSET:
 	case PT_CRC32:
+	case PT_CONV_TZ:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:

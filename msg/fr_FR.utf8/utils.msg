@@ -1107,8 +1107,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Générer les fichiers source contenant des données de fuseau horaire à être compilés dans\n\
         une bibliothèque partagée.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] [database-name]\n\
+usage: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 options valides:\n\
   -i, --input-folder	chemin d'accès à un dossier d'entrée contenant une version des\n\
@@ -1121,17 +1120,18 @@ options valides:\n\
 			également générer un fichier source contenant tous les noms des pays\n\
                         et des fuseaux horaires (destiné pour l'usage du développeur,\n\
                         à être intégré dans une future version de CUBRID).\n\
-			2. EXTEND: génération de(s) fichier(s) source de fuseau horaire en utilisant\n\
-                        les données du dossier d'entrée; les ID des fuseaux horaires codé dans\n\
-                        CUBRID sont conservées; les nouveaux fuseaux horaires trouvées dans les fichiers\n\
-                        d'entrée sont ajoutés dans le fichier source secondaire qui est aussi généré; les \n\
-                        décalages GMT et les informations liés à l'heure d'été sont mises à jour (ou ajouté,\n\
-			dans le cas de nouveaux fuseaux horaires); les fuseaux horaires ne sont jamais enlevés\n\
-			si un fuseau horaire codé dans le CUBRID est manquant depuis les fichiers d'entrée, les\n\
-			données associées sont extraites à partir de la bibliothèque de fuseau horaire existante.\n\
-                        Un nouveau fichier C contenant tous les noms de fuseaux horaires est généré, et il doit\n\
-                        être inclus dans le dossier de fichiers source CUBRID avant que la nouvelle bibliothèque\n\
-			de fuseau horaire peut être utilisée.\n
+			2. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removed if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 L'ID du fuseau indiqué n'est pas compris dans la plage admissible. Utilisez -z pour voir tous\n\

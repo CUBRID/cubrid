@@ -1097,8 +1097,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Generare file sorgente contenenti dati fuso orario da elaborare in\n\
         una libreria condivisa.\n\
-uso: %s gen_tz [OPTION]\n\
-     %s gen_tz -g extend [OPTION] [nome-database]\n\
+uso: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 opzioni valide:\n\
   -i, --input-folder    path di una cartella di input che contiene una versione di\n\
@@ -1111,18 +1110,18 @@ opzioni valide:\n\
                         generare anche un file sorgente contenente tutti i paesi\n\
                         e nomi di fuso orario (destinato all'uso sviluppatore, a\n\
                         essere integrato nelle future versioni CUBRID).\n\
-                        2. EXTEND : generare file(s) sorgente fuso orario usando il\n\
-                        dati della cartella di input; ID timezone codificati in\n\
-                        CUBRID sono conservati; nuovi fusi orari che si trovano in ingresso\n\
-                        file vengono aggiunti al file di origine secondaria che è\n\
-                        anche generato; GMT compensa e ora legale\n\
-                        informazioni vengono aggiornate (o aggiunta, per i nuovi fusi orari);\n\
-                        usi orari non vengono mai eliminati se un fuso orario codificati in\n\
-                        CUBRID manca dai file di input, gli associati\n\
-                        dati vengono recuperati dalla libreria fuso orario esistente.\n\
-                        Viene generato un nuovo file C che contiene tutti i nomi di fusi orari\n\
-                        e deve essere incluso nella cartella di file di origine CUBRID\n\
-                        prima che la nuova biblioteca fuso orario può essere utilizzato.\n
+                        2. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removed if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 L'ID di area fornito è fuori portata. Utilizzare - z per vedi tutto\n\
