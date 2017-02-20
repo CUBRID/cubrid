@@ -2516,6 +2516,7 @@ qmgr_allocate_tempfile_with_buffer (int num_buffer_pages)
   if (tempfile_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return NULL;
     }
   memset (tempfile_p, 0x00, size);
 
@@ -2641,6 +2642,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p = (QMGR_TEMP_FILE *) malloc (sizeof (QMGR_TEMP_FILE));
   if (tfile_vfid_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QMGR_TEMP_FILE));
       return NULL;
     }
 
