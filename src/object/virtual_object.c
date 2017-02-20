@@ -1303,7 +1303,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
   /* put together a query to get all instances of class_p */
   class_type = sm_get_class_type (class_p);
   class_name = db_get_class_name (class_mop);
-  snprintf (query, sizeof (query) - 1, "SELECT %s FROM %s", class_name, class_name);
+  snprintf (query, sizeof (query) - 1, "SELECT [%s] FROM [%s]", class_name, class_name);
 
   /* run the query */
   error = db_compile_and_execute_local (query, &qres, &query_error);
