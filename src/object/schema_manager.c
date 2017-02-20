@@ -15106,8 +15106,8 @@ sm_truncate_using_delete (MOP class_mop)
 
   /* We will run a DELETE statement with triggers disabled. */
   save_tr_state = tr_set_execution_state (false);
- 
-  if (pt_is_reserved_word(class_name))
+
+  if (pt_is_reserved_word (class_name))
     {
       /*
        * If the table name to tuncate belongs to reserved words of the CUBRID
