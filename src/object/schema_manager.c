@@ -15106,7 +15106,14 @@ sm_truncate_using_delete (MOP class_mop)
 
   /* We will run a DELETE statement with triggers disabled. */
   save_tr_state = tr_set_execution_state (false);
-  (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE */ FROM %s;", class_name);
+
+  /*
+   * When the 'class_nams' is one of the CUBRID reserved word,
+   * it should be called like '[class_name]' not 'class_name' in DELETE Query.
+   * So, we build query like 'DELETE FROM [class_name];', 
+   * whatever the 'class_name' belongs to the CUBRID reserved words or not
+   */
+  (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE */ FROM [%s];", class_name);
 
   session = db_open_buffer (delete_query);
   if (session == NULL)
