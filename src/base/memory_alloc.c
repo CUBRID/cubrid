@@ -417,6 +417,10 @@ db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *call
 #endif
 #endif
 
+int _arr_index = 0;
+char *_arr_trace[10000];
+
+
 #if !defined(NDEBUG)
 void *
 db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
@@ -465,6 +469,8 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
     }
 #endif /* !NDEBUG */
 
+  _arr_trace[_arr_index % 1000] = ptr;
+  _arr_index++;
   return ptr;
 #else /* SA_MODE */
   if (!db_on_server)
