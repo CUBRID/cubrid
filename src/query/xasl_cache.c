@@ -47,7 +47,7 @@
 #if defined (SERVER_MODE)
 #define XCACHE_ENTRY_DELETED_BY_ME \
   ((XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK) - thread_get_current_tran_index ())
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
 #define XCACHE_ENTRY_DELETED_BY_ME (XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK)
 #endif /* SA_MODE */
 
@@ -685,6 +685,8 @@ xcache_compare_key (void *key1, void *key2)
   while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, cache_flag, cache_flag + 1));
 
   /* Successfully marked as reader. */
+  XCACHE_STAT_INC (fix);
+
   xcache_log ("compare keys: key matched and fixed\n"
 	      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
 	      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
