@@ -4310,8 +4310,8 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
   /* If so, name resolves to scope's flat list of entities */
   if (exposed_spec)
     {
-      /* the exposed name of a derived table may not be used alone, ie, "select e from (select a from c) e" is
-       * disallowed. */
+      /* the exposed name of a derived table or a CTE may not be used alone, ie, "select e from (select a from c) e" 
+       * is disallowed. */
       if (col_name && (PT_SPEC_IS_DERIVED (exposed_spec) || PT_SPEC_IS_CTE (exposed_spec))
 	  && exposed_spec->info.spec.range_var != in_node)
 	{
