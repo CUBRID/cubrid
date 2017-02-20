@@ -1134,7 +1134,7 @@ opțiuni valide:\n\
                         2. EXTEND : genereaza libraria de timezone folosind libraria anterioara\n\
                         astfel incat sa se asigure compatibilitate cu datele existente in tabele;\n\
                         Noile zone geografice gasite in fisierele IANA vor fi adaugate;offset-urile GMT\n\
-                        si regulile de daylight saving sunt modificate conform noilor fisiere de la IANA;\n\ 
+                        si regulile de daylight saving sunt modificate conform noilor fisiere de la IANA;\n\
                         Zonele geografice care nu mai apar in noile fisiere IANA sunt pastrate astfel incat\n\
                         sa se asigure compatibilitatea cu datele din tabele; Daca e necesar, atunci cand prima\n\
                         faza a operatiei de extend nu reuseste sa faca toate datele compatibile o actualizare\n\
