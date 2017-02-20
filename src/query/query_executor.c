@@ -21246,7 +21246,6 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  save_heapid = db_change_private_heap (thread_p, 0);
 	  break;
 	}
-
     }
   if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
     {
@@ -21274,6 +21273,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   out_values = (DB_VALUE **) malloc (size_values * sizeof (DB_VALUE *));
   if (out_values == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size_values * sizeof (DB_VALUE *));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
       GOTO_EXIT_ON_ERROR;
     }
 
