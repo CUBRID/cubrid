@@ -9280,7 +9280,8 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   else
     {
       assert (zone == PGBUF_LRU_3_ZONE);
-      perfmon_inc_stat (thread_p, is_private ? PSTAT_PB_UNFIX_LRU_TWO_PRV_KEEP : PSTAT_PB_UNFIX_LRU_TWO_SHR_KEEP);
+      perfmon_inc_stat (thread_p,
+			is_private ? PSTAT_PB_UNFIX_LRU_THREE_PRV_TO_TOP : PSTAT_PB_UNFIX_LRU_THREE_SHR_TO_TOP);
     }
 
   /* lock list */
