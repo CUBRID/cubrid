@@ -17047,6 +17047,7 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 	{
 	  if (DB_GET_STRING_SIZE (format_str) > MAX_TOKEN_SIZE)
 	    {
+	      error_status = ER_QSTR_FORMAT_TOO_LONG;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      db_private_free_and_init (NULL, cs);
 	      return error_status;

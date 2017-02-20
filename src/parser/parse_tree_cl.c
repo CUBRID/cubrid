@@ -17466,15 +17466,8 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* attribute list */
   q = pt_append_nulstring (parser, q, "(");
-  for (list = p->info.cte.as_attr_list; list != NULL; list = list->next)
-    {
-      r1 = pt_print_bytes_l (parser, list);
-      q = pt_append_varchar (parser, q, r1);
-      if (list->next != NULL)
-	{
-	  q = pt_append_nulstring (parser, q, ", ");
-	}
-    }
+  r1 = pt_print_bytes_l (parser, p->info.cte.as_attr_list);
+  q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, ")");
 
   /* AS keyword */

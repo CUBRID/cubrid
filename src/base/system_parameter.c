@@ -5594,7 +5594,7 @@ static int prm_load_by_section (INI_TABLE * ini, const char *section, bool ignor
 static int prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload,
 					const bool ha);
 static void prm_report_bad_entry (const char *key, int line, int err, const char *where);
-static int sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max);
+static SYSPRM_ERR sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max);
 static int prm_check_range (SYSPRM_PARAM * prm, void *value);
 static int prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag);
 static int prm_set_force (SYSPRM_PARAM * prm, const char *value);
@@ -7930,14 +7930,14 @@ xsysprm_dump_server_parameters (FILE * outfp)
 /*
  * sysprm_get_param_range - returns the minimum and maximum value for a SYSPRM_PARAM
  *   return: error code
- *   prm (in): the paramter for which we want the limits
+ *   prm (in): the parameter for which we want the limits
  *   min (out): the minimum possible value for the parameter
  *   max (out): the maximum possible value for the parameter
  */
-static int
+static SYSPRM_ERR
 sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
 {
-  int error = NO_ERROR;
+  SYSPRM_ERR error = PRM_ERR_NO_ERROR;
   if (PRM_IS_INTEGER (prm))
     {
       if (prm->lower_limit)
@@ -8366,11 +8366,11 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	}
       if (set_min)
 	{
-	  new_value = &min;
+	  *new_value = min;
 	}
       else
 	{
-	  new_value = &max;
+	  *new_value = max;
 	}
       return PRM_ERR_NO_ERROR;
     }
