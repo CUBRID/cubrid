@@ -6619,7 +6619,7 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  strcat (table_name_buf, "'");
 
 		  snprintf (query_buf, sizeof (query_buf) - 1,
-			    "select attr_name, data_type from _db_attribute where class_of.class_name = %s",
+			    "select attr_name, data_type from _db_attribute where class_of.class_name = [%s]",
 			    table_name_buf);
 		  error = execute_query (query_buf, &result2);
 		  if (error < 0)
@@ -6631,16 +6631,16 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 		  printf ("Updating table %s...\n", table_name);
 
 		  /* We are going to make an update query for each table which includes a timezone column like:
-		   *  UPDATE t SET tzc1 = CONV_TZ(tzc1), tzc2 = CONV_TZ(tzc2) ...
-		   *  WHERE tzc1 != CONV_TZ(tzc1) OR tzc2 != CONV_TZ(tzc2) ... ;
+		   *  UPDATE [t] SET [tzc1] = CONV_TZ([tzc1]), [tzc2] = CONV_TZ([tzc2]) ...
+		   *  WHERE [tzc1] != CONV_TZ([tzc1]) OR [tzc2] != CONV_TZ([tzc2]) ... ;
 		   */
 		  memset (query_buf, 0, sizeof (query_buf));
 		  memset (update_query, 0, sizeof (update_query));
 		  memset (where_query, 0, sizeof (where_query));
 
-		  strcpy (update_query, "UPDATE ");
+		  strcpy (update_query, "UPDATE [");
 		  strcat (update_query, table_name);
-		  strcat (update_query, " SET ");
+		  strcat (update_query, "] SET ");
 		  strcpy (where_query, " WHERE ");
 
 		  is_first_column = true;
@@ -6691,17 +6691,21 @@ tzc_update (TZ_DATA * tzd, const char *database_name)
 			      strcat (where_query, " OR ");
 			    }
 
+			  strcat (update_query, "[");
 			  strcat (update_query, column_name);
+			  strcat (update_query, "]");
 			  strcat (update_query, "=");
-			  strcat (update_query, "conv_tz(");
+			  strcat (update_query, "conv_tz([");
 			  strcat (update_query, column_name);
-			  strcat (update_query, ")");
+			  strcat (update_query, "])");
 
+			  strcat (update_query, "[");
 			  strcat (where_query, column_name);
+			  strcat (update_query, "]");
 			  strcat (where_query, "!=");
-			  strcat (where_query, "conv_tz(");
+			  strcat (where_query, "conv_tz([");
 			  strcat (where_query, column_name);
-			  strcat (where_query, ")");
+			  strcat (where_query, "])");
 
 			  printf ("%s ", column_name);
 			}

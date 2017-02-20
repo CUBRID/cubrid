@@ -6722,12 +6722,9 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
 
   assert (parser->query_id == NULL_QUERY_ID);
 
-  if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var && ((statement = pt_to_upd_del_query (parser, column_names, column_values, from, class_specs, where, using_index, order_by, orderby_for, 0	/* not 
-																											 * server 
-																											 * update 
-																											 */ ,
-													      S_UPDATE))
-									    != NULL))
+  if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var
+      && ((statement = pt_to_upd_del_query (parser, column_names, column_values, from, class_specs, where, using_index,
+					    order_by, orderby_for, 0 /* not server update */ , S_UPDATE)) != NULL))
     {
       err = pt_copy_upddel_hints_to_select (parser, update_stmt, statement);
       if (err != NO_ERROR)
