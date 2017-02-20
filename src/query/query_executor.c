@@ -21334,18 +21334,6 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	}
     }
 
-  assert (xasl->outptr_list->valptr_cnt == 13);
-  out_values = (DB_VALUE **) malloc (xasl->outptr_list->valptr_cnt * sizeof (DB_VALUE *));
-  if (out_values == NULL)
-    {
-      GOTO_EXIT_ON_ERROR;
-    }
-
-  for (regu_var_p = xasl->outptr_list->valptrp, i = 0; regu_var_p; regu_var_p = regu_var_p->next, i++)
-    {
-      out_values[i] = &(regu_var_p->value.value.dbval);
-    }
-
   class_name = or_class_name (&class_record);
   /* class name */
   db_make_string (out_values[0], class_name);
