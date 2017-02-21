@@ -9265,6 +9265,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
   DB_VALUE **save_values = NULL;
   bool use_extended = false;	/* flag for using extended form, accepting an expression as the first argument of
 				 * SYS_CONNECT_BY_PATH() */
+  bool need_clear_arg_dbval = false;
 
   assert (DB_IS_NULL (result_p));
 
@@ -9398,6 +9399,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 
   do
     {
+      need_clear_arg_dbval = false;
       if (!use_extended)
 	{
 	  /* get the required column */
@@ -9407,6 +9409,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 		{
 		  goto error;
 		}
+	      need_clear_arg_dbval = true;
 	    }
 	}
       else
@@ -9442,7 +9445,11 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	      goto error;
 	    }
 
-	  pr_clear_value (arg_dbval_p);
+	  if (need_clear_arg_dbval)
+	    {
+	      pr_clear_value (arg_dbval_p);
+	      need_clear_arg_dbval = false;
+	    }
 	}
 
       len = (strlen (sep) + (DB_IS_NULL (&cast_value) ? 0 : DB_GET_STRING_SIZE (&cast_value))
@@ -9561,7 +9568,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
       db_private_free_and_init (thread_p, sep);
     }
 
-  if (arg_dbval_p != NULL)
+  if (need_clear_arg_dbval)
     {
       pr_clear_value (arg_dbval_p);
     }
@@ -9600,7 +9607,7 @@ error2:
       db_private_free_and_init (thread_p, sep);
     }
 
-  if (arg_dbval_p != NULL)
+  if (need_clear_arg_dbval)
     {
       pr_clear_value (arg_dbval_p);
     }
