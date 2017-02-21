@@ -6309,6 +6309,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   int bcb_lru_idx, shared_lru_idx, th_lru_idx;
   int aout_list_id;
   PGBUF_ZONE zone;
+  bool aout_enabled = true;
 
   assert (holder_status == NO_ERROR);
 
@@ -6375,7 +6376,15 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	  switch (zone)
 	    {
 	    case PGBUF_VOID_ZONE:
-	      aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid);
+              if (pgbuf_Pool.buf_AOUT_list.max_count <= 0)
+                {
+                  aout_list_id = PGBUF_AOUT_NOT_FOUND;
+                  aout_enabled = false;
+                }
+              else
+                {
+	          aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid);
+                }
 
 	      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 		{
@@ -6416,7 +6425,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
 	      if (th_lru_idx != -1)
 		{
-		  if (th_lru_idx == aout_list_id)
+		  if (!aout_enabled || th_lru_idx == aout_list_id)
 		    {
 		      /* add to top of current private list */
 		      pgbuf_lru_add_new_bcb_to_top (thread_p, bufptr, th_lru_idx);
