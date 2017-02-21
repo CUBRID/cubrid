@@ -7940,6 +7940,14 @@ pgbuf_invalidate_bcb (PGBUF_BCB * bufptr)
       return NO_ERROR;
     }
 
+  if (pgbuf_bcb_is_direct_victim (bufptr))
+    {
+      /* bcb is already assigned as direct victim, should be victimized soon, so there is no point in invalidating it
+       * here */
+      PGBUF_BCB_UNLOCK (bufptr);
+      return NO_ERROR;
+    }
+
   pgbuf_bcb_clear_dirty (bufptr);
 
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
