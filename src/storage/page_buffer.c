@@ -6376,15 +6376,15 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	  switch (zone)
 	    {
 	    case PGBUF_VOID_ZONE:
-              if (pgbuf_Pool.buf_AOUT_list.max_count <= 0)
-                {
-                  aout_list_id = PGBUF_AOUT_NOT_FOUND;
-                  aout_enabled = false;
-                }
-              else
-                {
-	          aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid);
-                }
+	      if (pgbuf_Pool.buf_AOUT_list.max_count <= 0)
+		{
+		  aout_list_id = PGBUF_AOUT_NOT_FOUND;
+		  aout_enabled = false;
+		}
+	      else
+		{
+		  aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid);
+		}
 
 	      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 		{
