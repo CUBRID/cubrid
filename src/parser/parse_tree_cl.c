@@ -826,7 +826,8 @@ copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, 
 
   if (new_node->node_type == PT_SPEC && PT_SPEC_IS_CTE (new_node))
     {
-      /* the new cte_pointer must point to the new_cte; new_cte address should be found in tree_copy_info->cte_structures_list */
+      /* the new cte_pointer may have to point to a new cte; it depends if the copied tree includes the CTE too
+       * (should be in cte_structures_list) */
       PT_NODE *cte_pointer = new_node->info.spec.cte_pointer;
       PT_CTE_COPY_INFO *cte_info_it;
 
@@ -838,13 +839,11 @@ copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, 
 	      break;
 	    }
 	}
-      if (cte_info_it == NULL)
+      if (cte_info_it != NULL)
 	{
-	  assert (false);
-	  PT_INTERNAL_ERROR (parser, "incorrect CTE pointer");
-	  return NULL;
+	  /* the old value of the pointer was found in the list; update the pointer to the new cte address */
+	  cte_pointer->info.pointer.node = cte_info_it->new_cte_node;
 	}
-      cte_pointer->info.pointer.node = cte_info_it->new_cte_node;
     }
 
   return new_node;
@@ -3908,6 +3907,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "crc32 ";
     case PT_SCHEMA_DEF:
       return "schema_def";
+    case PT_CONV_TZ:
+      return "conv_tz";
     default:
       return "unknown opcode";
     }
@@ -17465,15 +17466,8 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* attribute list */
   q = pt_append_nulstring (parser, q, "(");
-  for (list = p->info.cte.as_attr_list; list != NULL; list = list->next)
-    {
-      r1 = pt_print_bytes_l (parser, list);
-      q = pt_append_varchar (parser, q, r1);
-      if (list->next != NULL)
-	{
-	  q = pt_append_nulstring (parser, q, ", ");
-	}
-    }
+  r1 = pt_print_bytes_l (parser, p->info.cte.as_attr_list);
+  q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, ")");
 
   /* AS keyword */
@@ -17785,6 +17779,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_FROM_BASE64:
 	case PT_TZ_OFFSET:
 	case PT_CRC32:
+	case PT_CONV_TZ:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:

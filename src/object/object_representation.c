@@ -8441,3 +8441,178 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
 
   return rc;
 }
+
+/*
+ * or_packed_spacedb_size () - compute the size required to pack all space info
+ *
+ * return     : total required size
+ * all (in)   : aggregated space information
+ * vols (in)  : space information for each volume (may be NULL)
+ * files (in) : space information for files (may be NULL)
+ */
+int
+or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+{
+  int size_total = 0;
+
+  /* for each type without any, pack nvols, npage_used, npage_free */
+  size_total = SPACEDB_ALL_COUNT * 3 * OR_INT_SIZE;
+
+  if (vols != NULL)
+    {
+      /* we need to pack information on each volume. */
+      int size_onevol = 5 * OR_INT_SIZE;	/* we have 5 int values without the name */
+      int i;
+
+      size_total += size_onevol * all[SPACEDB_TOTAL_ALL].nvols;
+
+      /* also volume names */
+      for (i = 0; i < all[SPACEDB_TOTAL_ALL].nvols; i++)
+	{
+	  size_total += or_packed_string_length (vols[i].name, NULL);
+	}
+    }
+
+  if (files != NULL)
+    {
+      /* for each type without any, pack nfile, npage_used, npage_ftab and npage_reserved */
+      size_total += SPACEDB_FILE_COUNT * 4 * OR_INT_SIZE;
+    }
+
+  return size_total;
+}
+
+/*
+ * or_pack_spacedb () - pack space info
+ *
+ * return     : new pointer after packed space info
+ * ptr (in)   : destination pointer for packed space info
+ * all (in)   : aggregated space information
+ * vols (in)  : space information for each volume (may be NULL)
+ * files (in) : space information for files (may be NULL)
+ */
+char *
+or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+{
+  int i;
+
+  /* all */
+  for (i = 0; i < SPACEDB_ALL_COUNT; i++)
+    {
+      ptr = or_pack_int (ptr, (int) all[i].nvols);
+      ptr = or_pack_int (ptr, (int) all[i].npage_used);
+      ptr = or_pack_int (ptr, (int) all[i].npage_free);
+    }
+
+  /* vols */
+  if (vols != NULL)
+    {
+      int iter_vol = 0;
+      for (iter_vol = 0; iter_vol < all[SPACEDB_TOTAL_ALL].nvols; iter_vol++)
+	{
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].volid);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].type);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].purpose);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].npage_used);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].npage_free);
+	  ptr = or_pack_string (ptr, vols[iter_vol].name);
+	}
+    }
+
+  if (files != NULL)
+    {
+      for (i = 0; i < SPACEDB_FILE_COUNT; i++)
+	{
+	  ptr = or_pack_int (ptr, files[i].nfile);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_user);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_ftab);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_reserved);
+	}
+    }
+
+  return ptr;
+}
+
+/*
+ * or_unpack_spacedb () - document me!
+ *
+ * return :
+ * char * ptr (in) :
+ * SPACEDB_ALL * all (in) :
+ * SPACEDB_ONEVOL * * vols (in) :
+ * SPACEDB_FILES * files (in) :
+ */
+char *
+or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files)
+{
+  int i;
+  int unpacked_value;
+  char *volname;
+
+  assert (all != NULL);
+  assert (vols == NULL || *vols == NULL);
+
+  /* note: for all/files, total values are not packed. we'll compute them here, while unpacking */
+
+  /* all */
+  for (i = 0; i < SPACEDB_ALL_COUNT; i++)
+    {
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].nvols = (DKNVOLS) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].npage_used = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].npage_free = (DKNPAGES) unpacked_value;
+    }
+
+  /* vols */
+  if (vols != NULL)
+    {
+      int iter_vol = 0;
+
+      *vols = (SPACEDB_ONEVOL *) malloc (all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
+      if (*vols == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
+	  return NULL;
+	}
+
+      for (iter_vol = 0; iter_vol < all[SPACEDB_TOTAL_ALL].nvols; iter_vol++)
+	{
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].volid = (VOLID) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].type = (DB_VOLTYPE) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].purpose = (DB_VOLPURPOSE) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].npage_used = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].npage_free = (DKNSECTS) unpacked_value;
+	  ptr = or_unpack_string_nocopy (ptr, &volname);
+	  if (volname == NULL)
+	    {
+	      return NULL;
+	    }
+	  strncpy ((*vols)[iter_vol].name, volname, DB_MAX_PATH_LENGTH);
+	}
+    }
+
+  /* files */
+  if (files != NULL)
+    {
+      for (i = 0; i < SPACEDB_FILE_COUNT; i++)
+	{
+	  ptr = or_unpack_int (ptr, &files[i].nfile);
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_user = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_ftab = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_reserved = (DKNPAGES) unpacked_value;
+	}
+    }
+
+  return ptr;
+}

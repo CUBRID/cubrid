@@ -1516,6 +1516,12 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	  /* run postpone for log record inside a system op */
 	  if (tdes->topops.last < 0 || tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
 	    {
+	      if (tdes->topops.max == 0 && logtb_realloc_topops_stack (tdes, 1) == NULL)
+		{
+		  /* Out of memory */
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
 	      tdes->topops.last = 0;
 	      tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
 	    }

@@ -3205,6 +3205,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_CRC32:
+    case PT_CONV_TZ:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -3677,6 +3678,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_BIN:
 	case PT_TZ_OFFSET:
 	case PT_CRC32:
+	case PT_CONV_TZ:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:

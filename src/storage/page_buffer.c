@@ -13819,6 +13819,39 @@ pgbuf_has_any_non_vacuum_waiters (PAGE_PTR pgptr)
 }
 
 /*
+ * pgbuf_has_any_non_checkpoint_waiters () - true if page has any non-checkpoint waiters
+ *
+ * return     : true/false
+ * pgptr (in) : page
+ */
+bool
+pgbuf_has_any_non_checkpoint_waiters (PAGE_PTR pgptr)
+{
+#if defined (SERVER_MODE)
+  PGBUF_BCB *bufptr = NULL;
+  THREAD_ENTRY *thread_entry_p;
+
+  assert (pgptr != NULL);
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  if (bufptr->next_wait_thrd == NULL)
+    {
+      /* no waiters at all */
+      return false;
+    }
+  if (bufptr->next_wait_thrd->next_wait_thrd != NULL)
+    {
+      /* more than one waiter, there can be only one checkpoint thread! */
+      return true;
+    }
+  /* is the single waiter checkpoint thread? */
+  return thread_is_checkpoint_thread (bufptr->next_wait_thrd);
+#else
+  return false;
+#endif
+}
+
+/*
  * pgbuf_has_prevent_dealloc () - Quick check if page has any scanners.
  *
  * return     : True if page has any waiters, false otherwise.

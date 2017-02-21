@@ -188,7 +188,7 @@ extern int *disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int 
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid, char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, VOLID volid);
 extern int xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
-					     VOL_SPACE_INFO * space_info);
+					     DISK_VOLUME_SPACE_INFO * space_info);
 
 extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID volid, PAGEID pageid,
 				      char *page_bufp, int *page_sizep);

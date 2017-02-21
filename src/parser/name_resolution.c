@@ -4310,9 +4310,10 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
   /* If so, name resolves to scope's flat list of entities */
   if (exposed_spec)
     {
-      /* the exposed name of a derived table may not be used alone, ie, "select e from (select a from c) e" is
-       * disallowed. */
-      if (col_name && exposed_spec->info.spec.derived_table && exposed_spec->info.spec.range_var != in_node)
+      /* the exposed name of a derived table or a CTE may not be used alone, ie, "select e from (select a from c) e" 
+       * is disallowed. */
+      if (col_name && (PT_SPEC_IS_DERIVED (exposed_spec) || PT_SPEC_IS_CTE (exposed_spec))
+	  && exposed_spec->info.spec.range_var != in_node)
 	{
 	  if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
 	    {
@@ -7951,6 +7952,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	  PT_NODE *non_recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg1;
 	  int curr_cte_count = 0;
 
+	  /* isolate curr_cte to prevent resolving next CTEs in current recursive part */
+	  saved_curr_cte_next = curr_cte->next;
+	  curr_cte->next = NULL;
+
 	  recursive_part = parser_walk_tree (parser, recursive_part, pt_resolve_spec_to_cte_and_count, curr_cte,
 					     pt_count_ctes_post, &curr_cte_count);
 	  if (!recursive_part)
@@ -7959,7 +7964,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      return NULL;
 	    }
 
-	  if (curr_cte_count == 0)
+	  if (curr_cte_count == 0 && non_recursive_part->node_type == PT_SELECT)
 	    {
 	      /* no self references were found in arg2 from union; search in arg1 also, syntax allows this case */
 	      non_recursive_part =
@@ -7985,11 +7990,15 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      curr_cte->info.cte.recursive_part = recursive_part;
 	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_recursive_part->info.query.all_distinct;
 	    }
+
+	  /* restore next link */
+	  curr_cte->next = saved_curr_cte_next;
 	}
 
       curr_cte->info.cte.non_recursive_part->info.query.is_subquery = PT_IS_CTE_NON_REC_SUBQUERY;
       if (curr_cte->info.cte.recursive_part)
 	{
+	  assert (curr_cte->info.cte.recursive_part->node_type == PT_SELECT);
 	  curr_cte->info.cte.recursive_part->info.query.is_subquery = PT_IS_CTE_REC_SUBQUERY;
 	}
     }

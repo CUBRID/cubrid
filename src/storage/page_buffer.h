@@ -446,6 +446,7 @@ extern void pgbuf_attach_watcher (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGBUF
 
 extern bool pgbuf_has_any_waiters (PAGE_PTR pgptr);
 extern bool pgbuf_has_any_non_vacuum_waiters (PAGE_PTR pgptr);
+extern bool pgbuf_has_any_non_checkpoint_waiters (PAGE_PTR pgptr);
 extern bool pgbuf_has_prevent_dealloc (PAGE_PTR pgptr);
 extern void pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UINT64 * lru2_cnt,
 			      UINT64 * lru3_cnt, UINT64 * vict_candidates, UINT64 * avoid_dealloc_cnt,

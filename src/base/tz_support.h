@@ -69,6 +69,7 @@
 
 #define TZ_DS_STRING_SIZE 10
 #define TZR_SIZE 100
+#define ZONE_MAX  10000
 
 enum
 {
@@ -126,6 +127,11 @@ struct tz_region
 };
 
 typedef DB_BIGINT full_date_t;
+#if defined (SA_MODE)
+extern bool tz_Is_backward_compatible_timezone[];
+extern bool tz_Compare_datetimetz_tz_id;
+extern bool tz_Compare_timestamptz_tz_id;
+#endif /* SA_MODE */
 
 #ifdef __cplusplus
 extern "C"
@@ -143,6 +149,9 @@ extern "C"
   extern int tz_get_first_weekday_around_date (const int year, const int month, const int weekday, const int after_day,
 					       const bool before);
   extern const TZ_DATA *tz_get_data (void);
+  extern void tz_set_data (const TZ_DATA * data);
+  extern const TZ_DATA *tz_get_new_timezone_data (void);
+  extern void tz_set_new_timezone_data (const TZ_DATA * data);
   extern const char *tz_get_system_timezone (void);
   extern const char *tz_get_session_local_timezone (void);
   extern void tz_get_system_tz_region (TZ_REGION * tz_region);
@@ -234,6 +243,7 @@ extern "C"
   extern int tz_create_datetimetz_from_parts (const int m, const int d, const int y, const int h, const int mi,
 					      const int s, const int ms, const TZ_ID * tz_id, DB_DATETIMETZ * dt_tz);
   extern int get_day_from_timetz (const DB_TIMETZ * timetz);
+  extern int conv_tz (void *, const void *, DB_TYPE);
 #ifdef __cplusplus
 }
 #endif

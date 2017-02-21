@@ -683,6 +683,23 @@ spacedb: データベースのディスクスペース情報を出力\n\
                                出力の単位(page, mega, giga, tera, human readable)設定; デフォルト: H\n\
   -s, --summarize              ボリュームの使い道別に合算を出力\n\
   -p, --purpose                各自の目的で使われたボリュームのサイズを表示します(data/index/temp)\n
+70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+71 type                purpose            volume_count         used_size           free_size           total_size\n
+72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+80 Space description for all volumes:\n
+81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+90 Detailed space description for files:\n
+91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+100 -----------------------------------------------------------------------------------------------------------------\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -1079,8 +1096,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: 共有ライブラリにコンパイルするタイムゾーンデータが含まれている\n\
         ソースファイルを生成します。\n\
-使い方: %s gen_tz [OPTION]\n\
-        %s gen_tz -g extend [OPTION] [database-name]\n\
+使い方: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 オプション:\n\
   -i, --input-folder    IANAのタイムゾーンデータベースファイルのバージョンが\n\
@@ -1093,18 +1109,18 @@ gen_tz: 共有ライブラリにコンパイルするタイムゾーンデータ
                         また、すべての国とタイムゾーン名を含むソースファイルを\n\
                         生成します（開発者の使用を目的と将来のCUBRIDのバージョンに\n\
                         統合されるように）。\n\
-                        2. EXTEND : 入力フォルダからのデータを使用して、\n\
-                        タイムゾーンのソースファイルを生成します; CUBRIDに\n\
-                        エンコードタイムゾーンIDが保持されます; 入力ファイルで\n\
-                        見つかった新しいタイムゾーンは、2次ソース・ファイルに\n\
-                        追加され、何もない場合にも生成されます; GMTオフセットと\n\
-                        夏時間の情報が更新されたり、新しいタイムゾーンとして追加\n\
-                        されます; タイムゾーンがCUBRIDにエンコードされて入った\n\
-                        場合、まったく削除されません, 関連データは、既存の\n\
-                        タイムゾーンのライブラリから取得されます。すべての\n\
-                        タイムゾーン名を含む新しいCファイルが生成され、新しい\n\
-                        タイムゾーンのライブラリを使用する前には、CUBRID\n\
-                        ソースファイルフォルダに含まれている必要があります。\n
+                       2. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removed if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 供給されたゾーンIDは範囲を超えました。すべてのタイムゾーンとそのIDを\n\
