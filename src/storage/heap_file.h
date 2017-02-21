@@ -348,8 +348,11 @@ struct heap_operation_context
   INT16 record_type;		/* record type of original record */
   FILE_TYPE file_type;		/* the file type of hfid */
 
-  RECDES forwarding_recdes;	/* used in case of RELOCATION and BIGONE records */
+  char forward_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  RECDES new_home_recdes;	/* new home recdes */
+  RECDES forward_recdes;	/* used in case of RELOCATION and BIGONE records */
   OID forward_oid;		/* forward oid identifier */
+  OID new_forward_oid;		/* new forward oid identifier */
 
   /* physical page watchers - these should not be referenced directly */
   PGBUF_WATCHER home_page_watcher;	/* home page */
