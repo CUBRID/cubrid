@@ -13536,8 +13536,8 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
 	  lru_list = PGBUF_GET_LRU_LIST (i);
 	  lru_list->quota = new_quota;
-	  lru_list->threshold_lru1 = (int) (new_quota * pgbuf_Pool.ratio_lru1);
-	  lru_list->threshold_lru2 = (int) (new_quota * pgbuf_Pool.ratio_lru2);
+	  lru_list->threshold_lru1 = (int) (new_quota * PGBUF_LRU_ZONE_MIN_RATIO);
+	  lru_list->threshold_lru2 = (int) (new_quota * PGBUF_LRU_ZONE_MIN_RATIO);
 
 	  if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list))
 	    {
