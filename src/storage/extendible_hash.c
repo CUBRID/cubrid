@@ -1150,7 +1150,12 @@ exit_on_error:
     {
       if (is_tmp)
 	{
-	  (void) file_destroy (thread_p, &bucket_vfid);
+	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  if (file_destroy (thread_p, &bucket_vfid) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 	}
       else
 	{
@@ -1161,7 +1166,12 @@ exit_on_error:
     {
       if (is_tmp)
 	{
-	  (void) file_destroy (thread_p, &dir_vfid);
+	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  if (file_destroy (thread_p, &dir_vfid) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 	}
       else
 	{
