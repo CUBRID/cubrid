@@ -3213,6 +3213,7 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_unfixed_on
 #endif /* NDEBUG */
 	{
 	  /* best efforts */
+	  assert (false);
 	  ret = ER_FAILED;
 	}
       /* Above function released mutex regardless of its return value. */
@@ -8176,7 +8177,7 @@ pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous)
 	    }
 	}
 
-      /* Currently, the caller is holding bufper->mutex */
+      /* Currently, the caller is holding buffer->mutex */
       if (synchronous == true)
 	{
 	  /* After releasing bufptr->mutex, the caller sleeps. */
@@ -10046,6 +10047,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * i
 
   if (pgbuf_check_bcb_page_vpid (thread_p, bufptr) != true)
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -14696,7 +14698,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 	  /* dirty bcb is not a valid victim */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY);
 	}
-      else if (pgbuf_is_bcb_fixed_by_any (bcb_flushed, true))
+      else if (pgbuf_is_bcb_fixed_by_any (bcb_flushed, true) || pgbuf_bcb_is_invalid_direct_victim (bcb_flushed))
 	{
 	  /* bcb is fixed. we cannot assign it as victim */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED);
@@ -15408,17 +15410,17 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
 	{
 	  /* private list */
 	  if (lf_circular_queue_produce (pgbuf_Pool.private_lrus_with_victims, &lru_list->index))
-            {
-              return true;
-            }
+	    {
+	      return true;
+	    }
 	}
       else
 	{
 	  /* shared list */
 	  if (lf_circular_queue_produce (pgbuf_Pool.shared_lrus_with_victims, &lru_list->index))
-            {
-              return true;
-            }
+	    {
+	      return true;
+	    }
 	}
       /* clear the flag */
       lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
