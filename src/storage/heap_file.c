@@ -818,7 +818,7 @@ static void heap_unfix_watchers (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT
 static void heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p);
 static int heap_mark_class_as_modified (THREAD_ENTRY * thread_p, OID * oid_p, int chn, bool decache);
 static FILE_TYPE heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
-static int heap_is_valid_oid (OID * oid);
+static int heap_is_valid_oid (THREAD_ENTRY * thread_p, OID * oid);
 static int heap_fix_header_page (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_fix_forward_page (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, OID * forward_oid_hint);
 static void heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID * forward_oid);
@@ -5829,7 +5829,7 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
   RECDES forward_recdes;
   int ret = NO_ERROR;
 
-  if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+  if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
     {
       return;
     }
@@ -8609,7 +8609,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
   old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
-  if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+  if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
     {
       doesexist = false;
       goto exit_on_end;
@@ -8620,7 +8620,8 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
    * make sure that it exist. Rootclass always exist.. not need to check
    * for it
    */
-  if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid) && HEAP_ISVALID_OID (class_oid) != DISK_VALID)
+  if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid)
+      && HEAP_ISVALID_OID (thread_p, class_oid) != DISK_VALID)
     {
       doesexist = false;
       goto exit_on_end;
@@ -8743,7 +8744,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
    */
   assert (er_errid () == NO_ERROR);
 
-  if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+  if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
     {
       goto exit_on_end;
     }
@@ -8753,7 +8754,8 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
    * make sure that it exist. Root class always exist.. not need to check
    * for it
    */
-  if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid) && HEAP_ISVALID_OID (class_oid) != DISK_VALID)
+  if (class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid)
+      && HEAP_ISVALID_OID (thread_p, class_oid) != DISK_VALID)
     {
       goto exit_on_end;
     }
@@ -19523,9 +19525,10 @@ heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
  *   returns: error code or NO_ERROR
  */
 static int
-heap_is_valid_oid (OID * oid_p)
+heap_is_valid_oid (THREAD_ENTRY * thread_p, OID * oid_p)
 {
-  DISK_ISVALID oid_valid = HEAP_ISVALID_OID (oid_p);
+  DISK_ISVALID oid_valid = HEAP_ISVALID_OID (thread_p, oid_p);
+
   if (oid_valid != DISK_VALID)
     {
       if (oid_valid != DISK_ERROR)
@@ -22568,7 +22571,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   HEAP_PERF_START (thread_p, context);
 
   /* check input OID validity */
-  if (heap_is_valid_oid (&context->oid) != NO_ERROR)
+  if (heap_is_valid_oid (thread_p, &context->oid) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -22775,7 +22778,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   /* check provided object identifier */
-  rc = heap_is_valid_oid (&context->oid);
+  rc = heap_is_valid_oid (thread_p, &context->oid);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();

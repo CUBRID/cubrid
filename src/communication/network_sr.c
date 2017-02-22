@@ -1177,6 +1177,7 @@ loop:
 		case THREAD_CSS_QUEUE_SUSPENDED:
 		case THREAD_HEAP_CLSREPR_SUSPENDED:
 		case THREAD_LOGWR_SUSPENDED:
+		case THREAD_ALLOC_BCB_SUSPENDED:
 		  wakeup_now = true;
 		  break;
 

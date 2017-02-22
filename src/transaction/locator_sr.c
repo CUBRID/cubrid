@@ -3920,7 +3920,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
   /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
    * removed with one of the refactoring issues anyway.
    */
-  if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+  if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
     {
       return LC_DOESNOT_EXIST;
     }
