@@ -3419,7 +3419,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
-  int i, victim_count, victim_count_lru;
+  int i, victim_count;
   int check_count_lru;
   int cfg_check_cnt;
   int total_flushed_count;
@@ -3475,7 +3475,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   start_lru_idx = lru_idx;
 
   victim_count = 0;
-  victim_count_lru = 0;
   total_flushed_count = 0;
   check_count_lru = 0;
 
@@ -3523,11 +3522,10 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
   if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
-      victim_count_lru = pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, 0, lru_sum_flush_priority);
+      victim_count = pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, 0, lru_sum_flush_priority);
     }
 
   pgbuf_Flush_eye.victim_count = victim_count;
-  victim_count = victim_count_lru;
   if (victim_count == 0)
     {
       /* We didn't find any victims */
@@ -3538,6 +3536,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 #if defined (SERVER_MODE)
   /* wake up log flush thread. we need log up to date to be able to flush pages */
   thread_wakeup_log_flush_thread ();
+#else
+  logpb_flush_pages_direct (thread_p);
 #endif /* SERVER_MODE */
 
   if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
@@ -3641,7 +3641,7 @@ end:
   er_log_debug (ARG_FILE_LINE,
 		"pgbuf_flush_victim_candidate: flush %d pages from (%d) to (%d) list. "
 		"Found LRU:%d/%d", total_flushed_count, start_lru_idx,
-		pgbuf_Pool.last_flushed_LRU_list_idx, victim_count_lru, check_count_lru);
+		pgbuf_Pool.last_flushed_LRU_list_idx, victim_count, check_count_lru);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
