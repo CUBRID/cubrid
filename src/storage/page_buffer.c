@@ -15407,14 +15407,21 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
       if (PGBUF_IS_PRIVATE_LRU_INDEX (lru_list->index))
 	{
 	  /* private list */
-	  return lf_circular_queue_produce (pgbuf_Pool.private_lrus_with_victims, &lru_list->index);
+	  if (lf_circular_queue_produce (pgbuf_Pool.private_lrus_with_victims, &lru_list->index))
+            {
+              return true;
+            }
 	}
       else
 	{
 	  /* shared list */
-	  return lf_circular_queue_produce (pgbuf_Pool.shared_lrus_with_victims, &lru_list->index);
+	  if (lf_circular_queue_produce (pgbuf_Pool.shared_lrus_with_victims, &lru_list->index))
+            {
+              return true;
+            }
 	}
-      return true;
+      /* clear the flag */
+      lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
     }
 
   /* not added */
