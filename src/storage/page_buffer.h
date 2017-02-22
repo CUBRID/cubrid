@@ -348,6 +348,8 @@ extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 #endif /* NDEBUG */
 extern PAGE_PTR pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio);
+extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
+                                   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
 #if !defined(NDEBUG)
 #define pgbuf_flush_all(thread_p, volid) \
 	pgbuf_flush_all_debug(thread_p, volid, __FILE__, __LINE__)
@@ -367,13 +369,6 @@ extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null_debug (THREAD_ENTRY * thr
 extern int pgbuf_flush_victim_candidate_debug (THREAD_ENTRY * thread_p, float flush_ratio, const char *caller_file,
 					       int caller_line);
 
-#define pgbuf_flush_checkpoint(thread_p, flush_upto_lsa, prev_chkpt_redo_lsa, smallest_lsa, flushed_page_cnt) \
-	pgbuf_flush_checkpoint_debug(thread_p, flush_upto_lsa, prev_chkpt_redo_lsa, smallest_lsa, \
-				     flushed_page_cnt, __FILE__, __LINE__)
-extern int pgbuf_flush_checkpoint_debug (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
-					 const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa,
-					 int *flushed_page_cnt, const char *caller_file, int caller_line);
-
 #define pgbuf_replace_watcher(thread_p, old_watcher, new_watcher) \
   pgbuf_replace_watcher_debug(thread_p, old_watcher, new_watcher, \
 			       __FILE__, __LINE__)
@@ -383,8 +378,7 @@ extern void pgbuf_replace_watcher_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER 
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY * thread_p, VOLID volid);
-extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
-				   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
+
 
 extern void pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_watcher, PGBUF_WATCHER * new_watcher);
 #endif /* NDEBUG */

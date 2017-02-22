@@ -3679,16 +3679,9 @@ end:
  *       This function is used by the log and recovery manager when a
  *       checkpoint is issued.
  */
-#if !defined(NDEBUG)
-int
-pgbuf_flush_checkpoint_debug (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
-			      const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt,
-			      const char *caller_file, int caller_line)
-#else /* NDEBUG */
 int
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa, const LOG_LSA * prev_chkpt_redo_lsa,
 			LOG_LSA * smallest_lsa, int *flushed_page_cnt)
-#endif				/* NDEBUG */
 {
   PGBUF_BCB *bufptr;
   int bufid;
@@ -14888,8 +14881,8 @@ pgbuf_bcb_update_flags (PGBUF_BCB * bcb, int set_flags, int clear_flags)
     {
       /* bcb is in lru zone that can be victimized. some flags invalidate the victimization candidacy of a bcb;
        * therefore we need to check if the bcb status regarding victimization is changed. */
-      bool is_old_invalid_victim_candidate = old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK;
-      bool is_new_invalid_victim_candidate = new_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK;
+      bool is_old_invalid_victim_candidate = (old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) != 0;
+      bool is_new_invalid_victim_candidate = (new_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) != 0;
       PGBUF_LRU_LIST *lru_list;
 
       lru_list = pgbuf_lru_list_from_bcb (bcb);
