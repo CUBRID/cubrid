@@ -323,6 +323,13 @@ typedef enum
 
 #define PGBUF_AOUT_NOT_FOUND  -2
 
+#if defined (SERVER_MODE)
+#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) \
+  (VACUUM_IS_THREAD_VACUUM_WORKER(th) || thread_is_checkpoint_thread(th))
+#else
+#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) false
+#endif
+
 #define HASH_SIZE_BITS 20
 #define PGBUF_HASH_SIZE (1 << HASH_SIZE_BITS)
 
@@ -1183,6 +1190,8 @@ STATIC_INLINE bool pgbuf_is_hit_ratio_low (void);
 
 static void pgbuf_flags_mask_sanity_check (void);
 static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
+static bool pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB *bufptr);
+
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -6359,7 +6368,10 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_bcb_should_be_moved_to_bottom_lru (bufptr))
 	{
-	  assert (!pgbuf_is_exist_blocked_reader_writer (bufptr));
+	  if (pgbuf_bcb_has_any_non_checkpoint_waiters (bufptr))
+	    {
+	      assert (!pgbuf_is_exist_blocked_reader_writer (bufptr));
+	    }
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
       else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
@@ -6389,7 +6401,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		  aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid);
 		}
 
-	      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
 		  /* if this is vacuum, it does not matter if found on AOUT (that is quite expected) */
 		  if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
@@ -6440,7 +6452,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		    {
 		      /* add to middle of current private list */
 		      pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, th_lru_idx);
-		      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+		      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 			{
 			  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_MID_VAC);
 			}
@@ -6456,7 +6468,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	      shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
 	      pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, shared_lru_idx);
 	      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_SHARED_MID);
-	      if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	      if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
 		  pgbuf_bcb_register_hit_for_lru (bufptr);
 		}
@@ -13856,10 +13868,27 @@ pgbuf_has_any_non_checkpoint_waiters (PAGE_PTR pgptr)
 {
 #if defined (SERVER_MODE)
   PGBUF_BCB *bufptr = NULL;
-  THREAD_ENTRY *thread_entry_p;
 
   assert (pgptr != NULL);
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  return pgbuf_bcb_has_any_non_checkpoint_waiters (bufptr);
+#else
+  return false;
+#endif
+}
+
+/*
+ * pgbuf_bcb_has_any_non_checkpoint_waiters () - true if BCB has any non-checkpoint waiters
+ *
+ * return     : true/false
+ * pgptr (in) : page
+ */
+static bool
+pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB *bufptr)
+{
+#if defined (SERVER_MODE)
+  assert (bufptr != NULL);
 
   if (bufptr->next_wait_thrd == NULL)
     {
@@ -13877,6 +13906,7 @@ pgbuf_has_any_non_checkpoint_waiters (PAGE_PTR pgptr)
   return false;
 #endif
 }
+
 
 /*
  * pgbuf_has_prevent_dealloc () - Quick check if page has any scanners.
