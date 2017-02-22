@@ -1517,6 +1517,11 @@ thread_lock_entry (THREAD_ENTRY * thread_p)
 {
   int r;
 
+  if (thread_p == NULL)
+    {
+      assert (thread_p != NULL);	/* expects callers pass thread handle */
+      thread_p = thread_get_thread_entry_info ();
+    }
   assert (thread_p != NULL);
 
   r = pthread_mutex_lock (&thread_p->th_entry_lock);
@@ -1565,6 +1570,11 @@ thread_unlock_entry (THREAD_ENTRY * thread_p)
 {
   int r;
 
+  if (thread_p == NULL)
+    {
+      assert (thread_p != NULL);	/* expects callers pass thread handle */
+      thread_p = thread_get_thread_entry_info ();
+    }
   assert (thread_p != NULL);
 
   r = pthread_mutex_unlock (&thread_p->th_entry_lock);

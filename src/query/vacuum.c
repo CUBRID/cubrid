@@ -1114,7 +1114,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   /* Check all objects belong to same page. */
   {
     int i = 0;
-    assert (HEAP_ISVALID_OID (&heap_objects->oid) != DISK_INVALID);
+
+    assert (HEAP_ISVALID_OID (thread_p, &heap_objects->oid) != DISK_INVALID);
     for (i = 1; i < n_heap_objects; i++)
       {
 	assert (heap_objects[i].oid.volid == heap_objects[0].oid.volid

@@ -25242,8 +25242,10 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
   /* Possible scans that can reach this code: - ISS, if current op is ISS_OP_DO_RANGE_SEARCH. - Regular index range
    * scan. They are both treated in the same way (copied to OID buffer). */
   BTS_SAVE_OID_IN_BUFFER (bts, oid);
-  assert (HEAP_ISVALID_OID (oid) != DISK_INVALID);
-  assert (HEAP_ISVALID_OID (bts->index_scan_idp->oid_list->oidp) != DISK_INVALID);
+
+  assert (HEAP_ISVALID_OID (thread_p, oid) != DISK_INVALID);
+  assert (HEAP_ISVALID_OID (thread_p, bts->index_scan_idp->oid_list->oidp) != DISK_INVALID);
+
   return NO_ERROR;
 }
 

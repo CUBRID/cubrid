@@ -5525,7 +5525,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		      assert (isidp->oid_list != NULL);
 		      isidp->curr_oidp = GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
 		    }
-		  assert (HEAP_ISVALID_OID (isidp->curr_oidp) != DISK_INVALID);
+		  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 		}
 	    }
 	  else if (scan_id->position == S_ON)
@@ -5553,7 +5553,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  assert (isidp->oid_list != NULL);
 			  isidp->curr_oidp = GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
 			}
-		      assert (HEAP_ISVALID_OID (isidp->curr_oidp) != DISK_INVALID);
+		      assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 		    }
 		  else
 		    {
@@ -5628,7 +5628,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			{
 			  assert (isidp->oid_list != NULL);
 			  isidp->curr_oidp = isidp->oid_list->oidp;
-			  assert (HEAP_ISVALID_OID (isidp->curr_oidp) != DISK_INVALID);
+			  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 			}
 		    }
 		}
@@ -5655,7 +5655,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  assert (isidp->curr_oidno >= 0);
 	  assert (isidp->curr_oidp != NULL);
-	  assert (HEAP_ISVALID_OID (isidp->curr_oidp) != DISK_INVALID);
+	  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 
 	  if (thread_is_on_trace (thread_p))
 	    {
