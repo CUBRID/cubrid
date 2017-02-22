@@ -2412,6 +2412,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	  p += ret;
 	  if (remained_size <= 0)
 	    {
+	      assert (remained_size == 0);	/* should not overrun the buffer */
 	      return;
 	    }
 	}
@@ -2437,6 +2438,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
       p += ret;
       if (remained_size <= 0)
 	{
+	  assert (remained_size == 0);	/* should not overrun the buffer */
 	  return;
 	}
       pstat_Metadata[i].f_dump_in_buffer (&p, &(stats[pstat_Metadata[i].start_offset]), &remained_size);
