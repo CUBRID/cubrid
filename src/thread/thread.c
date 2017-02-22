@@ -3421,6 +3421,9 @@ thread_page_buffer_maintenance_thread (void *arg_p)
       /* page buffer maintenance thread adjust quota's based on thread activity. */
       pgbuf_adjust_quotas (tsd_ptr);
 
+      /* search lists and assign victims directly */
+      pgbuf_direct_victims_maintenance (tsd_ptr);
+
       /* wait THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC */
       thread_daemon_timedwait (&thread_Page_maintenance_thread, THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC);
     }

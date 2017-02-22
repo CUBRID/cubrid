@@ -996,8 +996,10 @@ static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int ch
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
 static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
 #if defined (SERVER_MODE)
-static void pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
-							PGBUF_BCB * bcb_start);
+static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
+						       PGBUF_BCB * bcb_start);
+STATIC_INLINE bool pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QUEUE * queue,
+                                                     int * nassign_inout) __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
 static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx);
 static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
@@ -8772,16 +8774,25 @@ restart:
 }
 
 #if defined (SERVER_MODE)
-static void
+/*
+ * pgbuf_panic_assign_direct_victims_from_lru () - panic assign direct victims from lru.
+ *
+ * return         : number of assigned victims.
+ * thread_p (in)  : thread entru
+ * lru_list (in)  : lru list
+ * bcb_start (in) : starting bcb
+ */
+static int
 pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start)
 {
   PGBUF_BCB *bcb = NULL;
+  int n_assigned = 0;
 
   /* statistics shows not useful */
 
   if (bcb_start == NULL)
     {
-      return;
+      return 0;
     }
   assert (pgbuf_bcb_get_lru_index (bcb_start) == lru_list->index);
 
@@ -8815,7 +8826,88 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
       /* assigned directly */
       PGBUF_BCB_UNLOCK (bcb);
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
+      n_assigned++;
     }
+
+  return n_assigned;
+}
+
+/*
+ * pgbuf_direct_victims_maintenance () - assign direct victims via searching. the purpose of function is to make sure a
+ *                                       victim is assigned even when system has low to no activity, which prevents
+ *                                       bcb's from being assigned to a waiting thread. basically, this is the backup
+ *                                       plan.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ */
+void
+pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
+{
+#define DEFAULT_ASSIGNS_PER_ITERATION 5
+  int nassigns = DEFAULT_ASSIGNS_PER_ITERATION;
+
+  /* privates */
+  while (pgbuf_is_any_thread_waiting_for_direct_victim () && nassigns > 0)
+    {
+      if (!pgbuf_lfcq_assign_direct_victims (thread_p, pgbuf_Pool.private_lrus_with_victims, &nassigns))
+        {
+          /* empty queue */
+          break;
+        }
+    }
+  /* shared */
+  while (pgbuf_is_any_thread_waiting_for_direct_victim () && nassigns > 0)
+    {
+      if (!pgbuf_lfcq_assign_direct_victims (thread_p, pgbuf_Pool.shared_lrus_with_victims, &nassigns))
+        {
+          /* empty queue */
+          break;
+        }
+    }
+
+#undef DEFAULT_ASSIGNS_PER_ITERATION
+}
+
+/*
+ * pgbuf_lfcq_assign_direct_victims () - get list from queue and assign victims directly.s
+ *
+ * return                 : true if list was found in queue, false otherwise
+ * thread_p (in)          : thread entry
+ * queue (in)             : queue of lru list indexes
+ * nassign_inout (in/out) : update the number of victims to assign
+ */
+STATIC_INLINE bool
+pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QUEUE * queue, int * nassign_inout)
+{
+  int lru_idx;
+  PGBUF_LRU_LIST *lru_list;
+
+  if (!lf_circular_queue_consume (queue, &lru_idx))
+    {
+      return false;
+    }
+
+  lru_list = PGBUF_GET_LRU_LIST (lru_idx);
+  if (lru_list->count_vict_cand > 0)
+    {
+      pthread_mutex_lock (&lru_list->mutex);
+      (*nassign_inout) -= pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->victim_hint);
+      pthread_mutex_unlock (&lru_list->mutex);
+
+      if (lru_list->count_vict_cand > 0 && lf_circular_queue_produce (queue, &lru_idx))
+        {
+          /* added back */
+          return true;
+        }
+    }
+
+  /* not added back */
+  assert ((lru_list->flags & PGBUF_LRU_VICTIM_LFCQ_FLAG) != 0);
+  lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
+  /* todo: performance monitor */
+
+  return true;
 }
 #endif /* SERVER_MODE */
 
