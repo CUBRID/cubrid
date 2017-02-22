@@ -1006,7 +1006,7 @@ static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const
 static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						       PGBUF_BCB * bcb_start);
 STATIC_INLINE bool pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QUEUE * queue,
-                                                     int * nassign_inout) __attribute__ ((ALWAYS_INLINE));
+						     int *nassign_inout) __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
 static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx);
 static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
@@ -8860,19 +8860,19 @@ pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
   while (pgbuf_is_any_thread_waiting_for_direct_victim () && nassigns > 0)
     {
       if (!pgbuf_lfcq_assign_direct_victims (thread_p, pgbuf_Pool.private_lrus_with_victims, &nassigns))
-        {
-          /* empty queue */
-          break;
-        }
+	{
+	  /* empty queue */
+	  break;
+	}
     }
   /* shared */
   while (pgbuf_is_any_thread_waiting_for_direct_victim () && nassigns > 0)
     {
       if (!pgbuf_lfcq_assign_direct_victims (thread_p, pgbuf_Pool.shared_lrus_with_victims, &nassigns))
-        {
-          /* empty queue */
-          break;
-        }
+	{
+	  /* empty queue */
+	  break;
+	}
     }
 
 #undef DEFAULT_ASSIGNS_PER_ITERATION
@@ -8887,7 +8887,7 @@ pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
  * nassign_inout (in/out) : update the number of victims to assign
  */
 STATIC_INLINE bool
-pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QUEUE * queue, int * nassign_inout)
+pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QUEUE * queue, int *nassign_inout)
 {
   int lru_idx;
   PGBUF_LRU_LIST *lru_list;
@@ -8905,10 +8905,10 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QU
       pthread_mutex_unlock (&lru_list->mutex);
 
       if (lru_list->count_vict_cand > 0 && lf_circular_queue_produce (queue, &lru_idx))
-        {
-          /* added back */
-          return true;
-        }
+	{
+	  /* added back */
+	  return true;
+	}
     }
 
   /* not added back */

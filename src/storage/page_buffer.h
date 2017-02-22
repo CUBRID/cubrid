@@ -349,7 +349,7 @@ extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern PAGE_PTR pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio);
 extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
-                                   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
+				   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
 #if !defined(NDEBUG)
 #define pgbuf_flush_all(thread_p, volid) \
 	pgbuf_flush_all_debug(thread_p, volid, __FILE__, __LINE__)
