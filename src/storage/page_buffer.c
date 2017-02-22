@@ -323,6 +323,13 @@ typedef enum
 
 #define PGBUF_AOUT_NOT_FOUND  -2
 
+#if defined (SERVER_MODE)
+#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) \
+  (VACUUM_IS_THREAD_VACUUM_WORKER(th) || thread_is_checkpoint_thread(th))
+#else
+#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) false
+#endif
+
 #define HASH_SIZE_BITS 20
 #define PGBUF_HASH_SIZE (1 << HASH_SIZE_BITS)
 
@@ -1185,6 +1192,8 @@ STATIC_INLINE bool pgbuf_is_hit_ratio_low (void);
 
 static void pgbuf_flags_mask_sanity_check (void);
 static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
+static bool pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB * bufptr);
+
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -3424,7 +3433,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
-  int i, victim_count, victim_count_lru;
+  int i, victim_count;
   int check_count_lru;
   int cfg_check_cnt;
   int total_flushed_count;
@@ -3480,7 +3489,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   start_lru_idx = lru_idx;
 
   victim_count = 0;
-  victim_count_lru = 0;
   total_flushed_count = 0;
   check_count_lru = 0;
 
@@ -3528,11 +3536,10 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 
   if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
-      victim_count_lru = pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, 0, lru_sum_flush_priority);
+      victim_count = pgbuf_get_victim_candidates_from_lru (thread_p, check_count_lru, 0, lru_sum_flush_priority);
     }
 
   pgbuf_Flush_eye.victim_count = victim_count;
-  victim_count = victim_count_lru;
   if (victim_count == 0)
     {
       /* We didn't find any victims */
@@ -3543,6 +3550,8 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 #if defined (SERVER_MODE)
   /* wake up log flush thread. we need log up to date to be able to flush pages */
   thread_wakeup_log_flush_thread ();
+#else
+  logpb_flush_pages_direct (thread_p);
 #endif /* SERVER_MODE */
 
   if (prm_get_bool_value (PRM_ID_PB_SEQUENTIAL_VICTIM_FLUSH) == true)
@@ -3646,7 +3655,7 @@ end:
   er_log_debug (ARG_FILE_LINE,
 		"pgbuf_flush_victim_candidate: flush %d pages from (%d) to (%d) list. "
 		"Found LRU:%d/%d", total_flushed_count, start_lru_idx,
-		pgbuf_Pool.last_flushed_LRU_list_idx, victim_count_lru, check_count_lru);
+		pgbuf_Pool.last_flushed_LRU_list_idx, victim_count, check_count_lru);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
@@ -6354,7 +6363,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_bcb_should_be_moved_to_bottom_lru (bufptr))
 	{
-	  assert (!pgbuf_is_exist_blocked_reader_writer (bufptr));
+	  assert (!pgbuf_bcb_has_any_non_checkpoint_waiters (bufptr));
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
       else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
@@ -6384,7 +6393,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		  aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid);
 		}
 
-	      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
 		  /* if this is vacuum, it does not matter if found on AOUT (that is quite expected) */
 		  if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
@@ -6435,7 +6444,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		    {
 		      /* add to middle of current private list */
 		      pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, th_lru_idx);
-		      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+		      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 			{
 			  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_MID_VAC);
 			}
@@ -6451,7 +6460,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	      shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
 	      pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, shared_lru_idx);
 	      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_SHARED_MID);
-	      if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	      if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
 		  pgbuf_bcb_register_hit_for_lru (bufptr);
 		}
@@ -6461,7 +6470,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	    case PGBUF_LRU_2_ZONE:
 	    case PGBUF_LRU_3_ZONE:
 
-	      if (VACUUM_IS_THREAD_VACUUM (thread_p))
+	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
 		  if (zone == PGBUF_LRU_1_ZONE)
 		    {
@@ -13941,10 +13950,27 @@ pgbuf_has_any_non_checkpoint_waiters (PAGE_PTR pgptr)
 {
 #if defined (SERVER_MODE)
   PGBUF_BCB *bufptr = NULL;
-  THREAD_ENTRY *thread_entry_p;
 
   assert (pgptr != NULL);
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  return pgbuf_bcb_has_any_non_checkpoint_waiters (bufptr);
+#else
+  return false;
+#endif
+}
+
+/*
+ * pgbuf_bcb_has_any_non_checkpoint_waiters () - true if BCB has any non-checkpoint waiters
+ *
+ * return     : true/false
+ * pgptr (in) : page
+ */
+static bool
+pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB * bufptr)
+{
+#if defined (SERVER_MODE)
+  assert (bufptr != NULL);
 
   if (bufptr->next_wait_thrd == NULL)
     {
@@ -13962,6 +13988,7 @@ pgbuf_has_any_non_checkpoint_waiters (PAGE_PTR pgptr)
   return false;
 #endif
 }
+
 
 /*
  * pgbuf_has_prevent_dealloc () - Quick check if page has any scanners.
