@@ -3134,8 +3134,6 @@ db_query_get_tuple_valuelist (DB_QUERY_RESULT * result, int size, DB_VALUE * val
 int
 db_query_tuple_count (DB_QUERY_RESULT * result)
 {
-  int done, count;
-  int error;
   int retval;
 
   CHECK_1ARG_MINUSONE (result);

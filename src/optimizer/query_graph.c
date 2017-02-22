@@ -4081,7 +4081,8 @@ get_rank (QO_ENV * env)
 static PT_NODE *
 get_referenced_attrs (PT_NODE * entity)
 {
-  return (entity->info.spec.derived_table ? entity->info.spec.as_attr_list : entity->info.spec.referenced_attrs);
+  return (PT_SPEC_IS_DERIVED (entity)
+	  || PT_SPEC_IS_CTE (entity)) ? entity->info.spec.as_attr_list : entity->info.spec.referenced_attrs;
 }
 
 /*

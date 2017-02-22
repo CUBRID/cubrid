@@ -4261,9 +4261,8 @@ pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec)
 
   /* for classes, it is safe to prune unreferenced attributes. we do not have the same luxury with derived tables, so
    * get them all (and in order). */
-  table_info->attribute_list = (table_spec->info.spec.flat_entity_list != NULL
-				&& table_spec->info.spec.derived_table ==
-				NULL) ? table_spec->info.spec.referenced_attrs : table_spec->info.spec.as_attr_list;
+  table_info->attribute_list = (table_spec->info.spec.flat_entity_list != NULL) ?
+    table_spec->info.spec.referenced_attrs : table_spec->info.spec.as_attr_list;
 
   table_info->value_list = pt_make_val_list (parser, table_info->attribute_list);
 
@@ -12038,8 +12037,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   METHOD_SIG_LIST *method_sig_list;
 
   /* every cselect must have a subquery for its source list file, this is pointed to by the methods of the cselect */
-  if (!cselect || !(cselect->node_type == PT_METHOD_CALL) || !src_derived_tbl
-      || !src_derived_tbl->info.spec.derived_table)
+  if (!cselect || !(cselect->node_type == PT_METHOD_CALL) || !src_derived_tbl || !PT_SPEC_IS_DERIVED (src_derived_tbl))
     {
       return NULL;
     }
@@ -12175,11 +12173,11 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 {
   ACCESS_SPEC_TYPE *access = NULL;
 
-  if (spec->info.spec.flat_entity_list != NULL && spec->info.spec.derived_table == NULL)
+  if (spec->info.spec.flat_entity_list != NULL && !PT_SPEC_IS_CTE (spec) && !PT_SPEC_IS_DERIVED (spec))
     {
       access = pt_to_class_spec_list (parser, spec, where_key_part, where_part, plan, index_part);
     }
-  else if (spec->info.spec.derived_table != NULL)
+  else if (PT_SPEC_IS_DERIVED (spec))
     {
       /* derived table index_part better be NULL here! */
       if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
@@ -12204,7 +12202,7 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
   else
     {
       /* there is a cte_pointer inside spec */
-      assert (spec->info.spec.cte_pointer != NULL);
+      assert (PT_SPEC_IS_CTE (spec));
 
       /* the subquery should be in non_recursive_part of the cte */
       access = pt_to_cte_table_spec_list (parser, spec, spec->info.spec.cte_pointer->info.pointer.node, where_part);

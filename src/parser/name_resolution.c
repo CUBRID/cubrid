@@ -3414,7 +3414,7 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	}
     }
 
-  if (!spec->info.spec.derived_table && !spec->info.spec.as_attr_list)
+  if (PT_SPEC_IS_ENTITY (spec))
     {
       if (spec->info.spec.meta_class == PT_META_CLASS)
 	{
@@ -3427,6 +3427,7 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
     }
   else
     {
+      assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
       ok = (col != NULL);
       if (col && !name->info.name.spec_id)
@@ -3947,7 +3948,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 PT_NODE *
 pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *q, *derived_table;
+  PT_NODE *q;
   PT_NODE *result = node;
   PT_FLAT_SPEC_INFO *info = (PT_FLAT_SPEC_INFO *) arg;
 
@@ -3982,8 +3983,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       while (node)
 	{
 	  /* if a flat list has not been calculated, calculate it. */
-	  derived_table = node->info.spec.derived_table;
-	  if (!node->info.spec.flat_entity_list && !derived_table && node->info.spec.entity_name)
+	  if (!node->info.spec.flat_entity_list && PT_SPEC_IS_ENTITY (node))
 	    {
 	      /* this sets the persistent entity_spec id. the address of the node may be changed through copying, but
 	       * this id won't. The number used is the address, just as an easy way to generate a unique number. */
@@ -3994,7 +3994,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      node->info.spec.flat_entity_list = q;
 	    }
 
-	  if (!derived_table && node->info.spec.entity_name)
+	  if (PT_SPEC_IS_ENTITY (node))
 	    {
 	      /* entity_spec list are not allowed to have derived column names (for now) */
 	      if (node->info.spec.as_attr_list)
@@ -4003,8 +4003,9 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 			      pt_short_print_l (parser, node->info.spec.as_attr_list));
 		}
 	    }
-	  else if (derived_table)
+	  else if (PT_SPEC_IS_DERIVED (node))
 	    {
+	      PT_NODE *derived_table = node->info.spec.derived_table;
 	      if (!node->info.spec.id)
 		{
 		  node->info.spec.id = (UINTPTR) node;
@@ -4012,12 +4013,11 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
 	      parser_walk_tree (parser, derived_table, pt_flat_spec_pre, info, pt_continue_walk, NULL);
 	    }
-
-
-	  if (node->info.spec.cte_pointer)
+	  else
 	    {
 	      PT_NODE *cte_def = NULL, *non_recursive_cte = NULL;
 
+	      assert (PT_SPEC_IS_CTE (node));
 	      cte_def = node->info.spec.cte_pointer->info.pointer.node;
 	      if (cte_def)
 		{
@@ -7068,7 +7068,7 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
   db_attrs = NULL;
   natural_join_attrs = NULL;
 
-  if (node->info.spec.entity_name != NULL)
+  if (PT_SPEC_IS_ENTITY (node))
     {
       /* This is a table. */
       cls = node->info.spec.entity_name->info.name.db_object;
@@ -7089,10 +7089,10 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 	  goto exit_on_error;
 	}
     }
-  else
+  else if (PT_SPEC_IS_DERIVED (node))
     {
       /* This is a subquery. */
-      if (node->info.spec.derived_table && node->info.spec.derived_table_type == PT_IS_SUBQUERY)
+      if (node->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
 	  derived_table = node->info.spec.derived_table;
 
@@ -7119,6 +7119,22 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      goto exit_on_error;
 	    }
+	}
+    }
+  else
+    {
+      assert (PT_SPEC_IS_CTE (node));
+
+      subquery_attrs_list = node->info.spec.cte_pointer->info.pointer.node->info.cte.as_attr_list;
+      if (subquery_attrs_list == NULL)
+	{
+	  return NULL;
+	}
+
+      if (generate_natural_join_attrs_from_subquery (subquery_attrs_list, &natural_join_attrs) != NO_ERROR)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  goto exit_on_error;
 	}
     }
 

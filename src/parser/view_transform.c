@@ -2165,15 +2165,12 @@ mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec)
   int had_some_real_classes = 0;
   int had_some_virtual_classes = 0;
 
-  if (!spec)
+  if (spec == NULL || spec->info.spec.flat_entity_list == NULL)
     {
       return false;
     }
-  else if (spec->info.spec.derived_table)
-    {
-      return false;
-    }
-  else if (spec->info.spec.meta_class != PT_META_CLASS && spec->info.spec.derived_table_type != PT_IS_WHACKED_SPEC)
+
+  if (spec->info.spec.meta_class != PT_META_CLASS && spec->info.spec.derived_table_type != PT_IS_WHACKED_SPEC)
     {
       for (entity = spec->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
 	{
@@ -2362,7 +2359,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 	  skip_auth_check = true;
 	}
 
-      if (class_spec->info.spec.derived_table)
+      if (PT_SPEC_IS_DERIVED (class_spec))
 	{
 	  /* no translation per se, but need to fix up proxy objects */
 	  tree = mq_fix_derived_in_union (parser, tree, class_spec->info.spec.id);
@@ -4841,7 +4838,7 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
 	  if (aggregate_rewrote_as_derived && spec != NULL)
 	    {
 	      PT_NODE *derived_table = spec->info.spec.derived_table;
-	      assert (derived_table != NULL);
+	      assert (PT_SPEC_IS_DERIVED (spec));
 	      using_index = derived_table->info.query.q.select.using_index;
 	      spec = derived_table->info.query.q.select.from;
 	    }
@@ -6015,9 +6012,13 @@ mq_check_vclass_for_insert (PARSER_CONTEXT * parser, PT_NODE * query_spec)
       PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MULTIPLE_INSERT_TARGETS);
       return false;
     }
-  else if (spec->info.spec.derived_table)
+  else if (PT_SPEC_IS_DERIVED (spec))
     {
       return mq_check_vclass_for_insert (parser, spec->info.spec.derived_table);
+    }
+  else
+    {
+      assert (!PT_SPEC_IS_CTE (spec));
     }
 
   /* valid */
@@ -6094,7 +6095,7 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 	  fetch_as = PT_PARTIAL_SELECT;
 	}
 
-      if (!(*spec)->info.spec.derived_table)
+      if ((*spec)->info.spec.flat_entity_list)
 	{
 	  /* fetch entity list */
 	  PT_NODE *subquery = NULL;
@@ -6102,6 +6103,8 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 	  /* rewrite if multiple entities */
 	  bool multiple_entity = (entity != NULL && entity->next != NULL);
 	  bool rewrite = false, has_vclass = false;
+
+	  assert (!PT_SPEC_IS_CTE (*spec) && !PT_SPEC_IS_DERIVED (*spec));
 
 	  while (entity)
 	    {
@@ -8189,7 +8192,7 @@ PT_NODE *
 mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquery, int *idx, PT_NODE ** spec_ptr,
 		      PT_NODE ** attr_list_ptr)
 {
-  PT_NODE *range, *spec, *as_attr_list, *col, *next, *tmp;
+  PT_NODE *range, *spec, *as_attr_list, *col, *tmp;
 
   /* remove unnecessary ORDER BY clause. */
   pt_try_remove_order_by (parser, subquery);

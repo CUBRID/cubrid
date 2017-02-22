@@ -1735,7 +1735,6 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
   int err = NO_ERROR;
-  OID user;
   const char *alias_print;
   char *data = NULL;
 
