@@ -1190,7 +1190,7 @@ STATIC_INLINE bool pgbuf_is_hit_ratio_low (void);
 
 static void pgbuf_flags_mask_sanity_check (void);
 static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
-static bool pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB *bufptr);
+static bool pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB * bufptr);
 
 
 /*
@@ -6368,10 +6368,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_bcb_should_be_moved_to_bottom_lru (bufptr))
 	{
-	  if (pgbuf_bcb_has_any_non_checkpoint_waiters (bufptr))
-	    {
-	      assert (!pgbuf_is_exist_blocked_reader_writer (bufptr));
-	    }
+	  assert (!pgbuf_bcb_has_any_non_checkpoint_waiters (bufptr));
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
       else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
@@ -6478,7 +6475,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	    case PGBUF_LRU_2_ZONE:
 	    case PGBUF_LRU_3_ZONE:
 
-	      if (VACUUM_IS_THREAD_VACUUM (thread_p))
+	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
 		  if (zone == PGBUF_LRU_1_ZONE)
 		    {
@@ -13885,7 +13882,7 @@ pgbuf_has_any_non_checkpoint_waiters (PAGE_PTR pgptr)
  * pgptr (in) : page
  */
 static bool
-pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB *bufptr)
+pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB * bufptr)
 {
 #if defined (SERVER_MODE)
   assert (bufptr != NULL);
