@@ -15458,7 +15458,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
 
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
 
-  if (from_private && PGBUF_LRU_LIST_COUNT (lru_list) > 2 * lru_list->quota)
+  if (from_private && PGBUF_LRU_LIST_COUNT (lru_list) > 2 * lru_list->quota && lru_list->count_vict_cand > 0)
     {
       /* add lru list back to queue early. others should be able to find in queue. */
       if (lf_circular_queue_produce (lfcq, &lru_idx))
