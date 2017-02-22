@@ -1132,8 +1132,8 @@ static int prm_pb_num_LRU_chains_lower = 0;
 static int prm_pb_num_LRU_chains_upper = 1000;
 static unsigned int prm_pb_num_LRU_chains_flag = 0;
 
-int PRM_PAGE_BG_FLUSH_INTERVAL_MSEC = 0;
-static int prm_page_bg_flush_interval_msec_default = 0;
+int PRM_PAGE_BG_FLUSH_INTERVAL_MSEC = 1000;
+static int prm_page_bg_flush_interval_msec_default = 1000;
 static int prm_page_bg_flush_interval_msec_lower = -1;
 static unsigned int prm_page_bg_flush_interval_msec_flag = 0;
 
