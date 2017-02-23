@@ -569,7 +569,6 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   int i;
   int value_size;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
-  DB_VALUE *val_buffer;
   DB_TYPE dbval_type;
   HL_HEAPID save_heapid = 0;
 
@@ -619,18 +618,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	      goto exit_with_status;
 	    }
 
-	  /* The value has been peeked so it does not require any clear, but we still might have the compressed_string
-	   * alloced so we need to clear it.
-	   */
-	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
-	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
-	    {
-	      if (!(tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt]))
-		{
-		  /* Clear compressed string since val_buffer was allocated during XASL execution. */
-		  pr_clear_compressed_string (val_buffer);
-		}
-	    }
+	  /* The compressed string will be deallocated later, after copying db_value into tuple. */
 
 	  tuple_desc_p->tpl_size += value_size;
 	  tuple_desc_p->f_cnt += 1;	/* increase field number */
@@ -9265,6 +9253,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
   DB_VALUE **save_values = NULL;
   bool use_extended = false;	/* flag for using extended form, accepting an expression as the first argument of
 				 * SYS_CONNECT_BY_PATH() */
+  bool need_clear_arg_dbval = false;
 
   assert (DB_IS_NULL (result_p));
 
@@ -9398,6 +9387,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 
   do
     {
+      need_clear_arg_dbval = false;
       if (!use_extended)
 	{
 	  /* get the required column */
@@ -9407,6 +9397,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 		{
 		  goto error;
 		}
+	      need_clear_arg_dbval = true;
 	    }
 	}
       else
@@ -9442,7 +9433,11 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	      goto error;
 	    }
 
-	  pr_clear_value (arg_dbval_p);
+	  if (need_clear_arg_dbval)
+	    {
+	      pr_clear_value (arg_dbval_p);
+	      need_clear_arg_dbval = false;
+	    }
 	}
 
       len = (strlen (sep) + (DB_IS_NULL (&cast_value) ? 0 : DB_GET_STRING_SIZE (&cast_value))
@@ -9561,7 +9556,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
       db_private_free_and_init (thread_p, sep);
     }
 
-  if (arg_dbval_p != NULL)
+  if (need_clear_arg_dbval)
     {
       pr_clear_value (arg_dbval_p);
     }
@@ -9600,7 +9595,7 @@ error2:
       db_private_free_and_init (thread_p, sep);
     }
 
-  if (arg_dbval_p != NULL)
+  if (need_clear_arg_dbval)
     {
       pr_clear_value (arg_dbval_p);
     }
