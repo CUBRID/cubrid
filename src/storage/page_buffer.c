@@ -7837,7 +7837,11 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	      goto end;
 	    }
 
+	  /* no bcb should be allocated. */
+	  assert (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] == NULL);
 	  /* interrupted */
+	  assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
+		  || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	}
       else
