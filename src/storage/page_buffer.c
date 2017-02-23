@@ -7717,6 +7717,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
    *                       timeout. right now, after we added the victim rich hack, this may not happen. we could
    *                       consider a backup plan to generate victims for a forgotten waiter.
    *    SA_MODE: pages are flushed and victim is searched again (and we expect this time to find a victim).
+   *
+   * note: SA_MODE approach also applies to server-mode recovery (or in any circumstance which has page flush thread
+   *       unavailable).
    */
 
   /* allocate a BCB from invalid BCB list */
@@ -7739,123 +7742,129 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 #if defined (SERVER_MODE)
 
-retry:
-
-  /* make sure at least flush will feed us with bcb's.
-   * note: page flush thread has an early-out check to decide if flush is really needed. one of them is if any thread is
-   *       waiting in one of the queues for direct victims. however, this was not enough in some limit cases when having
-   *       only one active thread (which is not unusual in our testing environments). the thread does not find a bcb,
-   *       wakes flush thread and then gets preempted before adding itself to the waiting queues. flush thread wakes up,
-   *       maybe does even some flushing (but bcb's are not assigned directly, because our thread is not yet in the
-   *       queue) and then goes back to sleep. no one wakes the flush thread again (if it is not set to wake
-   *       periodically) and our waiting thread waits forever (or for 5 minutes until we time it out and hit assert).
-   *       long story short, we use a counter to track threads preparing to wait for direct victims. flush thread does
-   *       not go to sleep if the counter is not 0.
-   */
-  ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, 1);
-  if (!pgbuf_Pool.is_flushing_victims)
+  if (thread_is_page_flush_thread_available ())
     {
-      pgbuf_wakeup_flush_thread (thread_p);
-    }
-  high_priority = VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
+    retry:
 
-  /* add to waiters thread list to be assigned victim directly */
-  to.tv_sec = (int) time (NULL) + PGBUF_TIMEOUT;
-  to.tv_nsec = 0;
-
-  thread_lock_entry (thread_p);
-
-  assert (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] == NULL);
-
-  /* push to waiter thread list */
-  if (high_priority)
-    {
-      if (VACUUM_IS_THREAD_VACUUM (thread_p))
+      /* make sure at least flush will feed us with bcb's.
+       * note: page flush thread has an early-out check to decide if flush is really needed. one of them is if any
+       *       thread is waiting in one of the queues for direct victims. however, this was not enough in some limit
+       *       cases when having only one active thread (which is not unusual in our testing environments). the thread
+       *       does not find a bcb, wakes flush thread and then gets preempted before adding itself to the waiting
+       *       queues. flush thread wakes up, maybe does even some flushing (but bcb's are not assigned directly,
+       *       because our thread is not yet in the queue) and then goes back to sleep. no one wakes the flush thread
+       *       again (if it is not set to wake periodically) and our waiting thread waits forever (or for 5 minutes
+       *       until we time it out and hit assert).
+       *       long story short, we use a counter to track threads preparing to wait for direct victims. flush thread
+       *       does not go to sleep if the counter is not 0.
+       */
+      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, 1);
+      if (!pgbuf_Pool.is_flushing_victims)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM);
+	  pgbuf_wakeup_flush_thread (thread_p);
 	}
-      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_high_priority, &thread_p))
-	{
-	  assert (false);
-	  thread_unlock_entry (thread_p);
-	  ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
-	  return NULL;
-	}
-      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
-    }
-  else
-    {
-      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_low_priority, &thread_p))
-	{
-	  /* ok, we have this very weird case when a consumer can be preempted for a very long time (which prevents
-	   * producers from being able to push to queue). I don't know how is this even possible, I just know I found a
-	   * case. I cannot tell exactly how long the consumer is preempted, but I know the time difference between the
-	   * producer still waiting to be waken by that consumer and the producer failing to add was 93 milliseconds.
-	   * Which is huge if you ask me.
-	   * I doubled the size of the queue, but theoretically, this is still possible. I also removed the
-	   * ABORT_RELEASE, but we may have to think of a way to handle this preempted consumer case. */
+      high_priority = VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
-	  /* we do a hack for this case. we add the thread to high-priority instead, which is usually less used and the
-	   * same case is (almost) impossible to happen. */
+      /* add to waiters thread list to be assigned victim directly */
+      to.tv_sec = (int) time (NULL) + PGBUF_TIMEOUT;
+      to.tv_nsec = 0;
+
+      thread_lock_entry (thread_p);
+
+      assert (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] == NULL);
+
+      /* push to waiter thread list */
+      if (high_priority)
+	{
+	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM);
+	    }
 	  if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_high_priority, &thread_p))
 	    {
 	      assert (false);
 	      thread_unlock_entry (thread_p);
 	      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
-	      goto end;
+	      return NULL;
 	    }
 	  pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
 	}
       else
 	{
-	  pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
-	}
-    }
-  ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
-
-  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
-
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat_cond_wait);
-
-  if (r == NO_ERROR)
-    {
-      if (thread_p->resume_status == THREAD_ALLOC_BCB_RESUMED)
-	{
-	  bufptr = pgbuf_get_direct_victim (thread_p);
-	  if (bufptr == NULL)
+	  if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_low_priority, &thread_p))
 	    {
-	      /* bcb was fixed again */
-	      high_priority = true;
-	      goto retry;
-	    }
-	  goto end;
-	}
+	      /* ok, we have this very weird case when a consumer can be preempted for a very long time (which prevents
+	       * producers from being able to push to queue). I don't know how is this even possible, I just know I
+	       * found a case. I cannot tell exactly how long the consumer is preempted, but I know the time difference
+	       * between the producer still waiting to be waken by that consumer and the producer failing to add was 93
+	       * milliseconds. Which is huge if you ask me.
+	       * I doubled the size of the queue, but theoretically, this is still possible. I also removed the
+	       * ABORT_RELEASE, but we may have to think of a way to handle this preempted consumer case. */
 
-      /* interrupted */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      /* we do a hack for this case. we add the thread to high-priority instead, which is usually less used and
+	       * the same case is (almost) impossible to happen. */
+	      if (!lf_circular_queue_produce (pgbuf_Pool.direct_victims.waiter_threads_high_priority, &thread_p))
+		{
+		  assert (false);
+		  thread_unlock_entry (thread_p);
+		  ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
+		  goto end;
+		}
+	      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO;
+	    }
+	  else
+	    {
+	      pstat_cond_wait = PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO;
+	    }
+	}
+      ATOMIC_INC_32 (&pgbuf_Pool.direct_victims.waiter_threads_preparing, -1);
+
+      r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
+
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat_cond_wait);
+
+      if (r == NO_ERROR)
+	{
+	  if (thread_p->resume_status == THREAD_ALLOC_BCB_RESUMED)
+	    {
+	      bufptr = pgbuf_get_direct_victim (thread_p);
+	      if (bufptr == NULL)
+		{
+		  /* bcb was fixed again */
+		  high_priority = true;
+		  goto retry;
+		}
+	      goto end;
+	    }
+
+	  /* interrupted */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	}
+      else
+	{
+	  /* should not timeout! */
+	  assert (r != ER_CSS_PTHREAD_COND_TIMEDOUT);
+
+	  thread_p->resume_status = THREAD_ALLOC_BCB_RESUMED;
+	  thread_unlock_entry (thread_p);
+
+	  if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDOUT, 0);
+	    }
+	}
     }
   else
+#endif /* SERVER_MODE */
     {
-      /* should not timeout! */
-      assert (r != ER_CSS_PTHREAD_COND_TIMEDOUT);
+      /* we need to flush something */
+      pgbuf_wakeup_flush_thread (thread_p);
 
-      thread_p->resume_status = THREAD_ALLOC_BCB_RESUMED;
-      thread_unlock_entry (thread_p);
-
-      if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDOUT, 0);
-	}
+      PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
+      bufptr = pgbuf_get_victim (thread_p);
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
+      assert (bufptr != NULL);
     }
-#else /* !SERVER_MODE */
-  /* we need to flush something */
-  pgbuf_wakeup_flush_thread (thread_p);
-
-  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
-  bufptr = pgbuf_get_victim (thread_p);
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
-  assert (bufptr != NULL);
-#endif /* !SERVER_MODE */
 
 end:
   if (bufptr != NULL)
