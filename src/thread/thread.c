@@ -3453,9 +3453,12 @@ thread_wakeup_page_buffer_maintenance_thread (void)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_page_post_flush_thread (void *arg_p)
 {
+#define MAX_NO_ACTIVITY 100
+
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
+  int count_no_activity = 0;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* start */
@@ -3465,9 +3468,24 @@ thread_page_post_flush_thread (void *arg_p)
       /* reset requesters */
       (void) ATOMIC_TAS_32 (&thread_Page_post_flush_thread.nrequestors, 0);
       /* assign flushed pages */
-      pgbuf_assign_flushed_pages (tsd_ptr);
-      /* must be on guard, so we sleep as little as possible. */
-      thread_sleep (0);
+      if (!pgbuf_assign_flushed_pages (tsd_ptr))
+        {
+          /* no activity for post-flush. increase the sleep time. */
+          if (++count_no_activity >= MAX_NO_ACTIVITY)
+            {
+              /* sleep until awaken by someone */
+              thread_daemon_wait (&thread_Page_post_flush_thread);
+            }
+          else
+            {
+              thread_daemon_timedwait (&thread_Page_post_flush_thread, count_no_activity);
+            }
+        }
+      else
+        {
+          /* reset no activity counter and be prepared to start over */
+          count_no_activity = 0;
+        }
     }
   /* make sure all remaining are handled. */
   pgbuf_assign_flushed_pages (tsd_ptr);
@@ -3475,6 +3493,8 @@ thread_page_post_flush_thread (void *arg_p)
   thread_daemon_stop (&thread_Page_post_flush_thread, tsd_ptr);
 
   return (THREAD_RET_T) 0;
+
+#undef MAX_NO_ACTIVITY
 }
 
 /*

@@ -7763,7 +7763,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	{
 	  pgbuf_wakeup_flush_thread (thread_p);
 	}
-      high_priority = VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
+      high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
       to.tv_sec = (int) time (NULL) + PGBUF_TIMEOUT;
@@ -8797,7 +8797,7 @@ restart:
  * pgbuf_panic_assign_direct_victims_from_lru () - panic assign direct victims from lru.
  *
  * return         : number of assigned victims.
- * thread_p (in)  : thread entru
+ * thread_p (in)  : thread entry
  * lru_list (in)  : lru list
  * bcb_start (in) : starting bcb
  */
@@ -14690,15 +14690,18 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
  * return        : void
  * thread_p (in) : thread entry
  */
-void
+bool
 pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bcb_flushed = NULL;
   THREAD_ENTRY *thrd_blocked = NULL;
+  bool not_empty = false;
 
   /* consume all flushed bcbs queue */
   while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcbs, &bcb_flushed))
     {
+      not_empty = true;
+
       /* we need to lock mutex */
       PGBUF_BCB_LOCK (bcb_flushed);
 
@@ -14761,6 +14764,8 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 
       PGBUF_BCB_UNLOCK (bcb_flushed);
     }
+
+  return not_empty;
 }
 
 /*
@@ -14831,7 +14836,6 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
       PGBUF_BCB_UNLOCK (bcb);
       return NULL;
     }
-
 
   switch (pgbuf_bcb_get_zone (bcb))
     {

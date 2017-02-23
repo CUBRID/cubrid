@@ -482,7 +482,7 @@ extern void pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p);
 
 #if defined (SERVER_MODE)
 extern bool pgbuf_keep_victim_flush_thread_running (void);
-extern void pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
+extern bool pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
 #endif /* !SERVER_MODE */
 
 extern void pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page);
