@@ -3469,23 +3469,23 @@ thread_page_post_flush_thread (void *arg_p)
       (void) ATOMIC_TAS_32 (&thread_Page_post_flush_thread.nrequestors, 0);
       /* assign flushed pages */
       if (!pgbuf_assign_flushed_pages (tsd_ptr))
-        {
-          /* no activity for post-flush. increase the sleep time. */
-          if (++count_no_activity >= MAX_NO_ACTIVITY)
-            {
-              /* sleep until awaken by someone */
-              thread_daemon_wait (&thread_Page_post_flush_thread);
-            }
-          else
-            {
-              thread_daemon_timedwait (&thread_Page_post_flush_thread, count_no_activity);
-            }
-        }
+	{
+	  /* no activity for post-flush. increase the sleep time. */
+	  if (++count_no_activity >= MAX_NO_ACTIVITY)
+	    {
+	      /* sleep until awaken by someone */
+	      thread_daemon_wait (&thread_Page_post_flush_thread);
+	    }
+	  else
+	    {
+	      thread_daemon_timedwait (&thread_Page_post_flush_thread, count_no_activity);
+	    }
+	}
       else
-        {
-          /* reset no activity counter and be prepared to start over */
-          count_no_activity = 0;
-        }
+	{
+	  /* reset no activity counter and be prepared to start over */
+	  count_no_activity = 0;
+	}
     }
   /* make sure all remaining are handled. */
   pgbuf_assign_flushed_pages (tsd_ptr);
