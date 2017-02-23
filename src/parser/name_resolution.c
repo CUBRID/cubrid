@@ -7800,15 +7800,11 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       if (pt_name_equal (parser, cte_name, node->info.spec.entity_name))
 	{
 	  node->info.spec.cte_name = node->info.spec.entity_name;
+	  node->info.spec.entity_name = NULL;
 	  node->info.spec.cte_pointer = pt_point (parser, cte);
 	  node->info.spec.cte_pointer->info.pointer.do_walk = false;
 	  break;
 	}
-    }
-
-  if (PT_SPEC_IS_CTE (node) > 0)
-    {
-      node->info.spec.entity_name = NULL;
     }
 
   return node;
@@ -7897,7 +7893,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   PT_NODE *cte_list, *with = NULL, *saved_with = NULL;
   PT_NODE *curr_cte, *previous_cte;
   PT_NODE *saved_curr_cte_next;
-  int nested_with = 0;
+  int nested_with_count = 0;
 
   assert (parser != NULL);
   assert (node != NULL);
@@ -7944,10 +7940,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     }
 
   /* check if there are nested WITHs */
-  cte_list = parser_walk_tree (parser, cte_list, pt_count_with_clauses, &nested_with, NULL, NULL);
-  if (nested_with != 0)
+  cte_list = parser_walk_tree (parser, cte_list, pt_count_with_clauses, &nested_with_count, NULL, NULL);
+  if (nested_with_count > 0)
     {
-      PT_INTERNAL_ERROR (parser, "nested withs");
+      PT_ERRORm (parser, with, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NESTED_WITH);
       return NULL;
     }
 
@@ -7971,27 +7967,34 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	  saved_curr_cte_next = curr_cte->next;
 	  curr_cte->next = NULL;
 
-	  from = recursive_part->info.query.q.select.from;
-	  from = parser_walk_tree (parser, from, pt_resolve_spec_to_cte_and_count, curr_cte, pt_count_ctes_post,
-				   &curr_cte_count);
-	  if (from != recursive_part->info.query.q.select.from)
+	  /* look for self references in recursive query FROM */
+	  for (from = recursive_part->info.query.q.select.from; from != NULL; from = from->next)
 	    {
-	      /* error in walk */
-	      return NULL;
+	      if (from->node_type == PT_SPEC && PT_SPEC_IS_ENTITY (from))
+		{
+		  (void) pt_resolve_spec_to_cte (parser, from, curr_cte, NULL);
+		  if (PT_SPEC_IS_CTE (from))
+		    {
+		      curr_cte_count++;
+		    }
+		}
 	    }
 
 	  if (curr_cte_count == 0 && non_recursive_part->node_type == PT_SELECT)
 	    {
 	      /* no self references were found in arg2 from union; search in arg1 also, syntax allows this case */
-	      from = non_recursive_part->info.query.q.select.from;
-	      from =
-		parser_walk_tree (parser, from, pt_resolve_spec_to_cte_and_count, curr_cte, pt_count_ctes_post,
-				  &curr_cte_count);
-	      if (from != non_recursive_part->info.query.q.select.from)
+	      for (from = non_recursive_part->info.query.q.select.from; from != NULL; from = from->next)
 		{
-		  /* error in walk */
-		  return NULL;
+		  if (from->node_type == PT_SPEC && PT_SPEC_IS_ENTITY (from))
+		    {
+		      (void) pt_resolve_spec_to_cte (parser, from, curr_cte, NULL);
+		      if (PT_SPEC_IS_CTE (from))
+			{
+			  curr_cte_count++;
+			}
+		    }
 		}
+
 	      if (curr_cte_count > 0)
 		{
 		  /* curr_cte is recursive but it was found in non-recursive part; swap non-recursive, recursive */
@@ -8010,18 +8013,17 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 
 	  /* check if there are any unresolved self references of the cte, it would be incorrect */
 	  curr_cte_count = 0;
-	  curr_cte =
-	    parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte_and_count, curr_cte, pt_count_ctes_post,
-			      &curr_cte_count);
+	  curr_cte = parser_walk_tree (parser, curr_cte, pt_resolve_spec_to_cte_and_count, curr_cte,
+				       pt_count_ctes_post, &curr_cte_count);
 	  if (curr_cte == NULL)
 	    {
 	      /* error in walk */
 	      return NULL;
 	    }
-
 	  if (curr_cte_count > 0)
 	    {
-	      PT_INTERNAL_ERROR (parser, "cte must be referenced only directly in recursive query");
+	      PT_ERRORmf (parser, curr_cte, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCORRECT_RECURSIVE_CTE,
+			  curr_cte->info.cte.name->info.name.original);
 	      return NULL;
 	    }
 
@@ -9688,7 +9690,7 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
  *   return:
  *   parser(in):
  *   node(in): the node to check
- *   arg(out): count of with clauses
+ *   arg(out): count of WITH clauses
  *   continue_walk(in):
  */
 static PT_NODE *
