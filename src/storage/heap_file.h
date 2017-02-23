@@ -335,7 +335,7 @@ struct heap_operation_context
   HFID hfid;			/* heap file identifier */
   OID oid;			/* object identifier */
   OID class_oid;		/* class object identifier */
-  RECDES *recdes_p;		/* record descriptor */
+  RECDES *recdes_p;		/* new record descriptor used at insertion or to update the old record */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
 
   /* overflow transient data */
