@@ -14719,6 +14719,12 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 	  /* bcb belongs to a private list under quota. give it a chance. */
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA);
 	}
+      else if (pgbuf_bcb_is_direct_victim (bcb_flushed))
+	{
+	  /* sometimes (very rare) checkpoint can snatch the bcb, mark it as flushed and assign it as victim */
+	  assert (!pgbuf_bcb_is_flushing (bcb_flushed));
+	  /* todo: performance monitor */
+	}
       else if (pgbuf_assign_direct_victim (thread_p, bcb_flushed))
 	{
 	  /* assigned directly */
