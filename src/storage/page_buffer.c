@@ -8736,11 +8736,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	}
     }
 
-  PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_LIST_FAIL);
+  PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_FAIL);
   if (bufptr_victimizable == NULL && victim_hint != NULL)
     {
       /* we had a hint and we failed to find any victim candidates. */
-      PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_LIST_BAD_HINT);
+      PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT);
       if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL))
 	{
 	  /* was set to null */
@@ -9642,14 +9642,7 @@ pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_L
     {
       if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, bufptr, new_victim_hint))
 	{
-	  if (new_victim_hint == NULL)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_REM_BCB_NULL_HINT);
-	    }
-	  else
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_LRU_REM_BCB_ADVANCE_HINT);
-	    }
+	  /* advanced hint */
 	}
     }
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_VOID_ZONE);
