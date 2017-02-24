@@ -6862,7 +6862,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   if ((log_Gl.hdr.nxarv_num - (log_Gl.hdr.last_deleted_arv_num + 1)) > num_remove_arv_num)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED, 1, num_remove_arv_num);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED, 1, num_remove_arv_num);
 
       /* Remove the log archives at this point */
       first_arv_num_to_delete = log_Gl.hdr.last_deleted_arv_num + 1;
