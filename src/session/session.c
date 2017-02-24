@@ -329,7 +329,7 @@ session_state_uninit (void *st)
       sysprm_free_session_parameters (&session->session_parameters);
     }
 
-  (void) pgbuf_release_private_lru (session->private_lru_index);
+  (void) pgbuf_release_private_lru (thread_p, session->private_lru_index);
   session->private_lru_index = -1;
 
 #if defined (SESSION_DEBUG)
@@ -632,7 +632,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* increase reference count of new session_p */
   session_state_increase_ref_count (thread_p, session_p);
 
-  session_p->private_lru_index = pgbuf_assign_private_lru (false, (int) session_p->id);
+  session_p->private_lru_index = pgbuf_assign_private_lru (thread_p, false, (int) session_p->id);
   /* set as thread session */
   session_set_conn_entry_data (thread_p, session_p);
 

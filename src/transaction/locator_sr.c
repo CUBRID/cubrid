@@ -12838,7 +12838,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	      else if (scan == S_END)
 		{
 		  /* move to next page */
-		  error = heap_vpid_next (&hfid, scan_cache.page_watcher.pgptr, &vpid);
+		  error = heap_vpid_next (thread_p, &hfid, scan_cache.page_watcher.pgptr, &vpid);
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;

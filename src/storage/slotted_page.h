@@ -174,7 +174,8 @@ extern SCAN_CODE spage_previous_record (PAGE_PTR pgptr, PGSLOTID * slotid, RECDE
 extern SCAN_CODE spage_previous_record_dont_skip_empty (PAGE_PTR pgptr, PGSLOTID * slotid, RECDES * recdes,
 							int ispeeking);
 extern SCAN_CODE spage_get_page_header_info (PAGE_PTR page_p, DB_VALUE ** page_header_info);
-extern SCAN_CODE spage_get_record (PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes, int ispeeking);
+extern SCAN_CODE spage_get_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes,
+				   int ispeeking);
 extern bool spage_is_slot_exist (PAGE_PTR pgptr, PGSLOTID slotid);
 extern void spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR pgptr, int isrecord_printed);
 extern SPAGE_SLOT *spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id);
@@ -182,15 +183,15 @@ extern SPAGE_SLOT *spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id);
 extern bool spage_check_num_slots (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 #endif
 extern int spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
-extern int spage_get_record_length (PAGE_PTR pgptr, PGSLOTID slotid);
-extern int spage_get_record_offset (PAGE_PTR page_p, PGSLOTID slot_id);
-extern int spage_get_space_for_record (PAGE_PTR page_p, PGSLOTID slot_id);
+extern int spage_get_record_length (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
+extern int spage_get_record_offset (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id);
+extern int spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id);
 extern INT16 spage_get_record_type (PAGE_PTR pgptr, PGSLOTID slotid);
 extern int spage_max_space_for_new_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void spage_collect_statistics (PAGE_PTR pgptr, int *npages, int *nrecords, int *rec_length);
 extern int spage_max_record_size (void);
 extern int spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
-extern int spage_compact (PAGE_PTR pgptr);
+extern int spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern bool spage_is_valid_anchor_type (const INT16 anchor_type);
 extern const char *spage_anchor_flag_string (const INT16 anchor_type);
 extern const char *spage_alignment_string (unsigned short alignment);
