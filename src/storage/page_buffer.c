@@ -3349,12 +3349,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   int check_count_this_lru;
   float victim_flush_priority_this_lru;
 
-  PERF_UTIME_TRACKER time_tracker_all_lru = PERF_UTIME_TRACKER_INITIALIZER;
-  PERF_UTIME_TRACKER time_tracker_one_lru;
-
-  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_all_lru);
-  time_tracker_one_lru = time_tracker_all_lru;
-
   /* init */
   lru_idx = ((pgbuf_Pool.last_flushed_LRU_list_idx + 1) % PGBUF_TOTAL_LRU_COUNT);
   start_lru_idx = lru_idx;
@@ -3402,13 +3396,11 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       pgbuf_Pool.last_flushed_LRU_list_idx = lru_idx;
 
       lru_idx = (lru_idx + 1) % PGBUF_TOTAL_LRU_COUNT;
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_one_lru, PSTAT_PB_FLUSH_COLLECT_ONE_LRU);
     }
   while (lru_idx != start_lru_idx);	/* check if we've visited all of the lists */
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: pgbuf_get_victim_candidates_from_lru %d \n",
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: pgbuf_get_victim_candidates_from_lru %d \n",
 		victim_cand_count - victim_count);
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_all_lru, PSTAT_PB_FLUSH_COLLECT_ALL_LRU);
 
   return victim_cand_count - victim_count;
 }
@@ -3427,14 +3419,14 @@ struct pgbuf_flush_see_stuff
 PGBUF_FLUSH_SEE_STUFF pgbuf_Flush_eye;
 
 /*
- * pgbuf_flush_victim_candidate () - Flush victim candidates
+ * pgbuf_flush_victim_candidates () - Flush victim candidates
  *   return: NO_ERROR, or ER_code
  *
  * Note: This function flushes at most VictimCleanCount buffers that might
  *       become victim candidates in the near future.
  */
 int
-pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
+pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_UTIME_TRACKER * perf_tracker)
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
@@ -3451,27 +3443,10 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 #if defined(SERVER_MODE)
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
-  static PERF_UTIME_TRACKER time_tracker_run_sleep = PERF_UTIME_TRACKER_INITIALIZER;
-  PERF_UTIME_TRACKER time_tracker_collect_flush = PERF_UTIME_TRACKER_INITIALIZER;
   bool is_bcb_locked = false;
 
-  if (time_tracker_run_sleep.is_perf_tracking)
-    {
-      /* register sleep time. */
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_run_sleep, PSTAT_PB_FLUSH_SLEEP);
-
-      /* update is_perf_tracking */
-      time_tracker_run_sleep.is_perf_tracking = perfmon_is_perf_tracking ();
-    }
-  else
-    {
-      /* register timer */
-      PERF_UTIME_TRACKER_START (thread_p, &time_tracker_run_sleep);
-    }
-  time_tracker_collect_flush = time_tracker_run_sleep;
-
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: start flush victim candidates\n");
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flush victim candidates\n");
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
   if (thread_is_page_flush_thread_available ())
@@ -3548,7 +3523,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   if (victim_count == 0)
     {
       /* We didn't find any victims */
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_collect_flush, PSTAT_PB_FLUSH_COLLECT);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, perf_tracker, PSTAT_PB_FLUSH_COLLECT);
       goto end;
     }
 
@@ -3568,15 +3543,18 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   pgbuf_Pool.is_flushing_victims = true;
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: start flushing collected victim candidates\n");
-  if (time_tracker_collect_flush.is_perf_tracking)
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flushing collected victim candidates\n");
+  if (perf_tracker->is_perf_tracking)
     {
       UINT64 utime;
-      tsc_getticks (&time_tracker_collect_flush.end_tick);
-      utime = tsc_elapsed_utime (time_tracker_collect_flush.end_tick, time_tracker_collect_flush.start_tick);
+      tsc_getticks (&perf_tracker->end_tick);
+      utime = tsc_elapsed_utime (perf_tracker->end_tick, perf_tracker->start_tick);
       perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_COLLECT, utime);
-      perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_PER_PAGE, utime / victim_count);
-      time_tracker_collect_flush.start_tick = time_tracker_collect_flush.end_tick;
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+        {
+          perfmon_time_bulk_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_PER_PAGE, utime, victim_count);
+        }
+      perf_tracker->start_tick = perf_tracker->end_tick;
     }
 
   /* temporary disable second iteration */
@@ -3645,7 +3623,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       if (error != NO_ERROR)
 	{
 	  /* if this shows up in statistics or log, consider it a red flag */
-	  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: error during flush");
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: error during flush");
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FLUSH_ERROR);
 	  goto end;
 	}
@@ -3653,29 +3631,27 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
       total_flushed_count += flushed_pages;
     }
 
+  if (perf_tracker->is_perf_tracking)
+    {
+      UINT64 utime;
+      tsc_getticks (&perf_tracker->end_tick);
+      utime = tsc_elapsed_utime (perf_tracker->end_tick, perf_tracker->start_tick);
+      perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH, utime);
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+        {
+          perfmon_time_bulk_stat (thread_p, PSTAT_PB_FLUSH_FLUSH_PER_PAGE, utime, total_flushed_count);
+        }
+      perf_tracker->start_tick = perf_tracker->end_tick;
+    }
+
 end:
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = false;
 #endif
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_victim_candidate: flush %d pages from (%d) to (%d) list. "
-		"Found LRU:%d/%d", total_flushed_count, start_lru_idx,
-		pgbuf_Pool.last_flushed_LRU_list_idx, victim_count, check_count_lru);
-
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from (%d) to (%d) list. Found LRU:%d/%d",
+                total_flushed_count, start_lru_idx, pgbuf_Pool.last_flushed_LRU_list_idx, victim_count,
+                check_count_lru);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
-
-  if (time_tracker_collect_flush.is_perf_tracking)
-    {
-      UINT64 utime;
-      tsc_getticks (&time_tracker_collect_flush.end_tick);
-      utime = tsc_elapsed_utime (time_tracker_collect_flush.end_tick, time_tracker_collect_flush.start_tick);
-      perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH, utime);
-      if (total_flushed_count > 0)
-	{
-	  perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH_PER_PAGE, utime / total_flushed_count);
-	}
-    }
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_tracker_run_sleep, PSTAT_PB_FLUSH_RUN);
 
   return error;
 }
@@ -11257,6 +11233,7 @@ pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 static void
 pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 {
+  PERF_UTIME_TRACKER dummy_time_tracker;
 #if defined(SERVER_MODE)
   if (thread_is_page_flush_thread_available ())
     {
@@ -11264,8 +11241,9 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
       return;
     }
 #endif
-
-  pgbuf_flush_victim_candidate (thread_p, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
+  /* single-threaded environment. do flush on our own. */
+  dummy_time_tracker.is_perf_tracking = false;
+  pgbuf_flush_victim_candidates (thread_p, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &dummy_time_tracker);
 }
 
 /*

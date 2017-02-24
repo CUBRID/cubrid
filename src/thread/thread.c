@@ -3335,15 +3335,18 @@ thread_page_flush_thread (void *arg_p)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
   int wakeup_interval;
+  PERF_UTIME_TRACKER perf_track;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   thread_daemon_start (&thread_Page_flush_thread, tsd_ptr, TT_DAEMON);
+
+  PERF_UTIME_TRACKER_START (tsd_ptr, &perf_track);
   while (!tsd_ptr->shutdown)
     {
       /* flush pages as long as necessary */
       while (!tsd_ptr->shutdown && pgbuf_keep_victim_flush_thread_running ())
 	{
-	  pgbuf_flush_victim_candidate (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO));
+	  pgbuf_flush_victim_candidates (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &perf_track);
 	}
 
       /* wait */
@@ -3356,6 +3359,21 @@ thread_page_flush_thread (void *arg_p)
 	{
 	  thread_daemon_wait (&thread_Page_flush_thread);
 	}
+
+      /* perfmormance tracking */
+      if (perf_track.is_perf_tracking)
+        {
+          /* register sleep time. */
+          PERF_UTIME_TRACKER_TIME_AND_RESTART (tsd_ptr, &perf_track, PSTAT_PB_FLUSH_SLEEP);
+
+          /* update is_perf_tracking */
+          perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
+        }
+      else
+        {
+          /* update is_perf_tracking and start timer if it became true */
+          PERF_UTIME_TRACKER_START (tsd_ptr, &perf_track);
+        }
     }
   thread_daemon_stop (&thread_Page_flush_thread, tsd_ptr);
 

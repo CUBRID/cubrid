@@ -56,11 +56,12 @@
 
 /* Statistics activation flags */
 
-#define PERFMON_ACTIVE_DEFAULT 0
-#define PERFMON_ACTIVE_DETAILED_BTREE_PAGE 1
-#define PERFMON_ACTIVE_MVCC_SNAPSHOT 2
-#define PERFMON_ACTIVE_LOCK_OBJECT 4
-#define PERFMON_ACTIVE_PB_HASH_ANCHOR 8
+#define PERFMON_ACTIVE_DEFAULT                    0
+#define PERFMON_ACTIVE_DETAILED_BTREE_PAGE        1
+#define PERFMON_ACTIVE_MVCC_SNAPSHOT              2
+#define PERFMON_ACTIVE_LOCK_OBJECT                4
+#define PERFMON_ACTIVE_PB_HASH_ANCHOR             8
+#define PERFMON_ACTIVE_PB_VICTIMIZATION           16
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
@@ -292,10 +293,6 @@ typedef enum
   PSTAT_PB_FLUSH_FLUSH,
   PSTAT_PB_FLUSH_COLLECT_PER_PAGE,
   PSTAT_PB_FLUSH_FLUSH_PER_PAGE,
-  PSTAT_PB_FLUSH_COLLECT_ALL_LRU,
-  PSTAT_PB_FLUSH_COLLECT_ONE_LRU,
-  PSTAT_PB_FLUSH_COLLECT_TO_VACUUM_SKIP,
-  PSTAT_PB_FLUSH_COLLECT_TO_VACUUM_DONT_SKIP,
 
   /* allocate and victim assignments */
   PSTAT_PB_ALLOC_BCB,
@@ -851,6 +848,8 @@ STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) _
 STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff, UINT64 count)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int perfmon_get_activation_flag (void) __attribute__ ((ALWAYS_INLINE));
@@ -1078,7 +1077,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
   do
     {
-      max_time = ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), 0);
+      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
       if (max_time >= timediff)
 	{
 	  /* No need to change max_time. */
@@ -1102,6 +1101,94 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
       if (max_time < timediff)
 	{
 	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
+	}
+    }
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * perfmon_time_bulk_stat () - Register statistic timer value. Counter, total time and maximum time are updated.
+ *                             Used to count and time multiple units at once (as opposed to perfmon_time_stat which
+ *                             increments count by one).
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * psid (in)	 : Statistic ID.
+ * timediff (in) : Time difference to register.
+ * count (in)    : Unit count.
+ */
+STATIC_INLINE void
+perfmon_time_bulk_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff, UINT64 count)
+{
+  assert (pstat_Global.initialized);
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+
+  assert (pstat_Metadata[psid].valtype == PSTAT_COUNTER_TIMER_VALUE);
+
+  perfmon_time_at_offset (thread_p, pstat_Metadata[psid].start_offset, timediff);
+}
+
+/*
+ * perfmon_time_bulk_at_offset () - Register timer statistics in global/local at offset for multiple units at once.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * offset (in)   : Offset to timer values.
+ * timediff (in) : Time difference to add to timer.
+ * count (in)    : Unit count timed at once
+ *
+ * NOTE: There will be three values modified: counter, total time and max time.
+ */
+STATIC_INLINE void
+perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff, UINT64 count)
+{
+  /* Update global statistics */
+  UINT64 *statvalp = NULL;
+  UINT64 max_time;
+  UINT64 time_per_unit;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  int tran_index;
+#endif /* SERVER_MODE || SA_MODE */
+
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
+
+  if (count == 0)
+    {
+      return;
+    }
+  time_per_unit = timediff / count;
+
+  /* Update global statistics. */
+  statvalp = pstat_Global.global_stats + offset;
+  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), count);
+  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
+  do
+    {
+      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
+      if (max_time >= time_per_unit)
+	{
+	  /* No need to change max_time. */
+	  break;
+	}
+    }
+  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, time_per_unit));
+  /* Average is not computed here. */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* Update local statistic */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+  if (pstat_Global.is_watching[tran_index])
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += count;
+      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
+      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
+      if (max_time < time_per_unit)
+	{
+	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = time_per_unit;
 	}
     }
 #endif /* SERVER_MODE || SA_MODE */
