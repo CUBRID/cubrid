@@ -3551,9 +3551,9 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
       utime = tsc_elapsed_utime (perf_tracker->end_tick, perf_tracker->start_tick);
       perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_COLLECT, utime);
       if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
-        {
-          perfmon_time_bulk_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_PER_PAGE, utime, victim_count);
-        }
+	{
+	  perfmon_time_bulk_stat (thread_p, PSTAT_PB_FLUSH_COLLECT_PER_PAGE, utime, victim_count);
+	}
       perf_tracker->start_tick = perf_tracker->end_tick;
     }
 
@@ -3638,9 +3638,9 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
       utime = tsc_elapsed_utime (perf_tracker->end_tick, perf_tracker->start_tick);
       perfmon_time_stat (thread_p, PSTAT_PB_FLUSH_FLUSH, utime);
       if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
-        {
-          perfmon_time_bulk_stat (thread_p, PSTAT_PB_FLUSH_FLUSH_PER_PAGE, utime, total_flushed_count);
-        }
+	{
+	  perfmon_time_bulk_stat (thread_p, PSTAT_PB_FLUSH_FLUSH_PER_PAGE, utime, total_flushed_count);
+	}
       perf_tracker->start_tick = perf_tracker->end_tick;
     }
 
@@ -3649,8 +3649,8 @@ end:
   pgbuf_Pool.is_flushing_victims = false;
 #endif
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from (%d) to (%d) list. Found LRU:%d/%d",
-                total_flushed_count, start_lru_idx, pgbuf_Pool.last_flushed_LRU_list_idx, victim_count,
-                check_count_lru);
+		total_flushed_count, start_lru_idx, pgbuf_Pool.last_flushed_LRU_list_idx, victim_count,
+		check_count_lru);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
   return error;
@@ -7664,6 +7664,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PGBUF_BCB *bufptr;
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_search_and_wait = PERF_UTIME_TRACKER_INITIALIZER;
+  bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
 
 #if defined (SERVER_MODE)
   struct timespec to;
@@ -7702,7 +7703,10 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     }
 
   PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
-  PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_search_and_wait);
+  if (detailed_perf)
+    {
+      PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_search_and_wait);
+    }
 
   /* search lru lists */
   bufptr = pgbuf_get_victim (thread_p);
@@ -7748,7 +7752,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       /* push to waiter thread list */
       if (high_priority)
 	{
-	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+	  if (detailed_perf && VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM);
 	    }
@@ -7836,7 +7840,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       /* we need to flush something */
       pgbuf_wakeup_flush_thread (thread_p);
 
-      PERF_UTIME_TRACKER_START (thread_p, &time_tracker_alloc_bcb);
       bufptr = pgbuf_get_victim (thread_p);
       PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
       assert (bufptr != NULL);
