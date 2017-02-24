@@ -3453,8 +3453,6 @@ thread_wakeup_page_buffer_maintenance_thread (void)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_page_post_flush_thread (void *arg_p)
 {
-#define MAX_NO_ACTIVITY 100
-
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
@@ -3470,16 +3468,26 @@ thread_page_post_flush_thread (void *arg_p)
       /* assign flushed pages */
       if (!pgbuf_assign_flushed_pages (tsd_ptr))
 	{
-	  /* no activity for post-flush. increase the sleep time. */
-	  if (++count_no_activity >= MAX_NO_ACTIVITY)
-	    {
-	      /* sleep until awaken by someone */
-	      thread_daemon_wait (&thread_Page_post_flush_thread);
-	    }
-	  else
-	    {
-	      thread_daemon_timedwait (&thread_Page_post_flush_thread, count_no_activity);
-	    }
+	  /* no activity for post-flush. escalate sleep-time to avoid spinning uselessly. */
+          switch (++count_no_activity)
+            {
+            case 1:
+              /* sleep 1 msec */
+              thread_daemon_timedwait (&thread_Page_post_flush_thread, 1);
+              break;
+            case 2:
+              /* sleep 10 msec */
+              thread_daemon_timedwait (&thread_Page_post_flush_thread, 10);
+              break;
+            case 3:
+              /* sleep 100 msec */
+              thread_daemon_timedwait (&thread_Page_post_flush_thread, 100);
+              break;
+            default:
+              /* sleep indefinitely. if the thread is required, flush will wake it */
+              thread_daemon_wait (&thread_Page_post_flush_thread);
+              break;
+            }
 	}
       else
 	{
@@ -3493,8 +3501,6 @@ thread_page_post_flush_thread (void *arg_p)
   thread_daemon_stop (&thread_Page_post_flush_thread, tsd_ptr);
 
   return (THREAD_RET_T) 0;
-
-#undef MAX_NO_ACTIVITY
 }
 
 /*

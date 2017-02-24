@@ -10115,8 +10115,9 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * i
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
 
 #if defined (SERVER_MODE)
-  /* TODO: compute the delay between flush and direct assignment */
-  if (thread_is_page_post_flush_thread_available () && lf_circular_queue_produce (pgbuf_Pool.flushed_bcbs, &bufptr))
+  /* if the flush thread is under pressure, we'll move some of the workload to post-flush thread. */
+  if (thread_is_page_post_flush_thread_available () && pgbuf_is_io_stressful ()
+      && lf_circular_queue_produce (pgbuf_Pool.flushed_bcbs, &bufptr))
     {
       /* page buffer maintenance thread will try to assign this bcb directly as victim. */
       thread_wakeup_page_post_flush_thread ();
