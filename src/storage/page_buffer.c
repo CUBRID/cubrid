@@ -6392,7 +6392,10 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		  if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		    {
 		      /* assigned victim directly */
-		      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID);
+		      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+			{
+			  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID);
+			}
 
 		      /* add to AOUT */
 		      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, aout_list_id);
@@ -6474,7 +6477,10 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		      if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
 			{
 			  /* assigned victim directly */
-			  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU);
+			  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+			    {
+			      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU);
+			    }
 			}
 		      else
 			{
@@ -8824,7 +8830,10 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
 	}
       /* assigned directly */
       PGBUF_BCB_UNLOCK (bcb);
-      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
+	}
       n_assigned++;
     }
 
@@ -9300,7 +9309,10 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
     {
       if (pgbuf_bcb_is_to_vacuum (bcb))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST_TO_VACUUM);
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST_TO_VACUUM);
+	    }
 	  /* fall through */
 	}
       else
@@ -9313,7 +9325,10 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 	      VPID vpid_copy = bcb->vpid;
 	      if (pgbuf_is_bcb_victimizable (bcb, true) && pgbuf_assign_direct_victim (thread_p, bcb))
 		{
-		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
+		  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+		    {
+		      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
+		    }
 
 		  /* since bcb is going to be removed from list and I have both lru and bcb mutex, why not do it now. */
 		  pgbuf_remove_from_lru_list (thread_p, bcb, lru_list);
@@ -10095,12 +10110,15 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * i
 
 #if defined (SERVER_MODE)
   /* if the flush thread is under pressure, we'll move some of the workload to post-flush thread. */
-  if (thread_is_page_post_flush_thread_available () && pgbuf_is_io_stressful ()
+  if (thread_is_page_post_flush_thread_available () && pgbuf_is_any_thread_waiting_for_direct_victim ()
       && lf_circular_queue_produce (pgbuf_Pool.flushed_bcbs, &bufptr))
     {
       /* page buffer maintenance thread will try to assign this bcb directly as victim. */
       thread_wakeup_page_post_flush_thread ();
-      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_FOR_DIRECT_VICTIM);
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_FOR_DIRECT_VICTIM);
+	}
     }
   else
 #endif /* SERVER_MODE */
@@ -10108,7 +10126,10 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * i
       PGBUF_BCB_LOCK (bufptr);
       *is_bcb_locked = true;
       pgbuf_bcb_mark_was_flushed (thread_p, bufptr);
-      perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_MARK_FLUSHED);
+      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_MARK_FLUSHED);
+	}
 
 #if defined(SERVER_MODE)
       /* wakeup blocked flushers */
@@ -14685,6 +14706,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bcb_flushed = NULL;
   THREAD_ENTRY *thrd_blocked = NULL;
+  bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool not_empty = false;
 
   /* consume all flushed bcbs queue */
@@ -14698,12 +14720,18 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
       if (pgbuf_bcb_is_dirty (bcb_flushed))
 	{
 	  /* dirty bcb is not a valid victim */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY);
+	  if (detailed_perf)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY);
+	    }
 	}
       else if (pgbuf_is_bcb_fixed_by_any (bcb_flushed, true) || pgbuf_bcb_is_invalid_direct_victim (bcb_flushed))
 	{
 	  /* bcb is fixed. we cannot assign it as victim */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED);
+	  if (detailed_perf)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED);
+	    }
 	}
       else if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_flushed))
 	{
@@ -14713,31 +14741,42 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
       else if (pgbuf_bcb_is_to_vacuum (bcb_flushed))
 	{
 	  /* bcb will be accessed by vacuum */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_TO_VACUUM);
+	  if (detailed_perf)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_TO_VACUUM);
+	    }
 	}
       else if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bcb_flushed))
 	       && !PGBUF_LRU_LIST_IS_OVER_QUOTA (pgbuf_lru_list_from_bcb (bcb_flushed)))
 	{
 	  /* bcb belongs to a private list under quota. give it a chance. */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA);
+	  if (detailed_perf)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA);
+	    }
 	}
       else if (pgbuf_bcb_is_direct_victim (bcb_flushed))
 	{
 	  /* sometimes (very rare) checkpoint can snatch the bcb, mark it as flushed and assign it as victim */
 	  assert (!pgbuf_bcb_is_flushing (bcb_flushed));
-	  /* todo: performance monitor */
 	}
       else if (pgbuf_assign_direct_victim (thread_p, bcb_flushed))
 	{
 	  /* assigned directly */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
+	  if (detailed_perf)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH);
+	    }
 	}
       else
 	{
 	  /* not assigned directly */
 	  assert (!pgbuf_bcb_is_direct_victim (bcb_flushed));
 	  /* could not assign it directly. there must be no waiters */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER);
+	  if (detailed_perf)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER);
+	    }
 	}
 
       /* make sure bcb is no longer marked as flushing */
