@@ -282,10 +282,12 @@ struct heap_log_info
   VPID vpid;			/* page identifier */
   int slot_id_with_flags;	/* slot id with flags */
 
+  /* TO DO - undo header */
   char undo_data_buffer[IO_MAX_PAGE_SIZE / 4 + MAX_ALIGNMENT];	/* undo data buffer */
   void *undo_data_p;		/* pointer to undo data */
   int undo_data_size;		/* undo data size */
 
+  /* TO DO - redo header */
   char redo_data_buffer[IO_MAX_PAGE_SIZE / 4 + MAX_ALIGNMENT];	/* redo data buffer */
   void *redo_data_p;		/* pointer to redo data */
   int redo_data_size;		/* redo data size */
@@ -344,15 +346,19 @@ struct heap_operation_context
 
   /* transient data */
   RECDES home_recdes;
-  char home_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char home_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep home recdes */
   INT16 record_type;		/* record type of original record */
   FILE_TYPE file_type;		/* the file type of hfid */
 
-  char forward_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  RECDES new_home_recdes;	/* new home recdes */
-  RECDES forward_recdes;	/* used in case of RELOCATION and BIGONE records */
   OID forward_oid;		/* forward oid identifier */
   OID new_forward_oid;		/* new forward oid identifier */
+  RECDES forward_recdes;	/* used in case of RELOCATION and BIGONE records */
+  RECDES new_home_recdes;	/* new home recdes */
+  char forward_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep forward recdes */
+
+  /* buffers, used to build the new record at heap deletion */
+  char recdes_data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
+  char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
 
   /* physical page watchers - these should not be referenced directly */
   PGBUF_WATCHER home_page_watcher;	/* home page */
@@ -368,8 +374,12 @@ struct heap_operation_context
   PGBUF_WATCHER *forward_page_watcher_p;
   PGBUF_WATCHER *new_forward_page_watcher_p;
 
-  PAGE_PTR page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
-  RECDES home_recdes_before_page_fix;	/* rec home or rec new home */
+  /* !!! TO DO - needs only to page and reuse home record and forward record */
+  /* data used to build the log record before page fixing */
+  PAGE_PTR home_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
+  PAGE_PTR forward_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
+  RECDES home_recdes_before_page_fix;	/* rec home or rec new home - TO DO maybe reuse home recdes */
+  RECDES forward_recdes_before_page_fix;	/* forward recdes - TO DO maybe reuse froward recdes */
   HEAP_LOG_INFO *heap_log_info_p;	/* Heap log info, used to create the log node before fixing page */
 
   /* logical operation output */
