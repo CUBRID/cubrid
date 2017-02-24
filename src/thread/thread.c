@@ -3362,18 +3362,18 @@ thread_page_flush_thread (void *arg_p)
 
       /* perfmormance tracking */
       if (perf_track.is_perf_tracking)
-        {
-          /* register sleep time. */
-          PERF_UTIME_TRACKER_TIME_AND_RESTART (tsd_ptr, &perf_track, PSTAT_PB_FLUSH_SLEEP);
+	{
+	  /* register sleep time. */
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (tsd_ptr, &perf_track, PSTAT_PB_FLUSH_SLEEP);
 
-          /* update is_perf_tracking */
-          perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
-        }
+	  /* update is_perf_tracking */
+	  perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
+	}
       else
-        {
-          /* update is_perf_tracking and start timer if it became true */
-          PERF_UTIME_TRACKER_START (tsd_ptr, &perf_track);
-        }
+	{
+	  /* update is_perf_tracking and start timer if it became true */
+	  PERF_UTIME_TRACKER_START (tsd_ptr, &perf_track);
+	}
     }
   thread_daemon_stop (&thread_Page_flush_thread, tsd_ptr);
 
@@ -3487,25 +3487,25 @@ thread_page_post_flush_thread (void *arg_p)
       if (!pgbuf_assign_flushed_pages (tsd_ptr))
 	{
 	  /* no activity for post-flush. escalate sleep-time to avoid spinning uselessly. */
-          switch (++count_no_activity)
-            {
-            case 1:
-              /* sleep 1 msec */
-              thread_daemon_timedwait (&thread_Page_post_flush_thread, 1);
-              break;
-            case 2:
-              /* sleep 10 msec */
-              thread_daemon_timedwait (&thread_Page_post_flush_thread, 10);
-              break;
-            case 3:
-              /* sleep 100 msec */
-              thread_daemon_timedwait (&thread_Page_post_flush_thread, 100);
-              break;
-            default:
-              /* sleep indefinitely. if the thread is required, flush will wake it */
-              thread_daemon_wait (&thread_Page_post_flush_thread);
-              break;
-            }
+	  switch (++count_no_activity)
+	    {
+	    case 1:
+	      /* sleep 1 msec */
+	      thread_daemon_timedwait (&thread_Page_post_flush_thread, 1);
+	      break;
+	    case 2:
+	      /* sleep 10 msec */
+	      thread_daemon_timedwait (&thread_Page_post_flush_thread, 10);
+	      break;
+	    case 3:
+	      /* sleep 100 msec */
+	      thread_daemon_timedwait (&thread_Page_post_flush_thread, 100);
+	      break;
+	    default:
+	      /* sleep indefinitely. if the thread is required, flush will wake it */
+	      thread_daemon_wait (&thread_Page_post_flush_thread);
+	      break;
+	    }
 	}
       else
 	{
