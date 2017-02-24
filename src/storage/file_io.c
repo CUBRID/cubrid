@@ -767,7 +767,7 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
       pthread_mutex_unlock (&tb->token_mutex);
       retry_count++;
 
-      PERF_UTIME_TRACKER_BULK_TIME (thread_p, &time_tracker, PSTAT_PB_COMPENSATE_FLUSH);
+      PERF_UTIME_TRACKER_BULK_TIME (thread_p, &time_tracker, PSTAT_PB_COMPENSATE_FLUSH, nreq);
     }
 
   /* I am very very unlucky (unlikely to happen) */
