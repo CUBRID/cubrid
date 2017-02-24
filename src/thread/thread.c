@@ -2801,7 +2801,7 @@ thread_vacuum_worker_thread (void *arg_p)
   thread_monitor->is_available = true;
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-  tsd_ptr->private_lru_index = pgbuf_assign_private_lru (true, daemon_index);
+  tsd_ptr->private_lru_index = pgbuf_assign_private_lru (tsd_ptr, true, daemon_index);
 
   while (!tsd_ptr->shutdown)
     {
@@ -2823,7 +2823,7 @@ thread_vacuum_worker_thread (void *arg_p)
       vacuum_start_new_job (tsd_ptr);
     }
 
-  pgbuf_release_private_lru (tsd_ptr->private_lru_index);
+  pgbuf_release_private_lru (tsd_ptr, tsd_ptr->private_lru_index);
 
   rv = pthread_mutex_lock (&thread_monitor->lock);
   thread_monitor->is_available = false;

@@ -696,7 +696,7 @@ catalog_file_map_find_optimal_page (THREAD_ENTRY * thread_p, PAGE_PTR * page, bo
 
   (void) pgbuf_check_page_ptype (thread_p, *page, PAGE_CATALOG);
 
-  if (spage_get_record (*page, CATALOG_HEADER_SLOT, &record, PEEK) != S_SUCCESS)
+  if (spage_get_record (thread_p, *page, CATALOG_HEADER_SLOT, &record, PEEK) != S_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;
@@ -1128,7 +1128,7 @@ catalog_put_record_into_page (THREAD_ENTRY * thread_p, CATALOG_RECORD * catalog_
 
   /* make the previous page point to the newly allocated page */
   catalog_record_p->recdes.area_size = DB_PAGESIZE;
-  (void) spage_get_record (catalog_record_p->page_p, CATALOG_HEADER_SLOT, &catalog_record_p->recdes, COPY);
+  (void) spage_get_record (thread_p, catalog_record_p->page_p, CATALOG_HEADER_SLOT, &catalog_record_p->recdes, COPY);
 
   log_append_undo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, catalog_record_p->page_p, CATALOG_HEADER_SLOT,
 			   &catalog_record_p->recdes);
@@ -1329,7 +1329,7 @@ catalog_get_record_from_page (THREAD_ENTRY * thread_p, CATALOG_RECORD * catalog_
   /* if it is not first time, if there was the page previously read */
   if (catalog_record_p->page_p)
     {
-      if (spage_get_record (catalog_record_p->page_p, CATALOG_HEADER_SLOT, &catalog_record_p->recdes, PEEK) !=
+      if (spage_get_record (thread_p, catalog_record_p->page_p, CATALOG_HEADER_SLOT, &catalog_record_p->recdes, PEEK) !=
 	  S_SUCCESS)
 	{
 	  return ER_FAILED;
@@ -1356,8 +1356,8 @@ catalog_get_record_from_page (THREAD_ENTRY * thread_p, CATALOG_RECORD * catalog_
 
   (void) pgbuf_check_page_ptype (thread_p, catalog_record_p->page_p, PAGE_CATALOG);
 
-  if (spage_get_record (catalog_record_p->page_p, catalog_record_p->slotid, &catalog_record_p->recdes, PEEK) !=
-      S_SUCCESS)
+  if (spage_get_record (thread_p, catalog_record_p->page_p, catalog_record_p->slotid, &catalog_record_p->recdes, PEEK)
+      != S_SUCCESS)
     {
       pgbuf_unfix_and_init (thread_p, catalog_record_p->page_p);
       return ER_FAILED;
@@ -1529,7 +1529,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
 
   (void) pgbuf_check_page_ptype (thread_p, root_page_p, PAGE_BTREE);
 
-  root_header = btree_get_root_header (root_page_p);
+  root_header = btree_get_root_header (thread_p, root_page_p);
   if (root_header == NULL)
     {
       pgbuf_unfix_and_init (thread_p, root_page_p);
@@ -1591,7 +1591,7 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
       return ER_FAILED;
     }
 
-  if (spage_get_record (page_p, slot_id, &record, COPY) != S_SUCCESS)
+  if (spage_get_record (thread_p, page_p, slot_id, &record, COPY) != S_SUCCESS)
     {
       recdes_free_data_area (&record);
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
@@ -1612,7 +1612,7 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
   new_space = spage_max_space_for_new_record (thread_p, page_p);
   catalog_update_max_space (page_id_p, new_space);
 
-  spage_get_record (page_p, CATALOG_HEADER_SLOT, &record, COPY);
+  spage_get_record (thread_p, page_p, CATALOG_HEADER_SLOT, &record, COPY);
 
   log_append_undo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, &record);
 
@@ -1646,7 +1646,7 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
 
       (void) pgbuf_check_page_ptype (thread_p, overflow_page_p, PAGE_CATALOG);
 
-      spage_get_record (overflow_page_p, CATALOG_HEADER_SLOT, &record, PEEK);
+      spage_get_record (thread_p, overflow_page_p, CATALOG_HEADER_SLOT, &record, PEEK);
       new_overflow_vpid.pageid = CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data);
       new_overflow_vpid.volid = CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
 
@@ -1827,7 +1827,7 @@ catalog_get_rep_dir (THREAD_ENTRY * thread_p, OID * class_oid_p, OID * rep_dir_p
 
       (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
 
-      if (spage_get_record (page_p, repr_item.slot_id, &record, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, page_p, repr_item.slot_id, &record, PEEK) != S_SUCCESS)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
@@ -1898,7 +1898,7 @@ catalog_get_representation_record (THREAD_ENTRY * thread_p, OID * rep_dir_p, REC
 
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
 
-  if (spage_get_record (page_p, rep_dir_p->slotid, record_p, is_peek) != S_SUCCESS)
+  if (spage_get_record (thread_p, page_p, rep_dir_p->slotid, record_p, is_peek) != S_SUCCESS)
     {
       pgbuf_unfix_and_init (thread_p, page_p);
       return NULL;
@@ -1937,7 +1937,7 @@ catalog_adjust_directory_count (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES
 {
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
 
-  spage_get_record (page_p, CATALOG_HEADER_SLOT, record_p, COPY);
+  spage_get_record (thread_p, page_p, CATALOG_HEADER_SLOT, record_p, COPY);
 
   log_append_undo_recdes2 (thread_p, RVCT_UPDATE, &catalog_Id.vfid, page_p, CATALOG_HEADER_SLOT, record_p);
 
@@ -3199,7 +3199,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p, CLS_INFO *
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
 
   recdes_set_data_area (&record, aligned_data, CATALOG_CLS_INFO_SIZE);
-  if (spage_get_record (page_p, repr_item.slot_id, &record, COPY) != S_SUCCESS)
+  if (spage_get_record (thread_p, page_p, repr_item.slot_id, &record, COPY) != S_SUCCESS)
     {
 #if defined(CT_DEBUG)
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
@@ -4159,7 +4159,7 @@ start:
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
 
   recdes_set_data_area (&record, aligned_data, CATALOG_CLS_INFO_SIZE);
-  if (spage_get_record (page_p, repr_item.slot_id, &record, COPY) != S_SUCCESS)
+  if (spage_get_record (thread_p, page_p, repr_item.slot_id, &record, COPY) != S_SUCCESS)
     {
 #if defined(CT_DEBUG)
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
@@ -4633,7 +4633,7 @@ catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid_p)
 
       (void) pgbuf_check_page_ptype (thread_p, repr_page_p, PAGE_CATALOG);
 
-      if (spage_get_record (repr_page_p, repr_item.slot_id, &record, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, repr_page_p, repr_item.slot_id, &record, PEEK) != S_SUCCESS)
 	{
 	  pgbuf_unfix_and_init (thread_p, repr_page_p);
 	  pgbuf_unfix_and_init (thread_p, page_p);
@@ -4903,7 +4903,7 @@ catalog_file_map_page_dump (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * sto
   CATALOG_PAGE_DUMP_CONTEXT *context = (CATALOG_PAGE_DUMP_CONTEXT *) args;
   RECDES record;
 
-  if (spage_get_record (*page, CATALOG_HEADER_SLOT, &record, PEEK) != S_SUCCESS)
+  if (spage_get_record (thread_p, *page, CATALOG_HEADER_SLOT, &record, PEEK) != S_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;
@@ -4912,7 +4912,7 @@ catalog_file_map_page_dump (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * sto
   fprintf (context->fp, "\n-----------------------------------------------\n");
   fprintf (context->fp, "\n Page %d \n", context->page_index);
 
-  fprintf (context->fp, "\nPage_Id: {%d , %d}\n", PGBUF_PAGE_VPID_AS_ARGS (*page));
+  fprintf (context->fp, "\nPage_Id: {%d , %d}\n", PGBUF_PAGE_VPID_AS_ARGS (thread_p, *page));
   fprintf (context->fp, "Directory Cnt: %d\n", CATALOG_GET_PGHEADER_DIR_COUNT (record.data));
   fprintf (context->fp, "Overflow Page Id: {%d , %d}\n\n", CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data),
 	   CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data));
@@ -4937,7 +4937,7 @@ catalog_file_map_overflow_count (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool 
   int *overflow_count = (int *) args;
   RECDES record;
 
-  if (spage_get_record (*page, CATALOG_HEADER_SLOT, &record, PEEK) != S_SUCCESS)
+  if (spage_get_record (thread_p, *page, CATALOG_HEADER_SLOT, &record, PEEK) != S_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;

@@ -73,15 +73,15 @@ extern const VPID vpid_Null_vpid;
   (((oid_ptr1)->volid == (oid_ptr2)->volid)  \
    && ((oid_ptr1)->pageid == (oid_ptr2)->pageid))
 
-#define PGBUF_PAGE_VPID_AS_ARGS(pg) pgbuf_get_volume_id (pg), pgbuf_get_page_id (pg)
+#define PGBUF_PAGE_VPID_AS_ARGS(thread_p, pg) pgbuf_get_volume_id (pg), pgbuf_get_page_id (thread_p, pg)
 #define PGBUF_PAGE_LSA_AS_ARGS(pg) (long long int) pgbuf_get_lsa (pg)->pageid, (int) pgbuf_get_lsa (pg)->offset
 
 #define PGBUF_PAGE_STATE_MSG(name) name " { VPID = %d|%d, crt_lsa = %lld|%d } "
-#define PGBUF_PAGE_STATE_ARGS(pg) PGBUF_PAGE_VPID_AS_ARGS (pg), PGBUF_PAGE_LSA_AS_ARGS (pg)
+#define PGBUF_PAGE_STATE_ARGS(thread_p,pg) PGBUF_PAGE_VPID_AS_ARGS (thread_p, pg), PGBUF_PAGE_LSA_AS_ARGS (pg)
 
 #define PGBUF_PAGE_MODIFY_MSG(name) name " { VPID = %d|%d, prev_lsa = %lld|%d, crt_lsa = %lld|%d } "
-#define PGBUF_PAGE_MODIFY_ARGS(pg, prev_lsa) \
-  PGBUF_PAGE_VPID_AS_ARGS (pg), LSA_AS_ARGS (prev_lsa), PGBUF_PAGE_LSA_AS_ARGS (pg)
+#define PGBUF_PAGE_MODIFY_ARGS(thread_p, pg, prev_lsa) \
+  PGBUF_PAGE_VPID_AS_ARGS (thread_p, pg), LSA_AS_ARGS (prev_lsa), PGBUF_PAGE_LSA_AS_ARGS (pg)
 
 #define pgbuf_unfix_and_init(thread_p, pgptr) \
   do { \
@@ -397,7 +397,7 @@ extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
 extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);
 extern VPID *pgbuf_get_vpid_ptr (PAGE_PTR pgptr);
 extern PGBUF_LATCH_MODE pgbuf_get_latch_mode (PAGE_PTR pgptr);
-extern PAGEID pgbuf_get_page_id (PAGE_PTR pgptr);
+extern PAGEID pgbuf_get_page_id (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern PAGE_TYPE pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
 extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);
@@ -456,7 +456,7 @@ extern void pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data);
 extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
 extern int pgbuf_get_hold_count (THREAD_ENTRY * thread_p);
 
-extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (PAGE_PTR pgptr);
+extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
 extern void pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
 extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -475,8 +475,8 @@ extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, con
 #define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
   pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)
 #endif /* !NDEBUG */
-extern int pgbuf_release_private_lru (const int private_idx);
-extern int pgbuf_assign_private_lru (bool is_vacuum, const int id);
+extern int pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx);
+extern int pgbuf_assign_private_lru (THREAD_ENTRY * thread_p, bool is_vacuum, const int id);
 extern void pgbuf_adjust_quotas (THREAD_ENTRY * thread_p);
 extern void pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p);
 

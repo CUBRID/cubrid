@@ -5697,7 +5697,7 @@ log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_u
       /* Copy existing record. */
       record.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
       record.area_size = DB_PAGESIZE;
-      if (spage_get_record (rcv->pgptr, slotid, &record, COPY) != S_SUCCESS)
+      if (spage_get_record (thread_p, rcv->pgptr, slotid, &record, COPY) != S_SUCCESS)
 	{
 	  /* Unexpected failure. */
 	  assert_release (false);
