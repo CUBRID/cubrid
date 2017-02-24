@@ -4261,8 +4261,8 @@ pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec)
 
   /* for classes, it is safe to prune unreferenced attributes. we do not have the same luxury with derived tables, so
    * get them all (and in order). */
-  table_info->attribute_list = (table_spec->info.spec.flat_entity_list != NULL) ?
-    table_spec->info.spec.referenced_attrs : table_spec->info.spec.as_attr_list;
+  table_info->attribute_list = (table_spec->info.spec.flat_entity_list != NULL && PT_SPEC_IS_ENTITY (table_spec))
+    ? table_spec->info.spec.referenced_attrs : table_spec->info.spec.as_attr_list;
 
   table_info->value_list = pt_make_val_list (parser, table_info->attribute_list);
 
