@@ -1750,7 +1750,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   bool is_perf_tracking;
   bool is_latch_wait;
 
-  /* paramter validation */
+  /* parameter validation */
   if (request_mode != PGBUF_LATCH_READ && request_mode != PGBUF_LATCH_WRITE)
     {
       assert_release (false);
