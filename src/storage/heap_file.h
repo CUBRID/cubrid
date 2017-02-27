@@ -283,12 +283,10 @@ struct heap_log_info
   int slot_id_with_flags;	/* slot id with flags */
 
   /* TO DO - undo header */
-  char undo_data_buffer[IO_MAX_PAGE_SIZE / 4 + MAX_ALIGNMENT];	/* undo data buffer */
   void *undo_data_p;		/* pointer to undo data */
   int undo_data_size;		/* undo data size */
 
   /* TO DO - redo header */
-  char redo_data_buffer[IO_MAX_PAGE_SIZE / 4 + MAX_ALIGNMENT];	/* redo data buffer */
   void *redo_data_p;		/* pointer to redo data */
   int redo_data_size;		/* redo data size */
 
@@ -312,17 +310,32 @@ struct heap_log_info
 
 #define HEAP_SET_LOG_INFO(p_heap_log_info, p_node, recovery_index, vpid_p, slotid_with_flags, p_undo_data, undo_size, p_redo_data, redo_size, node_was_appended) \
   do \
-{ \
-  (p_heap_log_info)->node = (p_node);			    \
-  (p_heap_log_info)->rcv_index = (recovery_index);		    \
-  VPID_COPY (&(p_heap_log_info->vpid), vpid_p);		    \
-  (p_heap_log_info)->slot_id_with_flags = (slotid_with_flags);  \
-  (p_heap_log_info)->undo_data_p = (p_undo_data);		    \
-  (p_heap_log_info)->undo_data_size = (undo_size);		    \
-  (p_heap_log_info)->redo_data_p = (p_redo_data);		    \
-  (p_heap_log_info)->redo_data_size = (redo_size);		    \
-  (p_heap_log_info)->node_appended = (node_was_appended);	    \
-} \
+  { \
+    (p_heap_log_info)->node = (p_node);				    \
+    (p_heap_log_info)->rcv_index = (recovery_index);		    \
+    VPID_COPY (&(p_heap_log_info)->vpid, vpid_p);		    \
+    (p_heap_log_info)->slot_id_with_flags = (slotid_with_flags);    \
+    (p_heap_log_info)->undo_data_p = (p_undo_data);		    \
+    (p_heap_log_info)->undo_data_size = (undo_size);		    \
+    (p_heap_log_info)->redo_data_p = (p_redo_data);		    \
+    (p_heap_log_info)->redo_data_size = (redo_size);		    \
+    (p_heap_log_info)->node_appended = (node_was_appended);	    \
+  } \
+  while (false)
+
+#define HEAP_RESET_LOG_INFO(p_heap_log_info) \
+  do \
+  { \
+    (p_heap_log_info)->node = NULL;			\
+    (p_heap_log_info)->rcv_index = RV_NOT_DEFINED;	\
+    VPID_SET_NULL (&(p_heap_log_info)->vpid);		\
+    (p_heap_log_info)->slot_id_with_flags = NULL_SLOTID;  \
+    (p_heap_log_info)->undo_data_p = NULL;		\
+    (p_heap_log_info)->undo_data_size = 0;		\
+    (p_heap_log_info)->redo_data_p = NULL;		\
+    (p_heap_log_info)->redo_data_size = 0;		\
+    (p_heap_log_info)->node_appended = false;		\
+  } \
   while (false)
 
 /* heap operation information structure */
@@ -350,15 +363,18 @@ struct heap_operation_context
   INT16 record_type;		/* record type of original record */
   FILE_TYPE file_type;		/* the file type of hfid */
 
+  /* RELOCATION and BIGONE information */
   OID forward_oid;		/* forward oid identifier */
   OID new_forward_oid;		/* new forward oid identifier */
-  RECDES forward_recdes;	/* used in case of RELOCATION and BIGONE records */
+  RECDES forward_recdes;	/* forward recdes */
   RECDES new_home_recdes;	/* new home recdes */
   char forward_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep forward recdes */
 
   /* buffers, used to build the new record at heap deletion */
   char recdes_data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
+  RECDES build_recdes;		/* TO DO - initialize this members */
   char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
+
 
   /* physical page watchers - these should not be referenced directly */
   PGBUF_WATCHER home_page_watcher;	/* home page */
@@ -380,13 +396,20 @@ struct heap_operation_context
   PAGE_PTR forward_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
   RECDES home_recdes_before_page_fix;	/* rec home or rec new home - TO DO maybe reuse home recdes */
   RECDES forward_recdes_before_page_fix;	/* forward recdes - TO DO maybe reuse froward recdes */
-  HEAP_LOG_INFO *heap_log_info_p;	/* Heap log info, used to create the log node before fixing page */
+  HEAP_LOG_INFO log_before_fix_info;	/* Heap log info, used to create the log node before fixing page */
 
   /* logical operation output */
   OID res_oid;			/* object identifier (if operation generates one) */
   bool is_logical_old;		/* true if initial record was not REC_ASSIGN_ADDRESS */
   bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition redistribute data operation 
 						 * and has a valid delid */
+
+  bool is_adjusted_size_big;	/* is adjusted size big */
+  bool fits_in_home;		/* does new record fits in home page? */
+  bool fits_in_forward;		/* does new record fits in forward page? */
+  bool update_old_home;		/* is need to update the old home page? */
+  bool update_old_forward;	/* is need to update the old forward page? */
+  bool remove_old_forward;	/* is need to remove the old forward? */
 
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
