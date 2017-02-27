@@ -2585,7 +2585,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
 
       /* Compute entry's index in circular queue */
-      entry_index = (int) produce_cursor % queue->capacity;
+      entry_index = (int) (produce_cursor % queue->capacity);
       entry_state_p = &queue->entry_state[entry_index];
 
 #if !defined (NDEBUG) || defined (UNITTEST_CQ)
@@ -2691,7 +2691,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
 
       /* Compute entry's index in circular queue */
-      entry_index = (int) consume_cursor % queue->capacity;
+      entry_index = (int) (consume_cursor % queue->capacity);
       entry_state_p = &queue->entry_state[entry_index];
 #if !defined (NDEBUG) || defined (UNITTEST_CQ)
       was_not_ready = ATOMIC_LOAD_64 (entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_PRODUCE);
