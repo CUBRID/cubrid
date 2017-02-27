@@ -25323,11 +25323,12 @@ resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
 }
 
 static char *
-pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
+pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, char *str,
 		     const int str_size)
 {
   char *invalid_pos = NULL;
   int composed_size;
+  char *p_str;
 
   if (intl_check_string ((char *) str, str_size, &invalid_pos,
 			 LANG_SYS_CODESET) == 1)
@@ -25336,10 +25337,18 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
 		  (invalid_pos != NULL) ? invalid_pos - str : 0);
       return NULL;			
     }
-  else if (intl_identifier_fix ((char *) str, -1, true) != NO_ERROR)
+  else if (intl_identifier_fix (str, -1, true) != NO_ERROR)
     {
       PT_ERRORf (parser, p, "invalid identifier : %s", str);
       return NULL;
+    }
+
+  /* remove trailing spaces */
+  p_str = str + str_size - 1;
+  while (*p_str == ' ' && p_str > str)
+    {
+      *p_str = 0;
+      p_str--;
     }
 
   if (LANG_SYS_CODESET == INTL_CODESET_UTF8
