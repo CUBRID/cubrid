@@ -8376,6 +8376,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *victim = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
+#if defined (SA_MODE)
+  int nloops = 0;		/* used as safe-guard against infinite loops */
+#endif /* SA_MODE */
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
 
@@ -8462,7 +8465,22 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
 	}
     }
+#if defined (SERVER_MODE)
+  /* if system has enough victims, we should rather try searching again than going to wait-mode (which would bring a
+   * significant latency. */
   while (pgbuf_Pool.monitor.victim_rich);
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+  /* one iteration could fail, because the shared list's last victims have been set dirty. however, if there are other
+   * lists having victims, we should find them.
+   * it is possible to not have any victims, in which case the shared list queue should become empty. we'll have to do a
+   * flush and search again.
+   * we'd like to avoid looping infinitely because a bug, so we use the nloops safe-guard. Each shared list should be
+   * removed after a failed search, so the maximum accepted number of loops is pgbuf_Pool.num_LRU_list. */
+  while (lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims) && ++nloops <= pgbuf_Pool.num_LRU_list);
+
+  /* safe-guard to detect infinite loops */
+  assert (nloops <= pgbuf_Pool.num_LRU_list);
+#endif /* SA_MODE */
 
   assert (victim == NULL);
   return victim;
@@ -8695,6 +8713,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	}
       else
 	{
+#if defined (SA_MODE)
+	  /* failed try lock in SA_MODE? impossible */
+	  assert (false);
+#endif /* SA_MODE */
+
 	  /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
 	  if (bufptr_victimizable == NULL)
 	    {
@@ -8726,6 +8749,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     }
 
   pthread_mutex_unlock (&lru_list->mutex);
+
+#if defined (SA_MODE)
+  /* failed finding victim in SA_MODE, although the number of victim candidates is positive? impossible! */
+  assert (false);
+#endif /* SA_MODE */
   return NULL;
 
 #undef PERF
@@ -15439,6 +15467,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
 
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
 
+#if defined (SERVER_MODE)
   if (from_private && PGBUF_LRU_LIST_COUNT (lru_list) > 2 * lru_list->quota && lru_list->count_vict_cand > 0)
     {
       /* add lru list back to queue early. others should be able to find in queue. */
@@ -15452,6 +15481,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
 	  added_back = true;
 	}
     }
+#endif /* SERVER_MODE */
 
   victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
   if (detailed_perf)
