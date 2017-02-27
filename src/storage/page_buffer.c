@@ -13942,7 +13942,7 @@ pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB * bufptr)
       return true;
     }
   /* is the single waiter checkpoint thread? */
-  return thread_is_checkpoint_thread (bufptr->next_wait_thrd);
+  return !thread_is_checkpoint_thread (bufptr->next_wait_thrd);
 #else
   return false;
 #endif
