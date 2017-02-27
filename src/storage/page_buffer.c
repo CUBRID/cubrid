@@ -8376,9 +8376,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *victim = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
-#if defined (SA_MODE)
+  bool has_flush_thread = thread_is_page_flush_thread_available ();
   int nloops = 0;		/* used as safe-guard against infinite loops */
-#endif /* SA_MODE */
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
 
@@ -8398,6 +8397,19 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    * for this case, we loop the three searches, as long as pgbuf_Pool.monitor.victim_rich is true.
    *
    * note: if quota is disabled (although this is not recommended), only shared lists are searched.
+   */
+
+  /* loop:
+   *
+   * HAS FLUSH THREAD: if system has enough victims, we should rather try searching again than going to wait-mode (which would bring a
+   * significant latency.
+   *
+   * DOESN'T HAVE FLUSH THREAD: one iteration could fail, because the shared list's last victims have been set dirty.
+   * however, if there are other lists having victims, we should find them.
+   * it is possible to not have any victims, in which case the shared list queue should become empty. we'll have to do a
+   * flush and search again.
+   * we'd like to avoid looping infinitely because a bug, so we use the nloops safe-guard. Each shared list should be
+   * removed after a failed search, so the maximum accepted number of loops is pgbuf_Pool.num_LRU_list.
    */
   do
     {
@@ -8465,22 +8477,13 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
 	}
     }
-#if defined (SERVER_MODE)
-  /* if system has enough victims, we should rather try searching again than going to wait-mode (which would bring a
-   * significant latency. */
-  while (pgbuf_Pool.monitor.victim_rich);
-#else	/* !SERVER_MODE */		 /* SA_MODE */
-  /* one iteration could fail, because the shared list's last victims have been set dirty. however, if there are other
-   * lists having victims, we should find them.
-   * it is possible to not have any victims, in which case the shared list queue should become empty. we'll have to do a
-   * flush and search again.
-   * we'd like to avoid looping infinitely because a bug, so we use the nloops safe-guard. Each shared list should be
-   * removed after a failed search, so the maximum accepted number of loops is pgbuf_Pool.num_LRU_list. */
-  while (lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims) && ++nloops <= pgbuf_Pool.num_LRU_list);
+  while ((has_flush_thread && pgbuf_Pool.monitor.victim_rich)
+	 || (!has_flush_thread && (lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
+				   && ++nloops <= pgbuf_Pool.num_LRU_list)));
+  /* todo: maybe we can find a less complicated condition of looping */
 
-  /* safe-guard to detect infinite loops */
-  assert (nloops <= pgbuf_Pool.num_LRU_list);
-#endif /* SA_MODE */
+  /* safe-guard to detect infinite loops when no flush thread is available. */
+  assert (has_flush_thread || nloops <= pgbuf_Pool.num_LRU_list);
 
   assert (victim == NULL);
   return victim;
@@ -8713,10 +8716,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	}
       else
 	{
-#if defined (SA_MODE)
-	  /* failed try lock in SA_MODE? impossible */
-	  assert (false);
-#endif /* SA_MODE */
+	  /* failed try lock in single-threaded? impossible */
+	  assert (!thread_is_page_flush_thread_available ());
 
 	  /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
 	  if (bufptr_victimizable == NULL)
@@ -8750,10 +8751,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   pthread_mutex_unlock (&lru_list->mutex);
 
-#if defined (SA_MODE)
-  /* failed finding victim in SA_MODE, although the number of victim candidates is positive? impossible! */
-  assert (false);
-#endif /* SA_MODE */
+  /* failed finding victim in singe-threaded, although the number of victim candidates is positive? impossible! */
+  assert (thread_is_page_flush_thread_available ());
   return NULL;
 
 #undef PERF
