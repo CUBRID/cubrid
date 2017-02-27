@@ -647,11 +647,11 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
-static void vacuum_verify_vacuum_data_debug (void);
+static void vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p);
 static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
-#define VACUUM_VERIFY_VACUUM_DATA() vacuum_verify_vacuum_data_debug ()
+#define VACUUM_VERIFY_VACUUM_DATA(thread_p) vacuum_verify_vacuum_data_debug (thread_p)
 #else /* NDEBUG */
-#define VACUUM_VERIFY_VACUUM_DATA()
+#define VACUUM_VERIFY_VACUUM_DATA(thread_p)
 #endif /* NDEBUG */
 
 /*
@@ -4607,7 +4607,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   /* We need to update vacuum_Data.keep_from_log_pageid in case archives must be purged. */
   vacuum_update_keep_from_log_pageid (thread_p);
 
-  VACUUM_VERIFY_VACUUM_DATA ();
+  VACUUM_VERIFY_VACUUM_DATA (thread_p);
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
@@ -5129,7 +5129,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
       vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
     }
 
-  VACUUM_VERIFY_VACUUM_DATA ();
+  VACUUM_VERIFY_VACUUM_DATA (thread_p);
 #if !defined (NDEBUG)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
@@ -6813,7 +6813,7 @@ vacuum_compare_dropped_files_version (INT32 version_a, INT32 version_b)
  * return    : Void.
  */
 static void
-vacuum_verify_vacuum_data_debug (void)
+vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
 {
   int i;
   VACUUM_DATA_PAGE *data_page = NULL;
@@ -6882,8 +6882,8 @@ vacuum_verify_vacuum_data_debug (void)
 	}
       /* Fix next page. */
       VPID_COPY (&next_vpid, &data_page->next_page);
-      vacuum_unfix_data_page (NULL, data_page);
-      data_page = vacuum_fix_data_page (NULL, &next_vpid);
+      vacuum_unfix_data_page (thread_p, data_page);
+      data_page = vacuum_fix_data_page (thread_p, &next_vpid);
       assert (data_page != NULL);
       last_unvacuumed = NULL;
     }
