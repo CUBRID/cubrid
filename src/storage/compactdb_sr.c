@@ -45,8 +45,8 @@ static bool compact_started = false;
 static int last_tran_index = -1;
 
 static bool is_class (OID * obj_oid, OID * class_oid);
-static int process_set (DB_SET * set);
-static int process_value (DB_VALUE * value);
+static int process_set (THREAD_ENTRY * thread_p, DB_SET * set);
+static int process_value (THREAD_ENTRY * thread_p, DB_VALUE * value);
 static int process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CACHE_ATTRINFO * attr_info,
 			   OID * oid);
 static int desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
@@ -83,7 +83,7 @@ is_class (OID * obj_oid, OID * class_oid)
  *
  */
 static int
-process_value (DB_VALUE * value)
+process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 {
   int return_value = 0;
   SCAN_CODE scan_code;
@@ -138,7 +138,7 @@ process_value (DB_VALUE * value)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       {
-	return_value = process_set (DB_GET_SET (value));
+	return_value = process_set (thread_p, DB_GET_SET (value));
 	break;
       }
 
@@ -155,7 +155,7 @@ process_value (DB_VALUE * value)
  *    set(in): the set to process
  */
 static int
-process_set (DB_SET * set)
+process_set (THREAD_ENTRY * thread_p, DB_SET * set)
 {
   SET_ITERATOR *it;
   DB_VALUE *element_value;
@@ -165,7 +165,7 @@ process_set (DB_SET * set)
   it = set_iterate (set);
   while ((element_value = set_iterator_value (it)) != NULL)
     {
-      error_code = process_value (element_value);
+      error_code = process_value (thread_p, element_value);
       if (error_code > 0)
 	{
 	  return_value += error_code;
@@ -237,7 +237,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 
   for (i = 0, value = attr_info->values; i < attr_info->num_values; i++, value++)
     {
-      error_code = process_value (&value->dbvalue);
+      error_code = process_value (thread_p, &value->dbvalue);
       if (error_code > 0)
 	{
 	  value->state = HEAP_WRITTEN_ATTRVALUE;
