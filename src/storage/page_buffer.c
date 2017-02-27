@@ -1153,6 +1153,8 @@ STATIC_INLINE void pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBU
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						      PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_LRU_LIST *pgbuf_lru_list_from_bcb (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_register_hit_for_lru (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
@@ -8680,19 +8682,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	{
 	  if (pgbuf_is_bcb_victimizable (bufptr, true))
 	    {
-	      PGBUF_BCB *bcb_prev = bufptr->prev_BCB;
-	      PGBUF_BCB *victim_hint_new = NULL;
-
 	      if (bufptr_victimizable == NULL)
 		{
-		  /* try to update hint on next */
-		  victim_hint_new = bcb_prev != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_prev) ? bcb_prev : NULL;
-		  if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, victim_hint_new))
-		    {
-		      /* modified hint */
-		    }
+		  /* try to update hint to bufptr->prev_BCB */
+		  pgbuf_lru_advance_victim_hint (thread_p, lru_list, victim_hint, bufptr->prev_BCB, false);
 		}
-
 	      pgbuf_remove_from_lru_list (thread_p, bufptr, lru_list);
 
 #if defined (SERVER_MODE)
@@ -8724,7 +8718,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	    {
 	      bufptr_victimizable = bufptr;
 	      /* try to replace victim if it was not already changed. */
-	      if (bufptr != bufptr_start && ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, bufptr_victimizable))
+	      if (bufptr != victim_hint && ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, bufptr_victimizable))
 		{
 		  /* modified hint */
 		}
@@ -8743,9 +8737,15 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       /* we had a hint and we failed to find any victim candidates. */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT);
-      if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL))
+      if (lru_list->count_vict_cand > 0)
 	{
-	  /* was set to null */
+	  /* set victim hint to bottom */
+	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	}
+      else
+	{
+	  /* no hint */
+	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
 	}
     }
 
@@ -8870,6 +8870,8 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QU
 {
   int lru_idx;
   PGBUF_LRU_LIST *lru_list;
+  PGBUF_BCB *victim_hint = NULL;
+  int nassigned = 0;
 
   if (!lf_circular_queue_consume (queue, &lru_idx))
     {
@@ -8880,8 +8882,19 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QU
   if (lru_list->count_vict_cand > 0)
     {
       pthread_mutex_lock (&lru_list->mutex);
-      (*nassign_inout) -= pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->victim_hint);
+      victim_hint = lru_list->victim_hint;
+      nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, victim_hint);
+      if (nassigned == 0 && lru_list->count_vict_cand > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
+	{
+	  /* maybe hint was bad? that's most likely case. reset the hint to bottom. */
+	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+
+	  /* check from bottom anyway */
+	  nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->bottom);
+	}
       pthread_mutex_unlock (&lru_list->mutex);
+
+      (*nassign_inout) -= nassigned;
 
       if (lru_list->count_vict_cand > 0 && lf_circular_queue_produce (queue, &lru_idx))
 	{
@@ -9593,7 +9606,7 @@ static void
 pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
 {
   PGBUF_ZONE zone = pgbuf_bcb_get_zone (bufptr);
-  PGBUF_BCB *new_victim_hint = NULL;
+  PGBUF_BCB *bcb_prev = NULL;
 
   if (lru_list->top == bufptr)
     {
@@ -9628,28 +9641,16 @@ pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_L
       (bufptr->next_BCB)->prev_BCB = bufptr->prev_BCB;
     }
 
-  if (bufptr->prev_BCB != NULL)
-    {
-      if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr->prev_BCB))
-	{
-	  new_victim_hint = bufptr->prev_BCB;
-	}
-      (bufptr->prev_BCB)->next_BCB = bufptr->next_BCB;
-    }
-
+  bcb_prev = bufptr->prev_BCB;
   bufptr->prev_BCB = NULL;
   bufptr->next_BCB = NULL;
 
   /* we need to update the victim hint now, since bcb has been disconnected from list.
    * pgbuf_lru_remove_victim_candidate will not which is the previous BCB. we cannot change the hint before
    * disconnecting the bcb from list, we need to be sure no one else sets the hint to this bcb. */
-  if (lru_list->victim_hint == bufptr)
-    {
-      if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, bufptr, new_victim_hint))
-	{
-	  /* advanced hint */
-	}
-    }
+  pgbuf_lru_advance_victim_hint (thread_p, lru_list, bufptr, bcb_prev, false);
+
+  /* update zone */
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_VOID_ZONE);
 }
 
@@ -14938,22 +14939,41 @@ pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru
        * often. do nothing here. */
     }
 
-  /* now update the hint if it was same as this bcb. */
-  if (bcb != lru_list->victim_hint)
+  /* invalidate hint if it matches bcb. */
+  pgbuf_lru_advance_victim_hint (thread_p, lru_list, bcb);
+}
+
+/*
+ * pgbuf_lru_advance_victim_hint () - invalidate bcb_prev_hint as victim hint and advance to bcb_new_hint (if possible).
+ *                                    in the case we'd reset hint to NULL, but we know victim candidates still exist,
+ *                                    hint is set to list bottom.
+ *
+ * return                      : void
+ * thread_p (in)               : thread entry
+ * lru_list (in)               : LRU list
+ * bcb_prev_hint (in)          : bcb being invalidated as hint
+ * bcb_new_hint (in)           : new desired hint (can be adjusted to NULL or bottom)
+ * was_vict_count_updated (in) : was victim count updated? (false if bcb_prev_hint is still counted as victim candidate)
+ */
+STATIC_INLINE void
+pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_prev_hint,
+			       PGBUF_BCB * bcb_new_hint, bool was_vict_count_updated)
+{
+  PGBUF_BCB *new_victim_hint = NULL;
+
+  /* new victim hint should be either NULL or in the victimization zone */
+  new_victim_hint = bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint) ? bcb_new_hint : NULL;
+
+  /* restart from bottom if hint is NULL but we have victim candidates */
+  new_victim_hint =
+    (new_victim_hint == NULL && lru_list->count_vict_cand > (was_vict_count_updated ? 0 : 1)) ?
+    lru_list->bottom : new_victim_hint;
+
+  /* update hint (if it was not already updated) */
+  assert (new_victim_hint == NULL || pgbuf_bcb_get_lru_index (new_victim_hint) == lru_list->index);
+  if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, bcb_prev_hint, new_victim_hint))
     {
-      /* it is not us */
-      /* note: for this to work correctly, it is very important that at this moment the bcb no longer belongs to the lru
-       * list. then no one can set the victim hint to this bcb after this check. */
-      return;
-    }
-  /* victim hint was removed from list. we must set it on previous bcb (if it is */
-  if (bcb->prev_BCB != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb))
-    {
-      new_victim_hint = bcb->prev_BCB;
-    }
-  if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, bcb, new_victim_hint))
-    {
-      /* changed hint */
+      /* updated hint */
     }
 }
 
