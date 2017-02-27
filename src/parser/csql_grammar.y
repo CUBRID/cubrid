@@ -514,7 +514,7 @@ static int parser_count_prefix_columns (PT_NODE * list, int * arg_count);
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
 static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
-				   const char *str, const int str_size);
+				   char *str, const int str_size);
 static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
