@@ -14949,9 +14949,6 @@ pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru
       /* we cannot remove an entry from lock-free circular queue easily. we just hope that this does not happen too
        * often. do nothing here. */
     }
-
-  /* invalidate hint if it matches bcb. */
-  pgbuf_lru_advance_victim_hint (thread_p, lru_list, bcb, bcb->prev_BCB, true);
 }
 
 /*
@@ -14971,6 +14968,9 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
 			       PGBUF_BCB * bcb_new_hint, bool was_vict_count_updated)
 {
   PGBUF_BCB *new_victim_hint = NULL;
+
+  /* note: caller must have lock on lru list! */
+  /* todo: add watchers on lru list mutexes */
 
   /* new victim hint should be either NULL or in the victimization zone */
   new_victim_hint = bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint) ? bcb_new_hint : NULL;
@@ -15133,6 +15133,9 @@ pgbuf_bcb_change_zone (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int new_lru_idx
       /* bcb was in a lru list. we need to update zone counters. */
       int lru_idx = PGBUF_GET_LRU_INDEX (old_flags);
       lru_list = PGBUF_GET_LRU_LIST (lru_idx);
+
+      /* hint should have been changed already */
+      assert (lru_list->victim_hint != bcb);
 
       if (PGBUF_IS_SHARED_LRU_INDEX (PGBUF_GET_LRU_INDEX (old_flags)))
 	{
