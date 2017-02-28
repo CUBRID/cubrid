@@ -1718,6 +1718,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
 297 Nested WITH clauses are not supported.
 298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
