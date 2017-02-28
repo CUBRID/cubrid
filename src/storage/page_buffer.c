@@ -1153,8 +1153,9 @@ STATIC_INLINE void pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBU
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						      PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
+						  PGBUF_BCB * bcb_prev_hint, PGBUF_BCB * bcb_new_hint,
+						  bool was_vict_count_updated) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_LRU_LIST *pgbuf_lru_list_from_bcb (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_register_hit_for_lru (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
@@ -7712,7 +7713,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     }
 
 #if defined (SERVER_MODE)
-
   if (thread_is_page_flush_thread_available ())
     {
     retry:
@@ -7829,16 +7829,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    }
 	}
     }
-  else
 #endif /* SERVER_MODE */
-    {
-      /* we need to flush something */
-      pgbuf_wakeup_flush_thread (thread_p);
-
-      bufptr = pgbuf_get_victim (thread_p);
-      PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
-      assert (bufptr != NULL);
-    }
 
 end:
   if (bufptr != NULL)
@@ -8478,6 +8469,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
 	}
+
+      if (!has_flush_thread)
+	{
+	  /* we need to flush something for single thread. */
+	  pgbuf_wakeup_flush_thread (thread_p);
+	}
     }
   while ((has_flush_thread && pgbuf_Pool.monitor.victim_rich)
 	 || (!has_flush_thread && (lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
@@ -8694,7 +8691,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	      if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority)
 		  >= (5 + (thread_num_worker_threads () / 20)))
 		{
-		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bcb_prev);
+		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB);
 		}
 #endif /* SERVER_MODE */
 	      pthread_mutex_unlock (&lru_list->mutex);
@@ -9642,6 +9639,11 @@ pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_L
     }
 
   bcb_prev = bufptr->prev_BCB;
+  if (bcb_prev != NULL)
+    {
+      bcb_prev->next_BCB = bufptr->next_BCB;
+    }
+
   bufptr->prev_BCB = NULL;
   bufptr->next_BCB = NULL;
 
@@ -11220,6 +11222,7 @@ static void
 pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 {
   PERF_UTIME_TRACKER dummy_time_tracker;
+
 #if defined(SERVER_MODE)
   if (thread_is_page_flush_thread_available ())
     {
@@ -11227,6 +11230,7 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
       return;
     }
 #endif
+
   /* single-threaded environment. do flush on our own. */
   dummy_time_tracker.is_perf_tracking = false;
   pgbuf_flush_victim_candidates (thread_p, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &dummy_time_tracker);
@@ -14940,7 +14944,7 @@ pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru
     }
 
   /* invalidate hint if it matches bcb. */
-  pgbuf_lru_advance_victim_hint (thread_p, lru_list, bcb);
+  pgbuf_lru_advance_victim_hint (thread_p, lru_list, bcb, bcb->prev_BCB, true);
 }
 
 /*

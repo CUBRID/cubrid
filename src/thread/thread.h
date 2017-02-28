@@ -105,6 +105,8 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 
 #define thread_start_scan (NULL)
 
+#define thread_is_page_flush_thread_available()	(false)
+
 #else /* !SERVER_MODE */
 
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
