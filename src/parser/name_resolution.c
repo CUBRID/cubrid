@@ -7090,10 +7090,10 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 	  goto exit_on_error;
 	}
     }
-  else if (PT_SPEC_IS_DERIVED (node))
+  else if (PT_SPEC_IS_DERIVED (node) || PT_SPEC_IS_CTE (node))
     {
-      /* This is a subquery. */
-      if (node->info.spec.derived_table_type == PT_IS_SUBQUERY)
+      /* This is a subquery or a CTE. */
+      if (PT_SPEC_IS_DERIVED (node) && node->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
 	  derived_table = node->info.spec.derived_table;
 
@@ -7109,24 +7109,12 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      subquery_attrs_list = NULL;
 	    }
-
-	  if (subquery_attrs_list == NULL)
-	    {
-	      return NULL;
-	    }
-
-	  if (generate_natural_join_attrs_from_subquery (subquery_attrs_list, &natural_join_attrs) != NO_ERROR)
-	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      goto exit_on_error;
-	    }
 	}
-    }
-  else
-    {
-      assert (PT_SPEC_IS_CTE (node));
+      else
+	{
+	  subquery_attrs_list = node->info.spec.as_attr_list;
+	}
 
-      subquery_attrs_list = node->info.spec.cte_pointer->info.pointer.node->info.cte.as_attr_list;
       if (subquery_attrs_list == NULL)
 	{
 	  return NULL;
@@ -7137,6 +7125,11 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	  goto exit_on_error;
 	}
+
+    }
+  else
+    {
+      assert (false);
     }
 
   return natural_join_attrs;
@@ -7200,10 +7193,20 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
   name->info.name.original = pt_append_string (parser, NULL, attr->name);
   name->type_enum = attr->type_enum;
   name->info.name.meta_class = attr->meta_class;
-  if (spec->info.spec.entity_name)
+  if (PT_SPEC_IS_ENTITY (spec))
     {
       name->info.name.resolved = pt_append_string (parser, NULL, spec->info.spec.entity_name->info.name.original);
     }
+  else if (PT_SPEC_IS_CTE (spec))
+    {
+      PT_NODE *cte = spec->info.spec.cte_pointer->info.pointer.node;
+      name->info.name.resolved = pt_append_string (parser, NULL, cte->info.cte.name->info.name.original);
+    }
+  else
+    {
+      assert (PT_SPEC_IS_DERIVED (spec));
+    }
+
   name->info.name.spec_id = spec->info.spec.id;
 
   return name;
