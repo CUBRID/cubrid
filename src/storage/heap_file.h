@@ -278,63 +278,44 @@ typedef struct heap_log_info HEAP_LOG_INFO;
 struct heap_log_info
 {
   LOG_PRIOR_NODE *node;		/* log node */
+
+  /* TO DO - replace all functions to use log_undoredo_data */
+  LOG_REC_UNDOREDO_DATA log_undoredo_data;
+
   int rcv_index;		/* log recovery index */
-  VPID vpid;			/* page identifier */
+  PAGE_PTR page;		/* page identifier */
   int slot_id_with_flags;	/* slot id with flags */
 
-  /* TO DO - undo header */
   void *undo_data_p;		/* pointer to undo data */
   int undo_data_size;		/* undo data size */
 
-  /* TO DO - redo header */
   void *redo_data_p;		/* pointer to redo data */
   int redo_data_size;		/* redo data size */
 
   bool node_appended;		/* true, if the log node was appended */
 };
 
-#define HEAP_INIT_LOG_INFO(p_heap_log_info) \
-  do \
-{ \
-  (p_heap_log_info)->node = NULL;				    \
-  (p_heap_log_info)->rcv_index = RV_NOT_DEFINED;		    \
-  VPID_SET_NULL (&(p_heap_log_info)->vpid);			    \
-  (p_heap_log_info)->slot_id_with_flags = -1;		    \
-  (p_heap_log_info)->undo_data_p = NULL;			    \
-  (p_heap_log_info)->undo_data_size = -1;			    \
-  (p_heap_log_info)->redo_data_p = NULL;			    \
-  (p_heap_log_info)->redo_data_size = -1;			    \
-  (p_heap_log_info)->node_appended = false;			    \
-} \
-  while (false)
-
-#define HEAP_SET_LOG_INFO(p_heap_log_info, p_node, recovery_index, vpid_p, slotid_with_flags, p_undo_data, undo_size, p_redo_data, redo_size, node_was_appended) \
+#define HEAP_SET_LOG_INFO(p_heap_log_info, p_node, recovery_index, pageptr, slotid_with_flags, p_undo_data, undo_size, p_redo_data, redo_size, node_was_appended) \
   do \
   { \
-    (p_heap_log_info)->node = (p_node);				    \
-    (p_heap_log_info)->rcv_index = (recovery_index);		    \
-    VPID_COPY (&(p_heap_log_info)->vpid, vpid_p);		    \
-    (p_heap_log_info)->slot_id_with_flags = (slotid_with_flags);    \
-    (p_heap_log_info)->undo_data_p = (p_undo_data);		    \
-    (p_heap_log_info)->undo_data_size = (undo_size);		    \
-    (p_heap_log_info)->redo_data_p = (p_redo_data);		    \
-    (p_heap_log_info)->redo_data_size = (redo_size);		    \
-    (p_heap_log_info)->node_appended = (node_was_appended);	    \
+    (p_heap_log_info)->node = p_node;						    \
+    (p_heap_log_info)->log_undoredo_data.rcvindex = recovery_index;		    \
+    (p_heap_log_info)->log_undoredo_data.page = pageptr;			    \
+    (p_heap_log_info)->log_undoredo_data.offset = slotid_with_flags;		    \
+    (p_heap_log_info)->log_undoredo_data.undo_data = p_undo_data;		    \
+    (p_heap_log_info)->log_undoredo_data.undo_data_size = undo_size;		    \
+    (p_heap_log_info)->log_undoredo_data.redo_data = p_redo_data;		    \
+    (p_heap_log_info)->log_undoredo_data.redo_data_size = redo_size;		    \
+    (p_heap_log_info)->node_appended = node_was_appended;			    \
   } \
   while (false)
 
 #define HEAP_RESET_LOG_INFO(p_heap_log_info) \
   do \
   { \
-    (p_heap_log_info)->node = NULL;			\
-    (p_heap_log_info)->rcv_index = RV_NOT_DEFINED;	\
-    VPID_SET_NULL (&(p_heap_log_info)->vpid);		\
-    (p_heap_log_info)->slot_id_with_flags = NULL_SLOTID;  \
-    (p_heap_log_info)->undo_data_p = NULL;		\
-    (p_heap_log_info)->undo_data_size = 0;		\
-    (p_heap_log_info)->redo_data_p = NULL;		\
-    (p_heap_log_info)->redo_data_size = 0;		\
-    (p_heap_log_info)->node_appended = false;		\
+    (p_heap_log_info)->node = NULL;						 \
+    LOG_RESET_REC_UNDOREDO_DATA (&((p_heap_log_info)->log_undoredo_data));	 \
+    (p_heap_log_info)->node_appended = false;					 \
   } \
   while (false)
 
@@ -373,8 +354,8 @@ struct heap_operation_context
   /* buffers, used to build the new record at heap deletion */
   char recdes_data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
   RECDES build_recdes;		/* TO DO - initialize this members */
-  char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
-
+  char redo_data_buffer[OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
+  char undo_data_buffer[OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
 
   /* physical page watchers - these should not be referenced directly */
   PGBUF_WATCHER home_page_watcher;	/* home page */
@@ -394,8 +375,6 @@ struct heap_operation_context
   /* data used to build the log record before page fixing */
   PAGE_PTR home_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
   PAGE_PTR forward_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
-  RECDES home_recdes_before_page_fix;	/* rec home or rec new home - TO DO maybe reuse home recdes */
-  RECDES forward_recdes_before_page_fix;	/* forward recdes - TO DO maybe reuse froward recdes */
   HEAP_LOG_INFO log_before_fix_info;	/* Heap log info, used to create the log node before fixing page */
 
   /* logical operation output */

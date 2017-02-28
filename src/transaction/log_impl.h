@@ -1333,6 +1333,47 @@ struct log_rec_header
 };
 
 /* Common information of log data records */
+typedef struct log_rec_undoredo_data LOG_REC_UNDOREDO_DATA;
+struct log_rec_undoredo_data
+{
+  LOG_RCVINDEX rcvindex;	/* Index to recovery function */
+  PAGE_PTR page;		/* Page pointer */
+  PGLENGTH offset;		/* offset of recovery data in pageid */
+
+  void *undo_data;		/* undo data */
+  int undo_data_size;		/* undo data size */
+
+  void *redo_data;		/* redo data */
+  int redo_data_size;		/* redo data size */
+};
+
+#define LOG_RESET_REC_UNDOREDO_DATA(rec_undoredo_data_p)	\
+  do \
+    { \
+      (rec_undoredo_data_p)->rcvindex = RV_NOT_DEFINED;			    \
+      (rec_undoredo_data_p)->page = NULL;				    \
+      (rec_undoredo_data_p)->offset = -1;				    \
+      (rec_undoredo_data_p)->undo_data = NULL;				    \
+      (rec_undoredo_data_p)->undo_data_size = -1;			    \
+      (rec_undoredo_data_p)->redo_data = NULL;				    \
+      (rec_undoredo_data_p)->redo_data_size = -1;			    \
+    } \
+  while (false)
+
+#define LOG_SET_REC_UNDOREDO_DATA(rec_undoredo_data_p, rcv_index , pageptr, rcv_offset, rcv_undo_data_p, rcv_undo_data_size, rcv_redo_data_p, rcv_redo_data_size)  \
+    do \
+      { \
+	(rec_undoredo_data_p)->rcvindex = rcv_index;		      \
+	(rec_undoredo_data_p)->page = pageptr;			      \
+	(rec_undoredo_data_p)->offset = rcv_offset;		      \
+	(rec_undoredo_data_p)->undo_data = rcv_undo_data_p;	      \
+	(rec_undoredo_data_p)->undo_data_size = rcv_undo_data_size;   \
+	(rec_undoredo_data_p)->redo_data = rcv_redo_data_p;	      \
+	(rec_undoredo_data_p)->redo_data_size = rcv_redo_data_size;   \
+      } \
+    while (false)
+
+/* Common information of log data records */
 typedef struct log_data LOG_DATA;
 struct log_data
 {
