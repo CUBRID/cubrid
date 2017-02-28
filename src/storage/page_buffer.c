@@ -7829,16 +7829,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    }
 	}
     }
-  else
 #endif /* SERVER_MODE */
-    {
-      /* we need to flush something */
-      pgbuf_wakeup_flush_thread (thread_p);
-
-      bufptr = pgbuf_get_victim (thread_p);
-      PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
-      assert (bufptr != NULL);
-    }
 
 end:
   if (bufptr != NULL)
@@ -8477,6 +8468,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       if (detailed_perf)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
+	}
+
+      if (!has_flush_thread)
+	{
+	  /* we need to flush something for single thread. */
+	  pgbuf_wakeup_flush_thread (thread_p);
 	}
     }
   while ((has_flush_thread && pgbuf_Pool.monitor.victim_rich)
@@ -11225,6 +11222,7 @@ static void
 pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
 {
   PERF_UTIME_TRACKER dummy_time_tracker;
+
 #if defined(SERVER_MODE)
   if (thread_is_page_flush_thread_available ())
     {
@@ -11232,6 +11230,7 @@ pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
       return;
     }
 #endif
+
   /* single-threaded environment. do flush on our own. */
   dummy_time_tracker.is_perf_tracking = false;
   pgbuf_flush_victim_candidates (thread_p, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &dummy_time_tracker);
