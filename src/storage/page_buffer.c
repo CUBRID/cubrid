@@ -8711,7 +8711,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       else
 	{
 	  /* failed try lock in single-threaded? impossible */
-	  assert (!thread_is_page_flush_thread_available ());
+	  assert (thread_is_page_flush_thread_available ());
 
 	  /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
 	  if (bufptr_victimizable == NULL)
