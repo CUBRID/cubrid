@@ -1715,6 +1715,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 294 Yerel saat dilimi yazdığınız sütunlarda işlev veya filtre indeksleri kullanılamaz.
 295 SELECT INTO is not allowed in subqueries.
 296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
