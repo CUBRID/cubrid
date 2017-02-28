@@ -787,7 +787,7 @@ loop:
 	      logtb_set_tran_index_interrupt (NULL, thread_p->tran_index, 1);
 	    }
 
-	  if (thread_p->status == TS_WAIT)
+	  if (thread_p->status == TS_WAIT && logtb_is_current_active (thread_p))
 	    {
 	      if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
 		{

@@ -7810,10 +7810,16 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	    }
 
 	  /* no bcb should be allocated. */
-	  assert (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] == NULL);
 	  /* interrupted */
 	  assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
 		  || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
+	  if (pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] != NULL)
+	    {
+	      /* a bcb was assigned before being interrupted. it must be "unassigned" */
+	      pgbuf_bcb_update_flags (thread_p, pgbuf_Pool.direct_victims.bcb_victims[thread_p->index], 0,
+				      PGBUF_BCB_VICTIM_DIRECT_FLAG | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG);
+	      pgbuf_Pool.direct_victims.bcb_victims[thread_p->index] = NULL;
+	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	}
       else
