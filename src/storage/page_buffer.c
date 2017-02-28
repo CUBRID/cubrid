@@ -6771,7 +6771,7 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, T
   /* case 1 : empty waiting queue */
   if (bufptr->next_wait_thrd == NULL)
     {
-      /* The thread entry has been alredy removed from the BCB waiting queue by another thread. */
+      /* The thread entry has been already removed from the BCB waiting queue by another thread. */
       return NO_ERROR;
     }
 
@@ -15010,6 +15010,12 @@ pgbuf_bcb_update_flags (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int set_flags,
       old_flags = bcb->flags;
       new_flags = old_flags | set_flags;
       new_flags = new_flags & (~clear_flags);
+
+      if (old_flags == new_flags)
+	{
+	  /* no changes are required. */
+	  return;
+	}
     }
   while (!ATOMIC_CAS_32 (&bcb->flags, old_flags, new_flags));
 
@@ -15225,7 +15231,30 @@ STATIC_INLINE void
 pgbuf_bcb_set_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   /* set dirty flag and clear none */
-  pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_DIRTY_FLAG, 0);
+  /* note: we usually use pgbuf_bcb_update_flags function. we do an exception for pgbuf_bcb_set_dirty to since it is the
+   *       most used case and the code should be as optimal as possible. */
+  int old_flags;
+
+  do
+    {
+      old_flags = bcb->flags;
+      if (old_flags & PGBUF_BCB_DIRTY_FLAG)
+	{
+	  /* already dirty */
+	  return;
+	}
+    }
+  while (!ATOMIC_CAS_32 (&bcb->flags, old_flags, old_flags | PGBUF_BCB_DIRTY_FLAG));
+
+  /* was changed to dirty */
+  ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1);
+  assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
+
+  if (PGBUF_GET_ZONE (old_flags) == PGBUF_LRU_3_ZONE && (old_flags & PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK) == 0)
+    {
+      /* invalidate victim */
+      pgbuf_lru_remove_victim_candidate (thread_p, pgbuf_lru_list_from_bcb (bcb), bcb);
+    }
 }
 
 /*
