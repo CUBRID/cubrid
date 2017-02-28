@@ -104,9 +104,9 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 	  }
 
 	heap_scancache_quick_start (&scan_cache);
-	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
-	scan_code = heap_get_visible_version (NULL, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
-	heap_scancache_end (NULL, &scan_cache);
+	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	scan_code = heap_get_visible_version (thread_p, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
+	heap_scancache_end (thread_p, &scan_cache);
 
 	if (scan_code == S_ERROR)
 	  {
