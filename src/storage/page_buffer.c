@@ -1097,7 +1097,8 @@ static int pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p);
 static int pgbuf_wakeup (THREAD_ENTRY * thread_p);
 static int pgbuf_wakeup_uncond (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
-static void pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+STATIC_INLINE void pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+  __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
 static bool pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error);
@@ -11191,7 +11192,7 @@ pgbuf_wakeup_uncond (THREAD_ENTRY * thread_p)
 }
 #endif /* SERVER_MODE */
 
-static void
+STATIC_INLINE void
 pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   PGBUF_HOLDER *holder;
