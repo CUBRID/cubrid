@@ -9642,6 +9642,11 @@ pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_L
     }
 
   bcb_prev = bufptr->prev_BCB;
+  if (bcb_prev != NULL)
+    {
+      bcb_prev->next_BCB = bufptr->next_BCB;
+    }
+
   bufptr->prev_BCB = NULL;
   bufptr->next_BCB = NULL;
 
