@@ -7954,6 +7954,7 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	{
 	  PT_NODE *recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg2;
 	  PT_NODE *non_recursive_part = curr_cte->info.cte.non_recursive_part->info.query.q.union_.arg1;
+	  PT_MISC_TYPE all_distinct = curr_cte->info.cte.non_recursive_part->info.query.all_distinct;
 	  PT_NODE *from;
 	  int curr_cte_count = 0;
 
@@ -8008,7 +8009,13 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	    {
 	      curr_cte->info.cte.non_recursive_part = non_recursive_part;
 	      curr_cte->info.cte.recursive_part = recursive_part;
-	      curr_cte->info.cte.only_all = curr_cte->info.cte.non_recursive_part->info.query.all_distinct;
+	      curr_cte->info.cte.only_all = all_distinct;
+	      if (curr_cte->info.cte.only_all != PT_ALL)
+		{
+		  PT_ERRORmf (parser, curr_cte, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCORRECT_UNION_IN_CTE,
+			      curr_cte->info.cte.name->info.name.original);
+		  return NULL;
+		}
 	    }
 
 	  /* check if there are any unresolved self references of the cte, it would be incorrect */
