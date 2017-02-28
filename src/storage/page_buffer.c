@@ -8477,7 +8477,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	}
     }
   while ((has_flush_thread && pgbuf_Pool.monitor.victim_rich)
-	 || (!has_flush_thread && (lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
+	 || (!has_flush_thread && (!lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
 				   && ++nloops <= pgbuf_Pool.num_LRU_list)));
   /* todo: maybe we can find a less complicated condition of looping */
 
