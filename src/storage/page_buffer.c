@@ -1153,8 +1153,9 @@ STATIC_INLINE void pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBU
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						      PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
+						  PGBUF_BCB * bcb_prev_hint, PGBUF_BCB * bcb_new_hint,
+						  bool was_vict_count_updated) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_LRU_LIST *pgbuf_lru_list_from_bcb (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_register_hit_for_lru (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
@@ -7712,7 +7713,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     }
 
 #if defined (SERVER_MODE)
-
   if (thread_is_page_flush_thread_available ())
     {
     retry:
@@ -8694,7 +8694,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	      if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority)
 		  >= (5 + (thread_num_worker_threads () / 20)))
 		{
-		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bcb_prev);
+		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB);
 		}
 #endif /* SERVER_MODE */
 	      pthread_mutex_unlock (&lru_list->mutex);
@@ -14940,7 +14940,7 @@ pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru
     }
 
   /* invalidate hint if it matches bcb. */
-  pgbuf_lru_advance_victim_hint (thread_p, lru_list, bcb);
+  pgbuf_lru_advance_victim_hint (thread_p, lru_list, bcb, bcb->prev_BCB, true);
 }
 
 /*
