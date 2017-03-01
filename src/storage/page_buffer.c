@@ -91,6 +91,7 @@ static int rv;
 
 /* default timeout seconds for infinite wait */
 #define PGBUF_TIMEOUT                      300	/* timeout seconds */
+#define PGBUF_FIX_COUNT_THRESHOLD           64	/* fix count threshold */
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
@@ -258,6 +259,9 @@ typedef enum
 /* How old is a BCB (bcb_age) related to age of list to which it belongs */
 #define PGBUF_AGE_DIFF(bcb_age,list_age) \
   (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : (DB_INT32_MAX - ((bcb_age) - (list_age))))
+
+#define PGBUF_IS_BCB_OLD_ENOUGH(bcb, lru_list) \
+  (PGBUF_AGE_DIFF((bcb)->tick_lru_list, (lru_list)->tick_list) >= ((lru_list)->count_lru2 / 2))
 
 #define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
 #define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
@@ -538,8 +542,9 @@ struct pgbuf_bcb
 				 * enough to boost to top. */
   int tick_lru3;		/* position in lru zone 3. small numbers are at the bottom. used to update LRU victim
 				 * hint. */
-  int avoid_dealloc_cnt;	/* increment before obtaining latch to avoid dellocation; decrement after latch is
+  short avoid_dealloc_cnt;	/* increment before obtaining latch to avoid deallocation; decrement after latch is
 				 * obtained */
+  short count_all_fixes;	/* fix count */
   int hit_age;			/* age of last hit (used to compute activities and quotas) */
 
   volatile LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
@@ -910,7 +915,7 @@ struct pgbuf_monitor_bcb_mutex
 
 /* TODO: change to server_mode && debug mode */
 #if defined (SERVER_MODE)
-static bool pgbuf_Monitor_locks = true;
+static bool pgbuf_Monitor_locks = false;
 #endif /* SERVER_MODE */
 
 #define PGBUF_BCB_LOCK(bcb) pgbuf_bcb_lock (bcb, __LINE__)
@@ -1299,7 +1304,11 @@ pgbuf_initialize (void)
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
 #if defined (SERVER_MODE)
+#if defined (NDEBUG)
   pgbuf_Monitor_locks = prm_get_bool_value (PRM_ID_PB_MONITOR_LOCKS);
+#else /* !NDEBUG */
+  pgbuf_Monitor_locks = true;
+#endif /* !NDEBUG */
 #endif /* SERVER_MODE */
 
   /* set ratios for lru zones */
@@ -2037,7 +2046,13 @@ try_again:
 
   /* At this place, the caller is holding bufptr->mutex */
 
-  /* Set Page identifier iff needed */
+  if (bufptr->count_all_fixes < PGBUF_FIX_COUNT_THRESHOLD)
+    {
+      /* increment count all fixes */
+      ++bufptr->count_all_fixes;
+    }
+
+  /* Set Page identifier if needed */
   (void) pgbuf_set_bcb_page_vpid (bufptr);
 
   if (pgbuf_check_bcb_page_vpid (bufptr) != true)
@@ -5153,6 +5168,7 @@ pgbuf_initialize_bcb_table (void)
 
       bufptr->flags = PGBUF_BCB_INIT_FLAGS;
       bufptr->avoid_dealloc_cnt = 0;
+      bufptr->count_all_fixes = 0;
       bufptr->hit_age = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -6486,7 +6502,15 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
 	      bcb_lru_idx = pgbuf_bcb_get_lru_index (bufptr);
 
-	      if (th_lru_idx != -1 && bcb_lru_idx != th_lru_idx && PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx))
+	      /* do we move from private to shared? we have two possible scenarios:
+	       * 1. bcb is fixed by two different active transactions
+	       * 2. bcb is hot enough and old enough. we need this for single(few)-threaded scenarios, to avoid constant
+	       *    boosting of hot pages.
+	       */
+	      if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx)
+		  && ((th_lru_idx != -1 && bcb_lru_idx != th_lru_idx)
+		      || (bufptr->count_all_fixes >= PGBUF_FIX_COUNT_THRESHOLD
+			  && PGBUF_IS_BCB_OLD_ENOUGH (bufptr, pgbuf_lru_list_from_bcb (bufptr)))))
 		{
 		  /* bcb belongs to another private than mine. move it to shared */
 		  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
@@ -7445,6 +7469,7 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       VPID_SET_NULL (&(bufptr->vpid));
       bufptr->avoid_dealloc_cnt = 0;
+      bufptr->count_all_fixes = 0;
 
       return NO_ERROR;
     }
@@ -8259,6 +8284,7 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
   bufptr->avoid_dealloc_cnt = 0;
+  bufptr->count_all_fixes = 0;
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
   bufptr->next_BCB = pgbuf_Pool.buf_invalid_list.invalid_top;
@@ -9429,7 +9455,7 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
       return;
     }
 
-  if (zone == PGBUF_LRU_2_ZONE && PGBUF_AGE_DIFF (bcb->tick_lru_list, lru_list->tick_list) < lru_list->count_lru2 / 2)
+  if (zone == PGBUF_LRU_2_ZONE && !PGBUF_IS_BCB_OLD_ENOUGH (bcb, lru_list))
     {
       /* boost only if bcb has aged enough. not the case here */
       perfmon_inc_stat (thread_p, is_private ? PSTAT_PB_UNFIX_LRU_TWO_PRV_KEEP : PSTAT_PB_UNFIX_LRU_TWO_SHR_KEEP);
@@ -14985,8 +15011,6 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
 STATIC_INLINE void
 pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
 {
-  PGBUF_BCB *new_victim_hint = NULL;
-
   /* first update victim counter */
   if (ATOMIC_INC_32 (&lru_list->count_vict_cand, -1) == 0)
     {
