@@ -271,7 +271,7 @@ typedef enum
 
 /* Limits for private chains */
 #define PGBUF_PRIVATE_LRU_MIN_COUNT 4
-#define PGBUF_PRIVATE_LRU_MAX_QUOTA 5000
+#define PGBUF_PRIVATE_LRU_MAX_HARD_QUOTA 5000
 
 /* Lower limit for number of pages in shared LRUs: used to compute number of private lists and number of shared lists */
 #define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
@@ -8381,6 +8381,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool has_flush_thread = thread_is_page_flush_thread_available ();
   int nloops = 0;		/* used as safe-guard against infinite loops */
+  int private_lru_idx;
+  PGBUF_LRU_LIST *lru_list = NULL;
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
 
@@ -8400,6 +8402,10 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    * for this case, we loop the three searches, as long as pgbuf_Pool.monitor.victim_rich is true.
    *
    * note: if quota is disabled (although this is not recommended), only shared lists are searched.
+   *
+   * note: if all above failed to produce a victim, we'll try to victimize from own private even if it is under quota.
+   *       we found a strange particular case when all private lists were on par with their quota's (but just below),
+   *       shared lists had no lru 3 zone and nothing could be victimized or flushed.
    */
 
   /* loop:
@@ -8422,8 +8428,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
 	{
 	  /* first try my own private list */
-	  int private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
-	  PGBUF_LRU_LIST *lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
+	  private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+	  lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
 
 	  /* don't victimize from own list if it is under quota */
 	  if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
@@ -8445,7 +8451,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 		}
 
 	      /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim. */
-	      if (!pgbuf_Pool.monitor.victim_rich && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	      if (!pgbuf_Pool.monitor.victim_rich && !PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
 		  return NULL;
 		}
@@ -8493,8 +8499,31 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 
   /* safe-guard to detect infinite loops when no flush thread is available. */
   assert (has_flush_thread || nloops <= pgbuf_Pool.num_LRU_list);
-
   assert (victim == NULL);
+
+  /* one last try on own private */
+  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+    {
+      private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+      lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
+
+      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
+      if (victim != NULL)
+	{
+	  if (detailed_perf)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
+	    }
+	  return victim;
+	}
+      /* failed */
+      if (detailed_perf)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
+	}
+    }
+  assert (victim == NULL);
+
   return victim;
 }
 
@@ -13652,7 +13681,8 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	    }
 
 	  new_quota = (int) (new_lru_ratio * all_private_quota);
-	  new_quota = MIN (new_quota, PGBUF_PRIVATE_LRU_MAX_QUOTA);
+	  new_quota = MIN (new_quota, PGBUF_PRIVATE_LRU_MAX_HARD_QUOTA);
+	  new_quota = MIN (new_quota, pgbuf_Pool.num_buffers / 2);
 
 	  lru_list = PGBUF_GET_LRU_LIST (i);
 	  lru_list->quota = new_quota;
