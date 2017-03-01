@@ -2469,7 +2469,7 @@ thread_worker (void *arg_p)
 
       /* set tsd_ptr information */
       tsd_ptr->conn_entry = job_entry_p->conn_entry;
-      if (tsd_ptr->conn_entry->session_p != NULL)
+      if (tsd_ptr->conn_entry != NULL && tsd_ptr->conn_entry->session_p != NULL)
 	{
 	  tsd_ptr->private_lru_index = session_get_private_lru_idx (tsd_ptr->conn_entry->session_p);
 	}
