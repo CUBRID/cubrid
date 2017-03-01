@@ -8787,8 +8787,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   pthread_mutex_unlock (&lru_list->mutex);
 
-  /* failed finding victim in singe-threaded, although the number of victim candidates is positive? impossible! */
-  assert (thread_is_page_flush_thread_available ());
+  /* failed finding victim in singe-threaded, although the number of victim candidates is positive? impossible!
+   * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
+   * NULL. */
+  assert (thread_is_page_flush_thread_available () || bufptr_victimizable != NULL);
   return NULL;
 
 #undef PERF
@@ -15623,7 +15625,11 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
   /* we add a lru list back to queue if all conditions are met:
    * 1. it has victim candidates
    * 2. list is not private or is not over quota. */
+#if defined (SERVER_MODE)
   if (lru_list->count_vict_cand > 0 && (!from_private || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list)))
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+  if (victim != NULL && lru_list->count_vict_cand > 0 && (!from_private || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list)))
+#endif /* SA_MODE */
     {
       /* add lru list back to queue */
       if (lf_circular_queue_produce (lfcq, &lru_idx))
