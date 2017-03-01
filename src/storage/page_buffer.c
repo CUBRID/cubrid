@@ -15627,7 +15627,7 @@ pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private)
    * 2. list is not private or is not over quota. */
 #if defined (SERVER_MODE)
   if (lru_list->count_vict_cand > 0 && (!from_private || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list)))
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   if (victim != NULL && lru_list->count_vict_cand > 0 && (!from_private || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list)))
 #endif /* SA_MODE */
     {
