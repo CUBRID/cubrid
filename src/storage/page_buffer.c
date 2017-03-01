@@ -6415,7 +6415,10 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		      /* add to top of current private list */
 		      pgbuf_lru_add_new_bcb_to_top (thread_p, bufptr, th_lru_idx);
 		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_TOP);
-		      pgbuf_bcb_register_hit_for_lru (bufptr);
+		      if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+			{
+			  pgbuf_bcb_register_hit_for_lru (bufptr);
+			}
 		      break;
 		    }
 		  if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
