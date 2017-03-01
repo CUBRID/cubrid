@@ -13525,6 +13525,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
   const INT64 onesec_usec = 1000000LL;
   const INT64 tensec_usec = 10 * onesec_usec;
   int total_victims = 0;
+  bool low_overall_activity = false;
 
   PGBUF_LRU_LIST *lru_list;
 
@@ -13558,14 +13559,15 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
    * - or more than 5 min since last adjustment and activity is more 1% of threshold
    * Activity of page buffer is measured in number of page unfixes
    */
-  if ((pgbuf_Pool.monitor.pg_unfix_cnt < PGBUF_TRAN_THRESHOLD_ACTIVITY && diff_usec < 500000LL)
-      || (pgbuf_Pool.monitor.pg_unfix_cnt < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100 && diff_usec < 300 * 1000000LL))
+  if (pgbuf_Pool.monitor.pg_unfix_cnt < PGBUF_TRAN_THRESHOLD_ACTIVITY && diff_usec < 500000LL)
     {
       quota->is_adjusting = 0;
       return;
     }
-
-  ATOMIC_TAS_32 (&monitor->pg_unfix_cnt, 0);
+  if (ATOMIC_TAS_32 (&monitor->pg_unfix_cnt, 0) < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100)
+    {
+      low_overall_activity = true;
+    }
 
   quota->last_adjust_time = curr_tick;
 
@@ -13616,11 +13618,18 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
     }
 
   /* compute private ratio */
-  /* avoid division by 0 */
-  lru_shared_hits = MAX (1, lru_shared_hits);
-  private_ratio = (float) (lru_private_hits) / (float) (lru_private_hits + lru_shared_hits);
-  private_ratio = MIN (MAX_PRIVATE_RATIO, private_ratio);
-  private_ratio = MAX (MIN_PRIVATE_RATIO, private_ratio);
+  if (low_overall_activity)
+    {
+      private_ratio = MIN_PRIVATE_RATIO;
+    }
+  else
+    {
+      /* avoid division by 0 */
+      lru_shared_hits = MAX (1, lru_shared_hits);
+      private_ratio = (float) (lru_private_hits) / (float) (lru_private_hits + lru_shared_hits);
+      private_ratio = MIN (MAX_PRIVATE_RATIO, private_ratio);
+      private_ratio = MAX (MIN_PRIVATE_RATIO, private_ratio);
+    }
   if (diff_usec >= tensec_usec)
     {
       quota->private_pages_ratio = private_ratio;
