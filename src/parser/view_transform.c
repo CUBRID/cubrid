@@ -4314,7 +4314,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	       * pt_class_assignable which expects accurate type information. */
 	      sc_info.top_node = temp;
 	      sc_info.donot_fold = false;
-	      pt_semantic_type (parser, temp, &sc_info);
+	      (void) pt_semantic_type (parser, temp, &sc_info);
 	    }
 
 	  /* here we just go to the next item in the list. If it is a nested insert, the correct one will be selected
@@ -4482,7 +4482,7 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 	{
 	  sc_info.top_node = merge_statement;
 	  sc_info.donot_fold = false;
-	  pt_semantic_type (parser, merge_statement, &sc_info);
+	  merge_statement = pt_semantic_type (parser, merge_statement, &sc_info);
 	}
     }
 
