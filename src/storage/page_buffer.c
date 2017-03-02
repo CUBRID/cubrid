@@ -959,9 +959,10 @@ static int pgbuf_initialize_page_quota (void);
 static int pgbuf_initialize_page_monitor (void);
 static int pgbuf_initialize_thrd_holder (void);
 static PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p);
-static INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+STATIC_INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
-static int pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder);
+STATIC_INLINE int pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
+  __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
 				      PGBUF_HOLDER_STAT * holder_perf_stat_p);
 #if !defined(NDEBUG)
@@ -1003,21 +1004,24 @@ static int pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB *
 static int pgbuf_get_lru_index (const VPID * vpid);
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-static int pgbuf_get_shared_lru_index_for_add (void);
+STATIC_INLINE int pgbuf_get_shared_lru_index_for_add (void) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, int victim_count,
 						 float lru_sum_flush_priority);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
-static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
+STATIC_INLINE PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
+  __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						       PGBUF_BCB * bcb_start);
 STATIC_INLINE bool pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, LOCK_FREE_CIRCULAR_QUEUE * queue,
 						     int *nassign_inout) __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
-static void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx);
+STATIC_INLINE void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx)
+  __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
 static int pgbuf_remove_private_from_aout_list (const int lru_idx);
-static void pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list);
+STATIC_INLINE void pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
+  __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void pgbuf_lru_add_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list,
 					     int lru_idx) __attribute__ ((ALWAYS_INLINE));
@@ -1034,12 +1038,17 @@ STATIC_INLINE void pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LI
 STATIC_INLINE void pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list,
 						 int lru_idx) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-static void pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
-static void pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
-static void pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
-static void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
-static void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
-static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
+STATIC_INLINE void pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+  __attribute__ ((ALWAYS_INLINE));
 
 static int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is_bcb_locked);
 static int pgbuf_flush_page_with_wal_keep_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
@@ -5718,7 +5727,7 @@ exit_on_error:
  *       given BCB, and then connect it to the free holder list of the
  *       corresponding thread.
  */
-static int
+STATIC_INLINE int
 pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
 {
   int err = NO_ERROR;
@@ -8318,7 +8327,7 @@ pgbuf_get_lru_index (const VPID * vpid)
  *   return: the index of the LRU index
  *   vpid(in): VPID
  */
-static int
+STATIC_INLINE int
 pgbuf_get_shared_lru_index_for_add ()
 {
 #define PAGE_ADD_REFRESH_STAT \
@@ -8638,7 +8647,7 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
  *       If its fcnt != 0, makes bufptr->PrevBCB bottom and retry. 
  *       While this processing, the caller must be the holder of the LRU list.
  */
-static PGBUF_BCB *
+STATIC_INLINE PGBUF_BCB *
 pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
 #define PERF(pstatid) if (perf_tracking) perfmon_inc_stat (thread_p, pstatid)
@@ -9510,7 +9519,7 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
  * bcb (in)      : new bcb
  * lru_idx (in)  : lru list index
  */
-static void
+STATIC_INLINE void
 pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
 {
   PGBUF_LRU_LIST *lru_list;
@@ -9546,7 +9555,7 @@ pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_
  * bcb (in)      : new bcb
  * lru_idx (in)  : lru list index
  */
-static void
+STATIC_INLINE void
 pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
 {
   PGBUF_LRU_LIST *lru_list;
@@ -9578,7 +9587,7 @@ pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int l
  * bcb (in)      : new bcb
  * lru_idx (in)  : lru list index
  */
-static void
+STATIC_INLINE void
 pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
 {
   PGBUF_LRU_LIST *lru_list;
@@ -9613,7 +9622,7 @@ pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int l
  * thread_p (in) : thread entry
  * bcb (in)      : bcb
  */
-static void
+STATIC_INLINE void
 pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   PGBUF_LRU_LIST *lru_list;
@@ -9642,7 +9651,7 @@ pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
  * bcb (in)      : private list bcb
  * lru_idx (in)  : shared list index
  */
-static void
+STATIC_INLINE void
 pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
 {
   /* bcb must be in private list */
@@ -9666,7 +9675,7 @@ pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb,
  *
  *  Note: The caller MUST hold the LRU list mutex.
  */
-static void
+STATIC_INLINE void
 pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
 {
   PGBUF_BCB *bcb_prev = NULL;
@@ -9729,7 +9738,7 @@ pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_L
  * thread_p (in) : thread entry
  * bcb (in)      : bcb
  */
-static void
+STATIC_INLINE void
 pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   PGBUF_ZONE zone = pgbuf_bcb_get_zone (bcb);
@@ -9778,7 +9787,7 @@ pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
  * vpid (in) :
  * lru_idx (in) : LRU index in which the VPID had been
  */
-static void
+STATIC_INLINE void
 pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx)
 {
 #if defined(SERVER_MODE)
