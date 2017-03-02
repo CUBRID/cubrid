@@ -981,12 +981,15 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  bind_arg->sc_info->donot_fold = true;	/* skip folding */
 	  table = pt_semantic_type (parser, table, bind_arg->sc_info);
 	  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
-	  spec->info.spec.derived_table = table;
-
 	  if (table != NULL)
 	    {
+	      spec->info.spec.derived_table = table;
 	      /* table spec passed bind_names and semantic_type */
 	      pt_bind_spec_attrs (parser, spec);
+	    }
+	  else
+	    {
+	      assert (pt_has_error (parser));
 	    }
 	}
       else if (PT_SPEC_IS_CTE (spec))
@@ -1184,7 +1187,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
 	if (node && pt_is_set_type (node))
 	  {
-	    pt_semantic_type (parser, node, bind_arg->sc_info);
+	    node = pt_semantic_type (parser, node, bind_arg->sc_info);
 	    if (node == NULL)
 	      {
 		return node;
@@ -1251,7 +1254,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	    /* now we need to type the innards of the set ... */
 	    /* first we tag this not typed so the type will be recomputed from scratch. */
 	    node->type_enum = PT_TYPE_NONE;
-	    pt_semantic_type (parser, node, bind_arg->sc_info);
+	    node = pt_semantic_type (parser, node, bind_arg->sc_info);
 	  }
 
       }
