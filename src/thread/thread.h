@@ -442,6 +442,8 @@ extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
 /* is thread functions */
+#define THREAD_IS_CHECKPOINT_THREAD(thread_p) \
+  ((thread_p) != NULL && (thread_p)->type == TT_DAEMON && thread_is_checkpoint_thread (thread_p))
 extern bool thread_is_checkpoint_thread (THREAD_ENTRY * thread_p);
 
 /* wakeup functions */

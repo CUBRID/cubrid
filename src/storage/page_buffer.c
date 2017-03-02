@@ -329,7 +329,7 @@ typedef enum
 
 #if defined (SERVER_MODE)
 #define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) \
-  (VACUUM_IS_THREAD_VACUUM_WORKER(th) || thread_is_checkpoint_thread(th))
+  (VACUUM_IS_THREAD_VACUUM_WORKER (th) || THREAD_IS_CHECKPOINT_THREAD (th))
 #else
 #define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) false
 #endif
@@ -1033,7 +1033,7 @@ STATIC_INLINE void pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LI
 					   bool min_one) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list,
 						 int lru_idx) __attribute__ ((ALWAYS_INLINE));
-static void pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
+STATIC_INLINE void pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
 static void pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
 static void pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx);
@@ -9424,7 +9424,7 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
  * thread_p (in) : thread entry
  * bcb (in)      : bcb to move to top
  */
-static void
+STATIC_INLINE void
 pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   PGBUF_LRU_LIST *lru_list;
@@ -9669,7 +9669,6 @@ pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb,
 static void
 pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
 {
-  PGBUF_ZONE zone = pgbuf_bcb_get_zone (bufptr);
   PGBUF_BCB *bcb_prev = NULL;
 
   if (lru_list->top == bufptr)
@@ -14051,7 +14050,7 @@ pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB * bufptr)
       return true;
     }
   /* is the single waiter checkpoint thread? */
-  return !thread_is_checkpoint_thread (bufptr->next_wait_thrd);
+  return !THREAD_IS_CHECKPOINT_THREAD (bufptr->next_wait_thrd);
 #else
   return false;
 #endif
