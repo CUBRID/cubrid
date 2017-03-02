@@ -14446,7 +14446,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
   holder_status = pgbuf_unlatch_thrd_holder (thread_p, bcb, NULL);
 
 #if !defined(NDEBUG)
-  thread_rc_track_meter (thread_p, ARG_FILE_LINE, -1, page_dealloc, RC_PGBUF, MGR_DEF);
+  thread_rc_track_meter (thread_p, __FILE__, __LINE__, -1, page_dealloc, RC_PGBUF, MGR_DEF);
 #endif /* NDEBUG */
   (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bcb, holder_status);
   /* bufptr->mutex has been released in above function. */
