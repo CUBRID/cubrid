@@ -23394,9 +23394,9 @@ heap_mvcc_update_relocation_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tde
 	  context->update_old_home = true;
 
 	  LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE,
-				     home_page_ptr, context->oid.slotid, &context->home_recdes,
-				     sizeof (&context->home_recdes), &context->new_home_recdes,
-				     sizeof (&context->new_home_recdes));
+				     home_page_ptr, context->oid.slotid, &context->home_recdes,
+				     sizeof (&context->home_recdes), &context->new_home_recdes,
+				     sizeof (&context->new_home_recdes));
 
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_BIG_UPDATES);
 	}
@@ -23446,8 +23446,8 @@ heap_mvcc_update_relocation_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tde
 	  context->update_old_home = true;
 
 	  LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE,
-				     home_page_ptr, context->oid.slotid, &context->home_recdes,
-				     sizeof (&context->home_recdes), &context->new_home_recdes,
+				     home_page_ptr, context->oid.slotid, &context->home_recdes,
+				     sizeof (&context->home_recdes), &context->new_home_recdes,
 				     sizeof (&context->new_home_recdes));
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_REL_UPDATES);
 	}
@@ -23460,9 +23460,10 @@ heap_mvcc_update_relocation_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tde
       context->remove_old_forward = true;
       context->update_old_home = true;
 
-      LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE, home_page_ptr,
-				 context->oid.slotid, &context->home_recdes, sizeof (&context->home_recdes),
-				 &context->recdes_p, sizeof (&context->recdes_p));
+      LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE,
+				 home_page_ptr,
+				 context->oid.slotid, &context->home_recdes,
+				 sizeof (&context->home_recdes), &context->recdes_p, sizeof (&context->recdes_p));
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_HOME_UPDATES);
     }
   else if (context->fits_in_forward)
@@ -23474,8 +23475,8 @@ heap_mvcc_update_relocation_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tde
       context->update_old_forward = true;
 
       LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, RVHF_UPDATE, home_page_ptr, context->forward_oid.slotid,
-				 &context->forward_recdes, sizeof (&context->forward_recdes), &context->recdes_p,
-				 sizeof (&context->recdes_p));
+				 &context->forward_recdes, sizeof (&context->forward_recdes), &context->recdes_p,
+				 sizeof (&context->recdes_p));
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_UPDATES);
     }
   else
@@ -23847,8 +23848,8 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
       heap_build_forwarding_recdes (&context->new_home_recdes, REC_RELOCATION, &context->forward_oid);
 
       LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, local_rcv_index, page_ptr, context->oid.slotid,
-				 &context->home_recdes, sizeof (&context->home_recdes), &context->new_home_recdes;
-				 , sizeof (&context->new_home_recdes));
+				 &context->home_recdes, sizeof (&context->home_recdes), &context->new_home_recdes;,
+				 sizeof (&context->new_home_recdes));
 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_REL_UPDATES);
     }
