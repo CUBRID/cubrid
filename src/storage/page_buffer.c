@@ -1144,8 +1144,7 @@ STATIC_INLINE bool pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE pt
 #if defined (SERVER_MODE)
 static bool pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
-STATIC_INLINE int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int *flushed_pages)
-  __attribute__ ((ALWAYS_INLINE));
+static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int *flushed_pages);
 STATIC_INLINE void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid,
 					     bool * flushed) __attribute__ ((ALWAYS_INLINE));
@@ -11435,8 +11434,10 @@ enum
  * thread_p (in) : thread entry
  * bufptr (in)	 : BCB to flush
  * flushed_pages(out): actual number of flushed pages
+ *
+ * todo: too big to be inlined. maybe we can optimize it.
  */
-STATIC_INLINE int
+static int
 pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int *flushed_pages)
 {
 #define PGBUF_PAGES_COUNT_THRESHOLD 4
