@@ -2244,7 +2244,8 @@ extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set);
 extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set);
-extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking);
+STATIC_INLINE bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
+  __attribute__ ((ALWAYS_INLINE));
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
@@ -2337,7 +2338,10 @@ extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
-/* inline */
+/************************************************************************/
+/* Inline functions:                                                    */
+/************************************************************************/
+
 /*
  * logtb_find_current_wait_msecs - find waiting times for current transaction
  *
@@ -2361,6 +2365,44 @@ logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
     {
       return 0;
     }
+}
+
+/*
+ * logtb_is_interrupted - find if execution must be stopped due to
+ *			  an interrupt (^C)
+ *
+ * return:
+ *
+ *   clear(in): true if the interrupt should be cleared.
+ *   continue_checking(in): Set as a side effect to true if there are more
+ *                        interrupts to check or to false if there are not
+ *                        more interrupts.
+ *
+ * Note: Find if the current execution must be stopped due to an interrupt (^C). If clear is true, the interruption flag
+ *       is cleared; This is the expected case, once someone is notified, we do not have to keep the flag on.
+ *
+ *       If the transaction is not active, false is returned. For example, in the middle of an undo action, the
+ *       transaction will not be interrupted. The recovery manager will interrupt the transaction at the end of the undo
+ *       action... in this case the transaction will be partially aborted.
+ */
+STATIC_INLINE bool
+logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  if (log_Gl.trantable.area == NULL)
+    {
+      return false;
+    }
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return false;
+    }
+
+  return logtb_is_interrupted_tdes (thread_p, tdes, clear, continue_checking);
 }
 
 #endif /* _LOG_IMPL_H_ */

@@ -927,7 +927,7 @@ static bool pgbuf_Monitor_locks = false;
   (pgbuf_Monitor_locks ? pgbuf_bcbmon_unlock (bcb) : (void) pthread_mutex_unlock (&(bcb)->mutex))
 #define PGBUF_BCB_CHECK_OWN(bcb) if (pgbuf_Monitor_locks) pgbuf_bcbmon_check_own (bcb)
 #define PGBUF_BCB_CHECK_MUTEX_LEAKS() if (pgbuf_Monitor_locks) pgbuf_bcbmon_check_mutex_leaks ()
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
 /* single-threaded does not require mutexes, nor does it need to check them */
 #define PGBUF_BCB_LOCK(bcb)
 #define PGBUF_BCB_TRYLOCK(bcb) (0)
@@ -935,6 +935,24 @@ static bool pgbuf_Monitor_locks = false;
 #define PGBUF_BCB_CHECK_OWN(bcb) (true)
 #define PGBUF_BCB_CHECK_MUTEX_LEAKS()
 #endif /* SA_MODE */
+
+/* helper to collect performance in page fix functions */
+typedef struct pgbuf_fix_perf PGBUF_FIX_PERF;
+struct pgbuf_fix_perf
+{
+  bool is_perf_tracking;
+  TSC_TICKS start_tick;
+  TSC_TICKS end_tick;
+  TSC_TICKS start_holder_tick;
+  PERF_PAGE_MODE perf_page_found;
+  PERF_HOLDER_LATCH perf_latch_mode;
+  PERF_CONDITIONAL_FIX_TYPE perf_cond_type;
+  PERF_PAGE_TYPE perf_page_type;
+  TSCTIMEVAL tv_diff;
+  UINT64 lock_wait_time;
+  UINT64 holder_wait_time;
+  UINT64 fix_wait_time;
+};
 
 /* TODO: disable PGBUF_ABORT_RELEASE before merging patch */
 /* #if defined (NDEBUG) */
@@ -998,6 +1016,8 @@ static int pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_an
 static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid,
 			      int need_hash_mutex);
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
+static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 #if !defined(NDEBUG)
 static int pgbuf_flush_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous, const char *caller_file,
@@ -1078,10 +1098,10 @@ static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREA
 STATIC_INLINE int pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
 
-static INLINE bool pgbuf_get_check_page_validation_level (int page_validation_level) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_get_check_page_validation_level (int page_validation_level) __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
-static INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
-static INLINE bool pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CUBRID_DEBUG)
 static void pgbuf_scramble (FILEIO_PAGE * iopage);
@@ -1763,26 +1783,21 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
-  int buf_lock_acquired;
   int wait_msecs;
 #if defined(ENABLE_SYSTEMTAP)
   bool pgbuf_hit = false;
-  bool monitored = false;
-  QUERY_ID query_id = NULL_QUERY_ID;
 #endif /* ENABLE_SYSTEMTAP */
-  PERF_PAGE_MODE perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
-  PERF_HOLDER_LATCH perf_latch_mode;
-  PERF_CONDITIONAL_FIX_TYPE perf_cond_type;
-  TSC_TICKS start_tick, end_tick, start_holder_tick;
   PGBUF_HOLDER *holder;
   PGBUF_WATCHER *watcher;
-  TSCTIMEVAL tv_diff;
-  UINT64 lock_wait_time, holder_wait_time, fix_wait_time;
-  bool is_perf_tracking;
-  bool is_latch_wait;
+  bool buf_lock_acquired = false;
+  bool is_latch_wait = false;
+  bool retry = false;
 #if !defined (NDEBUG)
   bool had_holder = false;
 #endif /* !NDEBUG */
+  PGBUF_FIX_PERF perf;
+
+  perf.perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
   /* parameter validation */
   if (request_mode != PGBUF_LATCH_READ && request_mode != PGBUF_LATCH_WRITE)
@@ -1828,13 +1843,12 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 	}
     }
 
-  lock_wait_time = 0;
+  perf.lock_wait_time = 0;
+  perf.is_perf_tracking = perfmon_is_perf_tracking ();
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
-
-  if (is_perf_tracking)
+  if (perf.is_perf_tracking)
     {
-      tsc_getticks (&start_tick);
+      tsc_getticks (&perf.start_tick);
     }
 
 try_again:
@@ -1879,68 +1893,17 @@ try_again:
     }
   else
     {
-      /* (bufptr == NULL) */
-
-      /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
-      if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK || fetch_mode == OLD_PAGE_IF_EXISTS)
-	{
-	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
-	  return NULL;
-	}
-
-      /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
-       * released in pgbuf_lock_page (). */
-      if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
-	{
-	  if (is_perf_tracking)
-	    {
-	      tsc_getticks (&end_tick);
-	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	      lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-	    }
-
-	  if (fetch_mode == NEW_PAGE)
-	    {
-	      perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
-	    }
-	  else
-	    {
-	      perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-	    }
-	  goto try_again;
-	}
-
-      if (perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT && perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
-	{
-	  if (fetch_mode == NEW_PAGE)
-	    {
-	      perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
-	    }
-	  else
-	    {
-	      perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
-	    }
-	}
-
-      /* Now, the caller is not holding any mutex. */
-      bufptr = pgbuf_allocate_bcb (thread_p, vpid);
+      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vp, fetch_mode, hash_anchor, &perf, &retry);
       if (bufptr == NULL)
 	{
-	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
-	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+	  if (retry)
+	    {
+	      goto try_again;
+	    }
+	  ASSERT_ERROR ();
 	  return NULL;
 	}
-
-      /* Currently, caller has one allocated BCB and is holding mutex */
-
-      /* initialize the BCB */
-      bufptr->vpid = *vpid;
-      assert (!pgbuf_bcb_avoid_victim (bufptr));
-      bufptr->latch_mode = PGBUF_NO_LATCH;
-      pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);
-      bufptr->avoid_dealloc_cnt = 0;
-      LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+      buf_lock_acquired = true;
 
 #if defined(ENABLE_SYSTEMTAP)
       if (fetch_mode == NEW_PAGE && pgbuf_hit == false)
@@ -1952,115 +1915,6 @@ try_again:
 	  CUBRID_PGBUF_MISS ();
 	}
 #endif /* ENABLE_SYSTEMTAP */
-
-      if (fetch_mode != NEW_PAGE)
-	{
-	  /* Record number of reads in statistics */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
-
-#if defined(ENABLE_SYSTEMTAP)
-	  query_id = qmgr_get_current_query_id (thread_p);
-	  if (query_id != NULL_QUERY_ID)
-	    {
-	      monitored = true;
-	      CUBRID_IO_READ_START (query_id);
-	    }
-#endif /* ENABLE_SYSTEMTAP */
-
-	  if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
-			   vpid->pageid, IO_PAGESIZE) == NULL)
-	    {
-	      /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
-
-	      /* bufptr->mutex will be released in following function. */
-	      pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
-
-	      /* 
-	       * Now, caller is not holding any mutex.
-	       * the last argument of pgbuf_unlock_page () is true that
-	       * means hash_mutex must be held before unlocking page.
-	       */
-	      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
-
-#if defined(ENABLE_SYSTEMTAP)
-	      if (monitored == true)
-		{
-		  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
-		}
-#endif /* ENABLE_SYSTEMTAP */
-
-	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
-	      return NULL;
-	    }
-
-#if defined(ENABLE_SYSTEMTAP)
-	  if (monitored == true)
-	    {
-	      CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 0);
-	    }
-#endif /* ENABLE_SYSTEMTAP */
-	  if (pgbuf_is_temporary_volume (vpid->volid) == true)
-	    {
-	      /* Check iff the first time to access */
-	      if (!LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa))
-		{
-		  LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
-		  pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
-		}
-	    }
-
-#if !defined (NDEBUG)
-	  /* perm volume */
-	  if (bufptr->vpid.volid > NULL_VOLID)
-	    {
-	      if (!log_is_in_crash_recovery ())
-		{
-		  if (!LSA_ISNULL (&bufptr->iopage_buffer->iopage.prv.lsa))
-		    {
-		      assert (bufptr->iopage_buffer->iopage.prv.pageid != -1);
-		      assert (bufptr->iopage_buffer->iopage.prv.volid != -1);
-		    }
-		}
-	    }
-#endif /* NDEBUG */
-
-	  if (thread_get_sort_stats_active (thread_p))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_IO_PAGES);
-	    }
-	}
-      else
-	{
-	  /* the caller is holding bufptr->mutex */
-
-#if defined(CUBRID_DEBUG)
-	  pgbuf_scramble (&bufptr->iopage_buffer->iopage);
-#endif /* CUBRID_DEBUG */
-
-	  /* Don't need to read page from disk since it is a new page. */
-	  if (pgbuf_is_temporary_volume (vpid->volid) == true)
-	    {
-	      LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
-	    }
-	  else
-	    {
-	      LSA_SET_INIT_NONTEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
-	    }
-
-	  /* perm volume */
-	  if (bufptr->vpid.volid > NULL_VOLID)
-	    {
-	      /* Init Page identifier of NEW_PAGE */
-	      bufptr->iopage_buffer->iopage.prv.pageid = -1;
-	      bufptr->iopage_buffer->iopage.prv.volid = -1;
-	    }
-
-	  if (thread_get_sort_stats_active (thread_p))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-	    }
-	}
-      buf_lock_acquired = true;
     }
   assert (!pgbuf_bcb_is_direct_victim (bufptr));
 
@@ -2104,9 +1958,9 @@ try_again:
     }
 
   /* At this place, the caller is holding bufptr->mutex */
-  if (is_perf_tracking)
+  if (perf.is_perf_tracking)
     {
-      tsc_getticks (&start_holder_tick);
+      tsc_getticks (&perf.start_holder_tick);
     }
 
   /* Latch Pass */
@@ -2142,11 +1996,11 @@ try_again:
   pgbuf_add_fixed_at (pgbuf_find_thrd_holder (thread_p, bufptr), caller_file, caller_line, !had_holder);
 #endif /* NDEBUG */
 
-  if (is_perf_tracking && is_latch_wait)
+  if (perf.is_perf_tracking && is_latch_wait)
     {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_holder_tick);
-      holder_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      tsc_getticks (&perf.end_tick);
+      tsc_elapsed_time_usec (&perf.tv_diff, perf.end_tick, perf.start_holder_tick);
+      perf.holder_wait_time = perf.tv_diff.tv_sec * 1000000LL + perf.tv_diff.tv_usec;
     }
 
   assert (bufptr == bufptr->iopage_buffer->bcb);
@@ -2242,59 +2096,57 @@ try_again:
     }
 
   /* Record number of fetches in statistics */
-  if (is_perf_tracking)
+  if (perf.is_perf_tracking)
     {
-      PERF_PAGE_TYPE perf_page_type;
-
-      perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
+      perf.perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
 
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
 	{
-	  perf_latch_mode = PERF_HOLDER_LATCH_READ;
+	  perf.perf_latch_mode = PERF_HOLDER_LATCH_READ;
 	}
       else
 	{
 	  assert (request_mode == PGBUF_LATCH_WRITE);
-	  perf_latch_mode = PERF_HOLDER_LATCH_WRITE;
+	  perf.perf_latch_mode = PERF_HOLDER_LATCH_WRITE;
 	}
 
       if (condition == PGBUF_UNCONDITIONAL_LATCH)
 	{
 	  if (is_latch_wait)
 	    {
-	      perf_cond_type = PERF_UNCONDITIONAL_FIX_WITH_WAIT;
-	      if (holder_wait_time > 0)
+	      perf.perf_cond_type = PERF_UNCONDITIONAL_FIX_WITH_WAIT;
+	      if (perf.holder_wait_time > 0)
 		{
-		  perfmon_pbx_hold_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode,
-						 holder_wait_time);
+		  perfmon_pbx_hold_acquire_time (thread_p, perf.perf_page_type, perf.perf_page_found,
+						 perf.perf_latch_mode, perf.holder_wait_time);
 		}
 	    }
 	  else
 	    {
-	      perf_cond_type = PERF_UNCONDITIONAL_FIX_NO_WAIT;
+	      perf.perf_cond_type = PERF_UNCONDITIONAL_FIX_NO_WAIT;
 	    }
 	}
       else
 	{
-	  perf_cond_type = PERF_CONDITIONAL_FIX;
+	  perf.perf_cond_type = PERF_CONDITIONAL_FIX;
 	}
 
-      perfmon_pbx_fix (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type);
-      if (lock_wait_time > 0)
+      perfmon_pbx_fix (thread_p, perf.perf_page_type, perf.perf_page_found, perf.perf_latch_mode, perf.perf_cond_type);
+      if (perf.lock_wait_time > 0)
 	{
-	  perfmon_pbx_lock_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
-					 lock_wait_time);
+	  perfmon_pbx_lock_acquire_time (thread_p, perf.perf_page_type, perf.perf_page_found, perf.perf_latch_mode,
+					 perf.perf_cond_type, perf.lock_wait_time);
 	}
 
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      fix_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      tsc_getticks (&perf.end_tick);
+      tsc_elapsed_time_usec (&perf.tv_diff, perf.end_tick, perf.start_tick);
+      perf.fix_wait_time = perf.tv_diff.tv_sec * 1000000LL + perf.tv_diff.tv_usec;
 
-      if (fix_wait_time > 0)
+      if (perf.fix_wait_time > 0)
 	{
-	  perfmon_pbx_fix_acquire_time (thread_p, perf_page_type, perf_page_found, perf_latch_mode, perf_cond_type,
-					fix_wait_time);
+	  perfmon_pbx_fix_acquire_time (thread_p, perf.perf_page_type, perf.perf_page_found, perf.perf_latch_mode,
+					perf.perf_cond_type, perf.fix_wait_time);
 	}
     }
 
@@ -2305,7 +2157,7 @@ try_again:
 
 #if defined(PAGE_STATISTICS)
 #if !defined(NDEBUG)
-  pgbuf_add_fixed_source_stat (thread_p, caller_file, caller_line, perf_page_found, pgptr);
+  pgbuf_add_fixed_source_stat (thread_p, caller_file, caller_line, perf.perf_page_found, pgptr);
 #endif /* NDEBUG */
 #endif /* PAGE_STATISTICS */
 
@@ -5006,7 +4858,7 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
   /* perm volume */
   if (bufptr->vpid.volid > NULL_VOLID)
     {
-      /* Check iff is the first time */
+      /* Check if is the first time */
       if (bufptr->iopage_buffer->iopage.prv.pageid == -1 && bufptr->iopage_buffer->iopage.prv.volid == -1)
 	{
 	  /* Set Page identifier */
@@ -7808,6 +7660,202 @@ end:
 }
 
 /*
+ * pgbuf_claim_bcb_for_fix () - function used for page fix to claim a bcb when page is not found in buffer
+ *
+ * return               : claimed BCB
+ * thread_p (in)        : thread entry
+ * vpid (in)            : page identifier
+ * fetch_mode (in)      : fetch mode
+ * hash_anchor (in/out) : hash anchor
+ * perf (in/out)        : page fix performance monitoring helper
+ * try_again (out)      : output true to trying getting bcb again
+ */
+static PGBUF_BCB *
+pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again)
+{
+  PGBUF_BCB *bufptr = NULL;
+#if defined (ENABLE_SYSTEMTAP)
+  bool monitored = false;
+  QUERY_ID query_id = NULL_QUERY_ID;
+#endif /* ENABLE_SYSTEMTAP */
+
+  /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
+  if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK || fetch_mode == OLD_PAGE_IF_EXISTS)
+    {
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+      return NULL;
+    }
+
+  /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
+   * released in pgbuf_lock_page (). */
+  if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
+    {
+      if (perf->is_perf_tracking)
+	{
+	  tsc_getticks (&perf->end_tick);
+	  tsc_elapsed_time_usec (&perf->tv_diff, perf->end_tick, perf->start_tick);
+	  perf->lock_wait_time = perf->tv_diff.tv_sec * 1000000LL + perf->tv_diff.tv_usec;
+	}
+
+      if (fetch_mode == NEW_PAGE)
+	{
+	  perf->perf_page_found = PERF_PAGE_MODE_NEW_LOCK_WAIT;
+	}
+      else
+	{
+	  perf->perf_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
+	}
+      *try_again = true;
+      return NULL;
+    }
+
+  if (perf->perf_page_found != PERF_PAGE_MODE_NEW_LOCK_WAIT && perf->perf_page_found != PERF_PAGE_MODE_OLD_LOCK_WAIT)
+    {
+      if (fetch_mode == NEW_PAGE)
+	{
+	  perf->perf_page_found = PERF_PAGE_MODE_NEW_NO_WAIT;
+	}
+      else
+	{
+	  perf->perf_page_found = PERF_PAGE_MODE_OLD_NO_WAIT;
+	}
+    }
+
+  /* Now, the caller is not holding any mutex. */
+  bufptr = pgbuf_allocate_bcb (thread_p, vpid);
+  if (bufptr == NULL)
+    {
+      ASSERT_ERROR ();
+      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+      return NULL;
+    }
+
+  /* Currently, caller has one allocated BCB and is holding mutex */
+
+  /* initialize the BCB */
+  bufptr->vpid = *vpid;
+  assert (!pgbuf_bcb_avoid_victim (bufptr));
+  bufptr->latch_mode = PGBUF_NO_LATCH;
+  pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);
+  bufptr->avoid_dealloc_cnt = 0;
+  LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+  if (fetch_mode != NEW_PAGE)
+    {
+      /* Record number of reads in statistics */
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
+
+#if defined(ENABLE_SYSTEMTAP)
+      query_id = qmgr_get_current_query_id (thread_p);
+      if (query_id != NULL_QUERY_ID)
+	{
+	  monitored = true;
+	  CUBRID_IO_READ_START (query_id);
+	}
+#endif /* ENABLE_SYSTEMTAP */
+
+      if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
+		       vpid->pageid, IO_PAGESIZE) == NULL)
+	{
+	  /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
+	  ASSERT_ERROR ();
+
+	  /* bufptr->mutex will be released in following function. */
+	  pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
+
+	  /* 
+	   * Now, caller is not holding any mutex.
+	   * the last argument of pgbuf_unlock_page () is true that
+	   * means hash_mutex must be held before unlocking page.
+	   */
+	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+
+#if defined(ENABLE_SYSTEMTAP)
+	  if (monitored == true)
+	    {
+	      CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
+	    }
+#endif /* ENABLE_SYSTEMTAP */
+
+	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+	  return NULL;
+	}
+
+#if defined(ENABLE_SYSTEMTAP)
+      if (monitored == true)
+	{
+	  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 0);
+	}
+#endif /* ENABLE_SYSTEMTAP */
+      if (pgbuf_is_temporary_volume (vpid->volid) == true)
+	{
+	  /* Check iff the first time to access */
+	  if (!LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa))
+	    {
+	      LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+	      pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
+	    }
+	}
+
+#if !defined (NDEBUG)
+      /* perm volume */
+      if (bufptr->vpid.volid > NULL_VOLID)
+	{
+	  if (!log_is_in_crash_recovery ())
+	    {
+	      if (!LSA_ISNULL (&bufptr->iopage_buffer->iopage.prv.lsa))
+		{
+		  assert (bufptr->iopage_buffer->iopage.prv.pageid != -1);
+		  assert (bufptr->iopage_buffer->iopage.prv.volid != -1);
+		}
+	    }
+	}
+#endif /* NDEBUG */
+
+      if (thread_get_sort_stats_active (thread_p))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+	}
+    }
+  else
+    {
+      /* the caller is holding bufptr->mutex */
+
+#if defined(CUBRID_DEBUG)
+      pgbuf_scramble (&bufptr->iopage_buffer->iopage);
+#endif /* CUBRID_DEBUG */
+
+      /* Don't need to read page from disk since it is a new page. */
+      if (pgbuf_is_temporary_volume (vpid->volid) == true)
+	{
+	  LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+	}
+      else
+	{
+	  LSA_SET_INIT_NONTEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+	}
+
+      /* perm volume */
+      if (bufptr->vpid.volid > NULL_VOLID)
+	{
+	  /* Init Page identifier of NEW_PAGE */
+	  bufptr->iopage_buffer->iopage.prv.pageid = -1;
+	  bufptr->iopage_buffer->iopage.prv.volid = -1;
+	}
+
+      if (thread_get_sort_stats_active (thread_p))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	}
+    }
+
+  return bufptr;
+}
+
+/*
  * pgbuf_victimize_bcb () - Victimize given buffer page
  *   return: NO_ERROR, or ER_code
  *   bufptr(in): pointer to buffer page
@@ -8473,33 +8521,9 @@ STATIC_INLINE bool
 pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock)
 {
 #if defined (SERVER_MODE)
-  if (pgbuf_Monitor_locks)
+  if (has_mutex_lock)
     {
-      int index = thread_get_current_entry_index ();
-      PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
-
-      if (has_mutex_lock)
-	{
-	  if (bcb->owner_mutex != index)
-	    {
-	      PGBUF_ABORT_RELEASE ();
-	    }
-	  if (monitor_bcb_mutex->bcb != bcb && monitor_bcb_mutex->bcb_second != bcb)
-	    {
-	      PGBUF_ABORT_RELEASE ();
-	    }
-	}
-      else
-	{
-	  if (bcb->owner_mutex == index)
-	    {
-	      PGBUF_ABORT_RELEASE ();
-	    }
-	  if (monitor_bcb_mutex->bcb == bcb || monitor_bcb_mutex->bcb_second == bcb)
-	    {
-	      PGBUF_ABORT_RELEASE ();
-	    }
-	}
+      PGBUF_BCB_CHECK_OWN (bcb);
     }
   return bcb->fcnt > 0 || bcb->next_wait_thrd != NULL || (!has_mutex_lock && bcb->latch_mode != PGBUF_NO_LATCH);
 #else /* !SERVER_MODE */
