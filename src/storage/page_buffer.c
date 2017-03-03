@@ -328,6 +328,7 @@ typedef enum
 #define PGBUF_AOUT_NOT_FOUND  -2
 
 #if defined (SERVER_MODE)
+/* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
 #define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) \
   (VACUUM_IS_THREAD_VACUUM_WORKER (th) || THREAD_IS_CHECKPOINT_THREAD (th))
 #else
@@ -999,6 +1000,9 @@ STATIC_INLINE int pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB 
 					     PGBUF_HOLDER_STAT * holder_perf_stat_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int holder_status)
   __attribute__ ((ALWAYS_INLINE));
+static void pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int thread_private_lru_index);
+STATIC_INLINE bool pgbuf_should_move_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb,
+							int thread_private_lru_index) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
 			    int request_fcnt, bool as_promote);
 STATIC_INLINE int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
@@ -1065,7 +1069,7 @@ STATIC_INLINE void pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LI
 					   bool min_one) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list,
 						 int lru_idx) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+static void pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 STATIC_INLINE void pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
@@ -1073,16 +1077,14 @@ STATIC_INLINE void pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGB
 STATIC_INLINE void pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
-  __attribute__ ((ALWAYS_INLINE));
+static void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
+static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 
 STATIC_INLINE int pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is_bcb_locked)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_flush_page_with_wal_keep_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
-static INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_exist_blocked_reader_writer_victim (PGBUF_BCB * bufptr);
 #if !defined(NDEBUG)
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null,
@@ -6117,10 +6119,8 @@ STATIC_INLINE int
 pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int holder_status)
 {
   PAGE_PTR pgptr;
-  int bcb_lru_idx, shared_lru_idx, th_lru_idx;
-  int aout_list_id;
+  int th_lru_idx;
   PGBUF_ZONE zone;
-  bool aout_enabled = true;
 
   assert (holder_status == NO_ERROR);
 
@@ -6183,164 +6183,102 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	  switch (zone)
 	    {
 	    case PGBUF_VOID_ZONE:
-	      if (pgbuf_Pool.buf_AOUT_list.max_count <= 0)
+	      /* bcb was recently allocated. the case may vary from never being used (or almost never), to up to few
+	       * percent (when hit ratio is very low). in any case, this is not needed to be very optimized here,
+	       * so the code was moved outside unlatch... do not inline it */
+	      pgbuf_unlatch_void_zone_bcb (thread_p, bufptr, th_lru_idx);
+	      break;
+
+	    case PGBUF_LRU_1_ZONE:
+	      /* note: this is most often accessed code and must be highly optimized! */
+	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
-		  aout_list_id = PGBUF_AOUT_NOT_FOUND;
-		  aout_enabled = false;
+		  /* do nothing */
+		  /* ... except collecting statistics */
+		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_KEEP_VAC);
+		  break;
+		}
+	      if (pgbuf_should_move_private_to_shared (thread_p, bufptr, th_lru_idx))
+		{
+		  /* move to shared */
+		  pgbuf_lru_move_from_private_to_shared (thread_p, bufptr);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
+		  break;
+		}
+	      /* do not move or boost */
+	      if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bufptr)))
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_KEEP);
 		}
 	      else
 		{
-		  aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bufptr->vpid);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_SHR_KEEP);
 		}
+	      pgbuf_bcb_register_hit_for_lru (bufptr);
+	      break;
 
+	    case PGBUF_LRU_2_ZONE:
+	      /* this is the buffer zone between hot and victimized. is less hot than zone one and we allow boosting
+	       * (if bcb's are old enough). */
 	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 		{
-		  /* if this is vacuum, it does not matter if found on AOUT (that is quite expected) */
-		  if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
+		  /* do nothing */
+		  /* ... except collecting statistics */
+		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_KEEP_VAC);
+		  break;
+		}
+	      if (pgbuf_should_move_private_to_shared (thread_p, bufptr, th_lru_idx))
+		{
+		  /* move to shared */
+		  pgbuf_lru_move_from_private_to_shared (thread_p, bufptr);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_PRV_TO_SHR_MID);
+		  break;
+		}
+	      if (PGBUF_IS_BCB_OLD_ENOUGH (bufptr, pgbuf_lru_list_from_bcb (bufptr)))
+		{
+		  /* boost */
+		  pgbuf_lru_boost_bcb (thread_p, bufptr);
+		}
+	      else
+		{
+		  /* bcb is too new to tell if it really deserves a boost */
+		  if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bufptr)))
 		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND_VAC);
+		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_PRV_KEEP);
 		    }
 		  else
 		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_FOUND_VAC);
+		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_SHR_KEEP);
 		    }
-		  /* can we feed direct victims? */
+		}
+	      pgbuf_bcb_register_hit_for_lru (bufptr);
+	      break;
+
+	    case PGBUF_LRU_3_ZONE:
+	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+		{
 		  if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		    {
 		      /* assigned victim directly */
 		      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
 			{
-			  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID);
+			  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU);
 			}
-
-		      /* add to AOUT */
-		      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, aout_list_id);
-		      break;
-		    }
-
-		  /* reset aout_list_id */
-		  aout_list_id = PGBUF_AOUT_NOT_FOUND;
-		}
-	      else
-		{
-		  if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
-		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND);
 		    }
 		  else
 		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_FOUND);
-		    }
-		}
-
-	      if (th_lru_idx != -1)
-		{
-		  if (!aout_enabled || th_lru_idx == aout_list_id)
-		    {
-		      /* add to top of current private list */
-		      pgbuf_lru_add_new_bcb_to_top (thread_p, bufptr, th_lru_idx);
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_TOP);
-		      if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
-			{
-			  pgbuf_bcb_register_hit_for_lru (bufptr);
-			}
-		      break;
-		    }
-		  if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
-		    {
-		      /* add to middle of current private list */
-		      pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, th_lru_idx);
-		      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
-			{
-			  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_MID_VAC);
-			}
-		      else
-			{
-			  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_MID);
-			  pgbuf_bcb_register_hit_for_lru (bufptr);
-			}
-		      break;
-		    }
-		  /* fall through to add to shared */
-		}
-	      shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
-	      pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, shared_lru_idx);
-	      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_SHARED_MID);
-	      if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
-		{
-		  pgbuf_bcb_register_hit_for_lru (bufptr);
-		}
-	      break;
-
-	    case PGBUF_LRU_1_ZONE:
-	    case PGBUF_LRU_2_ZONE:
-	    case PGBUF_LRU_3_ZONE:
-
-	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
-		{
-		  if (zone == PGBUF_LRU_1_ZONE)
-		    {
-		      /* do nothing */
-		      /* ... except collecting statistics */
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_KEEP_VAC);
-		    }
-		  else if (zone == PGBUF_LRU_2_ZONE)
-		    {
-		      /* do nothing */
-		      /* ... except collecting statistics */
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_KEEP_VAC);
-		    }
-		  else
-		    {
-		      assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr));
-		      if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
-			{
-			  /* assigned victim directly */
-			  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
-			    {
-			      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU);
-			    }
-			}
-		      else
-			{
-			  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_THREE_KEEP_VAC);
-			}
+		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_THREE_KEEP_VAC);
 		    }
 		  break;
 		}
-
-	      bcb_lru_idx = pgbuf_bcb_get_lru_index (bufptr);
-
-	      /* do we move from private to shared? we have two possible scenarios:
-	       * 1. bcb is fixed by two different active transactions
-	       * 2. bcb is hot enough and old enough. we need this for single(few)-threaded scenarios, to avoid constant
-	       *    boosting of hot pages.
-	       */
-	      if (PGBUF_IS_PRIVATE_LRU_INDEX (bcb_lru_idx)
-		  && ((th_lru_idx != -1 && bcb_lru_idx != th_lru_idx)
-		      || (bufptr->count_all_fixes >= PGBUF_FIX_COUNT_THRESHOLD
-			  && PGBUF_IS_BCB_OLD_ENOUGH (bufptr, pgbuf_lru_list_from_bcb (bufptr)))))
+	      if (pgbuf_should_move_private_to_shared (thread_p, bufptr, th_lru_idx))
 		{
-		  /* bcb belongs to another private than mine. move it to shared */
-		  shared_lru_idx = pgbuf_get_shared_lru_index_for_add ();
-		  pgbuf_lru_move_from_private_to_shared (thread_p, bufptr, shared_lru_idx);
-		  if (zone == PGBUF_LRU_1_ZONE)
-		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
-		    }
-		  else if (zone == PGBUF_LRU_2_ZONE)
-		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_TWO_PRV_TO_SHR_MID);
-		    }
-		  else
-		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_THREE_PRV_TO_SHR_MID);
-		    }
-		  pgbuf_bcb_register_hit_for_lru (bufptr);
+		  /* move to shared */
+		  pgbuf_lru_move_from_private_to_shared (thread_p, bufptr);
+		  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_THREE_PRV_TO_SHR_MID);
 		  break;
 		}
-
-	      /* boost bcb */
+	      /* boost */
 	      pgbuf_lru_boost_bcb (thread_p, bufptr);
 	      pgbuf_bcb_register_hit_for_lru (bufptr);
 	      break;
@@ -6408,6 +6346,157 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pgbuf_unlatch_void_zone_bcb () - unlatch bcb that is currently in void zone.
+ *
+ * return                        : void
+ * thread_p (in)                 : thread entry
+ * bcb (in)                      : void zone bcb to unlatch
+ * thread_private_lru_index (in) : thread's private lru index. -1 if thread does not have any private list.
+ *
+ * note: this is part of unlatch/unfix algorithm.
+ */
+static void
+pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int thread_private_lru_index)
+{
+  bool aout_enabled = false;
+  int aout_list_id = PGBUF_AOUT_NOT_FOUND;
+
+  assert (pgbuf_bcb_get_zone (bcb) == PGBUF_VOID_ZONE);
+
+  if (pgbuf_Pool.buf_AOUT_list.max_count > 0)
+    {
+      aout_enabled = true;
+      aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bcb->vpid);
+    }
+
+  if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+    {
+      /* we are not registering unfix for activity and we are not boosting or moving bcb's */
+      if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND_VAC);
+	}
+      else
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_FOUND_VAC);
+	}
+
+      /* can we feed direct victims? */
+      if (!pgbuf_bcb_avoid_victim (bcb) && pgbuf_assign_direct_victim (thread_p, bcb))
+	{
+	  /* assigned victim directly */
+	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID);
+	    }
+
+	  /* add to AOUT */
+	  if (pgbuf_Pool.buf_AOUT_list.max_count > 0)
+	    {
+	      pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, aout_list_id);
+	    }
+	  return;
+	}
+
+      /* reset aout_list_id */
+      aout_list_id = PGBUF_AOUT_NOT_FOUND;
+    }
+  else
+    {
+      if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND);
+	}
+      else
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_AOUT_FOUND);
+	}
+    }
+
+  if (thread_private_lru_index != -1)
+    {
+      if (!aout_enabled || thread_private_lru_index == aout_list_id)
+	{
+	  /* add to top of current private list */
+	  pgbuf_lru_add_new_bcb_to_top (thread_p, bcb, thread_private_lru_index);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_TOP);
+	  if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	    {
+	      pgbuf_bcb_register_hit_for_lru (bcb);
+	    }
+	  return;
+	}
+      if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
+	{
+	  /* add to middle of current private list */
+	  pgbuf_lru_add_new_bcb_to_middle (thread_p, bcb, thread_private_lru_index);
+	  if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_MID_VAC);
+	    }
+	  else
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_PRIVATE_MID);
+	      pgbuf_bcb_register_hit_for_lru (bcb);
+	    }
+	  return;
+	}
+      /* fall through to add to shared */
+    }
+  /* add to middle of shared list. */
+  pgbuf_lru_add_new_bcb_to_middle (thread_p, bcb, pgbuf_get_shared_lru_index_for_add ());
+  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_SHARED_MID);
+  if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+    {
+      pgbuf_bcb_register_hit_for_lru (bcb);
+    }
+}
+
+/*
+ * pgbuf_should_move_private_to_shared () - return true if bcb belongs to private lru list and if should be moved to a
+ *                                          shared lru list.
+ *
+ * return                        : true if move from private to shared is needed.
+ * thread_p (in)                 : thread entry
+ * bcb (in)                      : bcb
+ * thread_private_lru_index (in) : thread's private lru index. -1 if thread does not have any private list.
+ */
+STATIC_INLINE bool
+pgbuf_should_move_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int thread_private_lru_index)
+{
+  int bcb_lru_idx = pgbuf_bcb_get_lru_index (bcb);
+
+  if (PGBUF_IS_SHARED_LRU_INDEX (bcb_lru_idx))
+    {
+      /* not a private list */
+      return false;
+    }
+
+  /* two conditions to move from private to shared:
+   * 1. bcb is fixed by more than one transaction.
+   * 2. bcb is very hot and old enough. */
+
+  /* cond 1 */
+  if (thread_private_lru_index != bcb_lru_idx)
+    {
+      return true;
+    }
+  /* cond 2 */
+  if (bcb->count_all_fixes < PGBUF_FIX_COUNT_THRESHOLD)
+    {
+      /* not hot enough */
+      return false;
+    }
+  if (!PGBUF_IS_BCB_OLD_ENOUGH (bcb, PGBUF_GET_LRU_LIST (bcb_lru_idx)))
+    {
+      /* not old enough */
+      return false;
+    }
+  /* hot and old enough */
+  return true;
 }
 
 /*
@@ -9354,7 +9443,7 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
  * thread_p (in) : thread entry
  * bcb (in)      : bcb to move to top
  */
-STATIC_INLINE void
+static void
 pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   PGBUF_LRU_LIST *lru_list;
@@ -9366,7 +9455,7 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   lru_list = pgbuf_lru_list_from_bcb (bcb);
   is_private = PGBUF_IS_PRIVATE_LRU_INDEX (lru_list->index);
 
-  /* rules to boosting bcb's in lru lists:
+  /* rules to boosting bcb's in lru lists (also see code in pgbuf_unlatch_bcb_upon_unfix):
    * 1. never boost bcb's in zone 1. this is usually the hottest part of the lists and should have a big hit ratio.
    *    we'd like to avoid locking list mutex and making changes, these bcb's are in no danger of being victimized,
    *    so we just don't move them.
@@ -9376,23 +9465,13 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
    *    to zones 1 and 2. if a page is quickly fixed several times, its "age" is really small (age being the difference
    *    between the bcb's saved tick and current list tick), and we don't boost it. it should be unfixed again after
    *    aging a little before being boosted to top.
-   * 3. always boost from third zone, since these are decently old. */
+   * 3. always boost from third zone, since these are decently old.
+   *
+   * note: early outs should be handled in pgbuf_unlatch_bcb_upon_unfix.
+   */
 
-  if (zone == PGBUF_LRU_1_ZONE)
-    {
-      /* never boost */
-      perfmon_inc_stat (thread_p, is_private ? PSTAT_PB_UNFIX_LRU_ONE_PRV_KEEP : PSTAT_PB_UNFIX_LRU_ONE_SHR_KEEP);
-      return;
-    }
-
-  if (zone == PGBUF_LRU_2_ZONE && !PGBUF_IS_BCB_OLD_ENOUGH (bcb, lru_list))
-    {
-      /* boost only if bcb has aged enough. not the case here */
-      perfmon_inc_stat (thread_p, is_private ? PSTAT_PB_UNFIX_LRU_TWO_PRV_KEEP : PSTAT_PB_UNFIX_LRU_TWO_SHR_KEEP);
-      return;
-    }
-
-  /* always boost third zone bcb's */
+  assert (zone != PGBUF_LRU_1_ZONE);
+  assert (zone != PGBUF_LRU_2_ZONE || PGBUF_IS_BCB_OLD_ENOUGH (bcb, lru_list));
 
   /* we'll boost. collect stats */
   if (zone == PGBUF_LRU_2_ZONE)
@@ -9570,23 +9649,23 @@ pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
  * return        : void
  * thread_p (in) : thread entry
  * bcb (in)      : private list bcb
- * lru_idx (in)  : shared list index
  */
-STATIC_INLINE void
-pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
+static void
+pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   /* bcb must be in private list */
   assert (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bcb)));
-  /* target list must be shared */
-  assert (PGBUF_IS_SHARED_LRU_INDEX (lru_idx));
+
+  /* note: from statistics analysis, moves from private to shared are very rare, so we don't inline the function */
 
   /* remove bcb from its lru list */
   pgbuf_lru_remove_bcb (thread_p, bcb);
 
   /* add bcb to middle of shared list */
-  pgbuf_lru_add_new_bcb_to_middle (thread_p, bcb, lru_idx);
-}
+  pgbuf_lru_add_new_bcb_to_middle (thread_p, bcb, pgbuf_get_shared_lru_index_for_add ());
 
+  pgbuf_bcb_register_hit_for_lru (bcb);
+}
 
 /*
  * pgbuf_remove_from_lru_list () - Remove a BCB from the LRU list
@@ -9659,7 +9738,7 @@ pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_L
  * thread_p (in) : thread entry
  * bcb (in)      : bcb
  */
-STATIC_INLINE void
+static void
 pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
   PGBUF_ZONE zone = pgbuf_bcb_get_zone (bcb);

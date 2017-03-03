@@ -2106,6 +2106,8 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
 /*
  *   perfmon_pbx_unfix - 
  *   return: none
+ *
+ * todo: inline
  */
 void
 perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder, int holder_latch)
