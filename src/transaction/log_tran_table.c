@@ -2924,31 +2924,6 @@ logtb_find_wait_msecs (int tran_index)
 }
 
 /*
- * logtb_find_current_wait_msecs - find waiting times for current transaction
- *
- * return : wait_msecs...
- *
- * Note: Find the waiting time for the current transaction.
- */
-int
-logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
-    {
-      return tdes->wait_msecs;
-    }
-  else
-    {
-      return 0;
-    }
-}
-
-/*
  * logtb_find_interrupt -
  *
  * return :
