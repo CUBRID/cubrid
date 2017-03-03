@@ -1893,7 +1893,7 @@ try_again:
     }
   else
     {
-      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vp, fetch_mode, hash_anchor, &perf, &retry);
+      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode, hash_anchor, &perf, &retry);
       if (bufptr == NULL)
 	{
 	  if (retry)
