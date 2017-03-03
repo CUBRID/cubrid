@@ -3223,6 +3223,48 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 }
 
 /*
+ * logtb_is_interrupted - find if execution must be stopped due to
+ *			  an interrupt (^C)
+ *
+ * return:
+ *
+ *   clear(in): true if the interrupt should be cleared.
+ *   continue_checking(in): Set as a side effect to true if there are more
+ *                        interrupts to check or to false if there are not
+ *                        more interrupts.
+ *
+ * Note: Find if the current execution must be stopped due to an
+ *              interrupt (^C). If clear is true, the interruption flag is
+ *              cleared; This is the expected case, once someone is notified,
+ *              we do not have to keep the flag on.
+ *
+ *       If the transaction is not active, false is returned. For
+ *              example, in the middle of an undo action, the transaction will
+ *              not be interrupted. The recovery manager will interrupt the
+ *              transaction at the end of the undo action...int this case the
+ *              transaction will be partially aborted.
+ */
+bool
+logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  if (log_Gl.trantable.area == NULL)
+    {
+      return false;
+    }
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return false;
+    }
+
+  return logtb_is_interrupted_tdes (thread_p, tdes, clear, continue_checking);
+}
+
+/*
  * logtb_is_interrupted_tran - find if the execution of the given transaction
  *			       must be stopped due to an interrupt (^C)
  *
