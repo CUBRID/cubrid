@@ -126,6 +126,9 @@ public class CUBRIDClob implements Clob {
 		if (lobHandle == null) {
 			throw conn.createCUBRIDException(CUBRIDJDBCErrorCode.invalid_value, null);
 		}
+		if (lobHandle.getLobSize() == 0) {
+			return 0;
+		}
 		if (clobCharLength < 0) {
 			readClobPartially(Long.MAX_VALUE, 1);
 		}
