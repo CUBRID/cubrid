@@ -918,9 +918,23 @@ struct pgbuf_monitor_bcb_mutex
 static bool pgbuf_Monitor_locks = false;
 #endif /* SERVER_MODE */
 
-#define PGBUF_BCB_LOCK(bcb) pgbuf_bcb_lock (bcb, __LINE__)
-#define PGBUF_BCB_TRYLOCK(bcb) pgbuf_bcb_trylock (bcb, __LINE__)
-#define PGBUF_BCB_UNLOCK(bcb) pgbuf_bcb_unlock (bcb)
+#if defined (SERVER_MODE)
+#define PGBUF_BCB_LOCK(bcb) \
+  (pgbuf_Monitor_locks ? pgbuf_bcbmon_lock (bcb, __LINE__) : (void) pthread_mutex_lock (&(bcb)->mutex))
+#define PGBUF_BCB_TRYLOCK(bcb) \
+  (pgbuf_Monitor_locks ? pgbuf_bcbmon_trylock (bcb, __LINE__) : pthread_mutex_trylock (&(bcb)->mutex))
+#define PGBUF_BCB_UNLOCK(bcb) \
+  (pgbuf_Monitor_locks ? pgbuf_bcbmon_unlock (bcb) : (void) pthread_mutex_unlock (&(bcb)->mutex))
+#define PGBUF_BCB_CHECK_OWN(bcb) if (pgbuf_Monitor_locks) pgbuf_bcbmon_check_own (bcb)
+#define PGBUF_BCB_CHECK_MUTEX_LEAKS() if (pgbuf_Monitor_locks) pgbuf_bcbmon_check_mutex_leaks ()
+#else	/* !SERVER_MODE */		 /* SA_MODE */
+/* single-threaded does not require mutexes, nor does it need to check them */
+#define PGBUF_BCB_LOCK(bcb)
+#define PGBUF_BCB_TRYLOCK(bcb) (0)
+#define PGBUF_BCB_UNLOCK(bcb)
+#define PGBUF_BCB_CHECK_OWN(bcb) (true)
+#define PGBUF_BCB_CHECK_MUTEX_LEAKS()
+#endif /* SA_MODE */
 
 /* TODO: disable PGBUF_ABORT_RELEASE before merging patch */
 /* #if defined (NDEBUG) */
@@ -981,8 +995,8 @@ STATIC_INLINE int pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_B
 STATIC_INLINE int pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid);
-STATIC_INLINE int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid,
-				     int need_hash_mutex) __attribute__ ((ALWAYS_INLINE));
+static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid,
+			      int need_hash_mutex);
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 #if !defined(NDEBUG)
@@ -1190,11 +1204,13 @@ STATIC_INLINE void pgbuf_bcb_mark_was_flushed (THREAD_ENTRY * thread_p, PGBUF_BC
 STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE void pgbuf_bcb_lock (PGBUF_BCB * bcb, int caller_line) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int pgbuf_bcb_trylock (PGBUF_BCB * bcb, int caller_line) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_unlock (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_check_own (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_check_mutex_leaks (void) __attribute__ ((ALWAYS_INLINE));
+#if defined (SERVER_MODE)
+static void pgbuf_bcbmon_lock (PGBUF_BCB * bcb, int caller_line);
+static int pgbuf_bcbmon_trylock (PGBUF_BCB * bcb, int caller_line);
+static void pgbuf_bcbmon_unlock (PGBUF_BCB * bcb);
+static void pgbuf_bcbmon_check_own (PGBUF_BCB * bcb);
+static void pgbuf_bcbmon_check_mutex_leaks (void);
+#endif /* SERVER_MODE */
 
 STATIC_INLINE bool pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list) __attribute__ ((ALWAYS_INLINE));
 PGBUF_BCB *pgbuf_lfcq_get_victim_from_lru (THREAD_ENTRY * thread_p, bool from_private);
@@ -1829,7 +1845,7 @@ try_again:
       if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	  pgbuf_check_mutex_leaks ();
+	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  return NULL;
 	}
     }
@@ -1869,7 +1885,7 @@ try_again:
       if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK || fetch_mode == OLD_PAGE_IF_EXISTS)
 	{
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	  pgbuf_check_mutex_leaks ();
+	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  return NULL;
 	}
 
@@ -1912,7 +1928,7 @@ try_again:
       if (bufptr == NULL)
 	{
 	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
-	  pgbuf_check_mutex_leaks ();
+	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  return NULL;
 	}
 
@@ -1973,7 +1989,7 @@ try_again:
 		}
 #endif /* ENABLE_SYSTEMTAP */
 
-	      pgbuf_check_mutex_leaks ();
+	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	      return NULL;
 	    }
 
@@ -2078,7 +2094,7 @@ try_again:
 	  PGBUF_BCB_UNLOCK (bufptr);
 	}
 
-      pgbuf_check_mutex_leaks ();
+      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
       return NULL;
     }
 
@@ -2118,7 +2134,7 @@ try_again:
 	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
 	}
 
-      pgbuf_check_mutex_leaks ();
+      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
       return NULL;
     }
 
@@ -2198,7 +2214,7 @@ try_again:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label (vpid->volid, PEEK));
 	  /* fall through to unfix */
-	  pgbuf_check_mutex_leaks ();
+	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);
 	  return NULL;
 	case OLD_PAGE_MAYBE_DEALLOCATED:
@@ -2207,7 +2223,7 @@ try_again:
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label (vpid->volid, PEEK));
 	  /* fall through to unfix */
-	  pgbuf_check_mutex_leaks ();
+	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);
 	  return NULL;
 	}
@@ -2293,7 +2309,7 @@ try_again:
 #endif /* NDEBUG */
 #endif /* PAGE_STATISTICS */
 
-  pgbuf_check_mutex_leaks ();
+  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 
   return pgptr;
 }
@@ -2695,7 +2711,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, holder_status);
   /* bufptr->mutex has been released in above function. */
 
-  pgbuf_check_mutex_leaks ();
+  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 
 #if defined(CUBRID_DEBUG)
   /* 
@@ -2913,6 +2929,7 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF, MGR_DEF);
 #endif /* NDEBUG */
       /* If the page has been fixed more than one time, just unfix it. */
+      /* todo: is this really safe? */
       if (pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, holder_status) != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -7499,7 +7516,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
  *       anchor and wakes up all the threads blocked on the queue of the
  *       buffer lock record.
  */
-STATIC_INLINE int
+static int
 pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_hash_mutex)
 {
 #if defined(SERVER_MODE)
@@ -13589,7 +13606,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	      pthread_mutex_lock (&lru_list->mutex);
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, i, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
-	      pgbuf_check_mutex_leaks ();
+	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	    }
 	  if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
@@ -13635,7 +13652,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, i, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
 
-	      pgbuf_check_mutex_leaks ();
+	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	    }
 	  if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
@@ -14597,7 +14614,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   assert (!pgbuf_bcb_is_dirty (bcb));
   assert (!pgbuf_is_bcb_fixed_by_any (bcb, true));
 
-  pgbuf_bcb_check_own (bcb);
+  PGBUF_BCB_CHECK_OWN (bcb);
 
   /* is flushing is expected, since this is called from flush too. caller should make sure no other case should get
    * here with is flushing true. */
@@ -15663,217 +15680,197 @@ pgbuf_is_hit_ratio_low (void)
 #undef PGBUF_MIN_VICTIM_REQ
 }
 
+#if defined (SERVER_MODE)
 /*
- * pgbuf_bcb_lock () - lock bcb mutex
+ * pgbuf_bcbmon_lock () - monitor and lock bcb mutex
  *
  * return           : void
  * bcb (in)         : BCB to lock
  * caller_line (in) : caller line
  */
-STATIC_INLINE void
-pgbuf_bcb_lock (PGBUF_BCB * bcb, int caller_line)
+static void
+pgbuf_bcbmon_lock (PGBUF_BCB * bcb, int caller_line)
 {
-#if defined (SERVER_MODE)
-  if (pgbuf_Monitor_locks)
+  int index = thread_get_current_entry_index ();
+  PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
+
+  assert_release (pgbuf_Monitor_locks);
+
+  if (monitor_bcb_mutex->bcb != NULL)
     {
-      int index = thread_get_current_entry_index ();
-      PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
-
-      if (monitor_bcb_mutex->bcb != NULL)
-	{
-	  /* already have a bcb mutex. we cannot lock another one unless try lock is used. */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      if (monitor_bcb_mutex->bcb_second != NULL)
-	{
-	  /* already have a bcb mutex. we cannot lock another one unless try lock is used. */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      if (bcb->owner_mutex == index)
-	{
-	  /* double lock */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      /* ok, we can lock */
-      (void) pthread_mutex_lock (&bcb->mutex);
-      if (bcb->owner_mutex >= 0)
-	{
-	  /* somebody else has mutex? */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      monitor_bcb_mutex->bcb = bcb;
-      monitor_bcb_mutex->line = caller_line;
-      bcb->owner_mutex = index;
-      return;
+      /* already have a bcb mutex. we cannot lock another one unless try lock is used. */
+      PGBUF_ABORT_RELEASE ();
     }
-
+  if (monitor_bcb_mutex->bcb_second != NULL)
+    {
+      /* already have a bcb mutex. we cannot lock another one unless try lock is used. */
+      PGBUF_ABORT_RELEASE ();
+    }
+  if (bcb->owner_mutex == index)
+    {
+      /* double lock */
+      PGBUF_ABORT_RELEASE ();
+    }
+  /* ok, we can lock */
   (void) pthread_mutex_lock (&bcb->mutex);
-#endif /* SERVER_MODE */
+  if (bcb->owner_mutex >= 0)
+    {
+      /* somebody else has mutex? */
+      PGBUF_ABORT_RELEASE ();
+    }
+  monitor_bcb_mutex->bcb = bcb;
+  monitor_bcb_mutex->line = caller_line;
+  bcb->owner_mutex = index;
 }
 
 /*
- * pgbuf_bcb_trylock () - try locking bcb mutex. do not wait if it is already locked
+ * pgbuf_bcbmon_trylock () - monitor and try locking bcb mutex. do not wait if it is already locked
  *
  * return           : try lock result
  * bcb (in)         : BCB to lock
  * caller_line (in) : caller line
  */
-STATIC_INLINE int
-pgbuf_bcb_trylock (PGBUF_BCB * bcb, int caller_line)
+static int
+pgbuf_bcbmon_trylock (PGBUF_BCB * bcb, int caller_line)
 {
-#if defined (SERVER_MODE)
-  if (pgbuf_Monitor_locks)
-    {
-      int index = thread_get_current_entry_index ();
-      int rv;
-      PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
+  int index = thread_get_current_entry_index ();
+  int rv;
+  PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
 
-      if (bcb->owner_mutex == index)
+  assert_release (pgbuf_Monitor_locks);
+
+  if (bcb->owner_mutex == index)
+    {
+      /* double lock */
+      PGBUF_ABORT_RELEASE ();
+    }
+  if (monitor_bcb_mutex->bcb != NULL && monitor_bcb_mutex->bcb_second != NULL)
+    {
+      /* two bcb's are already locked. */
+      PGBUF_ABORT_RELEASE ();
+    }
+  if (monitor_bcb_mutex->bcb != NULL && monitor_bcb_mutex->bcb == bcb)
+    {
+      /* same bcb is already locked?? */
+      PGBUF_ABORT_RELEASE ();
+    }
+  /* try lock */
+  rv = pthread_mutex_trylock (&bcb->mutex);
+  if (rv == 0)
+    {
+      /* success. monitor it. */
+      if (monitor_bcb_mutex->bcb == NULL)
 	{
-	  /* double lock */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      if (monitor_bcb_mutex->bcb != NULL && monitor_bcb_mutex->bcb_second != NULL)
-	{
-	  /* two bcb's are already locked. */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      if (monitor_bcb_mutex->bcb != NULL && monitor_bcb_mutex->bcb == bcb)
-	{
-	  /* same bcb is already locked?? */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      /* try lock */
-      rv = pthread_mutex_trylock (&bcb->mutex);
-      if (rv == 0)
-	{
-	  /* success. monitor it. */
-	  if (monitor_bcb_mutex->bcb == NULL)
-	    {
-	      monitor_bcb_mutex->bcb = bcb;
-	      monitor_bcb_mutex->line = caller_line;
-	    }
-	  else
-	    {
-	      monitor_bcb_mutex->bcb_second = bcb;
-	      monitor_bcb_mutex->line_second = caller_line;
-	    }
-	  bcb->owner_mutex = index;
+	  monitor_bcb_mutex->bcb = bcb;
+	  monitor_bcb_mutex->line = caller_line;
 	}
       else
 	{
-	  /* failed */
+	  monitor_bcb_mutex->bcb_second = bcb;
+	  monitor_bcb_mutex->line_second = caller_line;
 	}
-      return rv;
+      bcb->owner_mutex = index;
     }
-
-  return pthread_mutex_trylock (&bcb->mutex);
-#else /* !SERVER_MODE * */
-  return 0;
-#endif /* !SERVER_MODE */
+  else
+    {
+      /* failed */
+    }
+  return rv;
 }
 
 /*
- * pgbuf_bcb_unlock () - unlock BCB mutex
+ * pgbuf_bcbmon_unlock () - monitor and unlock BCB mutex
  *
  * return   : void
  * bcb (in) : BCB to unlock
  */
-STATIC_INLINE void
-pgbuf_bcb_unlock (PGBUF_BCB * bcb)
+static void
+pgbuf_bcbmon_unlock (PGBUF_BCB * bcb)
 {
-#if defined (SERVER_MODE)
-  if (pgbuf_Monitor_locks)
+  int index = thread_get_current_entry_index ();
+  PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
+
+  assert_release (pgbuf_Monitor_locks);
+
+  /* should be monitored */
+  if (bcb->owner_mutex != index)
     {
-      int index = thread_get_current_entry_index ();
-      PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
+      /* I did not lock it?? */
+      PGBUF_ABORT_RELEASE ();
+    }
+  bcb->owner_mutex = -1;
 
-      /* should be monitored */
-      if (bcb->owner_mutex != index)
-	{
-	  /* I did not lock it?? */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      bcb->owner_mutex = -1;
-
-      if (monitor_bcb_mutex->bcb == bcb)
-	{
-	  /* remove bcb from monitor. */
-	  monitor_bcb_mutex->bcb = NULL;
-	}
-      else if (monitor_bcb_mutex->bcb_second == bcb)
-	{
-	  /* remove bcb from monitor */
-	  monitor_bcb_mutex->bcb_second = NULL;
-	}
-      else
-	{
-	  /* I did not monitor it?? */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      /* fall through */
+  if (monitor_bcb_mutex->bcb == bcb)
+    {
+      /* remove bcb from monitor. */
+      monitor_bcb_mutex->bcb = NULL;
+    }
+  else if (monitor_bcb_mutex->bcb_second == bcb)
+    {
+      /* remove bcb from monitor */
+      monitor_bcb_mutex->bcb_second = NULL;
+    }
+  else
+    {
+      /* I did not monitor it?? */
+      PGBUF_ABORT_RELEASE ();
     }
 
   pthread_mutex_unlock (&bcb->mutex);
-#endif /* SERVER_MODE */
 }
 
 /*
- * pgbuf_bcb_check_own () - check current thread owns bcb mutex.
+ * pgbuf_bcbmon_check_own () - check current thread owns bcb mutex.
  *
  * return   : void
  * bcb (in) : BCB
  *
  * note: monitoring page buffer locks must be activated
  */
-STATIC_INLINE void
-pgbuf_bcb_check_own (PGBUF_BCB * bcb)
+static void
+pgbuf_bcbmon_check_own (PGBUF_BCB * bcb)
 {
-#if defined (SERVER_MODE)
-  if (pgbuf_Monitor_locks)
-    {
-      int index = thread_get_current_entry_index ();
-      PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
+  int index = thread_get_current_entry_index ();
+  PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
 
-      if (bcb->owner_mutex != index)
-	{
-	  /* not owned */
-	  PGBUF_ABORT_RELEASE ();
-	}
-      if (monitor_bcb_mutex->bcb != bcb && monitor_bcb_mutex->bcb_second != bcb)
-	{
-	  /* not monitored? */
-	  PGBUF_ABORT_RELEASE ();
-	}
+  assert_release (pgbuf_Monitor_locks);
+
+  if (bcb->owner_mutex != index)
+    {
+      /* not owned */
+      PGBUF_ABORT_RELEASE ();
     }
-#endif /* SERVER_MODE */
+  if (monitor_bcb_mutex->bcb != bcb && monitor_bcb_mutex->bcb_second != bcb)
+    {
+      /* not monitored? */
+      PGBUF_ABORT_RELEASE ();
+    }
 }
 
 /*
- * pgbuf_check_mutex_leaks () - check for mutex leaks. must be called on exit points where no BCB should be locked.
+ * pgbuf_bcbmon_check_mutex_leaks () - check for mutex leaks. must be called on exit points where no BCB should be
+ *                                     locked.
  *
  * note: only works if page buffer lock monitoring is enabled.
  */
-STATIC_INLINE void
-pgbuf_check_mutex_leaks (void)
+static void
+pgbuf_bcbmon_check_mutex_leaks (void)
 {
-#if defined (SERVER_MODE)
-  if (pgbuf_Monitor_locks)
-    {
-      int index = thread_get_current_entry_index ();
-      PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
+  int index = thread_get_current_entry_index ();
+  PGBUF_MONITOR_BCB_MUTEX *monitor_bcb_mutex = &pgbuf_Pool.monitor.bcb_locks[index];
 
-      if (monitor_bcb_mutex->bcb != NULL)
-	{
-	  PGBUF_ABORT_RELEASE ();
-	}
-      if (monitor_bcb_mutex->bcb_second != NULL)
-	{
-	  PGBUF_ABORT_RELEASE ();
-	}
+  assert_release (pgbuf_Monitor_locks);
+
+  if (monitor_bcb_mutex->bcb != NULL)
+    {
+      PGBUF_ABORT_RELEASE ();
     }
-#endif /* SERVER_MODE */
+  if (monitor_bcb_mutex->bcb_second != NULL)
+    {
+      PGBUF_ABORT_RELEASE ();
+    }
 }
+#endif /* SERVER_MODE */
 
 /*
  * pgbuf_flags_mask_sanity_check () - check flags mask do not overlap!
