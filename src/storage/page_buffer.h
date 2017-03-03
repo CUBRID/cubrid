@@ -503,7 +503,9 @@ extern bool pgbuf_is_modification_started (PAGE_PTR pgptr);
 extern void pgbuf_end_modification (PAGE_PTR pgptr);
 extern void pgbuf_reset_modification (PAGE_PTR pgptr);
 extern int pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **area);
+extern int pgbuf_acquire_tran_second_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area);
 extern void pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p);
 extern void pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p);
+extern void pgbuf_release_tran_second_bcb_area (THREAD_ENTRY * thread_p);
 #endif
 #endif /* _PAGE_BUFFER_H_ */

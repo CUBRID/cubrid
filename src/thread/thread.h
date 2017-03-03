@@ -352,8 +352,11 @@ struct thread_entry
   struct fi_test_item *fi_test_array;
 #endif
 
+  /* TO DO - use an array */
   void *tran_bcb;		/* Transaction BCB. Used to copy the page without latch. */
+  void *tran_second_bcb;	/* Transaction second BCB. Used to copy the page without latch. */
   bool tran_bcb_used;		/* True, if transaction BCB was already acquired. */
+  bool tran_second_bcb_used;	/* True, if transaction second BCB was already acquired. */
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \

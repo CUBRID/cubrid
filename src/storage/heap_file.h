@@ -273,6 +273,15 @@ enum update_inplace_style
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
   ((update_inplace_style) != UPDATE_INPLACE_NONE)
 
+/* Used when log before fixing page */
+typedef enum log_prior_node_status LOG_PRIOR_NODE_STATUS;
+enum log_prior_node_status
+{
+  PRIOR_NODE_INITIALIZED,
+  PRIOR_NODE_CREATED,
+  PRIOR_NODE_ADDED
+};
+
 /* Log information, used when add logging before page fixing */
 typedef struct heap_log_info HEAP_LOG_INFO;
 struct heap_log_info
@@ -375,7 +384,7 @@ struct heap_operation_context
   /* data used to build the log record before page fixing */
   PAGE_PTR home_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
   PAGE_PTR forward_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
-  HEAP_LOG_INFO log_before_fix_info;	/* Heap log info, used to create the log node before fixing page */
+  HEAP_LOG_INFO log_info;	/* Heap log info, used to create the log node before fixing page */
 
   /* logical operation output */
   OID res_oid;			/* object identifier (if operation generates one) */
@@ -429,7 +438,7 @@ typedef enum
  */
 typedef enum
 {
-  HEAP_PAGE_VACUUM_NONE,	/* Heap page is completely vacuumed. */
+  HEAP_PAGE_VACUUM_NONE = 0,	/* Heap page is completely vacuumed. */
   HEAP_PAGE_VACUUM_ONCE,	/* Heap page requires one vacuum action. */
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;

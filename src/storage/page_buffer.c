@@ -12640,6 +12640,97 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
 }
 
 /*
+ * pgbuf_acquire_tran_second_bcb_area () - Acquires transaction second BCB area
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   bcb_area (out): transaction second BCB area
+ */
+int
+pgbuf_acquire_tran_second_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
+{
+  PGBUF_BCB *bufptr = NULL;
+  PGBUF_IOPAGE_BUFFER *ioptr = NULL;
+
+  assert (bcb_area != NULL);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  /* TO DO - reuse page */
+  *bcb_area = NULL;
+  if (thread_p->tran_second_bcb_used)
+    {
+      /* The transaction BCB already used for another page. In future, we can extend to have many transaction BCBs. */
+      assert (thread_p->tran_second_bcb != NULL);
+      return NO_ERROR;
+    }
+
+  bufptr = (PGBUF_BCB *) thread_p->tran_second_bcb;
+  if (bufptr == NULL)
+    {
+      bufptr = (PGBUF_BCB *) malloc ((size_t) PGBUF_BCB_SIZE);
+      if (bufptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PGBUF_BCB_SIZE);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      ioptr = (PGBUF_IOPAGE_BUFFER *) malloc ((size_t) PGBUF_IOPAGE_BUFFER_SIZE);
+      if (ioptr == NULL)
+	{
+	  free_and_init (bufptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PGBUF_IOPAGE_BUFFER_SIZE);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      pthread_mutex_init (&bufptr->BCB_mutex, NULL);
+      bufptr->ipool = -1;
+      VPID_SET_NULL (&bufptr->vpid);
+      bufptr->fcnt = 0;
+      bufptr->latch_mode = PGBUF_LATCH_INVALID;
+      bufptr->next_wait_thrd = NULL;
+      bufptr->hash_next = NULL;
+      bufptr->prev_BCB = NULL;
+      bufptr->next_BCB = NULL;
+      bufptr->dirty = false;
+      bufptr->avoid_dealloc_cnt = 0;
+      PGBUF_BCB_RESET_MODIFICATION (bufptr);
+      bufptr->avoid_victim = false;
+      bufptr->async_flush_request = false;
+      bufptr->victim_candidate = false;
+      bufptr->zone = PGBUF_INVALID_ZONE;
+      LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+      /* link BCB and iopage buffer */
+      LSA_SET_NULL (&ioptr->iopage.prv.lsa);
+      /* Init Page identifier */
+      ioptr->iopage.prv.pageid = -1;
+      ioptr->iopage.prv.volid = -1;
+#if 1				/* do not delete me */
+      ioptr->iopage.prv.ptype = '\0';
+      ioptr->iopage.prv.pflag_reserve_1 = '\0';
+      ioptr->iopage.prv.p_reserve_2 = 0;
+      ioptr->iopage.prv.p_reserve_3 = 0;
+#endif
+      bufptr->iopage_buffer = ioptr;
+      ioptr->bcb = bufptr;
+#if defined(CUBRID_DEBUG)
+      /* Reinitialize the buffer */
+      pgbuf_scramble (&bufptr->iopage_buffer->iopage);
+      memcpy (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard));
+#endif /* CUBRID_DEBUG */
+      thread_p->tran_second_bcb = bufptr;
+    }
+
+  CAST_BFPTR_TO_PGPTR (*bcb_area, bufptr);
+  thread_p->tran_second_bcb_used = true;
+
+  assert (*bcb_area != NULL);
+  return NO_ERROR;
+}
+
+/*
  * pgbuf_release_tran_bcb_area () - Release transaction BCB area
  *   return: error code
  *   thread_p(in): thread entry 
@@ -12652,6 +12743,21 @@ pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
   thread_p->tran_bcb_used = false;
+}
+
+/*
+ * pgbuf_release_tran_bcb_area () - Release transaction secondary BCB area
+ *   return: error code
+ *   thread_p(in): thread entry 
+ */
+void
+pgbuf_release_tran_second_bcb_area (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  thread_p->tran_second_bcb_used = false;
 }
 
 /*
@@ -12676,6 +12782,25 @@ pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
       free_and_init (thread_p->tran_bcb);
     }
 }
+
+void
+pgbuf_finalize_tran_second_bcb (THREAD_ENTRY * thread_p)
+{
+  PGBUF_BCB *bufptr;
+  assert (thread_p != NULL);
+
+  bufptr = (PGBUF_BCB *) thread_p->tran_second_bcb;
+  if (bufptr)
+    {
+      pthread_mutex_destroy (&bufptr->BCB_mutex);
+      if (bufptr->iopage_buffer)
+	{
+	  free_and_init (bufptr->iopage_buffer);
+	}
+      free_and_init (thread_p->tran_bcb);
+    }
+}
+
 #endif
 
 /*
