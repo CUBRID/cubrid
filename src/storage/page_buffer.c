@@ -1899,6 +1899,7 @@ try_again:
 	{
 	  if (retry)
 	    {
+	      retry = false;
 	      goto try_again;
 	    }
 	  ASSERT_ERROR ();
