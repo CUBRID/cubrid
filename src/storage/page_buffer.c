@@ -955,8 +955,7 @@ struct pgbuf_fix_perf
   UINT64 fix_wait_time;
 };
 
-/* TODO: disable PGBUF_ABORT_RELEASE before merging patch */
-/* #if defined (NDEBUG) */
+#if defined (NDEBUG)
 /* note: release bugs can be hard to debug due to compile optimization. the crash call-stack may point to a completely
  *       different code than the one that caused the crash. my workaround is to save the line of code in this global
  *       variable pgbuf_Abort_release_line.
@@ -964,19 +963,9 @@ struct pgbuf_fix_perf
  *       careful about overusing this. the code may not be fully optimized when using it. */
 static int pgbuf_Abort_release_line = 0;
 #define PGBUF_ABORT_RELEASE() do { pgbuf_Abort_release_line = __LINE__; abort (); } while (false)
-/* #else */
-/* #define PGBUF_ABORT_RELEASE() assert (false) */
-/* #endif */
-
-/* TODO: remove these */
-#if defined (assert)
-#undef assert
-#endif
-#if defined (assert_release)
-#undef assert_release
-#endif
-#define assert(cond) if (!(cond)) PGBUF_ABORT_RELEASE ()
-#define assert_release(cond) if (!(cond)) PGBUF_ABORT_RELEASE ()
+#else /* DEBUG */
+#define PGBUF_ABORT_RELEASE() assert (false)
+#endif /* DEBUG */
 
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
