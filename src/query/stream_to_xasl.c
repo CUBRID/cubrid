@@ -5848,6 +5848,13 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	  goto error;
 	}
     }
+  else if (aggregate->function == PT_CUME_DIST || aggregate->function == PT_PERCENT_RANK)
+    {
+      /* init info.dist_percent */
+      aggregate->info.dist_percent.const_array = NULL;
+      aggregate->info.dist_percent.list_len = 0;
+      aggregate->info.dist_percent.nlargers = 0;
+    }
   else
     {
       /* Other functions need specific variables if any in the future */
