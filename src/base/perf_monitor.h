@@ -1095,7 +1095,7 @@ perfmon_time_bulk_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timed
 
   assert (pstat_Metadata[psid].valtype == PSTAT_COUNTER_TIMER_VALUE);
 
-  perfmon_time_at_offset (thread_p, pstat_Metadata[psid].start_offset, timediff);
+  perfmon_time_bulk_at_offset (thread_p, pstat_Metadata[psid].start_offset, timediff, count);
 }
 
 /*
