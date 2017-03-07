@@ -2047,7 +2047,6 @@ static unsigned int prm_force_restart_to_skip_recovery_flag = 0;
 int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_default = 15;
 static int prm_extended_statistics_lower = 0;
-static int prm_extended_statistics_upper = 15;
 static unsigned int prm_extended_statistics_flag = 0;
 
 bool PRM_ENABLE_STRING_COMPRESSION = true;
@@ -5265,7 +5264,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_extended_statistics_flag,
    (void *) &prm_extended_statistics_default,
    (void *) &PRM_EXTENDED_STATISTICS,
-   (void *) &prm_extended_statistics_upper,
+   (void *) NULL,
    (void *) &prm_extended_statistics_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
