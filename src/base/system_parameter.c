@@ -5268,7 +5268,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_EXTENDED_STATISTICS,
    (void *) NULL,
    (void *) &prm_extended_statistics_lower,
-   (char *) NULL,
+   (char *) &prm_extended_statistics_upper,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ENABLE_STRING_COMPRESSION,
