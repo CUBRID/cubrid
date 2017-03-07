@@ -62,6 +62,7 @@
 #define PERFMON_ACTIVE_LOCK_OBJECT                4
 #define PERFMON_ACTIVE_PB_HASH_ANCHOR             8
 #define PERFMON_ACTIVE_PB_VICTIMIZATION           16
+#define PERFMON_ACTIVE_MAX_VALUE                  31	/* must update when adding new conditions */
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \

@@ -84,6 +84,7 @@
 #endif
 #include "vacuum.h"
 #include "tz_support.h"
+#include "perf_monitor.h"
 
 #include "fault_injection.h"
 
@@ -2047,7 +2048,7 @@ static unsigned int prm_force_restart_to_skip_recovery_flag = 0;
 int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_default = 15;
 static int prm_extended_statistics_lower = 0;
-static int prm_extended_statistics_upper = 15;
+static int prm_extended_statistics_upper = PERFMON_ACTIVE_MAX_VALUE;
 static unsigned int prm_extended_statistics_flag = 0;
 
 bool PRM_ENABLE_STRING_COMPRESSION = true;
