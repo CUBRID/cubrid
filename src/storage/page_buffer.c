@@ -248,6 +248,10 @@ typedef enum
 /* bcb has no flag initially and is in invalid zone */
 #define PGBUF_BCB_INIT_FLAGS PGBUF_INVALID_ZONE
 
+/* fix & avoid dealloc counter... we have one integer and each uses two bytes. fix counter is offset by two bytes. */
+#define PGBUF_BCB_COUNT_FIX_SHIFT_BITS          16
+#define PGBUF_BCB_AVOID_DEALLOC_MASK            ((int) 0x0000FFFF)
+
 /************************************************************************/
 /* Page buffer LRU section                                              */
 /************************************************************************/
@@ -543,9 +547,12 @@ struct pgbuf_bcb
 				 * enough to boost to top. */
   int tick_lru3;		/* position in lru zone 3. small numbers are at the bottom. used to update LRU victim
 				 * hint. */
-  short avoid_dealloc_cnt;	/* increment before obtaining latch to avoid deallocation; decrement after latch is
-				 * obtained */
-  short count_all_fixes;	/* fix count */
+  volatile int count_fix_and_avoid_dealloc;	/* two-purpose field:
+						 * 1. count fixes up to a threshold (to detect hot pages).
+						 * 2. avoid deallocation count.
+						 * we don't use two separate shorts because avoid deallocation needs to
+						 * be changed atomically... 2-byte sized atomic operations are not
+						 * common. */
   int hit_age;			/* age of last hit (used to compute activities and quotas) */
 
   volatile LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
@@ -1213,6 +1220,11 @@ STATIC_INLINE void pgbuf_bcb_mark_was_flushed (THREAD_ENTRY * thread_p, PGBUF_BC
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_register_fix (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_hot (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
 #if defined (SERVER_MODE)
 static void pgbuf_bcbmon_lock (PGBUF_BCB * bcb, int caller_line);
@@ -1911,11 +1923,7 @@ try_again:
 
   /* At this place, the caller is holding bufptr->mutex */
 
-  if (bufptr->count_all_fixes < PGBUF_FIX_COUNT_THRESHOLD)
-    {
-      /* increment count all fixes */
-      ++bufptr->count_all_fixes;
-    }
+  pgbuf_bcb_register_fix (bufptr);
 
   /* Set Page identifier if needed */
   (void) pgbuf_set_bcb_page_vpid (bufptr);
@@ -1945,7 +1953,7 @@ try_again:
 
   if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
     {
-      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, 1);
+      pgbuf_bcb_register_avoid_deallocation (bufptr);
     }
 
   /* At this place, the caller is holding bufptr->mutex */
@@ -2034,7 +2042,7 @@ try_again:
   if (fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
     {
       /* latch is obtained, no need for avoidance of dealloc */
-      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
     }
 
 #if !defined (NDEBUG)
@@ -5023,8 +5031,7 @@ pgbuf_initialize_bcb_table (void)
 	}
 
       bufptr->flags = PGBUF_BCB_INIT_FLAGS;
-      bufptr->avoid_dealloc_cnt = 0;
-      bufptr->count_all_fixes = 0;
+      bufptr->count_fix_and_avoid_dealloc = 0;
       bufptr->hit_age = 0;
       LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -6474,7 +6481,7 @@ pgbuf_should_move_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, i
       return true;
     }
   /* cond 2 */
-  if (bcb->count_all_fixes < PGBUF_FIX_COUNT_THRESHOLD)
+  if (!pgbuf_bcb_is_hot (bcb))
     {
       /* not hot enough */
       return false;
@@ -7316,8 +7323,7 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       curr_bufptr->hash_next = NULL;
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       VPID_SET_NULL (&(bufptr->vpid));
-      bufptr->avoid_dealloc_cnt = 0;
-      bufptr->count_all_fixes = 0;
+      bufptr->count_fix_and_avoid_dealloc = 0;
 
       return NO_ERROR;
     }
@@ -7818,7 +7824,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   assert (!pgbuf_bcb_avoid_victim (bufptr));
   bufptr->latch_mode = PGBUF_NO_LATCH;
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);
-  bufptr->avoid_dealloc_cnt = 0;
+  bufptr->count_fix_and_avoid_dealloc = 0;
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   if (fetch_mode != NEW_PAGE)
@@ -8315,8 +8321,7 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   bufptr->latch_mode = PGBUF_LATCH_INVALID;
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
-  bufptr->avoid_dealloc_cnt = 0;
-  bufptr->count_all_fixes = 0;
+  bufptr->count_fix_and_avoid_dealloc = 0;
 
   rv = pthread_mutex_lock (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
   bufptr->next_BCB = pgbuf_Pool.buf_invalid_list.invalid_top;
@@ -12364,7 +12369,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
       assert (holder_fix_cnt > 0);
       /* prevent deallocate. */
-      ATOMIC_INC_32 (&holder->bufptr->avoid_dealloc_cnt, 1);
+      pgbuf_bcb_register_avoid_deallocation (holder->bufptr);
       ordered_holders_info[i].prevent_dealloc = true;
       while (holder_fix_cnt-- > 0)
 	{
@@ -12428,7 +12433,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  if (has_dealloc_prevent_flag == true)
 	    {
 	      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
 	      has_dealloc_prevent_flag = false;
 	    }
 	  if (pgbuf_get_page_ptype (thread_p, pgptr) == PAGE_HEAP)
@@ -12581,7 +12586,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  if (has_dealloc_prevent_flag == true)
 	    {
 	      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
 	      has_dealloc_prevent_flag = false;
 	    }
 
@@ -12614,7 +12619,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  assert (ordered_holders_info[i].prevent_dealloc);
 	  ordered_holders_info[i].prevent_dealloc = false;
 	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-	  ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	  pgbuf_bcb_unregister_avoid_deallocation (bufptr);
 
 	  /* page after re-fix should have the same type as before unfix */
 	  (void) pgbuf_check_page_ptype (thread_p, pgptr, ordered_holders_info[i].ptype);
@@ -12715,14 +12720,14 @@ exit:
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	      continue;
 	    }
-	  if (bufptr->avoid_dealloc_cnt == 0)
+	  if (!pgbuf_bcb_should_avoid_deallocation (bufptr))
 	    {
 	      /* oops... deallocate not prevented */
 	      assert (false);
 	    }
 	  else
 	    {
-	      ATOMIC_INC_32 (&bufptr->avoid_dealloc_cnt, -1);
+	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
 	    }
 	  PGBUF_BCB_UNLOCK (bufptr);
 	}
@@ -14087,7 +14092,7 @@ pgbuf_has_prevent_dealloc (PAGE_PTR pgptr)
   assert (pgptr != NULL);
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
-  return (bufptr->avoid_dealloc_cnt > 0) ? true : false;
+  return pgbuf_bcb_should_avoid_deallocation (bufptr);
 #else
   return false;
 #endif
@@ -14145,7 +14150,7 @@ pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * lru1_cnt, UIN
 	  *lru3_cnt = *lru3_cnt + 1;
 	}
 
-      if (bufptr->avoid_dealloc_cnt > 0)
+      if (pgbuf_bcb_should_avoid_deallocation (bufptr))
 	{
 	  *avoid_dealloc_cnt = *avoid_dealloc_cnt + 1;
 	}
@@ -15517,6 +15522,76 @@ STATIC_INLINE int
 pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb)
 {
   return (int) (bcb - pgbuf_Pool.BCB_table);
+}
+
+/*
+ * pgbuf_bcb_register_avoid_deallocation () - avoid deallocating bcb's page.
+ *
+ * return   : void
+ * bcb (in) : bcb
+ */
+STATIC_INLINE void
+pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb)
+{
+  (void) ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1);
+  assert (bcb->count_fix_and_avoid_dealloc > 0);
+  assert ((bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) > 0);
+}
+
+/*
+ * pgbuf_bcb_unregister_avoid_deallocation () - avoiding page deallocation no longer required
+ *
+ * return   : void
+ * bcb (in) : bcb
+ */
+STATIC_INLINE void
+pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb)
+{
+  (void) ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, -1);
+  assert (bcb->count_fix_and_avoid_dealloc >= 0);
+}
+
+/*
+ * pgbuf_bcb_should_avoid_deallocation () - should avoid deallocating page?
+ *
+ * return   : true/false
+ * bcb (in) : bcb
+ */
+STATIC_INLINE bool
+pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb)
+{
+  assert (bcb->count_fix_and_avoid_dealloc >= 0);
+  return (bcb->count_fix_and_avoid_dealloc & PGBUF_BCB_AVOID_DEALLOC_MASK) != 0;
+}
+
+/*
+ * pgbuf_bcb_register_fix () - register page fix
+ *
+ * return   : void
+ * bcb (in) : bcb
+ */
+STATIC_INLINE void
+pgbuf_bcb_register_fix (PGBUF_BCB * bcb)
+{
+  /* note: we only register to detect hot pages. once we hit the threshold, we are no longer required to fix it. */
+  if (bcb->count_fix_and_avoid_dealloc < (PGBUF_FIX_COUNT_THRESHOLD << PGBUF_BCB_COUNT_FIX_SHIFT_BITS))
+    {
+      ATOMIC_INC_32 (&bcb->count_fix_and_avoid_dealloc, 1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS);
+      assert (bcb->count_fix_and_avoid_dealloc >= (1 << PGBUF_BCB_COUNT_FIX_SHIFT_BITS));
+    }
+}
+
+/*
+ * pgbuf_bcb_is_hot () - is bcb hot (was fixed more then threshold times?)
+ *
+ * return   : true/false
+ * bcb (in) : bcb
+ */
+STATIC_INLINE bool
+pgbuf_bcb_is_hot (const PGBUF_BCB * bcb)
+{
+  assert (bcb->count_fix_and_avoid_dealloc >= 0);
+  return bcb->count_fix_and_avoid_dealloc >= (PGBUF_FIX_COUNT_THRESHOLD << PGBUF_BCB_COUNT_FIX_SHIFT_BITS);
 }
 
 /*
