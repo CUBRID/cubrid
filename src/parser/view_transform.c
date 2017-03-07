@@ -376,6 +376,8 @@ static int pt_for_update_prepare_query (PARSER_CONTEXT * parser, PT_NODE * query
 static PT_NODE *mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						      int *continue_walk);
 
+static void mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache);
+
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -5068,10 +5070,9 @@ mq_fetch_subqueries (PARSER_CONTEXT * parser, PT_NODE * class_)
 	  return NULL;
 	}
 
-      if (parser)
+      if (parser != NULL && query_cache->error_msgs != NULL)
 	{
-	  parser->error_msgs =
-	    parser_append_node (parser_copy_tree_list (parser, query_cache->error_msgs), parser->error_msgs);
+	  mq_copy_view_error_msgs (parser, query_cache);
 	}
 
       return query_cache->view_cache->vquery_for_query_in_gdb;
@@ -9879,10 +9880,9 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
 		       get_authorization_name (what_for), db_get_class_name (class_->info.name.db_object));
 	  return NULL;
 	}
-      if (parser)
+      if (parser != NULL && query_cache->error_msgs != NULL)
 	{
-	  parser->error_msgs =
-	    parser_append_node (parser_copy_tree_list (parser, query_cache->error_msgs), parser->error_msgs);
+	  mq_copy_view_error_msgs (parser, query_cache);
 	}
 
       if (!query_cache->view_cache->vquery_for_update
@@ -10108,11 +10108,9 @@ mq_fetch_attributes (PARSER_CONTEXT * parser, PT_NODE * class_)
 
   if (query_cache)
     {
-      if (parser && query_cache->error_msgs)
+      if (parser != NULL && query_cache->error_msgs != NULL)
 	{
-	  /* propagate errors */
-	  parser->error_msgs =
-	    parser_append_node (parser_copy_tree_list (parser, query_cache->error_msgs), parser->error_msgs);
+	  mq_copy_view_error_msgs (parser, query_cache);
 	}
 
       if (query_cache->view_cache)
@@ -11768,4 +11766,31 @@ mq_auto_param_merge_clauses (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       stmt->info.merge.insert.value_clauses->info.node_list.list = first;
     }
+}
+
+/*
+ * mq_copy_view_error_msgs () - copy error message from a parser to another
+ *
+ * return: void
+ * parser(in):
+ * query_cache(in):
+ *
+ * Note that view parser will be freed for error cases.
+ * This means that error message of a view parser should be allocated and copied by the nesting parser.
+ */
+static void
+mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache)
+{
+  PT_NODE *error_msg;
+  int stmt_no, line_no, col_no;
+  const char *msg = NULL;
+
+  error_msg = pt_get_errors (query_cache);
+
+  /* expect callers already confirms it has an error */
+  assert (error_msg != NULL && error_msg->node_type == PT_ZZ_ERROR_MSG);
+
+  error_msg = pt_get_next_error (error_msg, &stmt_no, &line_no, &col_no, &msg);
+
+  pt_record_error (parser, stmt_no, line_no, col_no, msg, NULL);
 }
