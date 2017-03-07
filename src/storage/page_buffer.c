@@ -7900,7 +7900,7 @@ pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, in
     }
   if (!locked)
     {
-      PGBUF_BCB_UNLOCK (bufptr);
+      PGBUF_BCB_LOCK (bufptr);
     }
   return NO_ERROR;
 }
