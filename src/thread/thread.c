@@ -248,7 +248,7 @@ static const char *thread_status_to_string (int status);
 static const char *thread_resume_status_to_string (int resume_status);
 
 STATIC_INLINE void thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
+STATIC_INLINE bool thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p,
 					THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
@@ -3336,6 +3336,7 @@ thread_page_flush_thread (void *arg_p)
 #endif /* !HPUX */
   int wakeup_interval;
   PERF_UTIME_TRACKER perf_track;
+  bool force_one_run = false;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   thread_daemon_start (&thread_Page_flush_thread, tsd_ptr, TT_DAEMON);
@@ -3344,23 +3345,30 @@ thread_page_flush_thread (void *arg_p)
   while (!tsd_ptr->shutdown)
     {
       /* flush pages as long as necessary */
-      while (!tsd_ptr->shutdown && pgbuf_keep_victim_flush_thread_running ())
+      while (!tsd_ptr->shutdown && (force_one_run || pgbuf_keep_victim_flush_thread_running ()))
 	{
 	  pgbuf_flush_victim_candidates (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &perf_track);
+	  force_one_run = false;
 	}
 
       /* wait */
       wakeup_interval = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
       if (wakeup_interval > 0)
 	{
-	  thread_daemon_timedwait (&thread_Page_flush_thread, wakeup_interval);
+	  if (!thread_daemon_timedwait (&thread_Page_flush_thread, wakeup_interval))
+	    {
+	      /* did not timeout, someone requested flush... run at least once */
+	      force_one_run = true;
+	    }
 	}
       else
 	{
 	  thread_daemon_wait (&thread_Page_flush_thread);
+	  /* did not timeout, someone requested flush... run at least once */
+	  force_one_run = true;
 	}
 
-      /* perfmormance tracking */
+      /* performance tracking */
       if (perf_track.is_perf_tracking)
 	{
 	  /* register sleep time. */
@@ -3443,7 +3451,7 @@ thread_page_buffer_maintenance_thread (void *arg_p)
       pgbuf_direct_victims_maintenance (tsd_ptr);
 
       /* wait THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC */
-      thread_daemon_timedwait (&thread_Page_maintenance_thread, THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC);
+      (void) thread_daemon_timedwait (&thread_Page_maintenance_thread, THREAD_PGBUF_MAINTENANCE_WAKEUP_MSEC);
     }
   thread_daemon_stop (&thread_Page_maintenance_thread, tsd_ptr);
 
@@ -3491,15 +3499,15 @@ thread_page_post_flush_thread (void *arg_p)
 	    {
 	    case 1:
 	      /* sleep 1 msec */
-	      thread_daemon_timedwait (&thread_Page_post_flush_thread, 1);
+	      (void) thread_daemon_timedwait (&thread_Page_post_flush_thread, 1);
 	      break;
 	    case 2:
 	      /* sleep 10 msec */
-	      thread_daemon_timedwait (&thread_Page_post_flush_thread, 10);
+	      (void) thread_daemon_timedwait (&thread_Page_post_flush_thread, 10);
 	      break;
 	    case 3:
 	      /* sleep 100 msec */
-	      thread_daemon_timedwait (&thread_Page_post_flush_thread, 100);
+	      (void) thread_daemon_timedwait (&thread_Page_post_flush_thread, 100);
 	      break;
 	    default:
 	      /* sleep indefinitely. if the thread is required, flush will wake it */
@@ -6337,13 +6345,14 @@ thread_daemon_wait (DAEMON_THREAD_MONITOR * daemon)
  * daemon (in)    : daemon thread monitor
  * wait_msec (in) : maximum wait time
  */
-STATIC_INLINE void
+STATIC_INLINE bool
 thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
 {
   struct timeval timeval_crt;
   struct timespec timespec_wakeup;
   long usec_tmp;
   const int usec_onesec = 1000 * 1000;	/* nano-seconds in one second */
+  int rv;
 
   gettimeofday (&timeval_crt, NULL);
 
@@ -6358,9 +6367,11 @@ thread_daemon_timedwait (DAEMON_THREAD_MONITOR * daemon, int wait_msec)
 
   (void) pthread_mutex_lock (&daemon->lock);
   daemon->is_running = false;
-  (void) pthread_cond_timedwait (&daemon->cond, &daemon->lock, &timespec_wakeup);
+  rv = pthread_cond_timedwait (&daemon->cond, &daemon->lock, &timespec_wakeup);
   daemon->is_running = true;
   pthread_mutex_unlock (&daemon->lock);
+
+  return rv == ETIMEDOUT;
 }
 
 /*

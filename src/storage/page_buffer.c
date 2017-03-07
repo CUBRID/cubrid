@@ -8549,11 +8549,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
 	}
 
-      if (!has_flush_thread)
-	{
-	  /* we need to flush something for single thread. */
-	  pgbuf_wakeup_flush_thread (thread_p);
-	}
+      /* let's notify flush thread, maybe it is sleeping. */
+      pgbuf_wakeup_flush_thread (thread_p);
     }
   while ((has_flush_thread && pgbuf_Pool.monitor.victim_rich)
 	 || (!has_flush_thread && (!lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
@@ -8823,6 +8820,9 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
 	}
     }
+
+  /* we need more victims */
+  pgbuf_wakeup_flush_thread (thread_p);
 
   pthread_mutex_unlock (&lru_list->mutex);
 
