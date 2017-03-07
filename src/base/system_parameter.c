@@ -5266,7 +5266,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_extended_statistics_flag,
    (void *) &prm_extended_statistics_default,
    (void *) &PRM_EXTENDED_STATISTICS,
-   (void *) &prm_extended_statistics_upper,
+   (void *) NULL,
    (void *) &prm_extended_statistics_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
