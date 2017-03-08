@@ -5035,6 +5035,8 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 
   assert (error_code == NO_ERROR);
 
+  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_ALLOCS);
+
 exit:
   if (page_ftab != NULL)
     {
@@ -5953,6 +5955,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
     }
 
   pgbuf_dealloc_page (thread_p, page_dealloc);
+  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_DEALLOCS);
 
   /* done */
   assert (error_code == NO_ERROR);
