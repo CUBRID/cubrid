@@ -8809,8 +8809,16 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       /* we had a hint and we failed to find any victim candidates. */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT);
-      /* no hint */
-      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
+      if (lru_list->count_vict_cand > 0)
+	{
+	  /* set victim hint to bottom */
+	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+	}
+      else
+	{
+	  /* no hint */
+	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
+	}
     }
 
   /* we need more victims */
