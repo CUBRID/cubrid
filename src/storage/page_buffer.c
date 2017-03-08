@@ -8446,6 +8446,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
   int nloops = 0;		/* used as safe-guard against infinite loops */
   int private_lru_idx;
   PGBUF_LRU_LIST *lru_list = NULL;
+  bool allow_other = true;
+  bool searched_own = false;
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
 
@@ -8471,10 +8473,53 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    *       shared lists had no lru 3 zone and nothing could be victimized or flushed.
    */
 
+  /* 1. search own private list */
+  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+    {
+      /* first try my own private list */
+      private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+      lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
+
+      /* don't victimize from own list if it is under quota */
+      if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
+	  || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) && lru_list->count_vict_cand > 0))
+	{
+	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
+	  if (victim != NULL)
+	    {
+	      if (detailed_perf)
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
+		}
+	      return victim;
+	    }
+	  /* failed */
+	  if (detailed_perf)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
+	    }
+
+	  /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim.
+	   * note: except vacuum threads who ignore unfixes and have no quota. */
+	  if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	    {
+	      allow_other = false;
+	    }
+	  searched_own = true;
+	}
+    }
+
+  /* 2. search other private list */
+  if (PGBUF_PAGE_QUOTA_IS_ENABLED && allow_other)
+    {
+      victim = pgbuf_lfcq_get_victim_from_lru (thread_p, true);
+      if (victim != NULL)
+	{
+	  return victim;
+	}
+    }
+
   /* loop:
-   *
-   * HAS FLUSH THREAD: if system has enough victims, we should rather try searching again than going to wait-mode (which would bring a
-   * significant latency.
    *
    * DOESN'T HAVE FLUSH THREAD: one iteration could fail, because the shared list's last victims have been set dirty.
    * however, if there are other lists having victims, we should find them.
@@ -8485,57 +8530,6 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    */
   do
     {
-      /* loop the three searches. */
-
-      /* 1. search own private list */
-      if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
-	{
-	  /* first try my own private list */
-	  private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
-	  lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
-
-	  /* don't victimize from own list if it is under quota */
-	  if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
-	      || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) && lru_list->count_vict_cand > 0))
-	    {
-	      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
-	      if (victim != NULL)
-		{
-		  if (detailed_perf)
-		    {
-		      perfmon_inc_stat (thread_p, PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
-		    }
-		  return victim;
-		}
-	      /* failed */
-	      if (detailed_perf)
-		{
-		  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
-		}
-
-	      /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim. */
-	      if (!pgbuf_Pool.monitor.victim_rich && !PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
-		{
-		  return NULL;
-		}
-	      else
-		{
-		  /* is system is victim rich, we do not want to stop for any reason. */
-		  /* vacuum workers usually have empty private lists. let them search. */
-		}
-	    }
-	}
-
-      /* 2. search other private list */
-      if (PGBUF_PAGE_QUOTA_IS_ENABLED)
-	{
-	  victim = pgbuf_lfcq_get_victim_from_lru (thread_p, true);
-	  if (victim != NULL)
-	    {
-	      return victim;
-	    }
-	}
-
       /* 3. search a shared list. */
       victim = pgbuf_lfcq_get_victim_from_lru (thread_p, false);
       if (victim != NULL)
@@ -8548,22 +8542,18 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ALL_LRU_FAIL);
 	}
-
-      /* let's notify flush thread, maybe it is sleeping. */
-      pgbuf_wakeup_flush_thread (thread_p);
     }
-  while ((has_flush_thread && pgbuf_Pool.monitor.victim_rich)
-	 || (!has_flush_thread && (!lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
-				   && ++nloops <= pgbuf_Pool.num_LRU_list)));
+  while (!has_flush_thread && !lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
+	 && ++nloops <= pgbuf_Pool.num_LRU_list);
   /* todo: maybe we can find a less complicated condition of looping */
 
   /* safe-guard to detect infinite loops when no flush thread is available. */
   assert (has_flush_thread || nloops <= pgbuf_Pool.num_LRU_list);
   assert (victim == NULL);
 
-  /* one last try on own private */
-  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
+  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p) && !searched_own)
     {
+      /* try on own private even if it is under quota. */
       private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
       lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
 
@@ -8652,6 +8642,7 @@ STATIC_INLINE PGBUF_BCB *
 pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
 #define PERF(pstatid) if (perf_tracking) perfmon_inc_stat (thread_p, pstatid)
+#define MAX_DEPTH 1000
 
   PGBUF_BCB *bufptr;
   int found_victim_cnt = 0;
@@ -8676,8 +8667,9 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     }
 
   pthread_mutex_lock (&lru_list->mutex);
-  if (lru_list->bottom == NULL)
+  if (lru_list->bottom == NULL || !PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
     {
+      /* no zone 3 */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_LIST_WAS_EMPTY);
       pthread_mutex_unlock (&lru_list->mutex);
       return NULL;
@@ -8693,7 +8685,9 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   lru_victim_cnt = lru_list->count_vict_cand;
   if (lru_victim_cnt <= 0)
     {
+      /* no victims */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_LIST_WAS_EMPTY);
+      assert (lru_victim_cnt == 0);
       pthread_mutex_unlock (&lru_list->mutex);
       return NULL;
     }
@@ -8713,7 +8707,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       bufptr_start = victim_hint;
     }
 
-  for (bufptr = bufptr_start; bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr);
+  for (bufptr = bufptr_start; bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && search_cnt < MAX_DEPTH;
        bufptr = bufptr->prev_BCB, search_cnt++)
     {
       /* must not be any other case that invalidates a victim: is flushing, direct victim */
@@ -8769,6 +8763,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB);
 		}
 #endif /* SERVER_MODE */
+
+	      if (pgbuf_bcb_is_dirty (lru_list->bottom))
+		{
+		  /* new bottom is dirty... make sure that flush will wake up */
+		  pgbuf_wakeup_flush_thread (thread_p);
+		}
 	      pthread_mutex_unlock (&lru_list->mutex);
 
 	      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
@@ -8809,16 +8809,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       /* we had a hint and we failed to find any victim candidates. */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT);
-      if (lru_list->count_vict_cand > 0)
-	{
-	  /* set victim hint to bottom */
-	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
-	}
-      else
-	{
-	  /* no hint */
-	  (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
-	}
+      /* no hint */
+      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, NULL);
     }
 
   /* we need more victims */
@@ -8833,6 +8825,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   return NULL;
 
 #undef PERF
+#undef MAX_DEPTH
 }
 
 #if defined (SERVER_MODE)
@@ -15839,13 +15832,13 @@ pgbuf_is_io_stressful (void)
 STATIC_INLINE bool
 pgbuf_is_hit_ratio_low (void)
 {
-#define PGBUF_MIN_VICTIM_REQ        100
-#define PGBUF_DESIRED_HIT_RATE      100
+#define PGBUF_MIN_VICTIM_REQ                10	/* set a minimum number of requests */
+#define PGBUF_DESIRED_HIT_VS_MISS_RATE      1000	/* 99.9% hit ratio */
 
   return (pgbuf_Pool.monitor.lru_victim_req_cnt > PGBUF_MIN_VICTIM_REQ
-	  && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_RATE > pgbuf_Pool.monitor.fix_req_cnt);
+	  && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_VS_MISS_RATE > pgbuf_Pool.monitor.fix_req_cnt);
 
-#undef PGBUF_DESIRED_HIT_RATE
+#undef PGBUF_DESIRED_HIT_VS_MISS_RATE
 #undef PGBUF_MIN_VICTIM_REQ
 }
 
