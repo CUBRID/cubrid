@@ -7823,7 +7823,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   bufptr->vpid = *vpid;
   assert (!pgbuf_bcb_avoid_victim (bufptr));
   bufptr->latch_mode = PGBUF_NO_LATCH;
-  pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);
+  pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);	/* todo: why this?? */
   bufptr->count_fix_and_avoid_dealloc = 0;
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
@@ -8764,7 +8764,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		}
 #endif /* SERVER_MODE */
 
-	      if (pgbuf_bcb_is_dirty (lru_list->bottom))
+	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom))
 		{
 		  /* new bottom is dirty... make sure that flush will wake up */
 		  pgbuf_wakeup_flush_thread (thread_p);
