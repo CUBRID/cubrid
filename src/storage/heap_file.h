@@ -291,16 +291,6 @@ struct heap_log_info
   /* TO DO - replace all functions to use log_undoredo_data */
   LOG_REC_UNDOREDO_DATA log_undoredo_data;
 
-  int rcv_index;		/* log recovery index */
-  PAGE_PTR page;		/* page identifier */
-  int slot_id_with_flags;	/* slot id with flags */
-
-  void *undo_data_p;		/* pointer to undo data */
-  int undo_data_size;		/* undo data size */
-
-  void *redo_data_p;		/* pointer to redo data */
-  int redo_data_size;		/* redo data size */
-
   bool node_appended;		/* true, if the log node was appended */
 };
 
