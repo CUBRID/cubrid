@@ -705,8 +705,6 @@ static int heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, int islast_reset);
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_set_internal (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
-				       HEAP_CACHE_ATTRINFO * attr_info, bool clear_source);
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
@@ -11139,44 +11137,6 @@ exit_on_error:
 int
 heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  return heap_attrinfo_set_internal (inst_oid, attrid, attr_val, attr_info, false);
-}
-
-
-/*
- * heap_attrinfo_set_and_clear_source () - Set the value of given attribute and clears the source value (attr_val)
- *   return: NO_ERROR
- *   inst_oid(in): The instance oid
- *   attrid(in): The identifier of the attribute to be set
- *   attr_val(in): The memory value of the attribute
- *   attr_info(in/out): The attribute information structure which describe the
- *                      desired attributes
- *
- * Note: Set DB_VALUE of desired attribute identifier.
- */
-int
-heap_attrinfo_set_and_clear_source (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
-				    HEAP_CACHE_ATTRINFO * attr_info)
-{
-  return heap_attrinfo_set_internal (inst_oid, attrid, attr_val, attr_info, true);
-}
-
-/*
- * heap_attrinfo_set_internal () - Set the value of given attribute
- *   return: NO_ERROR
- *   inst_oid(in): The instance oid
- *   attrid(in): The identifier of the attribute to be set
- *   attr_val(in): The memory value of the attribute
- *   attr_info(in/out): The attribute information structure which describe the
- *                      desired attributes
- *   clear_source(int): clear the source value (attr_val)
- *
- * Note: Set DB_VALUE of desired attribute identifier.
- */
-static int
-heap_attrinfo_set_internal (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info,
-			    bool clear_source)
-{
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   PR_TYPE *pr_type;		/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
@@ -11249,10 +11209,6 @@ heap_attrinfo_set_internal (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * att
 
 	  DB_MAKE_NULL (&value->dbvalue);
 	}
-      if (clear_source && attr_val->need_clear == true)
-	{
-	  pr_clear_value (attr_val);
-	}
     }
 
   if (ret != NO_ERROR)
@@ -11265,11 +11221,6 @@ heap_attrinfo_set_internal (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * att
   return ret;
 
 exit_on_error:
-
-  if (ret != NO_ERROR && clear_source && attr_val->need_clear == true)
-    {
-      pr_clear_value (attr_val);
-    }
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
