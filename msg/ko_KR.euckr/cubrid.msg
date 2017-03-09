@@ -1262,7 +1262,8 @@ $ LOADDB
 1193 분할 표현식의 길이가 최대 허용치인 %1$s를 초과했습니다.
 1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 마지막 에러
+1196 Maximum recursions %1d reached executing CTE.
+1197 마지막 에러
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
 2 에러 메시지를 사용할 수 없습니다.

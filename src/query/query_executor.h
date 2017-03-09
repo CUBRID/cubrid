@@ -967,6 +967,7 @@ struct xasl_node
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
+  int max_iterations;
 };
 
 struct pred_expr_with_context

@@ -1262,7 +1262,8 @@ $ LOADDB
 1193 処理されたパーティション式の長さが許容される最大「%1$d」を超えていました。
 1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 ラストエラー
+1196 Maximum recursions %1d reached executing CTE.
+1197 ラストエラー
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
 2 エラーメッセージが使用できません。

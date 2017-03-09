@@ -1262,7 +1262,8 @@ $ LOADDB
 1193 După procesare, lungimea expresiei de partiționare depășește lungimea maximă(%1$d).
 1194 Nu se poate verifica fisierul %1d|%2d pentru ca nu s-a putut seta lock imediat pe clasa %3d|%4d|%5d.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Ultima eroare
+1196 Maximum recursions %1d reached executing CTE.
+1197 Ultima eroare
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
 2 Niciun mesaj de eroare disponibil.
