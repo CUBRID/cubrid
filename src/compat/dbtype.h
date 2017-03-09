@@ -234,18 +234,6 @@ typedef struct tp_domain DB_DOMAIN;
 /* This constant defines the default scale of DB_TYPE_DATETIME. */
 #define DB_DATETIME_DECIMAL_SCALE      3
 
-#if !defined(SERVER_MODE) || defined(NDEBUG)
-#define NO_SERVER_OR_DEBUG_MODE
-#endif
-
-/* Defines the state of a value as not being compressable due to its bad compression size or 
- * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
- */
-#define DB_UNCOMPRESSABLE -1
-
-/* Defines the state of a value not being yet prompted for a compression process. */
-#define DB_NOT_YET_COMPRESSED 0
-
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
 #define db_set db_collection
@@ -406,6 +394,19 @@ typedef struct tp_domain DB_DOMAIN;
 #define DB_VALUE_PRECISION(value)       db_value_precision(value)
 
 #define DB_VALUE_SCALE(value)           db_value_scale(value)
+
+/* todo: Add these to dbi_compat.h */
+#if !defined(SERVER_MODE) || defined(NDEBUG)
+#define NO_SERVER_OR_DEBUG_MODE
+#endif
+
+/* Defines the state of a value as not being compressable due to its bad compression size or 
+ * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+ */
+#define DB_UNCOMPRESSABLE -1
+
+/* Defines the state of a value not being yet prompted for a compression process. */
+#define DB_NOT_YET_COMPRESSED 0
 
 #define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
 
@@ -1017,6 +1018,76 @@ extern int db_date_encode (DB_DATE * date, int month, int day, int year);
 extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
 extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
 
+/* MACROS FOR ERROR CHECKING */
+/* These should be used at the start of every db_ function so we can check
+   various validations before executing. */
+
+/* Argument checking macros */
+#define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
+  do {                                                                         \
+    if((obj) == NULL) {                                                        \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_2ARGS_RETURN_EXPR(obj1, obj2, expr)                              \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL) {                                     \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, expr)                        \
+  do {                                                                         \
+    if((obj1) == NULL || (obj2) == NULL || (obj3) == NULL) {                   \
+      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
+      return (expr);                                                           \
+    }                                                                          \
+  } while (0)
+
+#define CHECK_1ARG_NULL(obj)        \
+  CHECK_1ARG_RETURN_EXPR(obj, NULL)
+
+#define CHECK_2ARGS_NULL(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2,NULL)
+
+#define CHECK_3ARGS_NULL(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1,obj2,obj3,NULL)
+
+#define CHECK_1ARG_FALSE(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,false)
+
+#define CHECK_1ARG_TRUE(obj)   \
+  CHECK_1ARG_RETURN_EXPR(obj, true)
+
+#define CHECK_1ARG_ERROR(obj)  \
+  CHECK_1ARG_RETURN_EXPR(obj,ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ERROR_WITH_TYPE(obj, TYPE)  \
+  CHECK_1ARG_RETURN_EXPR(obj,(TYPE)ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_MINUSONE(obj) \
+  CHECK_1ARG_RETURN_EXPR(obj,-1)
+
+#define CHECK_2ARGS_ERROR(obj1, obj2)   \
+  CHECK_2ARGS_RETURN_EXPR(obj1, obj2, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_3ARGS_ERROR(obj1, obj2, obj3) \
+  CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, ER_OBJ_INVALID_ARGUMENTS)
+
+#define CHECK_1ARG_ZERO(obj)     \
+  CHECK_1ARG_RETURN_EXPR(obj, 0)
+
+#define CHECK_1ARG_ZERO_WITH_TYPE(obj1, RETURN_TYPE)     \
+  CHECK_1ARG_RETURN_EXPR(obj1, (RETURN_TYPE) 0)
+
+#define CHECK_2ARGS_ZERO(obj1, obj2)    \
+  CHECK_2ARGS_RETURN_EXPR(obj1,obj2, 0)
+
+#define CHECK_1ARG_UNKNOWN(obj1)        \
+  CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
 
 extern DB_VALUE *db_value_create (void);
 extern DB_VALUE *db_value_copy (DB_VALUE * value);
@@ -1142,77 +1213,6 @@ extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
-
-/* MACROS FOR ERROR CHECKING */
-/* These should be used at the start of every db_ function so we can check
-   various validations before executing. */
-
-/* Argument checking macros */
-#define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
-  do {                                                                         \
-    if((obj) == NULL) {                                                        \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_2ARGS_RETURN_EXPR(obj1, obj2, expr)                              \
-  do {                                                                         \
-    if((obj1) == NULL || (obj2) == NULL) {                                     \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, expr)                        \
-  do {                                                                         \
-    if((obj1) == NULL || (obj2) == NULL || (obj3) == NULL) {                   \
-      er_set(ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-      return (expr);                                                           \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_1ARG_NULL(obj)        \
-  CHECK_1ARG_RETURN_EXPR(obj, NULL)
-
-#define CHECK_2ARGS_NULL(obj1, obj2)    \
-  CHECK_2ARGS_RETURN_EXPR(obj1,obj2,NULL)
-
-#define CHECK_3ARGS_NULL(obj1, obj2, obj3) \
-  CHECK_3ARGS_RETURN_EXPR(obj1,obj2,obj3,NULL)
-
-#define CHECK_1ARG_FALSE(obj)  \
-  CHECK_1ARG_RETURN_EXPR(obj,false)
-
-#define CHECK_1ARG_TRUE(obj)   \
-  CHECK_1ARG_RETURN_EXPR(obj, true)
-
-#define CHECK_1ARG_ERROR(obj)  \
-  CHECK_1ARG_RETURN_EXPR(obj,ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_ERROR_WITH_TYPE(obj, TYPE)  \
-  CHECK_1ARG_RETURN_EXPR(obj,(TYPE)ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_MINUSONE(obj) \
-  CHECK_1ARG_RETURN_EXPR(obj,-1)
-
-#define CHECK_2ARGS_ERROR(obj1, obj2)   \
-  CHECK_2ARGS_RETURN_EXPR(obj1, obj2, ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_3ARGS_ERROR(obj1, obj2, obj3) \
-  CHECK_3ARGS_RETURN_EXPR(obj1, obj2, obj3, ER_OBJ_INVALID_ARGUMENTS)
-
-#define CHECK_1ARG_ZERO(obj)     \
-  CHECK_1ARG_RETURN_EXPR(obj, 0)
-
-#define CHECK_1ARG_ZERO_WITH_TYPE(obj1, RETURN_TYPE)     \
-  CHECK_1ARG_RETURN_EXPR(obj1, (RETURN_TYPE) 0)
-
-#define CHECK_2ARGS_ZERO(obj1, obj2)    \
-  CHECK_2ARGS_RETURN_EXPR(obj1,obj2, 0)
-
-#define CHECK_1ARG_UNKNOWN(obj1)        \
-  CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
 
 static __inline int db_get_int (const DB_VALUE * value);
 static __inline DB_C_SHORT db_get_short (const DB_VALUE * value);
