@@ -395,6 +395,99 @@ typedef struct tp_domain DB_DOMAIN;
 
 #define DB_VALUE_SCALE(value)           db_value_scale(value)
 
+
+#define DB_GET_INTEGER(value)           db_get_int(value)
+
+#define DB_GET_INT                      DB_GET_INTEGER
+
+#define DB_GET_BIGINT(value)            db_get_bigint(value)
+
+#define DB_GET_BIGINTEGER               DB_GET_BIGINT
+
+#define DB_GET_FLOAT(value)             db_get_float(value)
+
+#define DB_GET_DOUBLE(value)            db_get_double(value)
+
+#define DB_GET_STRING(value)            db_get_string(value)
+
+#define DB_GET_OBJECT(value)            db_get_object(value)
+
+#define DB_GET_OBJ DB_GET_OBJECT
+
+#define DB_GET_SET(value)               db_get_set(value)
+
+#define DB_GET_MULTISET(value)          db_get_set(value)
+
+#define DB_GET_COLLECTION(value)        db_get_set(value)
+
+#define DB_GET_MIDXKEY(value)           db_get_midxkey(value)
+
+#define DB_GET_ELO(value)               db_get_elo(value)
+
+#define DB_GET_TIME(value)              db_get_time(value)
+
+#define DB_GET_TIMETZ(value)          db_get_timetz(value)
+
+#define DB_GET_DATE(value)              db_get_date(value)
+
+#define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
+
+#define DB_GET_TIMESTAMPTZ(value)     db_get_timestamptz(value)
+
+#define DB_GET_DATETIME(value)          db_get_datetime(value)
+
+#define DB_GET_DATETIMETZ(value)      db_get_datetimetz(value)
+
+#define DB_GET_MONETARY(value)          db_get_monetary(value)
+
+#define DB_GET_POINTER(value)           db_get_pointer(value)
+
+#define DB_GET_ERROR(value)             db_get_error(value)
+
+#define DB_GET_SHORT(value)             db_get_short(value)
+
+#define DB_GET_SMALLINT(value)          db_get_short(value)
+
+#define DB_GET_NUMERIC(value)           db_get_numeric(value)
+
+#define DB_GET_BIT(value, length)       db_get_bit(value, length)
+
+#define DB_GET_CHAR(value, length)      db_get_char(value, length)
+
+#define DB_GET_NCHAR(value, length)     db_get_nchar(value, length)
+
+#define DB_GET_STRING_SIZE(value)       db_get_string_size(value)
+
+#define DB_GET_METHOD_ERROR_MSG()       db_get_method_error_msg()
+
+#define DB_GET_RESULTSET(value)         db_get_resultset(value)
+
+#define DB_GET_STRING_LENGTH(value) db_get_string_length(value)
+
+#define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
+
+#define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
+
+#define DB_GET_ENUM_CODESET(value) db_get_enum_codeset(value)
+
+#define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
+
+/* obsolete */
+#define DB_GET_MULTI_SET DB_GET_MULTISET
+
+#define DB_GET_LIST(value)              db_get_set(value)
+
+#define DB_GET_SEQUENCE DB_GET_LIST
+
+#define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
+
+#define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
+
+#define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
+
+/* obsolete */
+#define DB_GET_SEQ DB_GET_SEQUENCE
+
 /* todo: Add these to dbi_compat.h */
 #if !defined(SERVER_MODE) || defined(NDEBUG)
 #define NO_SERVER_OR_DEBUG_MODE
@@ -1013,10 +1106,6 @@ extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
 /* From dbi.h */
 extern DB_TYPE db_col_type (DB_COLLECTION * col);
 
-/* From db_date.h */
-extern int db_date_encode (DB_DATE * date, int month, int day, int year);
-extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
-extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
 
 /* MACROS FOR ERROR CHECKING */
 /* These should be used at the start of every db_ function so we can check
@@ -1088,6 +1177,11 @@ extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
 
 #define CHECK_1ARG_UNKNOWN(obj1)        \
   CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
+
+/* From db_date.h */
+extern int db_date_encode (DB_DATE * date, int month, int day, int year);
+extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
+extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
 
 extern DB_VALUE *db_value_create (void);
 extern DB_VALUE *db_value_copy (DB_VALUE * value);
@@ -1241,512 +1335,6 @@ static __inline unsigned short db_get_enum_short (const DB_VALUE * value);
 static __inline char *db_get_enum_string (const DB_VALUE * value);
 static __inline int db_get_enum_string_size (const DB_VALUE * value);
 
-/*
- * db_get_int() -
- * return :
- * value(in):
- */
-static __inline int
-db_get_int (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_INTEGER);
-
-  return value->data.i;
-}
-
-/*
- * db_get_short() -
- * return :
- * value(in):
- */
-static __inline DB_C_SHORT
-db_get_short (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_SHORT);
-
-  return value->data.sh;
-}
-
-/*
- * db_get_bigint() -
- * return :
- * value(in):
- */
-static __inline DB_BIGINT
-db_get_bigint (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_BIGINT);
-
-  return value->data.bigint;
-}
-
-/*
- * db_get_float() -
- * return :
- * value(in):
- */
-static __inline DB_C_FLOAT
-db_get_float (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_FLOAT);
-
-  return value->data.f;
-}
-
-/*
- * db_get_double() -
- * return :
- * value(in):
- */
-static __inline DB_C_DOUBLE
-db_get_double (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_DOUBLE);
-
-  return value->data.d;
-}
-
-/*
- * db_get_object() -
- * return :
- * value(in):
- */
-static __inline DB_OBJECT *
-db_get_object (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  else
-    {
-      return value->data.op;
-    }
-}
-
-/*
- * db_get_set() -
- * return :
- * value(in):
- */
-static __inline DB_COLLECTION *
-db_get_set (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  else
-    {
-      /* Needs to be checked !! */
-      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_SET || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_MULTISET
-	      || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_SEQUENCE || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VOBJ);
-
-      return value->data.set;
-    }
-}
-
-/*
- * db_get_midxkey() -
- * return :
- * value(in):
- */
-static __inline DB_MIDXKEY *
-db_get_midxkey (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  else
-    {
-      /* This one needs to be checked !! */
-      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_MIDXKEY);
-      return (DB_MIDXKEY *) (&(value->data.midxkey));
-    }
-}
-
-/*
- * db_get_pointer() -
- * return :
- * value(in):
- */
-static __inline DB_C_POINTER
-db_get_pointer (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  else
-    {
-      /* Needs to be checked !! */
-      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_POINTER);
-      return value->data.p;
-    }
-}
-
-/*
- * db_get_time() -
- * return :
- * value(in):
- */
-static __inline DB_TIME *
-db_get_time (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_TIME || value->domain.general_info.type == DB_TYPE_TIMELTZ);
-
-  return ((DB_TIME *) (&value->data.time));
-}
-
-/*
- * db_get_timetz() -
- * return :
- * value(in):
- */
-static __inline DB_TIMETZ *
-db_get_timetz (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_TIMETZ);
-
-  return ((DB_TIMETZ *) (&value->data.timetz));
-}
-
-/*
- * db_get_timestamp() -
- * return :
- * value(in):
- */
-static __inline DB_TIMESTAMP *
-db_get_timestamp (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_TIMESTAMP
-	  || value->domain.general_info.type == DB_TYPE_TIMESTAMPLTZ);
-
-  return ((DB_TIMESTAMP *) (&value->data.utime));
-}
-
-/*
- * db_get_timestamptz() -
- * return :
- * value(in):
- */
-static __inline DB_TIMESTAMPTZ *
-db_get_timestamptz (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_TIMESTAMPTZ);
-
-  return ((DB_TIMESTAMPTZ *) (&value->data.timestamptz));
-}
-
-/*
- * db_get_datetime() -
- * return :
- * value(in):
- */
-static __inline DB_DATETIME *
-db_get_datetime (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_DATETIME
-	  || value->domain.general_info.type == DB_TYPE_DATETIMELTZ);
-
-  return ((DB_DATETIME *) (&value->data.datetime));
-}
-
-/*
- * db_get_datetimetz() -
- * return :
- * value(in):
- */
-static __inline DB_DATETIMETZ *
-db_get_datetimetz (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_DATETIMETZ);
-
-  return ((DB_DATETIMETZ *) (&value->data.datetimetz));
-}
-
-/*
- * db_get_date() -
- * return :
- * value(in):
- */
-static __inline DB_DATE *
-db_get_date (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_DATE);
-
-  return ((DB_DATE *) (&value->data.date));
-}
-
-/*
- * db_get_monetary() -
- * return :
- * value(in):
- */
-static __inline DB_MONETARY *
-db_get_monetary (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_MONETARY);
-
-  return ((DB_MONETARY *) (&value->data.money));
-}
-
-/*
- * db_get_error() -
- * return :
- * value(in):
- */
-static __inline int
-db_get_error (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  assert (value->domain.general_info.type == DB_TYPE_ERROR);
-
-  return value->data.error;
-}
-
-/*
- * db_get_elo() -
- * return :
- * value(in):
- */
-static __inline DB_ELO *
-db_get_elo (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_NULL (value);
-#endif
-
-  if (value->domain.general_info.is_null || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  else if (value->data.elo.type == ELO_NULL)
-    {
-      return NULL;
-    }
-  else
-    {
-      /* Needs to be checked !! */
-      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_ELO || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_CLOB
-	      || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_BLOB);
-
-      return (DB_ELO *) (&value->data.elo);
-    }
-}
-
-/*
- * db_get_numeric() -
- * return :
- * value(in):
- */
-static __inline DB_C_NUMERIC
-db_get_numeric (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  else
-    {
-      /* Needs to be checked !! */
-      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NUMERIC);
-      return (DB_C_NUMERIC) value->data.num.d.buf;
-    }
-}
-
-/*
- * db_get_nchar() -
- * return :
- * value(in):
- * length(out):
- */
-static __inline DB_C_NCHAR
-db_get_nchar (const DB_VALUE * value, int *length)
-{
-  return db_get_char (value, length);
-}
-
-/*
- * db_get_string_size() -
- * return :
- * value(in):
- */
-static __inline int
-db_get_string_size (const DB_VALUE * value)
-{
-  int size = 0;
-
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  switch (value->data.ch.info.style)
-    {
-    case SMALL_STRING:
-      size = value->data.ch.sm.size;
-      break;
-    case MEDIUM_STRING:
-      size = value->data.ch.medium.size;
-      break;
-    case LARGE_STRING:
-      /* Currently not implemented */
-      size = 0;
-      break;
-    }
-
-  /* Convert the number of bits to the number of bytes */
-  if (value->domain.general_info.type == DB_TYPE_BIT || value->domain.general_info.type == DB_TYPE_VARBIT)
-    {
-      size = (size + 7) / 8;
-    }
-
-  return size;
-}
-
-/*
- * db_get_resultset() -
- * return :
- * value(in):
- */
-static __inline DB_RESULTSET
-db_get_resultset (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  /* Needs to be checked !! */
-  assert (value->domain.general_info.type == DB_TYPE_RESULTSET);
-
-  return value->data.rset;
-}
-
-/*
- * db_get_enum_string () -
- * return :
- * value(in):
- */
-static __inline char *
-db_get_enum_string (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
-    {
-      return NULL;
-    }
-  return value->data.enumeration.str_val.medium.buf;
-}
-
-/*
- * db_get_enum_short () -
- * return :
- * value(in):
- */
-static __inline unsigned short
-db_get_enum_short (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
-
-  return value->data.enumeration.short_val;
-}
-
-/*
- * db_get_enum_string_size () -
- * return :
- * value(in):
- */
-static __inline int
-db_get_enum_string_size (const DB_VALUE * value)
-{
-#if defined(NO_SERVER_OR_DEBUG_MODE)
-  CHECK_1ARG_ZERO (value);
-#endif
-  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
-
-  return value->data.enumeration.str_val.medium.size;
-}
 
 /************************************************************************/
 /* TODO:Decide how do we handle the references copied from other headers*/
@@ -2620,96 +2208,511 @@ db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle)
 }
 
 
-#define DB_GET_INTEGER(value)           db_get_int(value)
+/*
+ * db_get_int() -
+ * return :
+ * value(in):
+ */
+static __inline int
+db_get_int (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
 
-#define DB_GET_INT                      DB_GET_INTEGER
+  assert (value->domain.general_info.type == DB_TYPE_INTEGER);
 
-#define DB_GET_BIGINT(value)            db_get_bigint(value)
+  return value->data.i;
+}
 
-#define DB_GET_BIGINTEGER               DB_GET_BIGINT
+/*
+ * db_get_short() -
+ * return :
+ * value(in):
+ */
+static __inline DB_C_SHORT
+db_get_short (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
 
-#define DB_GET_FLOAT(value)             db_get_float(value)
+  assert (value->domain.general_info.type == DB_TYPE_SHORT);
 
-#define DB_GET_DOUBLE(value)            db_get_double(value)
+  return value->data.sh;
+}
 
-#define DB_GET_STRING(value)            db_get_string(value)
+/*
+ * db_get_bigint() -
+ * return :
+ * value(in):
+ */
+static __inline DB_BIGINT
+db_get_bigint (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
 
-#define DB_GET_OBJECT(value)            db_get_object(value)
+  assert (value->domain.general_info.type == DB_TYPE_BIGINT);
 
-#define DB_GET_OBJ DB_GET_OBJECT
+  return value->data.bigint;
+}
 
-#define DB_GET_SET(value)               db_get_set(value)
+/*
+ * db_get_float() -
+ * return :
+ * value(in):
+ */
+static __inline DB_C_FLOAT
+db_get_float (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
 
-#define DB_GET_MULTISET(value)          db_get_set(value)
+  assert (value->domain.general_info.type == DB_TYPE_FLOAT);
 
-#define DB_GET_COLLECTION(value)        db_get_set(value)
+  return value->data.f;
+}
 
-#define DB_GET_MIDXKEY(value)           db_get_midxkey(value)
+/*
+ * db_get_double() -
+ * return :
+ * value(in):
+ */
+static __inline DB_C_DOUBLE
+db_get_double (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
 
-#define DB_GET_ELO(value)               db_get_elo(value)
+  assert (value->domain.general_info.type == DB_TYPE_DOUBLE);
 
-#define DB_GET_TIME(value)              db_get_time(value)
+  return value->data.d;
+}
 
-#define DB_GET_TIMETZ(value)          db_get_timetz(value)
+/*
+ * db_get_object() -
+ * return :
+ * value(in):
+ */
+static __inline DB_OBJECT *
+db_get_object (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_DATE(value)              db_get_date(value)
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  else
+    {
+      return value->data.op;
+    }
+}
 
-#define DB_GET_TIMESTAMP(value)         db_get_timestamp(value)
+/*
+ * db_get_set() -
+ * return :
+ * value(in):
+ */
+static __inline DB_COLLECTION *
+db_get_set (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_TIMESTAMPTZ(value)     db_get_timestamptz(value)
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  else
+    {
+      /* Needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_SET || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_MULTISET
+	      || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_SEQUENCE || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VOBJ);
 
-#define DB_GET_DATETIME(value)          db_get_datetime(value)
+      return value->data.set;
+    }
+}
 
-#define DB_GET_DATETIMETZ(value)      db_get_datetimetz(value)
+/*
+ * db_get_midxkey() -
+ * return :
+ * value(in):
+ */
+static __inline DB_MIDXKEY *
+db_get_midxkey (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_MONETARY(value)          db_get_monetary(value)
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  else
+    {
+      /* This one needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_MIDXKEY);
+      return (DB_MIDXKEY *) (&(value->data.midxkey));
+    }
+}
 
-#define DB_GET_POINTER(value)           db_get_pointer(value)
+/*
+ * db_get_pointer() -
+ * return :
+ * value(in):
+ */
+static __inline DB_C_POINTER
+db_get_pointer (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_ERROR(value)             db_get_error(value)
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  else
+    {
+      /* Needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_POINTER);
+      return value->data.p;
+    }
+}
 
-#define DB_GET_SHORT(value)             db_get_short(value)
+/*
+ * db_get_time() -
+ * return :
+ * value(in):
+ */
+static __inline DB_TIME *
+db_get_time (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_SMALLINT(value)          db_get_short(value)
+  assert (value->domain.general_info.type == DB_TYPE_TIME || value->domain.general_info.type == DB_TYPE_TIMELTZ);
 
-#define DB_GET_NUMERIC(value)           db_get_numeric(value)
+  return ((DB_TIME *) (&value->data.time));
+}
 
-#define DB_GET_BIT(value, length)       db_get_bit(value, length)
+/*
+ * db_get_timetz() -
+ * return :
+ * value(in):
+ */
+static __inline DB_TIMETZ *
+db_get_timetz (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_CHAR(value, length)      db_get_char(value, length)
+  assert (value->domain.general_info.type == DB_TYPE_TIMETZ);
 
-#define DB_GET_NCHAR(value, length)     db_get_nchar(value, length)
+  return ((DB_TIMETZ *) (&value->data.timetz));
+}
 
-#define DB_GET_STRING_SIZE(value)       db_get_string_size(value)
+/*
+ * db_get_timestamp() -
+ * return :
+ * value(in):
+ */
+static __inline DB_TIMESTAMP *
+db_get_timestamp (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_METHOD_ERROR_MSG()       db_get_method_error_msg()
+  assert (value->domain.general_info.type == DB_TYPE_TIMESTAMP
+	  || value->domain.general_info.type == DB_TYPE_TIMESTAMPLTZ);
 
-#define DB_GET_RESULTSET(value)         db_get_resultset(value)
+  return ((DB_TIMESTAMP *) (&value->data.utime));
+}
 
-#define DB_GET_STRING_LENGTH(value) db_get_string_length(value)
+/*
+ * db_get_timestamptz() -
+ * return :
+ * value(in):
+ */
+static __inline DB_TIMESTAMPTZ *
+db_get_timestamptz (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_STRING_CODESET(value) db_get_string_codeset(value)
+  assert (value->domain.general_info.type == DB_TYPE_TIMESTAMPTZ);
 
-#define DB_GET_STRING_COLLATION(value) db_get_string_collation(value)
+  return ((DB_TIMESTAMPTZ *) (&value->data.timestamptz));
+}
 
-#define DB_GET_ENUM_CODESET(value) db_get_enum_codeset(value)
+/*
+ * db_get_datetime() -
+ * return :
+ * value(in):
+ */
+static __inline DB_DATETIME *
+db_get_datetime (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_ENUM_COLLATION(value) db_get_enum_collation(value)
+  assert (value->domain.general_info.type == DB_TYPE_DATETIME
+	  || value->domain.general_info.type == DB_TYPE_DATETIMELTZ);
 
-/* obsolete */
-#define DB_GET_MULTI_SET DB_GET_MULTISET
+  return ((DB_DATETIME *) (&value->data.datetime));
+}
 
-#define DB_GET_LIST(value)              db_get_set(value)
+/*
+ * db_get_datetimetz() -
+ * return :
+ * value(in):
+ */
+static __inline DB_DATETIMETZ *
+db_get_datetimetz (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_SEQUENCE DB_GET_LIST
+  assert (value->domain.general_info.type == DB_TYPE_DATETIMETZ);
 
-#define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
+  return ((DB_DATETIMETZ *) (&value->data.datetimetz));
+}
 
-#define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
+/*
+ * db_get_date() -
+ * return :
+ * value(in):
+ */
+static __inline DB_DATE *
+db_get_date (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
 
-#define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
+  assert (value->domain.general_info.type == DB_TYPE_DATE);
 
-/* obsolete */
-#define DB_GET_SEQ DB_GET_SEQUENCE
+  return ((DB_DATE *) (&value->data.date));
+}
+
+/*
+ * db_get_monetary() -
+ * return :
+ * value(in):
+ */
+static __inline DB_MONETARY *
+db_get_monetary (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
+
+  assert (value->domain.general_info.type == DB_TYPE_MONETARY);
+
+  return ((DB_MONETARY *) (&value->data.money));
+}
+
+/*
+ * db_get_error() -
+ * return :
+ * value(in):
+ */
+static __inline int
+db_get_error (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
+
+  assert (value->domain.general_info.type == DB_TYPE_ERROR);
+
+  return value->data.error;
+}
+
+/*
+ * db_get_elo() -
+ * return :
+ * value(in):
+ */
+static __inline DB_ELO *
+db_get_elo (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_NULL (value);
+#endif
+
+  if (value->domain.general_info.is_null || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  else if (value->data.elo.type == ELO_NULL)
+    {
+      return NULL;
+    }
+  else
+    {
+      /* Needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_ELO || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_CLOB
+	      || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_BLOB);
+
+      return (DB_ELO *) (&value->data.elo);
+    }
+}
+
+/*
+ * db_get_numeric() -
+ * return :
+ * value(in):
+ */
+static __inline DB_C_NUMERIC
+db_get_numeric (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  else
+    {
+      /* Needs to be checked !! */
+      assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NUMERIC);
+      return (DB_C_NUMERIC) value->data.num.d.buf;
+    }
+}
+
+/*
+ * db_get_nchar() -
+ * return :
+ * value(in):
+ * length(out):
+ */
+static __inline DB_C_NCHAR
+db_get_nchar (const DB_VALUE * value, int *length)
+{
+  return db_get_char (value, length);
+}
+
+/*
+ * db_get_string_size() -
+ * return :
+ * value(in):
+ */
+static __inline int
+db_get_string_size (const DB_VALUE * value)
+{
+  int size = 0;
+
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
+
+  switch (value->data.ch.info.style)
+    {
+    case SMALL_STRING:
+      size = value->data.ch.sm.size;
+      break;
+    case MEDIUM_STRING:
+      size = value->data.ch.medium.size;
+      break;
+    case LARGE_STRING:
+      /* Currently not implemented */
+      size = 0;
+      break;
+    }
+
+  /* Convert the number of bits to the number of bytes */
+  if (value->domain.general_info.type == DB_TYPE_BIT || value->domain.general_info.type == DB_TYPE_VARBIT)
+    {
+      size = (size + 7) / 8;
+    }
+
+  return size;
+}
+
+/*
+ * db_get_resultset() -
+ * return :
+ * value(in):
+ */
+static __inline DB_RESULTSET
+db_get_resultset (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
+
+  /* Needs to be checked !! */
+  assert (value->domain.general_info.type == DB_TYPE_RESULTSET);
+
+  return value->data.rset;
+}
+
+/*
+ * db_get_enum_string () -
+ * return :
+ * value(in):
+ */
+static __inline char *
+db_get_enum_string (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      return NULL;
+    }
+  return value->data.enumeration.str_val.medium.buf;
+}
+
+/*
+ * db_get_enum_short () -
+ * return :
+ * value(in):
+ */
+static __inline unsigned short
+db_get_enum_short (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
+  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
+
+  return value->data.enumeration.short_val;
+}
+
+/*
+ * db_get_enum_string_size () -
+ * return :
+ * value(in):
+ */
+static __inline int
+db_get_enum_string_size (const DB_VALUE * value)
+{
+#if defined(NO_SERVER_OR_DEBUG_MODE)
+  CHECK_1ARG_ZERO (value);
+#endif
+  assert (value->domain.general_info.type == DB_TYPE_ENUMERATION);
+
+  return value->data.enumeration.str_val.medium.size;
+}
 
 #endif /* _DBTYPE_H_ */
