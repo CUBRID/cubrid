@@ -205,12 +205,15 @@
 
 #define DB_GET_NUMERIC_PRECISION(val) \
     ((val)->domain.numeric_info.precision)
+
 #define DB_GET_NUMERIC_SCALE(val) \
     ((val)->domain.numeric_info.scale)
+
 #define db_string_put_cs_and_collation(v, cs, coll) \
     ((v)->data.ch.info.codeset = (cs), \
      (v)->domain.char_info.collation_id = (coll), \
      NO_ERROR)
+
 #define db_enum_put_cs_and_collation(v, cs, coll) \
     (v)->data.enumeration.str_val.info.codeset	  = (cs), \
     (v)->domain.char_info.collation_id		  = (coll)
