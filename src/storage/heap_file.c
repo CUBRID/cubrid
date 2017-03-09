@@ -15969,8 +15969,7 @@ heap_create_update_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
       if (rc != NO_ERROR)
 	{
 	  return rc;
-	}
-      assert (context->remove_old_forward == false);
+	}      
 
       break;
 
