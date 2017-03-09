@@ -188,7 +188,6 @@
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
 
-/* TODO: Decide whether we keep this as it is or we use inline functions */
 #define db_value_is_null(v) DB_IS_NULL(v)
 #define db_value_type(v) DB_VALUE_TYPE(v)
 #define db_value_scale(v) DB_VALUE_SCALE(v)
