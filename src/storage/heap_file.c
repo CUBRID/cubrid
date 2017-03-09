@@ -23958,8 +23958,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool append_
 	  if ((log_undoredo_data_p->undo_data_size != mvcc_header_size_lookup[mvcc_flags])
 	      || memcmp (log_undoredo_data_p->undo_data, old_recdes_p->data, log_undoredo_data_p->undo_data_size) != 0)
 	    {
-	      /* the log info has changed, need to recreate the log node */
-	      prior_lsa_free_node (physical_update_log_info->node);
+	      /* the log info has changed, need to recreate the log node */	      
 	      goto invalidate_log_node;
 	    }
 
@@ -23969,8 +23968,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool append_
 	  if ((log_undoredo_data_p->redo_data_size != mvcc_header_size_lookup[mvcc_flags])
 	      || memcmp (log_undoredo_data_p->redo_data, new_recdes_p->data, log_undoredo_data_p->redo_data_size) != 0)
 	    {
-	      /* the log info has changed, need to recreate the log node */
-	      prior_lsa_free_node (physical_update_log_info->node);
+	      /* the log info has changed, need to recreate the log node */	      
 	      goto invalidate_log_node;
 	    }
 
