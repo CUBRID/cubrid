@@ -925,9 +925,8 @@ static int heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPER
 			     bool is_mvcc_op, MVCCID mvccid);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, PGSLOTID slotid);
 
-static int heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool append_node, PAGE_PTR page_p,
-				     VFID * vfid_p, int offset, RECDES * recdes_p, bool mark_reusable,
-				     HEAP_LOG_INFO * physical_delete_log_info, LOG_LSA * undo_lsa);
+static void heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p,
+				      PGSLOTID slotid, RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa);
 static int heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
 			       MVCCID mvccid, bool is_mvcc_op);
 STATIC_INLINE int
@@ -21839,12 +21838,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
 	}
 
       /* log operation */
-      rc = heap_log_delete_physical (thread_p, tdes, true, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
-				     context->oid.slotid, &context->home_recdes, is_reusable, &context->log_info, NULL);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
+      heap_log_delete_physical (thread_p, tdes, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
+				context->oid.slotid, &context->home_recdes, is_reusable, NULL);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical deletion of home record */
@@ -22441,13 +22436,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
       /* 
        * Delete home record.
        */
-      rc = heap_log_delete_physical (thread_p, tdes, true, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
-				     context->oid.slotid, &context->home_recdes, is_reusable, &context->log_info, NULL);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-
+      heap_log_delete_physical (thread_p, tdes, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
+				context->oid.slotid, &context->home_recdes, is_reusable, NULL);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical deletion of home record */
@@ -22473,17 +22463,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
        * Delete forward record
        */
       /* 
-       * It should be safe to mark the new home slot as reusable regardless
-       * of the heap type (reusable OID or not) as the relocated record
-       * should not be referenced anywhere in the database.
+       * It should be safe to mark the new home slot as reusable regardless of the heap type (reusable OID or not) as
+       * the relocated record should not be referenced anywhere in the database.
        */
-      rc = heap_log_delete_physical (thread_p, tdes, true, context->forward_page_watcher_p->pgptr, &context->hfid.vfid,
-				     context->forward_oid.slotid, &context->forward_recdes, true, NULL, NULL);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-
+      heap_log_delete_physical (thread_p, tdes, context->forward_page_watcher_p->pgptr, &context->hfid.vfid,
+				context->forward_oid.slotid, &context->forward_recdes, true, NULL);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical deletion of forward record */
@@ -22889,15 +22873,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /* log operation */
-      error_code =
-	heap_log_delete_physical (thread_p, tdes, true, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
-				  context->oid.slotid, &context->home_recdes, is_reusable, &context->log_info, NULL);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
-
+      heap_log_delete_physical (thread_p, tdes, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
+				context->oid.slotid, &context->home_recdes, is_reusable, NULL);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical deletion */
@@ -22956,119 +22933,60 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, P
  *   returns: error code
  *   thread_p(in): thread entry
  *   tdes(in): transaction descriptor
- *   append_node(in) : True, if needs to append node, otherwise just create it
  *   page_p(in): page pointer
  *   vfid_p(in): virtual file identifier
- *   offset(in): object identifier of deleted record
+ *   slotid(in): slot id
  *   recdes_p(in): record descriptor of deleted record
  *   mark_reusable(in): if true, will mark the slot as reusable
- *   physical_delete_log_info(in/out): physical delete log info
  *   undo_lsa(out): lsa to the undo record; needed to set previous version lsa of record at update
  */
-static int
-heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool append_node, PAGE_PTR page_p, VFID * vfid_p,
-			  int offset, RECDES * recdes_p, bool mark_reusable, HEAP_LOG_INFO * physical_delete_log_info,
-			  LOG_LSA * undo_lsa)
+static void
+heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, PAGE_PTR page_p, VFID * vfid_p, PGSLOTID slotid,
+			  RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa)
 {
-  LOG_DATA_ADDR address;
-  LOG_PRIOR_NODE *physical_delete_log_node = NULL;
-  HEAP_LOG_INFO local_physical_delete_log_info;
-  int min_length;
-  int error_code = NO_ERROR;
+  LOG_DATA_ADDR log_addr;
 
   /* check input */
   assert (page_p != NULL);
   assert (vfid_p != NULL);
   assert (recdes_p != NULL);
 
-  /* build address */
-  LOG_SET_DATA_ADDR (&address, page_p, vfid_p, offset);
-  if (physical_delete_log_info)
+  /* populate address */
+  log_addr.offset = slotid;
+  log_addr.pgptr = page_p;
+  log_addr.vfid = vfid_p;
+
+  if (recdes_p->type == REC_ASSIGN_ADDRESS)
     {
-      assert (physical_delete_log_info->node != NULL && physical_delete_log_info->node_appended == false);
-      physical_delete_log_node = physical_delete_log_info->node;
-      /* There is only one physical delete heap log record : RVHF_DELETE */
-      assert (physical_delete_log_info->log_undoredo_data.rcvindex == RVHF_DELETE);
-      assert (physical_delete_log_info->log_undoredo_data.redo_data_size == 0);
+      /* special case for REC_ASSIGN */
+      RECDES temp_recdes;
+      INT16 bytes_reserved;
 
-      /* Currently, if undo or redo data differs in header informations, create a new log node. */
-      min_length = MIN (recdes_p->length, OR_MVCC_MAX_HEADER_SIZE);
-      if (VPID_EQ (pgbuf_get_vpid_ptr (physical_delete_log_info->log_undoredo_data.page), pgbuf_get_vpid_ptr (page_p))
-	  && (physical_delete_log_info->log_undoredo_data.undo_data == recdes_p->data
-	      || (physical_delete_log_info->log_undoredo_data.undo_data_size == recdes_p->length
-		  && memcmp (physical_delete_log_info->log_undoredo_data.undo_data, recdes_p->data, min_length) == 0)))
-	{
-	  if (physical_delete_log_info->log_undoredo_data.offset == offset)
-	    {
-	      assert (physical_delete_log_info->log_undoredo_data.undo_data == NULL
-		      || memcmp (physical_delete_log_info->log_undoredo_data.undo_data, recdes_p->data,
-				 recdes_p->length) == 0);
-	      goto append_log_node;
-	    }
+      temp_recdes.type = recdes_p->type;
+      temp_recdes.area_size = sizeof (bytes_reserved);
+      temp_recdes.length = sizeof (bytes_reserved);
+      bytes_reserved = (INT16) recdes_p->length;
+      temp_recdes.data = (char *) &bytes_reserved;
 
-	  if (heap_rv_remove_flags_from_offset (offset)
-	      == heap_rv_remove_flags_from_offset (physical_delete_log_info->log_undoredo_data.offset))
-	    {
-	      assert (memcmp (physical_delete_log_info->log_undoredo_data.undo_data, recdes_p->data,
-			      recdes_p->length) == 0);
-	      error_code =
-		prior_lsa_update_undoredo_data_from_recdes (thread_p, physical_delete_log_node, RVHF_DELETE,
-							    &address, NULL, NULL, false, false);
-	      if (error_code == NO_ERROR)
-		{
-		  /* Successfully updated undo/redo data. Append the log node. */
-		  goto append_log_node;
-		}
-
-	      if (er_errid () == ER_INCOMPATIBLE_LOG_TYPE)
-		{
-		  /* Need to add a new log node. The caller has to clean the old log node. */
-		  er_clear ();
-		  error_code = NO_ERROR;
-		  physical_delete_log_node = NULL;
-		}
-	      else
-		{
-		  return error_code;
-		}
-	    }
-	}
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, &temp_recdes, NULL);
+    }
+  else
+    {
+      /* log record descriptor */
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
     }
 
-  error_code = heap_create_log_node_for_physical_deletion (thread_p, tdes, page_p, vfid_p, offset, RVHF_DELETE,
-							   recdes_p, &physical_delete_log_node);
-  if (error_code != NO_ERROR)
+  if (undo_lsa)
     {
-      return error_code;
-    }
-  physical_delete_log_info = &local_physical_delete_log_info;
-  HEAP_SET_LOG_INFO (physical_delete_log_info, physical_delete_log_node, RVHF_DELETE, page_p,
-		     offset, NULL, 0, recdes_p->data, recdes_p->length, false);
-
-append_log_node:
-  if (append_node)
-    {
-      assert (physical_delete_log_node != NULL && physical_delete_log_info != NULL);
-      log_append_prior_node (thread_p, tdes, RVHF_DELETE, page_p, physical_delete_log_node);
-      if (physical_delete_log_info)
-	{
-	  physical_delete_log_info->node_appended = true;
-	}
-
-      if (undo_lsa)
-	{
-	  /* get, set undo lsa before log_append_postpone() will make it inaccessible */
-	  LSA_COPY (undo_lsa, logtb_find_current_tran_lsa (thread_p));
-	}
-
-      if (mark_reusable)
-	{
-	  log_append_postpone (thread_p, RVHF_MARK_REUSABLE_SLOT, &address, 0, NULL);
-	}
-
+      /* get, set undo lsa before log_append_postpone() will make it inaccessible */
+      LSA_COPY (undo_lsa, logtb_find_current_tran_lsa (thread_p));
     }
 
-  return NO_ERROR;
+  /* log postponed operation */
+  if (mark_reusable)
+    {
+      log_append_postpone (thread_p, RVHF_MARK_REUSABLE_SLOT, &log_addr, 0, NULL);
+    }
 }
 
 /*
@@ -23551,16 +23469,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 
   if (context->remove_old_forward)
     {
-      /* TO DO - check log corectness */
       /* log operation */
-      rc = heap_log_delete_physical (thread_p, tdes, true, context->forward_page_watcher_p->pgptr, &context->hfid.vfid,
-				     context->forward_oid.slotid, &context->forward_recdes, true, NULL,
-				     &prev_version_lsa);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
+      heap_log_delete_physical (thread_p, tdes, context->forward_page_watcher_p->pgptr, &context->hfid.vfid,
+				context->forward_oid.slotid, &context->forward_recdes, true, &prev_version_lsa);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical delete old forward record */
