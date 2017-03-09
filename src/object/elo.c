@@ -64,6 +64,7 @@
 #include "object_representation.h"
 #include "object_primitive.h"
 
+#include "es.h"
 #include "boot.h"
 
 #if defined(CS_MODE)
@@ -71,6 +72,10 @@
 #else
 #include "xserver_interface.h"
 #endif
+
+static const DB_ELO elo_Initializer = { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL,
+ES_NONE
+};
 
 #define ELO_NEEDS_TRANSACTION(e) \
         ((e)->es_type == ES_OWFS || (e)->es_type == ES_POSIX)
@@ -539,7 +544,6 @@ drop_lob_locator (const char *locator)
  * DB_ELO(in): DB_ELO
  * type(in): DB_ELO_TYPE
  */
-
 int
 elo_create (DB_ELO * elo, DB_ELO_TYPE type)
 {
@@ -583,6 +587,17 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
     }
 }
 
+/*		
+ * elo_init_structure () - init. ELO structure		
+ */
+void
+elo_init_structure (DB_ELO * elo)
+{
+  if (elo != NULL)
+    {
+      *elo = elo_Initializer;
+    }
+}
 
 /*
  * elo_copy_structure () - Copy elo instance
@@ -1011,21 +1026,6 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
   return ER_OBJ_INVALID_ARGUMENTS;
 }
-
-static const DB_ELO elo_Initializer = { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL, ES_NONE };
-
-/*
- * elo_init_structure () - init. ELO structure
- */
-void
-elo_init_structure (DB_ELO * elo)
-{
-  if (elo != NULL)
-    {
-      *elo = elo_Initializer;
-    }
-}
-
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
