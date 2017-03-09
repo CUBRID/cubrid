@@ -165,29 +165,21 @@
 /* TODO: Decide whether we keep using a macro or we also switch to an inline function approach */
 #define DB_GET_ENUM_ELEM_SHORT(elem) \
       ((elem)->short_val)
-
 #define DB_GET_ENUM_ELEM_DBCHAR(elem) \
       ((elem)->str_val)
-
 #define DB_GET_ENUM_ELEM_STRING(elem) \
       ((elem)->str_val.medium.buf)
-
 #define DB_GET_ENUM_ELEM_STRING_SIZE(elem) \
       ((elem)->str_val.medium.size)
-
 #define DB_GET_ENUM_ELEM_CODESET(elem) \
       ((elem)->str_val.info.codeset)
-
 #define DB_SET_ENUM_ELEM_CODESET(elem, cs) \
       ((elem)->str_val.info.codeset = (cs))
-
 #define DB_SET_ENUM_ELEM_SHORT(elem, sv) \
       ((elem)->short_val = (sv))
-
 #define DB_SET_ENUM_ELEM_STRING(elem, str) \
       ((elem)->str_val.medium.buf = (str),  \
        (elem)->str_val.info.style = MEDIUM_STRING)
-
 #define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
       ((elem)->str_val.medium.size = (sz))
 
@@ -209,7 +201,7 @@
 #define db_pull_oid(v) DB_PULL_OID(v)
 #define db_pull_midxkey(v) DB_PULL_MIDXKEY(v)
 #define db_pull_elo(v) DB_PULL_ELO(v)
-#define db_pull_numeric(v)  DB_PULL_NUMERIC(v)
+#define db_pull_numeric(v) DB_PULL_NUMERIC(v)
 
 #define DB_GET_NUMERIC_PRECISION(val) \
     ((val)->domain.numeric_info.precision)
