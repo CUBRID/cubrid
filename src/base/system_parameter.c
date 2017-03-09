@@ -2059,8 +2059,8 @@ bool PRM_FILE_LOGGING = false;
 static bool prm_file_logging_default = false;
 static unsigned int prm_file_logging_flag = 0;
 
-int PRM_CTE_MAX_RECURSIONS = 10;
-static int prm_cte_max_recursions_default = 10;
+int PRM_CTE_MAX_RECURSIONS = 100;
+static int prm_cte_max_recursions_default = 100;
 static int prm_cte_max_recursions_upper = 1000000;
 static int prm_cte_max_recursions_lower = 2;
 static unsigned int prm_cte_max_recursions_flag = 0;
