@@ -224,9 +224,6 @@ static int locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid
 static int locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
 						 RECDES * classrec, RECDES * recdes);
 
-static int locator_check_primary_key_upddel (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid, RECDES * recdes,
-					     LOCATOR_INDEX_ACTION_FLAG idx_action_flag);
-
 static void locator_incr_num_transient_classnames (int tran_index);
 static void locator_decr_num_transient_classnames (int tran_index);
 static int locator_get_num_transient_classnames (int tran_index);
@@ -1487,7 +1484,8 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, L
 	  assert (false);
 	}
 
-      if (disk_isvalid_page (thread_p, class_oid.volid, class_oid.pageid) != DISK_VALID)
+      if (disk_is_page_sector_reserved_with_debug_crash (thread_p, class_oid.volid, class_oid.pageid, true)
+	  != DISK_VALID)
 	{
 	  assert (false);
 	}
@@ -1539,7 +1537,8 @@ locator_defence_drop_class_name_entry (const void *name, void *ent, void *args)
 	  assert (false);
 	}
 
-      if (disk_isvalid_page (thread_p, class_oid.volid, class_oid.pageid) != DISK_VALID)
+      if (disk_is_page_sector_reserved_with_debug_crash (thread_p, class_oid.volid, class_oid.pageid, true)
+	  != DISK_VALID)
 	{
 	  assert (false);
 	}
@@ -1882,8 +1881,8 @@ locator_check_class_on_heap (const void *name, void *ent, void *args)
   classname = (char *) name;
   class_oid = &entry->e_current.oid;
 
-  heap_classname = heap_get_class_name_alloc_if_diff (thread_p, class_oid, (char *) classname);
-  if (heap_classname == NULL)
+  if (heap_get_class_name_alloc_if_diff (thread_p, class_oid, (char *) classname, &heap_classname) != NO_ERROR
+      || heap_classname == NULL)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	{
@@ -2065,9 +2064,6 @@ xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid, OID * perm_oid,
       error_code = locator_permoid_class_name (thread_p, classname, perm_oid);
       assert (error_code == NO_ERROR);
     }
-
-  /* Release the lock which was set in heap_assign_address_with_class_oid according to isolation level */
-  lock_unlock_object (thread_p, perm_oid, class_oid, X_LOCK, false);
 
   return error_code;
 }
@@ -2329,7 +2325,6 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
   SCAN_CODE scan;		/* Scan return value for next operation */
   int guess_chn = chn;
   int tran_index = NULL_TRAN_INDEX;
-  int lock_ret;
 
   /* 
    * The next object is placed in the assigned recdes area if the cached
@@ -2471,8 +2466,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  error_code = ER_HEAP_UNKNOWN_OBJECT;
 	  if (er_errid () != error_code)
 	    {
-	      /* error has not been previously set */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
+	      /* error was not previously set; set error in order to have it returned to client */
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
 	    }
 	  return error_code;
 	}
@@ -2576,9 +2571,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  error_code = ER_HEAP_UNKNOWN_OBJECT;
 	  if (er_errid () != error_code)
 	    {
-	      /* error was not previously set */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
-		      oid->slotid);
+	      /* error was not previously set; set error in order to have it returned to client */
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
 	    }
 	  goto error;
 	}
@@ -4019,114 +4013,6 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
   heap_scancache_end_modify (thread_p, scan_cache);
 }
 
-
-/*
- * locator_check_primary_key_upddel () -
- *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
- *   thread_p(in):
- *   class_oid(in):
- *   inst_oid(in):
- *   recdes(in):
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			 If FOR_MOVE, this delete(&insert) is caused by 
- *			 'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- */
-static int
-locator_check_primary_key_upddel (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid, RECDES * recdes,
-				  LOCATOR_INDEX_ACTION_FLAG idx_action_flag)
-{
-  int num_found, i;
-  HEAP_CACHE_ATTRINFO index_attrinfo;
-  HEAP_IDX_ELEMENTS_INFO idx_info;
-  BTID btid;
-  DB_VALUE dbvalue;
-  DB_VALUE *key_dbvalue;
-  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
-  OR_INDEX *index;
-  bool is_null;
-  int error_code = NO_ERROR;
-
-  DB_MAKE_NULL (&dbvalue);
-
-  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
-  if (num_found <= 0)
-    {
-      return error_code;
-    }
-
-  if (idx_info.has_single_col)
-    {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  for (i = 0; i < idx_info.num_btids; i++)
-    {
-      index = &(index_attrinfo.last_classrepr->indexes[i]);
-      if (index->type != BTREE_PRIMARY_KEY || index->fk == NULL)
-	{
-	  continue;
-	}
-
-      key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
-      if (key_dbvalue == NULL)
-	{
-	  error_code = ER_FAILED;
-	  goto error;
-	}
-
-      if (index->n_atts > 1)
-	{
-	  is_null = btree_multicol_key_is_null (key_dbvalue);
-	}
-      else
-	{
-	  is_null = DB_IS_NULL (key_dbvalue);
-	}
-
-      if (!is_null)
-	{
-	  switch (idx_action_flag)
-	    {
-	    case FOR_MOVE:
-	      error_code = locator_check_primary_key_update (thread_p, index, key_dbvalue);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	      break;
-	    case FOR_INSERT_OR_DELETE:
-	      error_code = locator_check_primary_key_delete (thread_p, index, key_dbvalue);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	      break;
-	    default:
-	      error_code = ER_FAILED;
-	      goto error;
-	    }
-	}
-    }
-
-error:
-  if (key_dbvalue == &dbvalue)
-    {
-      pr_clear_value (&dbvalue);
-    }
-
-  heap_attrinfo_end (thread_p, &index_attrinfo);
-  return error_code;
-}
-
 /*
  * locator_check_foreign_key () -
  *
@@ -5285,21 +5171,12 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     }
 #endif
 
-  /* Unlock the object according to isolation level */
-  /* locked by heap_insert */
-  /* manual duration */
-  lock_unlock_object (thread_p, &null_oid, &real_class_oid, X_LOCK, false);
-
   *force_count = 1;
 
 error1:
   /* update the OID of the class with the actual partition in which the object was inserted */
   COPY_OID (class_oid, &real_class_oid);
   HFID_COPY (hfid, &real_hfid);
-  if (error_code != NO_ERROR)
-    {
-      lock_unlock_object (thread_p, oid, class_oid, X_LOCK, false);
-    }
 
 error2:
   if (cache_attr_copyarea != NULL)
@@ -5481,7 +5358,12 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       assert (classname != NULL);
       assert (strlen (classname) < 255);
 
-      old_classname = heap_get_class_name_alloc_if_diff (thread_p, oid, classname);
+      if (heap_get_class_name_alloc_if_diff (thread_p, oid, classname, &old_classname) != NO_ERROR)
+	{
+	  /* it is unexpected to fail to get the classname of an existing class */
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
 
       /* 
        * Compare the classname pointers. If the same pointers classes are the
@@ -6083,20 +5965,14 @@ error:
  *
  *   hfid(in): Heap where the object is going to be inserted
  *   oid(in): The object identifier
- *   has_index(in): false if we now for sure that there is not any index
- *                   on the instances of the class.
+ *   has_index(in): false if we now for sure that there is not any index on the instances of the class.
  *   op_type(in):
- *   scan_cache(in/out): Scan cache used to estimate the best space pages
- *                   between heap changes.
+ *   scan_cache(in/out): Scan cache used to estimate the best space pages between heap changes.
  *   force_count(in):
  *   mvcc_reev_data(in): MVCC data
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			  If FOR_MOVE, this delete&insert is caused by 
- *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
  *   need_locking(in): true, if need locking
  *
- * Note: The given object is deleted on this heap and all appropiate
- *              index entries are deleted.
+ * Note: The given object is deleted on this heap and all appropiate index entries are deleted.
  */
 int
 locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
@@ -6115,23 +5991,16 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_i
  *   thread_p(in):
  *   hfid(in): Heap where the object is going to be inserted
  *   oid(in): The object identifier
- *   has_index(in): false if we now for sure that there is not any index
- *                   on the instances of the class.
+ *   has_index(in): false if we now for sure that there is not any index on the instances of the class.
  *   op_type(in):
- *   scan_cache(in/out): Scan cache used to estimate the best space pages
- *                   between heap changes.
+ *   scan_cache(in/out): Scan cache used to estimate the best space pages between heap changes.
  *   force_count(in):
  *   mvcc_reev_data(in): MVCC data
- *   idx_action_flag(in): is moving record between partitioned table? 
- *			  If FOR_MOVE, this delete&insert is caused by 
- *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- *   new_obj_oid(in): next version - only to be used with records relocated in
- *				  other partitions, in MVCC.
+ *   new_obj_oid(in): next version - only to be used with records relocated in other partitions, in MVCC.
  *   partition_oid(in): new partition class oid
  *   need_locking(in): true, if need locking
  *
- * Note: The given object is deleted on this heap and all appropriate
- *              index entries are deleted.
+ * Note: The given object is deleted on this heap and all appropriate index entries are deleted.
  */
 static int
 locator_delete_force_for_moving (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
@@ -6143,26 +6012,23 @@ locator_delete_force_for_moving (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid
 }
 
 /*
+ * locator_delete_force_internal () - helper function of locator_delete_force
  *
  *   hfid(in): Heap where the object is going to be inserted
  *   oid(in): The object identifier
- *   has_index(in): false if we now for sure that there is not any index
- *                   on the instances of the class.
+ *   has_index(in): false if we now for sure that there is not any index on the instances of the class.
  *   op_type(in):
- *   scan_cache(in/out): Scan cache used to estimate the best space pages
- *                   between heap changes.
+ *   scan_cache(in/out): Scan cache used to estimate the best space pages between heap changes.
  *   force_count(in):
  *   mvcc_reev_data(in): MVCC data
  *   idx_action_flag(in): is moving record between partitioned table? 
  *			  If FOR_MOVE, this delete&insert is caused by 
  *			  'UPDATE ... SET ...', NOT 'DELETE FROM ...'
- *   new_obj_oid(in): next version - only to be used with records relocated in
- *				  other partitions, in MVCC.
+ *   new_obj_oid(in): next version - only to be used with records relocated in other partitions, in MVCC.
  *   partition_oid(in): new partition class oid
  *   need_locking(in): true, if need locking
  *
- * Note: The given object is deleted on this heap and all appropriate
- *              index entries are deleted.
+ * Note: The given object is deleted on this heap and all appropriate index entries are deleted.
  */
 static int
 locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
@@ -6818,7 +6684,7 @@ locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, L
   reply_obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (reply_mobjs, reply_mobjs->num_objs);
 
   ptr = recdes->data;
-  ptr = or_pack_mem_value (ptr, key_value);
+  ptr = or_pack_mem_value (ptr, key_value, NULL);
   ptr = or_pack_int (ptr, err_code);
   ptr = or_pack_string (ptr, err_msg);
 
@@ -7142,6 +7008,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   return error_code;
 
 exit_on_error:
+  assert_release (error_code == ER_FAILED || error_code == er_errid ());
+
   if (DB_IS_NULL (&key_value) == false)
     {
       pr_clear_value (&key_value);
@@ -7154,7 +7022,6 @@ exit_on_error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
-  assert_release (error_code == ER_FAILED || error_code == er_errid ());
   return error_code;
 }
 
@@ -7363,6 +7230,7 @@ error:
 
   /* The reevaluation at update phase of update is currently disabled */
   assert (error_code != ER_MVCC_NOT_SATISFIED_REEVALUATION);
+  assert_release (error_code == ER_FAILED || error_code == er_errid ());
 
   if (force_scancache != NULL)
     {
@@ -7371,7 +7239,6 @@ error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
-  assert_release (error_code == ER_FAILED || error_code == er_errid ());
   return error_code;
 }
 
@@ -7721,9 +7588,6 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo, BTID * 
  *   need_replication(in): true if replication is needed
  *   hfid(in):
  *   func_preds(in): cached function index expressions
- *   idx_action_flag(in): is moving record between partitioned table?
- *			 If FOR_MOVE, this delete(&insert) is caused by
- *			 'UPDATE ... SET ...', NOT 'DELETE FROM ...'
  *
  * Note:Either insert indices (in_insert) or delete indices.
  */
@@ -7753,9 +7617,6 @@ locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * ins
  *   need_replication(in): true if replication is needed
  *   hfid(in):
  *   func_preds(in): cached function index expressions
- *   idx_action_flag(in): is moving record between partitioned table?
- *			 If FOR_MOVE, this delete(&insert) is caused by
- *			 'UPDATE ... SET ...', NOT 'DELETE FROM ...'
  *
  * Note:Either insert indices (in_insert) or delete indices.
  */
@@ -7878,7 +7739,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  classname = heap_get_class_name (thread_p, class_oid);
+  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error;
+    }
 #endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
@@ -8434,7 +8299,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     }
 
 #if defined(ENABLE_SYSTEMTAP)
-  classname = heap_get_class_name (thread_p, class_oid);
+  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error;
+    }
 #endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
@@ -9261,10 +9130,6 @@ xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p, LC_COPYAREA ** synch_
     {
       more_synch = true;
     }
-  else
-    {
-      lock_unlock_by_isolation_level (thread_p);
-    }
 
   return more_synch;
 }
@@ -9284,18 +9149,18 @@ locator_repair_btree_by_insert (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
       return DISK_INVALID;
     }
 
-  log_start_system_op (thread_p);
+  log_sysop_start (thread_p);
 
   if (btree_insert (thread_p, btid, key, class_oid, inst_oid, SINGLE_ROW_INSERT, NULL, NULL, NULL /* TO DO */ )
       == NO_ERROR)
     {
       isvalid = DISK_VALID;
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
     }
   else
     {
-      assert (er_errid () != NO_ERROR);
-      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
     }
 
 #if defined(SERVER_MODE)
@@ -9325,17 +9190,18 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
 
   if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) == LK_GRANTED)
     {
-      log_start_system_op (thread_p);
+      log_sysop_start (thread_p);
 
       if (btree_physical_delete (thread_p, btid, &key, inst_oid, class_oid, &dummy_unique, SINGLE_ROW_DELETE, NULL) ==
 	  NO_ERROR)
 	{
 	  isvalid = DISK_VALID;
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+	  log_sysop_commit (thread_p);
 	}
       else
 	{
-	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
 	}
 
 #if defined(SERVER_MODE)
@@ -9533,7 +9399,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 
 		      if (!OID_ISNULL (class_oid))
 			{
-			  classname = heap_get_class_name (thread_p, class_oid);
+			  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+			    {
+			      /* ignore */
+			      er_clear ();
+			    }
 			}
 
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE1, 12,
@@ -9669,7 +9539,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 		{
 		  if (!OID_ISNULL (class_oid))
 		    {
-		      classname = heap_get_class_name (thread_p, class_oid);
+		      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+			{
+			  /* ignore */
+			  er_clear ();
+			}
 		    }
 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
@@ -9699,7 +9573,11 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE3, 10,
@@ -9970,7 +9848,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 			  key_dmp = pr_valstring (key);
 			  if (!OID_ISNULL (class_oid))
 			    {
-			      classname = heap_get_class_name (thread_p, class_oid);
+			      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+				{
+				  /* ignore */
+				  er_clear ();
+				}
 			    }
 
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE1, 12,
@@ -10102,7 +9984,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 		{
 		  if (!OID_ISNULL (class_oid))
 		    {
-		      classname = heap_get_class_name (thread_p, class_oid);
+		      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+			{
+			  /* ignore */
+			  er_clear ();
+			}
 		    }
 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE2, 11,
@@ -10145,7 +10031,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 		{
 		  if (!OID_ISNULL (class_oid))
 		    {
-		      classname = heap_get_class_name (thread_p, class_oid);
+		      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+			{
+			  /* ignore */
+			  er_clear ();
+			}
 		    }
 
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE8, 11,
@@ -10189,7 +10079,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE4, 11,
@@ -10210,7 +10104,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE5, 10,
@@ -10230,7 +10128,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE7, 10,
@@ -10250,7 +10152,11 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       if (!OID_ISNULL (class_oid))
 	{
-	  classname = heap_get_class_name (thread_p, class_oid);
+	  if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
+	    {
+	      /* ignore */
+	      er_clear ();
+	    }
 	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_BTREE_ENTRY_TYPE6, 11,
@@ -11571,10 +11477,7 @@ xlocator_assign_oid_batch (THREAD_ENTRY * thread_p, LC_OIDSET * oidset)
   int error_code = NO_ERROR;
 
   /* establish a rollback point in case we get an error part way through */
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return ER_FAILED;
-    }
+  log_sysop_start (thread_p);
 
   /* Now assign the OID's stop on the first error */
   for (class_oidset = oidset->classes; class_oidset != NULL; class_oidset = class_oidset->next)
@@ -11592,13 +11495,13 @@ xlocator_assign_oid_batch (THREAD_ENTRY * thread_p, LC_OIDSET * oidset)
     }
 
   /* accept the operation */
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+  log_sysop_attach_to_outer (thread_p);
 
   return error_code;
 
 error:
   /* rollback the operation */
-  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+  log_sysop_abort (thread_p);
   return error_code;
 }
 
@@ -12738,14 +12641,8 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  /* 
-   * need to start a topop to make sure the repl log is
-   * inserted in a correct order
-   */
-  if (log_start_system_op (thread_p) == NULL)
-    {
-      return er_errid ();
-    }
+  /* need to start a topop to make sure the repl log is inserted in a correct order */
+  log_sysop_start (thread_p);
 
   repl_start_flush_mark (thread_p);
 
@@ -12755,14 +12652,15 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
 
   if (error != NO_ERROR)
     {
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
     }
   else
     {
       /* manually append repl info */
       log_append_repl_info (thread_p, tdes, false);
 
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+      log_sysop_commit (thread_p);
     }
 
 #if defined (SERVER_MODE)
@@ -13249,6 +13147,14 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       class_oid = &class_oid_local;
     }
 
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
+    {
+      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
   /* get class_oid if it is unknown */
@@ -13373,6 +13279,15 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
       class_oid = &class_oid_local;
     }
 
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
+    {
+      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn);
 
   /* get class_oid if it is unknown */
@@ -13464,10 +13379,17 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
 
+  if (scan_cache && ispeeking == COPY && recdes != NULL)
+    {
+      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
+      if (heap_scan_cache_allocate_area (thread_p, scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
-
   scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
-
   heap_clean_get_context (thread_p, &context);
   return scan_code;
 }

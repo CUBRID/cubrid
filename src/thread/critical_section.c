@@ -74,11 +74,9 @@ static const char *csect_Names[] = {
   "WFG",
   "LOG",
   "LOCATOR_CLASSNAME_TABLE",
-  "FILE_NEWFILE",
   "QPROC_QUERY_TABLE",
   "QPROC_LIST_CACHE",
-  "BOOT_SR_DBPARM",
-  "DISK_REFRESH_GOODVOL",
+  "DISK_CHECK",
   "CNV_FMT_LEXER",
   "HEAP_CHNGUESS",
   "TRAN_TABLE",
@@ -88,7 +86,6 @@ static const char *csect_Names[] = {
   "ACL",
   "PARTITION_CACHE",
   "EVENT_LOG_FILE",
-  "TEMPFILE_CACHE",
   "LOG_ARCHIVE",
   "ACCESS_STATUS"
 };

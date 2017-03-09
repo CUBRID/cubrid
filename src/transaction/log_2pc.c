@@ -1381,9 +1381,10 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 		    " to it.\n Will attach those system operations to the" " transaction\n", tdes->trid,
 		    tdes->tran_index);
 #endif /* CUBRID_DEBUG */
+      assert (false);
       while (tdes->topops.last >= 0)
 	{
-	  (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
+	  log_sysop_attach_to_outer (thread_p);
 	}
     }
 
@@ -2310,9 +2311,8 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
     case LOG_SAVEPOINT:
     case LOG_COMMIT:
     case LOG_ABORT:
-    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-    case LOG_COMMIT_TOPOPE:
-    case LOG_ABORT_TOPOPE:
+    case LOG_SYSOP_START_POSTPONE:
+    case LOG_SYSOP_END:
     case LOG_START_CHKPT:
     case LOG_END_CHKPT:
     case LOG_DUMMY_CRASH_RECOVERY:

@@ -932,7 +932,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
 
       /* explicitly treat others as an error condition */
-    case DB_TYPE_ELO:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
@@ -1519,7 +1518,6 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_DATETIMETZ:
       retval = tp_domain_construct (domain_type, NULL, DB_DATETIMETZ_PRECISION, DB_DATETIME_DECIMAL_SCALE, NULL);
       break;
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_SUB:
@@ -1749,7 +1747,6 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_INTEGER:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
@@ -1954,7 +1951,6 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_INTEGER:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
@@ -2587,7 +2583,6 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_OID:
     case DB_TYPE_VOBJ:
     case DB_TYPE_UNKNOWN:
-    case DB_TYPE_ELO:
     case DB_TYPE_POINTER:
     case DB_TYPE_SUB:
     case DB_TYPE_ERROR:
@@ -2735,7 +2730,6 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
        */
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:

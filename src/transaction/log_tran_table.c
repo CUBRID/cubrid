@@ -539,7 +539,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
     {
       goto error;
     }
-  error_code = file_manager_initialize (thread_p);
+  error_code = file_manager_init ();
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -652,7 +652,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   logtb_finalize_mvcctable (thread_p);
   lock_finalize ();
   pgbuf_finalize ();
-  (void) file_manager_finalize (thread_p);
+  file_manager_final ();
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -949,14 +949,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->topops.stack = NULL;
   tdes->topops.max = 0;
   tdes->topops.last = -1;
-  tdes->topops.type = LOG_TOPOPS_NORMAL;
-  tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   RB_INIT (&tdes->lob_locator_root);
 }
 
@@ -1865,9 +1860,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   tdes->topops.last = -1;
-  tdes->topops.type = LOG_TOPOPS_NORMAL;
-  tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
   if (tdes->gtrinfo.info_data != NULL)
@@ -1931,8 +1923,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
@@ -1957,6 +1947,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->has_deadlock_priority = false;
 
   tdes->num_log_records_written = 0;
+
+  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 }
 
 /*
@@ -1998,9 +1991,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->topops.stack = NULL;
   tdes->topops.last = -1;
   tdes->topops.max = 0;
-  tdes->topops.type = LOG_TOPOPS_NORMAL;
-  tdes->topops.compensate_level = -1;
-  LSA_SET_NULL (&tdes->topops.ref_lsa);
   tdes->num_unique_btrees = 0;
   tdes->max_unique_btrees = 0;
   tdes->tran_unique_stats = NULL;
@@ -2013,8 +2003,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
-  tdes->num_new_files = 0;
-  tdes->num_new_temp_files = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
@@ -2054,6 +2042,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
   tdes->block_global_oldest_active_until_commit = false;
   tdes->modified_class_list = NULL;
+
+  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 }
 
 /*
@@ -3018,17 +3009,15 @@ logtb_find_log_records_count (int tran_index)
  *                         TRAN_SERIALIZABLE
  *                         TRAN_REPEATABLE_READ
  *                         TRAN_READ_COMMITTED
- *   unlock_by_isolation(in): unlock by isolation during reset
  *
- * Note:Reset the default isolation level for the current transaction
- *              index (client).
+ * Note:Reset the default isolation level for the current transaction index (client).
  *
  * Note/Warning: This function must be called when the current transaction has
  *               not been done any work (i.e, just after restart, commit, or
  *               abort), otherwise, its isolation behaviour will be undefined.
  */
 int
-xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool unlock_by_isolation)
+xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation)
 {
   TRAN_ISOLATION old_isolation;
   int error_code = NO_ERROR;
@@ -3042,10 +3031,6 @@ xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool 
     {
       old_isolation = tdes->isolation;
       tdes->isolation = isolation;
-      if (unlock_by_isolation == true)
-	{
-	  lock_unlock_by_isolation_level (thread_p);
-	}
     }
   else
     {
@@ -3197,7 +3182,11 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
   INT64 now;
 #if !defined(SERVER_MODE)
   struct timeval tv;
-#endif /* !SERVER_MODE */
+
+#else /* SERVER_MODE */
+  /* vacuum threads should not be interruptible (unless this is still recovery). */
+  assert (!BO_IS_SERVER_RESTARTED () || !VACUUM_IS_THREAD_VACUUM (thread_p));
+#endif /* SERVER_MODE */
 
   interrupt = tdes->interrupt;
   if (!LOG_ISTRAN_ACTIVE (tdes))
@@ -3269,16 +3258,12 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
  *                        interrupts to check or to false if there are not
  *                        more interrupts.
  *
- * Note: Find if the current execution must be stopped due to an
- *              interrupt (^C). If clear is true, the interruption flag is
- *              cleared; This is the expected case, once someone is notified,
- *              we do not have to keep the flag on.
+ * Note: Find if the current execution must be stopped due to an interrupt (^C). If clear is true, the interruption flag
+ *       is cleared; This is the expected case, once someone is notified, we do not have to keep the flag on.
  *
- *       If the transaction is not active, false is returned. For
- *              example, in the middle of an undo action, the transaction will
- *              not be interrupted. The recovery manager will interrupt the
- *              transaction at the end of the undo action...int this case the
- *              transaction will be partially aborted.
+ *       If the transaction is not active, false is returned. For example, in the middle of an undo action, the
+ *       transaction will not be interrupted. The recovery manager will interrupt the transaction at the end of the undo
+ *       action... in this case the transaction will be partially aborted.
  */
 bool
 logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
@@ -3312,13 +3297,11 @@ logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_check
  *                        more interrupts.
  *   tran_index(in):
  *
- * Note: Find if the execution o fthe given transaction must be stopped
- *              due to an interrupt (^C). If clear is true, the
- *              interruption flag is cleared; This is the expected case, once
- *              someone is notified, we do not have to keep the flag on.
- *       This function is called to see if a transaction that is
- *              waiting (e.g., suspended wiating on a lock) on an event must
- *              be interrupted.
+ * Note: Find if the execution of the given transaction must be stopped due to an interrupt (^C). If clear is true, the
+ *       interruption flag is cleared; This is the expected case, once someone is notified, we do not have to keep the
+ *       flag on.
+ *       This function is called to see if a transaction that is waiting (e.g., suspended on a lock) on an event must
+ *       be interrupted.
  */
 bool
 logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index)
@@ -3973,10 +3956,14 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys
       redo_rec.data = PTR_ALIGN (redo_rec_buf, MAX_ALIGNMENT);
 
       btree_rv_mvcc_save_increments (btid, -n_keys, -n_oids, -n_nulls, &undo_rec);
-      btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls, &redo_rec);
 
-      log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, -1, undo_rec.length, redo_rec.length,
-				 undo_rec.data, redo_rec.data);
+      /* todo: remove me. redo has no use */
+      /*btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls, &redo_rec);
+
+         log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, -1, undo_rec.length, redo_rec.length,
+         undo_rec.data, redo_rec.data); */
+      log_append_undo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, NULL_OFFSET, undo_rec.length,
+			     undo_rec.data);
     }
 
   return error;
@@ -6934,7 +6921,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   int i, idx, msecs, error = NO_ERROR;
-  char buf[512], vpid_buf[64], vfid_buf[64];
+  char buf[512];
   const char *str;
   time_t tval;
   INT64 i64val;
@@ -6943,7 +6930,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
   void *ptr_val;
   LOG_TDES *tdes;
   DB_VALUE *vals = NULL;
-  const int num_cols = 47;
+  const int num_cols = 46;
 
   *ptr = NULL;
 
@@ -7239,12 +7226,8 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
       idx++;
 
-      /* Num_new_files */
-      db_make_int (&vals[idx], tdes->num_new_files);
-      idx++;
-
-      /* Num_new_temp_temp_files */
-      db_make_int (&vals[idx], tdes->num_new_temp_files);
+      /* Num_temp_files */
+      db_make_int (&vals[idx], file_get_tran_num_temp_files (thread_p));
       idx++;
 
       /* Waiting_for_res */

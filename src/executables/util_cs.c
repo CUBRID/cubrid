@@ -60,16 +60,14 @@
 #endif
 
 #define PASSBUF_SIZE 12
-#define SPACEDB_NUM_VOL_PURPOSE 5
+#define SPACEDB_NUM_VOL_PURPOSE 2
 #define MAX_KILLTRAN_INDEX_LIST_NUM  64
 #define MAX_DELVOL_ID_LIST_NUM       64
 
 #define VOL_PURPOSE_STRING(VOL_PURPOSE)		\
-	    ((VOL_PURPOSE == DISK_PERMVOL_DATA_PURPOSE) ? "DATA"	\
-	    : (VOL_PURPOSE == DISK_PERMVOL_INDEX_PURPOSE) ? "INDEX"	\
-	    : (VOL_PURPOSE == DISK_PERMVOL_GENERIC_PURPOSE) ? "GENERIC"	\
-	    : (VOL_PURPOSE == DISK_TEMPVOL_TEMP_PURPOSE) ? "TEMP TEMP" \
-	    : "TEMP")
+	    ((VOL_PURPOSE == DB_PERMANENT_DATA_PURPOSE) ? "PERMANENT DATA"	\
+	    : (VOL_PURPOSE == DB_TEMPORARY_DATA_PURPOSE) ? "TEMPORARY DATA"     \
+	    : "UNKNOWN")
 
 typedef enum
 {
@@ -105,7 +103,7 @@ static void intr_handler (int sig_no);
 #endif
 
 static void backupdb_sig_interrupt_handler (int sig_no);
-static int spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
+STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
 static void print_timestamp (FILE * outfp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level);
 static int tranlist_cmp_f (const void *p1, const void *p2);
@@ -385,23 +383,23 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
       volext_string_purpose = "generic";
     }
 
-  ext_info.purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+  ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
 
   if (strcasecmp (volext_string_purpose, "data") == 0)
     {
-      ext_info.purpose = DISK_PERMVOL_DATA_PURPOSE;
+      ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
     }
   else if (strcasecmp (volext_string_purpose, "index") == 0)
     {
-      ext_info.purpose = DISK_PERMVOL_INDEX_PURPOSE;
+      ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
     }
   else if (strcasecmp (volext_string_purpose, "temp") == 0)
     {
-      ext_info.purpose = DISK_PERMVOL_TEMP_PURPOSE;
+      ext_info.purpose = DB_TEMPORARY_DATA_PURPOSE;
     }
   else if (strcasecmp (volext_string_purpose, "generic") == 0)
     {
-      ext_info.purpose = DISK_PERMVOL_GENERIC_PURPOSE;
+      ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
     }
   else
     {
@@ -484,188 +482,6 @@ print_addvol_usage:
 error_exit:
   return EXIT_FAILURE;
 }
-
-#if 0
-/*
- * delvoldb() - delvoldb main routine
- *   return: EXIT_SUCCESS/EXIT_FAILURE
- */
-int
-delvoldb (UTIL_FUNCTION_ARG * arg)
-{
-  UTIL_ARG_MAP *arg_map = arg->arg_map;
-  const char *vol_ids;
-  const char *database_name;
-  const char *dba_password;
-  bool clear_cached_files = false;
-
-  bool start_transaction = false;
-  int i, volid, res;
-  int volid_list[MAX_DELVOL_ID_LIST_NUM];
-  int num_volid;
-  char *end;
-
-  bool ask_verify = true;
-  char reply;
-
-  DB_VOLPURPOSE vol_purpose;
-  VOL_SPACE_INFO space_info;
-  char vol_label[PATH_MAX];
-
-  char num_total_str[64], num_free_str[64];
-
-  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  if (database_name == NULL)
-    {
-      goto print_delvol_usage;
-    }
-
-  vol_ids = utility_get_option_string_value (arg_map, DELVOL_VOLUME_ID_S, 0);
-  if (vol_ids == NULL)
-    {
-      goto print_delvol_usage;
-    }
-
-  clear_cached_files = utility_get_option_bool_value (arg_map, DELVOL_CLEAR_CACHE_S);
-
-  if (utility_get_option_bool_value (arg_map, DELVOL_FORCE_S))
-    {
-      ask_verify = false;
-    }
-
-  dba_password = utility_get_option_string_value (arg_map, DELVOL_DBA_PASSWORD_S, 0);
-
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (db_login ("DBA", dba_password) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-
-  start_transaction = true;
-
-  num_volid = 0;
-  while (*vol_ids != '\0')
-    {
-      res = str_to_int32 (&i, &end, vol_ids, 10);
-      if (res < 0)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOL_MSG_INVALID_VOLUME_ID),
-				 vol_ids);
-	  goto error_exit;
-	}
-
-      if (i <= 0)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_CANNOT_REMOVE_FIRST_VOL),
-				 i);
-	  goto error_exit;
-	}
-      if (disk_is_volume_exist (i) == false)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_CANNOT_FIND_VOL), i);
-	  goto error_exit;
-	}
-
-      volid_list[num_volid] = i;
-
-      num_volid++;
-      if (num_volid > MAX_DELVOL_ID_LIST_NUM)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_TOO_MANY_VOLID),
-				 MAX_DELVOL_ID_LIST_NUM);
-	  goto error_exit;
-	}
-
-      if (*end == '\0')
-	{
-	  break;
-	}
-
-      vol_ids = end + 1;
-    }
-
-  if (ask_verify)
-    {
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_READY_TO_DEL));
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_SIZE));
-
-      for (i = 0; i < num_volid; i++)
-	{
-	  volid = volid_list[i];
-	  if (disk_get_purpose_and_space_info (volid, &vol_purpose, &space_info) == NULL_VOLID)
-	    {
-	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	      goto error_exit;
-	    }
-
-	  db_vol_label (volid, vol_label);
-	  assert (vol_label != NULL);	/* we confirmed volid is valid */
-
-	  spacedb_get_size_str (num_total_str, (UINT64) space_info.total_pages, SPACEDB_SIZE_UNIT_HUMAN_READABLE);
-	  spacedb_get_size_str (num_free_str, (UINT64) space_info.free_pages, SPACEDB_SIZE_UNIT_HUMAN_READABLE);
-
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_FORMAT), volid,
-		   VOL_PURPOSE_STRING (vol_purpose), num_total_str, num_free_str, vol_label);
-	}
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_VERIFY));
-      fflush (stdout);
-
-      reply = getc (stdin);
-      if (reply != 'Y' && reply != 'y')
-	{
-	  db_abort_transaction ();
-	  db_shutdown ();
-
-	  return EXIT_SUCCESS;
-	}
-    }
-
-  for (i = 0; i < num_volid; i++)
-    {
-      volid = volid_list[i];
-      res = db_del_volume_ex ((VOLID) volid, clear_cached_files);
-      if (res != NO_ERROR)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  if (res != ER_NOT_A_EMPTY_VOLUME)
-	    {
-	      db_shutdown ();
-	      goto error_exit;
-	    }
-	}
-    }
-
-  db_commit_transaction ();
-
-  db_shutdown ();
-
-  return EXIT_SUCCESS;
-
-print_delvol_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_USAGE),
-	   basename (arg->argv0));
-  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-error_exit:
-  if (start_transaction)
-    {
-      db_abort_transaction ();
-      db_shutdown ();
-    }
-
-  return EXIT_FAILURE;
-}
-#endif
-
 
 /*
  * util_get_class_oids_and_index_btid() -
@@ -984,37 +800,36 @@ error_exit:
 int
 spacedb (UTIL_FUNCTION_ARG * arg)
 {
+#define SPACEDB_TO_SIZE_ARG(no, npage) spacedb_get_size_str (size_str_##no, npage, size_unit_type)
+
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
   int i;
   const char *size_unit;
-  DB_VOLPURPOSE vol_purpose;
   T_SPACEDB_SIZE_UNIT size_unit_type;
-  char vol_label[PATH_MAX];
-
-  UINT64 db_ntotal_pages, db_nfree_pages;
-  UINT64 db_ndata_pages, db_nindex_pages, db_ntemp_pages;
-
-  UINT64 db_summarize_ntotal_pages[SPACEDB_NUM_VOL_PURPOSE];
-  UINT64 db_summarize_nfree_pages[SPACEDB_NUM_VOL_PURPOSE];
-  UINT64 db_summarize_ndata_pages[SPACEDB_NUM_VOL_PURPOSE];
-  UINT64 db_summarize_nindex_pages[SPACEDB_NUM_VOL_PURPOSE];
-  UINT64 db_summarize_ntemp_pages[SPACEDB_NUM_VOL_PURPOSE];
-  int db_summarize_nvols[SPACEDB_NUM_VOL_PURPOSE];
 
   bool summarize, purpose;
   FILE *outfp = NULL;
-  int nvols, last_perm;
-  VOLID temp_volid;
-  char num_total_str[64], num_free_str[64], num_used_str[64];
-  char num_data_used_str[64];
-  char num_index_used_str[64];
-  char num_temp_used_str[64];
   char io_size_str[64], log_size_str[64];
-  VOL_SPACE_INFO space_info;
-  MSGCAT_SPACEDB_MSG title_format, output_format, size_title_format, underline;
+
+  SPACEDB_ALL all[SPACEDB_ALL_COUNT];
+  SPACEDB_ONEVOL *vols = NULL;
+  SPACEDB_ONEVOL **volsp = NULL;
+  SPACEDB_FILES files[SPACEDB_FILE_COUNT];
+  SPACEDB_FILES *filesp = NULL;
+
+  char size_str_1[64];
+  char size_str_2[64];
+  char size_str_3[64];
+  char size_str_4[64];
+
+  const char *file_type_strings[] = {
+    "INDEX", "HEAP", "SYSTEM", "TEMP", "-"
+  };
+
+  /* todo: there is a lot of work to do here */
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1094,339 +909,140 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
       goto error_exit;
     }
-
-  db_ntotal_pages = db_nfree_pages = 0;
-  db_ndata_pages = db_nindex_pages = db_ntemp_pages = 0;
 
   util_byte_to_size_string (io_size_str, 64, IO_PAGESIZE);
   util_byte_to_size_string (log_size_str, 64, LOG_PAGESIZE);
 
-  if (summarize && purpose)
+  if (!summarize)
     {
-      title_format = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE;
-      size_title_format =
-	(size_unit_type ==
-	 SPACEDB_SIZE_UNIT_PAGE) ? SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_PAGE :
-	SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_SIZE;
-      output_format = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_FORMAT;
-      underline = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_UNDERLINE;
+      /* we need space info per each volume. set volsp to non-NULL value */
+      volsp = &vols;
     }
-  else if (summarize && !purpose)
+  if (purpose)
     {
-      title_format = SPACEDB_OUTPUT_SUMMARIZED_TITLE;
-      size_title_format =
-	(size_unit_type ==
-	 SPACEDB_SIZE_UNIT_PAGE) ? SPACEDB_OUTPUT_SUMMARIZED_TITLE_PAGE : SPACEDB_OUTPUT_SUMMARIZED_TITLE_SIZE;
-      output_format = SPACEDB_OUTPUT_SUMMARIZED_FORMAT;
-      underline = SPACEDB_OUTPUT_SUMMARIZED_UNDERLINE;
-    }
-  else if (!summarize && purpose)
-    {
-      title_format = SPACEDB_OUTPUT_PURPOSE_TITLE;
-      size_title_format =
-	(size_unit_type ==
-	 SPACEDB_SIZE_UNIT_PAGE) ? SPACEDB_OUTPUT_PURPOSE_TITLE_PAGE : SPACEDB_OUTPUT_PURPOSE_TITLE_SIZE;
-      output_format = SPACEDB_OUTPUT_PURPOSE_FORMAT;
-      underline = SPACEDB_OUTPUT_PURPOSE_UNDERLINE;
-    }
-  else				/* !summarize && !purpose */
-    {
-      title_format = SPACEDB_OUTPUT_TITLE;
-      size_title_format =
-	(size_unit_type == SPACEDB_SIZE_UNIT_PAGE) ? SPACEDB_OUTPUT_TITLE_PAGE : SPACEDB_OUTPUT_TITLE_SIZE;
-      output_format = SPACEDB_OUTPUT_FORMAT;
-      underline = SPACEDB_OUTPUT_UNDERLINE;
+      /* we need detailed space info for file usage. set filesp to non-NULL value */
+      filesp = files;
     }
 
-  if (summarize)
+  if (netcl_spacedb (all, volsp, filesp) != NO_ERROR)
     {
-      for (i = 0; i < SPACEDB_NUM_VOL_PURPOSE; i++)
-	{
-	  db_summarize_ntotal_pages[i] = 0;
-	  db_summarize_nfree_pages[i] = 0;
-	  db_summarize_nvols[i] = 0;
-
-	  if (purpose)
-	    {
-	      db_summarize_ndata_pages[i] = 0;
-	      db_summarize_nindex_pages[i] = 0;
-	      db_summarize_ntemp_pages[i] = 0;
-	    }
-	}
+      ASSERT_ERROR ();
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
+      db_shutdown ();
+      goto error_exit;
     }
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, title_format), database_name,
+  /* print title */
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE), database_name,
 	   io_size_str, log_size_str);
+  fprintf (outfp, "\n");
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, size_title_format));
-
-  nvols = 0;
-  last_perm = db_last_volume ();
-  for (i = 0; i <= last_perm; i++)
+  /* print aggregated info */
+  /* print header */
+  if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
     {
-      if (disk_is_volume_exist (i) == false)
-	{
-	  continue;
-	}
-      nvols++;
-
-      if (disk_get_purpose_and_space_info (i, &vol_purpose, &space_info) != NULL_VOLID)
-	{
-	  if (summarize)
-	    {
-	      if (vol_purpose < DISK_UNKNOWN_PURPOSE)
-		{
-		  db_summarize_ntotal_pages[vol_purpose] += space_info.total_pages;
-		  db_summarize_nfree_pages[vol_purpose] += space_info.free_pages;
-		  db_summarize_nvols[vol_purpose]++;
-
-		  if (purpose)
-		    {
-		      db_summarize_ndata_pages[vol_purpose] += space_info.used_data_npages;
-		      db_summarize_nindex_pages[vol_purpose] += space_info.used_index_npages;
-		      db_summarize_ntemp_pages[vol_purpose] += space_info.used_temp_npages;
-		    }
-		}
-	    }
-	  else
-	    {
-	      db_ntotal_pages += space_info.total_pages;
-	      db_nfree_pages += space_info.free_pages;
-
-	      if (db_vol_label (i, vol_label) == NULL)
-		{
-		  strcpy (vol_label, " ");
-		}
-
-	      spacedb_get_size_str (num_total_str, (UINT64) space_info.total_pages, size_unit_type);
-	      spacedb_get_size_str (num_free_str, (UINT64) space_info.free_pages, size_unit_type);
-
-	      if (purpose)
-		{
-		  db_ndata_pages += space_info.used_data_npages;
-		  db_nindex_pages += space_info.used_index_npages;
-		  db_ntemp_pages += space_info.used_temp_npages;
-
-		  spacedb_get_size_str (num_data_used_str, (UINT64) space_info.used_data_npages, size_unit_type);
-		  spacedb_get_size_str (num_index_used_str, (UINT64) space_info.used_index_npages, size_unit_type);
-		  spacedb_get_size_str (num_temp_used_str, (UINT64) space_info.used_temp_npages, size_unit_type);
-
-		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), i,
-			   VOL_PURPOSE_STRING (vol_purpose), num_total_str, num_free_str, num_data_used_str,
-			   num_index_used_str, num_temp_used_str, vol_label);
-		}
-	      else
-		{
-		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), i,
-			   VOL_PURPOSE_STRING (vol_purpose), num_total_str, num_free_str, vol_label);
-		}
-	    }
-	}
-      else
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-    }
-
-  if (nvols > 1 && !summarize)
-    {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, underline));
-
-      spacedb_get_size_str (num_total_str, db_ntotal_pages, size_unit_type);
-      spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
-
-      if (purpose)
-	{
-	  spacedb_get_size_str (num_data_used_str, db_ndata_pages, size_unit_type);
-	  spacedb_get_size_str (num_index_used_str, db_nindex_pages, size_unit_type);
-	  spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
-
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
-		   num_total_str, num_free_str, num_data_used_str, num_index_used_str, num_temp_used_str, " ");
-	}
-      else
-	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
-		   num_total_str, num_free_str, " ");
-	}
-    }
-
-  if (!summarize)
-    {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_TMP_VOL),
-	       database_name, io_size_str);
-
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, size_title_format));
-      db_ntotal_pages = db_nfree_pages = 0;
-      db_ndata_pages = db_nindex_pages = db_ntemp_pages = 0;
-    }
-
-  /* Find info on temp volumes */
-  temp_volid = boot_find_last_temp ();
-  if (temp_volid == NULL_VOLID)
-    {
-      temp_volid = VOLID_MAX;
-    }
-
-  nvols = 0;
-  for (i = temp_volid; i < VOLID_MAX; i++)
-    {
-      if (disk_is_volume_exist (i) == false)
-	{
-	  continue;
-	}
-      nvols++;
-
-      if (disk_get_purpose_and_space_info (i, &vol_purpose, &space_info) != NULL_VOLID)
-	{
-	  assert (space_info.used_data_npages == 0 && space_info.used_index_npages == 0);
-
-	  if (summarize)
-	    {
-	      if (vol_purpose < DISK_UNKNOWN_PURPOSE)
-		{
-		  db_summarize_ntotal_pages[vol_purpose] += space_info.total_pages;
-		  db_summarize_nfree_pages[vol_purpose] += space_info.free_pages;
-		  db_summarize_nvols[vol_purpose]++;
-
-		  if (purpose)
-		    {
-		      db_summarize_ntemp_pages[vol_purpose] += space_info.used_temp_npages;
-		    }
-		}
-	    }
-	  else
-	    {
-	      db_ntotal_pages += space_info.total_pages;
-	      db_nfree_pages += space_info.free_pages;
-
-	      if (db_vol_label (i, vol_label) == NULL)
-		{
-		  strcpy (vol_label, " ");
-		}
-
-	      spacedb_get_size_str (num_total_str, (UINT64) space_info.total_pages, size_unit_type);
-	      spacedb_get_size_str (num_free_str, (UINT64) space_info.free_pages, size_unit_type);
-
-	      if (purpose)
-		{
-		  db_ntemp_pages += space_info.used_temp_npages;
-
-		  spacedb_get_size_str (num_data_used_str, (UINT64) 0, size_unit_type);
-		  spacedb_get_size_str (num_index_used_str, (UINT64) 0, size_unit_type);
-		  spacedb_get_size_str (num_temp_used_str, (UINT64) space_info.used_temp_npages, size_unit_type);
-
-		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), i,
-			   VOL_PURPOSE_STRING (DISK_TEMPVOL_TEMP_PURPOSE), num_total_str, num_free_str,
-			   num_data_used_str, num_index_used_str, num_temp_used_str, vol_label);
-		}
-	      else
-		{
-		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), i,
-			   VOL_PURPOSE_STRING (DISK_TEMPVOL_TEMP_PURPOSE), num_total_str, num_free_str, vol_label);
-		}
-	    }
-	}
-      else
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-    }
-
-  if (!summarize)
-    {
-      if (nvols > 1)
-	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, underline));
-
-	  spacedb_get_size_str (num_total_str, db_ntotal_pages, size_unit_type);
-	  spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
-
-	  if (purpose)
-	    {
-	      spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
-
-	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
-		       num_total_str, num_free_str, num_data_used_str, num_index_used_str, num_temp_used_str, " ");
-	    }
-	  else
-	    {
-	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
-		       num_total_str, num_free_str, " ");
-	    }
-	}
-
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_LOB),
-	       boot_get_lob_path ());
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_ALL_HEADER_PAGES));
     }
   else
     {
-      int total_volume_count = 0;
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_ALL_HEADER_SIZE));
+    }
+  /* print values. the format is:
+   * type, purpose, used pages/size, free pages/size, total pages/size */
+  /* print perm perm values */
+  for (i = 0; i < SPACEDB_ALL_COUNT; i++)
+    {
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_PERM_PERM_FORMAT + i),
+	       all[i].nvols, SPACEDB_TO_SIZE_ARG (1, all[i].npage_used),
+	       SPACEDB_TO_SIZE_ARG (2, all[i].npage_free),
+	       SPACEDB_TO_SIZE_ARG (3, all[i].npage_used + all[i].npage_free));
+    }
+  fprintf (outfp, "\n");
 
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, underline));
+  if (volsp != NULL)
+    {
+      /* print information on all volumes */
+      MSGCAT_SPACEDB_MSG msg_vols_format;
 
-      for (i = 0; i < SPACEDB_NUM_VOL_PURPOSE; i++)
+      /* print title */
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_TITLE));
+      /* print header */
+      if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
 	{
-	  spacedb_get_size_str (num_total_str, db_summarize_ntotal_pages[i], size_unit_type);
-
-	  spacedb_get_size_str (num_used_str, db_summarize_ntotal_pages[i] - db_summarize_nfree_pages[i],
-				size_unit_type);
-
-	  spacedb_get_size_str (num_free_str, db_summarize_nfree_pages[i], size_unit_type);
-
-	  db_ntotal_pages += db_summarize_ntotal_pages[i];
-	  db_nfree_pages += db_summarize_nfree_pages[i];
-	  total_volume_count += db_summarize_nvols[i];
-
-	  if (purpose)
-	    {
-	      db_ndata_pages += db_summarize_ndata_pages[i];
-	      db_nindex_pages += db_summarize_nindex_pages[i];
-	      db_ntemp_pages += db_summarize_ntemp_pages[i];
-
-	      spacedb_get_size_str (num_data_used_str, db_summarize_ndata_pages[i], size_unit_type);
-	      spacedb_get_size_str (num_index_used_str, db_summarize_nindex_pages[i], size_unit_type);
-	      spacedb_get_size_str (num_temp_used_str, db_summarize_ntemp_pages[i], size_unit_type);
-
-	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format),
-		       VOL_PURPOSE_STRING (i), num_total_str, num_used_str, num_free_str, num_data_used_str,
-		       num_index_used_str, num_temp_used_str, db_summarize_nvols[i]);
-	    }
-	  else
-	    {
-	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format),
-		       VOL_PURPOSE_STRING (i), num_total_str, num_used_str, num_free_str, db_summarize_nvols[i]);
-	    }
-	}
-
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, underline));
-
-      spacedb_get_size_str (num_total_str, db_ntotal_pages, size_unit_type);
-      spacedb_get_size_str (num_used_str, db_ntotal_pages - db_nfree_pages, size_unit_type);
-      spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
-
-      if (purpose)
-	{
-	  spacedb_get_size_str (num_data_used_str, db_ndata_pages, size_unit_type);
-	  spacedb_get_size_str (num_index_used_str, db_nindex_pages, size_unit_type);
-	  spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
-
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), "TOTAL",
-		   num_total_str, num_used_str, num_free_str, num_data_used_str, num_index_used_str, num_temp_used_str,
-		   total_volume_count);
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_HEADER_PAGES));
 	}
       else
 	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), "TOTAL",
-		   num_total_str, num_used_str, num_free_str, total_volume_count);
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_HEADER_SIZE));
 	}
+
+      /* print each volume */
+      for (i = 0; i < all[SPACEDB_TOTAL_ALL].nvols; i++)
+	{
+	  if (vols[i].type == DB_PERMANENT_VOLTYPE)
+	    {
+	      if (vols[i].purpose == DB_PERMANENT_DATA_PURPOSE)
+		{
+		  msg_vols_format = SPACEDB_MSG_VOLS_PERM_PERM_FORMAT;
+		}
+	      else
+		{
+		  msg_vols_format = SPACEDB_MSG_VOLS_PERM_TEMP_FORMAT;
+		}
+	    }
+	  else
+	    {
+	      msg_vols_format = SPACEDB_MSG_VOLS_TEMP_TEMP_FORMAT;
+	    }
+	  /* the format is:
+	   * volid, type, purpose, used pages/size, free pages/size, total pages/size, volume name */
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, msg_vols_format),
+		   vols[i].volid, SPACEDB_TO_SIZE_ARG (1, vols[i].npage_used),
+		   SPACEDB_TO_SIZE_ARG (2, vols[i].npage_free),
+		   SPACEDB_TO_SIZE_ARG (3, vols[i].npage_used + vols[i].npage_free), vols[i].name);
+	}
+      fprintf (outfp, "\n");
+    }
+
+  if (filesp != NULL)
+    {
+      /* print detailed files information */
+
+      /* print title */
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TITLE));
+      /* print header */
+      if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
+	{
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_HEADER_PAGES));
+	}
+      else
+	{
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_HEADER_SIZE));
+	}
+
+      /* the format is:
+       * data_type, file_count, used pages/size, ftab pages/size, reserved pages/size, total pages/size */
+      for (i = 0; i < SPACEDB_FILE_COUNT; i++)
+	{
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_FORMAT),
+		   file_type_strings[i], files[i].nfile,
+		   SPACEDB_TO_SIZE_ARG (1, files[i].npage_user), SPACEDB_TO_SIZE_ARG (2, files[i].npage_ftab),
+		   SPACEDB_TO_SIZE_ARG (3, files[i].npage_reserved),
+		   SPACEDB_TO_SIZE_ARG (4, files[i].npage_user + files[i].npage_ftab + files[i].npage_reserved));
+	}
+      fprintf (outfp, "\n");
+    }
+
+  if (!summarize)
+    {
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_LOB),
+	       boot_get_lob_path ());
     }
 
   db_shutdown ();
@@ -1435,18 +1051,30 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       fclose (outfp);
     }
 
+  if (vols != NULL)
+    {
+      free_and_init (vols);
+    }
+
   return EXIT_SUCCESS;
 
 print_space_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_USAGE),
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   if (outfp != stdout && outfp != NULL)
     {
       fclose (outfp);
     }
+  if (vols != NULL)
+    {
+      free_and_init (vols);
+    }
   return EXIT_FAILURE;
+
+#undef SPACEDB_TO_SIZE_ARG
 }
 
 /*
@@ -3589,7 +3217,7 @@ backupdb_sig_interrupt_handler (int sig_no)
   db_set_interrupt (1);
 }
 
-static int
+STATIC_INLINE char *
 spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit)
 {
   int pgsize, i;
@@ -3599,7 +3227,7 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 
   if (size_unit == SPACEDB_SIZE_UNIT_PAGE)
     {
-      sprintf (buf, "%11llu", (long long unsigned int) num_pages);
+      sprintf (buf, "%13llu", (long long unsigned int) num_pages);
     }
   else
     {
@@ -3631,7 +3259,7 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 	       (i == SPACEDB_SIZE_UNIT_MBYTES) ? 'M' : (i == SPACEDB_SIZE_UNIT_GBYTES) ? 'G' : 'T');
     }
 
-  return NO_ERROR;
+  return buf;
 }
 
 /*

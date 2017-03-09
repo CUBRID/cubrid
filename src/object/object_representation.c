@@ -1554,7 +1554,7 @@ or_get_varchar (OR_BUF * buf, int *length_ptr)
 int
 or_get_varchar_length (OR_BUF * buf, int *rc)
 {
-  int net_charlen, charlen, compressed_length = 0, decompressed_length = 0;
+  int charlen, compressed_length = 0, decompressed_length = 0;
 
   *rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
 
@@ -2714,59 +2714,6 @@ or_get_oid (OR_BUF * buf, OID * oid)
 }
 
 /*
- * or_put_loid - write a long oid to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    loid(in): pointer to LOID
- */
-int
-or_put_loid (OR_BUF * buf, LOID * loid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_LOID_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      if (loid == NULL)
-	{
-	  OR_PUT_NULL_LOID (buf->ptr);
-	}
-      else
-	{
-	  OR_PUT_LOID (buf->ptr, loid);
-	}
-      buf->ptr += OR_LOID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_loid - read a long oid from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    loid(out): pointer to LOID
- */
-int
-or_get_loid (OR_BUF * buf, LOID * loid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_LOID_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_LOID (buf->ptr, loid);
-      buf->ptr += OR_LOID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
  * or_put_data - write an array of bytes to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
@@ -3564,7 +3511,7 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 
 /*
  * DISK IDENTIFIER TRANSLATORS
- *    Translators for the disk identifiers OID, LOID, HFID, BTID, EHID.
+ *    Translators for the disk identifiers OID, HFID, BTID, EHID.
  */
 
 
@@ -3662,44 +3609,6 @@ or_unpack_oid_array (char *ptr, int n, OID ** oids)
     }
 
   return (ptr);
-}
-
-/*
- * or_pack_loid - write a LOID value
- *    return: advanced buffer pointer
- *    ptr(out): output buffer
- *    loid(in): LOID value
- */
-char *
-or_pack_loid (char *ptr, LOID * loid)
-{
-  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-
-  if (loid != NULL)
-    {
-      OR_PUT_LOID (ptr, loid);
-    }
-  else
-    {
-      OR_PUT_NULL_LOID (ptr);
-    }
-
-  return (ptr + OR_LOID_SIZE);
-}
-
-/*
- * or_unpack_loid - read a LOID value
- *    return: advanced buffer pointer
- *    ptr(in): input buffer
- *    loid(out): LOID value
- */
-char *
-or_unpack_loid (char *ptr, LOID * loid)
-{
-  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-
-  OR_GET_LOID (ptr, loid);
-  return (ptr + OR_LOID_SIZE);
 }
 
 /*
@@ -5377,7 +5286,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      precision = tp_get_fixed_precision (type);
 
 	    case DB_TYPE_NULL:
-	    case DB_TYPE_ELO:
 	    case DB_TYPE_BLOB:
 	    case DB_TYPE_CLOB:
 	      dom = tp_domain_find_noparam (type, is_desc);
@@ -6986,12 +6894,13 @@ or_pack_value (char *buf, DB_VALUE * value)
 }
 
 char *
-or_pack_mem_value (char *ptr, DB_VALUE * value)
+or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment)
 {
   OR_BUF orbuf, *buf;
   PR_TYPE *type;
   TP_DOMAIN *domain;
   char *start, length, bits;
+  char *ptr_to_packed_value;
   int rc = NO_ERROR;
   DB_TYPE dbval_type;
 
@@ -7005,6 +6914,9 @@ or_pack_mem_value (char *ptr, DB_VALUE * value)
   start = buf->ptr;
 
   or_get_align64 (buf);
+
+  /* notice that it points to real starting ptr to packed value */
+  ptr_to_packed_value = buf->ptr;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
   type = PR_TYPE_FROM_ID (dbval_type);
@@ -7049,12 +6961,19 @@ or_pack_mem_value (char *ptr, DB_VALUE * value)
 
   if (rc == NO_ERROR)
     {
+      if (packed_len_except_alignment)
+	{
+	  /* it excludes both leading and trailing alignments */
+	  *packed_len_except_alignment = (int) (buf->ptr - ptr_to_packed_value);
+	}
+
       length = (int) (buf->ptr - start);
       bits = length & 3;
       if (bits)
 	{
 	  rc = or_pad (buf, 4 - bits);
 	}
+
     }
 
   return buf->ptr;
@@ -8157,7 +8076,7 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
  * sha1 (in) : Value to pack.
  */
 char *
-or_pack_sha1 (char *ptr, SHA1Hash * sha1)
+or_pack_sha1 (char *ptr, const SHA1Hash * sha1)
 {
   assert (sha1 != NULL);
 
@@ -8521,4 +8440,179 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
     }
 
   return rc;
+}
+
+/*
+ * or_packed_spacedb_size () - compute the size required to pack all space info
+ *
+ * return     : total required size
+ * all (in)   : aggregated space information
+ * vols (in)  : space information for each volume (may be NULL)
+ * files (in) : space information for files (may be NULL)
+ */
+int
+or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+{
+  int size_total = 0;
+
+  /* for each type without any, pack nvols, npage_used, npage_free */
+  size_total = SPACEDB_ALL_COUNT * 3 * OR_INT_SIZE;
+
+  if (vols != NULL)
+    {
+      /* we need to pack information on each volume. */
+      int size_onevol = 5 * OR_INT_SIZE;	/* we have 5 int values without the name */
+      int i;
+
+      size_total += size_onevol * all[SPACEDB_TOTAL_ALL].nvols;
+
+      /* also volume names */
+      for (i = 0; i < all[SPACEDB_TOTAL_ALL].nvols; i++)
+	{
+	  size_total += or_packed_string_length (vols[i].name, NULL);
+	}
+    }
+
+  if (files != NULL)
+    {
+      /* for each type without any, pack nfile, npage_used, npage_ftab and npage_reserved */
+      size_total += SPACEDB_FILE_COUNT * 4 * OR_INT_SIZE;
+    }
+
+  return size_total;
+}
+
+/*
+ * or_pack_spacedb () - pack space info
+ *
+ * return     : new pointer after packed space info
+ * ptr (in)   : destination pointer for packed space info
+ * all (in)   : aggregated space information
+ * vols (in)  : space information for each volume (may be NULL)
+ * files (in) : space information for files (may be NULL)
+ */
+char *
+or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+{
+  int i;
+
+  /* all */
+  for (i = 0; i < SPACEDB_ALL_COUNT; i++)
+    {
+      ptr = or_pack_int (ptr, (int) all[i].nvols);
+      ptr = or_pack_int (ptr, (int) all[i].npage_used);
+      ptr = or_pack_int (ptr, (int) all[i].npage_free);
+    }
+
+  /* vols */
+  if (vols != NULL)
+    {
+      int iter_vol = 0;
+      for (iter_vol = 0; iter_vol < all[SPACEDB_TOTAL_ALL].nvols; iter_vol++)
+	{
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].volid);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].type);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].purpose);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].npage_used);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].npage_free);
+	  ptr = or_pack_string (ptr, vols[iter_vol].name);
+	}
+    }
+
+  if (files != NULL)
+    {
+      for (i = 0; i < SPACEDB_FILE_COUNT; i++)
+	{
+	  ptr = or_pack_int (ptr, files[i].nfile);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_user);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_ftab);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_reserved);
+	}
+    }
+
+  return ptr;
+}
+
+/*
+ * or_unpack_spacedb () - document me!
+ *
+ * return :
+ * char * ptr (in) :
+ * SPACEDB_ALL * all (in) :
+ * SPACEDB_ONEVOL * * vols (in) :
+ * SPACEDB_FILES * files (in) :
+ */
+char *
+or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files)
+{
+  int i;
+  int unpacked_value;
+  char *volname;
+
+  assert (all != NULL);
+  assert (vols == NULL || *vols == NULL);
+
+  /* note: for all/files, total values are not packed. we'll compute them here, while unpacking */
+
+  /* all */
+  for (i = 0; i < SPACEDB_ALL_COUNT; i++)
+    {
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].nvols = (DKNVOLS) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].npage_used = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].npage_free = (DKNPAGES) unpacked_value;
+    }
+
+  /* vols */
+  if (vols != NULL)
+    {
+      int iter_vol = 0;
+
+      *vols = (SPACEDB_ONEVOL *) malloc (all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
+      if (*vols == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
+	  return NULL;
+	}
+
+      for (iter_vol = 0; iter_vol < all[SPACEDB_TOTAL_ALL].nvols; iter_vol++)
+	{
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].volid = (VOLID) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].type = (DB_VOLTYPE) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].purpose = (DB_VOLPURPOSE) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].npage_used = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].npage_free = (DKNSECTS) unpacked_value;
+	  ptr = or_unpack_string_nocopy (ptr, &volname);
+	  if (volname == NULL)
+	    {
+	      return NULL;
+	    }
+	  strncpy ((*vols)[iter_vol].name, volname, DB_MAX_PATH_LENGTH);
+	}
+    }
+
+  /* files */
+  if (files != NULL)
+    {
+      for (i = 0; i < SPACEDB_FILE_COUNT; i++)
+	{
+	  ptr = or_unpack_int (ptr, &files[i].nfile);
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_user = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_ftab = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_reserved = (DKNPAGES) unpacked_value;
+	}
+    }
+
+  return ptr;
 }

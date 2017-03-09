@@ -38,6 +38,9 @@
 #include "tz_support.h"
 #include "xml_parser.h"
 #include "md5.h"
+#include "db.h"
+#include "db_query.h"
+#include "dbi.h"
 
 #define TZ_FILENAME_MAX_LEN	    17
 #define TZ_MAX_LINE_LEN		    512
@@ -87,7 +90,7 @@ struct tz_file_descriptor
  * NOTE: the array below is sorted by type. This order is used in 
  *	 timezone_data_load(), so it must be preserved.
  */
-static const TZ_FILE_DESCRIPTOR tz_files[] = {
+static const TZ_FILE_DESCRIPTOR tz_Files[] = {
   {TZF_COUNTRIES, "iso3166.tab"},
   {TZF_ZONES, "zone.tab"},
   {TZF_RULES, "africa"},
@@ -108,7 +111,7 @@ static const TZ_FILE_DESCRIPTOR tz_files[] = {
   {TZF_LEAP, "leapseconds"}
 #endif
 };
-static int tz_file_count = DIM (tz_files);
+static int tz_File_count = DIM (tz_Files);
 
 typedef struct tz_raw_country TZ_RAW_COUNTRY;
 struct tz_raw_country
@@ -218,7 +221,7 @@ struct tz_raw_data
 typedef struct offset_rule_interval OFFSET_RULE_INTERVAL;
 struct offset_rule_interval
 {
-  int originial_offset_rule_start;
+  int original_offset_rule_start;
   int len;
   int final_offset_rule_start;
 };
@@ -264,7 +267,7 @@ static const char DAY_NAMES_ABBREV[TZ_WEEK_DAY_COUNT][TZ_CAL_ABBREV_SIZE] =
 #define TZC_ERR_LINKING_TRUE_ZONES	-17
 #define TZC_ERR_LAST_ERROR		-18
 
-static const char *tzc_err_messages[] = {
+static const char *tzc_Err_messages[] = {
   /* NO_ERROR */
   "",
   /* TZC_ERR_GENERIC */
@@ -303,7 +306,7 @@ static const char *tzc_err_messages[] = {
   "Error! Found a link between %s and %s, which are fully defined timezones."
 };
 
-static const int tzc_err_message_count = -TZC_ERR_LAST_ERROR;
+static const int tzc_Err_message_count = -TZC_ERR_LAST_ERROR;
 
 extern const char *tz_timezone_names[];
 extern const TZ_COUNTRY tz_countries[];
@@ -455,9 +458,13 @@ static int init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd, co
 static int copy_ds_rule (TZ_DS_RULE * dst, const TZ_DATA * tzd, const int index);
 static int tz_data_partial_clone (char **timezone_names, TZ_TIMEZONE * timezones, TZ_NAME * names, const TZ_DATA * tzd);
 static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
-static int tzc_extend (TZ_DATA * tzd, bool * write_checksum);
+#if defined(SA_MODE)
+static int tzc_extend (TZ_DATA * tzd);
+static int tzc_update (TZ_DATA * tzd, const char *database_name);
+#endif
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
 static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
+static int execute_query (const char *str, DB_QUERY_RESULT ** result);
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
@@ -564,15 +571,15 @@ tzc_check_new_package_validity (const char *input_folder)
   int i;
   char temp_path[PATH_MAX];
 
-  for (i = 0; i < tz_file_count && err_status == NO_ERROR; i++)
+  for (i = 0; i < tz_File_count && err_status == NO_ERROR; i++)
     {
-      tzc_build_filepath (temp_path, sizeof (temp_path), input_folder, tz_files[i].name);
+      tzc_build_filepath (temp_path, sizeof (temp_path), input_folder, tz_Files[i].name);
 
       fp = fopen_ex (temp_path, "rb");
       if (fp == NULL)
 	{
 	  err_status = TZC_ERR_INVALID_PACKAGE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_PACKAGE, tz_files[i].name, input_folder);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_PACKAGE, tz_Files[i].name, input_folder);
 	  goto exit;
 	}
       else
@@ -585,6 +592,7 @@ exit:
   return err_status;
 }
 
+#if defined (SA_MODE)
 /*
  * timezone_compile_data() - loads data from all relevant tz files into
  *			     temporary structures, reorganizes & optimizes data
@@ -592,9 +600,12 @@ exit:
  * Returns: NO_ERROR if successful, internal error code otherwise
  * input_folder(in): path to the input folder containing timezone data
  * tz_gen_type(in): control flag (type of TZ build/gen to perform)
+ * database_name(in): database name for which to do data migration if an update is necessary, if it is NULL
+ *                    then data migration will be done for all the databases
+ * checksum(out): new checksum to write in the database when extend option is used
  */
 int
-timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *checksum)
+timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *database_name, char *checksum)
 {
   int err_status = NO_ERROR;
   TZ_RAW_DATA tzd_raw;
@@ -656,11 +667,25 @@ timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, 
 
   if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
     {
-      err_status = tzc_extend (&tzd, &write_checksum);
+      write_checksum = true;
+      err_status = tzc_extend (&tzd);
       if (err_status != NO_ERROR)
 	{
-	  /* failed to load file */
-	  goto exit;
+	  /* In this case a data migration is needed because the data could not
+	   * be made backward compatible
+	   */
+	  if (err_status == ER_TZ_COMPILE_ERROR)
+	    {
+	      err_status = tzc_update (&tzd, database_name);
+	      if (err_status != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+	  else
+	    {
+	      goto exit;
+	    }
 	}
     }
 
@@ -689,6 +714,7 @@ exit:
 
   return err_status;
 }
+#endif
 
 /*
  * tzc_free_tz_data () - frees members of a TZ_DATA* structure
@@ -830,9 +856,9 @@ tzc_load_raw_data (TZ_RAW_DATA * tzd_raw, const char *input_folder)
     }
 
   /* load daylight saving rules, zone aliases and zone offset information */
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type != TZF_RULES)
+      if (tz_Files[i].type != TZF_RULES)
 	{
 	  continue;
 	}
@@ -1018,20 +1044,20 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   FILE *fp = NULL;
   TZ_RAW_COUNTRY *temp_tz_country = NULL;
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_COUNTRIES)
+      if (tz_Files[i].type == TZF_COUNTRIES)
 	{
 	  /* Only one file containing country data is allowed */
 	  assert (file_index == -1);
 	  file_index = i;
 	}
     }
-  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_files, code fixes are
+  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_Files, code fixes are
    * needed */
   assert (file_index != -1);
 
-  tzc_build_filepath (country_filepath, sizeof (country_filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (country_filepath, sizeof (country_filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (country_filepath, "rt");
   if (fp == NULL)
     {
@@ -1044,7 +1070,7 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   tzd_raw->country_count = 0;
   tzd_raw->countries = NULL;
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1120,20 +1146,20 @@ tzc_load_zone_names (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 
   col_code = col_coord = col_tz_name = col_comments = NULL;
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_ZONES)
+      if (tz_Files[i].type == TZF_ZONES)
 	{
 	  /* Only one file containing zone data is allowed */
 	  assert (file_index == -1);
 	  file_index = i;
 	}
     }
-  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_files, code fixes are
+  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_Files, code fixes are
    * needed */
   assert (file_index != -1);
 
-  tzc_build_filepath (zone_filepath, sizeof (zone_filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (zone_filepath, sizeof (zone_filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (zone_filepath, "rt");
   if (fp == NULL)
     {
@@ -1146,7 +1172,7 @@ tzc_load_zone_names (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   tzd_raw->zone_count = 0;
   tzd_raw->zones = NULL;
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1202,7 +1228,7 @@ exit:
  *			   (e.g. europe, asia etc.)
  * Returns: 0 (NO_ERROR) if success, error code or -1 otherwise
  * tzd_raw(out): timezone data structure to hold the loaded information
- * file_index(in): index in tz_files file list for the file to be loaded
+ * file_index(in): index in tz_Files file list for the file to be loaded
  * input_folder(in): folder containing IANA's timezone database
  *
  * NOTE: tz_load_rules() must be called after tz_load_zones(), because it
@@ -1224,10 +1250,10 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index, const char *inp
 
   assert (tzd_raw != NULL);
   assert (input_folder != NULL);
-  assert (file_index > 0 && file_index < tz_file_count);
-  assert (tz_files[file_index].type == TZF_RULES);
+  assert (file_index > 0 && file_index < tz_File_count);
+  assert (tz_Files[file_index].type == TZF_RULES);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
@@ -1237,7 +1263,7 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index, const char *inp
       goto exit;
     }
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1377,9 +1403,9 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   assert (tzd_raw != NULL);
   assert (input_folder != NULL);
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_BACKWARD)
+      if (tz_Files[i].type == TZF_BACKWARD)
 	{
 	  file_index = i;
 	  break;
@@ -1387,7 +1413,7 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
     }
   assert (file_index != -1);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
@@ -1397,7 +1423,7 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       goto exit;
     }
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1481,9 +1507,9 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   leap_year = leap_month_num = leap_day_num = -1;
   leap_time_h = leap_time_m = leap_time_s = -1;
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_LEAP)
+      if (tz_Files[i].type == TZF_LEAP)
 	{
 	  file_index = i;
 	  break;
@@ -1491,7 +1517,7 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
     }
   assert (file_index != -1);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_Files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
@@ -1504,7 +1530,7 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
   tzd_raw->leap_sec_count = 0;
   tzd_raw->leap_sec = NULL;
 
-  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_files[file_index].name, 0);
+  LOG_TZC_SET_CURRENT_CONTEXT (tzd_raw, tz_Files[file_index].name, 0);
 
   while (fgets (str, sizeof (str), fp))
     {
@@ -1585,9 +1611,8 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	  leap_is_rolling = true;
 	}
 
-      if (tzc_add_leap_sec
-	  (tzd_raw, leap_year, leap_month_num, leap_day_num, leap_time_h, leap_time_m, leap_time_s, leap_corr_minus,
-	   leap_is_rolling) != NO_ERROR)
+      if (tzc_add_leap_sec (tzd_raw, leap_year, leap_month_num, leap_day_num, leap_time_h, leap_time_m, leap_time_s,
+			    leap_corr_minus, leap_is_rolling) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
 	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "leap second data", "line");
@@ -4763,7 +4788,7 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
   char err_msg[TZC_ERR_MSG_MAX_SIZE];
   char err_msg_temp[TZC_ERR_MSG_MAX_SIZE];
 
-  assert (code <= 0 && -(code) < tzc_err_message_count);
+  assert (code <= 0 && -(code) < tzc_Err_message_count);
   *err_msg = '\0';
   *err_msg_temp = '\0';
 
@@ -4775,7 +4800,7 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1,
   strcat (err_msg, err_msg_temp);
 
   *err_msg_temp = '\0';
-  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_err_messages[-code], msg1, msg2);
+  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_Err_messages[-code], msg1, msg2);
   strcat (err_msg, err_msg_temp);
   strcat (err_msg, "\n");
 
@@ -5071,16 +5096,16 @@ tzc_load_windows_iana_map (TZ_DATA * tz_data, const char *input_folder)
   assert (tz_data != NULL);
   assert (input_folder != NULL);
 
-  for (i = 0; i < tz_file_count; i++)
+  for (i = 0; i < tz_File_count; i++)
     {
-      if (tz_files[i].type == TZF_WINDOWS_IANA_ZONES_MAP)
+      if (tz_Files[i].type == TZF_WINDOWS_IANA_ZONES_MAP)
 	{
 	  break;
 	}
     }
 
-  assert (i < tz_file_count);
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[i].name);
+  assert (i < tz_File_count);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_Files[i].name);
 
   tz_data->windows_iana_map_count = 0;
   tz_data->windows_iana_map = NULL;
@@ -5237,6 +5262,8 @@ copy_offset_rule (TZ_OFFSET_RULE * dst, const TZ_DATA * tzd, const int index)
   int err_status = NO_ERROR;
 
   *dst = tzd->offset_rules[index];
+  dst->julian_date = julian_encode (1 + tzd->offset_rules[index].until_mon,
+				    1 + tzd->offset_rules[index].until_day, tzd->offset_rules[index].until_year);
   if (tzd->offset_rules[index].std_format != NULL)
     {
       DUPLICATE_STR (dst->std_format, tzd->offset_rules[index].std_format);
@@ -5285,6 +5312,8 @@ init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd, const int ind
   dst_ruleset->count = tzd->ds_rulesets[index].count;
   DUPLICATE_STR (dst_ruleset->ruleset_name, tzd->ds_rulesets[index].ruleset_name);
   dst_ruleset->index_start = start;
+  dst_ruleset->to_year_max = tzd->ds_rulesets[index].to_year_max;
+  DUPLICATE_STR (dst_ruleset->default_abrev, tzd->ds_rulesets[index].default_abrev);
 
 exit:
   return err_status;
@@ -5370,6 +5399,7 @@ exit:
   return err_status;
 }
 
+#if defined (SA_MODE)
 /*
  * tzc_extend() - Does a merge between the new timezone data and
  *                the old timezone data in order to maintain backward
@@ -5380,17 +5410,14 @@ exit:
  * Returns: error or no error
  * tzd (in/out): new timezone library data that needs to be merged with
  *               the old timezone library data
- * write_checksum(out): flag that tells if the new checksum of the new
- *                      library created with extend should be written in
- *                      the database
  */
 static int
-tzc_extend (TZ_DATA * tzd, bool * write_checksum)
+tzc_extend (TZ_DATA * tzd)
 {
   int err_status = NO_ERROR;
   TZ_DATA old_tzd;
-  TZ_TIMEZONE *all_timezones = NULL, *timezones;
-  TZ_NAME *names, *all_names = NULL;
+  TZ_TIMEZONE *all_timezones = NULL, *timezones, *old_timezones;
+  TZ_NAME *names, *all_names = NULL, *old_names;
   int i, j, k, l;
   int all_timezones_count = 0;
   int all_timezones_and_aliases_count = 0;
@@ -5597,6 +5624,10 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	      start_timezones++;
 	    }
 	  start_names++;
+	  if (is_compat == true)
+	    {
+	      is_compat = false;
+	    }
 	}
     }
 
@@ -5711,7 +5742,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  for (j = 0; j < old_tzd_map_count; j++)
 	    {
-	      if (old_tzd_offset_rule_map[j].originial_offset_rule_start == start
+	      if (old_tzd_offset_rule_map[j].original_offset_rule_start == start
 		  && old_tzd_offset_rule_map[j].len == cnt)
 		{
 		  find_idx = j;
@@ -5721,7 +5752,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  if (find_idx == -1)
 	    {
-	      old_tzd_offset_rule_map[old_tzd_map_count].originial_offset_rule_start = start;
+	      old_tzd_offset_rule_map[old_tzd_map_count].original_offset_rule_start = start;
 	      old_tzd_offset_rule_map[old_tzd_map_count].len = cnt;
 	      old_tzd_offset_rule_map[old_tzd_map_count++].final_offset_rule_start = gmt_off_rule_start;
 	      gmt_off_rule_start += cnt;
@@ -5743,7 +5774,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  for (j = 0; j < tzd_map_count; j++)
 	    {
-	      if (tzd_offset_rule_map[j].originial_offset_rule_start == start && tzd_offset_rule_map[j].len == cnt)
+	      if (tzd_offset_rule_map[j].original_offset_rule_start == start && tzd_offset_rule_map[j].len == cnt)
 		{
 		  find_idx = j;
 		  break;
@@ -5752,7 +5783,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  if (find_idx == -1)
 	    {
-	      tzd_offset_rule_map[tzd_map_count].originial_offset_rule_start = start;
+	      tzd_offset_rule_map[tzd_map_count].original_offset_rule_start = start;
 	      tzd_offset_rule_map[tzd_map_count].len = cnt;
 	      tzd_offset_rule_map[tzd_map_count++].final_offset_rule_start = gmt_off_rule_start;
 	      gmt_off_rule_start += cnt;
@@ -5774,9 +5805,9 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 		  start_gmt_new = tzd->timezones[zone_id].gmt_off_rule_start;
 		  for (j = start_gmt_old; j < start_gmt_old + old_tzd.timezones[i].gmt_off_rule_count; j++)
 		    {
-		      int tzd_offset_rule_index = start_gmt_new + j - start_gmt_old;
+		      int tzd_offset_rule_idx = start_gmt_new + j - start_gmt_old;
 
-		      if (old_tzd.offset_rules[j].ds_type != tzd->offset_rules[tzd_offset_rule_index].ds_type)
+		      if (old_tzd.offset_rules[j].ds_type != tzd->offset_rules[tzd_offset_rule_idx].ds_type)
 			{
 			  is_compat = false;
 			  break;
@@ -5784,16 +5815,23 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 		      if (old_tzd.offset_rules[j].ds_type != DS_TYPE_FIXED)
 			{
-			  if (strcmp
-			      (old_tzd.ds_rulesets[old_tzd.offset_rules[j].ds_ruleset].ruleset_name,
-			       tzd->ds_rulesets[tzd->offset_rules[tzd_offset_rule_index].ds_ruleset].ruleset_name) != 0)
+			  if (strcmp (old_tzd.ds_rulesets[old_tzd.offset_rules[j].ds_ruleset].ruleset_name,
+				      tzd->ds_rulesets[tzd->offset_rules[tzd_offset_rule_idx].ds_ruleset].ruleset_name)
+			      != 0)
 			    {
 			      is_compat = false;
 			      break;
 			    }
 			}
-
-		      if (comp_offset_rules (&old_tzd.offset_rules[j], &tzd->offset_rules[tzd_offset_rule_index]) ==
+		      else
+			{
+			  if (old_tzd.offset_rules[j].ds_ruleset != tzd->offset_rules[tzd_offset_rule_idx].ds_ruleset)
+			    {
+			      is_compat = false;
+			      break;
+			    }
+			}
+		      if (comp_offset_rules (&old_tzd.offset_rules[j], &tzd->offset_rules[tzd_offset_rule_idx]) ==
 			  false)
 			{
 			  is_compat = false;
@@ -6030,46 +6068,31 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
       if (zone_id == -1)
 	{
 	  start = old_tzd.timezones[i].gmt_off_rule_start;
+	  tzd_or_old_tzd = &old_tzd;
 	}
       else
 	{
 	  start = timezones[zone_id].gmt_off_rule_start;
+	  tzd_or_old_tzd = tzd;
 	}
 
-      for (j = all_timezones[i].gmt_off_rule_start;
-	   j < all_timezones[i].gmt_off_rule_start + all_timezones[i].gmt_off_rule_count; j++)
+      for (j = 0; j < all_timezones[i].gmt_off_rule_count; j++)
 	{
-	  int offset_rule_index = start + j - all_timezones[i].gmt_off_rule_start;
-	  if (zone_id == -1)
-	    {
-	      int old_tzd_ds_ruleset = old_tzd.offset_rules[offset_rule_index].ds_ruleset;
+	  int tzd_or_old_tzd_ds_ruleset = tzd_or_old_tzd->offset_rules[start + j].ds_ruleset;
 
-	      if (old_tzd.offset_rules[offset_rule_index].ds_type != DS_TYPE_FIXED)
-		{
-		  ruleset_name = old_tzd.ds_rulesets[old_tzd_ds_ruleset].ruleset_name;
-		}
-	      else
-		{
-		  ruleset_name = NULL;
-		}
+	  if (tzd_or_old_tzd->offset_rules[start + j].ds_type != DS_TYPE_FIXED)
+	    {
+	      ruleset_name = tzd_or_old_tzd->ds_rulesets[tzd_or_old_tzd_ds_ruleset].ruleset_name;
 	    }
 	  else
 	    {
-	      int tzd_ds_ruleset = tzd->offset_rules[offset_rule_index].ds_ruleset;
-
-	      if (tzd->offset_rules[offset_rule_index].ds_type != DS_TYPE_FIXED)
-		{
-		  ruleset_name = tzd->ds_rulesets[tzd_ds_ruleset].ruleset_name;
-		}
-	      else
-		{
-		  ruleset_name = NULL;
-		}
+	      ruleset_name = NULL;
 	    }
+
 	  if (ruleset_name != NULL)
 	    {
 	      ruleset_id = tzc_get_ds_ruleset_by_name (all_ds_rulesets, all_ds_ruleset_count, ruleset_name);
-	      all_offset_rules[j].ds_ruleset = ruleset_id;
+	      all_offset_rules[all_timezones[i].gmt_off_rule_start + j].ds_ruleset = ruleset_id;
 	    }
 	}
     }
@@ -6110,20 +6133,116 @@ exit:
 
   if (err_status == NO_ERROR)
     {
+      old_names = old_tzd.names;
+      old_timezones = old_tzd.timezones;
+      names = tzd->names;
+      timezones = tzd->timezones;
+
+      for (i = 0; i < ZONE_MAX; i++)
+	{
+	  tz_Is_backward_compatible_timezone[i] = true;
+	}
+
+      for (i = 0; i < old_tzd.name_count; i++)
+	{
+	  int tzd_zone_id;
+	  int old_start, old_count;
+	  int new_start, new_count;
+
+	  tzd_zone_id = tzc_find_timezone_names (tzd, old_names[i].name);
+
+	  /* This should not ever happen */
+	  assert (tzd_zone_id != -1);
+
+	  if (old_timezones[old_names[i].zone_id].gmt_off_rule_count != timezones[tzd_zone_id].gmt_off_rule_count)
+	    {
+	      tz_Is_backward_compatible_timezone[i] = false;
+	      continue;
+	    }
+
+	  old_start = old_timezones[old_names[i].zone_id].gmt_off_rule_start;
+	  new_start = timezones[tzd_zone_id].gmt_off_rule_start;
+	  old_count = old_timezones[old_names[i].zone_id].gmt_off_rule_count;
+	  new_count = timezones[tzd_zone_id].gmt_off_rule_count;
+
+	  for (j = old_start, k = new_start; j < old_start + old_count && k < new_start + new_count; j++, k++)
+	    {
+	      TZ_OFFSET_RULE rule1, rule2;
+
+	      rule1 = old_tzd.offset_rules[j];
+	      rule2 = tzd->offset_rules[k];
+
+	      if (rule1.ds_type != rule2.ds_type)
+		{
+		  tz_Is_backward_compatible_timezone[i] = false;
+		  break;
+		}
+
+	      if (comp_offset_rules (&rule1, &rule2) == false)
+		{
+		  tz_Is_backward_compatible_timezone[i] = false;
+		  break;
+		}
+
+	      if (rule1.ds_type != DS_TYPE_FIXED)
+		{
+		  int ds_rule1_count = old_tzd.ds_rulesets[rule1.ds_ruleset].count;
+		  int ds_rule2_count = tzd->ds_rulesets[rule2.ds_ruleset].count;
+		  int ds_rule1_start = old_tzd.ds_rulesets[rule1.ds_ruleset].index_start;
+		  int ds_rule2_start = tzd->ds_rulesets[rule2.ds_ruleset].index_start;
+		  int rule1_index = ds_rule1_start;
+		  int rule2_index = ds_rule2_start;
+
+		  if (strcmp (old_tzd.ds_rulesets[rule1.ds_ruleset].ruleset_name,
+			      tzd->ds_rulesets[rule2.ds_ruleset].ruleset_name) != 0)
+		    {
+		      tz_Is_backward_compatible_timezone[i] = false;
+		      break;
+		    }
+
+		  if (ds_rule1_count != ds_rule2_count)
+		    {
+		      tz_Is_backward_compatible_timezone[i] = false;
+		      break;
+		    }
+
+		  while ((rule1_index < ds_rule1_start + ds_rule1_count)
+			 && (rule2_index < ds_rule2_start + ds_rule2_count))
+		    {
+		      TZ_DS_RULE ds_rule1 = old_tzd.ds_rules[rule1_index];
+		      TZ_DS_RULE ds_rule2 = tzd->ds_rules[rule2_index];
+
+		      if (comp_ds_rules (&ds_rule1, &ds_rule2) == false)
+			{
+			  break;
+			}
+		      rule1_index++, rule2_index++;
+		    }
+
+		  if (rule1_index < ds_rule1_start + ds_rule1_count)
+		    {
+		      tz_Is_backward_compatible_timezone[i] = false;
+		      break;
+		    }
+		}
+	      else if (rule1.ds_ruleset != rule2.ds_ruleset)
+		{
+		  tz_Is_backward_compatible_timezone[i] = false;
+		  break;
+		}
+	    }
+	}
+
       if (is_compat == false)
 	{
-	  printf ("Could not make all the data backward compatible!\n");
-	  *write_checksum = false;
+	  printf ("Updating data in the tables containing timezone data types...\n");
 	  err_status = ER_TZ_COMPILE_ERROR;
-	}
-      else
-	{
-	  *write_checksum = true;
 	}
     }
 
   return err_status;
 }
+#endif
 
 /*
  * tzc_compute_timezone_checksum() - Computes an MD5 for the timezone data
@@ -6351,3 +6470,295 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
 
   return error;
 }
+
+/*
+ * execute_query() - Execute the query given by str
+ *
+ * Return: error or no error
+ * str (in): query string
+ * result (out): query result
+ *
+ */
+static int
+execute_query (const char *str, DB_QUERY_RESULT ** result)
+{
+  DB_SESSION *session = NULL;
+  STATEMENT_ID stmt_id;
+  int error = NO_ERROR;
+
+  session = db_open_buffer (str);
+  if (session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, result);
+
+exit:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  return error;
+}
+
+#if defined (SA_MODE)
+/*
+ * tzc_update() - Do a data migration in case that tzc_extend fails 
+ *
+ * Returns: error or no error
+ * tzd (in): Timezone library used to the data migration
+ * database_name(in): Database name for which to do data migration or NULL if data migration should be done
+ *		      for all the databases
+ */
+static int
+tzc_update (TZ_DATA * tzd, const char *database_name)
+{
+#define TABLE_NAME_MAX_SIZE 256
+#define QUERY_BUF_MAX_SIZE 4096
+
+  char query_buf[2 * QUERY_BUF_MAX_SIZE];
+  char update_query[QUERY_BUF_MAX_SIZE];
+  char where_query[QUERY_BUF_MAX_SIZE];
+  DB_QUERY_RESULT *result1, *result2, *result3;
+  DB_VALUE value1, value2, value3;
+  int error = NO_ERROR;
+  DB_INFO *dir = NULL;
+  DB_INFO *db_info_p = NULL;
+  bool need_db_shutdown = false;
+  const char *program_name = "extend";
+  char *table_name = NULL;
+  bool is_first_column = true;
+  bool has_timezone_column;
+
+  tz_set_new_timezone_data (tzd);
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+
+  tz_Compare_datetimetz_tz_id = true;
+  tz_Compare_timestamptz_tz_id = true;
+
+  /* Read the directory with the databases names */
+  error = cfg_read_directory (&dir, false);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* Iterate through all the databases */
+  for (db_info_p = dir; db_info_p != NULL; db_info_p = db_info_p->next)
+    {
+      if (database_name != NULL && strcmp (db_info_p->name, database_name) != 0)
+	{
+	  continue;
+	}
+
+      printf ("Opening database %s\n", db_info_p->name);
+      /* Open the database */
+      error = db_restart (program_name, TRUE, db_info_p->name);
+      if (error != NO_ERROR)
+	{
+	  printf ("Error while opening database %s\n", db_info_p->name);
+	  need_db_shutdown = true;
+	  goto exit;
+	}
+      printf ("Updating database %s...\n", db_info_p->name);
+
+      memset (query_buf, 0, sizeof (query_buf));
+      strcat (query_buf, "show tables");
+
+      error = execute_query (query_buf, &result1);
+      if (error < 0)
+	{
+	  printf ("Error while executing show tables query\n");
+	  need_db_shutdown = true;
+	  goto exit;
+	}
+
+      /* First get the names for the tables in the database */
+      while (db_query_next_tuple (result1) == DB_CURSOR_SUCCESS)
+	{
+	  error = db_query_get_tuple_value (result1, 0, &value1);
+	  if (error != NO_ERROR)
+	    {
+	      db_query_end (result1);
+	      need_db_shutdown = true;
+	      goto exit;
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      if (DB_IS_NULL (&value1))
+		{
+		  need_db_shutdown = true;
+		  goto exit;
+		}
+	      else
+		{
+		  char table_name_buf[TABLE_NAME_MAX_SIZE];
+
+		  /* First get the name of the table */
+		  table_name = db_get_string (&value1);
+
+		  memset (query_buf, 0, sizeof (query_buf));
+		  memset (table_name_buf, 0, sizeof (table_name_buf));
+		  strcat (table_name_buf, "'");
+		  strcat (table_name_buf, table_name);
+		  strcat (table_name_buf, "'");
+
+		  snprintf (query_buf, sizeof (query_buf) - 1,
+			    "select attr_name, data_type from _db_attribute where class_of.class_name = [%s]",
+			    table_name_buf);
+		  error = execute_query (query_buf, &result2);
+		  if (error < 0)
+		    {
+		      printf ("Error while listing column names and types for table %s\n", table_name);
+		      need_db_shutdown = true;
+		      goto exit;
+		    }
+		  printf ("Updating table %s...\n", table_name);
+
+		  /* We are going to make an update query for each table which includes a timezone column like:
+		   *  UPDATE [t] SET [tzc1] = CONV_TZ([tzc1]), [tzc2] = CONV_TZ([tzc2]) ...
+		   *  WHERE [tzc1] != CONV_TZ([tzc1]) OR [tzc2] != CONV_TZ([tzc2]) ... ;
+		   */
+		  memset (query_buf, 0, sizeof (query_buf));
+		  memset (update_query, 0, sizeof (update_query));
+		  memset (where_query, 0, sizeof (where_query));
+
+		  strcpy (update_query, "UPDATE [");
+		  strcat (update_query, table_name);
+		  strcat (update_query, "] SET ");
+		  strcpy (where_query, " WHERE ");
+
+		  is_first_column = true;
+		  has_timezone_column = false;
+
+		  printf ("We will update the following columns:\n");
+		  while (db_query_next_tuple (result2) == DB_CURSOR_SUCCESS)
+		    {
+		      char *column_name = NULL;
+		      int column_type = 0;
+
+		      /* Get the column name */
+		      error = db_query_get_tuple_value (result2, 0, &value2);
+		      if (error != NO_ERROR)
+			{
+			  db_query_end (result2);
+			  need_db_shutdown = true;
+			  goto exit;
+			}
+
+		      /* Get the column type */
+		      error = db_query_get_tuple_value (result2, 1, &value3);
+		      if (error != NO_ERROR)
+			{
+			  db_query_end (result2);
+			  need_db_shutdown = true;
+			  goto exit;
+			}
+
+		      assert (DB_VALUE_TYPE (&value2) == DB_TYPE_STRING);
+		      assert (DB_VALUE_TYPE (&value3) == DB_TYPE_INTEGER);
+		      column_name = db_get_string (&value2);
+		      column_type = db_get_int (&value3);
+
+		      /* Now do the update if the datatype is of timezone type */
+		      if (column_type == DB_TYPE_DATETIMETZ || column_type == DB_TYPE_DATETIMELTZ
+			  || column_type == DB_TYPE_TIMESTAMPTZ || column_type == DB_TYPE_TIMESTAMPLTZ)
+			{
+			  has_timezone_column = true;
+
+			  if (is_first_column == true)
+			    {
+			      is_first_column = false;
+			    }
+			  else
+			    {
+			      strcat (update_query, ", ");
+			      strcat (where_query, " OR ");
+			    }
+
+			  strcat (update_query, "[");
+			  strcat (update_query, column_name);
+			  strcat (update_query, "]");
+			  strcat (update_query, "=");
+			  strcat (update_query, "conv_tz([");
+			  strcat (update_query, column_name);
+			  strcat (update_query, "])");
+
+			  strcat (update_query, "[");
+			  strcat (where_query, column_name);
+			  strcat (update_query, "]");
+			  strcat (where_query, "!=");
+			  strcat (where_query, "conv_tz([");
+			  strcat (where_query, column_name);
+			  strcat (where_query, "])");
+
+			  printf ("%s ", column_name);
+			}
+		    }
+		  printf ("\n");
+		  db_query_end (result2);
+
+		  /* If we have at least a column that is of timezone data type then execute the query */
+		  if (has_timezone_column == true)
+		    {
+		      strcpy (query_buf, update_query);
+		      strcat (query_buf, where_query);
+
+		      error = execute_query (query_buf, &result3);
+		      if (error < 0)
+			{
+			  printf ("Error while updating table %s\n", table_name);
+			  db_abort_transaction ();
+			  need_db_shutdown = true;
+			  goto exit;
+			}
+		      db_query_end (result3);
+		    }
+		  printf ("Finished updating table %s\n", table_name);
+		}
+	    }
+	}
+      db_query_end (result1);
+
+      db_commit_transaction ();
+      printf ("Finished updating database %s\n", db_info_p->name);
+      printf ("Shutting down database %s...\n", db_info_p->name);
+      db_shutdown ();
+    }
+
+  error = NO_ERROR;
+
+exit:
+  if (dir != NULL)
+    {
+      cfg_free_directory (dir);
+    }
+  if (need_db_shutdown == true)
+    {
+      db_shutdown ();
+    }
+
+  tz_Compare_datetimetz_tz_id = false;
+  tz_Compare_timestamptz_tz_id = false;
+
+  return error;
+
+#undef TABLE_NAME_MAX_SIZE
+#undef QUERY_BUF_MAX_SIZE
+}
+#endif

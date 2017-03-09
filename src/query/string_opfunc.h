@@ -219,6 +219,7 @@ extern int db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE 
 extern int db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DATETIME * date_time);
 extern int db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz);
 extern int db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest, DB_VALUE * result_time);
+extern int db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string);

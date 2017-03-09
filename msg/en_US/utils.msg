@@ -686,6 +686,23 @@ valid options:\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
   -s, --summarize              display only a summary for each volume purpose\n\
   -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+70 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+71 type                purpose            volume_count         used_size           free_size           total_size\n
+72 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+73 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+74 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+75 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+80 Space description for all volumes:\n
+81 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+82 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+83 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+84 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+85 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+90 Detailed space description for files:\n
+91 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+100 -----------------------------------------------------------------------------------------------------------------\n
 
 
 
@@ -1083,8 +1100,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: Generate source files containing timezone data to be compiled into\n\
         a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] [database-name]\n\
+usage:	%s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 valid options:\n\
   -i, --input-folder    path to an input folder containing a version of\n\
@@ -1098,17 +1114,17 @@ valid options:\n\
                         and timezone names (intended for developer use, to\n\
                         be integrated into future CUBRID versions).\n\
                         2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
                         information is updated (or added, for new timezones);\n\
                         timezones are never removed if a timezone encoded into\n\
                         CUBRID is missing from the input files, the associated\n\
                         data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 The supplied zone ID is out of range. Use -z to see all\n\

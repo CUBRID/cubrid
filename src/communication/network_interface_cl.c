@@ -107,8 +107,6 @@ static char *pack_string_with_null_padding (char *buffer, const char *stream, in
 static int length_const_string (const char *cstring, int *strlen);
 static int length_string_with_null_padding (int len);
 #endif /* CS_MODE */
-static BTREE_SEARCH btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-						bool is_replication);
 
 #if defined(CS_MODE)
 /*
@@ -532,8 +530,7 @@ locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea)
 }
 
 /*
- * locator_repl_force - flush copy area containing replication objects
- *                       and receive error occurred in server
+ * locator_repl_force - flush copy area containing replication objects and receive error occurred in server
  *
  * return:
  *
@@ -547,9 +544,9 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
+  OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE) a_request;
   char *request;
   char *request_ptr;
-  int request_size;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
   char *desc_ptr = NULL;
@@ -559,15 +556,7 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   int num_objs = 0;
   int req_error;
 
-  request_size = NET_COPY_AREA_SENDRECV_SIZE;
-  request = (char *) malloc (request_size);
-
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
+  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   num_objs = locator_send_copy_area (copy_area, &content_ptr, &content_size, &desc_ptr, &desc_size);
@@ -577,12 +566,13 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   request_ptr = or_pack_int (request_ptr, content_size);
 
   req_error =
-    net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request, request_size, desc_ptr, desc_size,
-					     content_ptr, content_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+    net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request, NET_COPY_AREA_SENDRECV_SIZE, desc_ptr,
+					     desc_size, content_ptr, content_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 					     reply_copy_area);
 
   if (req_error == NO_ERROR)
     {
+      /* skip first 3 */
       (void) or_unpack_int (reply + NET_COPY_AREA_SENDRECV_SIZE, &error_code);
     }
   else
@@ -595,14 +585,12 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
     {
       free_and_init (desc_ptr);
     }
-  if (request)
-    {
-      free_and_init (request);
-    }
 
   return error_code;
-#endif /* CS_MODE */
+#else /* CS_MODE */
+  /* Not allowed in SA_MODE */
   return ER_FAILED;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -709,70 +697,6 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   return error_code;
 #endif /* !CS_MODE */
-}
-
-int
-locator_force_repl_update (BTID * btid, OID * class_oid, DB_VALUE * key_value, bool has_index, int operation,
-			   RECDES * recdes)
-{
-  int error_code = ER_FAILED;
-#ifdef CS_MODE
-  int req_error, request_size, key_size;
-  char *ptr = NULL;
-  char *request = NULL;
-  char *reply = NULL;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-
-  if (btid == NULL || class_oid == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-  key_size = OR_VALUE_ALIGNED_SIZE (key_value);
-  request_size = OR_BTID_ALIGNED_SIZE	/* btid */
-    + OR_OID_SIZE		/* class_oid */
-    + key_size			/* key_value */
-    + OR_INT_SIZE		/* has_index */
-    + OR_INT_SIZE		/* operation */
-    + or_packed_recdesc_length (recdes->length);	/* recdes */
-
-  request = (char *) malloc (request_size);
-
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  ptr = or_pack_btid (request, btid);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_mem_value (ptr, key_value);
-  if (ptr == NULL)
-    {
-      goto free_and_return;
-    }
-
-  ptr = or_pack_int (ptr, has_index ? 1 : 0);
-  ptr = or_pack_int (ptr, operation);
-  ptr = or_pack_recdes (ptr, recdes);
-
-  request_size = CAST_BUFLEN (ptr - request);
-
-  req_error =
-    net_client_request (NET_SERVER_LC_FORCE_REPL_UPDATE, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			NULL, 0, NULL, 0);
-
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error_code);
-    }
-
-free_and_return:
-  free_and_init (request);
-#endif /* CS_MODE */
-  return error_code;
 }
 
 /*
@@ -1974,114 +1898,6 @@ disk_get_remarks (VOLID volid)
 #endif /* !CS_MODE */
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * disk_get_purpose -
- *
- * return:
- *
- *   volid(in):
- *
- * NOTE:
- */
-DISK_VOLPURPOSE
-disk_get_purpose (VOLID volid)
-{
-#if defined(CS_MODE)
-  DISK_VOLPURPOSE purpose = DISK_UNKNOWN_PURPOSE;
-  int int_purpose;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_pack_int (request, (int) volid);
-
-  req_error =
-    net_client_request (NET_SERVER_DISK_PURPOSE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      or_unpack_int (reply, &int_purpose);
-      purpose = (DB_VOLPURPOSE) int_purpose;
-    }
-
-  return purpose;
-#else /* CS_MODE */
-  DISK_VOLPURPOSE purpose = DISK_UNKNOWN_PURPOSE;
-
-  ENTER_SERVER ();
-
-  purpose = xdisk_get_purpose (NULL, volid);
-
-  EXIT_SERVER ();
-
-  return purpose;
-#endif /* !CS_MODE */
-}
-#endif
-
-/*
- * disk_get_purpose_and_space_info -
- *
- * return:
- *
- *   volid(in):
- *   vol_purpose(in):
- *   space_info(out):
- *
- * NOTE:
- */
-VOLID
-disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info)
-{
-#if defined(CS_MODE)
-  int temp;
-  int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_VOL_SPACE_INFO_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_pack_int (request, (int) volid);
-
-  req_error =
-    net_client_request (NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &temp);
-      *vol_purpose = (DB_VOLPURPOSE) temp;
-      OR_UNPACK_VOL_SPACE_INFO (ptr, space_info);
-      ptr = or_unpack_int (ptr, &temp);
-      volid = temp;
-    }
-  else
-    {
-      volid = NULL_VOLID;
-    }
-
-  return volid;
-#else /* CS_MODE */
-
-  ENTER_SERVER ();
-
-  volid = xdisk_get_purpose_and_space_info (NULL, volid, vol_purpose, space_info);
-
-  EXIT_SERVER ();
-
-  return volid;
-#endif /* !CS_MODE */
-}
-
 /*
  * disk_get_fullname -
  *
@@ -2142,57 +1958,6 @@ disk_get_fullname (VOLID volid, char *vol_fullname)
 }
 
 /*
- * disk_is_volume_exist -
- *
- * return:
- *
- *   volid(in):
- *   vol_fullname(in):
- *
- * NOTE:
- */
-bool
-disk_is_volume_exist (VOLID volid)
-{
-  bool exist = false;
-#if defined(CS_MODE)
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-  int int_exist = 0;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_pack_int (request, (int) volid);
-
-  req_error =
-    net_client_request (NET_SERVER_DISK_IS_EXIST, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      (void) or_unpack_int (reply, &int_exist);
-    }
-
-  if (int_exist)
-    {
-      exist = true;
-    }
-#else /* CS_MODE */
-
-  ENTER_SERVER ();
-
-  exist = xdisk_is_volume_exist (NULL, volid);
-
-  EXIT_SERVER ();
-
-#endif /* !CS_MODE */
-  return exist;
-}
-
-/*
  * log_reset_wait_msecs -
  *
  * return:
@@ -2249,11 +2014,11 @@ log_reset_wait_msecs (int wait_msecs)
  * NOTE:
  */
 int
-log_reset_isolation (TRAN_ISOLATION isolation, bool unlock_by_isolation)
+log_reset_isolation (TRAN_ISOLATION isolation)
 {
 #if defined(CS_MODE)
   int req_error, error_code = ER_NET_CLIENT_DATA_RECEIVE;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -2262,7 +2027,6 @@ log_reset_isolation (TRAN_ISOLATION isolation, bool unlock_by_isolation)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_int (request, (int) isolation);
-  ptr = or_pack_int (ptr, (int) unlock_by_isolation);
 
   req_error =
     net_client_request (NET_SERVER_LOG_RESET_ISOLATION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
@@ -2278,7 +2042,7 @@ log_reset_isolation (TRAN_ISOLATION isolation, bool unlock_by_isolation)
 
   ENTER_SERVER ();
 
-  error_code = xlogtb_reset_isolation (NULL, isolation, unlock_by_isolation);
+  error_code = xlogtb_reset_isolation (NULL, isolation);
 
   EXIT_SERVER ();
 
@@ -4053,66 +3817,6 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
 #endif /* !CS_MODE */
 }
 
-#if 0
-/*
- * boot_del_volume_extension -
- *
- * return:
- *
- *   volid(in):
- *   clear_cached(in): clear cached files in the temporary temp volume
- *
- * NOTE:
- */
-int
-boot_del_volume_extension (VOLID volid, bool clear_cached)
-{
-  int success = ER_FAILED;
-#if defined(CS_MODE)
-  int request_size;
-  char *request, *ptr;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  request_size = OR_INT_SIZE + OR_INT_SIZE;
-
-  request = (char *) malloc (request_size);
-  if (request)
-    {
-      ptr = or_pack_int (request, (int) volid);
-      ptr = or_pack_int (ptr, (int) clear_cached);
-      req_error =
-	net_client_request (NET_SERVER_BO_DEL_VOLEXT, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-			    0, NULL, 0);
-      if (!req_error)
-	{
-	  or_unpack_int (reply, &success);
-	}
-      free_and_init (request);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-    }
-
-  return success;
-#else /* CS_MODE */
-
-  ENTER_SERVER ();
-
-  success = xboot_del_volume_extension (NULL, volid, clear_cached);
-
-  EXIT_SERVER ();
-
-  return success;
-#endif /* !CS_MODE */
-}
-#endif
-
-
 /*
  * boot_check_db_consistency -
  *
@@ -5566,519 +5270,6 @@ boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state)
 }
 
 /*
- * largeobjmgr_create () -
- *
- * return:
- *
- *   loid(in):
- *   length(in):
- *   buffer(in):
- *   est_lo_length(in):
- *   oid(in):
- *
- * NOTE:
- */
-LOID *
-largeobjmgr_create (LOID * loid, int length, char *buffer, int est_lo_length, OID * oid)
-{
-#if defined(CS_MODE)
-  int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_LOID_SIZE + OR_OID_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_LOID_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_pack_int (ptr, length);
-  ptr = or_pack_int (ptr, est_lo_length);
-  ptr = or_pack_loid (ptr, loid);
-  ptr = or_pack_oid (ptr, oid);
-
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_CREATE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), buffer, length, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_loid (reply, loid);
-    }
-  else
-    {
-      loid = NULL;
-    }
-
-  return loid;
-#else /* CS_MODE */
-
-  ENTER_SERVER ();
-
-  loid = xlargeobjmgr_create (NULL, loid, length, buffer, est_lo_length, oid);
-
-  EXIT_SERVER ();
-
-  return loid;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_destroy () -
- *
- * return:
- *
- *   loid(in):
- *
- * NOTE:
- */
-int
-largeobjmgr_destroy (LOID * loid)
-{
-#if defined(CS_MODE)
-  int status = ER_FAILED;
-  int req_error;
-  OR_ALIGNED_BUF (OR_LOID_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  or_pack_loid (request, loid);
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_DESTROY, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      or_unpack_int (reply, &status);
-    }
-
-  return status;
-#else /* CS_MODE */
-  int success = ER_FAILED;
-
-  ENTER_SERVER ();
-
-  success = xlargeobjmgr_destroy (NULL, loid);
-
-  EXIT_SERVER ();
-
-  return success;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_read () -
- *
- * return:
- *
- *   loid(in):
- *   offset(in):
- *   length(in):
- *   buffer(in):
- *
- * NOTE:
- */
-int
-largeobjmgr_read (LOID * loid, INT64 offset, int length, char *buffer)
-{
-#if defined(CS_MODE)
-  int processed_length = -1;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE + OR_LOID_SIZE) a_request;
-  char *ptr, *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_pack_int64 (ptr, offset);
-  ptr = or_pack_int (ptr, length);
-  ptr = or_pack_loid (ptr, loid);
-
-  req_error =
-    net_client_request2_no_malloc (NET_SERVER_LARGEOBJMGR_READ, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, buffer, &length);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &processed_length);
-    }
-
-  return processed_length;
-#else /* CS_MODE */
-  int processed_length = -1;
-
-  ENTER_SERVER ();
-
-  processed_length = xlargeobjmgr_read (NULL, loid, offset, length, buffer);
-
-  EXIT_SERVER ();
-
-  return processed_length;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_write () -
- *
- * return:
- *
- *   loid(in):
- *   offset(in):
- *   length(in):
- *   buffer(in):
- *
- * NOTE:
- */
-int
-largeobjmgr_write (LOID * loid, INT64 offset, int length, char *buffer)
-{
-#if defined(CS_MODE)
-  int processed_length = -1;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE + OR_LOID_SIZE) a_request;
-  char *ptr, *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_pack_int64 (ptr, offset);
-  ptr = or_pack_int (ptr, length);
-  ptr = or_pack_loid (ptr, loid);
-
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_WRITE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), buffer, length, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &processed_length);
-    }
-
-  return processed_length;
-#else /* CS_MODE */
-  int processed_length = -1;
-
-  ENTER_SERVER ();
-
-  processed_length = xlargeobjmgr_write (NULL, loid, offset, length, buffer);
-
-  EXIT_SERVER ();
-
-  return processed_length;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_insert () -
- *
- * return:
- *
- *   loid(in):
- *   offset(in):
- *   length(in):
- *   buffer(in):
- *
- * NOTE:
- */
-int
-largeobjmgr_insert (LOID * loid, INT64 offset, int length, char *buffer)
-{
-#if defined(CS_MODE)
-  int processed_length = -1;
-  int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE + OR_LOID_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_pack_int64 (ptr, offset);
-  ptr = or_pack_int (ptr, length);
-  ptr = or_pack_loid (ptr, loid);
-
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_INSERT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), buffer, length, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &processed_length);
-    }
-
-  return processed_length;
-#else /* CS_MODE */
-  int processed_length = -1;
-
-  ENTER_SERVER ();
-
-  processed_length = xlargeobjmgr_insert (NULL, loid, offset, length, buffer);
-
-  EXIT_SERVER ();
-
-  return processed_length;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_delete () -
- *
- * return:
- *
- *   loid(in):
- *   offset(in):
- *   length(in):
- *
- * NOTE:
- */
-INT64
-largeobjmgr_delete (LOID * loid, INT64 offset, INT64 length)
-{
-#if defined(CS_MODE)
-  INT64 processed_length = -1;
-  int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF ((OR_INT64_SIZE * 2) + OR_LOID_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_pack_int64 (ptr, offset);
-  ptr = or_pack_int64 (ptr, length);
-  ptr = or_pack_loid (ptr, loid);
-
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_DELETE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int64 (reply, &processed_length);
-    }
-
-  return processed_length;
-#else /* CS_MODE */
-  INT64 processed_length = -1;
-
-  ENTER_SERVER ();
-
-  processed_length = xlargeobjmgr_delete (NULL, loid, offset, length);
-
-  EXIT_SERVER ();
-
-  return processed_length;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_append () -
- *
- * return:
- *
- *   loid(in):
- *   length(in):
- *   buffer(in):
- *
- * NOTE:
- */
-int
-largeobjmgr_append (LOID * loid, int length, char *buffer)
-{
-#if defined(CS_MODE)
-  int processed_length = -1;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOID_SIZE) a_request;
-  char *ptr, *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_pack_int (ptr, length);
-  ptr = or_pack_loid (ptr, loid);
-
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_APPEND, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), buffer, length, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &processed_length);
-    }
-
-  return processed_length;
-#else /* CS_MODE */
-  int processed_length = -1;
-
-  ENTER_SERVER ();
-
-  processed_length = xlargeobjmgr_append (NULL, loid, length, buffer);
-
-  EXIT_SERVER ();
-
-  return processed_length;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_truncate () -
- *
- * return:
- *
- *   loid(in):
- *   offset(in):
- *
- * NOTE:
- */
-INT64
-largeobjmgr_truncate (LOID * loid, INT64 offset)
-{
-#if defined(CS_MODE)
-  INT64 processed_length = -1;
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_LOID_SIZE) a_request;
-  char *ptr, *request;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = request;
-  ptr = or_pack_int64 (ptr, offset);
-  ptr = or_pack_loid (ptr, loid);
-
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_TRUNCATE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int64 (reply, &processed_length);
-    }
-
-  return processed_length;
-#else /* CS_MODE */
-  INT64 processed_length = -1;
-
-  ENTER_SERVER ();
-
-  processed_length = xlargeobjmgr_truncate (NULL, loid, offset);
-
-  EXIT_SERVER ();
-
-  return processed_length;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_compress () -
- *
- * return:
- *
- *   loid(in):
- *
- * NOTE:
- */
-int
-largeobjmgr_compress (LOID * loid)
-{
-#if defined(CS_MODE)
-  int status = ER_FAILED;
-  int req_error;
-  OR_ALIGNED_BUF (OR_LOID_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  or_pack_loid (request, loid);
-
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_COMPRESS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      or_unpack_int (reply, &status);
-    }
-
-  return status;
-#else /* CS_MODE */
-  int success = ER_FAILED;
-
-  ENTER_SERVER ();
-
-  success = xlargeobjmgr_compress (NULL, loid);
-
-  EXIT_SERVER ();
-
-  return success;
-#endif /* !CS_MODE */
-}
-
-/*
- * largeobjmgr_length () -
- *
- * return:
- *
- *   loid(in):
- *
- * NOTE:
- */
-INT64
-largeobjmgr_length (LOID * loid)
-{
-#if defined(CS_MODE)
-  INT64 length = -1;
-  int req_error;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_LOID_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
-  char *reply;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  or_pack_loid (request, loid);
-
-  req_error =
-    net_client_request (NET_SERVER_LARGEOBJMGR_LENGTH, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int64 (reply, &length);
-    }
-
-  return length;
-#else /* CS_MODE */
-  INT64 length = -1;
-
-  ENTER_SERVER ();
-
-  length = xlargeobjmgr_length (NULL, loid);
-
-  EXIT_SERVER ();
-
-  return length;
-#endif /* !CS_MODE */
-}
-
-/*
  * stats_get_statistics_from_server () -
  *
  * return:
@@ -6630,18 +5821,6 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
 BTREE_SEARCH
 btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
 {
-  return btree_find_unique_internal (btid, key, class_oid, oid, false);
-}
-
-BTREE_SEARCH
-repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
-{
-  return btree_find_unique_internal (btid, key, class_oid, oid, true);
-}
-
-static BTREE_SEARCH
-btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid, bool is_replication)
-{
   BTREE_SEARCH status = BTREE_ERROR_OCCURRED;
 
   if (btid == NULL || key == NULL || class_oid == NULL || oid == NULL)
@@ -6671,21 +5850,8 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid, OID * 
 	}
 
       ptr = request;
-      if (is_replication == true)
-	{
-	  ptr = or_pack_mem_value (ptr, key);
-	  if (ptr == NULL)
-	    {
-	      free_and_init (request);
-	      return status;
-	    }
-	  request_id = NET_SERVER_REPL_BTREE_FIND_UNIQUE;
-	}
-      else
-	{
-	  ptr = or_pack_value (ptr, key);
-	  request_id = NET_SERVER_BTREE_FIND_UNIQUE;
-	}
+      ptr = or_pack_value (ptr, key);
+      request_id = NET_SERVER_BTREE_FIND_UNIQUE;
 
       ptr = or_pack_oid (ptr, class_oid);
       ptr = or_pack_btid (ptr, btid);
@@ -6890,83 +6056,6 @@ cleanup:
 
   return result;
 #endif
-}
-
-/*
- * btree_delete_with_unique_key -
- *
- * return:
- *
- *   btid(in):
- *   class_oid(in):
- *   key_value(in):
- *
- * NOTE:
- */
-int
-btree_delete_with_unique_key (BTID * btid, OID * class_oid, DB_VALUE * key_value)
-{
-#if defined(CS_MODE)
-  int error = ER_FAILED;
-  int req_error, request_size, key_size;
-  char *ptr;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-
-  if (btid == NULL || class_oid == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  key_size = OR_VALUE_ALIGNED_SIZE (key_value);
-  request_size = OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + key_size;
-  request = (char *) malloc (request_size);
-
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  ptr = request;
-  ptr = or_pack_btid (ptr, btid);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_mem_value (ptr, key_value);
-  if (ptr == NULL)
-    {
-      free_and_init (request);
-      return ER_FAILED;
-    }
-
-  req_error =
-    net_client_request (NET_SERVER_BTREE_DELETE_WITH_UNIQUE_KEY, request, request_size, reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error);
-    }
-
-  free_and_init (request);
-#else /* CS_MODE */
-  int error = ER_FAILED;
-
-  if (btid == NULL || class_oid == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  ENTER_SERVER ();
-  error = xbtree_delete_with_unique_key (NULL, btid, class_oid, key_value);
-  EXIT_SERVER ();
-#endif /* !CS_MODE */
-
-  return error;
 }
 
 /*
@@ -9481,7 +8570,7 @@ locator_prefetch_repl_update_or_delete (OID * class_oid, BTID * btid, DB_VALUE *
 
   ptr = or_pack_btid (request, btid);
   ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_mem_value (ptr, key_value);
+  ptr = or_pack_mem_value (ptr, key_value, NULL);
   if (ptr == NULL)
     {
       goto free_and_return;
@@ -10820,4 +9909,85 @@ locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_lis
 
   return success;
 #endif /* !CS_MODE */
+}
+
+/*
+ * netcl_spacedb () - client-side function to get database space info
+ *
+ * return           : error code
+ * spaceall (out)   : output aggregated space information
+ * spacevols (out)  : if not NULL, output space information per volume
+ * spacefiles (out) : if not NULL, out detailed space information on file usage
+ */
+int
+netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles)
+{
+#if defined (CS_MODE)
+  int error_code = NO_ERROR;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_int (request, spacevols != NULL ? 1 : 0);
+  ptr = or_pack_int (ptr, spacefiles != NULL ? 1 : 0);
+
+  error_code = net_client_request2 (NET_SERVER_SPACEDB, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (error_code != NO_ERROR)
+    {
+      assert (data_reply == NULL);
+      return error_code;
+    }
+  ptr = or_unpack_int (reply, &data_reply_size);
+  ptr = or_unpack_int (ptr, &error_code);
+  if (error_code != NO_ERROR)
+    {
+      /* error */
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (data_reply == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  ptr = or_unpack_spacedb (data_reply, spaceall, spacevols, spacefiles);
+  if (ptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  assert ((ptr - data_reply) == data_reply_size);
+
+  free_and_init (data_reply);
+  return NO_ERROR;
+
+#else	/* !CS_MODE */	       /* SA_MDOE */
+  int error_code = ER_FAILED;
+
+  ENTER_SERVER ();
+  error_code = disk_spacedb (NULL, spaceall, spacevols);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  else if (spacefiles != NULL)
+    {
+      error_code = file_spacedb (NULL, spacefiles);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+    }
+  EXIT_SERVER ();
+
+  return error_code;
+#endif /* SA_MODE */
 }

@@ -368,6 +368,7 @@ qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
  * qdata_copy_db_value_to_tuple_value () -
  *   return: int (true on success, false on failure)
  *   dbval(in)  : Source dbval node
+ *   clear_compressed_string(in): true, if need to clear compressed string
  *   tvalp(in)  :  Tuple value
  *   tval_size(out)      : Set to the tuple value size
  *
@@ -375,14 +376,14 @@ qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
  * THIS ROUTINE ASSUMES THAT THE VALUE WILL FIT IN THE TPL!!!!
  */
 int
-qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *tuple_val_size)
+qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_string, char *tuple_val_p,
+				    int *tuple_val_size)
 {
   char *val_p;
   int val_size, align, rc;
   OR_BUF buf;
   PR_TYPE *pr_type;
   DB_TYPE dbval_type;
-  bool temporary_clear;
 
   if (DB_IS_NULL (dbval_p))
     {
@@ -414,14 +415,17 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 	}
 
       /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
-      if (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR)
+      if (clear_compressed_string)
 	{
-	  rc = pr_clear_compressed_string (dbval_p);
-	  if (rc != NO_ERROR)
+	  if (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR)
 	    {
-	      /* This should not happen for now */
-	      assert (false);
-	      return ER_FAILED;
+	      rc = pr_clear_compressed_string (dbval_p);
+	      if (rc != NO_ERROR)
+		{
+		  /* This should not happen for now */
+		  assert (false);
+		  return ER_FAILED;
+		}
 	    }
 	}
 
@@ -461,6 +465,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
   char *tuple_p;
   int k, tval_size, tlen, tpl_size;
   int n_size, toffset;
+  bool clear_compressed_string = false;
 
   tpl_size = 0;
   tlen = QFILE_TUPLE_LENGTH_SIZE;
@@ -480,6 +485,15 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
 	  if (dbval_p == NULL)
 	    {
 	      return ER_FAILED;
+	    }
+
+	  if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      clear_compressed_string = false;
+	    }
+	  else
+	    {
+	      clear_compressed_string = true;
 	    }
 
 	  n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
@@ -516,7 +530,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
 	      tuple_p = (char *) (tuple_record_p->tpl) + toffset;
 	    }
 
-	  if (qdata_copy_db_value_to_tuple_value (dbval_p, tuple_p, &tval_size) != NO_ERROR)
+	  if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -554,8 +568,8 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   int i;
   int value_size;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
-  DB_VALUE *val_buffer;
   DB_TYPE dbval_type;
+  HL_HEAPID save_heapid = 0;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -575,6 +589,17 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	      goto exit_with_status;
 	    }
 
+	  /* Set clear_f_val_at_clone_decache to avoid memory issues */
+	  assert (tuple_desc_p->clear_f_val_at_clone_decache != NULL);
+	  if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] = true;
+	    }
+	  else
+	    {
+	      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] = false;
+	    }
+
 	  dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
 
 	  /* SET data-type cannot use tuple descriptor */
@@ -592,14 +617,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	      goto exit_with_status;
 	    }
 
-	  /* The value has been peeked so it does not require any clear, but we still might have the compressed_string
-	   * alloced so we need to clear it.
-	   */
-	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
-	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
-	    {
-	      pr_clear_compressed_string (val_buffer);
-	    }
+	  /* The compressed string will be deallocated later, after copying db_value into tuple. */
 
 	  tuple_desc_p->tpl_size += value_size;
 	  tuple_desc_p->f_cnt += 1;	/* increase field number */
@@ -641,8 +659,11 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_lis
 
       if (dbval_p != NULL)
 	{
-	  /* this may be shared with another reguvariable that was already evaluated */
-	  pr_clear_value (dbval_p);
+	  if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      /* this may be shared with another regu variable that was already evaluated */
+	      pr_clear_value (dbval_p);
+	    }
 
 	  if (db_value_domain_init (dbval_p, DB_VALUE_DOMAIN_TYPE (dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) !=
 	      NO_ERROR)
@@ -7388,7 +7409,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    }
 
 		  pr_clear_value (agg_p->accumulator.value);
-		  error = db_value_clone (&dbval, agg_p->accumulator.value);
+		  error = pr_clone_value (&dbval, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
 		      pr_clear_value (&dbval);
@@ -7703,9 +7724,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID scan_id;
   SCAN_CODE scan_code;
-  QFILE_TUPLE_RECORD tuple_record = {
-    NULL, 0
-  };
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   char *tuple_p;
   PR_TYPE *pr_type_p;
   OR_BUF buf;
@@ -7797,8 +7816,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 
 	  if (agg_p->flag_agg_optimize == false)
 	    {
-	      list_id_p = agg_p->list_id =
-		qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
+	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
 
 	      if (list_id_p != NULL && er_has_error ())
 		{
@@ -7810,8 +7828,6 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  goto exit;
 		}
 
-	      agg_p->list_id = list_id_p;
-
 	      if (list_id_p == NULL)
 		{
 		  if (!er_has_error ())
@@ -7822,6 +7838,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  error = er_errid ();
 		  goto exit;
 		}
+
+	      agg_p->list_id = list_id_p;
 
 	      if (agg_p->function == PT_COUNT)
 		{
@@ -8426,6 +8444,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
   DB_TYPE dom_type, val_type;
   TP_DOMAIN_STATUS dom_status;
   int result;
+  HL_HEAPID save_heapid = 0;
 
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
@@ -8462,7 +8481,17 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		}
 	      else
 		{
+		  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		    {
+		      save_heapid = db_change_private_heap (thread_p, 0);
+		    }
+
 		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+		  if (save_heapid != 0)
+		    {
+		      (void) db_change_private_heap (thread_p, save_heapid);
+		      save_heapid = 0;
+		    }
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
 		      result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
@@ -9065,7 +9094,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARI
       /* TYPE_CONSTANT but not in val_list, check if it is inst_num() (orderby_num() is not allowed) */
       if (regu_p->value.dbvalptr == xasl->instnum_val)
 	{
-	  if (db_value_clone (xasl->instnum_val, result_val_p) != NO_ERROR)
+	  if (pr_clone_value (xasl->instnum_val, result_val_p) != NO_ERROR)
 	    {
 	      return false;
 	    }
@@ -9219,10 +9248,11 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
   char *result_path = NULL, *path_tmp = NULL;
   int len_result_path, len_tmp = 0, len;
   char *sep = NULL;
-  DB_VALUE *arg_dbval_p;
+  DB_VALUE *arg_dbval_p = NULL;
   DB_VALUE **save_values = NULL;
   bool use_extended = false;	/* flag for using extended form, accepting an expression as the first argument of
 				 * SYS_CONNECT_BY_PATH() */
+  bool need_clear_arg_dbval = false;
 
   assert (DB_IS_NULL (result_p));
 
@@ -9356,6 +9386,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 
   do
     {
+      need_clear_arg_dbval = false;
       if (!use_extended)
 	{
 	  /* get the required column */
@@ -9365,6 +9396,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 		{
 		  goto error;
 		}
+	      need_clear_arg_dbval = true;
 	    }
 	}
       else
@@ -9398,6 +9430,12 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain) != NO_ERROR)
 	    {
 	      goto error;
+	    }
+
+	  if (need_clear_arg_dbval)
+	    {
+	      pr_clear_value (arg_dbval_p);
+	      need_clear_arg_dbval = false;
 	    }
 	}
 
@@ -9486,7 +9524,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 		{
 		  goto error2;
 		}
-	      if (db_value_clone (save_values[i], valp->val) != NO_ERROR)
+	      if (pr_clone_value (save_values[i], valp->val) != NO_ERROR)
 		{
 		  goto error2;
 		}
@@ -9496,7 +9534,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	    {
 	      if (save_values[i])
 		{
-		  if (db_value_free (save_values[i]) != NO_ERROR)
+		  if (pr_free_ext_value (save_values[i]) != NO_ERROR)
 		    {
 		      goto error2;
 		    }
@@ -9517,6 +9555,11 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
       db_private_free_and_init (thread_p, sep);
     }
 
+  if (need_clear_arg_dbval)
+    {
+      pr_clear_value (arg_dbval_p);
+    }
+
   return true;
 
 error:
@@ -9528,7 +9571,7 @@ error:
 	{
 	  if (save_values[i])
 	    {
-	      db_value_free (save_values[i]);
+	      pr_free_ext_value (save_values[i]);
 	    }
 	}
       db_private_free_and_init (thread_p, save_values);
@@ -9549,6 +9592,11 @@ error2:
   if (sep)
     {
       db_private_free_and_init (thread_p, sep);
+    }
+
+  if (need_clear_arg_dbval)
+    {
+      pr_clear_value (arg_dbval_p);
     }
 
   return false;
@@ -10400,7 +10448,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
    * operand should already be cast to the right type (CHAR
    * or NCHAR VARYING)
    */
-  error_status = db_value_clone (operand_value, function_p->value);
+  error_status = pr_clone_value (operand_value, function_p->value);
 
 fast_exit:
   return error_status;
@@ -11254,7 +11302,6 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	{
 	  qfile_close_list (thread_p, func_p->list_id);
 	  qfile_destroy_list (thread_p, func_p->list_id);
-	  func_p->list_id = NULL;
 	}
 
       if (!list_id_p)
@@ -12188,6 +12235,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;
   DB_DOMAIN *dom;
+  HL_HEAPID save_heapid = 0;
 
   assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operand.type == TYPE_REGU_VAR_LIST);
 
@@ -12243,9 +12291,26 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	  /* Note: we must cast the const value to the same domain as the compared field in the order by clause */
 	  dom = regu_tmp_node->value.domain;
 
+	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_node->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	    {
+	      save_heapid = db_change_private_heap (thread_p, 0);
+	    }
+
 	  if (db_value_coerce (*val_node_p, *val_node_p, dom) != NO_ERROR)
 	    {
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		  save_heapid = 0;
+		}
+
 	      goto exit_on_error;
+	    }
+
+	  if (save_heapid != 0)
+	    {
+	      (void) db_change_private_heap (thread_p, save_heapid);
+	      save_heapid = 0;
 	    }
 
 	  regu_var_node = regu_var_node->next;
@@ -12741,6 +12806,7 @@ void
 qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE * agg_list, bool copy_vals)
 {
   int i = 0;
+  DB_TYPE db_type;
 
   if (value == NULL)
     {
@@ -12779,13 +12845,28 @@ qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE 
 	      /* set tuple count */
 	      agg_list->accumulator.curr_cnt = value->accumulators[i].curr_cnt;
 
-	      /* shallow copy dbval */
+	      /*
+	       * shallow, fast copy dbval. This may be unsafe. Internally, value->accumulators[i].value and
+	       * agg_list->accumulator.value values keeps the same pointer to a buffer. If a value is cleared, the other
+	       * value refer a invalid memory. Probably a safety way would be to use clone.
+	       */
 	      *(agg_list->accumulator.value) = *(value->accumulators[i].value);
 	      *(agg_list->accumulator.value2) = *(value->accumulators[i].value2);
 
-	      /* mark as container */
+	      /* reset accumulator values. */
 	      value->accumulators[i].value->need_clear = false;
+	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value);
+	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
+		{
+		  value->accumulators[i].value->data.ch.info.compressed_need_clear = false;
+		}
+
 	      value->accumulators[i].value2->need_clear = false;
+	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2);
+	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
+		{
+		  value->accumulators[i].value2->data.ch.info.compressed_need_clear = false;
+		}
 	    }
 	}
 

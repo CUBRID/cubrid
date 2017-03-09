@@ -192,6 +192,7 @@ main (int argc, char *argv[])
 	      free ((void *) csql_arg.passwd);
 	    }
 	  csql_arg.passwd = strdup (optarg);
+	  util_hide_password (optarg);
 	  break;
 
 	case CSQL_ERROR_CONTINUE_S:

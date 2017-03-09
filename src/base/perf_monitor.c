@@ -2017,7 +2017,7 @@ perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int di
   module = perfmon_get_module_type (thread_p);
 
   assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
-  assert (page_type > PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
+  assert (page_type >= PERF_PAGE_UNKNOWN && page_type < PERF_PAGE_CNT);
   assert (buf_dirty == 0 || buf_dirty == 1);
   assert (dirtied_by_holder == 0 || dirtied_by_holder == 1);
   assert (holder_latch >= PERF_HOLDER_LATCH_READ && holder_latch < PERF_HOLDER_LATCH_CNT);
@@ -2234,7 +2234,7 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	  break;
 	}
 
-      if (substr != NULL && (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE))
+      if (substr != NULL)
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
 	}
@@ -2330,7 +2330,7 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	  break;
 	}
 
-      if (substr != NULL && (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE))
+      if (substr != NULL)
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
 	}
@@ -2717,14 +2717,10 @@ perfmon_stat_page_type_name (const int page_type)
       return "PAGE_VOLHEADER";
     case PERF_PAGE_VOLBITMAP:
       return "PAGE_VOLBITMAP";
-    case PERF_PAGE_XASL:
-      return "PAGE_XASL";
     case PERF_PAGE_QRESULT:
       return "PAGE_QRESULT";
     case PERF_PAGE_EHASH:
       return "PAGE_EHASH";
-    case PERF_PAGE_LARGEOBJ:
-      return "PAGE_LARGEOBJ";
     case PERF_PAGE_OVERFLOW:
       return "PAGE_OVERFLOW";
     case PERF_PAGE_AREA:
@@ -2737,6 +2733,8 @@ perfmon_stat_page_type_name (const int page_type)
       return "PAGE_LOG";
     case PERF_PAGE_DROPPED_FILES:
       return "PAGE_DROPPED";
+    case PERF_PAGE_VACUUM_DATA:
+      return "PAGE_VACUUM_DATA";
     case PERF_PAGE_BTREE_ROOT:
       return "PAGE_BTREE_R";
     case PERF_PAGE_BTREE_OVF:

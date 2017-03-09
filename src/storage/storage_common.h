@@ -43,6 +43,7 @@
 
 #define VOLID_MAX       SHRT_MAX
 #define PAGEID_MAX      INT_MAX
+#define SECTID_MAX      INT_MAX
 #define PGLENGTH_MAX    SHRT_MAX
 #define VOL_MAX_NPAGES(page_size) \
   ((sizeof(off_t) == 4) ? (INT_MAX / (page_size)) : INT_MAX)
@@ -70,12 +71,17 @@ enum
 
 /* Type definitions related to disk information	*/
 
+typedef INT16 VOLID;		/* Volume identifier */
+typedef VOLID DKNVOLS;		/* Number of volumes */
+
 typedef INT32 PAGEID;		/* Data page identifier */
+typedef PAGEID DKNPAGES;	/* Number of disk pages */
+
 typedef INT64 LOG_PAGEID;	/* Log page identifier */
 typedef PAGEID LOG_PHY_PAGEID;	/* physical log page identifier */
 
-typedef INT16 VOLID;		/* Volume identifier */
-typedef PAGEID DKNPAGES;	/* Number of disk pages */
+typedef INT32 SECTID;
+typedef SECTID DKNSECTS;
 
 typedef INT16 PGSLOTID;		/* Page slot identifier */
 typedef PGSLOTID PGNSLOTS;	/* Number of slots on a page */
@@ -102,6 +108,8 @@ struct log_lsa
   } while(0)
 
 #define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
+
+#define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
 
 #define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
 #define LSA_SET_INIT_TEMP(lsa_ptr)\
@@ -139,6 +147,25 @@ struct log_lsa
 #define LOG_PAGESIZE            (db_log_page_size())
 #define IO_PAGESIZE             (db_io_page_size())
 #define DB_PAGESIZE             (db_page_size())
+
+/*
+ * Sector
+ */
+/* Number of pages in a sector. Careful about changing this size. The whole file manager depends on this size. */
+#define DISK_SECTOR_NPAGES 64
+#define IO_SECTORSIZE           (DISK_SECTOR_NPAGES * IO_PAGESIZE)
+#define DB_SECTORSIZE		(DISK_SECTOR_NPAGES * DB_PAGESIZE)
+
+#define VOL_MAX_NSECTS(page_size)  (VOL_MAX_NPAGES(page_size) / DISK_SECTOR_NPAGES)
+
+#define SECTOR_FIRST_PAGEID(sid) ((sid) * DISK_SECTOR_NPAGES)
+#define SECTOR_LAST_PAGEID(sid) ((((sid) + 1) * DISK_SECTOR_NPAGES) - 1)
+#define SECTOR_FROM_PAGEID(pageid) ((pageid) / DISK_SECTOR_NPAGES)
+
+#define VSID_FROM_VPID(vsid, vpid) (vsid)->volid = (vpid)->volid; (vsid)->sectid = SECTOR_FROM_PAGEID ((vpid)->pageid)
+#define VSID_IS_SECTOR_OF_VPID(vsid, vpid) \
+  ((vsid)->volid == (vpid)->volid && (vsid)->sectid == SECTOR_FROM_PAGEID ((vpid)->pageid))
+
 #define DB_MAX_PATH_LENGTH      PATH_MAX
 
 #define DISK_VFID_SIZE (OR_INT_SIZE + OR_SHORT_SIZE)
@@ -174,7 +201,6 @@ typedef enum
   PAGE_VOLBITMAP,		/* volume bitmap page */
   PAGE_QRESULT,			/* query result page */
   PAGE_EHASH,			/* ehash bucket/dir page */
-  PAGE_LARGEOBJ,		/* large object/dir page */
   PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
   PAGE_AREA,			/* area page */
   PAGE_CATALOG,			/* catalog page */
@@ -273,6 +299,7 @@ struct hfid
 };
 #define HFID_INITIALIZER \
   { VFID_INITIALIZER, NULL_PAGEID }
+#define HFID_AS_ARGS(hfid) (hfid)->hpgid, VFID_AS_ARGS (&(hfid)->vfid)
 
 typedef struct btid BTID;	/* B+tree identifier */
 struct btid
@@ -282,6 +309,7 @@ struct btid
 };
 #define BTID_INITIALIZER \
   { VFID_INITIALIZER, NULL_PAGEID }
+#define BTID_AS_ARGS(btid) (btid)->root_pageid, VFID_AS_ARGS (&(btid)->vfid)
 
 typedef struct ehid EHID;	/* EXTENDIBLE HASHING IDENTIFIER */
 struct ehid
@@ -403,14 +431,6 @@ struct lorecdes
 #define BTID_IS_EQUAL(b1,b2) \
   (((b1)->vfid.fileid == (b2)->vfid.fileid) && \
    ((b1)->vfid.volid == (b2)->vfid.volid))
-
-#define LOID_SET_NULL(loid) \
-  do { \
-    (loid)->vpid.pageid = NULL_PAGEID; \
-    (loid)->vfid.fileid = NULL_FILEID; \
-  } while (0)
-
-#define LOID_IS_NULL(loid)  (((loid)->vpid.pageid == NULL_PAGEID) ? 1 : 0)
 
 #define DISK_VOLPURPOSE DB_VOLPURPOSE
 
@@ -694,6 +714,61 @@ typedef enum
 				 * accepted to find a deleted object; for example when er_clear() is used afterwards if 
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
+
+/************************************************************************/
+/* spacedb                                                              */
+/************************************************************************/
+
+/* database space info */
+typedef enum
+{
+  SPACEDB_PERM_PERM_ALL,
+  SPACEDB_PERM_TEMP_ALL,
+  SPACEDB_TEMP_TEMP_ALL,
+
+  SPACEDB_TOTAL_ALL,
+  SPACEDB_ALL_COUNT,
+} SPACEDB_ALL_TYPE;
+
+typedef struct spacedb_all SPACEDB_ALL;
+struct spacedb_all
+{
+  DKNVOLS nvols;
+  DKNPAGES npage_used;
+  DKNPAGES npage_free;
+};
+
+typedef struct spacedb_onevol SPACEDB_ONEVOL;
+struct spacedb_onevol
+{
+  VOLID volid;
+  DB_VOLTYPE type;
+  DB_VOLPURPOSE purpose;
+  DKNPAGES npage_used;
+  DKNPAGES npage_free;
+  char name[DB_MAX_PATH_LENGTH];
+};
+
+/* files */
+typedef enum
+{
+  SPACEDB_INDEX_FILE,
+  SPACEDB_HEAP_FILE,
+  SPACEDB_SYSTEM_FILE,
+  SPACEDB_TEMP_FILE,
+
+  SPACEDB_TOTAL_FILE,
+  SPACEDB_FILE_COUNT,
+} SPACEDB_FILE_TYPE;
+
+typedef struct spacedb_files SPACEDB_FILES;
+struct spacedb_files
+{
+  int nfile;
+  DKNPAGES npage_ftab;
+  DKNPAGES npage_user;
+  DKNPAGES npage_reserved;
+};
 
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);

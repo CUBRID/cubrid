@@ -35,6 +35,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/binaryheap.c
+  ${BASE_DIR}/bit.c
   ${BASE_DIR}/chartype.c
   ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
@@ -66,7 +67,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/stack_dump.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
-  ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/uca_support.c
   ${BASE_DIR}/unicode_support.c
@@ -172,8 +172,6 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/file_io.c
-  ${STORAGE_DIR}/large_object_directory.c
-  ${STORAGE_DIR}/large_object.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
@@ -243,7 +241,7 @@ endif(WIN32)
 target_include_directories(cubrid PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

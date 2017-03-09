@@ -51,11 +51,9 @@ enum
   CSECT_WFG,			/* Latch for wait-for-graph */
   CSECT_LOG,			/* Latch for log manager */
   CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for classname to classOID entries */
-  CSECT_FILE_NEWFILE,		/* Latch related to new file table */
   CSECT_QPROC_QUERY_TABLE,	/* Latch for query manager table */
   CSECT_QPROC_LIST_CACHE,	/* Latch for query result(list file) cache (mht) */
-  CSECT_BOOT_SR_DBPARM,		/* Latch for accessing System Database parameters. Used during vol creation */
-  CSECT_DISK_REFRESH_GOODVOL,	/* Latch for refreshing good volume cache */
+  CSECT_DISK_CHECK,		/* Block changes on disk cache during check */
   CSECT_CNV_FMT_LEXER,		/* Latch for value/string format translation lexer */
   CSECT_HEAP_CHNGUESS,		/* Latch for schema change */
 
@@ -66,7 +64,6 @@ enum
   CSECT_ACL,			/* Latch for accessible IP list table */
   CSECT_PARTITION_CACHE,	/* Latch for partitions cache */
   CSECT_EVENT_LOG_FILE,		/* Latch for event log file */
-  CSECT_TEMPFILE_CACHE,		/* Latch for temp file cache */
   CSECT_LOG_ARCHIVE,		/* Latch for log_Gl.archive */
   CSECT_ACCESS_STATUS,		/* Latch for user access status */
   CSECT_LAST

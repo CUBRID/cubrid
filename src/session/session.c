@@ -1735,7 +1735,6 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
   int err = NO_ERROR;
-  OID user;
   const char *alias_print;
   char *data = NULL;
 
@@ -2352,7 +2351,10 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY *
       tfile_vfid_p->prev->next = NULL;
       while (tfile_vfid_p)
 	{
-	  file_preserve_temporary (thread_p, &tfile_vfid_p->temp_vfid);
+	  if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
+	    {
+	      file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
+	    }
 	  temp = tfile_vfid_p;
 	  tfile_vfid_p = tfile_vfid_p->next;
 	}
@@ -2383,6 +2385,7 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p, QMGR_QUERY_ENTRY * qentr
   qentry_p->xasl_ent = NULL;
   qentry_p->er_msg = NULL;
   qentry_p->is_holdable = true;
+  qentry_p->is_preserved = true;
 }
 
 /*
@@ -2463,7 +2466,7 @@ session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_
 
   if (sentry_p->temp_file != NULL)
     {
-      qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false);
+      qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false, true);
     }
 
   sessions.num_holdable_cursors--;

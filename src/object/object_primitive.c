@@ -1406,7 +1406,7 @@ PR_TYPE tp_Object = {
 
 PR_TYPE *tp_Type_object = &tp_Object;
 
-PR_TYPE tp_Elo = {
+PR_TYPE tp_Elo = {		/* todo: remove me */
   "*elo*", DB_TYPE_ELO, 1, sizeof (DB_ELO *), 0, 8,
   help_fprint_value,
   help_sprint_value,
@@ -2110,7 +2110,6 @@ pr_clear_value (DB_VALUE * value)
 	}
       break;
 
-    case DB_TYPE_ELO:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       if (value->need_clear)
@@ -4439,6 +4438,13 @@ mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
   ts_tz1 = DB_GET_TIMESTAMPTZ (value1);
   ts_tz2 = DB_GET_TIMESTAMPTZ (value2);
 
+#if defined (SA_MODE)
+  if (tz_Compare_timestamptz_tz_id == true && ts_tz1->tz_id != ts_tz2->tz_id)
+    {
+      return DB_NE;
+    }
+#endif
+
   return MR_CMP (ts_tz1->timestamp, ts_tz2->timestamp);
 }
 
@@ -5001,6 +5007,13 @@ mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int
 
   dt1 = &(dt_tz1->datetime);
   dt2 = &(dt_tz2->datetime);
+
+#if defined (SA_MODE)
+  if (tz_Compare_datetimetz_tz_id == true && dt_tz1->tz_id != dt_tz2->tz_id)
+    {
+      return DB_NE;
+    }
+#endif /* SA_MODE */
 
   if (dt1->date < dt2->date)
     {
@@ -6385,9 +6398,9 @@ mr_data_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
 
       if (elo != NULL && elo->type != ELO_NULL)
 	{
-	  len = (OR_BIGINT_SIZE + OR_LOID_SIZE
-		 + or_packed_string_length (elo->locator, NULL) + or_packed_string_length (elo->meta_data, NULL)
-		 + OR_INT_SIZE);
+	  len = (OR_BIGINT_SIZE
+		 + or_packed_string_length (elo->locator, NULL)
+		 + or_packed_string_length (elo->meta_data, NULL) + OR_INT_SIZE);
 	}
     }
   else
@@ -6432,9 +6445,6 @@ mr_data_writemem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
       /* size */
       or_put_bigint (buf, elo->size);
 
-      /* loid */
-      or_put_loid (buf, &elo->loid);
-
       /* locator */
       assert (elo->locator != NULL);
       or_put_int (buf, or_packed_string_length (elo->locator, NULL) - OR_INT_SIZE);
@@ -6464,14 +6474,6 @@ peekmem_elo (OR_BUF * buf, DB_ELO * elo)
   /* size */
   elo->size = or_get_bigint (buf, &rc);
 
-  if (rc != NO_ERROR)
-    {
-      assert (false);
-      goto error;
-    }
-
-  /* loid */
-  rc = or_get_loid (buf, &elo->loid);
   if (rc != NO_ERROR)
     {
       assert (false);

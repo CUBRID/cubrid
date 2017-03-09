@@ -1260,8 +1260,9 @@ $ LOADDB
 1191 독립 모드의 vacuum 작업 종료
 1192 %1$zu의 값 정밀도가 최대 허용치인 %2$s를 초과했습니다.
 1193 분할 표현식의 길이가 최대 허용치인 %1$s를 초과했습니다.
-1194 마지막 에러
-
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 마지막 에러
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
 2 에러 메시지를 사용할 수 없습니다.
@@ -1712,6 +1713,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 잘못된 집계 함수입니다.
 293 분할 경계값은 각 분할에 대해서 항상 증가해야 합니다.
 294 local timezone 타입에 대해서 함수 인덱스나 필터링된 인덱스를 사용할 수 없습니다.
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

@@ -1260,8 +1260,9 @@ $ LOADDB
 1191 Stand-alone vacuum execution is ended.
 1192 Value's precision of %1$zu exceeds maximum allowed %2$d
 1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
-1194 Last Error
-
+1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
+1196 Last Error
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
 2 No error message available.
@@ -1712,6 +1713,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Invalid use of aggregate functions.
 293 Value must be strictly increasing for each partition.
 294 Cannot use function or filter indexes on local timezone typed columns.
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

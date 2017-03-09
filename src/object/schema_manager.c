@@ -15106,7 +15106,8 @@ sm_truncate_using_delete (MOP class_mop)
 
   /* We will run a DELETE statement with triggers disabled. */
   save_tr_state = tr_set_execution_state (false);
-  (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE */ FROM %s;", class_name);
+
+  (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE */ FROM [%s];", class_name);
 
   session = db_open_buffer (delete_query);
   if (session == NULL)

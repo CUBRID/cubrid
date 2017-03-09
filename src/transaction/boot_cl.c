@@ -148,7 +148,7 @@ static char boot_Lob_path_buf[PATH_MAX];
 static char boot_Db_host_buf[MAXHOSTNAMELEN + 1];
 
 /* Volume assigned for new files/objects (e.g., heap files) */
-VOLID boot_User_volid = 0;
+VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 #if defined(CS_MODE)
 /* Server host connected */
 char boot_Host_connected[MAXHOSTNAMELEN] = "";
