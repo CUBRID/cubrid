@@ -16065,8 +16065,7 @@ STATIC_INLINE int
 heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvccid,
 						bool is_mvcc_op, HEAP_OPERATION_CONTEXT * context)
 {
-  HEAP_LOG_INFO delete_log_info;
-  PAGE_PTR page_copy_before_fix = NULL;
+  HEAP_LOG_INFO delete_log_info;  
   char *redo_data_p = NULL, *undo_data_p = NULL;
   int copy_retry_count = 1, copy_retry_max = 3;
   int redo_data_size = 0, undo_data_size = 0;
@@ -21728,6 +21727,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->overflow_page_watcher_p != NULL);
   assert (context->overflow_page_watcher_p->pgptr == NULL);
+  assert (is_mvcc_op || context->log_info.node == NULL);
 
   /* MVCC info is in overflow page, we only keep and OID in home */
   overflow_oid = *((OID *) context->home_recdes.data);
@@ -22295,6 +22295,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
+  assert (is_mvcc_op || context->log_info.node == NULL);
 
   if (is_mvcc_op)
     {
@@ -22772,6 +22773,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
   assert (context->type == HEAP_OPERATION_DELETE);
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
+  assert (is_mvcc_op || context->log_info.node == NULL);
 
   if (context->home_page_watcher_p->page_was_unfixed)
     {
@@ -23014,6 +23016,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->overflow_page_watcher_p != NULL);
   assert (context->log_info.node == NULL);
+  assert (is_mvcc_op || context->log_info.node == NULL);
 
   /* read OID of overflow record */
   context->ovf_oid = *((OID *) context->home_recdes.data);
@@ -23424,6 +23427,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
   assert (context->new_forward_page_watcher_p != NULL);
+  assert (is_mvcc_op || context->log_info.node == NULL);
 
   /* TO DO - non MVCC? */
   /* create log data */
@@ -23775,6 +23779,7 @@ heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
+  assert (is_mvcc_op || context->log_info.node == NULL);
 
   if (!HEAP_IS_UPDATE_INPLACE (context->update_in_place) && context->home_recdes.type == REC_ASSIGN_ADDRESS)
     {
