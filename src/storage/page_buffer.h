@@ -35,8 +35,18 @@
 #include "lock_manager.h"
 #include "perf_monitor.h"
 
+
 #define FREE			true	/* Free page buffer */
 #define DONT_FREE		false	/* Don't free the page buffer */
+
+#if defined(SERVER_MODE)
+typedef enum
+{
+  PAGE_NOT_LOADED,
+  PAGE_UNDER_MODIFICATION,
+  PAGE_COPIED
+} PAGE_COPY_STATUS;
+#endif
 
 extern const VPID vpid_Null_vpid;
 
@@ -279,7 +289,7 @@ extern PAGE_PTR pgbuf_flush_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int 
 #define pgbuf_copy_to_bcb_area(thread_p, vpid, bcb_area, size, copy_result) \
 	pgbuf_copy_to_bcb_area_debug(thread_p, vpid, bcb_area, size, copy_result, __FILE__, __LINE__)
 extern int pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
-					 bool * copy_result, const char *caller_file, int caller_line);
+					 PAGE_COPY_STATUS * page_copy_status, const char *caller_file, int caller_line);
 #endif
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
         pgbuf_fix_debug(thread_p, vpid, fetch_mode, requestmode, condition, \
@@ -332,7 +342,7 @@ extern PAGE_PTR pgbuf_fix_without_validation_release (THREAD_ENTRY * thread_p, c
 #define pgbuf_copy_to_bcb_area(thread_p, vpid, bcb_area, size, copy_result) \
       pgbuf_copy_to_bcb_area_release(thread_p, vpid, bcb_area, size, copy_result)
 extern int pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
-					   bool * copy_result);
+					   PAGE_COPY_STATUS * page_copy_status);
 #endif
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
         pgbuf_fix_release(thread_p, vpid, fetch_mode, requestmode, condition)
@@ -503,9 +513,7 @@ extern bool pgbuf_is_modification_started (PAGE_PTR pgptr);
 extern void pgbuf_end_modification (PAGE_PTR pgptr);
 extern void pgbuf_reset_modification (PAGE_PTR pgptr);
 extern int pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **area);
-extern int pgbuf_acquire_tran_second_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area);
-extern void pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p);
-extern void pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p);
-extern void pgbuf_release_tran_second_bcb_area (THREAD_ENTRY * thread_p);
+extern void pgbuf_finalize_all_tran_bcb (THREAD_ENTRY * thread_p);
+extern void pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p, char *bcb_area);
 #endif
 #endif /* _PAGE_BUFFER_H_ */

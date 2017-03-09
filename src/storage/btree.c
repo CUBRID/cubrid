@@ -22587,7 +22587,9 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
   BTREE_NODE_TYPE node_type;
   VPID child_vpid;
   int retry_count = 1, retry_max = 5, error_code;
-  bool bcb_area_copied = false;
+#if defined (SERVER_MODE)
+  PAGE_COPY_STATUS page_copy_status;
+#endif
 
   assert (btid_int != NULL);
   assert (key != NULL);
@@ -22645,13 +22647,13 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 	   * decide to introduce the optimization for non-leafs, we need additional processing. For instance, sometimes,
 	   * we have to start searching of the same key from root several times.
 	   */
-	  if (pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, DB_PAGESIZE, &bcb_area_copied) != NO_ERROR)
+	  if (pgbuf_copy_to_bcb_area (thread_p, &child_vpid, bcb_area, DB_PAGESIZE, &page_copy_status) != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      return error_code;
 	    }
 
-	  if (bcb_area_copied)
+	  if (page_copy_status == PAGE_COPIED)
 	    {
 #if !defined(NDEBUG)
 	      node_header = btree_get_node_header (bcb_area);
@@ -22662,7 +22664,7 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 	      pgbuf_copy_log ("pgbuf_copy_page: Successfully copied B-tree page (%d, %d) \n",
 			      child_vpid.volid, child_vpid.pageid);
 	    }
-	  else
+	  else if (page_copy_status == PAGE_UNDER_MODIFICATION)
 	    {
 
 	      if (retry_count < retry_max)
@@ -24166,7 +24168,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	   * Extending the optimization for multi page object, requires additional processing.
 	   */
 
-	  pgbuf_release_tran_bcb_area (thread_p);
+	  pgbuf_release_tran_bcb_area (thread_p, bts->bcb_area);
 	  bts->bcb_area = NULL;
 	  vpid_ovf_p = NULL;
 	  goto locate_key;
@@ -33356,7 +33358,7 @@ btree_unfix_and_init_current_page (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   if (bts->bcb_area)
     {
       /* Release the transaction BCB area, in order to allow to copy another page. */
-      pgbuf_release_tran_bcb_area (thread_p);
+      pgbuf_release_tran_bcb_area (thread_p, bts->bcb_area);
       bts->bcb_area = NULL;
     }
 #endif

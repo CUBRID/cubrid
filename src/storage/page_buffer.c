@@ -1269,13 +1269,13 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fet
  *   thread_p(in): thread entry
  *   vpid(in): complete Page identifier
  *   size(in): size to copy
- *   bcb_area_copied(in/out): true, if BCB area is successfully copied
+ *   page_copy_status(in/out): page copy status
  *   caller_file(in): caller file
  *   caller_line(in): caller line
  */
 int
 pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
-			      bool * bcb_area_copied, const char *caller_file, int caller_line)
+			      PAGE_COPY_STATUS * page_copy_status, const char *caller_file, int caller_line)
 #else
 /*
  * pgbuf_copy_to_bcb_area_release () - copy page to bcb area, release version
@@ -1283,11 +1283,11 @@ pgbuf_copy_to_bcb_area_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_P
  *   thread_p(in): thread entry
  *   vpid(in): complete Page identifier
  *   size(in): size to copy
- *   bcb_area_copied(in/out): true, if BCB area is successfully copied
+ *   page_copy_status(in/out): page copy status
  */
 int
 pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR bcb_area, int size,
-				bool * bcb_area_copied)
+				PAGE_COPY_STATUS * page_copy_status)
 #endif
 {
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -1297,10 +1297,10 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   int err = NO_ERROR;
   PAGE_TYPE page_type;
 
-  assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL && bcb_area_copied != NULL);
+  assert (vpid != NULL && !VPID_ISNULL (vpid) && bcb_area != NULL && page_copy_status != NULL);
   assert (size >= 0 && size <= DB_PAGESIZE);
 
-  *bcb_area_copied = false;
+  *page_copy_status = PAGE_NOT_LOADED;
   /* interrupt check */
   if (thread_get_check_interrupt (thread_p) == true)
     {
@@ -1335,6 +1335,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
        * There is a concurrent writer that modify the page. The current transaction can retry, or decide to use
        * the S-latch.
        */
+      *page_copy_status = PAGE_UNDER_MODIFICATION;
       pthread_mutex_unlock (&src_bufptr->BCB_mutex);
       return NO_ERROR;
     }
@@ -1346,6 +1347,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
        * A concurrent writer has modified the page. The copy is not atomic. The current transaction can retry,
        * or decide to use the S-latch.
        */
+      *page_copy_status = PAGE_UNDER_MODIFICATION;
       pthread_mutex_unlock (&src_bufptr->BCB_mutex);
       return NO_ERROR;
     }
@@ -1364,7 +1366,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   dest_bufptr->iopage_buffer->iopage.prv.pageid = NULL_PAGEID;
   dest_bufptr->iopage_buffer->iopage.prv.volid = NULL_VOLID;
   pgbuf_set_page_ptype (thread_p, bcb_area, page_type);
-  *bcb_area_copied = true;
+  *page_copy_status = PAGE_COPIED;
 
   return NO_ERROR;
 
@@ -12559,6 +12561,7 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
 {
   PGBUF_BCB *bufptr = NULL;
   PGBUF_IOPAGE_BUFFER *ioptr = NULL;
+  int i;
 
   assert (bcb_area != NULL);
   if (thread_p == NULL)
@@ -12566,16 +12569,25 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  /* TO DO - reuse page */
   *bcb_area = NULL;
-  if (thread_p->tran_bcb_used)
+  for (i = 0; i < TRAN_MAX_BCB; i++)
+    {
+      if (thread_p->tran_bcb_used[i] == false)
+	{
+	  break;
+	}
+      else
+	{
+	  assert (thread_p->tran_bcb[i] != NULL);
+	}
+    }
+  if (i == TRAN_MAX_BCB)
     {
       /* The transaction BCB already used for another page. In future, we can extend to have many transaction BCBs. */
-      assert (thread_p->tran_bcb != NULL);
       return NO_ERROR;
     }
 
-  bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
+  bufptr = (PGBUF_BCB *) thread_p->tran_bcb[i];
   if (bufptr == NULL)
     {
       bufptr = (PGBUF_BCB *) malloc ((size_t) PGBUF_BCB_SIZE);
@@ -12629,102 +12641,11 @@ pgbuf_acquire_tran_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
       pgbuf_scramble (&bufptr->iopage_buffer->iopage);
       memcpy (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard));
 #endif /* CUBRID_DEBUG */
-      thread_p->tran_bcb = bufptr;
+      thread_p->tran_bcb[i] = bufptr;
     }
 
   CAST_BFPTR_TO_PGPTR (*bcb_area, bufptr);
-  thread_p->tran_bcb_used = true;
-
-  assert (*bcb_area != NULL);
-  return NO_ERROR;
-}
-
-/*
- * pgbuf_acquire_tran_second_bcb_area () - Acquires transaction second BCB area
- *   return: error code
- *   thread_p(in): thread entry
- *   bcb_area (out): transaction second BCB area
- */
-int
-pgbuf_acquire_tran_second_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
-{
-  PGBUF_BCB *bufptr = NULL;
-  PGBUF_IOPAGE_BUFFER *ioptr = NULL;
-
-  assert (bcb_area != NULL);
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  /* TO DO - reuse page */
-  *bcb_area = NULL;
-  if (thread_p->tran_second_bcb_used)
-    {
-      /* The transaction BCB already used for another page. In future, we can extend to have many transaction BCBs. */
-      assert (thread_p->tran_second_bcb != NULL);
-      return NO_ERROR;
-    }
-
-  bufptr = (PGBUF_BCB *) thread_p->tran_second_bcb;
-  if (bufptr == NULL)
-    {
-      bufptr = (PGBUF_BCB *) malloc ((size_t) PGBUF_BCB_SIZE);
-      if (bufptr == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PGBUF_BCB_SIZE);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      ioptr = (PGBUF_IOPAGE_BUFFER *) malloc ((size_t) PGBUF_IOPAGE_BUFFER_SIZE);
-      if (ioptr == NULL)
-	{
-	  free_and_init (bufptr);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) PGBUF_IOPAGE_BUFFER_SIZE);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      pthread_mutex_init (&bufptr->BCB_mutex, NULL);
-      bufptr->ipool = -1;
-      VPID_SET_NULL (&bufptr->vpid);
-      bufptr->fcnt = 0;
-      bufptr->latch_mode = PGBUF_LATCH_INVALID;
-      bufptr->next_wait_thrd = NULL;
-      bufptr->hash_next = NULL;
-      bufptr->prev_BCB = NULL;
-      bufptr->next_BCB = NULL;
-      bufptr->dirty = false;
-      bufptr->avoid_dealloc_cnt = 0;
-      PGBUF_BCB_RESET_MODIFICATION (bufptr);
-      bufptr->avoid_victim = false;
-      bufptr->async_flush_request = false;
-      bufptr->victim_candidate = false;
-      bufptr->zone = PGBUF_INVALID_ZONE;
-      LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
-
-      /* link BCB and iopage buffer */
-      LSA_SET_NULL (&ioptr->iopage.prv.lsa);
-      /* Init Page identifier */
-      ioptr->iopage.prv.pageid = -1;
-      ioptr->iopage.prv.volid = -1;
-#if 1				/* do not delete me */
-      ioptr->iopage.prv.ptype = '\0';
-      ioptr->iopage.prv.pflag_reserve_1 = '\0';
-      ioptr->iopage.prv.p_reserve_2 = 0;
-      ioptr->iopage.prv.p_reserve_3 = 0;
-#endif
-      bufptr->iopage_buffer = ioptr;
-      ioptr->bcb = bufptr;
-#if defined(CUBRID_DEBUG)
-      /* Reinitialize the buffer */
-      pgbuf_scramble (&bufptr->iopage_buffer->iopage);
-      memcpy (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard));
-#endif /* CUBRID_DEBUG */
-      thread_p->tran_second_bcb = bufptr;
-    }
-
-  CAST_BFPTR_TO_PGPTR (*bcb_area, bufptr);
-  thread_p->tran_second_bcb_used = true;
+  thread_p->tran_bcb_used[i] = true;
 
   assert (*bcb_area != NULL);
   return NO_ERROR;
@@ -12734,73 +12655,55 @@ pgbuf_acquire_tran_second_bcb_area (THREAD_ENTRY * thread_p, char **bcb_area)
  * pgbuf_release_tran_bcb_area () - Release transaction BCB area
  *   return: error code
  *   thread_p(in): thread entry 
+ *   bcb_area(in): BCB area
  */
 void
-pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p)
+pgbuf_release_tran_bcb_area (THREAD_ENTRY * thread_p, char *bcb_area)
 {
+  PGBUF_BCB *bufptr;
+  int i;
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  thread_p->tran_bcb_used = false;
-}
 
-/*
- * pgbuf_release_tran_bcb_area () - Release transaction secondary BCB area
- *   return: error code
- *   thread_p(in): thread entry 
- */
-void
-pgbuf_release_tran_second_bcb_area (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
+  for (i = 0; i < TRAN_MAX_BCB; i++)
     {
-      thread_p = thread_get_thread_entry_info ();
+      CAST_PGPTR_TO_BFPTR (bufptr, bcb_area);
+      if (bufptr == thread_p->tran_bcb[i])
+	{
+	  thread_p->tran_bcb_used[i] = false;
+	  break;
+	}
     }
-  thread_p->tran_second_bcb_used = false;
 }
 
 /*
- * pgbuf_finalize_tran_bcb () - Finalize transaction BCB
+ * pgbuf_finalize_all_tran_bcb () - Finalize all transaction BCB
  *   return: error code
  *   thread_p(in): thread entry
  */
 void
-pgbuf_finalize_tran_bcb (THREAD_ENTRY * thread_p)
+pgbuf_finalize_all_tran_bcb (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bufptr;
+  int i;
   assert (thread_p != NULL);
 
-  bufptr = (PGBUF_BCB *) thread_p->tran_bcb;
-  if (bufptr)
+  for (i = 0; i < TRAN_MAX_BCB; i++)
     {
-      pthread_mutex_destroy (&bufptr->BCB_mutex);
-      if (bufptr->iopage_buffer)
+      bufptr = (PGBUF_BCB *) thread_p->tran_bcb[i];
+      if (bufptr)
 	{
-	  free_and_init (bufptr->iopage_buffer);
+	  pthread_mutex_destroy (&bufptr->BCB_mutex);
+	  if (bufptr->iopage_buffer)
+	    {
+	      free_and_init (bufptr->iopage_buffer);
+	    }
+	  free_and_init (thread_p->tran_bcb[i]);
 	}
-      free_and_init (thread_p->tran_bcb);
     }
 }
-
-void
-pgbuf_finalize_tran_second_bcb (THREAD_ENTRY * thread_p)
-{
-  PGBUF_BCB *bufptr;
-  assert (thread_p != NULL);
-
-  bufptr = (PGBUF_BCB *) thread_p->tran_second_bcb;
-  if (bufptr)
-    {
-      pthread_mutex_destroy (&bufptr->BCB_mutex);
-      if (bufptr->iopage_buffer)
-	{
-	  free_and_init (bufptr->iopage_buffer);
-	}
-      free_and_init (thread_p->tran_bcb);
-    }
-}
-
 #endif
 
 /*

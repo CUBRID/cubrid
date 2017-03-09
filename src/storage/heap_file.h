@@ -751,4 +751,7 @@ extern int heap_get_best_space_num_stats_entries (void);
 
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
+#if defined(SERVER_MODE)
+extern int heap_copy_page_to_tran_bcb_area (THREAD_ENTRY * thread_p, const VPID * vpid, int size, PAGE_PTR * bcb_area);
+#endif
 #endif /* _HEAP_FILE_H_ */

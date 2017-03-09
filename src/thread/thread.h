@@ -106,6 +106,7 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_start_scan (NULL)
 
 #else /* !SERVER_MODE */
+#define TRAN_MAX_BCB 2
 
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
   ((thrd) ? (thrd)->index : thread_get_current_entry_index())
@@ -352,11 +353,8 @@ struct thread_entry
   struct fi_test_item *fi_test_array;
 #endif
 
-  /* TO DO - use an array */
-  void *tran_bcb;		/* Transaction BCB. Used to copy the page without latch. */
-  void *tran_second_bcb;	/* Transaction second BCB. Used to copy the page without latch. */
-  bool tran_bcb_used;		/* True, if transaction BCB was already acquired. */
-  bool tran_second_bcb_used;	/* True, if transaction second BCB was already acquired. */
+  void *tran_bcb[TRAN_MAX_BCB];	/* Array of transaction BCB. Used to copy the page without latch. */
+  bool tran_bcb_used[TRAN_MAX_BCB];	/* True, if corresponding transaction BCB was already acquired. */
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \

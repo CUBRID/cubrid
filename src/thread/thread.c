@@ -1075,6 +1075,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 {
   int r;
   struct timeval t;
+  int i;
 
   entry_p->index = -1;
   entry_p->tid = ((pthread_t) 0);
@@ -1173,11 +1174,11 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   fi_thread_init (entry_p);
 #endif
 
-  entry_p->tran_bcb = NULL;
-  entry_p->tran_bcb_used = false;
-
-  entry_p->tran_second_bcb = NULL;
-  entry_p->tran_second_bcb_used = false;
+  for (i = 0; i < TRAN_MAX_BCB; i++)
+    {
+      entry_p->tran_bcb[i] = NULL;
+      entry_p->tran_bcb_used[i] = false;
+    }
 
   return NO_ERROR;
 }
@@ -1264,8 +1265,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   fi_thread_final (entry_p);
 #endif
 
-  pgbuf_finalize_tran_bcb (entry_p);
-  pgbuf_finalize_tran_second_bcb (entry_p);
+  pgbuf_finalize_all_tran_bcb (entry_p);
   if (thread_return_transaction_entry (entry_p) != NO_ERROR)
     {
       return ER_FAILED;

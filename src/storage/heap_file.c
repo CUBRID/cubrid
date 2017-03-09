@@ -928,7 +928,6 @@ static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PT
 static int heap_log_delete_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool append_node, PAGE_PTR page_p,
 				     VFID * vfid_p, int offset, RECDES * recdes_p, bool mark_reusable,
 				     HEAP_LOG_INFO * physical_delete_log_info, LOG_LSA * undo_lsa);
-/* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
 			       MVCCID mvccid, bool is_mvcc_op);
 STATIC_INLINE int
@@ -7365,11 +7364,11 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
   int try_max = 1;
   int ret;
   bool is_system_class = false;
-  bool bcb_area_copied = false;
   VPID object_vpid;
   PAGE_PTR page_ptr;
 #if defined(SERVER_MODE)
   int copy_retry_count = 1, copy_retry_max = 5;
+  PAGE_COPY_STATUS page_copy_status;
 #endif
 
   assert (context->oid_p != NULL);
@@ -7402,20 +7401,20 @@ try_again:
 	try_copy_area_again:
 	  /* Copy the heap page to BCB area. */
 	  if (pgbuf_copy_to_bcb_area (thread_p, &object_vpid, context->bcb_area, DB_PAGESIZE,
-				      &bcb_area_copied) != NO_ERROR)
+				      &page_copy_status) != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error;
 	    }
 
-	  if (bcb_area_copied)
+	  if (page_copy_status == PAGE_COPIED)
 	    {
 	      page_ptr = context->bcb_area;
 	      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS);
 	      pgbuf_copy_log ("pgbuf_copy_page: Successfully copied heap page (%d, %d) \n",
 			      object_vpid.volid, object_vpid.pageid);
 	    }
-	  else
+	  else if (page_copy_status == PAGE_UNDER_MODIFICATION)
 	    {
 	      if (copy_retry_count < copy_retry_max)
 		{
@@ -7496,7 +7495,7 @@ prepare_object_page:
 	  /* Quick fix to avoid NULL group id issue and multi page object issue. Extending the optimization
 	   * for multi page object, requires additional processing.
 	   */
-	  pgbuf_release_tran_bcb_area (thread_p);
+	  pgbuf_release_tran_bcb_area (thread_p, page_ptr);
 	  context->bcb_area = NULL;
 	  page_ptr = NULL;
 	  goto prepare_object_page;
@@ -15876,7 +15875,6 @@ heap_create_update_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   LOG_PRIOR_NODE *update_log_node = NULL;
   RECDES *p_home_recdes_before_fix = NULL;
   bool has_home_record = false;
-  bool bcb_area_copied = false;
   char *redo_data_p = NULL, *undo_data_p = NULL;
   int copy_retry_count = 1, copy_retry_max = 3;
   HEAP_PAGE_VACUUM_STATUS flag_vacuum_status = HEAP_PAGE_VACUUM_NONE;
@@ -15886,7 +15884,6 @@ heap_create_update_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   VPID vpid;
   PGSLOTID slot_id = NULL_SLOTID;
   LOG_REC_UNDOREDO_DATA undoredo_data;
-  char *bcb_area = NULL, *second_bcb_area = NULL;
   HEAP_LOG_INFO update_log_info;
   RECDES *undo_recdes = NULL, *redo_recdes = NULL;
   int repid_and_flag_bits, mvcc_flags;
@@ -15907,141 +15904,52 @@ heap_create_update_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
       return NO_ERROR;
     }
 
-  rc = pgbuf_acquire_tran_bcb_area (thread_p, &bcb_area);
+  rc = heap_copy_page_to_tran_bcb_area (thread_p, &vpid, DB_PAGESIZE, &context->home_page_copy_before_fix);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
       return rc;
     }
-
-  /* TO DO - move to a function ncn copy area */
-  if (bcb_area)
+  if (context->home_page_copy_before_fix == NULL)
     {
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
-      pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area to copy heap page (%d, %d)\n",
-		      context->oid.volid, context->oid.pageid);
-      context->home_page_copy_before_fix = bcb_area;
-    }
-  else
-    {
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
-      pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area to copy heap page (%d, %d)\n",
-		      context->oid.volid, context->oid.pageid);
       return NO_ERROR;
     }
 
-try_copy_area_again:
-  /* Copy the heap page to BCB area. */
-  rc = pgbuf_copy_to_bcb_area (thread_p, &vpid, bcb_area, DB_PAGESIZE, &bcb_area_copied);
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
-
-  if (bcb_area_copied)
-    {
-      /* TO DO - add statistics for HEAP_PAGE_COPY_FOR_LOGGING */
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS);
-      pgbuf_copy_log ("pgbuf_copy_page: Successfully copied heap page (%d, %d) \n", vpid.volid, vpid.pageid);
-      context->home_page_copy_before_fix = bcb_area;
-    }
-  else
-    {
-      if (copy_retry_count < copy_retry_max)
-	{
-	  /* try again */
-	  copy_retry_count++;
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_RETRIES);
-	  pgbuf_copy_log ("pgbuf_copy_page: Retry %d to copy the heap page (%d,%d) without latch\n",
-			  copy_retry_count, vpid.volid, vpid.pageid);
-	  goto try_copy_area_again;
-	}
-      else
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED);
-	  pgbuf_copy_log ("pgbuf_copy_page: Can't copy the heap page (%d,%d) without latch after %d tries\n",
-			  vpid.volid, vpid.pageid, copy_retry_count);
-	  return NO_ERROR;
-	}
-    }
-
-  if (spage_get_record (bcb_area, context->oid.slotid, &context->home_recdes, PEEK) != S_SUCCESS)
+  if (spage_get_record (context->home_page_copy_before_fix, context->oid.slotid, &context->home_recdes,
+			PEEK) != S_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;
     }
-  context->fits_in_home = spage_is_updatable (thread_p, bcb_area, context->oid.slotid, context->recdes_p->length);
+  context->fits_in_home = spage_is_updatable (thread_p, context->home_page_copy_before_fix, context->oid.slotid,
+					      context->recdes_p->length);
 
   if (context->home_recdes.type == REC_RELOCATION || context->home_recdes.type == REC_BIGONE)
     {
       COPY_OID (&context->forward_oid, (OID *) context->home_recdes.data);
       VPID_SET (&vpid, context->forward_oid.volid, context->forward_oid.pageid);
 
-    try_copy_second_bcb_area_again:
-      rc = pgbuf_acquire_tran_bcb_area (thread_p, &second_bcb_area);
+      rc = heap_copy_page_to_tran_bcb_area (thread_p, &vpid, DB_PAGESIZE, &context->forward_page_copy_before_fix);
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return rc;
 	}
 
-      if (second_bcb_area)
+      if (context->forward_page_copy_before_fix == NULL)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
-	  pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area to copy heap page (%d, %d)\n",
-			  vpid.volid, vpid.pageid);
-	  context->forward_page_copy_before_fix = second_bcb_area;
-	}
-      else
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
-	  pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area to copy heap page (%d, %d)\n",
-			  vpid.volid, vpid.pageid);
+	  return NO_ERROR;
 	}
 
-
-      /* Copy the forward page to second BCB area. */
-      rc = pgbuf_copy_to_bcb_area (thread_p, &vpid, second_bcb_area, DB_PAGESIZE, &bcb_area_copied);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-
-      if (bcb_area_copied)
-	{
-	  /* TO DO - add statistics for HEAP_PAGE_COPY_FOR_LOGGING */
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS);
-	  pgbuf_copy_log ("pgbuf_copy_page: Successfully copied heap page (%d, %d) \n", vpid.volid, vpid.pageid);
-	}
-      else
-	{
-	  if (copy_retry_count < copy_retry_max)
-	    {
-	      /* try again */
-	      copy_retry_count++;
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_RETRIES);
-	      pgbuf_copy_log ("pgbuf_copy_page: Retry %d to copy the heap page (%d,%d) without latch\n",
-			      copy_retry_count, vpid.volid, vpid.pageid);
-	      goto try_copy_second_bcb_area_again;
-	    }
-	  else
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED);
-	      pgbuf_copy_log ("pgbuf_copy_page: Can't copy the heap page (%d,%d) without latch after %d tries\n",
-			      vpid.volid, vpid.pageid, copy_retry_count);
-	      return NO_ERROR;
-	    }
-	}
-
-      if (spage_get_record (second_bcb_area, context->forward_oid.slotid, &context->forward_recdes, PEEK) != S_SUCCESS)
+      if (spage_get_record (context->forward_page_copy_before_fix, context->forward_oid.slotid,
+			    &context->forward_recdes, PEEK) != S_SUCCESS)
 	{
 	  return ER_FAILED;
 	}
 
       context->fits_in_forward =
-	spage_is_updatable (thread_p, second_bcb_area, context->forward_oid.slotid, context->recdes_p->length);
+	spage_is_updatable (thread_p, context->forward_page_copy_before_fix, context->forward_oid.slotid,
+			    context->recdes_p->length);
     }
 
   switch (context->home_recdes.type)
@@ -16069,30 +15977,8 @@ try_copy_area_again:
 
     case REC_BIGONE:
 
-      /* TO DO heap_mvcc_update_bigone_prepare_log */
-
-      //if (spage_is_updatable (thread_p, bcb_area, context->oid.slotid, context->recdes_p->length))
-      {
-	/* set recovery index */
-	//  rcv_index = is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE;
-
-	//context->recdes_p->type = REC_HOME;
-
-	/* set slot id */
-	//slot_id = context->oid.slotid;
-
-	/* set undo/redo data */
-	//undo_data_p = p_home_recdes_before_fix;
-	//undo_data_size = sizeof (p_home_recdes_before_fix);
-	//redo_data_p = context->recdes_p;
-	//redo_data_size = sizeof (context->recdes_p);
-      }
-      /* TO DO - check all branches */
-      if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
-	{
-	  heap_page_update_chain_after_mvcc_op (thread_p, bcb_area, *mvccid, &flag_vacuum_status);
-	}
-
+      /* do not optimize this case for now */
+      return NO_ERROR;
       break;
 
     default:
@@ -16183,7 +16069,6 @@ heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
 {
   HEAP_LOG_INFO delete_log_info;
   PAGE_PTR page_copy_before_fix = NULL;
-  bool bcb_area_copied = false;
   char *redo_data_p = NULL, *undo_data_p = NULL;
   int copy_retry_count = 1, copy_retry_max = 3;
   int redo_data_size = 0, undo_data_size = 0;
@@ -16194,7 +16079,6 @@ heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   bool home_change_on_delete = false;
   RECDES *undo_recdes = NULL, *redo_recdes = NULL;
   int repid_and_flag_bits, mvcc_flags, length;
-  char *bcb_area = NULL, *second_bcb_area = NULL;
   LOG_REC_UNDOREDO_DATA *log_undoredo_data_p;
 
   assert (thread_p != NULL && tdes != NULL && context != NULL);
@@ -16206,66 +16090,16 @@ heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
       return NO_ERROR;
     }
 
-  rc = pgbuf_acquire_tran_bcb_area (thread_p, &bcb_area);
+  assert (context->home_page_copy_before_fix == NULL);
+  rc = heap_copy_page_to_tran_bcb_area (thread_p, &vpid, DB_PAGESIZE, &context->home_page_copy_before_fix);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
       return rc;
     }
 
-  if (bcb_area)
-    {
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
-      pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area to copy heap page (%d, %d)\n",
-		      context->oid.volid, context->oid.pageid);
-      context->home_page_copy_before_fix = bcb_area;
-    }
-  else
-    {
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
-      pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area to copy heap page (%d, %d)\n",
-		      context->oid.volid, context->oid.pageid);
-      return NO_ERROR;
-    }
-
-try_copy_area_again:
-  /* Copy the heap page to BCB area. */
-  rc = pgbuf_copy_to_bcb_area (thread_p, &vpid, bcb_area, DB_PAGESIZE, &bcb_area_copied);
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
-
-  if (bcb_area_copied)
-    {
-      /* TO DO - add statistics for HEAP_PAGE_COPY_FOR_LOGGING */
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS);
-      pgbuf_copy_log ("pgbuf_copy_page: Successfully copied heap page (%d, %d) \n", vpid.volid, vpid.pageid);
-      context->home_page_copy_before_fix = bcb_area;
-    }
-  else
-    {
-      if (copy_retry_count < copy_retry_max)
-	{
-	  /* try again */
-	  copy_retry_count++;
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_RETRIES);
-	  pgbuf_copy_log ("pgbuf_copy_page: Retry %d to copy the heap page (%d,%d) without latch\n",
-			  copy_retry_count, vpid.volid, vpid.pageid);
-	  goto try_copy_area_again;
-	}
-      else
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED);
-	  pgbuf_copy_log ("pgbuf_copy_page: Can't copy the heap page (%d,%d) without latch after %d tries\n",
-			  vpid.volid, vpid.pageid, copy_retry_count);
-	  /* do not use the optimization, since can't copy the page */
-	  return NO_ERROR;
-	}
-    }
-
-  if (spage_get_record (bcb_area, context->oid.slotid, &context->home_recdes, PEEK) != S_SUCCESS)
+  if (spage_get_record (context->home_page_copy_before_fix, context->oid.slotid, &context->home_recdes,
+			PEEK) != S_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;
@@ -16276,62 +16110,19 @@ try_copy_area_again:
       COPY_OID (&context->forward_oid, (OID *) context->home_recdes.data);
       VPID_SET (&vpid, context->forward_oid.volid, context->forward_oid.pageid);
 
-    try_copy_second_bcb_area_again:
-      rc = pgbuf_acquire_tran_bcb_area (thread_p, &second_bcb_area);
+      rc = heap_copy_page_to_tran_bcb_area (thread_p, &vpid, DB_PAGESIZE, &context->forward_page_copy_before_fix);
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return rc;
 	}
 
-      if (second_bcb_area)
+      if (spage_get_record (context->forward_page_copy_before_fix, context->forward_oid.slotid,
+			    &context->forward_recdes, PEEK) != S_SUCCESS)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
-	  pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area to copy heap page (%d, %d)\n",
-			  vpid.volid, vpid.pageid);
-	  context->forward_page_copy_before_fix = second_bcb_area;
-	}
-      else
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
-	  pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area to copy heap page (%d, %d)\n",
-			  vpid.volid, vpid.pageid);
+	  return ER_FAILED;
 	}
 
-
-      /* Copy the forward page to second BCB area. */
-      rc = pgbuf_copy_to_bcb_area (thread_p, &vpid, second_bcb_area, DB_PAGESIZE, &bcb_area_copied);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-
-      if (bcb_area_copied)
-	{
-	  /* TO DO - add statistics for HEAP_PAGE_COPY_FOR_LOGGING */
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS);
-	  pgbuf_copy_log ("pgbuf_copy_page: Successfully copied heap page (%d, %d) \n", vpid.volid, vpid.pageid);
-	}
-      else
-	{
-	  if (copy_retry_count < copy_retry_max)
-	    {
-	      /* try again */
-	      copy_retry_count++;
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_RETRIES);
-	      pgbuf_copy_log ("pgbuf_copy_page: Retry %d to copy the heap page (%d,%d) without latch\n",
-			      copy_retry_count, vpid.volid, vpid.pageid);
-	      goto try_copy_second_bcb_area_again;
-	    }
-	  else
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED);
-	      pgbuf_copy_log ("pgbuf_copy_page: Can't copy the heap page (%d,%d) without latch after %d tries\n",
-			      vpid.volid, vpid.pageid, copy_retry_count);
-	      return NO_ERROR;
-	    }
-	}
     }
 
   /* build the new record description and prepare log */
@@ -23305,6 +23096,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->overflow_page_watcher_p != NULL);
+  assert (context->log_info.node == NULL);
 
   /* read OID of overflow record */
   context->ovf_oid = *((OID *) context->home_recdes.data);
@@ -24855,14 +24647,12 @@ error:
 #if defined(SERVER_MODE)
   if (context->home_page_copy_before_fix)
     {
-      pgbuf_release_tran_bcb_area (thread_p);
-      context->home_page_copy_before_fix = NULL;
+      pgbuf_release_tran_bcb_area (thread_p, context->home_page_copy_before_fix);
     }
 
   if (context->forward_page_copy_before_fix)
     {
-      pgbuf_release_tran_second_bcb_area (thread_p);
-      context->forward_page_copy_before_fix = NULL;
+      pgbuf_release_tran_bcb_area (thread_p, context->forward_page_copy_before_fix);
     }
 #endif
 
@@ -24911,11 +24701,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rcv_index;
   bool is_mvcc_class;
   MVCCID mvccid = MVCCID_NULL;
-
-#if defined(SERVER_MODE)
-  char *bcb_area = NULL, *second_bcb_area = NULL;
-#endif
-
   /* 
    * Check input
    */
@@ -25168,13 +24953,13 @@ exit:
 #if defined(SERVER_MODE)
   if (context->home_page_copy_before_fix)
     {
-      pgbuf_release_tran_bcb_area (thread_p);
+      pgbuf_release_tran_bcb_area (thread_p, context->home_page_copy_before_fix);
       context->home_page_copy_before_fix = NULL;
     }
 
   if (context->forward_page_copy_before_fix)
     {
-      pgbuf_release_tran_second_bcb_area (thread_p);
+      pgbuf_release_tran_bcb_area (thread_p, context->forward_page_copy_before_fix);
       context->forward_page_copy_before_fix = NULL;
     }
 #endif
@@ -26773,7 +26558,7 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   if (context->bcb_area)
     {
       /* Release the transaction BCB area, in order to allow to copy another page. */
-      pgbuf_release_tran_bcb_area (thread_p);
+      pgbuf_release_tran_bcb_area (thread_p, context->bcb_area);
       context->bcb_area = NULL;
     }
 #endif
@@ -26985,3 +26770,80 @@ heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid
   hfid->hpgid = vpid_header.pageid;
   return NO_ERROR;
 }
+
+#if defined (SERVER_MODE)
+/*
+ * heap_copy_page_to_tran_bcb_area () - Copy page to transaction BCB area
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   vpid(in): VPID
+ *   size(in): copy size
+ *   bcb_area (out): transaction BCB area
+ */
+int
+heap_copy_page_to_tran_bcb_area (THREAD_ENTRY * thread_p, const VPID * vpid, int size, PAGE_PTR * bcb_area)
+{
+  int copy_retry_count = 1, copy_retry_max = 5, rc = NO_ERROR;
+  PAGE_COPY_STATUS page_copy_status;
+  assert (vpid != NULL && bcb_area != NULL);
+
+  rc = pgbuf_acquire_tran_bcb_area (thread_p, bcb_area);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return rc;
+    }
+
+  if (bcb_area)
+    {
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
+      pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area to copy heap page (%d, %d)\n",
+		      vpid->volid, vpid->pageid);
+    }
+  else
+    {
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
+      pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area to copy heap page (%d, %d)\n",
+		      vpid->volid, vpid->pageid);
+    }
+
+try_copy_area_again:
+  /* Copy the heap page to BCB area. */
+  rc = pgbuf_copy_to_bcb_area (thread_p, vpid, *bcb_area, DB_PAGESIZE, &page_copy_status);
+  if (rc != NO_ERROR)
+    {
+      pgbuf_release_tran_bcb_area (thread_p, *bcb_area);
+      ASSERT_ERROR ();
+      return rc;
+    }
+
+  if (page_copy_status == PAGE_COPIED)
+    {
+      /* TO DO - add statistics for HEAP_PAGE_COPY_FOR_LOGGING */
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_SUCCESS);
+      pgbuf_copy_log ("pgbuf_copy_page: Successfully copied heap page (%d, %d) \n", vpid->volid, vpid->pageid);
+    }
+  else if (page_copy_status == PAGE_UNDER_MODIFICATION)
+    {
+      if (copy_retry_count < copy_retry_max)
+	{
+	  /* try again */
+	  copy_retry_count++;
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_RETRIES);
+	  pgbuf_copy_log ("pgbuf_copy_page: Retry %d to copy the heap page (%d,%d) without latch\n",
+			  copy_retry_count, vpid->volid, vpid->pageid);
+	  goto try_copy_area_again;
+	}
+      else
+	{
+	  /* do not use the optimization, since can't copy the page */
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_COPY_NOLATCH_FAILED);
+	  pgbuf_copy_log ("pgbuf_copy_page: Can't copy the heap page (%d,%d) without latch after %d tries\n",
+			  vpid->volid, vpid->pageid, copy_retry_count);
+	  pgbuf_release_tran_bcb_area (thread_p, *bcb_area);
+	}
+    }
+
+  return NO_ERROR;
+}
+#endif
