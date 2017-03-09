@@ -447,7 +447,8 @@ extern void pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * l
 			      UINT64 * lru3_cnt, UINT64 * vict_candidates, UINT64 * avoid_dealloc_cnt,
 			      UINT64 * avoid_victim_cnt, UINT64 * private_quota, UINT64 * private_cnt,
 			      UINT64 * alloc_bcb_waiter_high, UINT64 * alloc_bcb_waiter_med,
-			      UINT64 * alloc_bcb_waiter_low, UINT64 * lfcq_prv_num, UINT64 * lfcq_shr_num);
+			      UINT64 * alloc_bcb_waiter_low, UINT64 * lfcq_big_prv_num, UINT64 * lfcq_prv_num,
+			      UINT64 * lfcq_shr_num);
 
 extern int pgbuf_flush_control_from_dirty_ratio (void);
 
