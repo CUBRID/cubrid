@@ -3469,9 +3469,11 @@ end:
 		check_count_lru);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
+#if defined (SERVER_MODE)
   /* safe-guard: when the system really needs victims, we must make sure flush does something. otherwise, we probably
    * messed something here. */
   assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim ());
+#endif /* SERVER_MODE */
 
   return error;
 }
@@ -7521,6 +7523,17 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	}
     }
 #endif /* SERVER_MODE */
+  else
+    {
+      /* flush */
+      pgbuf_wakeup_flush_thread (thread_p);
+
+      /* search lru lists again */
+      bufptr = pgbuf_get_victim (thread_p);
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM);
+
+      assert (bufptr != NULL);
+    }
 
 end:
   if (bufptr != NULL)
