@@ -15496,6 +15496,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
     {
       bool common_list_optimization = false;
       int recursive_iterations = 0;
+      int sys_prm_cte_max_recursions = prm_get_integer_value (PRM_ID_CTE_MAX_RECURSIONS);
 
       if (recursive_part->type == BUILDVALUE_PROC)
 	{
@@ -15511,11 +15512,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	{
 	  if (common_list_optimization == true)
 	    {
-	      recursive_part->max_iterations = prm_get_integer_value (PRM_ID_CTE_MAX_RECURSIONS);
+	      recursive_part->max_iterations = sys_prm_cte_max_recursions;
 	    }
 	  else
 	    {
-	      if (recursive_iterations++ >= prm_get_integer_value (PRM_ID_CTE_MAX_RECURSIONS))
+	      if (recursive_iterations++ >= sys_prm_cte_max_recursions)
 		{
 		  break;
 		}
