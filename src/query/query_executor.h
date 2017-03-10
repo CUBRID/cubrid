@@ -967,7 +967,8 @@ struct xasl_node
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
-  int max_iterations;
+
+  int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
 };
 
 struct pred_expr_with_context
