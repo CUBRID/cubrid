@@ -3747,8 +3747,6 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 		      const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa, int *time_rem)
 {
   PGBUF_BCB *bufptr;
-  VPID vpid;
-  PAGE_PTR pgptr;
   double sleep_msecs = 0;
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
@@ -7965,8 +7963,6 @@ pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, in
 static int
 pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int synchronous, bool * locked)
 {
-  PGBUF_HOLDER *holder;
-  PGBUF_LATCH_MODE saved_latch_mode;
   int error_code = NO_ERROR;
 
   assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
@@ -9812,9 +9808,6 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
 STATIC_INLINE int
 pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is_bcb_locked)
 {
-#if defined(SERVER_MODE)
-  THREAD_ENTRY *thrd_entry;
-#endif /* SERVER_MODE */
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
   LOG_LSA oldest_unflush_lsa;
@@ -13266,7 +13259,8 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 	  prv_flush_ratio = 1.0f;
 	  /* we can compute the zone 3 total size (for privates, zones 1 & 2 are both set to minimum ratio). */
 	  total_prv_target =
-	    (pgbuf_Pool.num_buffers - pgbuf_Pool.monitor.lru_shared_pgs_cnt) * (1.0f - 2 * PGBUF_LRU_ZONE_MIN_RATIO);
+	    (int) ((pgbuf_Pool.num_buffers - pgbuf_Pool.monitor.lru_shared_pgs_cnt)
+		   * (1.0f - 2 * PGBUF_LRU_ZONE_MIN_RATIO));
 	}
     }
   shared_flush_ratio = 1.0f - prv_flush_ratio;
