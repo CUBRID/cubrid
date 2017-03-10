@@ -1096,8 +1096,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 60 无效的或损坏的输入文件夹.\n
 61 \
 gen_tz: 生成包含时区数据的源文件并编译成一个共享库.\n\
-用法: %s gen_tz [选项]\n\
-       %s gen_tz -g extend [选项] [数据库名]\n\
+用法: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 可用选项:\n\
   -i, --input-folder    指定一个输入文件夹的路径，文件夹必须包含一个IANA的时区\n\
@@ -1108,14 +1107,18 @@ gen_tz: 生成包含时区数据的源文件并编译成一个共享库.\n\
                         1. NEW (默认): 不考虑之前的版本，直接生成共享库所需的时\n\
                         区源文件; 也会生成包含所有国家和时区名字的源文件 (只为\n\
                         开发者使用, 将来会集成到CUBRID新版本中).\n\
-                        2. EXTEND: 用输入文件夹中的数据生成时区源文件; 已经编\n\
-                        入CUBRID中的时区ID会被保留; 输入文件夹中找到的新的时区\n\
-                        会被增加到第二个源文件(如果没有也会生成)中; GMT偏移和\n\
-                        夏令时信息会被更新(或者为新的时区增加); 如果已编入CUBRID\n\
-                        的时区在输入文件中缺失, 该时区也绝不会被移除, 其相关的\n\
-                        数据会从已存在的时区库中恢复. 新时区库使用之前, 必须确\n\
-                        保新生成的包含所有时区名字的C文件已经存放到了CUBRID的源\n\
-                        代码文件夹中.\n
+                        2. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removed if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 提供的区域ID超出了范围, 用 -z 可以查看所有的时区和它们的ID.\n

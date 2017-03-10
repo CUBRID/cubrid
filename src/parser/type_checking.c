@@ -4745,6 +4745,49 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_CONV_TZ:
+      num = 0;
+      /* four overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMETZ;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMETZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIMELTZ;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIMELTZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPTZ;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMESTAMPTZ;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMPLTZ;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIMESTAMPLTZ;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_TO_DATETIME_TZ:
       num = 0;
 
@@ -6883,6 +6926,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_UTC_TIMESTAMP:
     case PT_CRC32:
     case PT_SCHEMA_DEF:
+    case PT_CONV_TZ:
       return false;
 
     default:
@@ -8249,11 +8293,17 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       else
 	{
 	  /* check that signatures are compatible */
-
 	  if (node->node_type == PT_CTE)
 	    {
 	      arg1 = node->info.cte.non_recursive_part;
 	      arg2 = node->info.cte.recursive_part;
+	      if (arg2 != NULL && (pt_false_where (parser, arg1) || pt_false_where (parser, arg2)))
+		{
+		  /* the recursive_part can be removed if one of the parts has false_where */
+		  parser_free_tree (parser, node->info.cte.recursive_part);
+		  arg2 = node->info.cte.recursive_part = NULL;
+		}
+
 	      if (arg2 == NULL)
 		{
 		  /* then the CTE is not recursive (just one part) */
@@ -10348,7 +10398,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      cast_type = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
 	      cast_type->info.data_type.collation_id = PT_GET_COLLATION_MODIFIER (node);
 	      cast_type->info.data_type.units = lc->codeset;
-	      PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_CAST_COLL_MODIFIER);
 	    }
 	  else
 	    {
@@ -18952,6 +19001,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
     case PT_TO_DATETIME_TZ:
       error = db_to_datetime (arg1, arg2, arg3, DB_TYPE_DATETIMETZ, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+      break;
+
+    case PT_CONV_TZ:
+      error = db_conv_tz (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

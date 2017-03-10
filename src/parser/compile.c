@@ -113,7 +113,7 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec, VIEW_HANDLING how)
   flat = spec->info.spec.flat_entity_list;
   range = spec->info.spec.range_var;
 
-  if (spec->info.spec.derived_table && spec->info.spec.flat_entity_list && spec->info.spec.as_attr_list)
+  if (PT_SPEC_IS_DERIVED (spec) && spec->info.spec.flat_entity_list && spec->info.spec.as_attr_list)
     {
       /* this spec should have come from a vclass that was rewritten as a derived table; pull ROWOID/CLASSOID from
        * as_attr_list NOTE: see mq_rewrite_derived_table_for_update () */

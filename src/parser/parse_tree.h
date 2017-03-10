@@ -741,15 +741,15 @@
 
 /* PT_SPEC node contains a derived table */
 #define PT_SPEC_IS_DERIVED(spec_) \
-  (spec_->info.spec.derived_table != NULL)
+  ((spec_)->info.spec.derived_table != NULL)
 
 /* PT_SPEC node contains a CTE pointer */
 #define PT_SPEC_IS_CTE(spec_) \
-  (spec_->info.spec.cte_pointer != NULL)
+  ((spec_)->info.spec.cte_pointer != NULL)
 
 /* PT_SPEC node contains an entity spec */
 #define PT_SPEC_IS_ENTITY(spec_) \
-  (spec_->info.spec.entity_name != NULL)
+  ((spec_)->info.spec.entity_name != NULL)
 
 #define PT_IS_FALSE_WHERE_VALUE(node) \
  (((node) != NULL && (node)->node_type == PT_VALUE \
@@ -1522,6 +1522,7 @@ typedef enum
   PT_UTC_TIMESTAMP,
   PT_CRC32,
   PT_SCHEMA_DEF,
+  PT_CONV_TZ,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE

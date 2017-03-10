@@ -1096,8 +1096,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: 共有ライブラリにコンパイルするタイムゾーンデータが含まれている\n\
         ソースファイルを生成します。\n\
-使い方: %s gen_tz [OPTION]\n\
-        %s gen_tz -g extend [OPTION] [database-name]\n\
+使い方: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 オプション:\n\
   -i, --input-folder    IANAのタイムゾーンデータベースファイルのバージョンが\n\
@@ -1110,18 +1109,18 @@ gen_tz: 共有ライブラリにコンパイルするタイムゾーンデータ
                         また、すべての国とタイムゾーン名を含むソースファイルを\n\
                         生成します（開発者の使用を目的と将来のCUBRIDのバージョンに\n\
                         統合されるように）。\n\
-                        2. EXTEND : 入力フォルダからのデータを使用して、\n\
-                        タイムゾーンのソースファイルを生成します; CUBRIDに\n\
-                        エンコードタイムゾーンIDが保持されます; 入力ファイルで\n\
-                        見つかった新しいタイムゾーンは、2次ソース・ファイルに\n\
-                        追加され、何もない場合にも生成されます; GMTオフセットと\n\
-                        夏時間の情報が更新されたり、新しいタイムゾーンとして追加\n\
-                        されます; タイムゾーンがCUBRIDにエンコードされて入った\n\
-                        場合、まったく削除されません, 関連データは、既存の\n\
-                        タイムゾーンのライブラリから取得されます。すべての\n\
-                        タイムゾーン名を含む新しいCファイルが生成され、新しい\n\
-                        タイムゾーンのライブラリを使用する前には、CUBRID\n\
-                        ソースファイルフォルダに含まれている必要があります。\n
+                       2. EXTEND : generate timezone source file(s) using the\n\
+                        data from the input folder;new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
+                        information is updated (or added, for new timezones);\n\
+                        timezones are never removed if a timezone encoded into\n\
+                        CUBRID is missing from the input files, the associated\n\
+                        data is retrieved from the existing timezone library.\n\
+                        If necessary, when the first phase of extend fails to make\n\
+                        all the data backward compatible an update is performed which\n\
+                        modifies the timezone ids and the date and time info stored in\n\
+                        the tables of the database which contain columns of timezone data\n\
+                        type.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 供給されたゾーンIDは範囲を超えました。すべてのタイムゾーンとそのIDを\n\

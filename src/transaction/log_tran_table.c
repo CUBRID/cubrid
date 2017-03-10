@@ -6921,7 +6921,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   int i, idx, msecs, error = NO_ERROR;
-  char buf[512], vpid_buf[64], vfid_buf[64];
+  char buf[512];
   const char *str;
   time_t tval;
   INT64 i64val;

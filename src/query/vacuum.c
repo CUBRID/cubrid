@@ -723,6 +723,10 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   /* Compute the capacity of one vacuum data page. */
   vacuum_Data.page_data_max_count = (DB_PAGESIZE - VACUUM_DATA_PAGE_HEADER_SIZE) / sizeof (VACUUM_DATA_ENTRY);
 
+#if defined (SA_MODE)
+  vacuum_Data.is_vacuum_complete = false;
+#endif
+
   /* Initialize vacuum dropped files */
   vacuum_Dropped_files_loaded = false;
   VFID_COPY (&vacuum_Dropped_files_vfid, dropped_files_vfid);

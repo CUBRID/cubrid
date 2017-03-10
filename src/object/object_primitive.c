@@ -4437,6 +4437,13 @@ mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
   ts_tz1 = DB_GET_TIMESTAMPTZ (value1);
   ts_tz2 = DB_GET_TIMESTAMPTZ (value2);
 
+#if defined (SA_MODE)
+  if (tz_Compare_timestamptz_tz_id == true && ts_tz1->tz_id != ts_tz2->tz_id)
+    {
+      return DB_NE;
+    }
+#endif
+
   return MR_CMP (ts_tz1->timestamp, ts_tz2->timestamp);
 }
 
@@ -4999,6 +5006,13 @@ mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int
 
   dt1 = &(dt_tz1->datetime);
   dt2 = &(dt_tz2->datetime);
+
+#if defined (SA_MODE)
+  if (tz_Compare_datetimetz_tz_id == true && dt_tz1->tz_id != dt_tz2->tz_id)
+    {
+      return DB_NE;
+    }
+#endif /* SA_MODE */
 
   if (dt1->date < dt2->date)
     {

@@ -15434,6 +15434,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
   if (xasl->status == XASL_SUCCESS)
     {
+      /* early exit, CTEs should be executed only once */
       return NO_ERROR;
     }
 
@@ -15517,7 +15518,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	    {
 	      first_iteration = false;
 	      if (recursive_part->proc.buildlist.groupby_list || recursive_part->orderby_list
-		  || recursive_part->instnum_val != NULL)
+		  || recursive_part->instnum_val != NULL || recursive_part->proc.buildlist.a_eval_list != NULL)
 		{
 		  /* future specific optimizations, changes, etc */
 		}
@@ -15538,7 +15539,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
       /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
        * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
        */
-      qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true);
+      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true) != NO_ERROR)
+	{
+	  QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	  GOTO_EXIT_ON_ERROR;
+	}
 
       if (save_recursive_list_id != NULL)
 	{
@@ -21246,11 +21251,22 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   int i, j, k;
   int error = NO_ERROR;
   int function_index_pos = -1;
-  int index_position = 0;
+  int index_position = 0, size_values = 0;
   int num_idx_att = 0;
   char *comment = NULL;
   int alloced_string = 0;
+  HL_HEAPID save_heapid = 0;
 
+  assert (xasl != NULL && xasl_state != NULL);
+
+  for (regu_var_p = xasl->outptr_list->valptrp, i = 0; regu_var_p; regu_var_p = regu_var_p->next, i++)
+    {
+      if (REGU_VARIABLE_IS_FLAGED (&regu_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+	{
+	  save_heapid = db_change_private_heap (thread_p, 0);
+	  break;
+	}
+    }
   if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -21270,6 +21286,22 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   if (rep == NULL)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  size_values = xasl->outptr_list->valptr_cnt;
+  assert (size_values == 13);
+  out_values = (DB_VALUE **) malloc (size_values * sizeof (DB_VALUE *));
+  if (out_values == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size_values * sizeof (DB_VALUE *));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  for (regu_var_p = xasl->outptr_list->valptrp, i = 0; regu_var_p; regu_var_p = regu_var_p->next, i++)
+    {
+      out_values[i] = &(regu_var_p->value.value.dbval);
+      pr_clear_value (out_values[i]);
     }
 
   disk_repr_p = catalog_get_representation (thread_p, class_oid, rep->id, NULL);
@@ -21321,18 +21353,6 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  db_private_free_and_init (thread_p, string);
 	}
-    }
-
-  assert (xasl->outptr_list->valptr_cnt == 13);
-  out_values = (DB_VALUE **) malloc (xasl->outptr_list->valptr_cnt * sizeof (DB_VALUE *));
-  if (out_values == NULL)
-    {
-      GOTO_EXIT_ON_ERROR;
-    }
-
-  for (regu_var_p = xasl->outptr_list->valptrp, i = 0; regu_var_p; regu_var_p = regu_var_p->next, i++)
-    {
-      out_values[i] = &(regu_var_p->value.value.dbval);
     }
 
   class_name = or_class_name (&class_record);
@@ -21549,12 +21569,23 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       db_private_free_and_init (thread_p, tplrec.tpl);
     }
 
+  if (save_heapid != 0)
+    {
+      (void) db_change_private_heap (thread_p, save_heapid);
+      save_heapid = 0;
+    }
+
   return NO_ERROR;
 
 exit_on_error:
 
   if (out_values)
     {
+      for (i = 0; i < size_values; i++)
+	{
+	  pr_clear_value (out_values[i]);
+	}
+
       free_and_init (out_values);
     }
   if (attr_ids)
@@ -21598,6 +21629,12 @@ exit_on_error:
   if (tplrec.tpl)
     {
       db_private_free_and_init (thread_p, tplrec.tpl);
+    }
+
+  if (save_heapid != 0)
+    {
+      (void) db_change_private_heap (thread_p, save_heapid);
+      save_heapid = 0;
     }
 
   xasl->status = XASL_FAILURE;

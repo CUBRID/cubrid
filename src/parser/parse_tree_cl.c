@@ -3907,6 +3907,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "crc32 ";
     case PT_SCHEMA_DEF:
       return "schema_def";
+    case PT_CONV_TZ:
+      return "conv_tz";
     default:
       return "unknown opcode";
     }
@@ -9402,7 +9404,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   /* check if a partition pruned SPEC */
-  if (p->info.spec.entity_name && p->partition_pruned)
+  if (PT_SPEC_IS_ENTITY (p) && p->partition_pruned)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -9413,7 +9415,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
   /* check if a sublist */
-  else if (p->info.spec.entity_name && p->info.spec.entity_name->next)
+  else if (PT_SPEC_IS_ENTITY (p) && p->info.spec.entity_name->next)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -9424,7 +9426,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
   /* else is a single class entity spec */
-  else if (p->info.spec.entity_name)
+  else if (PT_SPEC_IS_ENTITY (p))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
@@ -14576,8 +14578,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  /* for derived_table alias should be printed e.g.  create table t2(id int primary key) as select id from
 	   * (select count(*) id from t1) */
-	  derived_table = from->info.spec.derived_table;
-	  if (derived_table != NULL)
+	  if (PT_SPEC_IS_DERIVED (from))
 	    {
 	      save_custom = parser->custom_print;
 	      parser->custom_print |= PT_PRINT_ALIAS;
@@ -14585,7 +14586,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  r1 = pt_print_bytes_spec_list (parser, from);
 
-	  if (derived_table != NULL)
+	  if (PT_SPEC_IS_DERIVED (from))
 	    {
 	      parser->custom_print = save_custom;
 	    }
@@ -17464,15 +17465,8 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* attribute list */
   q = pt_append_nulstring (parser, q, "(");
-  for (list = p->info.cte.as_attr_list; list != NULL; list = list->next)
-    {
-      r1 = pt_print_bytes_l (parser, list);
-      q = pt_append_varchar (parser, q, r1);
-      if (list->next != NULL)
-	{
-	  q = pt_append_nulstring (parser, q, ", ");
-	}
-    }
+  r1 = pt_print_bytes_l (parser, p->info.cte.as_attr_list);
+  q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, ")");
 
   /* AS keyword */
@@ -17784,6 +17778,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_FROM_BASE64:
 	case PT_TZ_OFFSET:
 	case PT_CRC32:
+	case PT_CONV_TZ:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:

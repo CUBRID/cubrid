@@ -4261,9 +4261,8 @@ pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec)
 
   /* for classes, it is safe to prune unreferenced attributes. we do not have the same luxury with derived tables, so
    * get them all (and in order). */
-  table_info->attribute_list = (table_spec->info.spec.flat_entity_list != NULL
-				&& table_spec->info.spec.derived_table ==
-				NULL) ? table_spec->info.spec.referenced_attrs : table_spec->info.spec.as_attr_list;
+  table_info->attribute_list = (table_spec->info.spec.flat_entity_list != NULL && PT_SPEC_IS_ENTITY (table_spec))
+    ? table_spec->info.spec.referenced_attrs : table_spec->info.spec.as_attr_list;
 
   table_info->value_list = pt_make_val_list (parser, table_info->attribute_list);
 
@@ -7197,7 +7196,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_TO_BASE64 || node->info.expr.op == PT_FROM_BASE64
 		       || node->info.expr.op == PT_FROM_BASE64 || node->info.expr.op == PT_SLEEP
 		       || node->info.expr.op == PT_TZ_OFFSET || node->info.expr.op == PT_CRC32
-		       || node->info.expr.op == PT_DISK_SIZE)
+		       || node->info.expr.op == PT_DISK_SIZE || node->info.expr.op == PT_CONV_TZ)
 		{
 		  r1 = NULL;
 
@@ -8519,7 +8518,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			    regu = r2;
 			  }
 			regu->domain = domain;
-			REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_APPLY_COLLATION);
+			if (!(arg != NULL && arg->node_type == PT_NAME && arg->type_enum == PT_TYPE_ENUMERATION))
+			  {
+			    REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_APPLY_COLLATION);
+			  }
 		      }
 		    else
 		      {
@@ -8680,6 +8682,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_TZ_OFFSET:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_TZ_OFFSET, domain);
+		  break;
+
+		case PT_CONV_TZ:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_CONV_TZ, domain);
 		  break;
 
 		case PT_TRACE_STATS:
@@ -12031,8 +12037,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   METHOD_SIG_LIST *method_sig_list;
 
   /* every cselect must have a subquery for its source list file, this is pointed to by the methods of the cselect */
-  if (!cselect || !(cselect->node_type == PT_METHOD_CALL) || !src_derived_tbl
-      || !src_derived_tbl->info.spec.derived_table)
+  if (!cselect || !(cselect->node_type == PT_METHOD_CALL) || !src_derived_tbl || !PT_SPEC_IS_DERIVED (src_derived_tbl))
     {
       return NULL;
     }
@@ -12072,7 +12077,6 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
   PT_NODE *saved_current_class;
   TABLE_INFO *tbl_info;
   REGU_VARIABLE_LIST regu_attributes_pred, regu_attributes_rest;
-  REGU_VARIABLE *regu_cte_def;
   ACCESS_SPEC_TYPE *access;
   PT_NODE *pred_attrs = NULL, *rest_attrs = NULL;
   int *pred_offsets = NULL, *rest_offsets = NULL;
@@ -12169,11 +12173,11 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 {
   ACCESS_SPEC_TYPE *access = NULL;
 
-  if (spec->info.spec.flat_entity_list != NULL && spec->info.spec.derived_table == NULL)
+  if (spec->info.spec.flat_entity_list != NULL && !PT_SPEC_IS_CTE (spec) && !PT_SPEC_IS_DERIVED (spec))
     {
       access = pt_to_class_spec_list (parser, spec, where_key_part, where_part, plan, index_part);
     }
-  else if (spec->info.spec.derived_table != NULL)
+  else if (PT_SPEC_IS_DERIVED (spec))
     {
       /* derived table index_part better be NULL here! */
       if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
@@ -12198,7 +12202,7 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
   else
     {
       /* there is a cte_pointer inside spec */
-      assert (spec->info.spec.cte_pointer != NULL);
+      assert (PT_SPEC_IS_CTE (spec));
 
       /* the subquery should be in non_recursive_part of the cte */
       access = pt_to_cte_table_spec_list (parser, spec, spec->info.spec.cte_pointer->info.pointer.node, where_part);
@@ -16718,7 +16722,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 	}
 
       /* set as zero correlation-level; this uncorrelated subquery need to be executed at most one time */
-      if (node->info.query.correlation_level == 0)
+      if ((PT_IS_QUERY (node) && node->info.query.correlation_level == 0) || node->node_type == PT_CTE)
 	{
 	  XASL_SET_FLAG (xasl, XASL_ZERO_CORR_LEVEL);
 	}
@@ -23555,6 +23559,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_FROM_BASE64:
 	case T_TZ_OFFSET:
 	case T_CRC32:
+	case T_CONV_TZ:
 	  break;
 	default:
 	  return true;

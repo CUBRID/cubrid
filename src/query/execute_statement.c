@@ -6722,12 +6722,9 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
 
   assert (parser->query_id == NULL_QUERY_ID);
 
-  if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var && ((statement = pt_to_upd_del_query (parser, column_names, column_values, from, class_specs, where, using_index, order_by, orderby_for, 0	/* not 
-																											 * server 
-																											 * update 
-																											 */ ,
-													      S_UPDATE))
-									    != NULL))
+  if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var
+      && ((statement = pt_to_upd_del_query (parser, column_names, column_values, from, class_specs, where, using_index,
+					    order_by, orderby_for, 0 /* not server update */ , S_UPDATE)) != NULL))
     {
       err = pt_copy_upddel_hints_to_select (parser, update_stmt, statement);
       if (err != NO_ERROR)
@@ -7184,7 +7181,7 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
     {
       return NO_ERROR;
     }
-  if (spec->info.spec.derived_table == NULL)
+  if (PT_SPEC_IS_ENTITY (spec))
     {
       if (spec->info.spec.entity_name->node_type == PT_NAME)
 	{
@@ -7215,6 +7212,13 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
 	  return NO_ERROR;
 	}
     }
+
+  if (PT_SPEC_IS_CTE (spec))
+    {
+      PT_ERROR (parser, spec, "CTE not handled");
+      return ER_FAILED;
+    }
+
   /* We're in the context of a table update/insert etc. This is possible only if the derived table is a SELECT and has
    * only one updated class */
   derived = spec->info.spec.derived_table;

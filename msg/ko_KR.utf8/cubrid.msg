@@ -1717,6 +1717,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 294 local timezone 타입에 대해서 함수 인덱스나 필터링된 인덱스를 사용할 수 없습니다.
 295 SELECT INTO is not allowed in subqueries.
 296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

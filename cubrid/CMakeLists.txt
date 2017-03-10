@@ -67,7 +67,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/stack_dump.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
-  ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/uca_support.c
   ${BASE_DIR}/unicode_support.c

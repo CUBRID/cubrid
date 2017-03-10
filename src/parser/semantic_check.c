@@ -5373,6 +5373,7 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_UTC_TIMESTAMP:
+    case PT_CONV_TZ:
       break;
 
       /* PT_DRAND and PT_DRANDOM are not supported regardless of whether a seed is given or not. because they produce
@@ -9908,17 +9909,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node)
 	{
 	  pt_coerce_insert_values (parser, node);
-	}
-      break;
-
-    case PT_CTE:
-      if (node->info.cte.recursive_part != NULL
-	  && (pt_false_where (parser, node->info.cte.recursive_part)
-	      || pt_false_where (parser, node->info.cte.non_recursive_part)))
-	{
-	  /* the recursive_part can be removed if one of the parts has false_where */
-	  parser_free_tree (parser, node->info.cte.recursive_part);
-	  node->info.cte.recursive_part = NULL;
 	}
       break;
 
@@ -14926,6 +14916,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
 	case PT_TO_TIME_TZ:
+	case PT_CONV_TZ:
 	  /* valid expression, nothing to do */
 	  break;
 	case PT_NOT:
@@ -15755,6 +15746,17 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
 	}
     }
 
+  /* check if folding would require merging WITH clauses; in this case we give up folding */
+  if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
+    {
+      PT_NODE *active = (fold_as == STATEMENT_SET_FOLD_AS_ARG1 ? arg1 : arg2);
+
+      if (PT_IS_QUERY_NODE_TYPE (active) && active->info.query.with != NULL && union_node->info.query.with != NULL)
+	{
+	  fold_as = STATEMENT_SET_FOLD_NOTHING;
+	}
+    }
+
   return fold_as;
 }
 
@@ -15795,7 +15797,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {
       PT_NODE *active;
-      PT_NODE *union_orderby, *union_orderby_for, *union_limit;
+      PT_NODE *union_orderby, *union_orderby_for, *union_limit, *union_with_clause;
       unsigned int union_rewrite_limit;
 
       if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
@@ -15812,6 +15814,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       union_orderby_for = union_node->info.query.orderby_for;
       union_limit = union_node->info.query.limit;
       union_rewrite_limit = union_node->info.query.rewrite_limit;
+      union_with_clause = union_node->info.query.with;
 
       /* When active node has a limit or orderby_for clause and union node has a limit or ORDERBY clause, need a
        * derived table to keep both conflicting clauses. When a subquery has orderby clause without
@@ -15847,6 +15850,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	{
 	  union_node->info.query.q.union_.arg2 = NULL;	/* to save arg2 to fold */
 	}
+      union_node->info.query.with = NULL;
 
       parser_free_tree (parser, union_node);
 
@@ -15860,6 +15864,11 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	{
 	  new_node->info.query.limit = union_limit;
 	  new_node->info.query.rewrite_limit = union_rewrite_limit;
+	}
+      if (union_with_clause)
+	{
+	  assert (new_node->info.query.with == NULL);
+	  new_node->info.query.with = union_with_clause;
 	}
 
       /* check the union's orderby or limit clause if present */
