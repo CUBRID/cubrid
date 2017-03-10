@@ -7959,8 +7959,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
       if (max_recursive_iterations_reached)
 	{
-	  xb_scan = S_END;
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CTE_MAX_RECURSION_REACHED, 1, xasl->max_iterations);
+	  xb_scan = S_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CTE_MAX_RECURSION_REACHED, 1, xasl->max_iterations);
 	  break;
 	}
 
