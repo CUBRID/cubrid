@@ -401,8 +401,10 @@ enum param_id
   PRM_ID_DISK_LOGGING,
   PRM_ID_FILE_LOGGING,
 
+  PRM_ID_CTE_MAX_RECURSIONS,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_FILE_LOGGING
+  PRM_LAST_ID = PRM_ID_CTE_MAX_RECURSIONS
 };
 
 /*
