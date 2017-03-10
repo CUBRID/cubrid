@@ -2730,12 +2730,24 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    }
 	  /* resolve insert attributes, values */
 	  pt_bind_names_merge_insert (parser, node, bind_arg, &scopestack, &spec_frame);
+	  if (pt_has_error (parser))
+	    {
+	      node = NULL;
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
 	}
 
       if (node->info.merge.update.assignment)
 	{
 	  /* resolved update assignment list */
 	  pt_bind_names_merge_update (parser, node, bind_arg, &scopestack, &spec_frame);
+	  if (pt_has_error (parser))
+	    {
+	      node = NULL;
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
 	}
 
       assert (node->info.merge.into->next == NULL);
@@ -2747,8 +2759,20 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
+      if (pt_has_error (parser))
+	{
+	  node = NULL;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
 
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+      if (pt_has_error (parser))
+	{
+	  node = NULL;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
 
       /* flag any "correlated" names as undefined. make sure etc is NULL. */
       save_etc = node->info.merge.into->etc;
@@ -2756,6 +2780,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       parser_walk_tree (parser, node->info.merge.insert.value_clauses, pt_undef_names_pre, node->info.merge.into, NULL,
 			NULL);
       node->info.merge.into->etc = save_etc;
+      if (pt_has_error (parser))
+	{
+	  node = NULL;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
 
       bind_arg->spec_frames = bind_arg->spec_frames->next;
       bind_arg->scopes = bind_arg->scopes->next;
@@ -2892,6 +2922,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	if (temp)
 	  {
 	    node = temp;
+	  }
+	else if (pt_has_error (parser))
+	  {
+	    return NULL;
 	  }
 
 	if (!(node->node_type == PT_DOT_
@@ -9137,12 +9171,22 @@ pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAM
 	  assignment->info.expr.arg1->info.expr.arg1 =
 	    parser_walk_tree (parser, assignment->info.expr.arg1->info.expr.arg1, pt_bind_names, bind_arg,
 			      pt_bind_names_post, bind_arg);
+	  if (assignment->info.expr.arg1->info.expr.arg1 == NULL)
+	    {
+	      assert (pt_has_error (parser));
+	      return;
+	    }
 	}
       else
 	{
 	  assignment->info.expr.arg1 =
 	    parser_walk_tree (parser, assignment->info.expr.arg1, pt_bind_names, bind_arg, pt_bind_names_post,
 			      bind_arg);
+	  if (assignment->info.expr.arg1 == NULL)
+	    {
+	      assert (pt_has_error (parser));
+	      return;
+	    }
 	}
     }
 
@@ -9158,6 +9202,11 @@ pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAM
     {
       assignment->info.expr.arg2 =
 	parser_walk_tree (parser, assignment->info.expr.arg2, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+      if (assignment->info.expr.arg2 == NULL)
+	{
+	  assert (pt_has_error (parser));
+	  return;
+	}
     }
   node->info.merge.into->next = NULL;
 }
