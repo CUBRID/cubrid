@@ -1260,9 +1260,9 @@ $ LOADDB
 1191 Exécution de nettoyage autonome est terminé.
 1192 La précision de la valeur de %1$zu dépasse le maximum autorisé %2$d.
 1193 La dimension de l'expression de partition traité dépasse le maximum autorisé(%1$d).
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1194 Unable to check file %1$d|%2$d because lock on class %3$d|%4$d|%5$d is not immediately granted.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Maximum recursions %1d reached executing CTE.
+1196 Maximum recursions %1$d reached executing CTE.
 1197 Dernière erreur
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
