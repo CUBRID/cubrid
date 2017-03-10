@@ -21454,7 +21454,7 @@ heap_create_insert_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   slotid = NULL_SLOTID;
 
   HEAP_RESET_LOG_INFO (&insert_log_info);
-  if (is_mvcc_op == false || ins_context->recdes_p->type != REC_BIGONE)
+  if (is_mvcc_op == false || ins_context->recdes_p->type == REC_BIGONE)
     {
       return NO_ERROR;
     }
@@ -22223,7 +22223,6 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 	  context->recdes_p->type = REC_NEWHOME;
 	  if (heap_insert_newhome (thread_p, context, context->recdes_p, &context->new_forward_oid, NULL) != NO_ERROR)
 	    {
-	      /* TO DO - return error code */
 	      return ER_FAILED;
 	    }
 
@@ -22358,7 +22357,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 	}
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-      /* TO DO - add new members in context */
       rc = heap_mvcc_delete_relocation_prepare_log_data (thread_p, tdes, true, mvcc_id, context, &undoredo_data);
       if (rc != NO_ERROR)
 	{
@@ -23253,6 +23251,7 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
   HEAP_PAGE_VACUUM_STATUS flag_vacuum_status = HEAP_PAGE_VACUUM_NONE;
   PAGE_PTR home_page_ptr = NULL, forward_page_ptr = NULL;
   LOG_RCVINDEX rcv_index = RV_NOT_DEFINED;
+  RECDES *new_home_recdes = NULL;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -23260,7 +23259,7 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 
   LOG_RESET_REC_UNDOREDO_DATA (undoredo_data_p);
   rcv_index = is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE;
-  /* set local recovery data *//* TO DO check page  ppoointer */
+  /* set local recovery data */
   if (prepare_after_fixing_page)
     {
       /* page already fixed */
@@ -23275,18 +23274,7 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 	  if (rc != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      goto exit;
-	    }
-
-	  /* get forward record */
-	  context->forward_recdes.area_size = DB_PAGESIZE;
-	  context->forward_recdes.data = PTR_ALIGN (context->forward_recdes_buffer, MAX_ALIGNMENT);
-	  if (spage_get_record (context->forward_page_watcher_p->pgptr, context->forward_oid.slotid,
-				&context->forward_recdes, COPY) != S_SUCCESS)
-	    {
-	      assert (false);
-	      ASSERT_ERROR_AND_SET (rc);
-	      goto exit;
+	      return rc;
 	    }
 	  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
@@ -23297,49 +23285,20 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 	      if (heap_ovf_insert (thread_p, &context->hfid, &context->new_forward_oid, context->recdes_p) == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (rc);
-		  goto exit;
+		  return ER_FAILED;
 		}
 	      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-	      assert (context->forward_page_watcher_p != NULL && context->forward_page_watcher_p->pgptr != NULL);
-	      if (context->forward_page_watcher_p->page_was_unfixed)
-		{
-		  /* 
-		   * Need to get the record again, since the record may have changed by other concurrent
-		   * transactions (INSID removed by VACUUM).
-		   */
-
-		  /* TO DO - context -> forward recdes-> forward - recdes */
-		  forward_page_ptr = context->forward_page_watcher_p->pgptr;
-		  if (spage_get_record (forward_page_ptr, context->forward_oid.slotid, &context->forward_recdes,
-					COPY) != S_SUCCESS)
-		    {
-		      assert (false);
-		      ASSERT_ERROR_AND_SET (rc);
-		      goto exit;
-		    }
-		}
-
-
-	      /* TO DO - check
-	       * The home record descriptor will be an overflow OID and will be placed in original home page. Redo logging
-	       * changed also, so we have to update physical_update_log_info.
+	      /*
+	       * The home record descriptor will be an overflow OID and will be placed in original home page. Redo
+	       * logging changed also, so we have to update physical_update_log_info.
 	       */
-	      heap_build_forwarding_recdes (&context->new_home_recdes, REC_BIGONE, &context->new_forward_oid);
+	      new_home_recdes = &context->new_home_recdes;
+	      heap_build_forwarding_recdes (new_home_recdes, REC_BIGONE, &context->new_forward_oid);
 
 	      /* remove old forward record */
 	      context->remove_old_forward = true;
 	      context->update_old_home = true;
-
-	      if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
-		{
-		  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr, mvccid,
-							&flag_vacuum_status);
-		}
-	      LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, rcv_index, home_page_ptr,
-					 context->oid.slotid | flag_vacuum_status, &context->home_recdes,
-					 sizeof (&context->home_recdes), &context->new_home_recdes,
-					 sizeof (&context->new_home_recdes));
 
 	      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_BIG_UPDATES);
 	    }
@@ -23353,45 +23312,39 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 	      if (rc != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
-		  goto exit;
-		}
-
-	      if (context->forward_page_watcher_p->page_was_unfixed)
-		{
-		  /* 
-		   * Need to get the record again, since the record may have changed by other concurrent
-		   * transactions (INSID removed by VACUUM).
-		   */
-		  forward_page_ptr = context->forward_page_watcher_p->pgptr;
-		  if (spage_get_record (forward_page_ptr, context->forward_oid.slotid, &context->forward_recdes,
-					COPY) != S_SUCCESS)
-		    {
-		      assert (false);
-		      ASSERT_ERROR_AND_SET (rc);
-		      goto exit;
-		    }
+		  return rc;
 		}
 
 	      /*
 	       * The new home record will be a REC_RELOCATION and will be placed in the original home page. Redo logging changed
 	       * also, so we have to update physical_update_log_info.
 	       */
+	      new_home_recdes = &context->new_home_recdes;
 	      heap_build_forwarding_recdes (&context->new_home_recdes, REC_RELOCATION, &context->new_forward_oid);
 
 	      /* remove old forward record */
 	      context->remove_old_forward = true;
 	      context->update_old_home = true;
 
-	      if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
-		{
-		  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr, mvccid,
-							&flag_vacuum_status);
-		}
-	      LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, rcv_index, home_page_ptr, context->oid.slotid,
-					 &context->home_recdes, sizeof (&context->home_recdes),
-					 &context->new_home_recdes, sizeof (&context->new_home_recdes));
 	      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_REL_UPDATES);
+	    }
 
+	  assert (context->forward_page_watcher_p != NULL && context->forward_page_watcher_p->pgptr != NULL);
+	  if (context->forward_page_watcher_p->page_was_unfixed)
+	    {
+	      /* 
+	       * Need to get the record again, since the record may have changed by other concurrent
+	       * transactions (INSID removed by VACUUM).
+	       */
+
+	      forward_page_ptr = context->forward_page_watcher_p->pgptr;
+	      if (spage_get_record (forward_page_ptr, context->forward_oid.slotid, &context->forward_recdes,
+				    COPY) != S_SUCCESS)
+		{
+		  assert (false);
+		  ASSERT_ERROR_AND_SET (rc);
+		  return ER_FAILED;
+		}
 	    }
 
 	  return NO_ERROR;
@@ -23416,17 +23369,12 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
     {
     fits_in_home:
       context->recdes_p->type = REC_HOME;
+      new_home_recdes = context->recdes_p;
 
       /* remove old forward record. */
       context->remove_old_forward = true;
       context->update_old_home = true;
 
-      if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
-	{
-	  heap_page_update_chain_after_mvcc_op (thread_p, home_page_ptr, mvccid, &flag_vacuum_status);
-	}
-      LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, rcv_index, home_page_ptr, context->oid.slotid, &context->home_recdes,
-				 sizeof (&context->home_recdes), context->recdes_p, sizeof (context->recdes_p));
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_HOME_UPDATES);
     }
   else if (context->fits_in_forward)
@@ -23446,10 +23394,20 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_UPDATES);
     }
 
-  return NO_ERROR;
 
-exit:
-  return rc;
+  if (context->update_old_home)
+    {
+      if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
+	{
+	  heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr, mvccid,
+						&flag_vacuum_status);
+	}
+      LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, rcv_index, home_page_ptr,
+				 context->oid.slotid | flag_vacuum_status, &context->home_recdes,
+				 sizeof (&context->home_recdes), new_home_recdes, sizeof (new_home_recdes));
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -23640,7 +23598,7 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
   LOG_RCVINDEX rcv_index;
   PAGE_PTR page_ptr = NULL;
   HEAP_PAGE_VACUUM_STATUS flag_vacuum_status = HEAP_PAGE_VACUUM_NONE;
-  RECDES *redo_recdes_p = NULL;
+  RECDES *new_home_recdes = NULL;
 
   assert (context != NULL && context->recdes_p != NULL && context->type == HEAP_OPERATION_UPDATE && mvccid != NULL
 	  && undoredo_data_p != NULL);
@@ -23689,22 +23647,6 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  if (context->home_page_watcher_p->page_was_unfixed)
-	    {
-	      /* 
-	       * Need to get the record again, since record may have changed by other transactions (INSID removed by
-	       * VACUUM, page compact). The object was already locked, so the record size may be the
-	       * same or smaller (INSID removed by VACUUM). 
-	       */
-	      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
-	      page_ptr = context->home_page_watcher_p->pgptr;
-	      if (spage_get_record (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
-				    is_peeking) != S_SUCCESS)
-		{
-		  ASSERT_ERROR_AND_SET (error_code);
-		  return error_code;
-		}
-	    }
 
 	  /* insert new overflow record */
 	  if (heap_ovf_insert (thread_p, &context->hfid, &context->forward_oid, context->recdes_p) == NULL)
@@ -23715,7 +23657,7 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
 
 	  /* forwarding record is REC_BIGONE */
 	  heap_build_forwarding_recdes (&context->new_home_recdes, REC_BIGONE, &context->forward_oid);
-	  redo_recdes_p = &context->new_home_recdes;
+	  new_home_recdes = &context->new_home_recdes;
 
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_BIG_UPDATES);
 	  goto end;
@@ -23741,22 +23683,6 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  if (context->home_page_watcher_p->page_was_unfixed)
-	    {
-	      /* 
-	       * Need to get the record again, since record may have changed
-	       * by other transactions (INSID removed by VACUUM, page compact).
-	       * The object was already locked, so the record size may be the
-	       * same or smaller (INSID removed by VACUUM). 
-	       */
-	      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
-	      page_ptr = context->home_page_watcher_p->pgptr;
-	      if (spage_get_record (page_ptr, context->oid.slotid, &context->home_recdes, is_peeking) != S_SUCCESS)
-		{
-		  ASSERT_ERROR_AND_SET (error_code);
-		  return error_code;
-		}
-	    }
 
 	  /* insert new home record */
 	  context->recdes_p->type = REC_NEWHOME;
@@ -23771,7 +23697,7 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
 
 	  /* forwarding record is REC_RELOCATION */
 	  heap_build_forwarding_recdes (&context->new_home_recdes, REC_RELOCATION, &context->forward_oid);
-	  redo_recdes_p = &context->new_home_recdes;
+	  new_home_recdes = &context->new_home_recdes;
 
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_REL_UPDATES);
 	  goto end;
@@ -23788,7 +23714,7 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
     fits_in_home:
       /* updated record fits in home page */
       context->recdes_p->type = REC_HOME;
-      redo_recdes_p = context->recdes_p;
+      new_home_recdes = context->recdes_p;
       perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_UPDATES);
     }
   else
@@ -23797,13 +23723,30 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
     }
 
 end:
+  if (context->home_page_watcher_p->page_was_unfixed)
+    {
+      /* 
+       * Need to get the record again, since record may have changed by other transactions (INSID removed by
+       * VACUUM, page compact). The object was already locked, so the record size may be the
+       * same or smaller (INSID removed by VACUUM). 
+       */
+      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+      page_ptr = context->home_page_watcher_p->pgptr;
+      if (spage_get_record (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
+			    is_peeking) != S_SUCCESS)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+    }
+
   if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
     {
       heap_page_update_chain_after_mvcc_op (thread_p, page_ptr, *mvccid, &flag_vacuum_status);
     }
   LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, rcv_index, page_ptr, context->oid.slotid | flag_vacuum_status,
-			     &context->home_recdes, sizeof (&context->home_recdes), redo_recdes_p,
-			     sizeof (redo_recdes_p));
+			     &context->home_recdes, sizeof (&context->home_recdes), new_home_recdes,
+			     sizeof (new_home_recdes));
 
   return NO_ERROR;
 }
@@ -24859,10 +24802,15 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	  goto exit;
 	}
 
+      /* get forward record */
+      context->forward_recdes.area_size = DB_PAGESIZE;
+      context->forward_recdes.data = PTR_ALIGN (context->forward_recdes_buffer, MAX_ALIGNMENT);
       if (spage_get_record (context->forward_page_watcher_p->pgptr, context->forward_oid.slotid,
-			    &context->forward_recdes, PEEK) != S_SUCCESS)
+			    &context->forward_recdes, COPY) != S_SUCCESS)
 	{
-	  return ER_FAILED;
+	  assert (false);
+	  ASSERT_ERROR_AND_SET (rc);
+	  goto exit;
 	}
 
       context->fits_in_forward =
