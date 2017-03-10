@@ -283,6 +283,7 @@ typedef enum
 
 /* Lower limit for number of pages in shared LRUs: used to compute number of private lists and number of shared lists */
 #define PGBUF_MIN_PAGES_IN_SHARED_LIST 1000
+#define PGBUF_MIN_SHARED_LIST_ADJUST_SIZE 50
 
 #define PGBUF_PAGE_QUOTA_IS_ENABLED (pgbuf_Pool.quota.num_private_LRU_list > 0)
 
@@ -3467,6 +3468,10 @@ end:
 		total_flushed_count, start_lru_idx, pgbuf_Pool.last_flushed_LRU_list_idx, victim_count,
 		check_count_lru);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
+
+  /* safe-guard: when the system really needs victims, we must make sure flush does something. otherwise, we probably
+   * messed something here. */
+  assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim ());
 
   return error;
 }
@@ -13195,19 +13200,16 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
   float prv_flush_ratio;
   float shared_flush_ratio;
 
-  int total_over_quota = 0;
-  int this_over_quota = 0;
+  bool use_prv_size = false;
+
+  int total_prv_target = 0;
+  int this_prv_target = 0;
 
   PGBUF_LRU_LIST *lru_list;
 
   assert (lru_sum_flush_priority != NULL);
 
   *lru_sum_flush_priority = 0;
-
-  if (pgbuf_Pool.monitor.lru_victim_req_cnt <= 0)
-    {
-      return;
-    }
 
   prv_quota = pgbuf_Pool.quota.private_pages_ratio;
   assert (pgbuf_Pool.monitor.lru_shared_pgs_cnt >= 0
@@ -13222,15 +13224,37 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
   for (i = PGBUF_LRU_INDEX_FROM_PRIVATE (0); i < PGBUF_TOTAL_LRU_COUNT; i++)
     {
       lru_list = PGBUF_GET_LRU_LIST (i);
-      this_over_quota = PGBUF_LRU_LIST_OVER_QUOTA_COUNT (lru_list);
-      if (this_over_quota > 0)
+
+      /* note: we target especially over quota private lists or close to quota. we cannot target only over quota lists
+       * (I tried), because you may find yourself in the peculiar case where quota's are on par with list size, while
+       * shared are right below minimum desired size... and flush will not find anything.
+       */
+      this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
+      if (this_prv_target > 0)
 	{
-	  total_over_quota += this_over_quota;
+	  total_prv_target += this_prv_target;
 	}
     }
-  if (total_over_quota == 0)
+  if (total_prv_target == 0)
     {
-      prv_flush_ratio = 0.0f;
+      /* can we victimize from shared? */
+      if (pgbuf_Pool.monitor.lru_shared_pgs_cnt
+	  <= (int) (pgbuf_Pool.num_LRU_list * PGBUF_MIN_SHARED_LIST_ADJUST_SIZE
+		    * (pgbuf_Pool.ratio_lru1 + pgbuf_Pool.ratio_lru2)))
+	{
+	  /* we won't be able to victimize from shared. this is a backup hack, I don't like to rely on it. let's
+	   * find smarter ways to avoid the case. */
+	  /* right now, considering we target all bcb's beyond 90% of quota, but total_prv_target is 0, that means all
+	   * private bcb's must be less than 90% of buffer. that means shared bcb's have to be 10% or more of buffer.
+	   * PGBUF_MIN_SHARED_LIST_ADJUST_SIZE is currently set to 50, which is 5% to targeted 1k shared list size.
+	   * we shouldn't be here unless I messed up the calculus. */
+	  assert (false);
+	  use_prv_size = true;
+	  prv_flush_ratio = 1.0f;
+	  /* we can compute the zone 3 total size (for privates, zones 1 & 2 are both set to minimum ratio). */
+	  total_prv_target =
+	    (pgbuf_Pool.num_buffers - pgbuf_Pool.monitor.lru_shared_pgs_cnt) * (1.0f - 2 * PGBUF_LRU_ZONE_MIN_RATIO);
+	}
     }
   shared_flush_ratio = 1.0f - prv_flush_ratio;
 
@@ -13249,11 +13273,20 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 	    }
 	  else
 	    {
-	      this_over_quota = PGBUF_LRU_LIST_OVER_QUOTA_COUNT (lru_list);
-	      if (this_over_quota > 0)
+	      if (use_prv_size)
+		{
+		  /* back plan: use zone 3 size instead of computed target based on quota. */
+		  this_prv_target = lru_list->count_lru3;
+		}
+	      else
+		{
+		  /* use bcb's over 90% of quota as flush target */
+		  this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
+		}
+	      if (this_prv_target > 0)
 		{
 		  pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[i] =
-		    prv_flush_ratio * ((float) this_over_quota / (float) total_over_quota);
+		    prv_flush_ratio * ((float) this_prv_target / (float) total_prv_target);
 		}
 	      else
 		{
@@ -13497,7 +13530,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
   /* set shared target size */
   avg_shared_lru_size = (pgbuf_Pool.num_buffers - all_private_quota) / pgbuf_Pool.num_LRU_list;
-  avg_shared_lru_size = MAX (avg_shared_lru_size, 100);
+  avg_shared_lru_size = MAX (avg_shared_lru_size, PGBUF_MIN_SHARED_LIST_ADJUST_SIZE);
   shared_threshold_lru1 = (int) (avg_shared_lru_size * pgbuf_Pool.ratio_lru1);
   shared_threshold_lru2 = (int) (avg_shared_lru_size * pgbuf_Pool.ratio_lru2);
   for (i = 0; i < PGBUF_SHARED_LRU_COUNT; i++)
