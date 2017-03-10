@@ -1898,6 +1898,11 @@ try_again:
 	   * page. */
 	}
     }
+  else if (fetch_mode == OLD_PAGE_IF_EXISTS)
+    {
+      /* we don't need to fix page */
+      return NULL;
+    }
   else
     {
       bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode, hash_anchor, &perf, &retry);
@@ -7556,8 +7561,10 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   QUERY_ID query_id = NULL_QUERY_ID;
 #endif /* ENABLE_SYSTEMTAP */
 
+  assert (fetch_mode != OLD_PAGE_IF_EXISTS);
+
   /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
-  if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK || fetch_mode == OLD_PAGE_IF_EXISTS)
+  if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
     {
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
       PGBUF_BCB_CHECK_MUTEX_LEAKS ();
