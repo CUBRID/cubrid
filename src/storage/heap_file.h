@@ -375,7 +375,7 @@ struct heap_operation_context
   PAGE_PTR home_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
   PAGE_PTR forward_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
   HEAP_LOG_INFO log_info;	/* Heap log info, used to create the log node before fixing page */
-#if defined (NDEBUG)
+#if !defined (NDEBUG)
   /* TO DO - additional buffers */
 #endif
 

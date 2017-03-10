@@ -935,10 +935,10 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 					      LOG_REC_UNDOREDO_DATA * undoredo_data_p) __attribute__ ((ALWAYS_INLINE));
 static int heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
 				   bool is_mvcc_op, MVCCID mvccid);
-STATIC_INLINE int heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-						     bool prepare_after_fixing_page, bool is_mvcc_op, MVCCID * mvccid,
-						     HEAP_OPERATION_CONTEXT * context,
-						     LOG_REC_UNDOREDO_DATA * undoredo_data_p);
+STATIC_INLINE int heap_mvcc_update_home_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+							  bool prepare_after_fixing_page, bool is_mvcc_op,
+							  MVCCID * mvccid, HEAP_OPERATION_CONTEXT * context,
+							  LOG_REC_UNDOREDO_DATA * undoredo_data_p);
 __attribute__ ((ALWAYS_INLINE));
 static int heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
 			     bool is_mvcc_op, MVCCID mvccid);
@@ -15962,7 +15962,8 @@ heap_create_update_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
     {
     case REC_HOME:
       {
-	rc = heap_mvcc_update_home_prepare_log (thread_p, tdes, false, is_mvcc_op, mvccid, context, &undoredo_data);
+	rc =
+	  heap_mvcc_update_home_prepare_log_data (thread_p, tdes, false, is_mvcc_op, mvccid, context, &undoredo_data);
 	if (rc != NO_ERROR)
 	  {
 	    goto end;
@@ -22137,6 +22138,7 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
   int error_code = NO_ERROR;
   PAGE_PTR page_ptr = NULL, forward_page_ptr = NULL;
   HEAP_PAGE_VACUUM_STATUS flag_vacuum_status = HEAP_PAGE_VACUUM_NONE;
+  RECDES *new_home_recdes = NULL;
 
   assert (context != NULL && context->recdes_p != NULL && context->type == HEAP_OPERATION_DELETE
 	  && MVCCID_IS_VALID (mvccid) && undoredo_data_p != NULL);
@@ -22161,7 +22163,8 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 	    }
 
 	  /* home record descriptor will be an overflow OID and will be placed in original home page */
-	  heap_build_forwarding_recdes (&context->new_home_recdes, REC_BIGONE, &context->new_forward_oid);
+	  new_home_recdes = &context->new_home_recdes;
+	  heap_build_forwarding_recdes (new_home_recdes, REC_BIGONE, &context->new_forward_oid);
 
 	  /* remove old forward record */
 	  context->remove_old_forward = true;
@@ -22169,44 +22172,7 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_BIG_DELETES);
 
-	  if (context->home_page_watcher_p->page_was_unfixed)
-	    {
-	      /* 
-	       * Need to get the record again, since record may have changed by other transactions (INSID removed by
-	       * VACUUM, page compact). The object was already locked, so the record size may be the same or
-	       * smaller (INSID removed by VACUUM).
-	       */
-	      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
-	      page_ptr = context->home_page_watcher_p->pgptr;
-	      if (spage_get_record (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
-				    is_peeking) != S_SUCCESS)
-		{
-		  return ER_FAILED;
-		}
-	    }
-
-	  /*
-	   * Delete old forward record. Re-peek forward record descriptor; forward page may have been unfixed
-	   * by previous pgbuf_ordered_fix() call.
-	   */
-	  if (context->forward_page_watcher_p->page_was_unfixed)
-	    {
-	      forward_page_ptr = context->forward_page_watcher_p->pgptr;
-	      if (spage_get_record (forward_page_ptr, context->forward_oid.slotid,
-				    &context->forward_recdes, PEEK) != S_SUCCESS)
-		{
-		  return ER_FAILED;
-		}
-	    }
-
-	  assert (LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_MODIFY_HOME));
-	  heap_page_update_chain_after_mvcc_op (thread_p, page_ptr, mvccid, &flag_vacuum_status);
-
-	  LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, RVHF_MVCC_DELETE_MODIFY_HOME, page_ptr,
-				     context->oid.slotid | flag_vacuum_status, &context->home_recdes,
-				     sizeof (&context->home_recdes), &context->new_home_recdes,
-				     sizeof (&context->new_home_recdes));
-	  return NO_ERROR;
+	  goto check_page_unfixed;
 	}
       else if (context->fits_in_home)
 	{
@@ -22227,51 +22193,15 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 	    }
 
 	  /* new home record will be a REC_RELOCATION and will be placed in the original home page */
-	  heap_build_forwarding_recdes (&context->new_home_recdes, REC_RELOCATION, &context->new_forward_oid);
+	  new_home_recdes = &context->new_home_recdes;
+	  heap_build_forwarding_recdes (new_home_recdes, REC_RELOCATION, &context->new_forward_oid);
 
 	  /* remove old forward record */
 	  context->remove_old_forward = true;
 	  context->update_old_home = true;
 
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_REL_DELETES);
-
-	  if (context->home_page_watcher_p->page_was_unfixed)
-	    {
-	      /* 
-	       * Need to get the record again, since record may have changed by other transactions (INSID removed
-	       * by VACUUM, page compact). The object was already locked, so the record size may be the same or
-	       * smaller (INSID removed by VACUUM). 
-	       */
-	      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
-	      page_ptr = context->home_page_watcher_p->pgptr;
-	      if (spage_get_record (page_ptr, context->oid.slotid, &context->home_recdes, is_peeking) != S_SUCCESS)
-		{
-		  return ER_FAILED;
-		}
-	    }
-
-	  /*
-	   * Delete old forward record. Re-peek forward record descriptor; forward page may have been unfixed
-	   * by previous pgbuf_ordered_fix() call.
-	   */
-	  if (context->forward_page_watcher_p->page_was_unfixed)
-	    {
-	      forward_page_ptr = context->forward_page_watcher_p->pgptr;
-	      if (spage_get_record (context->forward_page_watcher_p->pgptr, context->forward_oid.slotid,
-				    &context->forward_recdes, PEEK) != S_SUCCESS)
-		{
-		  return ER_FAILED;
-		}
-	    }
-
-	  assert (LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_MODIFY_HOME));
-	  heap_page_update_chain_after_mvcc_op (thread_p, page_ptr, mvccid, &flag_vacuum_status);
-
-	  LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, RVHF_MVCC_DELETE_MODIFY_HOME, page_ptr,
-				     context->oid.slotid | flag_vacuum_status, &context->home_recdes,
-				     sizeof (&context->home_recdes), &context->new_home_recdes,
-				     sizeof (&context->new_home_recdes));
-	  return NO_ERROR;
+	  goto check_page_unfixed;
 	}
     }
   else
@@ -22286,19 +22216,14 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
     fits_in_home:
       /* updated forward record fits in home page */
       context->recdes_p->type = REC_HOME;
+      new_home_recdes = context->recdes_p;
 
       /* remove old forward record */
       context->remove_old_forward = true;
       context->update_old_home = true;
 
-      assert (LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_MODIFY_HOME));
-      heap_page_update_chain_after_mvcc_op (thread_p, page_ptr, mvccid, &flag_vacuum_status);
-
-      LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, RVHF_MVCC_DELETE_MODIFY_HOME, page_ptr,
-				 context->oid.slotid | flag_vacuum_status, &context->home_recdes,
-				 sizeof (&context->home_recdes), context->recdes_p, sizeof (context->recdes_p));
-
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_HOME_DELETES);
+      goto end;
     }
   else if (context->fits_in_forward)
     {
@@ -22315,6 +22240,47 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
       LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, RVHF_MVCC_DELETE_REC_NEWHOME, forward_page_ptr,
 				 context->forward_oid.slotid, NULL, 0, redo_data_p, OR_MVCCID_SIZE);
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_MVCC_DELETES);
+      goto end;
+    }
+
+check_page_unfixed:
+  if (context->home_page_watcher_p->page_was_unfixed)
+    {
+      /* 
+       * Need to get the record again, since record may have changed by other transactions (INSID removed by
+       * VACUUM, page compact). The object was already locked, so the record size may be the same or
+       * smaller (INSID removed by VACUUM).
+       */
+      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+      page_ptr = context->home_page_watcher_p->pgptr;
+      if (spage_get_record (page_ptr, context->oid.slotid, &context->home_recdes, is_peeking) != S_SUCCESS)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  /*
+   * Delete old forward record. Re-peek forward record descriptor; forward page may have been unfixed
+   * by previous pgbuf_ordered_fix() call.
+   */
+  if (context->forward_page_watcher_p->page_was_unfixed)
+    {
+      forward_page_ptr = context->forward_page_watcher_p->pgptr;
+      if (spage_get_record (forward_page_ptr, context->forward_oid.slotid, &context->forward_recdes, PEEK) != S_SUCCESS)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+end:
+  if (context->update_old_home)
+    {
+      assert (LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_MODIFY_HOME));
+      heap_page_update_chain_after_mvcc_op (thread_p, page_ptr, mvccid, &flag_vacuum_status);
+
+      LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, RVHF_MVCC_DELETE_MODIFY_HOME, page_ptr,
+				 context->oid.slotid | flag_vacuum_status, &context->home_recdes,
+				 sizeof (&context->home_recdes), new_home_recdes, sizeof (new_home_recdes));
     }
 
   return NO_ERROR;
@@ -23329,6 +23295,21 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 	      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_REL_UPDATES);
 	    }
 
+	  if (context->home_page_watcher_p->page_was_unfixed)
+	    {
+	      /* 
+	       * Need to get the record again, since record may have changed by other transactions (INSID removed by
+	       * VACUUM, page compact). The object was already locked, so the record size may be the same or
+	       * smaller (INSID removed by VACUUM).
+	       */
+	      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+	      home_page_ptr = context->home_page_watcher_p->pgptr;
+	      if (spage_get_record (home_page_ptr, context->oid.slotid, &context->home_recdes, is_peeking) != S_SUCCESS)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
 	  assert (context->forward_page_watcher_p != NULL && context->forward_page_watcher_p->pgptr != NULL);
 	  if (context->forward_page_watcher_p->page_was_unfixed)
 	    {
@@ -23576,7 +23557,7 @@ exit:
 }
 
 /*
- * heap_mvcc_update_home_prepare_log () - prepare log data for home record update
+ * heap_mvcc_update_home_prepare_log_data () - prepare log data for home record update
  *   thread_p(in): thread entry
  *   tdes(in): transaction descriptor
  *   prepare_after_fixing_page(in): true, if prepare after fixing page
@@ -23589,9 +23570,9 @@ exit:
  *	 into page as a side effect.
  */
 STATIC_INLINE int
-heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool prepare_after_fixing_page,
-				   bool is_mvcc_op, MVCCID * mvccid, HEAP_OPERATION_CONTEXT * context,
-				   LOG_REC_UNDOREDO_DATA * undoredo_data_p)
+heap_mvcc_update_home_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool prepare_after_fixing_page,
+					bool is_mvcc_op, MVCCID * mvccid, HEAP_OPERATION_CONTEXT * context,
+					LOG_REC_UNDOREDO_DATA * undoredo_data_p)
 {
   int error_code = NO_ERROR;
   PGBUF_WATCHER *new_forward_page_watcher_p = NULL;
@@ -23660,7 +23641,7 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
 	  new_home_recdes = &context->new_home_recdes;
 
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_BIG_UPDATES);
-	  goto end;
+	  goto check_page_unfixed;
 	}
       else if (context->fits_in_home)
 	{
@@ -23700,7 +23681,7 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
 	  new_home_recdes = &context->new_home_recdes;
 
 	  perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_REL_UPDATES);
-	  goto end;
+	  goto check_page_unfixed;
 	}
     }
   else
@@ -23716,13 +23697,14 @@ heap_mvcc_update_home_prepare_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
       context->recdes_p->type = REC_HOME;
       new_home_recdes = context->recdes_p;
       perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_UPDATES);
+      goto end;
     }
   else
     {
       return NO_ERROR;
     }
 
-end:
+check_page_unfixed:
   if (context->home_page_watcher_p->page_was_unfixed)
     {
       /* 
@@ -23740,6 +23722,7 @@ end:
 	}
     }
 
+end:
   if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
     {
       heap_page_update_chain_after_mvcc_op (thread_p, page_ptr, *mvccid, &flag_vacuum_status);
@@ -23790,7 +23773,8 @@ heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
     }
 
   /* create log data for update */
-  error_code = heap_mvcc_update_home_prepare_log (thread_p, tdes, true, is_mvcc_op, &mvccid, context, &undoredo_data);
+  error_code =
+    heap_mvcc_update_home_prepare_log_data (thread_p, tdes, true, is_mvcc_op, &mvccid, context, &undoredo_data);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
