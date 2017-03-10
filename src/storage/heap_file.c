@@ -22313,7 +22313,7 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 
       assert (!LOG_IS_MVCC_HEAP_OPERATION (RVHF_MVCC_DELETE_REC_NEWHOME));
       LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, RVHF_MVCC_DELETE_REC_NEWHOME, forward_page_ptr,
-				 context->new_forward_oid.slotid, NULL, 0, redo_data_p, OR_MVCCID_SIZE);
+				 context->forward_oid.slotid, NULL, 0, redo_data_p, OR_MVCCID_SIZE);
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_MVCC_DELETES);
     }
 
@@ -23320,7 +23320,7 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 	       * also, so we have to update physical_update_log_info.
 	       */
 	      new_home_recdes = &context->new_home_recdes;
-	      heap_build_forwarding_recdes (&context->new_home_recdes, REC_RELOCATION, &context->new_forward_oid);
+	      heap_build_forwarding_recdes (new_home_recdes, REC_RELOCATION, &context->new_forward_oid);
 
 	      /* remove old forward record */
 	      context->remove_old_forward = true;
@@ -23347,7 +23347,7 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
 		}
 	    }
 
-	  return NO_ERROR;
+	  goto end;
 	}
       else if (context->fits_in_home)
 	{
@@ -23394,7 +23394,7 @@ heap_mvcc_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_UPDATES);
     }
 
-
+end:
   if (context->update_old_home)
     {
       if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
