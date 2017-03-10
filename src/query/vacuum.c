@@ -243,9 +243,6 @@ struct vacuum_data
 
   int log_block_npages;		/* The number of pages in a log block. */
 
-  volatile INT32 flush_vacuum_data;	/* Is set to 1 to flush vacuum data. Is set back to 0 after flush is
-					 * completed.
-					 */
   bool is_loaded;		/* True if vacuum data is loaded. */
   bool shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or executing
 				 * new jobs.
@@ -272,7 +269,6 @@ static VACUUM_DATA vacuum_Data = {
   NULL,				/* last_page */
   0,				/* page_data_max_count */
   0,				/* log_block_npages */
-  0,				/* flush_vacuum_data */
   false,			/* is_loaded */
   false,			/* shutdown_requested */
   VPID_INITIALIZER,		/* vpid_job_cursor */
@@ -2574,49 +2570,8 @@ restart:
 #if defined (SERVER_MODE)
   /* Append newly logged blocks at the end of the vacuum data table */
   (void) vacuum_consume_buffer_log_blocks (thread_p);
-
-  if (vacuum_Data.flush_vacuum_data)
-    {
-      /* We need to give the checkpoint thread a chance to flush the pages. */
-      VPID first_vpid = VPID_INITIALIZER;
-      VPID last_vpid = VPID_INITIALIZER;
-
-      pgbuf_get_vpid ((PAGE_PTR) vacuum_Data.first_page, &first_vpid);
-      pgbuf_get_vpid ((PAGE_PTR) vacuum_Data.last_page, &last_vpid);
-
-      vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_FLUSH_DATA,
-		     "VACUUM: Unfix first page %d|%d and last page %d|%d to allow them to be flushed to disk.\n",
-		     first_vpid.volid, first_vpid.pageid, last_vpid.volid, last_vpid.pageid);
-
-      vacuum_unfix_first_and_last_data_page (thread_p);
-
-      vacuum_Data.first_page = vacuum_fix_data_page (thread_p, &first_vpid);
-      if (vacuum_Data.first_page == NULL)
-	{
-	  ASSERT_ERROR ();
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_FLUSH_DATA,
-			 "VACUUM ERROR: Failed to fix first page %d|%d.\n", first_vpid.volid, first_vpid.pageid);
-	  return;
-	}
-      if (VPID_EQ (&last_vpid, &first_vpid))
-	{
-	  vacuum_Data.last_page = vacuum_Data.first_page;
-	}
-      else
-	{
-	  vacuum_Data.last_page = vacuum_fix_data_page (thread_p, &last_vpid);
-	  if (vacuum_Data.last_page == NULL)
-	    {
-	      ASSERT_ERROR ();
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_FLUSH_DATA,
-			     "VACUUM ERROR: Failed to fix first page %d|%d.\n", last_vpid.volid, last_vpid.pageid);
-	      return;
-	    }
-	}
-      vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_FLUSH_DATA,
-		     "VACUUM: Successfully refixed first page %d|%d and last page %d|%d.\n",
-		     first_vpid.volid, first_vpid.pageid, last_vpid.volid, last_vpid.pageid);
-    }
+  pgbuf_flush_if_requested (thread_p, (PAGE_PTR) vacuum_Data.first_page);
+  pgbuf_flush_if_requested (thread_p, (PAGE_PTR) vacuum_Data.last_page);
 #endif /* SERVER_MODE */
 
   /* Update oldest MVCCID. */
@@ -7571,21 +7526,6 @@ MVCCID
 vacuum_get_global_oldest_active_mvccid (void)
 {
   return vacuum_Global_oldest_active_mvccid;
-}
-
-/*
- * vacuum_notify_need_flush () - Notify vacuum that vacuum data needs to be flushed.
- *
- * return	   : Void.
- * need_flush (in) : 1 if vacuum data page needs to be flushed, 0 if vacuum data page was fixed.
- */
-void
-vacuum_notify_need_flush (int need_flush)
-{
-  assert (need_flush == 0 || need_flush == 1);
-
-  vacuum_er_log (VACUUM_ER_LOG_FLUSH_DATA, "VACUUM: Set need_flush = %d.\n", need_flush);
-  vacuum_Data.flush_vacuum_data = need_flush;
 }
 
 #if !defined (NDEBUG)

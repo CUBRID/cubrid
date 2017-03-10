@@ -289,7 +289,6 @@ extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
 extern void vacuum_notify_server_crashed (LOG_LSA * recovery_lsa);
 extern void vacuum_notify_server_shutdown (void);
-extern void vacuum_notify_need_flush (int need_flush);
 extern int vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
