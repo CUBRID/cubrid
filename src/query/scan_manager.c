@@ -517,6 +517,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	  iss->skipped_range->key1 = iss->skipped_range->key2;
 	  iss->skipped_range->key2 = NULL;
 	}
+      scan_restore_range_details (&scan_range_det, isidp);
       return S_ERROR;
     }
 
@@ -549,6 +550,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
       ret = pr_midxkey_get_element_nocopy (&last_key->data.midxkey, 0, &first_midxkey_val, NULL, NULL);
       if (ret != NO_ERROR)
 	{
+	  scan_restore_range_details (&scan_range_det, isidp);
 	  return S_ERROR;
 	}
 
