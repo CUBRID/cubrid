@@ -21454,7 +21454,7 @@ heap_create_insert_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   slotid = NULL_SLOTID;
 
   HEAP_RESET_LOG_INFO (&insert_log_info);
-  if (is_mvcc_op == false || heap_is_big_length (ins_context->recdes_p->length))
+  if (is_mvcc_op == false || ins_context->recdes_p->type != REC_BIGONE)
     {
       return NO_ERROR;
     }
@@ -21468,8 +21468,7 @@ heap_create_insert_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
     }
 
   /* set log information used to avoid log node creation after fixing the page */
-  assert (insert_log_info.log_undoredo_data.undo_data == NULL && insert_log_info.log_undoredo_data.undo_data_size == 0
-	  && ins_context->recdes_p->type == REC_HOME);
+  assert (insert_log_info.log_undoredo_data.undo_data == NULL && insert_log_info.log_undoredo_data.undo_data_size == 0);
   redo_data_p = PTR_ALIGN (ins_context->redo_data_buffer, MAX_ALIGNMENT);
   repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (ins_context->recdes_p->data);
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
