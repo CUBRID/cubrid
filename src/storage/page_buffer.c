@@ -9939,9 +9939,9 @@ static void
 pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 {
 #if defined (SERVER_MODE)
-  THREAD_ENTRY *prev_waiter;
-  THREAD_ENTRY *crt_waiter;
-  THREAD_ENTRY *save_next_waiter;
+  THREAD_ENTRY *prev_waiter = NULL;
+  THREAD_ENTRY *crt_waiter = NULL;
+  THREAD_ENTRY *save_next_waiter = NULL;
   PGBUF_BCB_CHECK_OWN (bcb);
 
   for (crt_waiter = bcb->next_wait_thrd; crt_waiter != NULL; crt_waiter = save_next_waiter)
