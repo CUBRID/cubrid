@@ -2571,10 +2571,12 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 	  vacuum_Data.last_page = vacuum_fix_data_page (thread_p, &vacuum_Data_load.vpid_last);
 	  if (vacuum_Data.last_page == NULL)
 	    {
+	      vacuum_unfix_first_and_last_data_page (thread_p);
 	      assert_release (false);
 	      return;
 	    }
 	}
+      vacuum_Data.is_loaded = true;
 
       /* Initialize job cursor */
       VPID_COPY (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page));
