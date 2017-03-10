@@ -8038,6 +8038,15 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 
 	  file_log ("file_temp_alloc",
 		    "used newly reserved sector's first page %d|%d for partial table.", VPID_AS_ARGS (&vpid_ftab_new));
+
+	  /* update temporary file stats - DISK_SECTOR_NPAGES -1 reserved pages and 1 file table page. */
+	  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, DISK_SECTOR_NPAGES - 1);
+	  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, 1);
+	}
+      else
+	{
+	  /* update temporary file stats - DISK_SECTOR_NPAGES reserved pages */
+	  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, DISK_SECTOR_NPAGES);
 	}
       assert (!file_extdata_is_full (extdata_part_ftab));
       assert (file_extdata_item_count (extdata_part_ftab) == fhead->offset_to_last_temp_alloc);
@@ -8062,9 +8071,6 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 		FILE_PARTSECT_MSG ("newly reserved sector")
 		FILE_EXTDATA_MSG ("last partial table component"),
 		FILE_PARTSECT_AS_ARGS (&partsect_new), FILE_EXTDATA_AS_ARGS (extdata_part_ftab));
-
-      /* update temporary file stats */
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, DISK_SECTOR_NPAGES);
     }
   assert (fhead->n_page_free > 0);
 

@@ -384,7 +384,6 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
   OR_BUF buf;
   PR_TYPE *pr_type;
   DB_TYPE dbval_type;
-  bool temporary_clear;
 
   if (DB_IS_NULL (dbval_p))
     {

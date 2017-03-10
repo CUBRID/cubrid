@@ -9404,7 +9404,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   /* check if a partition pruned SPEC */
-  if (p->info.spec.entity_name && p->partition_pruned)
+  if (PT_SPEC_IS_ENTITY (p) && p->partition_pruned)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -9415,7 +9415,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
   /* check if a sublist */
-  else if (p->info.spec.entity_name && p->info.spec.entity_name->next)
+  else if (PT_SPEC_IS_ENTITY (p) && p->info.spec.entity_name->next)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -9426,7 +9426,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
   /* else is a single class entity spec */
-  else if (p->info.spec.entity_name)
+  else if (PT_SPEC_IS_ENTITY (p))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
@@ -14578,8 +14578,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  /* for derived_table alias should be printed e.g.  create table t2(id int primary key) as select id from
 	   * (select count(*) id from t1) */
-	  derived_table = from->info.spec.derived_table;
-	  if (derived_table != NULL)
+	  if (PT_SPEC_IS_DERIVED (from))
 	    {
 	      save_custom = parser->custom_print;
 	      parser->custom_print |= PT_PRINT_ALIAS;
@@ -14587,7 +14586,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  r1 = pt_print_bytes_spec_list (parser, from);
 
-	  if (derived_table != NULL)
+	  if (PT_SPEC_IS_DERIVED (from))
 	    {
 	      parser->custom_print = save_custom;
 	    }

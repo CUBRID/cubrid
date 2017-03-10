@@ -7181,7 +7181,7 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
     {
       return NO_ERROR;
     }
-  if (spec->info.spec.derived_table == NULL)
+  if (PT_SPEC_IS_ENTITY (spec))
     {
       if (spec->info.spec.entity_name->node_type == PT_NAME)
 	{
@@ -7212,6 +7212,13 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
 	  return NO_ERROR;
 	}
     }
+
+  if (PT_SPEC_IS_CTE (spec))
+    {
+      PT_ERROR (parser, spec, "CTE not handled");
+      return ER_FAILED;
+    }
+
   /* We're in the context of a table update/insert etc. This is possible only if the derived table is a SELECT and has
    * only one updated class */
   derived = spec->info.spec.derived_table;
