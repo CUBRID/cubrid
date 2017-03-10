@@ -15969,7 +15969,7 @@ heap_create_update_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
       if (rc != NO_ERROR)
 	{
 	  return rc;
-	}      
+	}
 
       break;
 
@@ -16065,7 +16065,7 @@ STATIC_INLINE int
 heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvccid,
 						bool is_mvcc_op, HEAP_OPERATION_CONTEXT * context)
 {
-  HEAP_LOG_INFO delete_log_info;  
+  HEAP_LOG_INFO delete_log_info;
   char *redo_data_p = NULL, *undo_data_p = NULL;
   int copy_retry_count = 1, copy_retry_max = 3;
   int redo_data_size = 0, undo_data_size = 0;
@@ -16094,6 +16094,7 @@ heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
       ASSERT_ERROR ();
       return rc;
     }
+  assert (VPID_EQ (pgbuf_get_vpid_ptr (context->home_page_copy_before_fix), &vpid));
 
   if (spage_get_record (context->home_page_copy_before_fix, context->oid.slotid, &context->home_recdes,
 			PEEK) != S_SUCCESS)
@@ -16113,6 +16114,7 @@ heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
 	  ASSERT_ERROR ();
 	  return rc;
 	}
+      assert (VPID_EQ (pgbuf_get_vpid_ptr (context->forward_page_copy_before_fix), &vpid));
 
       if (spage_get_record (context->forward_page_copy_before_fix, context->forward_oid.slotid,
 			    &context->forward_recdes, PEEK) != S_SUCCESS)
@@ -23963,7 +23965,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool append_
 	  if ((log_undoredo_data_p->undo_data_size != mvcc_header_size_lookup[mvcc_flags])
 	      || memcmp (log_undoredo_data_p->undo_data, old_recdes_p->data, log_undoredo_data_p->undo_data_size) != 0)
 	    {
-	      /* the log info has changed, need to recreate the log node */	      
+	      /* the log info has changed, need to recreate the log node */
 	      goto invalidate_log_node;
 	    }
 
@@ -23973,7 +23975,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool append_
 	  if ((log_undoredo_data_p->redo_data_size != mvcc_header_size_lookup[mvcc_flags])
 	      || memcmp (log_undoredo_data_p->redo_data, new_recdes_p->data, log_undoredo_data_p->redo_data_size) != 0)
 	    {
-	      /* the log info has changed, need to recreate the log node */	      
+	      /* the log info has changed, need to recreate the log node */
 	      goto invalidate_log_node;
 	    }
 
@@ -26706,7 +26708,7 @@ heap_copy_page_to_tran_bcb_area (THREAD_ENTRY * thread_p, const VPID * vpid, int
       return rc;
     }
 
-  if (bcb_area)
+  if (*bcb_area)
     {
       perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_SUCCESS);
       pgbuf_copy_log ("pgbuf_copy_page: Successfully acquired BCB area to copy heap page (%d, %d)\n",
@@ -26717,6 +26719,7 @@ heap_copy_page_to_tran_bcb_area (THREAD_ENTRY * thread_p, const VPID * vpid, int
       perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_ACQUIRE_TRAN_BCB_AREA_FAILED);
       pgbuf_copy_log ("pgbuf_copy_page: Failed to acquire BCB area to copy heap page (%d, %d)\n",
 		      vpid->volid, vpid->pageid);
+      return NO_ERROR;
     }
 
 try_copy_area_again:
@@ -26725,6 +26728,7 @@ try_copy_area_again:
   if (rc != NO_ERROR)
     {
       pgbuf_release_tran_bcb_area (thread_p, *bcb_area);
+      *bcb_area = NULL;
       ASSERT_ERROR ();
       return rc;
     }
@@ -26754,6 +26758,11 @@ try_copy_area_again:
 			  vpid->volid, vpid->pageid, copy_retry_count);
 	  pgbuf_release_tran_bcb_area (thread_p, *bcb_area);
 	}
+    }
+  else
+    {
+      pgbuf_release_tran_bcb_area (thread_p, *bcb_area);
+      *bcb_area = NULL;
     }
 
   return NO_ERROR;
