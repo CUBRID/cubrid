@@ -8875,8 +8875,9 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
 
   /* panic victimization function */
 
-  for (bcb = bcb_start; bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0;
-       bcb = bcb->prev_BCB, count++ < MAX_DEPTH)
+  for (bcb = bcb_start;
+       bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0 && count < MAX_DEPTH;
+       bcb = bcb->prev_BCB, count++)
     {
       assert (pgbuf_bcb_get_lru_index (bcb) == lru_list->index);
       if (!pgbuf_is_bcb_victimizable (bcb, false))
@@ -8958,7 +8959,7 @@ pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_lfcq_assign_direct_victims () - get list from queue and assign victims directly.s
+ * pgbuf_lfcq_assign_direct_victims () - get list from queue and assign victims directly.
  *
  * return                 : void
  * thread_p (in)          : thread entry
@@ -15662,13 +15663,13 @@ pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list)
 }
 
 /*
- * pgbuf_lfcq_get_victim_from_private_lru () - get a victim from a shared list in lock-free queues.
+ * pgbuf_lfcq_get_victim_from_private_lru () - get a victim from a private list in lock-free queues.
  *
  * return               : victim or NULL
  * thread_p (in)        : thread entry
- * bool restricted (in) : true if victimizing is restricted to big private lists
+ * restricted (in)      : true if victimizing is restricted to big private lists
  */
-PGBUF_BCB *
+static PGBUF_BCB *
 pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted)
 {
 #define PERF(id) if (detailed_perf) perfmon_inc_stat (thread_p, id)
@@ -15695,7 +15696,7 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
     {
       if (restricted)
 	{
-	  return;
+	  return NULL;
 	}
       PERF (PSTAT_PB_LFCQ_LRU_PRV_GET_CALLS);
       if (!lf_circular_queue_consume (pgbuf_Pool.private_lrus_with_victims, &lru_idx))
@@ -15752,6 +15753,8 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
 
   PERF (PSTAT_PB_LFCQ_LRU_PRV_GET_DONT_ADD);
 
+  return victim;
+
 #undef PERF
 }
 
@@ -15762,7 +15765,7 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
  * thread_p (in)       : thread entry
  * multi_threaded (in) : true if multi-threaded system
  */
-PGBUF_BCB *
+static PGBUF_BCB *
 pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threaded)
 {
 #define PERF(id) if (detailed_perf) perfmon_inc_stat (thread_p, id)
