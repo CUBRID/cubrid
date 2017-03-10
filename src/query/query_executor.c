@@ -15618,6 +15618,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
   xasl->status = XASL_SUCCESS;
 
+  if (recursive_part != NULL)
+    {
+      recursive_part->max_iterations = -1;
+    }
+
   return NO_ERROR;
 
 exit_on_error:
@@ -15626,6 +15631,12 @@ exit_on_error:
       /* restore recursive list_id */
       recursive_part->list_id = save_recursive_list_id;
     }
+
+  if (recursive_part != NULL)
+    {
+      recursive_part->max_iterations = -1;
+    }
+
   xasl->status = XASL_FAILURE;
   return ER_FAILED;
 }
