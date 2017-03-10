@@ -16219,13 +16219,11 @@ heap_create_delete_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
     }
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-  if (undoredo_data.rcvindex != RV_NOT_DEFINED)
+  if (undoredo_data.rcvindex == RV_NOT_DEFINED)
     {
       rc = NO_ERROR;
       goto end;
     }
-
-
 
   if (undoredo_data.rcvindex == RVHF_MVCC_DELETE_REC_HOME
       || undoredo_data.rcvindex == RVHF_MVCC_DELETE_REC_NEWHOME || undoredo_data.rcvindex == RVHF_MVCC_DELETE_OVERFLOW)
@@ -22419,7 +22417,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
        */
       if (context->update_old_forward)
 	{
-	  assert ((context->log_info.log_undoredo_data.rcvindex == RVHF_MVCC_DELETE_REC_NEWHOME));
+	  assert ((context->log_info.node == NULL
+		   || context->log_info.log_undoredo_data.rcvindex == RVHF_MVCC_DELETE_REC_NEWHOME));
 	  rc = heap_mvcc_log_delete (thread_p, tdes, true, mvcc_id, undoredo_data.rcvindex, &context->hfid.vfid,
 				     context->forward_page_watcher_p->pgptr, undoredo_data.offset,
 				     undoredo_data.redo_data, undoredo_data.redo_data_size, &context->log_info);
