@@ -282,14 +282,26 @@ enum log_prior_node_status
   PRIOR_NODE_ADDED
 };
 
+typedef struct heap_debug_log_info HEAP_DEBUG_LOG_INFO;
+struct heap_debug_log_info
+{
+  char copy_home_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep a copy of home recdes */
+  char copy_new_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep a copy of new recdes */
+  RECDES copy_home_recdes;	/* copy home recdes */
+  RECDES copy_new_recdes;	/* copy new home recdes */
+};
+
+
 /* Log information, used when add logging before page fixing */
 typedef struct heap_log_info HEAP_LOG_INFO;
 struct heap_log_info
 {
   LOG_PRIOR_NODE *node;		/* log node */
 
-  /* TO DO - replace all functions to use log_undoredo_data */
   LOG_REC_UNDOREDO_DATA log_undoredo_data;
+#if !defined (NDEBUG)
+  HEAP_DEBUG_LOG_INFO debug_log_info;
+#endif
 
   bool node_appended;		/* true, if the log node was appended */
 };
@@ -352,7 +364,7 @@ struct heap_operation_context
 
   /* buffers, used to build the new record at heap deletion */
   char recdes_data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
-  RECDES build_recdes;		/* TO DO - initialize this members */
+  RECDES build_recdes;
   char redo_data_buffer[OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
   char undo_data_buffer[OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
 
@@ -370,14 +382,10 @@ struct heap_operation_context
   PGBUF_WATCHER *forward_page_watcher_p;
   PGBUF_WATCHER *new_forward_page_watcher_p;
 
-  /* !!! TO DO - needs only to page and reuse home record and forward record */
   /* data used to build the log record before page fixing */
   PAGE_PTR home_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
   PAGE_PTR forward_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
   HEAP_LOG_INFO log_info;	/* Heap log info, used to create the log node before fixing page */
-#if !defined (NDEBUG)
-  /* TO DO - additional buffers */
-#endif
 
   /* logical operation output */
   OID res_oid;			/* object identifier (if operation generates one) */
@@ -385,7 +393,7 @@ struct heap_operation_context
   bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition redistribute data operation 
 						 * and has a valid delid */
 
-  bool is_adjusted_size_big;	/* is adjusted size big */
+  bool is_new_record_big_size;	/* true if new record is big size */
   bool fits_in_home;		/* does new record fits in home page? */
   bool fits_in_forward;		/* does new record fits in forward page? */
   bool update_old_home;		/* is need to update the old home page? */
