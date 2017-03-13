@@ -319,6 +319,10 @@ typedef enum
 #define PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA(lru_idx) \
   (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
 
+#define PGBUF_OVER_QUOTA_BUFFER(quota) MAX (10, (int) (quota * 0.01f))
+#define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
+  (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
+
 #define PBGUF_BIG_PRIVATE_MIN_SIZE 100
 
 /* LRU flags */
@@ -8270,7 +8274,10 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	   * note: except vacuum threads who ignore unfixes and have no quota. */
 	  if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
 	    {
-	      restrict_other = true;
+	      /* still, offer a chance to those that are just slightly over quota. this actually targets new
+	       * transactions that do not have a quota yet... let them get a few bcb's first until their activity
+	       * becomes relevant. */
+	      restrict_other = PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER (lru_list);
 	    }
 	  searched_own = true;
 	}
