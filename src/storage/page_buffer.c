@@ -3252,7 +3252,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   float lru_dynamic_flush_adj = 1.0f;
   int lru_victim_req_cnt, fix_req_cnt;
   float lru_sum_flush_priority;
-  int count_need_wal;
+  int count_need_wal = 0;
   LOG_LSA lsa_need_wal = LSA_INITIALIZER;
 #if defined(SERVER_MODE)
   static THREAD_ENTRY *page_flush_thread = NULL;
