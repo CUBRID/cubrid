@@ -4830,8 +4830,17 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
       perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_WALS);
 
       LOG_CS_ENTER (thread_p);
-      logpb_flush_pages_direct (thread_p);
+      if (logpb_need_wal (lsa_ptr))
+	{
+	  logpb_flush_pages_direct (thread_p);
+	}
+      else
+	{
+	  /* was flushed in the meantime */
+	}
       LOG_CS_EXIT (thread_p);
+
+      assert (!logpb_need_wal (lsa_ptr));
 
 #if defined(CUBRID_DEBUG)
       if (logpb_need_wal (lsa_ptr) && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))

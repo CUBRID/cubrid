@@ -3252,10 +3252,13 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   float lru_dynamic_flush_adj = 1.0f;
   int lru_victim_req_cnt, fix_req_cnt;
   float lru_sum_flush_priority;
+  int count_need_wal;
+  LOG_LSA lsa_need_wal = LSA_INITIALIZER;
 #if defined(SERVER_MODE)
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
   bool is_bcb_locked = false;
+  bool repeated = false;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
@@ -3370,6 +3373,9 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
       perf_tracker->start_tick = perf_tracker->end_tick;
     }
 
+repeat:
+  count_need_wal = 0;
+
   /* temporary disable second iteration */
   /* for each victim candidate, do flush task */
   for (i = 0; i < victim_count; i++)
@@ -3412,6 +3418,11 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 	{
 	  /* we cannot flush a page unless log has been flushed up until page LSA. otherwise we might have recovery
 	   * issues. */
+	  count_need_wal++;
+	  if (LSA_ISNULL (&lsa_need_wal) || LSA_LE (&lsa_need_wal, &(bufptr->iopage_buffer->iopage.prv.lsa)))
+	    {
+	      LSA_COPY (&lsa_need_wal, &(bufptr->iopage_buffer->iopage.prv.lsa));
+	    }
 	  PGBUF_BCB_UNLOCK (bufptr);
 	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_SKIPPED_FLUSH);
 	  if (detailed_perf)
@@ -3466,6 +3477,23 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
     }
 
 end:
+
+  if (count_need_wal == victim_count)
+    {
+      /* log flush thread did not wake up in time. we must make sure log is flushed and retry. */
+      if (repeated)
+	{
+	  /* already waited and failed again? we must have a problem */
+	  assert (false);
+	}
+      else
+	{
+	  repeated = true;
+	  logpb_flush_log_for_wal (thread_p, &lsa_need_wal);
+	  goto repeat;
+	}
+    }
+
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = false;
 #endif
