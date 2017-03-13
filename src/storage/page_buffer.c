@@ -3242,7 +3242,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
-  int i, victim_count;
+  int i, victim_count = 0;
   int check_count_lru;
   int cfg_check_cnt;
   int total_flushed_count;
@@ -3478,7 +3478,7 @@ repeat:
 
 end:
 
-  if (count_need_wal == victim_count)
+  if (victim_count != 0 && count_need_wal == victim_count)
     {
       /* log flush thread did not wake up in time. we must make sure log is flushed and retry. */
       if (repeated)
