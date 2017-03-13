@@ -7606,7 +7606,7 @@ static SCAN_CODE
 qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec,
 		  XASL_SCAN_FNC_PTR next_scan_fnc)
 {
-#define CTE_CURRENT_READ_TUPLE(node) \
+#define CTE_CURRENT_SCAN_READ_TUPLE(node) \
   ((((node)->curr_spec->type == TARGET_LIST && (node)->curr_spec->s_id.type == S_LIST_SCAN)) \
     ? ((node)->curr_spec->s_id.s.llsid.lsid.curr_tplno) : -1)
 #define CTE_CURR_ITERATION_LAST_TUPLE(node) \
@@ -7689,6 +7689,9 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
   while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
     {
+      int cte_offset_read_tuple = 0;
+      int cte_curr_scan_tplno = -1;
+
       if (xasl->max_iterations != -1)
 	{
 	  assert (xasl->curr_spec->type == TARGET_LIST);
@@ -7702,6 +7705,15 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	{
 	  if (xasl->max_iterations != -1)
 	    {
+	      /* the scan tuple number resets when when a new page is fetched
+	       * cte_offset_read_tuple keeps of the global tuple number across the entire list */
+	      if (CTE_CURRENT_SCAN_READ_TUPLE (xasl) < cte_curr_scan_tplno)
+		{
+		  cte_offset_read_tuple += cte_curr_scan_tplno + 1;
+		}
+
+	      cte_curr_scan_tplno = CTE_CURRENT_SCAN_READ_TUPLE (xasl);
+
 	      if (cte_start_new_iteration)
 		{
 		  recursive_iterations++;
@@ -7715,7 +7727,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		  assert (curr_iteration_last_cursor >= 0);
 		  cte_start_new_iteration = false;
 		}
-	      if (CTE_CURRENT_READ_TUPLE (xasl) == curr_iteration_last_cursor)
+
+	      if (cte_curr_scan_tplno + cte_offset_read_tuple == curr_iteration_last_cursor)
 		{
 		  cte_start_new_iteration = true;
 		}
@@ -7977,7 +7990,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
   return S_SUCCESS;
 
-#undef CTE_CURRENT_READ_TUPLE
+#undef CTE_CURRENT_SCAN_READ_TUPLE
 #undef CTE_CURR_ITERATION_LAST_TUPLE
 }
 
