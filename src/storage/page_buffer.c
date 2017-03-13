@@ -6156,7 +6156,10 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
   if (pgbuf_bcb_is_async_flush_request (bufptr))
     {
-      assert (bufptr->fcnt == 0 || bufptr->latch_mode == PGBUF_LATCH_WRITE);
+      /* PGBUF_LATCH_READ is possible, when a reader and a flusher was blocked by a writer.
+       * Blocked readers are already wakened by the ex-owner.
+       */
+      assert (bufptr->fcnt == 0 || bufptr->latch_mode == PGBUF_LATCH_WRITE || bufptr->latch_mode == PGBUF_LATCH_READ);
 
       /* we need to flush bcb. we won't need the bcb mutex afterwards */
       error_code = pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, false);
