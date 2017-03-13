@@ -4115,6 +4115,9 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 
   vacuum_Data.is_loaded = true;
 
+  /* get global oldest active MVCCID. */
+  vacuum_Global_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+
   error_code = vacuum_recover_lost_block_data (thread_p);
   if (error_code != NO_ERROR)
     {
