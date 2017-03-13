@@ -23443,7 +23443,7 @@ update_old_home:
   assert (context->update_old_home == true);
   if (LOG_IS_MVCC_HEAP_OPERATION (rcv_index))
     {
-      heap_page_update_chain_after_mvcc_op (thread_p, context->home_page_watcher_p->pgptr, mvccid, &flag_vacuum_status);
+      heap_page_update_chain_after_mvcc_op (thread_p, home_page_ptr, mvccid, &flag_vacuum_status);
     }
   LOG_SET_REC_UNDOREDO_DATA (undoredo_data_p, rcv_index, home_page_ptr,
 			     context->oid.slotid | flag_vacuum_status, &context->home_recdes,
