@@ -187,7 +187,7 @@ typedef enum
 				 * buffer. */
   NEW_PAGE,			/* Fetch newly allocated page. Must pass validation test but it can be created directly 
 				 * in buffer without fixing from disk. */
-  OLD_PAGE_IF_EXISTS,		/* Fetch existing page only if is valid and if it exists in page buffer. Page may be
+  OLD_PAGE_IF_IN_BUFFER,	/* Fetch existing page only if is valid and if it exists in page buffer. Page may be
 				 * deallocated or flushed and invalidated from buffer, in which case fixing page is not
 				 * necessary. */
   OLD_PAGE_PREVENT_DEALLOC,	/* Fetch existing page and mark its memory buffer, to prevent deallocation. */

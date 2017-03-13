@@ -1828,8 +1828,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
-      /* Suppress errors if fetch mode is OLD_PAGE_IF_EXISTS. */
-      if (pgbuf_is_valid_page (thread_p, vpid, fetch_mode == OLD_PAGE_IF_EXISTS, NULL, NULL) != DISK_VALID)
+      /* Suppress errors if fetch mode is OLD_PAGE_IF_IN_BUFFER. */
+      if (pgbuf_is_valid_page (thread_p, vpid, fetch_mode == OLD_PAGE_IF_IN_BUFFER, NULL, NULL) != DISK_VALID)
 	{
 	  return NULL;
 	}
@@ -1903,9 +1903,10 @@ try_again:
 	   * page. */
 	}
     }
-  else if (fetch_mode == OLD_PAGE_IF_EXISTS)
+  else if (fetch_mode == OLD_PAGE_IF_IN_BUFFER)
     {
       /* we don't need to fix page */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
       return NULL;
     }
   else
@@ -2071,7 +2072,7 @@ try_again:
 	{
 	case NEW_PAGE:
 	case OLD_PAGE_DEALLOCATED:
-	case OLD_PAGE_IF_EXISTS:
+	case OLD_PAGE_IF_IN_BUFFER:
 	  /* fixing deallocated page is expected. fall through to return it. */
 	  break;
 	case OLD_PAGE:
@@ -7584,7 +7585,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   QUERY_ID query_id = NULL_QUERY_ID;
 #endif /* ENABLE_SYSTEMTAP */
 
-  assert (fetch_mode != OLD_PAGE_IF_EXISTS);
+  assert (fetch_mode != OLD_PAGE_IF_IN_BUFFER);
 
   /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
   if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)

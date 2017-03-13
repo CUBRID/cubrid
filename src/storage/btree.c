@@ -30003,7 +30003,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       btree_read_fixed_portion_of_non_leaf_record (&right_recdes, &non_leaf_rec_info);
       /* Fix right page. */
       VPID_COPY (&right_vpid, &non_leaf_rec_info.pnt);
-      right_page = pgbuf_fix (thread_p, &right_vpid, pgbuf_is_io_stressful ()? OLD_PAGE_IF_EXISTS : OLD_PAGE,
+      right_page = pgbuf_fix (thread_p, &right_vpid, pgbuf_is_io_stressful ()? OLD_PAGE_IF_IN_BUFFER : OLD_PAGE,
 			      child_latch, PGBUF_UNCONDITIONAL_LATCH);
       if (right_page == NULL)
 	{
