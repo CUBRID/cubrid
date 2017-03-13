@@ -4840,7 +4840,7 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 	}
       LOG_CS_EXIT (thread_p);
 
-      assert (!logpb_need_wal (lsa_ptr));
+      assert (LSA_ISNULL (lsa_ptr) || !logpb_need_wal (lsa_ptr));
 
 #if defined(CUBRID_DEBUG)
       if (logpb_need_wal (lsa_ptr) && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
