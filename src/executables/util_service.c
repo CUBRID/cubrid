@@ -1606,7 +1606,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 #if !defined(WINDOWS)
 	      if (check_ha_mode == true)
 		{
-		  status = sysprm_load_and_init (token, NULL);
+		  status = sysprm_load_and_init (token, NULL, SYSPRM_IGNORE_INTL_PARAMS);
 		  if (status != NO_ERROR)
 		    {
 		      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
@@ -1676,7 +1676,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 #if !defined(WINDOWS)
 		  if (check_ha_mode)
 		    {
-		      status = sysprm_load_and_init (token, NULL);
+		      status = sysprm_load_and_init (token, NULL, SYSPRM_IGNORE_INTL_PARAMS);
 		      if (status != NO_ERROR)
 			{
 			  print_result (PRINT_SERVER_NAME, status, command_type);
