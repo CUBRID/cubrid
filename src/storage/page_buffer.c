@@ -3260,6 +3260,9 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   bool is_bcb_locked = false;
   bool repeated = false;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+  bool empty_flushed_bcb_queue = false;
+#endif /* DEBUG && SERVER_MODE */
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flush victim candidates\n");
@@ -3329,6 +3332,10 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   pgbuf_Flush_eye.check_count_lru = check_count_lru;
   pgbuf_Flush_eye.flushed = 0;
   pgbuf_Flush_eye.need_wal = 0;
+
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+  empty_flushed_bcb_queue = lf_circular_queue_is_empty (pgbuf_Pool.flushed_bcbs);
+#endif /* DEBUG && SERVER_MODE */
 
   if (check_count_lru > 0 && lru_sum_flush_priority > 0)
     {
@@ -3504,8 +3511,12 @@ end:
 
 #if defined (SERVER_MODE)
   /* safe-guard: when the system really needs victims, we must make sure flush does something. otherwise, we probably
-   * messed something here. */
-  assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim ());
+   * messed something here.
+   * note: sometimes the post-flush thread may be behind (however, it should catch up quickly). when that happens,
+   *       flush thread may not be able to find victims. that's ok, the purpose of this safe-guard is to avoid dead
+   *       scenarios when threads are waiting for direct victims but system flushes nothing. if there are flushed
+   *       waiting for assignment, then we are not in this kind of scenario. */
+  assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim () || !empty_flushed_bcb_queue);
 #endif /* SERVER_MODE */
 
   return error;
