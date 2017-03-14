@@ -1547,7 +1547,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      /* load parameters for [@database] section */
 	      if (check_ha_mode == true)
 		{
-		  status = sysprm_load_and_init (token, NULL);
+		  status = sysprm_load_and_init (token, NULL, SYSPRM_IGNORE_INTL_PARAMS);
 		  if (status != NO_ERROR)
 		    {
 		      print_result (PRINT_SERVER_NAME, status, command_type);
@@ -4139,7 +4139,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
   db_name = (argc >= 1) ? argv[0] : NULL;
   if (db_name != NULL)
     {
-      status = sysprm_load_and_init (db_name, NULL);
+      status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
       if (status != NO_ERROR)
 	{
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
@@ -4216,7 +4216,7 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
     {
       if (db_name[0] != '\0')
 	{
-	  status = sysprm_load_and_init (db_name, NULL);
+	  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
 	  if (status != NO_ERROR)
 	    {
 	      goto ret;
@@ -4496,7 +4496,7 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
 
   if (db_name != NULL)
     {
-      status = sysprm_load_and_init (db_name, NULL);
+      status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
       if (status != NO_ERROR)
 	{
 	  goto ret;
@@ -4745,7 +4745,7 @@ load_properties (void)
   bool heartbeat_flag = false;
   char *value = NULL;
 
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
     {
       return ER_GENERIC_ERROR;
     }

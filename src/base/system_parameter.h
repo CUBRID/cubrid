@@ -451,6 +451,18 @@ struct sysprm_assign_value
   SYSPRM_ASSIGN_VALUE *next;
 };
 
+typedef enum sysprm_load_flag SYSPRM_LOAD_FLAG;
+enum sysprm_load_flag
+{
+  SYSPRM_LOAD_ALL = 0x0,
+  SYSPRM_IGNORE_HA = 0x1,
+  SYSPRM_IGNORE_INTL_PARAMS = 0x2
+};
+
+#define SYSPRM_LOAD_IS_IGNORE_HA(flags) ((flags) & SYSPRM_IGNORE_HA)
+#define SYSPRM_LOAD_IS_IGNORE_INTL(flags) ((flags) & SYSPRM_IGNORE_INTL_PARAMS)
+
+
 #if defined (CS_MODE)
 /* when system parameters are loaded, session parameters need to be cached for
  * future clients that connect to broker
@@ -478,7 +490,7 @@ extern void prm_set_bigint_value (PARAM_ID prm_id, UINT64 value);
 extern bool sysprm_find_err_in_integer_list (PARAM_ID prm_id, int error_code);
 extern bool sysprm_find_fi_code_in_integer_list (PARAM_ID prm_id, int fi_code);
 
-extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
+extern int sysprm_load_and_init (const char *db_name, const char *conf_file, const int load_flags);
 extern int sysprm_load_and_init_client (const char *db_name, const char *conf_file);
 extern int sysprm_reload_and_init (const char *db_name, const char *conf_file);
 extern void sysprm_final (void);

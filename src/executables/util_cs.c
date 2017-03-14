@@ -2208,7 +2208,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   db_shutdown ();
 #else /* CS_MODE */
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
-  if (sysprm_load_and_init (database_name, NULL) == NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) == NO_ERROR)
     {
       sysprm_dump_parameters (outfp);
     }
