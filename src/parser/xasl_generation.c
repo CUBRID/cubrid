@@ -20381,12 +20381,12 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
   switch (node->node_type)
     {
     case PT_SELECT:
-    if (!node->info.query.xasl)
-    	  {
-    	  	(void) pt_query_set_reference (parser, node);
-    	  }
-    	  pt_push_symbol_info (parser, node);
-    	  break;
+      if (!node->info.query.xasl)
+	{
+	  (void) pt_query_set_reference (parser, node);
+	}
+      pt_push_symbol_info (parser, node);
+      break;
 
 #if defined(CUBRID_DEBUG)
       PT_NODE_PRINT_TO_ALIAS (parser, node, PT_CONVERT_RANGE);
