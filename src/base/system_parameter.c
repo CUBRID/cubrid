@@ -6313,7 +6313,7 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
     {
       error = prm_load_by_section (ini, "service", false, reload, prm_file_name, load_flags);
     }
-  if (error == NO_ERROR && !SYSPRM_LOAD_IS_IGNORE_HA(load_flags) && PRM_HA_MODE != HA_MODE_OFF
+  if (error == NO_ERROR && !SYSPRM_LOAD_IS_IGNORE_HA (load_flags) && PRM_HA_MODE != HA_MODE_OFF
       && GETHOSTNAME (host_name, MAXHOSTNAMELEN) == 0)
     {
       snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
