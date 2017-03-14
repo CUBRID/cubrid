@@ -9914,9 +9914,17 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
   PGBUF_BCB_UNLOCK (bufptr);
   *is_bcb_locked = false;
 
-  /* confirm WAL protocol */
-  /* force log record to disk */
-  logpb_flush_log_for_wal (thread_p, &iopage->prv.lsa);
+  if (!LSA_ISNULL (&oldest_unflush_lsa))
+    {
+      /* confirm WAL protocol */
+      /* force log record to disk */
+      logpb_flush_log_for_wal (thread_p, &iopage->prv.lsa);
+    }
+  else
+    {
+      /* if page was changed, the change was not logged. this is a rare case, but can happen. */
+      er_log_debug (ARG_FILE_LINE, "flushing page %d|%d to disk without logging.\n", VPID_AS_ARGS (&bufptr->vpid));
+    }
 
   /* Record number of writes in statistics */
   perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
