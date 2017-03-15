@@ -3233,16 +3233,12 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
  *                        interrupts to check or to false if there are not
  *                        more interrupts.
  *
- * Note: Find if the current execution must be stopped due to an
- *              interrupt (^C). If clear is true, the interruption flag is
- *              cleared; This is the expected case, once someone is notified,
- *              we do not have to keep the flag on.
+ * Note: Find if the current execution must be stopped due to an interrupt (^C). If clear is true, the interruption flag
+ *       is cleared; This is the expected case, once someone is notified, we do not have to keep the flag on.
  *
- *       If the transaction is not active, false is returned. For
- *              example, in the middle of an undo action, the transaction will
- *              not be interrupted. The recovery manager will interrupt the
- *              transaction at the end of the undo action...int this case the
- *              transaction will be partially aborted.
+ *       If the transaction is not active, false is returned. For example, in the middle of an undo action, the
+ *       transaction will not be interrupted. The recovery manager will interrupt the transaction at the end of the undo
+ *       action... in this case the transaction will be partially aborted.
  */
 bool
 logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
