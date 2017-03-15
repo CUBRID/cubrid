@@ -196,9 +196,9 @@ define pgbuf_cast_ptob
   end
 
 # pgbuf_lru_print
-# arg0  - lru index
+# $arg0 - lru index
 #
-# Prints info on lru
+# Prints info on lru list
 #  
 define pgbuf_lru_print
   set $lru_idx = $arg0
@@ -288,6 +288,11 @@ define pgbuf_lru_print
     end
   end
 
+# pgbuf_lru_print_victim_status
+# No arguments
+#
+# Go through all lru lists (private and shared) and print an overall status for page buffer and its victimizable bcb's
+#
 define pgbuf_lru_print_victim_status
   set $i = 0
   
@@ -362,6 +367,11 @@ define pgbuf_lru_print_victim_status
   printf "\n"
   end
   
+# pgbuf_print_alloc_bcb_waits
+# No arguments
+#
+# Print direct victim systems (allocated bcb's and waiter threads)
+#
 define pgbuf_print_alloc_bcb_waits
 
   set $i = 0
@@ -436,19 +446,43 @@ define pgbuf_find_alloc_bcb_wait_thread
     printf "not found \n"
     end
   end
-  
+
+# pgbuf_read_bcb_flags
+# $arg0 - bcb flags
+#
+# Print all information obtined from bcb flags
+#
 define pgbuf_read_bcb_flags
   set $flags = $arg0
+  set $dirty_flag = (int) 0x80000000
+  set $flushing_flag = (int) 0x40000000
+  set $victim_direct_flag = (int) 0x20000000
+  set $invalid_direct_victim_flag = (int) 0x10000000
+  set $mov_to_bot_flag = (int) 0x08000000
+  set $to_vacuum_flag = (int) 0x04000000
+  set $async_flush_flag = (int) 0x02000000
   
   printf "Flags: %x \n", ($flags & 0xF0000000)
-  if $flags & 0x80000000
+  if $flags & $dirty_flag
     printf "BCB is dirty \n"
     end
-  if $flags & 0x40000000
+  if $flags & $flushing_flag
     printf "BCB is being flushed to disk \n"
     end
-  if $flags & 0x20000000
+  if $flags & $victim_direct_flag
     printf "BCB is direct victim \n"
+    end
+  if $flags & $invalid_direct_victim_flag
+    printf "BCB is invalid direct victim \n"
+    end
+  if $flags & $to_vacuum_flag
+    printf "BCB will be fixed by vacuum \n"
+    end
+  if $flags & $mov_to_bot_flag
+    printf "BCB must be moved to bottom \n"
+    end
+  if $flags & $async_flush_flag
+    printf "BCB must be flushed \n"
     end
   
   if ($flags & PGBUF_ZONE_MASK) == PGBUF_LRU_1_ZONE
@@ -465,9 +499,6 @@ define pgbuf_read_bcb_flags
     end
   if ($flags & PGBUF_ZONE_MASK) == PGBUF_INVALID_ZONE
     printf "BCB is in invalid zone \n"
-    end
-  if ($flags & PGBUF_ZONE_MASK) == PGBUF_AIN_ZONE
-    printf "BCB is in ain \n"
     end
   
   if $flags & PGBUF_LRU_ZONE_MASK

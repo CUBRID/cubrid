@@ -1,4 +1,16 @@
+#
+# Lock-free module scripts
+#
 
+#
+# Lock-free hashes
+#
+
+# lf_print_counters
+# No arguments -
+#
+# Prints all lock-free counters
+#
 define lf_print_counters
   printf "lf_hash_size                   %d\n", lf_hash_size
   printf "lf_inserts                     %d\n", lf_inserts
@@ -27,6 +39,15 @@ define lf_print_counters
   printf "lf_temps                       %d\n", lf_temps
   end
 
+#
+# Lock-free circular queues
+#
+
+# lfcq_print_entry_states
+# $arg0 (in) : lock-free circular queue
+#
+# Print all entry states
+#
 define lfcq_print_entry_states
   set $lfcq = $arg0
   set $i = 0
