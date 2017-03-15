@@ -11006,7 +11006,7 @@ pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p)
 	  return true;
 	}
       if (holder->bufptr->iopage_buffer->iopage.prv.ptype == PAGE_HEAP
-	  && heap_is_page_file_header (thread_p, holder->bufptr->iopage_buffer->iopage.page))
+	  && heap_is_page_header (thread_p, holder->bufptr->iopage_buffer->iopage.page))
 	{
 	  /* heap file header */
 	  return true;
