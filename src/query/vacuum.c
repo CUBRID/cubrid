@@ -283,6 +283,15 @@ static VACUUM_DATA vacuum_Data = {
 #endif /* SA_MODE */
 };
 
+/* vacuum data load */
+typedef struct vacuum_data_load VACUUM_DATA_LOAD;
+struct vacuum_data_load
+{
+  VPID vpid_first;
+  VPID vpid_last;
+};
+VACUUM_DATA_LOAD vacuum_Data_load = { VPID_INITIALIZER, VPID_INITIALIZER };
+
 /* Vacuum worker structure used by vacuum master thread. */
 /* This VACUUM_WORKER structure was designed for the needs of the vacuum workers. However, since the design of
  * vacuum data was changed, and since vacuum master may have to allocate or deallocate disk pages, it needed to make
@@ -2546,12 +2555,28 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
        * about vacuum data first and last page not being unfixed (and it will also unfix them).
        * So, we have to load the data here (vacuum master never commits).
        */
-      error_code = vacuum_load_data_from_disk (thread_p);
-      if (error_code != NO_ERROR)
+      assert (vacuum_Data.first_page == NULL && vacuum_Data.last_page == NULL);
+      vacuum_Data.first_page = vacuum_fix_data_page (thread_p, &vacuum_Data_load.vpid_first);
+      if (vacuum_Data.first_page == NULL)
 	{
-	  assert (false);
+	  assert_release (false);
 	  return;
 	}
+      if (VPID_EQ (&vacuum_Data_load.vpid_first, &vacuum_Data_load.vpid_last))
+	{
+	  vacuum_Data.last_page = vacuum_Data.first_page;
+	}
+      else
+	{
+	  vacuum_Data.last_page = vacuum_fix_data_page (thread_p, &vacuum_Data_load.vpid_last);
+	  if (vacuum_Data.last_page == NULL)
+	    {
+	      vacuum_unfix_first_and_last_data_page (thread_p);
+	      assert_release (false);
+	      return;
+	    }
+	}
+      vacuum_Data.is_loaded = true;
 
       /* Initialize job cursor */
       VPID_COPY (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page));
@@ -3987,7 +4012,7 @@ vacuum_compare_blockids (const void *ptr1, const void *ptr2)
 }
 
 /*
- * vacuum_load_data_from_disk () - Loads vacuum data from disk.
+ * vacuum_data_load_and_recover () - Loads vacuum data from disk and recovers it.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -3996,7 +4021,7 @@ vacuum_compare_blockids (const void *ptr1, const void *ptr2)
  *	 before starting other vacuum routines.
  */
 int
-vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
+vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
   VACUUM_DATA_ENTRY *entry = NULL;
@@ -4012,7 +4037,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      goto error;
+      goto end;
     }
   /* TODO VACUUM_DATA_COMPATIBILITY: ===> */
   if (fdes.vacuum_data.vpid_first.pageid == 0)
@@ -4028,7 +4053,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   if (data_page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      goto error;
+      goto end;
     }
   vacuum_Data.first_page = data_page;
   vacuum_Data.oldest_unvacuumed_mvccid = MVCCID_NULL;
@@ -4066,7 +4091,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
       if (data_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  goto error;
+	  goto end;
 	}
     }
   assert (data_page != NULL);
@@ -4090,11 +4115,14 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 
   vacuum_Data.is_loaded = true;
 
+  /* get global oldest active MVCCID. */
+  vacuum_Global_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+
   error_code = vacuum_recover_lost_block_data (thread_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      goto error;
+      goto end;
     }
   LSA_SET_NULL (&vacuum_Data.recovery_lsa);
 
@@ -4105,12 +4133,13 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
 
-  return NO_ERROR;
+  /* note: this is called when server is started, after recovery. however, pages cannot remain fixed by current thread,
+   *       they must be fixed by vacuum master. therefore, we'll save first and last vpids to vacuum_Data_load and unfix
+   *       them here. */
+  pgbuf_get_vpid ((PAGE_PTR) vacuum_Data.first_page, &vacuum_Data_load.vpid_first);
+  pgbuf_get_vpid ((PAGE_PTR) vacuum_Data.last_page, &vacuum_Data_load.vpid_last);
 
-error:
-
-  assert (error_code != NO_ERROR);
-  ASSERT_ERROR ();
+end:
 
   vacuum_unfix_data_page (thread_p, data_page);
   vacuum_unfix_first_and_last_data_page (thread_p);

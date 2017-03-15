@@ -2560,7 +2560,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
-      /* Make sure dropped files are loaded from disk after recovery */
+      /* load and recovery vacuum data and dropped files */
+      error_code = vacuum_data_load_and_recover (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
       error_code = vacuum_load_dropped_files_from_disk (thread_p);
       if (error_code != NO_ERROR)
 	{
@@ -5412,7 +5418,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
-      /* We need to load vacuum data and initialize vacuum routine before recovery. */
+      /* We need initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
 			   &boot_Db_parm->dropped_files_vfid);
@@ -5427,7 +5433,6 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     {
       goto error_exit;
     }
-
 
   if (recreate_log == false)
     {

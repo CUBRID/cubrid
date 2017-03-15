@@ -1417,6 +1417,7 @@ static int btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTI
 						    MVCC_SNAPSHOT * mvcc_snapshot);
 static void btree_write_default_split_info (BTREE_NODE_SPLIT_INFO * info);
 static int btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p, VPID * prev);
+static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
 static int btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * next_vpid);
 static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
@@ -18811,6 +18812,62 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 }
 
 /*
+ * btree_compare_individual_key_value - Compare individual key values
+ *
+ * return : comparison result
+ * key1 (in) :
+ * key2 (in) :
+ * key_domain (in) :
+ *
+ * Function expects that both keys are not MIDXKEY. Please also look at btree_compare_key_value.
+ */
+static int
+btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain)
+{
+  int c;
+  bool key1_is_null, key2_is_null;
+
+  /* should not be MIDXKEY */
+  assert (DB_VALUE_DOMAIN_TYPE (key1) != DB_TYPE_MIDXKEY);
+  assert (DB_VALUE_DOMAIN_TYPE (key2) != DB_TYPE_MIDXKEY);
+
+  key1_is_null = DB_IS_NULL (key1);
+  key2_is_null = DB_IS_NULL (key2);
+
+  if (key1_is_null)
+    {
+      if (key2_is_null)
+	{
+	  return DB_EQ;
+	}
+      else
+	{
+	  /* NULL vs. key2 */
+	  return key_domain->is_desc ? DB_GT : DB_LT;
+	}
+    }
+  else
+    {
+      if (key2_is_null)
+	{
+	  /* key1 vs. NULL */
+	  return key_domain->is_desc ? DB_LT : DB_GT;
+	}
+    }
+
+  /* both are not null values */
+  c = (*(key_domain->type->cmpval)) (key1, key2, 1, 1, NULL, key_domain->collation_id);
+
+  if (key_domain->is_desc)
+    {
+      c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
+    }
+
+  assert (DB_LT <= c && c <= DB_GT);
+  return c;
+}
+
+/*
  * btree_range_opt_check_add_index_key () - Add key in the array of top N keys for multiple range search optimization.
  *
  * return		    : Error code.
@@ -18892,8 +18949,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	      goto exit;
 	    }
 
-	  c = (*(multi_range_opt->sort_col_dom[i]->type->cmpval)) (&comp_key_value, &new_key_value[i], 1, 1, NULL,
-								   multi_range_opt->sort_col_dom[i]->collation_id);
+	  c = btree_compare_individual_key_value (&comp_key_value, &new_key_value[i], multi_range_opt->sort_col_dom[i]);
+
 	  pr_clear_value (&comp_key_value);
 	  if (c != 0)
 	    {
@@ -19062,8 +19119,9 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 		{
 		  return error;
 		}
-	      c = (*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1, 1, NULL,
-						 domains[i]->collation_id);
+
+	      c = btree_compare_individual_key_value (&comp_key_value, &new_key_values[i], domains[i]);
+
 	      pr_clear_value (&comp_key_value);
 	      if (c != 0)
 		{
@@ -19100,7 +19158,9 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 	{
 	  return error;
 	}
-      c = (*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1, 1, NULL, domains[i]->collation_id);
+
+      c = btree_compare_individual_key_value (&comp_key_value, &new_key_values[i], domains[i]);
+
       pr_clear_value (&comp_key_value);
       if (c != 0)
 	{
