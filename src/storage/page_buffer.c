@@ -3254,6 +3254,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   float lru_sum_flush_priority;
   int count_need_wal = 0;
   LOG_LSA lsa_need_wal = LSA_INITIALIZER;
+  LOG_LSA save_lsa_need_wal = LSA_INITIALIZER;
 #if defined(SERVER_MODE)
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
@@ -3485,17 +3486,19 @@ repeat:
 
 end:
 
-  if (victim_count != 0 && count_need_wal == victim_count)
+  if (pgbuf_is_any_thread_waiting_for_direct_victim () && victim_count != 0 && count_need_wal == victim_count)
     {
       /* log flush thread did not wake up in time. we must make sure log is flushed and retry. */
       if (repeated)
 	{
-	  /* already waited and failed again? we must have a problem */
-	  assert (false);
+	  /* already waited and failed again? all bcb's must have changed again (confirm by comparing save_lsa_need_wal
+	   * and lsa_need_wal. */
+	  assert (LSA_LT (&save_lsa_need_wal, &lsa_need_wal));
 	}
       else
 	{
 	  repeated = true;
+	  save_lsa_need_wal = lsa_need_wal;
 	  logpb_flush_log_for_wal (thread_p, &lsa_need_wal);
 	  goto repeat;
 	}
@@ -3516,7 +3519,8 @@ end:
    *       flush thread may not be able to find victims. that's ok, the purpose of this safe-guard is to avoid dead
    *       scenarios when threads are waiting for direct victims but system flushes nothing. if there are flushed
    *       waiting for assignment, then we are not in this kind of scenario. */
-  assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim () || !empty_flushed_bcb_queue);
+  assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim () || !empty_flushed_bcb_queue
+	  || count_need_wal == victim_count);
 #endif /* SERVER_MODE */
 
   return error;
