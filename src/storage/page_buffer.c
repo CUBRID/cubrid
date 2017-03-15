@@ -9067,7 +9067,7 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 
 		  PGBUF_BCB_UNLOCK (bcb);
 
-		  pgbuf_add_vpid_to_aout_list (thread_p, &vpid_copy, lru_idx);
+		  pgbuf_add_vpid_to_aout_list (thread_p, &vpid_copy, lru_list->index);
 		  return;
 		}
 	      /* not assigned. unlock bcb mutex and fall through */
@@ -14331,7 +14331,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
    * 1. any flag invalidating victim candidates, except is flushing flag
    * 2. to vacuum flag. */
   int invalidate_flag =
-    PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK & (~PGBUF_BCB_FLUSHING_TO_DISK_FLAG) | PGBUF_BCB_VICTIM_DIRECT_FLAG;
+    ((PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK & (~PGBUF_BCB_FLUSHING_TO_DISK_FLAG)) | PGBUF_BCB_TO_VACUUM_FLAG);
 
   /* consume all flushed bcbs queue */
   while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcbs, &bcb_flushed))
