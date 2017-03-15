@@ -441,11 +441,6 @@ extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
-/* is thread functions */
-#define THREAD_IS_CHECKPOINT_THREAD(thread_p) \
-  ((thread_p) != NULL && (thread_p)->type == TT_DAEMON && thread_is_checkpoint_thread (thread_p))
-extern bool thread_is_checkpoint_thread (THREAD_ENTRY * thread_p);
-
 /* wakeup functions */
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);

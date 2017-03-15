@@ -340,8 +340,7 @@ typedef enum
 
 #if defined (SERVER_MODE)
 /* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
-#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) \
-  (VACUUM_IS_THREAD_VACUUM_WORKER (th) || THREAD_IS_CHECKPOINT_THREAD (th))
+#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
 #else
 #define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) false
 #endif
@@ -1173,6 +1172,7 @@ static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 
 STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
+static bool pgbuf_bcb_has_any_non_flush_waiters (PGBUF_BCB * bcb);
 
 STATIC_INLINE void pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
@@ -1240,8 +1240,6 @@ STATIC_INLINE bool pgbuf_is_hit_ratio_low (void);
 
 static void pgbuf_flags_mask_sanity_check (void);
 static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
-static bool pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB * bufptr);
-
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -6053,7 +6051,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_bcb_should_be_moved_to_bottom_lru (bufptr))
 	{
-	  assert (!pgbuf_bcb_has_any_non_checkpoint_waiters (bufptr));
+	  assert (!pgbuf_bcb_has_any_non_flush_waiters (bufptr));
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
       else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
@@ -13807,14 +13805,43 @@ pgbuf_has_any_waiters (PAGE_PTR pgptr)
 {
 #if defined (SERVER_MODE)
   PGBUF_BCB *bufptr = NULL;
+  bool has_waiter;
+
+  /* note: we rule out flush waiters here */
 
   assert (pgptr != NULL);
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
-  return bufptr->next_wait_thrd != NULL;
+  PGBUF_BCB_LOCK (bufptr);
+  has_waiter = pgbuf_bcb_has_any_non_flush_waiters (bufptr);
+  PGBUF_BCB_UNLOCK (bufptr);
+  return has_waiter;
 #else
   return false;
 #endif
+}
+
+/*
+ * pgbuf_bcb_has_any_non_flush_waiters () - return if bcb has any non-flush waiters
+ *
+ * return   : true/false
+ * bcb (in) : bcb
+ */
+static bool
+pgbuf_bcb_has_any_non_flush_waiters (PGBUF_BCB * bcb)
+{
+  THREAD_ENTRY *wait_thrd;
+
+  for (wait_thrd = bcb->next_wait_thrd; wait_thrd != NULL; wait_thrd = wait_thrd->next_wait_thrd)
+    {
+      if (wait_thrd->request_latch_mode == PGBUF_LATCH_READ || wait_thrd->request_latch_mode == PGBUF_LATCH_WRITE)
+	{
+	  return true;
+	}
+      assert (wait_thrd->request_latch_mode == PGBUF_NO_LATCH || wait_thrd->request_latch_mode == PGBUF_LATCH_FLUSH);
+    }
+  /* no waiters */
+  return false;
 }
 
 /*
@@ -13849,57 +13876,6 @@ pgbuf_has_any_non_vacuum_waiters (PAGE_PTR pgptr)
   return false;
 #endif
 }
-
-/*
- * pgbuf_has_any_non_checkpoint_waiters () - true if page has any non-checkpoint waiters
- *
- * return     : true/false
- * pgptr (in) : page
- */
-bool
-pgbuf_has_any_non_checkpoint_waiters (PAGE_PTR pgptr)
-{
-#if defined (SERVER_MODE)
-  PGBUF_BCB *bufptr = NULL;
-
-  assert (pgptr != NULL);
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-
-  return pgbuf_bcb_has_any_non_checkpoint_waiters (bufptr);
-#else
-  return false;
-#endif
-}
-
-/*
- * pgbuf_bcb_has_any_non_checkpoint_waiters () - true if BCB has any non-checkpoint waiters
- *
- * return     : true/false
- * pgptr (in) : page
- */
-static bool
-pgbuf_bcb_has_any_non_checkpoint_waiters (PGBUF_BCB * bufptr)
-{
-#if defined (SERVER_MODE)
-  assert (bufptr != NULL);
-
-  if (bufptr->next_wait_thrd == NULL)
-    {
-      /* no waiters at all */
-      return false;
-    }
-  if (bufptr->next_wait_thrd->next_wait_thrd != NULL)
-    {
-      /* more than one waiter, there can be only one checkpoint thread! */
-      return true;
-    }
-  /* is the single waiter checkpoint thread? */
-  return !THREAD_IS_CHECKPOINT_THREAD (bufptr->next_wait_thrd);
-#else
-  return false;
-#endif
-}
-
 
 /*
  * pgbuf_has_prevent_dealloc () - Quick check if page has any scanners.

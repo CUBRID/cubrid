@@ -3021,18 +3021,6 @@ thread_wakeup_checkpoint_thread (void)
 }
 
 /*
- * thread_is_checkpoint_thread () - is this the checkpoint thread?
- *
- * return        : true/false
- * thread_p (in) : thread entry
- */
-bool
-thread_is_checkpoint_thread (THREAD_ENTRY * thread_p)
-{
-  return thread_p != NULL && thread_p->index == thread_Checkpoint_thread.thread_index;
-}
-
-/*
  * thread_purge_archive_logs_thread() -
  *   return:
  *   arg_p(in):
