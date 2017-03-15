@@ -2169,10 +2169,10 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
   TSCTIMEVAL tv_diff;
   UINT64 promote_wait_time;
   bool is_perf_tracking;
-  PERF_PAGE_TYPE perf_page_type;
-  PERF_PROMOTE_CONDITION perf_promote_cond_type;
-  PERF_HOLDER_LATCH perf_holder_latch;
-  int stat_success;
+  PERF_PAGE_TYPE perf_page_type = PERF_PAGE_UNKNOWN;
+  PERF_PROMOTE_CONDITION perf_promote_cond_type = PERF_PROMOTE_ONLY_READER;
+  PERF_HOLDER_LATCH perf_holder_latch = PERF_HOLDER_LATCH_READ;
+  int stat_success = 0;
   int rv = NO_ERROR;
 #endif /* SERVER_MODE */
 
@@ -2375,10 +2375,6 @@ end:
       if (rv == NO_ERROR)
 	{
 	  stat_success = 1;
-	}
-      else if (rv == ER_PAGE_LATCH_PROMOTE_FAIL)
-	{
-	  stat_success = 0;
 	}
 
       /* aggregate success/fail */
