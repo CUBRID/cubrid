@@ -385,6 +385,7 @@ struct heap_operation_context
   /* data used to build the log record before page fixing */
   PAGE_PTR home_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
   PAGE_PTR forward_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
+  LOG_LSA home_page_copy_lsa;	/* LSA of home page copy */
   HEAP_LOG_INFO log_info;	/* Heap log info, used to create the log node before fixing page */
 
   /* logical operation output */

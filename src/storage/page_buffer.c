@@ -1366,6 +1366,7 @@ pgbuf_copy_to_bcb_area_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE
   dest_bufptr->iopage_buffer->iopage.prv.pageid = NULL_PAGEID;
   dest_bufptr->iopage_buffer->iopage.prv.volid = NULL_VOLID;
   pgbuf_set_page_ptype (thread_p, bcb_area, page_type);
+  LSA_COPY (&dest_bufptr->iopage_buffer->iopage.prv.lsa, &src_bufptr->iopage_buffer->iopage.prv.lsa);
   *page_copy_status = PAGE_COPIED;
 
   return NO_ERROR;
