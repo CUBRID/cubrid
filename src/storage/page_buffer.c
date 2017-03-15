@@ -2417,7 +2417,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PGBUF_HOLDER *holder;
   PGBUF_WATCHER *watcher;
   PGBUF_HOLDER_STAT holder_perf_stat;
-  PERF_PAGE_TYPE perf_page_type;
+  PERF_PAGE_TYPE perf_page_type = PERF_PAGE_UNKNOWN;
   bool is_perf_tracking;
 
 #if defined(CUBRID_DEBUG)
@@ -3423,6 +3423,7 @@ repeat:
 
 end:
 
+#if defined (SERVER_MODE)
   if (pgbuf_is_any_thread_waiting_for_direct_victim () && victim_count != 0 && count_need_wal == victim_count)
     {
       /* log flush thread did not wake up in time. we must make sure log is flushed and retry. */
@@ -3441,15 +3442,8 @@ end:
 	}
     }
 
-#if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = false;
-#endif
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from (%d) to (%d) list. Found LRU:%d/%d",
-		total_flushed_count, start_lru_idx, pgbuf_Pool.last_flushed_LRU_list_idx, victim_count,
-		check_count_lru);
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
-#if defined (SERVER_MODE)
   /* safe-guard: when the system really needs victims, we must make sure flush does something. otherwise, we probably
    * messed something here.
    * note: sometimes the post-flush thread may be behind (however, it should catch up quickly). when that happens,
@@ -3459,6 +3453,11 @@ end:
   assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim () || !empty_flushed_bcb_queue
 	  || count_need_wal > 0);
 #endif /* SERVER_MODE */
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from (%d) to (%d) list. Found LRU:%d/%d",
+		total_flushed_count, start_lru_idx, pgbuf_Pool.last_flushed_LRU_list_idx, victim_count,
+		check_count_lru);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_FLUSHED, total_flushed_count);
 
@@ -11526,7 +11525,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   PGBUF_HOLDER_INFO ordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
   PGBUF_HOLDER_INFO req_page_holder_info;
   bool req_page_has_watcher;
-  bool req_page_has_group;
+  bool req_page_has_group = false;
   int er_status_get_hfid = NO_ERROR;
   VPID req_page_groupid;
   bool has_dealloc_prevent_flag = false;
