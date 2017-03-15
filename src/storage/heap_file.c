@@ -924,7 +924,7 @@ STATIC_INLINE int heap_mvcc_delete_home_prepare_log_data (THREAD_ENTRY * thread_
   __attribute__ ((ALWAYS_INLINE));
 #if !defined (NDEBUG)
 static bool heap_delete_home_data_has_changed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id,
-					       int flag_vacuum_status, HEAP_OPERATION_CONTEXT * context);
+					       short flag_vacuum_status, HEAP_OPERATION_CONTEXT * context);
 #endif
 
 static int heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTEXT * context,
@@ -971,7 +971,7 @@ static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
 static int heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE * ftype_out);
 static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
 static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
-						  int *flag_vacuum_status);
+						  short * flag_vacuum_status);
 static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
 				       bool vacuum_status_change);
 
@@ -15882,7 +15882,7 @@ heap_create_update_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   bool has_home_record = false;
   char *redo_data_p = NULL, *undo_data_p = NULL;
   int copy_retry_count = 1, copy_retry_max = 3;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
   int redo_data_size = 0, undo_data_size = 0;
   LOG_RCVINDEX rcv_index = RV_NOT_DEFINED;
   int rc = NO_ERROR;
@@ -21822,7 +21822,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
   int rc, redo_data_size = 0;
   char *redo_data_p = NULL, *undo_data_p = NULL;
   LOG_RCVINDEX rcv_index = RV_NOT_DEFINED;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
 
   /* check input */
   assert (context != NULL);
@@ -22189,7 +22189,7 @@ heap_mvcc_delete_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES 
   char *redo_data_p = NULL;
   int error_code = NO_ERROR;
   PAGE_PTR page_ptr = NULL, forward_page_ptr = NULL;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
   RECDES *new_home_recdes = NULL;
 
   assert (context != NULL && context->recdes_p != NULL && context->type == HEAP_OPERATION_DELETE
@@ -22357,7 +22357,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
 {
   LOG_REC_UNDOREDO_DATA undoredo_data;
   int rc;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
   LOG_RCVINDEX rcv_index = RV_NOT_DEFINED;
 
   /* check input */
@@ -22726,7 +22726,7 @@ heap_mvcc_delete_home_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes
   RECDES *local_redo_recdes = NULL;
   int error_code = NO_ERROR;
   char *page_ptr = NULL;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
 
   assert (context != NULL && context->recdes_p != NULL && context->type == HEAP_OPERATION_DELETE
 	  && MVCCID_IS_VALID (mvccid) && undoredo_data_p != NULL);
@@ -22831,7 +22831,7 @@ heap_mvcc_delete_home_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes
  *   context(in): operation context
  */
 static bool
-heap_delete_home_data_has_changed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, int flag_vacuum_status,
+heap_delete_home_data_has_changed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvcc_id, short flag_vacuum_status,
 				   HEAP_OPERATION_CONTEXT * context)
 {
   HEAP_OPERATION_CONTEXT local_context;
@@ -22881,10 +22881,10 @@ heap_delete_home_data_has_changed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVC
 		pgbuf_get_vpid_ptr (local_context.log_info.log_undoredo_data.page)))
     {
       /* page modified */
-      return false;
+      return true;
     }
 
-  if (context->log_info.log_undoredo_data.offset != (context->oid.slotid | flag_vacuum_status))
+  if (context->log_info.log_undoredo_data.offset != (local_context.oid.slotid | flag_vacuum_status))
     {
       /* offset modified */
       return true;
@@ -22920,7 +22920,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
   LOG_REC_UNDOREDO_DATA undoredo_data, *p_undoredo_data = NULL;
   RECDES *home_page_updated_recdes = NULL;
   int redo_data_size = 0;
-  int flag_vacuum_status, error_code = NO_ERROR;
+  short flag_vacuum_status;
+  int error_code = NO_ERROR;
 
   /* check input */
   assert (context != NULL);
@@ -23180,7 +23181,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CON
   bool is_old_home_updated;
   RECDES new_home_recdes;
   LOG_RCVINDEX rcv_index;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
 
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
@@ -23374,7 +23375,7 @@ heap_update_relocation_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES * tde
 					 LOG_REC_UNDOREDO_DATA * undoredo_data_p)
 {
   int rc;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
   PAGE_PTR home_page_ptr = NULL, forward_page_ptr = NULL;
   LOG_RCVINDEX rcv_index = RV_NOT_DEFINED;
   RECDES *new_home_recdes = NULL;
@@ -23578,7 +23579,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION
   RECDES *old_recdes = NULL, *new_recdes = NULL;
   LOG_LSA prev_version_lsa = LSA_INITIALIZER;
   PGBUF_WATCHER *forward_page_watcher_p = NULL;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
   PGSLOTID slot_id = 0;
   LOG_REC_UNDOREDO_DATA undoredo_data;
 
@@ -23748,7 +23749,7 @@ heap_update_home_prepare_log_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
   PGBUF_WATCHER *new_forward_page_watcher_p = NULL;
   LOG_RCVINDEX rcv_index;
   PAGE_PTR page_ptr = NULL;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
   RECDES *new_home_recdes = NULL;
 
   assert (context != NULL && context->recdes_p != NULL && context->type == HEAP_OPERATION_UPDATE && mvccid != NULL
@@ -23918,7 +23919,7 @@ heap_update_home (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_OPERATION_CONTE
 {
   int error_code = NO_ERROR;
   LOG_LSA prev_version_lsa;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
   LOG_REC_UNDOREDO_DATA undoredo_data;
   RECDES *old_recdes = NULL, *new_recdes = NULL;
 
@@ -24319,7 +24320,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int tran_index;
   LOG_RCVINDEX rcv_index = RV_NOT_DEFINED;
   LOG_TDES *tdes = NULL;
-  int flag_vacuum_status = 0;
+  short flag_vacuum_status = 0;
   MVCCID mvccid = MVCCID_NULL;
 
   /* check required input */
@@ -25591,7 +25592,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
  */
 static void
 heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
-				      int *flag_vacuum_status)
+				      short * flag_vacuum_status)
 {
   HEAP_CHAIN *chain;
   RECDES chain_recdes;
