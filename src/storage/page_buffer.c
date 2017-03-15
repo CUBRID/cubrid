@@ -4550,17 +4550,9 @@ pgbuf_get_latch_mode (PAGE_PTR pgptr)
  *   pgptr(in): Page pointer
  */
 PAGEID
-pgbuf_get_page_id (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
+pgbuf_get_page_id (PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
-
-  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL))
-    {
-      if (pgbuf_is_valid_page_ptr (pgptr) == false)
-	{
-	  return NULL_PAGEID;
-	}
-    }
 
   /* NOTE: Does not need to hold mutex since the page is fixed */
 

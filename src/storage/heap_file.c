@@ -132,7 +132,7 @@ static int rv;
 #define HEAP_IS_PAGE_OF_OID(thread_p, pgptr, oid) \
   (((pgptr) != NULL) \
    && pgbuf_get_volume_id (pgptr) == (oid)->volid \
-   && pgbuf_get_page_id (thread_p, pgptr) == (oid)->pageid)
+   && pgbuf_get_page_id (pgptr) == (oid)->pageid)
 
 #define MVCC_SET_DELETE_INFO(mvcc_delete_info_p, row_delete_id, \
 			     satisfies_del_result) \
@@ -7510,11 +7510,11 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
   forward_page = context->fwd_page_watcher.pgptr;
 
   assert (home_page != NULL);
-  assert (pgbuf_get_page_id (thread_p, home_page) == oid->pageid && pgbuf_get_volume_id (home_page) == oid->volid);
+  assert (pgbuf_get_page_id (home_page) == oid->pageid && pgbuf_get_volume_id (home_page) == oid->volid);
   assert (context->record_type == REC_HOME || context->record_type == REC_RELOCATION
 	  || context->record_type == REC_BIGONE);
   assert (context->record_type == REC_HOME
-	  || (forward_page != NULL && pgbuf_get_page_id (thread_p, forward_page) == context->forward_oid.pageid
+	  || (forward_page != NULL && pgbuf_get_page_id (forward_page) == context->forward_oid.pageid
 	      && pgbuf_get_volume_id (forward_page) == context->forward_oid.volid));
   assert (mvcc_header != NULL);
 
@@ -14445,7 +14445,7 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
     }
 
   oid.volid = pgbuf_get_volume_id (pgptr);
-  oid.pageid = pgbuf_get_page_id (thread_p, pgptr);
+  oid.pageid = pgbuf_get_page_id (pgptr);
   oid.slotid = 0;		/* i.e., will get slot 1 */
 
   while (spage_next_record (pgptr, &oid.slotid, &recdes, PEEK) == S_SUCCESS)
@@ -16160,7 +16160,7 @@ heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   (void) pgbuf_check_page_ptype (thread_p, rcv->pgptr, PAGE_HEAP);
 
   vpid.volid = pgbuf_get_volume_id (rcv->pgptr);
-  vpid.pageid = pgbuf_get_page_id (thread_p, rcv->pgptr);
+  vpid.pageid = pgbuf_get_page_id (rcv->pgptr);
 
   /* We ignore the return value. It should be true (objects were deleted) except for the scenario when the redo actions 
    * are applied twice. */
@@ -20075,7 +20075,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
   /* partially populate output OID */
   context->res_oid.volid = pgbuf_get_volume_id (context->home_page_watcher_p->pgptr);
-  context->res_oid.pageid = pgbuf_get_page_id (thread_p, context->home_page_watcher_p->pgptr);
+  context->res_oid.pageid = pgbuf_get_page_id (context->home_page_watcher_p->pgptr);
 
   /* 
    * Find a slot that is lockable and lock it
@@ -20209,7 +20209,7 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
   if (sp_success == SP_SUCCESS)
     {
       context->res_oid.volid = pgbuf_get_volume_id (context->home_page_watcher_p->pgptr);
-      context->res_oid.pageid = pgbuf_get_page_id (thread_p, context->home_page_watcher_p->pgptr);
+      context->res_oid.pageid = pgbuf_get_page_id (context->home_page_watcher_p->pgptr);
 
       return NO_ERROR;
     }
@@ -23479,8 +23479,7 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
       HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
 		     "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from no vacuum to vacuum once.\n",
-		     pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (thread_p, heap_page),
-		     (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
+		     PGBUF_PAGE_STATE_ARGS (heap_page));
       break;
 
     case HEAP_PAGE_VACUUM_ONCE:
@@ -23488,8 +23487,7 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
       HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_UNKNOWN);
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
 		     "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from vacuum once to unknown.\n",
-		     pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (thread_p, heap_page),
-		     (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
+		     PGBUF_PAGE_STATE_ARGS (heap_page));
       break;
 
     case HEAP_PAGE_VACUUM_UNKNOWN:
@@ -23500,15 +23498,13 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
 	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP,
 			 "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from unknown to vacuum once.\n ",
-			 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (thread_p, heap_page),
-			 (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
+			 PGBUF_PAGE_STATE_ARGS (heap_page));
 	}
       else
 	{
 	  /* Status remains the same. Number of vacuums needed still cannot be predicted. */
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Vacuum status for page %d|%d, %lld|%d remains unknown.\n ",
-			 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (thread_p, heap_page),
-			 (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
+			 PGBUF_PAGE_STATE_ARGS (heap_page));
 	}
       break;
     default:
@@ -23520,8 +23516,8 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
   if (MVCC_ID_PRECEDES (chain->max_mvccid, mvccid))
     {
       vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Update max MVCCID for page %d|%d from %llu to %llu.\n",
-		     pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (thread_p, heap_page),
-		     (unsigned long long int) chain->max_mvccid, (unsigned long long int) mvccid);
+		     PGBUF_PAGE_VPID_AS_ARGS (heap_page), (unsigned long long int) chain->max_mvccid,
+		     (unsigned long long int) mvccid);
       chain->max_mvccid = mvccid;
     }
 }
@@ -23571,8 +23567,7 @@ heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID m
 
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
 			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, status from %s to once.\n",
-			 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (thread_p, heap_page),
-			 (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset,
+			 PGBUF_PAGE_STATE_ARGS (heap_page),
 			 vacuum_status == HEAP_PAGE_VACUUM_NONE ? "none" : "unknown");
 	  break;
 	case HEAP_PAGE_VACUUM_ONCE:
@@ -23580,8 +23575,7 @@ heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID m
 
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
 			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, status from once to unknown.\n",
-			 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (thread_p, heap_page),
-			 (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
+			 PGBUF_PAGE_STATE_ARGS (heap_page));
 	  break;
 	}
     }
@@ -23632,7 +23626,7 @@ heap_page_set_vacuum_status_none (THREAD_ENTRY * thread_p, PAGE_PTR heap_page)
   HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_NONE);
 
   vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Changed vacuum status for page %d|%d from vacuum once to no vacuum.\n",
-		 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (thread_p, heap_page));
+		 PGBUF_PAGE_VPID_AS_ARGS (heap_page));
 }
 
 /*

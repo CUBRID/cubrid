@@ -1213,7 +1213,7 @@ enum btree_rv_debug_id
   "\t" BTREE_ID_MSG "\n"
 #define BTREE_INSERT_MODIFY_ARGS(thread_p, helper, page, save_lsa, is_leaf, slotid, new_size, btid) \
   BTREE_INSERT_HELPER_AS_ARGS (helper), \
-  (is_leaf) ? "leaf" : "overflow", PGBUF_PAGE_MODIFY_ARGS(thread_p, page, save_lsa), \
+  (is_leaf) ? "leaf" : "overflow", PGBUF_PAGE_MODIFY_ARGS(page, save_lsa), \
   slotid, \
   new_size, \
   BTID_AS_ARGS (btid)
@@ -1228,7 +1228,7 @@ enum btree_rv_debug_id
   "\t" BTREE_ID_MSG "\n"
 #define BTREE_DELETE_MODIFY_ARGS(thread_p, helper, page, save_lsa, is_leaf, slotid, new_size, btid) \
   BTREE_DELETE_HELPER_AS_ARGS (helper), \
-  (is_leaf) ? "leaf" : "overflow", PGBUF_PAGE_MODIFY_ARGS(thread_p, page, save_lsa), \
+  (is_leaf) ? "leaf" : "overflow", PGBUF_PAGE_MODIFY_ARGS(page, save_lsa), \
   slotid, \
   new_size, \
   BTID_AS_ARGS (btid)
@@ -10683,7 +10683,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
 		    BTREE_INSERT_MODIFY_MSG ("create new overflow") "\t" PGBUF_PAGE_STATE_MSG ("new overflow page"),
 		    BTREE_INSERT_MODIFY_ARGS (thread_p, insert_helper, insert_helper->leaf_addr.pgptr, &prev_lsa, true,
 					      search_key->slotid, leaf_rec->length, btid_int->sys_btid),
-		    PGBUF_PAGE_STATE_ARGS (thread_p, ovfl_page));
+		    PGBUF_PAGE_STATE_ARGS (ovfl_page));
 
   /* Mark pages dirty and free overflow page. */
   pgbuf_set_dirty (thread_p, ovfl_page, FREE);
@@ -26421,7 +26421,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 	  btree_insert_log (insert_helper, "Update max_key_length to %d. \n"
 			    "\t" PGBUF_PAGE_MODIFY_MSG ("root page") "\n" "\t" BTREE_ID_MSG,
-			    node_header->max_key_len, PGBUF_PAGE_MODIFY_ARGS (thread_p, *crt_page, &save_lsa),
+			    node_header->max_key_len, PGBUF_PAGE_MODIFY_ARGS (*crt_page, &save_lsa),
 			    BTID_AS_ARGS (btid_int->sys_btid));
 
 	  /* If this node required to update its max key length, then also the children we meet will require to update
@@ -26475,8 +26475,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 			    PGBUF_PAGE_MODIFY_MSG ("root page") "\n"
 			    "\t" PGBUF_PAGE_STATE_MSG ("left child page") "\n"
 			    "\t" PGBUF_PAGE_STATE_MSG ("right child page") "\n"
-			    "\t" BTREE_ID_MSG, PGBUF_PAGE_MODIFY_ARGS (thread_p, *crt_page, &save_lsa),
-			    PGBUF_PAGE_STATE_ARGS (thread_p, new_page1), PGBUF_PAGE_STATE_ARGS (thread_p, new_page2),
+			    "\t" BTREE_ID_MSG, PGBUF_PAGE_MODIFY_ARGS (*crt_page, &save_lsa),
+			    PGBUF_PAGE_STATE_ARGS (new_page1), PGBUF_PAGE_STATE_ARGS (new_page2),
 			    BTID_AS_ARGS (btid_int->sys_btid));
 
 #if !defined(NDEBUG)
@@ -26719,8 +26719,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
       btree_insert_log (insert_helper, "Update max key length to %d. \n"
 			"\t" PGBUF_PAGE_MODIFY_MSG ("b-tree node page") "\n"
-			"\t" BTREE_ID_MSG, node_header->max_key_len, PGBUF_PAGE_MODIFY_ARGS (thread_p, child_page,
-											     &save_lsa),
+			"\t" BTREE_ID_MSG, node_header->max_key_len, PGBUF_PAGE_MODIFY_ARGS (child_page, &save_lsa),
 			BTID_AS_ARGS (btid_int->sys_btid));
 
       /* If this node required to update its max key length, then also the children we meet will require to update
@@ -26761,9 +26760,9 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 			"\t" PGBUF_PAGE_MODIFY_MSG ("split node page") "\n"
 			"\t" PGBUF_PAGE_STATE_MSG ("new node page") "\n"
 			"\t" BTREE_ID_MSG, node_header->max_key_len,
-			PGBUF_PAGE_MODIFY_ARGS (thread_p, *crt_page, &save_lsa),
-			PGBUF_PAGE_MODIFY_ARGS (thread_p, child_page, &save_child_lsa),
-			PGBUF_PAGE_STATE_ARGS (thread_p, new_page1), BTID_AS_ARGS (btid_int->sys_btid));
+			PGBUF_PAGE_MODIFY_ARGS (*crt_page, &save_lsa),
+			PGBUF_PAGE_MODIFY_ARGS (child_page, &save_child_lsa),
+			PGBUF_PAGE_STATE_ARGS (new_page1), BTID_AS_ARGS (btid_int->sys_btid));
 
       /* Choose which of the split nodes we need to advance to. */
       if (VPID_EQ (&advance_vpid, &child_vpid))
@@ -28578,9 +28577,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "%s: remove slotid=%d from leaf page %d|%d, lsa=%lld|%d, in an unknown index.\n",
-			 is_undo ? "BTREE_UNDO" : "BTREE_REDO", slotid, pgbuf_get_volume_id (rcv->pgptr),
-			 pgbuf_get_page_id (thread_p, rcv->pgptr), (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-			 (int) pgbuf_get_lsa (rcv->pgptr)->offset);
+			 is_undo ? "BTREE_UNDO" : "BTREE_REDO", slotid, PGBUF_PAGE_STATE_ARGS (rcv->pgptr));
 	}
       return NO_ERROR;
     }
@@ -28660,9 +28657,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 	  _er_log_debug (ARG_FILE_LINE,
 			 "%s: update slotid=%d from page %d|%d, lsa=%lld|%d in an unknown index."
 			 "Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO", slotid,
-			 pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (thread_p, rcv->pgptr),
-			 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid, (int) pgbuf_get_lsa (rcv->pgptr)->offset,
-			 update_record.length);
+			 PGBUF_PAGE_STATE_ARGS (rcv->pgptr), update_record.length);
 	}
       return NO_ERROR;
     }
@@ -28725,9 +28720,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 				 "%s: create new overflow page %d|%d, lsa=%lld|%d, in an unknown index. "
 				 "Insert object=%d|%d|%d, class_oid=%d|%d|%d, mvcc_info=%llu|%llu."
 				 "Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO",
-				 pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (thread_p, rcv->pgptr),
-				 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-				 (int) pgbuf_get_lsa (rcv->pgptr)->offset, oid.volid, oid.pageid, oid.slotid,
+				 PGBUF_PAGE_STATE_ARGS (rcv->pgptr), oid.volid, oid.pageid, oid.slotid,
 				 class_oid.volid, class_oid.pageid, class_oid.slotid,
 				 (unsigned long long int) mvcc_info.insert_mvccid,
 				 (unsigned long long int) mvcc_info.delete_mvccid, update_record.length);
@@ -28737,9 +28730,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 		  _er_log_debug (ARG_FILE_LINE,
 				 "%s: create new overflow page %d|%d, lsa=%lld|%d, in an unknown index."
 				 "Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO",
-				 pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (thread_p, rcv->pgptr),
-				 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-				 (int) pgbuf_get_lsa (rcv->pgptr)->offset, update_record.length);
+				 PGBUF_PAGE_STATE_ARGS (rcv->pgptr), update_record.length);
 		}
 	    }
 	}
@@ -28818,9 +28809,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 				 "%s: insert slotid=%d in leaf page %d|%d, lsa=%lld|%d, in an unknown index. "
 				 "Object=%d|%d|%d, class_oid=%d|%d|%d, mvcc_info=%lld|%lld, key=%s."
 				 "Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO", slotid,
-				 pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (thread_p, rcv->pgptr),
-				 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-				 (int) pgbuf_get_lsa (rcv->pgptr)->offset, oid.volid, oid.pageid, oid.slotid,
+				 PGBUF_PAGE_STATE_ARGS (rcv->pgptr), oid.volid, oid.pageid, oid.slotid,
 				 class_oid.volid, class_oid.pageid, class_oid.slotid,
 				 (unsigned long long int) mvcc_info.insert_mvccid,
 				 (unsigned long long int) mvcc_info.delete_mvccid,
@@ -28835,9 +28824,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 		  _er_log_debug (ARG_FILE_LINE,
 				 "%s: insert slotid=%d in leaf page %d|%d, lsa=%lld|%d, "
 				 "in an unknown index. Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO",
-				 slotid, pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (thread_p, rcv->pgptr),
-				 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-				 (int) pgbuf_get_lsa (rcv->pgptr)->offset, update_record.length);
+				 slotid, PGBUF_PAGE_STATE_ARGS (rcv->pgptr), update_record.length);
 		}
 	    }
 	}
@@ -28923,10 +28910,8 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 	  _er_log_debug (ARG_FILE_LINE,
 			 "%s: update slotid=%d from %s page %d|%d, lsa=%lld|%d, in an unknown index."
 			 "key=%s, rv_debug_id=%d. Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO", slotid,
-			 node_type == BTREE_LEAF_NODE ? "leaf" : "overflow", pgbuf_get_volume_id (rcv->pgptr),
-			 pgbuf_get_page_id (thread_p, rcv->pgptr), (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-			 (int) pgbuf_get_lsa (rcv->pgptr)->offset, printed_key != NULL ? printed_key : "unknown",
-			 rv_debug_id, update_record.length);
+			 node_type == BTREE_LEAF_NODE ? "leaf" : "overflow", PGBUF_PAGE_STATE_ARGS (rcv->pgptr),
+			 printed_key != NULL ? printed_key : "unknown", rv_debug_id, update_record.length);
 	  if (printed_key != NULL)
 	    {
 	      free_and_init (printed_key);
@@ -28937,9 +28922,8 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 	  _er_log_debug (ARG_FILE_LINE,
 			 "%s: update slotid=%d from %s page %d|%d, lsa=%lld|%d, in an unknown index. "
 			 "Record length = %d.\n", is_undo ? "BTREE_UNDO" : "BTREE_REDO", slotid,
-			 node_type == BTREE_LEAF_NODE ? "leaf" : "overflow", pgbuf_get_volume_id (rcv->pgptr),
-			 pgbuf_get_page_id (thread_p, rcv->pgptr), (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-			 (int) pgbuf_get_lsa (rcv->pgptr)->offset, update_record.length);
+			 node_type == BTREE_LEAF_NODE ? "leaf" : "overflow", PGBUF_PAGE_STATE_ARGS (rcv->pgptr),
+			 update_record.length);
 	}
     }
   return NO_ERROR;
@@ -30165,9 +30149,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 				    "\t" PGBUF_PAGE_MODIFY_MSG ("parent node page") "\n"
 				    "\t" PGBUF_PAGE_MODIFY_MSG ("left node page") "\n"
 				    "\t" "right node vpid = %d|%d",
-				    PGBUF_PAGE_MODIFY_ARGS (thread_p, *crt_page, &save_lsa),
-				    PGBUF_PAGE_MODIFY_ARGS (thread_p, child_page, &save_child_lsa),
-				    VPID_AS_ARGS (&right_vpid));
+				    PGBUF_PAGE_MODIFY_ARGS (*crt_page, &save_lsa),
+				    PGBUF_PAGE_MODIFY_ARGS (child_page, &save_child_lsa), VPID_AS_ARGS (&right_vpid));
 
 		  /* Children are merged to the "left" node which is our case is the child page. */
 		  assert (!VPID_ISNULL (&child_vpid_after_merge));
@@ -32039,7 +32022,7 @@ btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * 
       btree_delete_log (helper, "swapped first object (logging is postponed) \n"
 			"\t" BTREE_OBJINFO_MSG ("first object") "\n"
 			"\t" PGBUF_PAGE_STATE_MSG ("leaf page") "\n\t" BTREE_ID_MSG,
-			BTREE_OBJINFO_AS_ARGS (&first_object), PGBUF_PAGE_STATE_ARGS (thread_p, leaf_page),
+			BTREE_OBJINFO_AS_ARGS (&first_object), PGBUF_PAGE_STATE_ARGS (leaf_page),
 			BTID_AS_ARGS (btid_int->sys_btid));
     }
   else
@@ -32067,7 +32050,7 @@ btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * 
   btree_delete_log (helper, "successfully moved object and removed its delete MVCCID %llu (logging is postponed) \n"
 		    BTREE_DELETE_HELPER_MSG ("\t") "\t" PGBUF_PAGE_STATE_MSG ("leaf page") "\n\t" BTREE_ID_MSG,
 		    (unsigned long long int) helper->match_mvccinfo.delete_mvccid,
-		    BTREE_DELETE_HELPER_AS_ARGS (helper), PGBUF_PAGE_STATE_ARGS (thread_p, leaf_page),
+		    BTREE_DELETE_HELPER_AS_ARGS (helper), PGBUF_PAGE_STATE_ARGS (leaf_page),
 		    BTID_AS_ARGS (btid_int->sys_btid));
 
   /* Success */

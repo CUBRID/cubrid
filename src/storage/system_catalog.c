@@ -4912,7 +4912,7 @@ catalog_file_map_page_dump (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * sto
   fprintf (context->fp, "\n-----------------------------------------------\n");
   fprintf (context->fp, "\n Page %d \n", context->page_index);
 
-  fprintf (context->fp, "\nPage_Id: {%d , %d}\n", PGBUF_PAGE_VPID_AS_ARGS (thread_p, *page));
+  fprintf (context->fp, "\nPage_Id: {%d , %d}\n", PGBUF_PAGE_VPID_AS_ARGS (*page));
   fprintf (context->fp, "Directory Cnt: %d\n", CATALOG_GET_PGHEADER_DIR_COUNT (record.data));
   fprintf (context->fp, "Overflow Page Id: {%d , %d}\n\n", CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID (record.data),
 	   CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data));

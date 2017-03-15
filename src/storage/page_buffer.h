@@ -73,15 +73,15 @@ extern const VPID vpid_Null_vpid;
   (((oid_ptr1)->volid == (oid_ptr2)->volid)  \
    && ((oid_ptr1)->pageid == (oid_ptr2)->pageid))
 
-#define PGBUF_PAGE_VPID_AS_ARGS(thread_p, pg) pgbuf_get_volume_id (pg), pgbuf_get_page_id (thread_p, pg)
+#define PGBUF_PAGE_VPID_AS_ARGS(pg) pgbuf_get_volume_id (pg), pgbuf_get_page_id (pg)
 #define PGBUF_PAGE_LSA_AS_ARGS(pg) (long long int) pgbuf_get_lsa (pg)->pageid, (int) pgbuf_get_lsa (pg)->offset
 
 #define PGBUF_PAGE_STATE_MSG(name) name " { VPID = %d|%d, crt_lsa = %lld|%d } "
-#define PGBUF_PAGE_STATE_ARGS(thread_p,pg) PGBUF_PAGE_VPID_AS_ARGS (thread_p, pg), PGBUF_PAGE_LSA_AS_ARGS (pg)
+#define PGBUF_PAGE_STATE_ARGS(pg) PGBUF_PAGE_VPID_AS_ARGS (pg), PGBUF_PAGE_LSA_AS_ARGS (pg)
 
 #define PGBUF_PAGE_MODIFY_MSG(name) name " { VPID = %d|%d, prev_lsa = %lld|%d, crt_lsa = %lld|%d } "
-#define PGBUF_PAGE_MODIFY_ARGS(thread_p, pg, prev_lsa) \
-  PGBUF_PAGE_VPID_AS_ARGS (thread_p, pg), LSA_AS_ARGS (prev_lsa), PGBUF_PAGE_LSA_AS_ARGS (pg)
+#define PGBUF_PAGE_MODIFY_ARGS(pg, prev_lsa) \
+  PGBUF_PAGE_VPID_AS_ARGS (pg), LSA_AS_ARGS (prev_lsa), PGBUF_PAGE_LSA_AS_ARGS (pg)
 
 #define pgbuf_unfix_and_init(thread_p, pgptr) \
   do { \
@@ -377,7 +377,7 @@ extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
 extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);
 extern VPID *pgbuf_get_vpid_ptr (PAGE_PTR pgptr);
 extern PGBUF_LATCH_MODE pgbuf_get_latch_mode (PAGE_PTR pgptr);
-extern PAGEID pgbuf_get_page_id (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern PAGEID pgbuf_get_page_id (PAGE_PTR pgptr);
 extern PAGE_TYPE pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
 extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);

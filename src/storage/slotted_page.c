@@ -1659,8 +1659,8 @@ spage_take_slot_in_use (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPAGE_HEADER *
       if (page_header_p->anchor_type == ANCHORED || page_header_p->anchor_type == ANCHORED_DONT_REUSE_SLOTS)
 	{
 	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_BAD_INSERTION_SLOT, 3, slot_id,
-		  pgbuf_get_page_id (thread_p, page_p), pgbuf_get_volume_label (page_p));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_BAD_INSERTION_SLOT, 3, slot_id, pgbuf_get_page_id (page_p),
+		  pgbuf_get_volume_label (page_p));
 	  return SP_ERROR;
 	}
 
@@ -1950,7 +1950,7 @@ spage_insert_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, REC
 
   if (slot_id > page_header_p->num_slots)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
@@ -2123,7 +2123,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return NULL_SLOTID;
     }
@@ -2273,7 +2273,7 @@ spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_i
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
@@ -2352,7 +2352,7 @@ spage_check_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
@@ -2717,7 +2717,7 @@ spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slo
   if (slot_p == NULL)
     {
       assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return;
     }
@@ -2829,7 +2829,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int off
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
@@ -3021,7 +3021,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int 
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
@@ -3199,7 +3199,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, in
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
@@ -3455,7 +3455,7 @@ spage_overwrite (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
@@ -3517,7 +3517,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id, P
   if (first_slot_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, first_slot_id,
-	      pgbuf_get_page_id (thread_p, page_p), pgbuf_get_volume_label (page_p));
+	      pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
 
@@ -3525,7 +3525,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id, P
   if (second_slot_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, second_slot_id,
-	      pgbuf_get_page_id (thread_p, page_p), pgbuf_get_volume_label (page_p));
+	      pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
 
@@ -3878,7 +3878,7 @@ spage_get_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, RE
   if (sptr == NULL)
     {
       record_descriptor_p->length = 0;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return S_DOESNT_EXIST;
     }
@@ -3964,7 +3964,7 @@ spage_get_record_length (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return -1;
     }
@@ -3993,7 +3993,7 @@ spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID s
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return -1;
     }
@@ -4053,7 +4053,7 @@ spage_mark_deleted_slot_as_reusable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, P
   if (0 > slot_id || slot_id >= page_header_p->num_slots)
     {
       assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
@@ -4074,7 +4074,7 @@ spage_mark_deleted_slot_as_reusable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, P
        */
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_BAD_INSERTION_SLOT, 3, slot_id,
-	      pgbuf_get_page_id (thread_p, page_p), pgbuf_get_volume_label (page_p));
+	      pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p));
       return SP_ERROR;
     }
 
@@ -4350,7 +4350,7 @@ spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_p, int is_record_p
 
   assert (page_p != NULL);
 
-  (void) fprintf (fp, "\n*** Dumping pageid = %d of volume = %s ***\n", pgbuf_get_page_id (thread_p, page_p),
+  (void) fprintf (fp, "\n*** Dumping pageid = %d of volume = %s ***\n", pgbuf_get_page_id (page_p),
 		  pgbuf_get_volume_label (page_p));
 
   page_header_p = (SPAGE_HEADER *) page_p;
@@ -4449,11 +4449,11 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       snprintf (err_msg, sizeof (err_msg),
 		"spage_check: Inconsistent page = %d of volume = %s.\n"
 		"(Used_space + tfree > SPAGE_DB_PAGESIZE\n (%d + %d) > %d \n  %d > %d\n",
-		pgbuf_get_page_id (thread_p, page_p), pgbuf_get_volume_label (page_p), used_length,
+		pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p), used_length,
 		page_header_p->total_free, SPAGE_DB_PAGESIZE, used_length + page_header_p->total_free,
 		SPAGE_DB_PAGESIZE);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p), err_msg);
 
       assert (false);
@@ -4466,13 +4466,13 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       snprintf (err_msg, sizeof (err_msg),
 		"spage_check: Inconsistent page = %d of volume = %s.\n"
 		" (cfree + foffset + SIZEOF(SPAGE_SLOT) * nslots) > "
-		" SPAGE_DB_PAGESIZE\n (%d + %d + (%d * %d)) > %d\n %d > %d\n", pgbuf_get_page_id (thread_p, page_p),
+		" SPAGE_DB_PAGESIZE\n (%d + %d + (%d * %d)) > %d\n %d > %d\n", pgbuf_get_page_id (page_p),
 		pgbuf_get_volume_label (page_p), page_header_p->cont_free, page_header_p->offset_to_free_area,
 		sizeof (SPAGE_SLOT), page_header_p->num_slots, SPAGE_DB_PAGESIZE,
 		(page_header_p->cont_free + page_header_p->offset_to_free_area
 		 + sizeof (SPAGE_SLOT) * page_header_p->num_slots), SPAGE_DB_PAGESIZE);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p), err_msg);
 
       assert (false);
@@ -4483,10 +4483,10 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
     {
       snprintf (err_msg, sizeof (err_msg),
 		"spage_check: Cfree %d is inconsistent in page = %d of volume = %s. Cannot be < -%d\n",
-		page_header_p->cont_free, pgbuf_get_page_id (thread_p, page_p), pgbuf_get_volume_label (page_p),
+		page_header_p->cont_free, pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p),
 		page_header_p->alignment);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p), err_msg);
 
       assert (false);
@@ -4508,9 +4508,9 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 	{
 	  snprintf (err_msg, sizeof (err_msg),
 		    "spage_check: Other savings of %d is inconsistent in page = %d of volume = %s.\n",
-		    other_saved_spaces, pgbuf_get_page_id (thread_p, page_p), pgbuf_get_volume_label (page_p));
+		    other_saved_spaces, pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p));
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (thread_p, page_p),
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (page_p),
 		  pgbuf_get_volume_label (page_p), err_msg);
 
 	  assert (false);
@@ -4521,9 +4521,9 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 	{
 	  snprintf (err_msg, sizeof (err_msg),
 		    "spage_check: Total savings of %d is inconsistent in page = %d of volume = %s. Cannot be < 0\n",
-		    total_saved, pgbuf_get_page_id (thread_p, page_p), pgbuf_get_volume_label (page_p));
+		    total_saved, pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p));
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (thread_p, page_p),
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (page_p),
 		  pgbuf_get_volume_label (page_p), err_msg);
 
 	  assert (false);
@@ -4558,7 +4558,7 @@ spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_
   if (slot_p == NULL)
     {
       assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return 0;
     }
@@ -4792,7 +4792,7 @@ spage_get_record_offset (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (thread_p, page_p),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p));
       return -1;
     }
