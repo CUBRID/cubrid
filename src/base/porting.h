@@ -838,23 +838,6 @@ extern "C"
 }
 #endif
 
-/* Compare and if greater then value, swap */
-#define ATOMIC_CGTAS_32(ptr, cmp_val, swap_val) \
-  do \
-   { \
-      volatile int current_val; \
-      do \
-	{ \
-	  current_val = *((volatile int *)ptr); \
-	  if ((cmp_val) <= current_val) \
-	    { \
-	      break; \
-	    } \
-	} \
-      while (!(ATOMIC_CAS_32 ((ptr), current_val, (swap_val)))); \
-    } \
-  while (0)
-
 #if defined (WINDOWS)
 extern double strtod_win (const char *str, char **end_ptr);
 #define string_to_double(str, end_ptr) strtod_win((str), (end_ptr));
