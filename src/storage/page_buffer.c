@@ -391,7 +391,7 @@ typedef enum
 #undef PGBUF_ORDERED_DEBUG
 
 #if defined(PAGE_STATISTICS)
-#define PGBUF_LATCH_MODE_COUNT  (PGBUF_LATCH_VICTIM_INVALID-PGBUF_NO_LATCH+1)
+#define PGBUF_LATCH_MODE_COUNT  (PGBUF_LATCH_INVALID-PGBUF_NO_LATCH+1)
 #define PGBUF_MAX_FIXED_SOURCES 5000
 #define PGBUF_MAX_FIXED_SOURCE_LEN 64
 #endif /* PAGE_STATISTICS */
@@ -1084,14 +1084,13 @@ STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB *
   __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
-static bool pgbuf_is_exist_blocked_reader_writer_victim (PGBUF_BCB * bufptr);
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
 
 #if defined(SERVER_MODE)
-STATIC_INLINE THREAD_ENTRY *pgbuf_kickoff_blocked_victim_request (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
 static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
-STATIC_INLINE void pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+  __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
 
 STATIC_INLINE bool pgbuf_get_check_page_validation_level (int page_validation_level) __attribute__ ((ALWAYS_INLINE));
@@ -1172,7 +1171,6 @@ static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 
 STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
-static bool pgbuf_bcb_has_any_non_flush_waiters (PGBUF_BCB * bcb);
 
 STATIC_INLINE void pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
@@ -5655,28 +5653,12 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       return pgbuf_latch_idle_page (thread_p, bufptr, request_mode);
     }
 
-  if ((request_mode == PGBUF_LATCH_READ)
-      && (bufptr->latch_mode == PGBUF_LATCH_READ || bufptr->latch_mode == PGBUF_LATCH_FLUSH
-	  || bufptr->latch_mode == PGBUF_LATCH_VICTIM))
+  if (request_mode == PGBUF_LATCH_READ && bufptr->latch_mode == PGBUF_LATCH_READ)
     {
-      assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);	/* TODO */
-      assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
-
       if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
 	{
 	  /* there is not any blocked reader/writer. */
 	  /* grant the request */
-#if defined(SERVER_MODE)
-	  if (bufptr->latch_mode == PGBUF_LATCH_FLUSH && bufptr->next_wait_thrd != NULL)
-	    {
-	      /* early wakeup of any blocked victim selector */
-	      victim_thrd_entry = pgbuf_kickoff_blocked_victim_request (bufptr);
-	      if (victim_thrd_entry != NULL)
-		{
-		  pgbuf_wakeup_uncond (victim_thrd_entry);
-		}
-	    }
-#endif /* SERVER_MODE */
 
 	  /* increment the fix count */
 	  bufptr->fcnt++;
@@ -5935,17 +5917,6 @@ do_block:
   else
     {
       /* block the request */
-#if defined(SERVER_MODE)
-      if (bufptr->latch_mode == PGBUF_LATCH_FLUSH && bufptr->next_wait_thrd != NULL)
-	{
-	  /* early wakeup of any blocked victim selector */
-	  victim_thrd_entry = pgbuf_kickoff_blocked_victim_request (bufptr);
-	  if (victim_thrd_entry != NULL)
-	    {
-	      pgbuf_wakeup_uncond (victim_thrd_entry);
-	    }
-	}
-#endif /* SERVER_MODE */
 
       if (pgbuf_block_bcb (thread_p, bufptr, request_mode, request_fcnt, false) != NO_ERROR)
 	{
@@ -6040,9 +6011,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
   if (bufptr->fcnt == 0)
     {
-      assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-      assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
-
       /* When oldest_unflush_lsa of a page is set, its dirty mark should also be set */
       assert (LSA_ISNULL (&bufptr->oldest_unflush_lsa) || pgbuf_bcb_is_dirty (bufptr));
 
@@ -6051,7 +6019,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_bcb_should_be_moved_to_bottom_lru (bufptr))
 	{
-	  assert (!pgbuf_bcb_has_any_non_flush_waiters (bufptr));
+	  assert (!pgbuf_is_exist_blocked_reader_writer (bufptr));
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
       else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
@@ -6180,12 +6148,10 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
       bufptr->latch_mode = PGBUF_NO_LATCH;
 #if defined(SERVER_MODE)
-      pgbuf_wakeup_bcb (thread_p, bufptr);
+      pgbuf_wakeup_reader_writer (thread_p, bufptr);
 #endif /* SERVER_MODE */
     }
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
   assert (bufptr->latch_mode != PGBUF_LATCH_FLUSH);
 
   if (pgbuf_bcb_is_async_flush_request (bufptr))
@@ -6384,11 +6350,8 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
   int rv;
 
   /* caller is holding bufptr->mutex */
-
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
-  assert (request_mode != PGBUF_LATCH_VICTIM);
-  /* request_mode == PGBUF_LATCH_READ/PGBUF_LATCH_WRITE/PGBUF_LATCH_FLUSH/PGBUF_LATCH_VICTIM */
+  /* request_mode == PGBUF_LATCH_READ/PGBUF_LATCH_WRITE/PGBUF_LATCH_FLUSH */
+  assert (request_mode == PGBUF_LATCH_READ || request_mode == PGBUF_LATCH_WRITE || request_mode == PGBUF_LATCH_FLUSH);
 
   if (thread_p == NULL)
     {
@@ -6753,12 +6716,14 @@ er_set_return:
 }
 
 /*
- * pgbuf_wakeup_bcb () - Wakes up blocked threads on the BCB queue
- *   return: NO_ERROR, or ER_code
- *   bufptr(in):
+ * pgbuf_wakeup_reader_writer () - Wakes up blocked threads on the BCB queue with read or write latch mode
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * bufptr (in)   : bcb
  */
 STATIC_INLINE void
-pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   THREAD_ENTRY *thrd_entry = NULL;
   THREAD_ENTRY *prev_thrd_entry = NULL;
@@ -6768,10 +6733,7 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (bufptr->latch_mode == PGBUF_NO_LATCH && bufptr->fcnt == 0);
 
-  /* fcnt == 0, bufptr->latch_mode == PGBUF_NO_LATCH/PGBUF_LATCH_FLUSH_INVALID */
-  /* there cannot be any blocked flusher */
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
+  /* fcnt == 0, bufptr->latch_mode == PGBUF_NO_LATCH */
 
   /* how it works:
    *
@@ -7100,9 +7062,8 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   /* the caller is holding bufptr->mutex */
 
-  /* fcnt==0, next_wait_thrd==NULL, latch_mode==PGBUF_NO_LATCH/PGBUF_LATCH_VICTIM */
-  /* if (bufptr->latch_mode==PGBUF_NO_LATCH) invoked by an invalidator if (bufptr->latch_mode==PGBUF_LATCH_VICTIM)
-   * invoked by a victim selector */
+  /* fcnt==0, next_wait_thrd==NULL, latch_mode==PGBUF_NO_LATCH */
+  /* if (bufptr->latch_mode==PGBUF_NO_LATCH) invoked by an invalidator */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&(bufptr->vpid))]);
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
@@ -7799,16 +7760,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
  * pgbuf_victimize_bcb () - Victimize given buffer page
  *   return: NO_ERROR, or ER_code
  *   bufptr(in): pointer to buffer page
- *
- * Note: If zone == VOIDZone, fcnt == 0, wait == false,
- *       latch_mode != PGBUF_LATCH_VICTIM and there is no reader, writer,
- *       or victim selector on the BCB queue,
- *       then select it as a replacement victim.
- *       else release the BCB mutex and return ER_FAILED.
- *
- *       In case of success, if the page is dirty, flush it
- *       according to the WAL protocol.
- *       Even though success, we must check again the above condition.
  */
 static int
 pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
@@ -7834,14 +7785,8 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   if (pgbuf_bcb_is_to_vacuum (bufptr))
     {
       pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_TO_VACUUM_FLAG);
-      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIMIZE_TO_VACUUM);
-	}
     }
-
-  /* grant the request */
-  bufptr->latch_mode = PGBUF_LATCH_VICTIM;
+  assert (bufptr->latch_mode == PGBUF_NO_LATCH);
 
   /* a safe victim */
   if (pgbuf_delete_from_hash_chain (thread_p, bufptr) != NO_ERROR)
@@ -7873,11 +7818,7 @@ pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   /* the caller is holding bufptr->mutex */
   /* be sure that there is not any reader/writer */
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
-
-  if (bufptr->latch_mode == PGBUF_LATCH_FLUSH_INVALID || bufptr->latch_mode == PGBUF_LATCH_VICTIM_INVALID
-      || bufptr->latch_mode == PGBUF_LATCH_INVALID)
+  if (bufptr->latch_mode == PGBUF_LATCH_INVALID)
     {
       PGBUF_BCB_UNLOCK (bufptr);
       return NO_ERROR;
@@ -8006,8 +7947,6 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int 
 {
   int error_code = NO_ERROR;
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
   assert (bufptr->latch_mode != PGBUF_LATCH_FLUSH);
 
   PGBUF_BCB_CHECK_OWN (bufptr);
@@ -9864,9 +9803,6 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
   /* the caller is holding bufptr->mutex */
   *is_bcb_locked = true;
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
-
   assert (bufptr->latch_mode == PGBUF_NO_LATCH || bufptr->latch_mode == PGBUF_LATCH_READ
 	  || bufptr->latch_mode == PGBUF_LATCH_WRITE);
 #if !defined (NDEBUG) && defined (SERVER_MODE)
@@ -9962,7 +9898,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool * is
       return ER_FAILED;
     }
 
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
+  assert (bufptr->latch_mode != PGBUF_LATCH_FLUSH);
 
 #if defined (SERVER_MODE)
   /* if the flush thread is under pressure, we'll move some of the workload to post-flush thread. */
@@ -10068,88 +10004,6 @@ pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr)
 
   return false;
 }
-
-/*
- * pgbuf_is_exist_blocked_reader_writer_victim () - Checks whether there exists
- * 					any blocked reader/writer/victim request
- *   return: if found, true, otherwise, false
- *   bufptr(in): pointer to buffer page
- */
-static bool
-pgbuf_is_exist_blocked_reader_writer_victim (PGBUF_BCB * bufptr)
-{
-#if defined(SERVER_MODE)
-  THREAD_ENTRY *thrd_entry;
-
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
-
-  /* check whether there exists any blocked reader/writer */
-  thrd_entry = bufptr->next_wait_thrd;
-  while (thrd_entry != NULL)
-    {
-      assert (thrd_entry->request_latch_mode != PGBUF_LATCH_VICTIM);
-
-      if (thrd_entry->request_latch_mode == PGBUF_LATCH_READ || thrd_entry->request_latch_mode == PGBUF_LATCH_WRITE
-	  || thrd_entry->request_latch_mode == PGBUF_LATCH_VICTIM)
-	{
-	  return true;
-	}
-      thrd_entry = thrd_entry->next_wait_thrd;
-    }
-#endif /* SERVER_MODE */
-
-  return false;
-}
-
-#if defined(SERVER_MODE)
-/*
- * pgbuf_kickoff_blocked_victim_request () - Disconnects blocked victim request
- *                                           from the waiting queue of given
- *                                           buffer
- *   return: pointer to thread entry
- *   bufptr(in):  pointer to buffer page
- */
-STATIC_INLINE THREAD_ENTRY *
-pgbuf_kickoff_blocked_victim_request (PGBUF_BCB * bufptr)
-{
-  THREAD_ENTRY *prev_thrd_entry;
-  THREAD_ENTRY *thrd_entry;
-
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
-
-  /* check whether there exists any blocked victim request */
-  prev_thrd_entry = NULL;
-  thrd_entry = bufptr->next_wait_thrd;
-  while (thrd_entry != NULL)
-    {
-      assert (thrd_entry->request_latch_mode != PGBUF_LATCH_VICTIM);
-
-      if (thrd_entry->request_latch_mode == PGBUF_LATCH_VICTIM)
-	{
-	  /* found the blocked victim request */
-	  if (prev_thrd_entry == NULL)
-	    {
-	      bufptr->next_wait_thrd = thrd_entry->next_wait_thrd;
-	    }
-	  else
-	    {
-	      prev_thrd_entry->next_wait_thrd = thrd_entry->next_wait_thrd;
-	    }
-
-	  thrd_entry->next_wait_thrd = NULL;
-	  thrd_entry->victim_request_fail = true;
-	  break;
-	}
-
-      prev_thrd_entry = thrd_entry;
-      thrd_entry = thrd_entry->next_wait_thrd;
-    }
-
-  return thrd_entry;
-}
-#endif /* SERVER_MODE */
 
 /*
  * pgbuf_get_check_page_validation_level -
@@ -11571,8 +11425,6 @@ pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx)
 {
   PGBUF_BATCH_FLUSH_HELPER *helper = &pgbuf_Flush_helper;
   int pos;
-
-  assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM && bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
 
   assert (bufptr->latch_mode == PGBUF_NO_LATCH || bufptr->latch_mode == PGBUF_LATCH_READ
 	  || bufptr->latch_mode == PGBUF_LATCH_WRITE);
@@ -13813,35 +13665,12 @@ pgbuf_has_any_waiters (PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
   PGBUF_BCB_LOCK (bufptr);
-  has_waiter = pgbuf_bcb_has_any_non_flush_waiters (bufptr);
+  has_waiter = pgbuf_is_exist_blocked_reader_writer (bufptr);
   PGBUF_BCB_UNLOCK (bufptr);
   return has_waiter;
 #else
   return false;
 #endif
-}
-
-/*
- * pgbuf_bcb_has_any_non_flush_waiters () - return if bcb has any non-flush waiters
- *
- * return   : true/false
- * bcb (in) : bcb
- */
-static bool
-pgbuf_bcb_has_any_non_flush_waiters (PGBUF_BCB * bcb)
-{
-  THREAD_ENTRY *wait_thrd;
-
-  for (wait_thrd = bcb->next_wait_thrd; wait_thrd != NULL; wait_thrd = wait_thrd->next_wait_thrd)
-    {
-      if (wait_thrd->request_latch_mode == PGBUF_LATCH_READ || wait_thrd->request_latch_mode == PGBUF_LATCH_WRITE)
-	{
-	  return true;
-	}
-      assert (wait_thrd->request_latch_mode == PGBUF_NO_LATCH || wait_thrd->request_latch_mode == PGBUF_LATCH_FLUSH);
-    }
-  /* no waiters */
-  return false;
 }
 
 /*
@@ -14131,15 +13960,6 @@ pgbuf_latch_mode_str (PGBUF_LATCH_MODE latch_mode)
       break;
     case PGBUF_LATCH_FLUSH:
       latch_mode_str = "Flush";
-      break;
-    case PGBUF_LATCH_VICTIM:
-      latch_mode_str = "Victim";
-      break;
-    case PGBUF_LATCH_FLUSH_INVALID:
-      latch_mode_str = "FlushInv";
-      break;
-    case PGBUF_LATCH_VICTIM_INVALID:
-      latch_mode_str = "VictimInv";
       break;
     default:
       latch_mode_str = "Fault";

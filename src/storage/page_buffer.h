@@ -201,12 +201,8 @@ typedef enum
   PGBUF_NO_LATCH = 0,
   PGBUF_LATCH_READ,
   PGBUF_LATCH_WRITE,
-  PGBUF_LATCH_FLUSH,		/* todo: cleanup bufptr->latch_mode == PGBUF_LATCH_FLUSH. this is only used as block
-				 *       mode. */
-  PGBUF_LATCH_VICTIM,		/* todo: cleanup */
-  PGBUF_LATCH_INVALID,
-  PGBUF_LATCH_FLUSH_INVALID,	/* todo: cleanup */
-  PGBUF_LATCH_VICTIM_INVALID	/* todo: cleanup */
+  PGBUF_LATCH_FLUSH,		/* this is only used as block mode. page can never be fixed with flush latch mode. */
+  PGBUF_LATCH_INVALID
 } PGBUF_LATCH_MODE;
 
 typedef enum
