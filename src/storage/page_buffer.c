@@ -14980,8 +14980,8 @@ pgbuf_bcb_update_flags (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int set_flags,
  *
  * FIXME: correct the following description
  * 1. get from invalid list                 invalid      => void  (bcb is locked)
- * 2. get victim                            lru/AIN      => void  (list & bcb are locked)
- * 3. unfix                                 void/AIN/lru => lru   (list & bcb are locked)
+ * 2. get victim                            lru          => void  (list & bcb are locked)
+ * 3. unfix                                 void/lru     => lru   (list & bcb are locked)
  * 4. lru adjust zones                      lru          => lru   (list is locked)
  *
  * note: two simultaneous change zones on the same bcb should not be possible. the only case when bcb is not locked

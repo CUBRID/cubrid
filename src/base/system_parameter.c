@@ -529,7 +529,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_UPDATE_USE_ATTRIBUTE_REFERENCES "update_use_attribute_references"
 
-#define PRM_NAME_PB_AIN_RATIO "data_ain_ratio"
 #define PRM_NAME_PB_AOUT_RATIO "data_aout_ratio"
 
 #define PRM_NAME_MAX_AGG_HASH_SIZE "max_agg_hash_size"
@@ -1780,12 +1779,6 @@ static unsigned int prm_use_btree_fence_key_flag = 0;
 bool PRM_UPDATE_USE_ATTRIBUTE_REFERENCES = false;
 static bool prm_update_use_attribute_references_default = false;
 static unsigned int prm_update_use_attribute_references_flag = 0;
-
-float PRM_PB_AIN_RATIO = 0.25f;
-static float prm_pb_ain_ratio_default = 0.25f;
-static float prm_pb_ain_ratio_upper = 0.8f;
-static float prm_pb_ain_ratio_lower = 0.0f;
-static unsigned int prm_pb_ain_ratio_flag = 0;
 
 float PRM_PB_AOUT_RATIO = 0.0f;
 static float prm_pb_aout_ratio_default = 0.0f;
@@ -4549,18 +4542,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_UPDATE_USE_ATTRIBUTE_REFERENCES,
    (void *) NULL,
    (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PB_AIN_RATIO,		/* unused */
-   PRM_NAME_PB_AIN_RATIO,
-   (PRM_FOR_SERVER | PRM_RELOADABLE | PRM_DEPRECATED),
-   PRM_FLOAT,
-   (void *) &prm_pb_ain_ratio_flag,
-   (void *) &prm_pb_ain_ratio_default,
-   (void *) &PRM_PB_AIN_RATIO,
-   (void *) &prm_pb_ain_ratio_upper,
-   (void *) &prm_pb_ain_ratio_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
