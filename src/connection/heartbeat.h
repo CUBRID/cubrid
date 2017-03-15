@@ -57,12 +57,6 @@
 #define HB_START_WAITING_TIME_IN_SECS			(10)
 #define HB_STOP_WAITING_TIME_IN_SECS			(1)
 
-enum HA_READ_MODE
-{
-  HA_IGNORE = 0,
-  HA_READ = 1
-};
-
 /* heartbeat resource process type */
 typedef enum hb_proc_type HB_PROC_TYPE;
 enum hb_proc_type

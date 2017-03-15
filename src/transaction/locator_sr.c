@@ -9665,7 +9665,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 {
   DISK_ISVALID isvalid = DISK_VALID, isallvalid = DISK_VALID;
   OID inst_oid, *p_inst_oid = &inst_oid;
-  RECDES peek, *p_peek = &peek;
+  RECDES peek = RECDES_INITIALIZER, *p_peek = &peek;
   SCAN_CODE scan;
   HEAP_SCANCACHE *scan_cache = NULL;
   BTREE_CHECKSCAN bt_checkscan;

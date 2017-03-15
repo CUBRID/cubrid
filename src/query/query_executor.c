@@ -7606,6 +7606,13 @@ static SCAN_CODE
 qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec,
 		  XASL_SCAN_FNC_PTR next_scan_fnc)
 {
+#define CTE_CURRENT_SCAN_READ_TUPLE(node) \
+  ((((node)->curr_spec->type == TARGET_LIST && (node)->curr_spec->s_id.type == S_LIST_SCAN)) \
+    ? ((node)->curr_spec->s_id.s.llsid.lsid.curr_tplno) : -1)
+#define CTE_CURR_ITERATION_LAST_TUPLE(node) \
+  ((((node)->curr_spec->type == TARGET_LIST && (node)->curr_spec->s_id.type == S_LIST_SCAN)) \
+    ? ((node)->curr_spec->s_id.s.llsid.list_id->tuple_cnt - 1) : -1)
+
   XASL_NODE *xptr;
   SCAN_CODE xs_scan;
   SCAN_CODE xb_scan;
@@ -7615,6 +7622,10 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   AGGREGATE_TYPE *agg_ptr;
   bool count_star_with_iscan_opt = false;
   SCAN_OPERATION_TYPE scan_operation_type;
+  int curr_iteration_last_cursor;
+  int recursive_iterations;
+  bool max_recursive_iterations_reached = false;
+  bool cte_start_new_iteration = false;
 
   if (xasl->type == BUILDVALUE_PROC)
     {
@@ -7678,8 +7689,51 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
   while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
     {
+      int cte_offset_read_tuple = 0;
+      int cte_curr_scan_tplno = -1;
+
+      if (xasl->max_iterations != -1)
+	{
+	  assert (xasl->curr_spec->type == TARGET_LIST);
+	  assert (xasl->curr_spec->s_id.type == S_LIST_SCAN);
+
+	  cte_start_new_iteration = true;
+	  recursive_iterations = 1;
+	}
+
       while ((ls_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id)) == S_SUCCESS)
 	{
+	  if (xasl->max_iterations != -1)
+	    {
+	      /* the scan tuple number resets when when a new page is fetched
+	       * cte_offset_read_tuple keeps of the global tuple number across the entire list */
+	      if (CTE_CURRENT_SCAN_READ_TUPLE (xasl) < cte_curr_scan_tplno)
+		{
+		  cte_offset_read_tuple += cte_curr_scan_tplno + 1;
+		}
+
+	      cte_curr_scan_tplno = CTE_CURRENT_SCAN_READ_TUPLE (xasl);
+
+	      if (cte_start_new_iteration)
+		{
+		  recursive_iterations++;
+		  if (recursive_iterations >= xasl->max_iterations)
+		    {
+		      max_recursive_iterations_reached = true;
+		      break;
+		    }
+
+		  curr_iteration_last_cursor = CTE_CURR_ITERATION_LAST_TUPLE (xasl);
+		  assert (curr_iteration_last_cursor >= 0);
+		  cte_start_new_iteration = false;
+		}
+
+	      if (cte_curr_scan_tplno + cte_offset_read_tuple == curr_iteration_last_cursor)
+		{
+		  cte_start_new_iteration = true;
+		}
+	    }
+
 	  if (count_star_with_iscan_opt)
 	    {
 	      xasl->proc.buildvalue.agg_list->accumulator.curr_cnt += (&xasl->curr_spec->s_id)->s.isid.oids_count;
@@ -7916,6 +7970,13 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  qexec_clear_all_lists (thread_p, xasl);
 	}
 
+      if (max_recursive_iterations_reached)
+	{
+	  xb_scan = S_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CTE_MAX_RECURSION_REACHED, 1, xasl->max_iterations);
+	  break;
+	}
+
       if (ls_scan != S_END)	/* an error happened */
 	{
 	  return S_ERROR;
@@ -7928,6 +7989,9 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
     }
 
   return S_SUCCESS;
+
+#undef CTE_CURRENT_SCAN_READ_TUPLE
+#undef CTE_CURR_ITERATION_LAST_TUPLE
 }
 
 /*
@@ -15443,6 +15507,10 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
   if (recursive_part && non_recursive_part->list_id->tuple_cnt > 0)
     {
+      bool common_list_optimization = false;
+      int recursive_iterations = 0;
+      int sys_prm_cte_max_recursions = prm_get_integer_value (PRM_ID_CTE_MAX_RECURSIONS);
+
       if (recursive_part->type == BUILDVALUE_PROC)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BUILDVALUE_IN_REC_CTE, 0);
@@ -15452,9 +15520,20 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
       /* the recursive part XASL is executed totally (all iterations) 
        * and the results will be inserted in non_recursive_part->list_id 
        */
+
       while (non_recursive_part->list_id->tuple_cnt > 0)
 	{
-	  /* TODO - detect too many iterations and abort execution */
+	  if (common_list_optimization == true)
+	    {
+	      recursive_part->max_iterations = sys_prm_cte_max_recursions;
+	    }
+	  else
+	    {
+	      if (recursive_iterations++ >= sys_prm_cte_max_recursions)
+		{
+		  break;
+		}
+	    }
 	  if (qexec_execute_mainblock (thread_p, recursive_part, xasl_state, NULL) != NO_ERROR)
 	    {
 	      qexec_failure_line (__LINE__, xasl_state);
@@ -15520,6 +15599,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		  save_recursive_list_id = recursive_part->list_id;
 		  recursive_part->list_id = non_recursive_part->list_id;
 		  qfile_reopen_list_as_append_mode (thread_p, recursive_part->list_id);
+		  common_list_optimization = true;
 		}
 	    }
 	}
@@ -15551,6 +15631,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
   xasl->status = XASL_SUCCESS;
 
+  if (recursive_part != NULL)
+    {
+      recursive_part->max_iterations = -1;
+    }
+
   return NO_ERROR;
 
 exit_on_error:
@@ -15559,6 +15644,12 @@ exit_on_error:
       /* restore recursive list_id */
       recursive_part->list_id = save_recursive_list_id;
     }
+
+  if (recursive_part != NULL)
+    {
+      recursive_part->max_iterations = -1;
+    }
+
   xasl->status = XASL_FAILURE;
   return ER_FAILED;
 }
@@ -18766,7 +18857,7 @@ query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * x
 	{
 	  /* REGUs didn't match, at least disable the optimization */
 	  multi_range_opt->use = false;
-	  goto exit_on_error;
+	  goto exit;
 	}
       multi_range_opt->is_desc_order[index] = (orderby_list->s_order == S_DESC) ? true : false;
       multi_range_opt->sort_att_idx[index] = sort_index_pos;

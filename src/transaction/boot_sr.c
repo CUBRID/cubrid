@@ -1667,7 +1667,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto exit_on_error;
     }
 
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       goto exit_on_error;
@@ -1818,7 +1818,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
    */
 
 #if defined(SERVER_MODE)
-  sysprm_load_and_init (boot_Db_full_name, NULL);
+  sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL);
 #endif /* SERVER_MODE */
 
   /* If the server is already restarted, shutdown the server */
@@ -2209,7 +2209,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -2319,7 +2319,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * recovery managers
    */
 #if defined(SERVER_MODE)
-  if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -2560,7 +2560,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
-      /* Make sure dropped files are loaded from disk after recovery */
+      /* load and recovery vacuum data and dropped files */
+      error_code = vacuum_data_load_and_recover (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
       error_code = vacuum_load_dropped_files_from_disk (thread_p);
       if (error_code != NO_ERROR)
 	{
@@ -2942,7 +2948,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       return NULL_TRAN_INDEX;
     }
@@ -4566,7 +4572,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 	  return ER_FAILED;
 	}
 
-      if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+      if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
 	  return ER_FAILED;
@@ -5084,7 +5090,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  return ER_FAILED;
 	}
 
-      if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+      if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
 	  return ER_FAILED;
@@ -5206,7 +5212,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     }
 
   (void) msgcat_init ();
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -5290,7 +5296,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 
   log_prefix = fileio_get_base_file_name (db_name);
 
-  if (sysprm_load_and_init (boot_Db_full_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -5411,7 +5417,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
-      /* We need to load vacuum data and initialize vacuum routine before recovery. */
+      /* We need initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
 			   &boot_Db_parm->dropped_files_vfid);
@@ -5426,7 +5432,6 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     {
       goto error_exit;
     }
-
 
   if (recreate_log == false)
     {
