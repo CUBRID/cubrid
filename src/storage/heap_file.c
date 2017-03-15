@@ -971,7 +971,7 @@ static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
 static int heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE * ftype_out);
 static int heap_get_hfid_from_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid);
 static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
-						  short * flag_vacuum_status);
+						  short *flag_vacuum_status);
 static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
 				       bool vacuum_status_change);
 
@@ -22884,7 +22884,8 @@ heap_delete_home_data_has_changed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVC
       return true;
     }
 
-  if (context->log_info.log_undoredo_data.offset != (local_context.oid.slotid | flag_vacuum_status))
+  if (heap_rv_remove_flags_from_offset (context->log_info.log_undoredo_data.offset)
+      != heap_rv_remove_flags_from_offset (local_context.oid.slotid | flag_vacuum_status))
     {
       /* offset modified */
       return true;
@@ -25592,7 +25593,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
  */
 static void
 heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
-				      short * flag_vacuum_status)
+				      short *flag_vacuum_status)
 {
   HEAP_CHAIN *chain;
   RECDES chain_recdes;
