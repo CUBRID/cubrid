@@ -5912,7 +5912,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
   file_log ("file_perm_dealloc",
 	    "update header in file %d|%d, header page %d|%d, prev_lsa %lld|%d, crt_lsa %lld|%d, "
 	    "after de%s, is_empty = %s, was_full = %s, \n"
-	    FILE_HEAD_ALLOC_MSG, VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_MODIFY_ARGS (page_fhead),
+	    FILE_HEAD_ALLOC_MSG, VFID_AS_ARGS (&fhead->self), PGBUF_PAGE_MODIFY_ARGS (page_fhead, &save_page_lsa),
 	    FILE_ALLOC_TYPE_STRING (alloc_type), is_empty ? "true" : "false", was_full ? "true" : "false",
 	    FILE_HEAD_ALLOC_AS_ARGS (fhead));
 
