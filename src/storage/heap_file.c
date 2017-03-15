@@ -21486,7 +21486,8 @@ heap_create_insert_log_info_before_page_fixing (THREAD_ENTRY * thread_p, LOG_TDE
   slotid = NULL_SLOTID;
 
   HEAP_RESET_LOG_INFO (&insert_log_info);
-  if (is_mvcc_op == false || ins_context->recdes_p->type == REC_BIGONE)
+  if (is_mvcc_op == false || ins_context->recdes_p->type == REC_BIGONE
+      || heap_is_big_length (ins_context->recdes_p->length))
     {
       return NO_ERROR;
     }
@@ -24292,7 +24293,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
 #if defined(SERVER_MODE)
-  if (!heap_is_big_length (context->recdes_p->length))
+  if (prm_get_bool_value (PRM_ID_PAGE_LOGGING_BEFORE_FIX))
     {
       /* Generate log data here, before fixing the heap page. The purpose is to release the latch faster.
        * Later, after fixing the page, we have to update the log data with real page and slot id.
@@ -24530,16 +24531,19 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    * In case of non-MVCC heap deletion, the logging is done with RVHF_DELETE recovery index.
    */
 
-  rc = heap_create_delete_log_info_before_page_fixing (thread_p, tdes, mvccid, is_mvcc_op, context);
-  if (rc != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_PAGE_LOGGING_BEFORE_FIX))
     {
-      assert (false);
-      goto error;
-    }
-  /* Reset transient flags since they are reused after fixing page */
-  context->fits_in_home = context->fits_in_forward = false;
-  context->update_old_home = context->update_old_forward = context->remove_old_forward = false;
+      rc = heap_create_delete_log_info_before_page_fixing (thread_p, tdes, mvccid, is_mvcc_op, context);
+      if (rc != NO_ERROR)
+	{
+	  assert (false);
+	  goto error;
+	}
 
+      /* Reset transient flags since they are reused after fixing page */
+      context->fits_in_home = context->fits_in_forward = false;
+      context->update_old_home = context->update_old_forward = context->remove_old_forward = false;
+    }
 #endif
 
 
@@ -24798,18 +24802,21 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* Need to set context->home_recdes.length for logging purpose. */
 #if defined(SERVER_MODE)
 
-  /* TO DO - system parameter */
 
-  /* Generate the log before fixing page */
-  rc = heap_create_update_log_info_before_page_fixing (thread_p, tdes, &mvccid, is_mvcc_op, context);
-  if (rc != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_PAGE_LOGGING_BEFORE_FIX))
     {
-      assert (false);
-      goto exit;
+      /* Generate the log before fixing page */
+      rc = heap_create_update_log_info_before_page_fixing (thread_p, tdes, &mvccid, is_mvcc_op, context);
+      if (rc != NO_ERROR)
+	{
+	  assert (false);
+	  goto exit;
+	}
+
+      /* Reset transient flags since they are reused after fixing page */
+      context->fits_in_home = context->fits_in_forward = false;
+      context->update_old_home = context->update_old_forward = context->remove_old_forward = false;
     }
-  /* Reset transient flags since they are reused after fixing page */
-  context->fits_in_home = context->fits_in_forward = false;
-  context->update_old_home = context->update_old_forward = context->remove_old_forward = false;
 #endif
 
   /*

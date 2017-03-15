@@ -127,6 +127,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_READ_WITHOUT_LATCH "page_read_without_latch"
 
+#define PRM_NAME_PAGE_LOGGING_BEFORE_FIX "page_logging_before_fix"
+
 #define  PRM_NAME_PAGE_COPY_LOGGING "page_copy_logging_debug"
 
 #define PRM_NAME_PB_BUFFER_FLUSH_RATIO "data_buffer_flush_ratio"
@@ -902,6 +904,10 @@ static unsigned int prm_pb_nbuffers_flag = 0;
 bool PRM_PAGE_READ_WITHOUT_LATCH = true;
 static bool prm_page_read_without_latch_default = true;
 static bool prm_page_read_without_latch_flag = 0;
+
+bool PRM_PAGE_LOGGING_BEFORE_FIX = true;
+static bool prm_page_logging_before_fix_default = true;
+static bool prm_page_logging_before_fix_flag = 0;
 
 bool PRM_PAGE_COPY_LOGGING = false;
 static bool prm_page_copy_logging_default = false;
@@ -2288,6 +2294,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_page_read_without_latch_flag,
    (void *) &prm_page_read_without_latch_default,
    (void *) &PRM_PAGE_READ_WITHOUT_LATCH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PAGE_LOGGING_BEFORE_FIX,
+   PRM_NAME_PAGE_LOGGING_BEFORE_FIX,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   (void *) &prm_page_logging_before_fix_flag,
+   (void *) &prm_page_logging_before_fix_default,
+   (void *) &PRM_PAGE_LOGGING_BEFORE_FIX,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
