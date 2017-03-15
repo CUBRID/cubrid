@@ -13545,7 +13545,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	      if (pgbuf_lfcq_add_lru_with_victims (lru_list)
 		  && perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
 		{
-		  perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_PRV_ADD_ADJUST_QUOTA);
+		  /* added to queue of lru lists having victims. */
 		}
 	    }
 	}
@@ -13591,7 +13591,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	      if (pgbuf_lfcq_add_lru_with_victims (lru_list)
 		  && perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
 		{
-		  perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_PRV_ADD_ADJUST_QUOTA);
+		  /* added to queue of lru lists having victims. */
 		}
 	    }
 	}
@@ -13621,7 +13621,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	  if (pgbuf_lfcq_add_lru_with_victims (lru_list)
 	      && perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
 	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_SHR_ADD_ADJUST_QUOTA);
+	      /* added to queue of lru lists having victims. */
 	    }
 	}
     }
@@ -14829,14 +14829,7 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
       if (pgbuf_lfcq_add_lru_with_victims (lru_list)
 	  && perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
 	{
-	  if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_PRV_ADD_ADD_VICTIM);
-	    }
-	  else
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_LFCQ_LRU_SHR_ADD_ADD_VICTIM);
-	    }
+	  /* added to queue of lru lists having victims. */
 	}
     }
 }
@@ -15515,7 +15508,6 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
       /* add big private lists back immediately */
       if (lf_circular_queue_produce (pgbuf_Pool.big_private_lrus_with_victims, &lru_idx))
 	{
-	  PERF (PSTAT_PB_LFCQ_LRU_PRV_GET_READD);
 	  added_back = true;
 	}
     }
@@ -15534,7 +15526,6 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
     {
       if (lf_circular_queue_produce (pgbuf_Pool.private_lrus_with_victims, &lru_idx))
 	{
-	  PERF (PSTAT_PB_LFCQ_LRU_PRV_GET_READD);
 	  return victim;
 	}
     }
@@ -15550,8 +15541,6 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
    *       changes it from set to cleared. however, if more flags are added, or more cases that should clear the flag,
    *       then consider replacing with some atomic operation. */
   lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
-
-  PERF (PSTAT_PB_LFCQ_LRU_PRV_GET_DONT_ADD);
 
   return victim;
 
@@ -15595,7 +15584,6 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
       /* add lru list back to queue */
       if (lf_circular_queue_produce (pgbuf_Pool.shared_lrus_with_victims, &lru_idx))
 	{
-	  PERF (PSTAT_PB_LFCQ_LRU_SHR_GET_READD);
 	  return victim;
 	}
       else
@@ -15618,8 +15606,6 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
    *       changes it from set to cleared. however, if more flags are added, or more cases that should clear the flag,
    *       then consider replacing with some atomic operation. */
   lru_list->flags &= ~PGBUF_LRU_VICTIM_LFCQ_FLAG;
-
-  PERF (PSTAT_PB_LFCQ_LRU_SHR_GET_DONT_ADD);
 
   return victim;
 
