@@ -6283,6 +6283,8 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 			 (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset, page->n_dropped_files,
 			 vacuum_Dropped_files_count);
 
+	  /* todo: new pages are allocated but old pages are never deallocated. it looks like they are leaked. */
+
 #if !defined (NDEBUG)
 	  /* Copy changes to tracker */
 	  memcpy (&track_page->dropped_data_page, page, DB_PAGESIZE);
@@ -6366,9 +6368,6 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
       return false;
     }
 
-  /* todo: vacuum never boosts pages. if we ever have dropped files, these pages will always be victimized and loaded
-   *       back. if aout is disabled, there is no way around it. think about a solution. */
-
   assert_release (!VPID_ISNULL (&vacuum_Dropped_files_vpid));
 
   /* Search for dropped file in all pages. */
@@ -6388,6 +6387,8 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 	    }
 	  return false;
 	}
+      /* dropped files page are never boosted. mark them that vacuum will fix to at least postpone victimization */
+      pgbuf_notify_vacuum_follows (thread_p, (PAGE_PTR) page);
 
       /* Copy next page VPID */
       VPID_COPY (&vpid, &page->next_page);
@@ -7695,18 +7696,4 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
     }
 
   return NO_ERROR;
-}
-
-bool
-vacuum_has_lag (void)
-{
-  VACUUM_DATA_PAGE *first_page = vacuum_Data.first_page;
-  if (first_page == NULL)
-    {
-      /* first page may be temporarily disabled during checkpoint. be conservative and assume we had lag */
-      return true;
-    }
-
-  /* high-load systems are very likely to return true here. */
-  return first_page->next_page.pageid != NULL_PAGEID;
 }
