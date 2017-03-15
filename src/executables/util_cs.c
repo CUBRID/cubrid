@@ -2208,7 +2208,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   db_shutdown ();
 #else /* CS_MODE */
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
-  if (sysprm_load_and_init (database_name, NULL) == NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) == NO_ERROR)
     {
       sysprm_dump_parameters (outfp);
     }
@@ -2629,7 +2629,7 @@ prefetchlogdb (UTIL_FUNCTION_ARG * arg)
   hb_set_argv (arg->argv);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       error = ER_FAILED;
@@ -2683,7 +2683,7 @@ retry:
   db_set_lock_timeout (5);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       db_shutdown ();
       error = ER_FAILED;
@@ -2870,7 +2870,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   hb_set_argv (arg->argv);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       error = ER_FAILED;
       goto error_exit;
@@ -2911,7 +2911,7 @@ retry:
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       (void) db_shutdown ();
 
@@ -3077,7 +3077,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   hb_set_argv (arg->argv);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       error = ER_FAILED;
@@ -3139,7 +3139,7 @@ retry:
   db_set_lock_timeout (-1);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       (void) db_shutdown ();
 
@@ -3323,7 +3323,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       return EXIT_FAILURE;

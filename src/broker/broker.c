@@ -1934,7 +1934,7 @@ connect_to_master_for_server_monitor (const char *db_name, const char *db_host)
   int port_id;
   unsigned short rid;
 
-  if (sysprm_load_and_init (db_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
     {
       return NULL;
     }
