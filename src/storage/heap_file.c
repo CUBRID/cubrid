@@ -24747,11 +24747,20 @@ heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid
   return NO_ERROR;
 }
 
-int
-heap_is_page_file_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
+/*
+ * heap_is_page_header () - return true if page is a heap header page. must be heap page though!
+ *
+ * return        : true if file header page, false otherwise.
+ * thread_p (in) : thread entry
+ * page (in)     : heap page
+ */
+bool
+heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
 {
   SPAGE_HEADER *spage_header;
   SPAGE_SLOT *slotp;
+
+  /* todo: why not set a different page ptype. */
 
   assert (page != NULL && pgbuf_get_page_ptype (thread_p, page) == PAGE_HEAP);
 

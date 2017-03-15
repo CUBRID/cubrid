@@ -677,5 +677,5 @@ extern int heap_get_best_space_num_stats_entries (void);
 
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
-extern int heap_is_page_file_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
+extern bool heap_is_page_file_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 #endif /* _HEAP_FILE_H_ */
