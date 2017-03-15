@@ -2488,8 +2488,8 @@ file_extdata_find_and_remove_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA
 {
   PAGE_PTR page_prev = NULL;
   PAGE_PTR page_crt = NULL;
-  FILE_EXTENSIBLE_DATA *extdata_prev;
-  FILE_EXTENSIBLE_DATA *extdata_crt;
+  FILE_EXTENSIBLE_DATA *extdata_prev = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_crt = NULL;
   bool found = false;
   int pos = 0;
   LOG_LSA save_lsa;
@@ -6542,7 +6542,7 @@ static int
 file_sector_map_pages (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
 {
   FILE_MAP_CONTEXT *context = (FILE_MAP_CONTEXT *) args;
-  FILE_PARTIAL_SECTOR partsect;
+  FILE_PARTIAL_SECTOR partsect = FILE_PARTIAL_SECTOR_INITIALIZER;
   int iter;
   VPID vpid;
   PAGE_PTR page = NULL;
