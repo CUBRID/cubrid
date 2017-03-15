@@ -8228,8 +8228,6 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       VFID_COPY (&(list_id->temp_vfid), &(list_id->tfile_vfid->temp_vfid));
     }
 
-  er_print_callstack (ARG_FILE_LINE, "list_id:%p\n", list_id);
-
 #if !defined (NDEBUG)
   assert (list_id->type_list.type_cnt == 1);
   if (list_id->type_list.type_cnt != 0)
@@ -15475,8 +15473,6 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
   QFILE_SET_FLAG (ls_flag, QFILE_FLAG_UNION);
   QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
 
-  er_print_callstack (ARG_FILE_LINE, "xasl:%p\n", xasl);
-
   if (non_recursive_part == NULL)
     {
       /* non_recursive_part may have false where, so it is null */
@@ -15535,7 +15531,9 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	    {
 	      if (recursive_iterations++ >= sys_prm_cte_max_recursions)
 		{
-		  break;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CTE_MAX_RECURSION_REACHED, 1,
+			  sys_prm_cte_max_recursions);
+		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
 	  if (qexec_execute_mainblock (thread_p, recursive_part, xasl_state, NULL) != NO_ERROR)
