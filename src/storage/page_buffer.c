@@ -3520,7 +3520,7 @@ end:
    *       scenarios when threads are waiting for direct victims but system flushes nothing. if there are flushed
    *       waiting for assignment, then we are not in this kind of scenario. */
   assert (total_flushed_count > 0 || !pgbuf_is_any_thread_waiting_for_direct_victim () || !empty_flushed_bcb_queue
-	  || count_need_wal == victim_count);
+	  || count_need_wal > 0);
 #endif /* SERVER_MODE */
 
   return error;
@@ -14621,6 +14621,12 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool not_empty = false;
 
+  /* invalidation flag for direct victim assignment:
+   * 1. any flag invalidating victim candidates, except is flushing flag
+   * 2. to vacuum flag. */
+  int invalidate_flag =
+    PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK & (~PGBUF_BCB_FLUSHING_TO_DISK_FLAG) | PGBUF_BCB_VICTIM_DIRECT_FLAG;
+
   /* consume all flushed bcbs queue */
   while (lf_circular_queue_consume (pgbuf_Pool.flushed_bcbs, &bcb_flushed))
     {
@@ -14629,48 +14635,22 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
       /* we need to lock mutex */
       PGBUF_BCB_LOCK (bcb_flushed);
 
-      if (pgbuf_bcb_is_dirty (bcb_flushed))
+      if ((bcb_flushed->flags & invalidate_flag) != 0)
 	{
-	  /* dirty bcb is not a valid victim */
-	  if (detailed_perf)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY);
-	    }
+	  /* dirty bcb is not a valid victim or will be accessed by vacuum. */
 	}
-      else if (pgbuf_is_bcb_fixed_by_any (bcb_flushed, true) || pgbuf_bcb_is_invalid_direct_victim (bcb_flushed))
+      else if (pgbuf_is_bcb_fixed_by_any (bcb_flushed, true))
 	{
 	  /* bcb is fixed. we cannot assign it as victim */
-	  if (detailed_perf)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED);
-	    }
 	}
       else if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_flushed))
 	{
 	  /* bcb is hot. don't assign it as victim */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_WRONG_ZONE);
-	}
-      else if (pgbuf_bcb_is_to_vacuum (bcb_flushed))
-	{
-	  /* bcb will be accessed by vacuum */
-	  if (detailed_perf)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_TO_VACUUM);
-	    }
 	}
       else if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bcb_flushed))
 	       && !PGBUF_LRU_LIST_IS_OVER_QUOTA (pgbuf_lru_list_from_bcb (bcb_flushed)))
 	{
 	  /* bcb belongs to a private list under quota. give it a chance. */
-	  if (detailed_perf)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA);
-	    }
-	}
-      else if (pgbuf_bcb_is_direct_victim (bcb_flushed))
-	{
-	  /* sometimes (very rare) checkpoint can snatch the bcb, mark it as flushed and assign it as victim */
-	  assert (!pgbuf_bcb_is_flushing (bcb_flushed));
 	}
       else if (pgbuf_assign_direct_victim (thread_p, bcb_flushed))
 	{
@@ -14685,10 +14665,6 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 	  /* not assigned directly */
 	  assert (!pgbuf_bcb_is_direct_victim (bcb_flushed));
 	  /* could not assign it directly. there must be no waiters */
-	  if (detailed_perf)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER);
-	    }
 	}
 
       /* make sure bcb is no longer marked as flushing */

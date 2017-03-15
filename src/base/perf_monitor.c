@@ -195,17 +195,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST, "Num_victim_assign_direct_adjust_lru"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST_TO_VACUUM,
 				  "Num_victim_assign_direct_adjust_lru_to_vacuum"),
-  /* flushed direct assignments failures */
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_DIRTY, "Num_flush_direct_victim_dirty_failed"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_FIXED, "Num_flush_direct_victim_fixed_failed"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_WRONG_ZONE,
-				  "Num_flush_direct_victim_wrong_zone_failed"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_TO_VACUUM,
-				  "Num_flush_direct_victim_to_vacuum_failed"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_PRV_UNDER_QUOTA,
-				  "Num_flush_direct_victim_prv_under_quota_failed"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH_NO_WAITER,
-				  "Num_flush_direct_victim_no_waiter_failed"),
+  /* page flush */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_SEND_FOR_DIRECT_VICTIM, "Num_flushed_page_send_for_direct_victim"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_FLUSH_MARK_FLUSHED, "Num_flushed_page_marked_as_flushed"),
   /* successful searches */
