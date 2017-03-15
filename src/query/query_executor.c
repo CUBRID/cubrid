@@ -8228,6 +8228,8 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       VFID_COPY (&(list_id->temp_vfid), &(list_id->tfile_vfid->temp_vfid));
     }
 
+  er_print_callstack (ARG_FILE_LINE, "list_id:%p\n", list_id);
+
 #if !defined (NDEBUG)
   assert (list_id->type_list.type_cnt == 1);
   if (list_id->type_list.type_cnt != 0)
@@ -15472,6 +15474,8 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
   QFILE_SET_FLAG (ls_flag, QFILE_FLAG_UNION);
   QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
+
+  er_print_callstack (ARG_FILE_LINE, "xasl:%p\n", xasl);
 
   if (non_recursive_part == NULL)
     {

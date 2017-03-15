@@ -388,6 +388,8 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 
   memset (&dest_list_id_p->tpl_descr, 0, sizeof (QFILE_TUPLE_DESCRIPTOR));
 
+  er_print_callstack (ARG_FILE_LINE, "src_list_id_p:%p, dest_list_id_p:%p\n", src_list_id_p, dest_list_id_p);
+
 #if !defined (NDEBUG)
   if (dest_list_id_p->type_list.type_cnt != 0)
     {
@@ -438,6 +440,8 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
       thread_rc_track_meter (NULL, __FILE__, __LINE__, -1, list_id_p, RC_QLIST, MGR_DEF);
     }
 #endif /* NDEBUG */
+
+  er_print_callstack (ARG_FILE_LINE, "list_id:%p\n", list_id_p);
 
   if (list_id_p->tpl_descr.f_valp)
     {
@@ -1155,6 +1159,8 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
       /* no DISTINCT and no source SORT_LIST supplied */
       list_id_p->sort_list = NULL;
     }
+
+   er_print_callstack (ARG_FILE_LINE, "list_id_p:%p\n", list_id_p);
 
 #if !defined (NDEBUG)
   if (list_id_p->type_list.type_cnt != 0)
