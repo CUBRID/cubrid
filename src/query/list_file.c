@@ -1155,6 +1155,7 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
       /* no DISTINCT and no source SORT_LIST supplied */
       list_id_p->sort_list = NULL;
     }
+
 #if !defined (NDEBUG)
   if (list_id_p->type_list.type_cnt != 0)
     {
