@@ -4941,6 +4941,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   recdes.type = REC_HOME;
   recdes.data = (char *) boot_Db_parm;
 
+  //DebugBreak();
   /* Prepare context */
   heap_create_insert_context (&heapop_context, &boot_Db_parm->hfid, &boot_Db_parm->rootclass_oid, &recdes, NULL);
 

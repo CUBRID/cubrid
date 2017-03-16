@@ -1263,7 +1263,9 @@ $ LOADDB
 1194 Unable to check file %1$d|%2$d because lock on class %3$d|%4$d|%5$d is not immediately granted.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
 1196 Maximum recursions %1$d reached executing CTE.
-1197 Ultimo errore
+1197 Incompatible log header types: %1$d is different from %2$d.
+1198 Ultimo errore
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
 2 Nessun messaggio di errore disponibile.

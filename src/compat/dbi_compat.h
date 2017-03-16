@@ -1541,7 +1541,9 @@
 
 #define ER_BUILDVALUE_IN_REC_CTE		    -1195
 
-#define ER_LAST_ERROR                               -1196
+#define ER_INCOMPATIBLE_LOG_TYPE		    -1196
+
+#define ER_LAST_ERROR                               -1197
 
 #define DB_TRUE 1
 #define DB_FALSE 0

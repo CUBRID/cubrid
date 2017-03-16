@@ -1278,11 +1278,11 @@ enum log_repl_flush
 /* Is log record for a heap MVCC operation */
 #define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
   (((rcvindex) == RVHF_MVCC_DELETE_REC_HOME) \
-   || ((rcvindex) == RVHF_MVCC_INSERT) \
-   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
-   || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
+  || ((rcvindex) == RVHF_MVCC_INSERT) \
+  || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
+  || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
+  || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
+  || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
 
 /* Is log record for a b-tree MVCC operation */
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
@@ -1331,6 +1331,47 @@ struct log_rec_header
   TRANID trid;			/* Transaction identifier of the log record */
   LOG_RECTYPE type;		/* Log record type (e.g., commit, abort) */
 };
+
+/* Common information of log data records */
+typedef struct log_rec_undoredo_data LOG_REC_UNDOREDO_DATA;
+struct log_rec_undoredo_data
+{
+  LOG_RCVINDEX rcvindex;	/* Index to recovery function */
+  PAGE_PTR page;		/* Page pointer */
+  PGLENGTH offset;		/* offset of recovery data in pageid */
+
+  void *undo_data;		/* undo data */
+  int undo_data_size;		/* undo data size */
+
+  void *redo_data;		/* redo data */
+  int redo_data_size;		/* redo data size */
+};
+
+#define LOG_RESET_REC_UNDOREDO_DATA(rec_undoredo_data_p)	\
+  do \
+    { \
+      (rec_undoredo_data_p)->rcvindex = RV_NOT_DEFINED;			    \
+      (rec_undoredo_data_p)->page = NULL;				    \
+      (rec_undoredo_data_p)->offset = -1;				    \
+      (rec_undoredo_data_p)->undo_data = NULL;				    \
+      (rec_undoredo_data_p)->undo_data_size = -1;			    \
+      (rec_undoredo_data_p)->redo_data = NULL;				    \
+      (rec_undoredo_data_p)->redo_data_size = -1;			    \
+    } \
+  while (false)
+
+#define LOG_SET_REC_UNDOREDO_DATA(rec_undoredo_data_p, rcv_index , pageptr, rcv_offset, rcv_undo_data_p, rcv_undo_data_size, rcv_redo_data_p, rcv_redo_data_size)  \
+    do \
+      { \
+	(rec_undoredo_data_p)->rcvindex = rcv_index;		      \
+	(rec_undoredo_data_p)->page = pageptr;			      \
+	(rec_undoredo_data_p)->offset = rcv_offset;		      \
+	(rec_undoredo_data_p)->undo_data = rcv_undo_data_p;	      \
+	(rec_undoredo_data_p)->undo_data_size = rcv_undo_data_size;   \
+	(rec_undoredo_data_p)->redo_data = rcv_redo_data_p;	      \
+	(rec_undoredo_data_p)->redo_data_size = rcv_redo_data_size;   \
+      } \
+    while (false)
 
 /* Common information of log data records */
 typedef struct log_data LOG_DATA;
@@ -1402,6 +1443,27 @@ struct log_rec_mvcc_redo
   LOG_REC_REDO redo;		/* Location of recovery data */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
+
+#define LOG_GET_RECDES_CRUMBS_SIZE(recdes_p) ((recdes_p)->length + sizeof ((recdes_p)->type))
+#define LOG_GET_CRUMBS_FROM_RECDES(recdes_p, crumbs_capacity, crumbs, num_crumbs) \
+  do \
+    { \
+      if (recdes_p != NULL)	\
+	{ \
+	  (crumbs)[0].length = sizeof ((recdes_p)->type); \
+	  (crumbs)[0].data = (char *) &(recdes_p)->type;  \
+	  (crumbs)[1].length = (recdes_p)->length;	\
+	  (crumbs)[1].data = (recdes_p)->data;  \
+	  (num_crumbs) = 2; \
+	} \
+      else  \
+	{ \
+	  (crumbs) = NULL; \
+	  (num_crumbs) = 0; \
+	} \
+      assert (num_crumbs <= crumbs_capacity); \
+    } \
+  while (0)
 
 /* Information of database external redo log records */
 typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
@@ -2056,6 +2118,20 @@ extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * ls
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 						      LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int ulength,
 						      const char *udata, int rlength, const char *rdata);
+extern void prior_lsa_free_node (LOG_PRIOR_NODE * node);
+extern int prior_lsa_update_undoredo_data (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcv_index,
+					   LOG_DATA_ADDR * addr, int undo_length, int redo_length,
+					   const void *undo_data, const void *redo_data, bool skip_undo,
+					   bool skip_redo);
+extern int prior_lsa_update_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+					     LOG_RCVINDEX rcv_index, LOG_DATA_ADDR * addr,
+					     int num_undo_crumbs, int num_redo_crumbs,
+					     LOG_CRUMB * undo_crumbs, LOG_CRUMB * redo_crumbs, bool skip_undo,
+					     bool skip_redo);
+extern int prior_lsa_update_undoredo_data_from_recdes (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+						       LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+						       RECDES * old_recdes_p, RECDES * new_recdes_p, bool skip_undo,
+						       bool skip_redo);
 extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type,
 							LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 							const int num_ucrumbs, const LOG_CRUMB * ucrumbs,

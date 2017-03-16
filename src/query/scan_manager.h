@@ -401,7 +401,7 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest,
 				 ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range,
 				 ATTR_ID * attrids_range, HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order,
-				 QUERY_ID query_id);
+				 QUERY_ID query_id, bool copy_page_without_latch_allowed);
 extern int scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 					  /* fields of SCAN_ID */
 					  VAL_LIST * val_list, VAL_DESCR * vd,

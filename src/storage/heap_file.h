@@ -273,6 +273,63 @@ enum update_inplace_style
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
   ((update_inplace_style) != UPDATE_INPLACE_NONE)
 
+/* Used when log before fixing page */
+typedef enum log_prior_node_status LOG_PRIOR_NODE_STATUS;
+enum log_prior_node_status
+{
+  PRIOR_NODE_INITIALIZED,
+  PRIOR_NODE_CREATED,
+  PRIOR_NODE_ADDED
+};
+
+typedef struct heap_debug_log_info HEAP_DEBUG_LOG_INFO;
+struct heap_debug_log_info
+{
+  char copy_home_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep a copy of home recdes */
+  char copy_new_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep a copy of new recdes */
+  RECDES copy_home_recdes;	/* copy home recdes */
+  RECDES copy_new_recdes;	/* copy new home recdes */
+};
+
+
+/* Log information, used when add logging before page fixing */
+typedef struct heap_log_info HEAP_LOG_INFO;
+struct heap_log_info
+{
+  LOG_PRIOR_NODE *node;		/* log node */
+
+  LOG_REC_UNDOREDO_DATA log_undoredo_data;
+#if !defined (NDEBUG)
+  HEAP_DEBUG_LOG_INFO debug_log_info;
+#endif
+
+  bool node_appended;		/* true, if the log node was appended */
+};
+
+#define HEAP_SET_LOG_INFO(p_heap_log_info, p_node, recovery_index, pageptr, slotid_with_flags, p_undo_data, undo_size, p_redo_data, redo_size, node_was_appended) \
+  do \
+  { \
+    (p_heap_log_info)->node = p_node;						    \
+    (p_heap_log_info)->log_undoredo_data.rcvindex = recovery_index;		    \
+    (p_heap_log_info)->log_undoredo_data.page = pageptr;			    \
+    (p_heap_log_info)->log_undoredo_data.offset = slotid_with_flags;		    \
+    (p_heap_log_info)->log_undoredo_data.undo_data = p_undo_data;		    \
+    (p_heap_log_info)->log_undoredo_data.undo_data_size = undo_size;		    \
+    (p_heap_log_info)->log_undoredo_data.redo_data = p_redo_data;		    \
+    (p_heap_log_info)->log_undoredo_data.redo_data_size = redo_size;		    \
+    (p_heap_log_info)->node_appended = node_was_appended;			    \
+  } \
+  while (false)
+
+#define HEAP_RESET_LOG_INFO(p_heap_log_info) \
+  do \
+  { \
+    (p_heap_log_info)->node = NULL;						 \
+    LOG_RESET_REC_UNDOREDO_DATA (&((p_heap_log_info)->log_undoredo_data));	 \
+    (p_heap_log_info)->node_appended = false;					 \
+  } \
+  while (false)
+
 /* heap operation information structure */
 typedef struct heap_operation_context HEAP_OPERATION_CONTEXT;
 struct heap_operation_context
@@ -285,7 +342,7 @@ struct heap_operation_context
   HFID hfid;			/* heap file identifier */
   OID oid;			/* object identifier */
   OID class_oid;		/* class object identifier */
-  RECDES *recdes_p;		/* record descriptor */
+  RECDES *recdes_p;		/* new record descriptor used at insertion or to update the old record */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
 
   /* overflow transient data */
@@ -294,27 +351,55 @@ struct heap_operation_context
 
   /* transient data */
   RECDES home_recdes;
-  char home_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char home_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep home recdes */
   INT16 record_type;		/* record type of original record */
   FILE_TYPE file_type;		/* the file type of hfid */
+
+  /* RELOCATION and BIGONE information */
+  OID forward_oid;		/* forward oid identifier */
+  OID new_forward_oid;		/* new forward oid identifier */
+  RECDES forward_recdes;	/* forward recdes */
+  RECDES new_home_recdes;	/* new home recdes */
+  char forward_recdes_buffer[IO_DEFAULT_PAGE_SIZE + MAX_ALIGNMENT];	/* keep forward recdes */
+
+  /* buffers, used to build the new record at heap deletion */
+  char recdes_data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
+  RECDES build_recdes;
+  char redo_data_buffer[OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
+  char undo_data_buffer[OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
 
   /* physical page watchers - these should not be referenced directly */
   PGBUF_WATCHER home_page_watcher;	/* home page */
   PGBUF_WATCHER overflow_page_watcher;	/* overflow page */
   PGBUF_WATCHER header_page_watcher;	/* header page */
   PGBUF_WATCHER forward_page_watcher;	/* forward page */
+  PGBUF_WATCHER new_forward_page_watcher;	/* new forward page */
 
   /* page watchers */
   PGBUF_WATCHER *home_page_watcher_p;
   PGBUF_WATCHER *overflow_page_watcher_p;
   PGBUF_WATCHER *header_page_watcher_p;
   PGBUF_WATCHER *forward_page_watcher_p;
+  PGBUF_WATCHER *new_forward_page_watcher_p;
+
+  /* data used to build the log record before page fixing */
+  PAGE_PTR home_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
+  PAGE_PTR forward_page_copy_before_fix;	/* BCB area, used to fetch the page without latch */
+  LOG_LSA home_page_copy_lsa;	/* LSA of home page copy */
+  HEAP_LOG_INFO log_info;	/* Heap log info, used to create the log node before fixing page */
 
   /* logical operation output */
   OID res_oid;			/* object identifier (if operation generates one) */
   bool is_logical_old;		/* true if initial record was not REC_ASSIGN_ADDRESS */
   bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition redistribute data operation 
 						 * and has a valid delid */
+
+  bool is_new_record_big_size;	/* true if new record is big size */
+  bool fits_in_home;		/* does new record fits in home page? */
+  bool fits_in_forward;		/* does new record fits in forward page? */
+  bool update_old_home;		/* is need to update the old home page? */
+  bool update_old_forward;	/* is need to update the old forward page? */
+  bool remove_old_forward;	/* is need to remove the old forward? */
 
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
@@ -355,7 +440,7 @@ typedef enum
  */
 typedef enum
 {
-  HEAP_PAGE_VACUUM_NONE,	/* Heap page is completely vacuumed. */
+  HEAP_PAGE_VACUUM_NONE = 0,	/* Heap page is completely vacuumed. */
   HEAP_PAGE_VACUUM_ONCE,	/* Heap page requires one vacuum action. */
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
@@ -382,6 +467,8 @@ struct heap_get_context
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
+  char *bcb_area;		/* BCB area, used to fetch the page without S-latch */
+  bool copy_page_without_latch_allowed;	/* true, if copy page without latch is allowed */
 };
 
 /* Forward definition. */
@@ -651,15 +738,16 @@ extern bool heap_should_try_update_stat (const int current_freespace, const int 
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+					   bool copy_page_without_latch_allowed, HEAP_SCANCACHE * scan_cache,
+					   int ispeeking, int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 						int old_chn);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
-				   OID * class_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				   int old_chn);
+				   OID * class_oid, RECDES * recdes, bool copy_page_without_latch_allowed,
+				   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
 extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
@@ -675,4 +763,7 @@ extern int heap_get_best_space_num_stats_entries (void);
 
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
+#if defined(SERVER_MODE)
+extern int heap_copy_page_to_tran_bcb_area (THREAD_ENTRY * thread_p, const VPID * vpid, int size, PAGE_PTR * bcb_area);
+#endif
 #endif /* _HEAP_FILE_H_ */

@@ -1263,7 +1263,9 @@ $ LOADDB
 1194 Nu se poate verifica fisierul %1$d|%2$d pentru ca nu s-a putut seta lock imediat pe clasa %3$d|%4$d|%5$d.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
 1196 Maximum recursions %1$d reached executing CTE.
-1197 Ultima eroare
+1197 Tipuri incompatibile de log header: %1$d este diferit de %2$d.
+1198 Ultima eroare
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
 2 Niciun mesaj de eroare disponibil.

@@ -112,14 +112,33 @@ extern void log_append_redo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex
 				  const void *data);
 extern void log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, PAGE_PTR pgptr,
 				   PGLENGTH offset, int length, const void *data);
+extern int log_create_log_node_from_undoredo_data (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+						   LOG_DATA_ADDR * addr, int undo_length, int redo_length,
+						   const void *undo_data, const void *redo_data,
+						   LOG_PRIOR_NODE ** node);
+extern int log_create_log_node_from_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+						     LOG_DATA_ADDR * addr, int num_undo_crumbs, int num_redo_crumbs,
+						     const LOG_CRUMB * undo_crumbs, const LOG_CRUMB * redo_crumbs,
+						     LOG_PRIOR_NODE ** node);
 extern void log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 					int num_undo_crumbs, int num_redo_crumbs, const LOG_CRUMB * undo_crumbs,
 					const LOG_CRUMB * redo_crumbs);
+extern void log_append_prior_node (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex, PAGE_PTR pgptr,
+				   LOG_PRIOR_NODE * node);
 extern void log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    int num_crumbs, const LOG_CRUMB * crumbs);
 extern void log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    int num_crumbs, const LOG_CRUMB * crumbs);
-
+extern int log_create_log_node_from_redo_crumbs (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+						 LOG_DATA_ADDR * addr, int num_crumbs, const LOG_CRUMB * crumbs,
+						 LOG_PRIOR_NODE ** node);
+extern int log_create_log_node_from_recdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+					    LOG_DATA_ADDR * addr, const RECDES * undo_recdes,
+					    const RECDES * redo_recdes, LOG_PRIOR_NODE ** node);
+extern int log_create_log_node_from_recdes2 (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RCVINDEX rcvindex,
+					     const VFID * vfid, PAGE_PTR pgptr, PGLENGTH offset,
+					     const RECDES * undo_recdes, const RECDES * redo_recdes,
+					     LOG_PRIOR_NODE ** node);
 extern void log_append_undoredo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 					const RECDES * undo_recdes, const RECDES * redo_recdes);
 extern void log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid,
@@ -130,22 +149,22 @@ extern void log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX r
 extern void log_append_undo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    const RECDES * recdes);
 #endif
-extern void log_append_undo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, PAGE_PTR pgptr,
-				     PGLENGTH offset, const RECDES * recdes);
+extern void log_append_undo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid,
+				     PAGE_PTR pgptr, PGLENGTH offset, const RECDES * recdes);
 
 extern void log_append_redo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    const RECDES * recdes);
-extern void log_append_redo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, PAGE_PTR pgptr,
-				     PGLENGTH offset, const RECDES * recdes);
+extern void log_append_redo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid,
+				     PAGE_PTR pgptr, PGLENGTH offset, const RECDES * recdes);
 
 extern void log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int length, const void *data);
 extern void log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length,
 				 const void *data);
-extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
-				   PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
-extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
-						   PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-						   LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
+extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
+				   PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
+extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
+						   const VPID * vpid, PGLENGTH offset, PAGE_PTR pgptr, int length,
+						   const void *data, LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_DATA_ADDR * addr);
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);

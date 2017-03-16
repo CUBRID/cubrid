@@ -2959,6 +2959,7 @@ scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
  *   cache_range(in):
  *   iscan_oid_order(in):
  *   query_id(in):
+ *   copy_page_without_latch_allowed(in): true, if copy page without latch is allowed
  *
  * Note: If you feel the need
  */
@@ -2976,7 +2977,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 		      HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		      HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
-		      HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id)
+		      HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id,
+		      bool copy_page_without_latch_allowed)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp;
@@ -3041,6 +3043,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* index scan info */
   BTS = &isidp->bt_scan;
   BTREE_INIT_SCAN (BTS);
+
+  BTS->copy_leaf_page_without_latch_allowed = copy_page_without_latch_allowed;
 
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
@@ -5755,6 +5759,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   char *indx_name_p;
   char *class_name_p;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  bool copy_page_without_latch_allowed;
 
   assert (scan_id != NULL);
   assert (isidp != NULL);
@@ -5765,8 +5770,9 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       recdes.data = NULL;
     }
 
-  sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				      NULL_CHN);
+  copy_page_without_latch_allowed = prm_get_bool_value (PRM_ID_PAGE_READ_WITHOUT_LATCH);
+  sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, copy_page_without_latch_allowed,
+				      &isidp->scan_cache, scan_id->fixed, NULL_CHN);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
     {
       if (SCAN_IS_INDEX_COVERED (isidp))

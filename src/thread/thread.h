@@ -106,6 +106,7 @@ typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
 #define thread_start_scan (NULL)
 
 #else /* !SERVER_MODE */
+#define TRAN_MAX_BCB 2
 
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
   ((thrd) ? (thrd)->index : thread_get_current_entry_index())
@@ -324,6 +325,7 @@ struct thread_entry
   void *log_zip_redo;
   char *log_data_ptr;
   int log_data_length;
+  bool disable_zip_undo;
 
   int net_request_index;	/* request index of net server functions */
 
@@ -350,6 +352,9 @@ struct thread_entry
 #if !defined(NDEBUG)
   struct fi_test_item *fi_test_array;
 #endif
+
+  void *tran_bcb[TRAN_MAX_BCB];	/* Array of transaction BCB. Used to copy the page without latch. */
+  bool tran_bcb_used[TRAN_MAX_BCB];	/* True, if corresponding transaction BCB was already acquired. */
 };
 
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
@@ -524,6 +529,7 @@ extern void *thread_worker (void *);
 #endif /* !WINDOWS */
 
 extern int thread_first_vacuum_worker_thread_index (void);
+extern int thread_get_bcb (void **thread_bcb);
 
 extern bool thread_is_auto_volume_expansion_thread_available (void);
 

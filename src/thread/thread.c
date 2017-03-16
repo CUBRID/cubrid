@@ -1075,6 +1075,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 {
   int r;
   struct timeval t;
+  int i;
 
   entry_p->index = -1;
   entry_p->tid = ((pthread_t) 0);
@@ -1141,6 +1142,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->log_zip_redo = NULL;
   entry_p->log_data_length = 0;
   entry_p->log_data_ptr = NULL;
+  entry_p->disable_zip_undo = false;
 
   (void) thread_rc_track_initialize (entry_p);
   thread_clear_recursion_depth (entry_p);
@@ -1171,6 +1173,12 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
 
   fi_thread_init (entry_p);
 #endif
+
+  for (i = 0; i < TRAN_MAX_BCB; i++)
+    {
+      entry_p->tran_bcb[i] = NULL;
+      entry_p->tran_bcb_used[i] = false;
+    }
 
   return NO_ERROR;
 }
@@ -1244,6 +1252,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
       free_and_init (entry_p->log_data_ptr);
       entry_p->log_data_length = 0;
     }
+  entry_p->disable_zip_undo = false;
 
   /* Vacuum worker resources are released by vacuum */
   entry_p->vacuum_worker = NULL;
@@ -1256,7 +1265,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   fi_thread_final (entry_p);
 #endif
 
-  /* transaction entries */
+  pgbuf_finalize_all_tran_bcb (entry_p);
   if (thread_return_transaction_entry (entry_p) != NO_ERROR)
     {
       return ER_FAILED;
