@@ -3061,9 +3061,22 @@ log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_D
   LOG_PRIOR_NODE *node;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      /* Vacuum worker */
+      /* Must be under a system operation, otherwise postpone records will not work. */
+      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p));
+      /* Use reserved transaction descriptor instead of system tdes. */
+      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+    }
+  else
+    {
+      /* Find tdes in transaction table. */
+      tdes = LOG_FIND_TDES (tran_index);
+    }
   if (tdes == NULL)
     {
+      assert (false);
       return;
     }
 
@@ -3638,7 +3651,14 @@ log_sysop_start_atomic (THREAD_ENTRY * thread_p)
     }
   if (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa))
     {
-      log_append_empty_record (thread_p, LOG_SYSOP_ATOMIC_START, NULL);
+      LOG_PRIOR_NODE *node =
+	prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_ATOMIC_START, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+      if (node == NULL)
+	{
+	  return;
+	}
+
+      (void) prior_lsa_next_record (thread_p, node, tdes);
     }
   else
     {
