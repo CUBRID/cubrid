@@ -289,6 +289,11 @@ typedef enum
   PSTAT_PB_NUM_DIRTIES,
   PSTAT_PB_NUM_IOREADS,
   PSTAT_PB_NUM_IOWRITES,
+  /* TODO: Temporary dummy stats to make build work. Revert when CM server can fetch last develop version */
+  /* ===> */
+  PSTAT_PB_NUM_VICTIMS,
+  PSTAT_PB_NUM_REPLACEMENTS,
+  /* <=== */
   PSTAT_PB_NUM_FLUSHED,
   /* peeked stats */
   PSTAT_PB_PRIVATE_QUOTA,
