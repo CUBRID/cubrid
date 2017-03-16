@@ -2504,7 +2504,7 @@ lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue)
   UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
   /* The queue is full is consume cursor is behind produce cursor with one generation (difference of capacity + 1). */
-  return cc + queue->capacity <= pc + 1;
+  return cc + queue->capacity <= pc;
 }
 
 /*
@@ -2520,7 +2520,7 @@ lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue)
   UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
   /* The queue is empty if the consume cursor is equal to produce cursor. */
-  return cc <= pc;
+  return cc >= pc;
 }
 
 /*
@@ -2555,7 +2555,7 @@ lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue)
 bool
 lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 {
-  int entry_index;
+  UINT64 entry_index;
   UINT64 produce_cursor;
   UINT64 consume_cursor;
   UINT64 old_state;
@@ -2578,14 +2578,14 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       consume_cursor = ATOMIC_LOAD_64 (&queue->consume_cursor);
       produce_cursor = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
-      if (consume_cursor + queue->capacity <= produce_cursor + 1)
+      if (consume_cursor + queue->capacity <= produce_cursor)
 	{
 	  /* The queue is full, cannot produce new entries */
 	  return false;
 	}
 
       /* Compute entry's index in circular queue */
-      entry_index = (int) produce_cursor % queue->capacity;
+      entry_index = produce_cursor % queue->capacity;
       entry_state_p = &queue->entry_state[entry_index];
 
 #if !defined (NDEBUG) || defined (UNITTEST_CQ)
@@ -2640,7 +2640,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   /* Successfully allocated entry for new data */
 
   /* Copy produced data to allocated entry */
-  memcpy (queue->data + (entry_index * queue->data_size), data, queue->data_size);
+  memcpy (queue->data + ((int) entry_index * queue->data_size), data, queue->data_size);
   /* Set entry as readable. Since other should no longer race for this entry after it was allocated, we don't need an
    * atomic CAS operation. */
   assert (ATOMIC_LOAD_64 (entry_state_p) == new_state);
@@ -2664,7 +2664,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 bool
 lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 {
-  int entry_index;
+  UINT64 entry_index;
   UINT64 consume_cursor;
   UINT64 produce_cursor;
   UINT64 old_state;
@@ -2691,7 +2691,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
 
       /* Compute entry's index in circular queue */
-      entry_index = (int) consume_cursor % queue->capacity;
+      entry_index = consume_cursor % queue->capacity;
       entry_state_p = &queue->entry_state[entry_index];
 #if !defined (NDEBUG) || defined (UNITTEST_CQ)
       was_not_ready = ATOMIC_LOAD_64 (entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_PRODUCE);
@@ -2736,7 +2736,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   /* Consume the data found in entry. If data argument is NULL, just remove the entry. */
   if (data != NULL)
     {
-      memcpy (data, queue->data + (entry_index * queue->data_size), queue->data_size);
+      memcpy (data, queue->data + ((int) entry_index * queue->data_size), queue->data_size);
     }
 
   assert (ATOMIC_LOAD_64 (entry_state_p) == new_state);

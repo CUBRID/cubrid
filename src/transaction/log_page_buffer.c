@@ -4687,7 +4687,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     }
   assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  if (thread_Log_flush_thread.is_available == false)
+  if (!thread_is_log_flush_thread_available ())
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
@@ -4830,8 +4830,17 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
       perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_WALS);
 
       LOG_CS_ENTER (thread_p);
-      logpb_flush_pages_direct (thread_p);
+      if (logpb_need_wal (lsa_ptr))
+	{
+	  logpb_flush_pages_direct (thread_p);
+	}
+      else
+	{
+	  /* was flushed in the meantime */
+	}
       LOG_CS_EXIT (thread_p);
+
+      assert (LSA_ISNULL (lsa_ptr) || !logpb_need_wal (lsa_ptr));
 
 #if defined(CUBRID_DEBUG)
       if (logpb_need_wal (lsa_ptr) && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
@@ -6862,7 +6871,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   if ((log_Gl.hdr.nxarv_num - (log_Gl.hdr.last_deleted_arv_num + 1)) > num_remove_arv_num)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED, 1, num_remove_arv_num);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED, 1, num_remove_arv_num);
 
       /* Remove the log archives at this point */
       first_arv_num_to_delete = log_Gl.hdr.last_deleted_arv_num + 1;

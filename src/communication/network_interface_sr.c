@@ -77,7 +77,7 @@
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
 
-#define STATDUMP_BUF_SIZE (16 * 1024)
+#define STATDUMP_BUF_SIZE (2 * 16 * 1024)
 #define QUERY_INFO_BUF_SIZE (2048 + STATDUMP_BUF_SIZE)
 
 /* This file is only included in the server.  So set the on_server flag on */

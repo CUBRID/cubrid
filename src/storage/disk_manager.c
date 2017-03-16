@@ -848,7 +848,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
     {
       assert (false);
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
-      (void) pgbuf_flush (thread_p, addr.pgptr, FREE);
+      pgbuf_flush (thread_p, addr.pgptr, FREE);
     }
   else if (flush == DISK_FLUSH_AND_INVALIDATE)
     {
@@ -985,7 +985,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
     }
   else
     {
-      (void) pgbuf_flush (thread_p, addr.pgptr, FREE);
+      pgbuf_flush (thread_p, addr.pgptr, FREE);
     }
   addr.pgptr = NULL;
 

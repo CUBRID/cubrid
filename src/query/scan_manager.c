@@ -3010,7 +3010,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   (void) pgbuf_check_page_ptype (thread_p, Root, PAGE_BTREE);
 
-  root_header = btree_get_root_header (Root);
+  root_header = btree_get_root_header (thread_p, Root);
   if (root_header == NULL)
     {
       pgbuf_unfix_and_init (thread_p, Root);
@@ -3348,7 +3348,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       return ER_FAILED;
     }
-  root_header = btree_get_root_header (root_page);
+  root_header = btree_get_root_header (thread_p, root_page);
   pgbuf_unfix_and_init (thread_p, root_page);
 
   /* initialize INDEX_SCAN_ID structure */
@@ -3558,7 +3558,7 @@ scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       return ER_FAILED;
     }
-  root_header = btree_get_root_header (root_page);
+  root_header = btree_get_root_header (thread_p, root_page);
   pgbuf_unfix_and_init (thread_p, root_page);
 
   /* construct BTID_INT structure */
@@ -5527,7 +5527,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		      assert (isidp->oid_list != NULL);
 		      isidp->curr_oidp = GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
 		    }
-		  assert (HEAP_ISVALID_OID (isidp->curr_oidp) != DISK_INVALID);
+		  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 		}
 	    }
 	  else if (scan_id->position == S_ON)
@@ -5555,7 +5555,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  assert (isidp->oid_list != NULL);
 			  isidp->curr_oidp = GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
 			}
-		      assert (HEAP_ISVALID_OID (isidp->curr_oidp) != DISK_INVALID);
+		      assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 		    }
 		  else
 		    {
@@ -5630,7 +5630,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			{
 			  assert (isidp->oid_list != NULL);
 			  isidp->curr_oidp = isidp->oid_list->oidp;
-			  assert (HEAP_ISVALID_OID (isidp->curr_oidp) != DISK_INVALID);
+			  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 			}
 		    }
 		}
@@ -5657,7 +5657,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  assert (isidp->curr_oidno >= 0);
 	  assert (isidp->curr_oidp != NULL);
-	  assert (HEAP_ISVALID_OID (isidp->curr_oidp) != DISK_INVALID);
+	  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 
 	  if (thread_is_on_trace (thread_p))
 	    {

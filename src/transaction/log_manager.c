@@ -2090,6 +2090,10 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	  return;
 	}
     }
+  if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
+    {
+      pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
+    }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
@@ -2209,6 +2213,10 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	  assert (false);
 	  return;
 	}
+    }
+  if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
+    {
+      pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
 }
 
@@ -3952,7 +3960,7 @@ void
 log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
 				 const char *data)
 {
-  return log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
+  log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
 }
 
 /*
