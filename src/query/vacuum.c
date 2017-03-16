@@ -2940,7 +2940,25 @@ restart:
   log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
 			 sizeof (log_Gl.hdr.mvcc_next_id), &log_Gl.hdr.mvcc_next_id);
 
-  _er_log_debug (ARG_FILE_LINE, "log_append_redo_data2 RVVAC_COMPLETE\n");
+    {
+      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      LOG_TDES *tdes = NULL;
+
+      if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+	{
+	  /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
+	   * instead of system tdes. */
+	  tdes = VACUUM_GET_WORKER_TDES (thread_p);
+	}
+      else
+	{
+	  /* Find tdes in transaction table. */
+	  tdes = LOG_FIND_TDES (tran_index);
+	}
+
+
+      er_print_callstack (ARG_FILE_LINE, "log_append_redo_data2 RVVAC_COMPLETE : tdes->tail_lsa:%d,%d\n", tdes->tail_lsa.pageid, tdes->tail_lsa.offset);
+    }
 
   
   vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
@@ -5352,7 +5370,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	      redo = (LOG_REC_REDO *) (log_page_p->area + copy_lsa.offset);
 	      if (redo->data.rcvindex == RVVAC_COMPLETE)
 		{
-		  _er_log_debug (ARG_FILE_LINE, "vacuum_recover_lost_block_data: RVVAC_COMPLETE log_lsa:%d,%d\n", log_lsa.pageid, log_lsa.offset);
+		  er_print_callstack (ARG_FILE_LINE, "vacuum_recover_lost_block_data: RVVAC_COMPLETE log_lsa:%d,%d\n", log_lsa.pageid, log_lsa.offset);
 
 		  /* stop looking */
 		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
