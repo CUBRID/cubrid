@@ -704,7 +704,7 @@ options valids:\n\
 92 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
 93 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
 100 -----------------------------------------------------------------------------------------------------------------\n
-  
+
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Nombre estimatif de pages = %1$d\n
