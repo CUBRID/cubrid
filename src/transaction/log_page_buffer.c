@@ -3327,6 +3327,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_START_CHKPT:
+    case LOG_SYSOP_ATOMIC_START:
       assert (length == 0 && data == NULL);
       break;
 
@@ -3495,6 +3496,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
     case LOG_START_CHKPT:
+    case LOG_SYSOP_ATOMIC_START:
       assert (rlength == 0 && rdata == NULL);
 
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
@@ -3721,18 +3723,41 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
   else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
     {
       /* we need the system operation start postpone LSA for recovery. we have to save it under prior_lsa_mutex
-       * protection */
+       * protection.
+       * at the same time, tdes->rcv.atomic_sysop_start_lsa must be reset if it was inside this system op. */
+      LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone = NULL;
       tdes->rcv.sysop_start_postpone_lsa = start_lsa;
+
+      sysop_start_postpone = (LOG_REC_SYSOP_START_POSTPONE *) node->data_header;
+      if (LSA_LT (&sysop_start_postpone->sysop_end.lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+	{
+	  /* atomic system operation finished. */
+	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+	}
     }
   else if (node->log_header.type == LOG_SYSOP_END)
     {
-      /* reset tdes->rcv.sysop_start_postpone_lsa */
+      /* reset tdes->rcv.sysop_start_postpone_lsa and, eventually, tdes->rcv.atomic_sysop_start_lsa */
+      LOG_REC_SYSOP_END *sysop_end = NULL;
       LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+
+      sysop_end = (LOG_REC_SYSOP_END *) node->data_header;
+      if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+	{
+	  /* atomic system operation finished. */
+	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+	}
     }
   else if (node->log_header.type == LOG_COMMIT_WITH_POSTPONE)
     {
       /* we need the commit with postpone LSA for recovery. we have to save it under prior_lsa_mutex protection */
       tdes->rcv.tran_start_postpone_lsa = start_lsa;
+    }
+  else if (node->log_header.type == LOG_SYSOP_ATOMIC_START)
+    {
+      /* same as with system op start postpone, we need to save these log records lsa */
+      assert (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa));
+      tdes->rcv.atomic_sysop_start_lsa = start_lsa;
     }
 
   LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (node->data_header_length);
@@ -7591,9 +7616,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
   LOG_INFO_CHKPT_TRANS *chkpt_trans;	/* Checkpoint tdes */
   LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
-  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
-							 * mode */
-  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+					 * mode */
+  LOG_INFO_CHKPT_SYSOP *chkpt_topone;	/* One top system ope */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
   LOG_LSA newchkpt_lsa;		/* New address of the checkpoint record */
@@ -7815,7 +7840,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
       length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-      chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) malloc (length_all_tops);
+      chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
@@ -7837,9 +7862,10 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	    }
 	  act_tdes = LOG_FIND_TDES (i);
 	  if (act_tdes != NULL && act_tdes->trid != NULL_TRANID
-	      && !LSA_ISNULL (&act_tdes->rcv.sysop_start_postpone_lsa))
+	      && (!LSA_ISNULL (&act_tdes->rcv.sysop_start_postpone_lsa)
+		  || !LSA_ISNULL (&act_tdes->rcv.atomic_sysop_start_lsa)))
 	    {
-	      /* this transaction is running system operation postpone.
+	      /* this transaction is running system operation postpone or an atomic system operation
 	       * note: we cannot compare act_tdes->state with TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. we are
 	       *       not synchronizing setting transaction state.
 	       *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
@@ -7857,12 +7883,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		      TR_TABLE_CS_EXIT (thread_p);
 		      goto error_cannot_chkpt;
 		    }
-		  chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) ptr;
+		  chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) ptr;
 		}
 
 	      chkpt_topone = &chkpt_topops[ntops];
 	      chkpt_topone->trid = act_tdes->trid;
 	      chkpt_topone->sysop_start_postpone_lsa = act_tdes->rcv.sysop_start_postpone_lsa;
+	      chkpt_topone->atomic_sysop_start_lsa = act_tdes->rcv.atomic_sysop_start_lsa;
 	      ntops++;
 	    }
 	}

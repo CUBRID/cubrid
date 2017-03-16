@@ -1231,6 +1231,8 @@ enum log_rectype
   LOG_MVCC_UNDO_DATA = 47,	/* Undo for MVCC operations */
   LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
   LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
+  LOG_SYSOP_ATOMIC_START = 50,	/* Log marker to start atomic operations that need to be rollbacked immediately after
+				 * redo phase of recovery and before finishing postpones */
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
@@ -1521,11 +1523,12 @@ struct log_info_chkpt_trans
 
 };
 
-typedef struct log_info_chkpt_sysop_start_postpone LOG_INFO_CHKPT_SYSOP_START_POSTPONE;
-struct log_info_chkpt_sysop_start_postpone
+typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
+struct log_info_chkpt_sysop
 {
   TRANID trid;			/* Transaction identifier */
   LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
+  LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
 };
 
 typedef struct log_rec_savept LOG_REC_SAVEPT;
@@ -1593,6 +1596,10 @@ struct log_rcv_tdes
   LOG_LSA sysop_start_postpone_lsa;
   /* we need to know where transaction postpone has started. */
   LOG_LSA tran_start_postpone_lsa;
+  /* we need to know if file_perm_alloc or file_perm_dealloc operations have been interrupted. these operation must be
+   * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
+   * to abort, we remember the starting LSA of such operation. */
+  LOG_LSA atomic_sysop_start_lsa;
 };
 
 typedef struct log_tdes LOG_TDES;
