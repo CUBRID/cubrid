@@ -95,65 +95,60 @@ static int rv;
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
-#define SIZEOF_IOPAGE_PAGESIZE_AND_GUARD() (IO_PAGESIZE + sizeof(pgbuf_Guard))
+#define SIZEOF_IOPAGE_PAGESIZE_AND_GUARD() (IO_PAGESIZE + sizeof (pgbuf_Guard))
 #else /* CUBRID_DEBUG */
 #define SIZEOF_IOPAGE_PAGESIZE_AND_GUARD() (IO_PAGESIZE)
 #endif /* CUBRID_DEBUG */
 
 /* size of one buffer page <BCB, page> */
-#define PGBUF_BCB_SIZEOF       (sizeof(PGBUF_BCB))
+#define PGBUF_BCB_SIZEOF       (sizeof (PGBUF_BCB))
 #define PGBUF_IOPAGE_BUFFER_SIZE \
-  ((size_t)(offsetof(PGBUF_IOPAGE_BUFFER, iopage) + \
+  ((size_t)(offsetof (PGBUF_IOPAGE_BUFFER, iopage) + \
   SIZEOF_IOPAGE_PAGESIZE_AND_GUARD()))
 /* size of buffer hash entry */
-#define PGBUF_BUFFER_HASH_SIZEOF       (sizeof(PGBUF_BUFFER_HASH))
+#define PGBUF_BUFFER_HASH_SIZEOF       (sizeof (PGBUF_BUFFER_HASH))
 /* size of buffer lock record */
-#define PGBUF_BUFFER_LOCK_SIZEOF       (sizeof(PGBUF_BUFFER_LOCK))
+#define PGBUF_BUFFER_LOCK_SIZEOF       (sizeof (PGBUF_BUFFER_LOCK))
 /* size of one LRU list structure */
-#define PGBUF_LRU_LIST_SIZEOF       (sizeof(PGBUF_LRU_LIST))
+#define PGBUF_LRU_LIST_SIZEOF       (sizeof (PGBUF_LRU_LIST))
 /* size of BCB holder entry */
-#define PGBUF_HOLDER_SIZEOF        (sizeof(PGBUF_HOLDER))
+#define PGBUF_HOLDER_SIZEOF        (sizeof (PGBUF_HOLDER))
 /* size of BCB holder array that is allocated in one time */
-#define PGBUF_HOLDER_SET_SIZEOF    (sizeof(PGBUF_HOLDER_SET))
+#define PGBUF_HOLDER_SET_SIZEOF    (sizeof (PGBUF_HOLDER_SET))
 /* size of BCB holder anchor */
-#define PGBUF_HOLDER_ANCHOR_SIZEOF (sizeof(PGBUF_HOLDER_ANCHOR))
+#define PGBUF_HOLDER_ANCHOR_SIZEOF (sizeof (PGBUF_HOLDER_ANCHOR))
 
 /* get memory address(pointer) */
 #define PGBUF_FIND_BCB_PTR(i) \
-  ((PGBUF_BCB *)((char *)&(pgbuf_Pool.BCB_table[0])+(PGBUF_BCB_SIZEOF*(i))))
+  ((PGBUF_BCB *) ((char *) &(pgbuf_Pool.BCB_table[0]) + (PGBUF_BCB_SIZEOF * (i))))
 
 #define PGBUF_FIND_IOPAGE_PTR(i) \
-  ((PGBUF_IOPAGE_BUFFER *)((char *)&(pgbuf_Pool.iopage_table[0]) \
-  +(PGBUF_IOPAGE_BUFFER_SIZE*(i))))
+  ((PGBUF_IOPAGE_BUFFER *) ((char *) &(pgbuf_Pool.iopage_table[0]) + (PGBUF_IOPAGE_BUFFER_SIZE * (i))))
 
 #define PGBUF_FIND_BUFFER_GUARD(bufptr) \
   (&bufptr->iopage_buffer->iopage.page[DB_PAGESIZE])
 
 /* macros for casting pointers */
-#define CAST_PGPTR_TO_BFPTR(bufptr, pgptr)                              \
-  do {                                                                  \
-    (bufptr) = ((PGBUF_BCB *)((PGBUF_IOPAGE_BUFFER *)                   \
-      ((char *)pgptr - offsetof(PGBUF_IOPAGE_BUFFER, iopage.page)))->bcb); \
-    assert ((bufptr) == (bufptr)->iopage_buffer->bcb);                  \
+#define CAST_PGPTR_TO_BFPTR(bufptr, pgptr) \
+  do { \
+    (bufptr) = ((PGBUF_BCB *) ((PGBUF_IOPAGE_BUFFER *) \
+      ((char *) pgptr - offsetof (PGBUF_IOPAGE_BUFFER, iopage.page)))->bcb); \
+    assert ((bufptr) == (bufptr)->iopage_buffer->bcb); \
   } while (0)
 
-#define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr)                          \
-  do {                                                                  \
-    (io_pgptr) = (FILEIO_PAGE *) ((char *) pgptr                        \
-                                  - offsetof(FILEIO_PAGE, page));       \
+#define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr) \
+  do { \
+    (io_pgptr) = (FILEIO_PAGE *) ((char *) pgptr - offsetof (FILEIO_PAGE, page)); \
   } while (0)
 
-#define CAST_BFPTR_TO_PGPTR(pgptr, bufptr)                              \
-  do {                                                                  \
-    assert ((bufptr) == (bufptr)->iopage_buffer->bcb);                  \
-    (pgptr) = ((PAGE_PTR)                                               \
-               ((char *)(bufptr->iopage_buffer) 			\
-			+ offsetof(PGBUF_IOPAGE_BUFFER, iopage.page))); \
+#define CAST_BFPTR_TO_PGPTR(pgptr, bufptr) \
+  do { \
+    assert ((bufptr) == (bufptr)->iopage_buffer->bcb); \
+    (pgptr) = ((PAGE_PTR) ((char *) (bufptr->iopage_buffer) + offsetof (PGBUF_IOPAGE_BUFFER, iopage.page))); \
   } while (0)
 
 /* check whether the given volume is auxiliary volume */
-#define PGBUF_IS_AUXILIARY_VOLUME(volid)                                 \
-  ((volid) < LOG_DBFIRST_VOLID ? true : false)
+#define PGBUF_IS_AUXILIARY_VOLUME(volid) ((volid) < LOG_DBFIRST_VOLID ? true : false)
 
 /************************************************************************/
 /* Page buffer zones section                                            */
@@ -225,7 +220,7 @@ typedef enum
 #define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x02000000)
 
 /* add all flags here */
-#define PGBUF_BCB_FLAGS_MASK     \
+#define PGBUF_BCB_FLAGS_MASK \
   (PGBUF_BCB_DIRTY_FLAG \
    | PGBUF_BCB_FLUSHING_TO_DISK_FLAG \
    | PGBUF_BCB_VICTIM_DIRECT_FLAG \
@@ -263,10 +258,10 @@ typedef enum
 /* How old is a BCB (bcb_age) related to age of list to which it belongs */
 #define PGBUF_AGE_DIFF(bcb_age,list_age) \
   (((list_age) >= (bcb_age)) ? ((list_age) - (bcb_age)) : (DB_INT32_MAX - ((bcb_age) - (list_age))))
-/* is bcb old enough. we as use as indicator the buffer lru zone. when bcb falls more than half of this buffer zone, it
- * is considered old */
+/* is bcb old enough. we use it as indicator of the buffer lru zone. when bcb falls more than half of this buffer zone,
+ * it is considered old */
 #define PGBUF_IS_BCB_OLD_ENOUGH(bcb, lru_list) \
-  (PGBUF_AGE_DIFF((bcb)->tick_lru_list, (lru_list)->tick_list) >= ((lru_list)->count_lru2 / 2))
+  (PGBUF_AGE_DIFF ((bcb)->tick_lru_list, (lru_list)->tick_list) >= ((lru_list)->count_lru2 / 2))
 /* zone counts & thresholds */
 #define PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) ((list)->count_lru1 + (list)->count_lru2)
 #define PGBUF_LRU_LIST_COUNT(list) (PGBUF_LRU_ZONE_ONE_TWO_COUNT(list) + (list)->count_lru3)
@@ -392,7 +387,7 @@ typedef enum
 #undef PGBUF_ORDERED_DEBUG
 
 #if defined(PAGE_STATISTICS)
-#define PGBUF_LATCH_MODE_COUNT  (PGBUF_LATCH_INVALID-PGBUF_NO_LATCH+1)
+#define PGBUF_LATCH_MODE_COUNT  (PGBUF_LATCH_INVALID - PGBUF_NO_LATCH + 1)
 #define PGBUF_MAX_FIXED_SOURCES 5000
 #define PGBUF_MAX_FIXED_SOURCE_LEN 64
 #endif /* PAGE_STATISTICS */
@@ -630,8 +625,8 @@ struct pgbuf_invalid_list
 };
 
 /* The page replacement algorithm is LRU + Aout of 2Q. This algorithm uses two linked lists as follows:
- *  * LRU list: this is a list of BCBs managed as a Least Recently Used queue
- *  * Aout list: this is a list on VPIDs managed as a FIFO queue
+ *  - LRU list: this is a list of BCBs managed as a Least Recently Used queue
+ *  - Aout list: this is a list on VPIDs managed as a FIFO queue
  * The LRU list manages the "hot" pages, Aout list holds a short term history of pages which have been victimized.
  */
 /* Aout list node */
@@ -1072,7 +1067,6 @@ STATIC_INLINE bool pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ 
 static void pgbuf_scramble (FILEIO_PAGE * iopage);
 static void pgbuf_dump (void);
 static int pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt);
-
 #endif /* CUBRID_DEBUG */
 
 #if defined(PAGE_STATISTICS)
@@ -2396,8 +2390,7 @@ end:
  *   return: void
  *   pgptr(in): Pointer to page
  *
- * Note: The page is subject to replacement, if not fixed by other thread of
- *       execution.
+ * Note: The page is subject to replacement, if not fixed by other thread of execution.
  */
 #if !defined (NDEBUG)
 void
@@ -3057,8 +3050,7 @@ pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid)
 }
 
 /*
- * pgbuf_flush_all_unfixed_and_set_lsa_as_null () - Set lsa to null and flush
- *                                     all unfixed dirty pages out to disk
+ * pgbuf_flush_all_unfixed_and_set_lsa_as_null () - Set lsa to null and flush all unfixed dirty pages out to disk
  *   return: NO_ERROR, or ER_code
  *   volid(in): Permanent Volume Identifier or NULL_VOLID
  *
@@ -3182,8 +3174,6 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
  * pgbuf_flush_victim_candidates () - Flush victim candidates
  *   return: NO_ERROR, or ER_code
  *
- * Note: This function flushes at most VictimCleanCount buffers that might
- *       become victim candidates in the near future.
  */
 int
 pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_UTIME_TRACKER * perf_tracker)
@@ -3461,19 +3451,16 @@ end:
 }
 
 /*
- * pgbuf_flush_checkpoint () - Flush any unfixed dirty page whose lsa
- *                             is smaller than the last checkpoint lsa
+ * pgbuf_flush_checkpoint () - Flush any unfixed dirty page whose lsa is smaller than the last checkpoint lsa
  *   return:error code or NO_ERROR
  *   flush_upto_lsa(in):
  *   prev_chkpt_redo_lsa(in): Redo_LSA of previous checkpoint
  *   smallest_lsa(out): Smallest LSA of a dirty buffer in buffer pool
  *   flushed_page_cnt(out): The number of flushed pages
  *
- * Note: The function flushes and dirty unfixed page whose LSA is smaller that
- *       the last_chkpt_lsa, it returns the smallest_lsa from the remaining
- *       dirty buffers which were not flushed.
- *       This function is used by the log and recovery manager when a
- *       checkpoint is issued.
+ * Note: The function flushes and dirty unfixed page whose LSA is smaller that the last_chkpt_lsa, 
+ *       it returns the smallest_lsa from the remaining dirty buffers which were not flushed.
+ *       This function is used by the log and recovery manager when a checkpoint is issued.
  */
 int
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa, const LOG_LSA * prev_chkpt_redo_lsa,
@@ -3630,12 +3617,8 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
   int flush_interval, sleep_msecs;
   float wait_victims;
   float chkpt_flush_rate;
-  struct timeval limit_time = {
-    0, 0
-  };
-  struct timeval cur_time = {
-    0, 0
-  };
+  struct timeval limit_time = { 0, 0 };
+  struct timeval cur_time = { 0, 0 };
 #endif
 
 #if defined (SERVER_MODE)
@@ -3714,8 +3697,7 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
  *   chkpt_smallest_lsa(out): smallest LSA found in a page
  *   time_rem(in): time remaining until limit time expires 
  *
- *  Note : burst_mode from seq_flusher container controls how the flush is
- *	   performed:
+ *  Note : burst_mode from seq_flusher container controls how the flush is performed:
  *	    - if enabled, an amount of pages is flushed as soon as possible,
  *	      according to desired flush rate and time limit
  *	    - if disabled, the same amount of pages is flushed, but with a 
@@ -3733,9 +3715,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
   int avail_time_msec = 0, time_rem_msec = 0;
-  struct timeval cur_time = {
-    0, 0
-  };
+  struct timeval cur_time = { 0, 0 };
   int flush_per_interval;
   int cnt_writes;
   int dropped_pages;
@@ -4197,8 +4177,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 }
 
 /*
- * pgbuf_set_dirty () - Mark as modified the buffer associated with pgptr and
- *                  optionally free the page
+ * pgbuf_set_dirty () - Mark as modified the buffer associated with pgptr and optionally free the page
  *   return: void
  *   pgptr(in): Pointer to page
  *   free_page(in): Free the page too ?
@@ -4261,8 +4240,7 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_page_has_changed () - check if page has change based on current LSA
- *			       and a previous reference LSA
+ * pgbuf_page_has_changed () - check if page has change based on current LSA and a previous reference LSA
  *   return: page lsa
  *   pgptr(in): Pointer to page
  */
@@ -4376,8 +4354,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 }
 
 /*
- * pgbuf_reset_temp_lsa () -  Reset LSA of temp volume to
- *                            special temp LSA (-2,-2)
+ * pgbuf_reset_temp_lsa () -  Reset LSA of temp volume to special temp LSA (-2,-2)
  *   return: void
  *   pgptr(in): Pointer to page
  */
@@ -4391,8 +4368,7 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_get_vpid () - Find the volume and page identifier associated with
- *                     the passed buffer
+ * pgbuf_get_vpid () - Find the volume and page identifier associated with the passed buffer
  *   return: void
  *   pgptr(in): Page pointer
  *   vpid(out): Volume and page identifier
@@ -4418,14 +4394,12 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
 }
 
 /*
- * pgbuf_get_vpid_ptr () - Find the volume and page identifier associated
- *                         with the passed buffer
+ * pgbuf_get_vpid_ptr () - Find the volume and page identifier associated with the passed buffer
  *   return: pointer to vpid
  *   pgptr(in): Page pointer
  *
  * Note: Once the buffer is freed, the content of the vpid pointer may be
- *       updated by the page buffer manager, thus a lot of care should be
- *       taken.
+ *       updated by the page buffer manager, thus a lot of care should be taken.
  *       The values of the vpid pointer must not be altered by the caller.
  *       Once the page is freed, the vpid pointer should not be used any longer.
  */
@@ -4449,8 +4423,7 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_get_latch_mode () - Find the latch mode associated
- *			     with the passed buffer
+ * pgbuf_get_latch_mode () - Find the latch mode associated with the passed buffer
  *   return: latch mode
  *   pgptr(in): Page pointer 
  */
@@ -4474,8 +4447,7 @@ pgbuf_get_latch_mode (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_get_page_id () - Find the page identifier associated with the
- *                        passed buffer
+ * pgbuf_get_page_id () - Find the page identifier associated with the passed buffer
  *   return: PAGEID
  *   pgptr(in): Page pointer
  */
@@ -4549,8 +4521,7 @@ pgbuf_get_volume_id (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_get_volume_label () - Find the name of the volume associated with
- *                             the passed buffer
+ * pgbuf_get_volume_label () - Find the name of the volume associated with the passed buffer
  *   return: Volume label
  *   pgptr(in): Page pointer
  */
@@ -4601,8 +4572,7 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_set_lsa_as_temporary () - The log sequence address of the page
- *                                        is set to temporary lsa address
+ * pgbuf_set_lsa_as_temporary () - The log sequence address of the page is set to temporary lsa address
  *   return: void
  *   pgptr(in): Pointer to page
  *
@@ -4627,8 +4597,7 @@ pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_set_lsa_as_permanent () - The log sequence address of the page
- *                                        is set to permanent lsa address
+ * pgbuf_set_lsa_as_permanent () - The log sequence address of the page is set to permanent lsa address
  *   return: void
  *   pgptr(in): Pointer to page
  *
@@ -4760,8 +4729,7 @@ pgbuf_is_lsa_temporary (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_isvolume_for_tmparea () - Find if the given permanent volume has been
- *                              declared for temporary storage purposes
+ * pgbuf_is_temporary_volume () - Find if the given permanent volume has been declared for temporary storage purposes
  *   return: true/false
  *   volid(in): Volume identifier of last allocated permanent volume
  */
@@ -5303,8 +5271,7 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_find_thrd_holder () - Find the holder entry of current thread
- *                             on the BCB holder list of given BCB
+ * pgbuf_find_thrd_holder () - Find the holder entry of current thread on the BCB holder list of given BCB
  *   return: pointer to holder entry or NULL
  *   bufptr(in):
  */
@@ -5337,8 +5304,7 @@ pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 }
 
 /*
- * pgbuf_unlatch_thrd_holder () - decrements fix_count by one to the holder
- *                                entry of current thread on the BCB holder
+ * pgbuf_unlatch_thrd_holder () - decrements fix_count by one to the holder entry of current thread on the BCB holder
  *                                list of given BCB
  *   return: pointer to holder entry or NULL
  *   bufptr(in):
@@ -6271,9 +6237,7 @@ pgbuf_should_move_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, i
  *   request_fcnt(in):
  *   as_promote(in): if true, will wait as first promoter
  *
- * Note: If latch_mode == BT_LT_FLUSH, then put the thread to the top of
- *       the BCB queue else append it to the BCB queue. Before return, it
- *       releases the BCB mutex.
+ * Note: Promoter will be the first waiter. Others will be appended to waiting queue.
  */
 static int
 pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode, int request_fcnt,
@@ -6766,8 +6730,7 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #endif /* SERVER_MODE */
 
 /*
- * pgbuf_search_hash_chain () - searches the buffer hash chain to find
- *				a BCB with page identifier
+ * pgbuf_search_hash_chain () - searches the buffer hash chain to find a BCB with page identifier
  *   return: if success, BCB pointer, otherwise NULL
  *   hash_anchor(in):
  *   vpid(in):
@@ -6925,8 +6888,7 @@ try_again:
  *
  * Note: Before insertion, it must hold the mutex of the hash anchor.
  *       It doesn't release the mutex of the hash anchor.
- *       The mutex of the hash anchor will be released in the next call of
- *       pgbuf_unlock_page ().
+ *       The mutex of the hash anchor will be released in the next call of pgbuf_unlock_page ().
  */
 STATIC_INLINE int
 pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, PGBUF_BCB * bufptr)
@@ -7904,9 +7866,9 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int 
    * ourselves in bcb's waiting list (and a thread doing flush should wake us).
    */
 
-  if (!pgbuf_bcb_is_flushing (bufptr) &&
-      (bufptr->latch_mode == PGBUF_NO_LATCH || bufptr->latch_mode == PGBUF_LATCH_READ
-       || (bufptr->latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
+  if (!pgbuf_bcb_is_flushing (bufptr)
+      && (bufptr->latch_mode == PGBUF_NO_LATCH || bufptr->latch_mode == PGBUF_LATCH_READ
+	  || (bufptr->latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
     {
       /* don't have to wait for writer/flush */
       return pgbuf_bcb_flush_with_wal (thread_p, bufptr, locked);
@@ -8019,11 +7981,6 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 }
 
 /*
- * pgbuf_get_shared_lru_index_for_add () -
- *   return: the index of the LRU index
- *   vpid(in): VPID
- */
-/*
  * pgbuf_get_shared_lru_index_for_add () - get a shared index to add a new bcb. we'll use a round-robin way to choose
  *                                         next list, but we'll avoid biggest list (just to keep things balanced).
  *
@@ -8081,8 +8038,8 @@ pgbuf_get_shared_lru_index_for_add (void)
 	{
 	  curr_avoid_lru_idx = pgbuf_Pool.quota.avoid_shared_lru_idx;
 	  if (curr_avoid_lru_idx == -1
-	      || PGBUF_LRU_LIST_COUNT (PGBUF_GET_LRU_LIST (curr_avoid_lru_idx)) <
-	      shared_lru_bcb_sum / PGBUF_SHARED_LRU_COUNT)
+	      || (PGBUF_LRU_LIST_COUNT (PGBUF_GET_LRU_LIST (curr_avoid_lru_idx))
+		  < shared_lru_bcb_sum / PGBUF_SHARED_LRU_COUNT))
 	    {
 	      ATOMIC_TAS_32 (&pgbuf_Pool.quota.avoid_shared_lru_idx, -1);
 	    }
@@ -9512,8 +9469,7 @@ pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const i
 }
 
 /*
- * pgbuf_remove_vpid_from_aout_list () - Search for VPID in Aout and remove it
- *					 from the queue
+ * pgbuf_remove_vpid_from_aout_list () - Search for VPID in Aout and remove it from the queue
  * return : identifier of list from which was removed:
  *	    0 and positive: LRU list
  *	    PGBUF_AOUT_NOT_FOUND: not found in Aout list
@@ -9601,8 +9557,7 @@ pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid)
 }
 
 /*
- * pgbuf_remove_private_from_aout_list () - Search for VPID in Aout and removes
- *					 all VPIDs having a specific LRU idx
+ * pgbuf_remove_private_from_aout_list () - Search for VPID in Aout and removes all VPIDs having a specific LRU idx
  *
  * return : number of VPIDs removed
  * lru_idx (in) :
@@ -9891,8 +9846,7 @@ pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 }
 
 /*
- * pgbuf_is_exist_blocked_reader_writer () - checks whether there exists any
- *                                           blocked reader/writer
+ * pgbuf_is_exist_blocked_reader_writer () - checks whether there exists any blocked reader/writer
  *   return: if found, true, otherwise, false
  *   bufptr(in): pointer to buffer page
  */
@@ -10033,8 +9987,7 @@ pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_check_page_type () - Check the page type is as expected. If it isn't
- *			      an assert will be hit.
+ * pgbuf_check_page_type () - Check the page type is as expected. If it isn't an assert will be hit.
  *
  * return	 : True if the page type is as expected.
  * thread_p (in) : Thread entry.
@@ -10048,8 +10001,7 @@ pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype
 }
 
 /*
- * pgbuf_check_page_type_no_error () - Return if the page type is the expected
- *				       type given as argument. No assert is
+ * pgbuf_check_page_type_no_error () - Return if the page type is the expected type given as argument. No assert is
  *				       hit if not.
  *
  * return	 : True if the page type is as expected.
@@ -11033,8 +10985,7 @@ enum
 };
 
 /*
- * pgbuf_flush_page_and_neighbors_fb () - Flush page pointed to by the supplied
- *				       BCB and also flush neighbor pages
+ * pgbuf_flush_page_and_neighbors_fb () - Flush page pointed to by the supplied BCB and also flush neighbor pages
  *
  * return : error code or NO_ERROR
  * thread_p (in) : thread entry
@@ -11360,11 +11311,9 @@ pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx)
 }
 
 /*
- * pgbuf_flush_neighbor_safe () - Flush collected page for neighbor flush if
- *				  it's safe:
+ * pgbuf_flush_neighbor_safe () - Flush collected page for neighbor flush if it's safe:
  *				  1. VPID of bufptr has not changed.
- *				  2. Page has no latch or is only latched for
- *				     read.
+ *				  2. Page has no latch or is only latched for read.
  *
  * return	      : Error code.
  * thread_p (in)      : Thread entry.
@@ -11481,23 +11430,20 @@ pgbuf_compare_hold_vpid_for_sort (const void *p1, const void *p2)
 }
 
 /*
- * pgbuf_ordered_fix () - Fix page in VPID order; other previously fixed pages
- *			  may be unfixed and re-fixed again.
+ * pgbuf_ordered_fix () - Fix page in VPID order; other previously fixed pages may be unfixed and re-fixed again.
  *   return: error code
  *   thread_p(in):
  *   req_vpid(in):
  *   fetch_mode(in): old or new page
  *   request_mode(in): latch mode
-*   req_watcher(in/out): page watcher object, also holds output page pointer
+ *   req_watcher(in/out): page watcher object, also holds output page pointer
  *
- *  Note: If fails to re-fix previously fixed pages (unfixed with this request),
- *	  the requested page is unfixed (if fixed) and error is returned.
- *	  In such case, older some pages may be re-fixed, other not : the caller
- *	  should check page pointer of watchers before using them in case of
- *	  error.
+ *  Note: If fails to re-fix previously fixed pages (unfixed with this request), the requested page is unfixed 
+ *        (if fixed) and error is returned. In such case, older some pages may be re-fixed, other not : the caller
+ *	  should check page pointer of watchers before using them in case of error.
  *
- *  Note2:If any page re-fix occurs for previously fixed pages, their 'unfix'
- *	  flag in their watcher is set (caller is resposible to check this flag)
+ *  Note2: If any page re-fix occurs for previously fixed pages, their 'unfix' flag in their watcher is set.
+ *         (caller is resposible to check this flag)
  *
  */
 #if !defined(NDEBUG)
@@ -11542,6 +11488,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   assert (req_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
 #endif
 
+  ret_pgptr = NULL;
+
   req_page_has_watcher = false;
   if (req_watcher->pgptr != NULL)
     {
@@ -11549,8 +11497,6 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       er_status = ER_FAILED_ASSERTION;
       goto exit;
     }
-
-  ret_pgptr = NULL;
 
   /* set or promote current page rank */
   if (VPID_EQ (&req_watcher->group_id, req_vpid))
@@ -12296,8 +12242,7 @@ exit:
 
 
 /*
- * pgbuf_get_groupid_and_unfix () - retrieves group identifier of page and
- *				    performs unlatch if requested.
+ * pgbuf_get_groupid_and_unfix () - retrieves group identifier of page and performs unlatch if requested.
  *   return: error code
  *   req_vpid(in): id of page for which the group is needed (for debug)
  *   pgptr(in): page (already latched); only heap page allowed
@@ -12367,8 +12312,7 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
 }
 
 /*
- * pgbuf_ordered_unfix () - Unfix a page which was previously fixed with 
- *			    ordered_fix (has a page watcher)
+ * pgbuf_ordered_unfix () - Unfix a page which was previously fixed with ordered_fix (has a page watcher)
  *   return: void
  *   thread_p(in):
  *   watcher_object(in/out): page watcher
@@ -12438,8 +12382,7 @@ pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
  *   pgptr(in): holder object
  *   watcher(in/out): page watcher
  *   latch_mode(in): latch mode used for fixing the page
- *   clear_unfix_flag(in): True to reset page_was_unfixed flag,
- *			   false otherwise.
+ *   clear_unfix_flag(in): True to reset page_was_unfixed flag, false otherwise.
  *
  */
 #if !defined(NDEBUG)
@@ -12689,9 +12632,8 @@ pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_watcher, PGB
 }
 
 /*
- * pgbuf_ordered_set_dirty_and_free () - Mark as modified the buffer associated
- *					 and unfixes the page (previously fixed
- *					 with ordered fix)
+ * pgbuf_ordered_set_dirty_and_free () - Mark as modified the buffer associated and unfixes the page 
+ *                                       (previously fixed with ordered fix)
  *   return: void
  *   thread_p(in):
  *   pg_watcher(in): page watcher holding the page to dirty and unfix
@@ -13519,8 +13461,7 @@ pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx)
 }
 
 /*
- * pgbuf_initialize_seq_flusher () - Initializes sequential flusher on a list of
- *				     pages to be flushed
+ * pgbuf_initialize_seq_flusher () - Initializes sequential flusher on a list of pages to be flushed
  *
  *   return: error code
  *   seq_flusher(in/out):
@@ -13587,8 +13528,7 @@ pgbuf_has_any_waiters (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_has_any_non_vacuum_waiters () - Check if page has any non-vacuum
- *					 waiters.
+ * pgbuf_has_any_non_vacuum_waiters () - Check if page has any non-vacuum waiters.
  *
  * return     : True if page has waiters, false otherwise.
  * pgptr (in) : Page pointer.
@@ -14236,8 +14176,8 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
 bool
 pgbuf_keep_victim_flush_thread_running (void)
 {
-  return pgbuf_Pool.direct_victims.waiter_threads_preparing != 0 || pgbuf_is_any_thread_waiting_for_direct_victim ()
-    || pgbuf_is_hit_ratio_low ();
+  return (pgbuf_Pool.direct_victims.waiter_threads_preparing != 0 || pgbuf_is_any_thread_waiting_for_direct_victim ()
+	  || pgbuf_is_hit_ratio_low ());
 }
 #endif /* SERVER_MDOE */
 
@@ -14574,12 +14514,11 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
   /* todo: add watchers on lru list mutexes */
 
   /* new victim hint should be either NULL or in the victimization zone */
-  new_victim_hint = bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint) ? bcb_new_hint : NULL;
+  new_victim_hint = (bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint) ? bcb_new_hint : NULL);
 
   /* restart from bottom if hint is NULL but we have victim candidates */
-  new_victim_hint =
-    (new_victim_hint == NULL && lru_list->count_vict_cand > (was_vict_count_updated ? 0 : 1)) ?
-    lru_list->bottom : new_victim_hint;
+  new_victim_hint = ((new_victim_hint == NULL && lru_list->count_vict_cand > (was_vict_count_updated ? 0 : 1))
+		     ? lru_list->bottom : new_victim_hint);
 
   /* update hint (if it was not already updated) */
   assert (new_victim_hint == NULL || pgbuf_bcb_get_lru_index (new_victim_hint) == lru_list->index);
@@ -14655,6 +14594,7 @@ pgbuf_bcb_update_flags (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int set_flags,
 
   old_dirty = (old_flags & PGBUF_BCB_DIRTY_FLAG) != 0;
   new_dirty = (new_flags & PGBUF_BCB_DIRTY_FLAG) != 0;
+
   if (old_dirty && !new_dirty)
     {
       /* cleared dirty flag. */
@@ -14665,6 +14605,7 @@ pgbuf_bcb_update_flags (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int set_flags,
       /* added dirty flag */
       ATOMIC_INC_64 (&pgbuf_Pool.monitor.dirties_cnt, 1);
     }
+
   assert (pgbuf_Pool.monitor.dirties_cnt >= 0 && pgbuf_Pool.monitor.dirties_cnt <= pgbuf_Pool.num_buffers);
 }
 
@@ -15362,7 +15303,7 @@ pgbuf_is_io_stressful (void)
 }
 
 /*
- * pgbuf_is_hit_ratio_low () - is page buffer hit ratio low? currently target is set to 99%.
+ * pgbuf_is_hit_ratio_low () - is page buffer hit ratio low? currently target is set to 99.9%.
  *
  * return : true/false
  */
