@@ -2443,6 +2443,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  LSA_COPY (end_redo_lsa, &lsa);
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
 
+
+	      _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: log_lsa:%d,%d; end_redo_lsa:%d,%d\n",
+		log_lsa.pageid, log_lsa.offset, end_redo_lsa->pageid, end_redo_lsa->offset);
+
 	  /* 
 	   * If the next page is NULL_PAGEID and the current page is an archive
 	   * page, this is not the end of the log. This situation happens when an
